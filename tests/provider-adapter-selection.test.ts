@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { CodingAgentAvailabilitySnapshot } from "../src/codingAgents/availability.js";
 import {
+  detectHardProviderEvidence,
   ExecutionProfileUnsatisfiedError,
+  HARD_PROVIDER_EVIDENCE_CODES,
   selectCompliantCodingAgent,
   selectDefaultCodingAgentConfiguration,
-  validateProviderAdapterRegistry
+  selectProviderWithHardEvidenceSubstitution,
+  validateProviderAdapterRegistry,
+  type HardProviderEvidence,
+  type HardProviderEvidenceCode,
+  type ProviderAdapterRegistry
 } from "../src/codingAgents/providerAdapters.js";
 import { parseExecutionRequirement } from "../src/execution/profiles.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
@@ -222,6 +228,230 @@ describe("provider-adapter selection", () => {
         }
       });
     }
+  });
+});
+
+describe("hard-evidence provider substitution (Decision 0063)", () => {
+  it("pins the exact closed set of hard-evidence codes", () => {
+    // A deliberate change to this list must change this assertion too — that
+    // is what makes the enum closed rather than merely documented as closed.
+    expect(HARD_PROVIDER_EVIDENCE_CODES).toEqual([
+      "provider_unavailable",
+      "model_unavailable",
+      "authentication_failure",
+      "quota_or_rate_limit_rejected",
+      "launch_precluded"
+    ] satisfies readonly HardProviderEvidenceCode[]);
+  });
+
+  for (const code of HARD_PROVIDER_EVIDENCE_CODES) {
+    it(`substitutes to a different equivalent-or-stronger provider on ${code}`, () => {
+      const evidence: HardProviderEvidence[] = [
+        { providerId: "codex-cli", code, reason: `synthetic ${code} for codex-cli` }
+      ];
+
+      const selection = selectProviderWithHardEvidenceSubstitution({
+        profiles,
+        adapters: adapters as never,
+        requirement: resolved("routine_implementation"),
+        purpose: "build",
+        availability,
+        hardEvidence: evidence
+      });
+
+      expect(selection.configuration.provider).not.toBe("codex-cli");
+      expect(selection.configuration.capability).toBe("c2_integrated");
+      expect(selection.substitution).toMatchObject({
+        intendedProvider: "codex-cli",
+        code,
+        reason: `synthetic ${code} for codex-cli`
+      });
+      expect(selection.substitution?.resumeGuidance).toContain("must not be replayed");
+      expect(selection.excluded["codex-cli"]).toMatchObject({ code });
+    });
+  }
+
+  it("reports no substitution when there is no hard evidence at all", () => {
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: adapters as never,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability
+    });
+
+    expect(selection.configuration.provider).toBe("codex-cli");
+    expect(selection.substitution).toBeNull();
+  });
+
+  it("never treats an advisory capacity refusal alone as a substitution", () => {
+    // capacityRefusals is the advisory-estimate channel (capacity.ts). Passing
+    // it without hardEvidence must move the selection without ever recording
+    // that move as a hard-evidence substitution.
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: adapters as never,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      capacityRefusals: { "codex-cli": "advisory: reserve margin (not hard evidence)" }
+    });
+
+    expect(selection.configuration.provider).not.toBe("codex-cli");
+    expect(selection.substitution).toBeNull();
+  });
+
+  it("surfaces incapacity normally rather than lowering a capability floor", () => {
+    const evidence: HardProviderEvidence[] = [
+      { providerId: "codex-cli", code: "provider_unavailable", reason: "synthetic: codex-cli down" },
+      { providerId: "claude-code-cli", code: "provider_unavailable", reason: "synthetic: claude-code-cli down" },
+      { providerId: "opencode-cli", code: "provider_unavailable", reason: "synthetic: opencode-cli down" }
+    ];
+
+    expect(() => selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: adapters as never,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: evidence
+    })).toThrowError(ExecutionProfileUnsatisfiedError);
+  });
+
+  it("excludes a hard-evidence provider from ordinary selectCompliantCodingAgent candidates", () => {
+    const selected = selectCompliantCodingAgent({
+      profiles,
+      adapters: adapters as never,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: [{ providerId: "codex-cli", code: "authentication_failure", reason: "synthetic" }]
+    });
+
+    expect(selected.provider).not.toBe("codex-cli");
+  });
+});
+
+describe("detectHardProviderEvidence", () => {
+  const baseRegistry = adapters as unknown as ProviderAdapterRegistry;
+
+  it("detects a provider disabled in the registry", () => {
+    const evidence = detectHardProviderEvidence(baseRegistry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "gemini-cli", code: "provider_unavailable" })
+    );
+  });
+
+  it("detects a provider with no supported Session launch adapter", () => {
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      providers: [...baseRegistry.providers, { id: "no-launch-adapter", enabled: true }],
+      bindings: [
+        ...baseRegistry.bindings,
+        {
+          id: "no-launch-adapter-binding",
+          provider: "no-launch-adapter",
+          agentProfiles: [],
+          capability: "c2_integrated",
+          model: "test",
+          modelArgs: ["--model", "test"],
+          effortArgs: { e2_standard: [] },
+          tools: true,
+          contextScopes: ["project"],
+          locality: "local",
+          costRank: 0,
+          enabled: true
+        }
+      ]
+    };
+
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "no-launch-adapter", code: "launch_precluded" })
+    );
+  });
+
+  it("detects every binding disabled for an otherwise-enabled provider", () => {
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      bindings: baseRegistry.bindings.map((binding) =>
+        binding.provider === "codex-cli" ? { ...binding, enabled: false } : binding)
+    };
+
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "codex-cli", code: "model_unavailable" })
+    );
+  });
+
+  it("substitutes for a provider detectHardProviderEvidence found disabled in the registry", () => {
+    // Regression for CodeRabbit finding on PR #482: stripping only the
+    // `hardEvidence` field is not enough for provider_unavailable, because the
+    // registry's own `enabled: false` already excludes the provider
+    // structurally either way. The "intended" counterfactual must bypass that
+    // registry restriction, or the substitution is silently lost.
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      providers: baseRegistry.providers.map((provider) =>
+        provider.id === "codex-cli"
+          ? { ...provider, enabled: false, unavailableReason: "synthetic: codex-cli disabled" }
+          : provider)
+    };
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "codex-cli", code: "provider_unavailable" })
+    );
+
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: registry,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: evidence
+    });
+
+    expect(selection.configuration.provider).not.toBe("codex-cli");
+    expect(selection.substitution).toMatchObject({
+      intendedProvider: "codex-cli",
+      code: "provider_unavailable"
+    });
+  });
+
+  it("substitutes for a provider detectHardProviderEvidence found with every binding disabled", () => {
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      bindings: baseRegistry.bindings.map((binding) =>
+        binding.provider === "codex-cli" ? { ...binding, enabled: false } : binding)
+    };
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "codex-cli", code: "model_unavailable" })
+    );
+
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: registry,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: evidence
+    });
+
+    expect(selection.configuration.provider).not.toBe("codex-cli");
+    expect(selection.substitution).toMatchObject({
+      intendedProvider: "codex-cli",
+      code: "model_unavailable"
+    });
+  });
+
+  it("reports no evidence for a fully healthy registry", () => {
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      providers: baseRegistry.providers.filter((provider) => provider.id !== "gemini-cli")
+    };
+
+    expect(detectHardProviderEvidence(registry)).toEqual([]);
   });
 });
 

@@ -9,29 +9,24 @@ import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import {
-  selectCompliantCodingAgent,
+  detectHardProviderEvidence,
+  selectProviderWithHardEvidenceSubstitution,
+  LAUNCH_ADAPTER_SUPPORT,
   ExecutionProfileUnsatisfiedError,
+  type HardEvidenceSubstitution,
   type ProviderAdapterRegistry,
   type SelectedCodingAgentConfiguration
 } from "../codingAgents/providerAdapters.js";
+
+// Re-exported so existing importers of this table (it moved to
+// providerAdapters.ts, the canonical, dependency-free home shared by launch
+// preview and packet binding) do not need to change their import path.
+export { LAUNCH_ADAPTER_SUPPORT };
 import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { resolveProjectTransition, type TmuxAdapter } from "./index.js";
 import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
-
-/**
- * Providers the canonical Session subsystem can actually spawn today. Mirrors
- * the hardcoded check in prepareSession (sessions/index.ts) — kept as an
- * explicit, named table here so this preview's "launch-adapter availability"
- * filter and prepareSession's launch-time refusal can never silently drift
- * apart from being the same fact stated twice with different wording.
- */
-export const LAUNCH_ADAPTER_SUPPORT: Record<string, boolean> = {
-  "codex-cli": true,
-  "claude-code-cli": true,
-  "opencode-cli": true
-};
 
 export interface LaunchPreviewPacket {
   invocationId: string;
@@ -57,6 +52,14 @@ export interface LaunchPreview {
   authorizingDecisions: string[];
   selection: SelectedCodingAgentConfiguration | null;
   selectionRationale: string | null;
+  /**
+   * Populated only when a *new* selection substituted away from the provider
+   * that would otherwise have run this work, because of hard evidence
+   * (Decision 0063). Never set once a packet already exists: this preview
+   * never changes an immutable packet's bound provider, it only reports what
+   * a fresh selection produced.
+   */
+  substitution: HardEvidenceSubstitution | null;
   prerequisites: string[];
   ready: boolean;
   createdAt: string;
@@ -95,6 +98,7 @@ export function buildLaunchPreview(input: {
   let packetLifecycle: PacketLifecycleState | null = null;
   let selection: SelectedCodingAgentConfiguration | null = null;
   let selectionRationale: string | null = null;
+  let substitution: HardEvidenceSubstitution | null = null;
   let authorizingDecisions: string[] = [];
 
   if (context) {
@@ -115,20 +119,32 @@ export function buildLaunchPreview(input: {
               `Action has an invalid execution requirement: ${parsed.issues.map((issue) => `${issue.field}: ${issue.message}`).join("; ")}`
             );
           } else {
-            selection = selectCompliantCodingAgent({
+            // launchRefusals (below, from LAUNCH_ADAPTER_SUPPORT) is deliberately
+            // not also passed as capacityRefusals here: detectHardProviderEvidence
+            // already reports the identical fact as launch_precluded hard
+            // evidence, and passing it through both channels would exclude the
+            // provider from the "intended" counterfactual too, silently losing
+            // the substitution record this call exists to produce. launchRefusals
+            // is still used below to validate an *existing* immutable packet.
+            const admitted = selectProviderWithHardEvidenceSubstitution({
               profiles: input.profiles,
               adapters: input.adapters,
               requirement: parsed.resolved,
               phase: "implementation",
               purpose: "build",
               availability: observeCodingAgentAvailability(input.profiles),
-              capacityRefusals: launchRefusals
+              hardEvidence: detectHardProviderEvidence(input.adapters)
             });
-            selectionRationale =
-              `Selected ${selection.provider}/${selection.model} (capability ${selection.capability}, effort ${selection.effort}) ` +
-              `via binding ${selection.mappingId}/${selection.bindingId}: the lowest-cost configured binding that meets the ` +
-              "Action's required capability, effort, tools, context scope and data locality, has a supported launch adapter, " +
-              "and reports availability — chosen automatically, with no operator provider choice.";
+            selection = admitted.configuration;
+            substitution = admitted.substitution;
+            selectionRationale = substitution
+              ? `Selected ${selection.provider}/${selection.model} (capability ${selection.capability}, effort ${selection.effort}) ` +
+                `after substituting away from ${substitution.intendedProvider} (${substitution.code}: ${substitution.reason}). ` +
+                `${substitution.resumeGuidance}`
+              : `Selected ${selection.provider}/${selection.model} (capability ${selection.capability}, effort ${selection.effort}) ` +
+                `via binding ${selection.mappingId}/${selection.bindingId}: the lowest-cost configured binding that meets the ` +
+                "Action's required capability, effort, tools, context scope and data locality, has a supported launch adapter, " +
+                "and reports availability — chosen automatically, with no operator provider choice.";
           }
         } catch (error) {
           if (error instanceof ExecutionProfileUnsatisfiedError) {
@@ -260,6 +276,7 @@ export function buildLaunchPreview(input: {
     authorizingDecisions,
     selection,
     selectionRationale,
+    substitution,
     prerequisites,
     ready: prerequisites.length === 0,
     createdAt: now.toISOString()

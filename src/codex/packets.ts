@@ -6,8 +6,16 @@ import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codin
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
 import type { CodingAgentProfile, TemplateDefinition } from "../intent/registries.js";
-import type { ProviderAdapterRegistry, SelectedCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
-import { selectCompliantCodingAgent, selectDefaultCodingAgentConfiguration } from "../codingAgents/providerAdapters.js";
+import type {
+  HardEvidenceSubstitution,
+  ProviderAdapterRegistry,
+  SelectedCodingAgentConfiguration
+} from "../codingAgents/providerAdapters.js";
+import {
+  detectHardProviderEvidence,
+  selectDefaultCodingAgentConfiguration,
+  selectProviderWithHardEvidenceSubstitution
+} from "../codingAgents/providerAdapters.js";
 import {
   parseExecutionRequirement,
   type ExecutionPhase,
@@ -50,6 +58,13 @@ export interface AgentProfileSelection {
   profile: CodingAgentProfile;
   configuration: SelectedCodingAgentConfiguration | null;
   executionRequirement: ResolvedExecutionRequirement | null;
+  /**
+   * Set only when this selection substituted away from the provider that
+   * would otherwise have run this work, because of hard evidence it cannot
+   * (Decision 0063). This function runs only while a packet is about to bind
+   * for the first time; nothing calls it again for an existing packet.
+   */
+  substitution: HardEvidenceSubstitution | null;
 }
 
 export function createCodexPacket(input: {
@@ -239,7 +254,8 @@ export function selectAgentProfileForWorkItem(input: {
     return {
       profile,
       configuration,
-      executionRequirement: null
+      executionRequirement: null,
+      substitution: null
     };
   }
 
@@ -257,19 +273,21 @@ export function selectAgentProfileForWorkItem(input: {
     );
   }
   const phase: ExecutionPhase = input.purpose === "planning" ? "planning" : "implementation";
-  const configuration = selectCompliantCodingAgent({
+  const admitted = selectProviderWithHardEvidenceSubstitution({
     profiles: input.profiles,
     adapters: input.adapters,
     requirement: parsed.resolved,
     phase,
     purpose: input.purpose,
     availability: observeCodingAgentAvailability(input.profiles),
-    requestedProfile: input.requestedName
+    requestedProfile: input.requestedName,
+    hardEvidence: detectHardProviderEvidence(input.adapters)
   });
   return {
-    profile: configuration.profile,
-    configuration,
-    executionRequirement: parsed.resolved
+    profile: admitted.configuration.profile,
+    configuration: admitted.configuration,
+    executionRequirement: parsed.resolved,
+    substitution: admitted.substitution
   };
 }
 
