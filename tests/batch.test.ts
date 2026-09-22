@@ -203,6 +203,59 @@ describe("batch lanes", () => {
 
     expect(batch.lanes[0].actions.map((action) => action.actionId)).toEqual(["last", "first", "second"]);
   });
+
+  it("orders the rest of the lane by explicit queue position, not declaration order", () => {
+    const root = repository([
+      {
+        slug: "alpha",
+        current: "pointer",
+        actions: [{ id: "pointer" }, { id: "low-priority" }, { id: "third" }, { id: "high-priority" }]
+      }
+    ]);
+    const positions = new Map([
+      ["alpha/high-priority", 1],
+      ["alpha/third", 2],
+      ["alpha/low-priority", 9]
+    ]);
+
+    const batch = resolveBatch(
+      [{ repositoryRoot: root, projectSlug: "alpha" }],
+      { queuePosition: (key) => positions.get(key) ?? null }
+    );
+
+    // The pointer still leads even though it has no recorded position; the
+    // rest follow queue priority rather than the plan's declaration order.
+    expect(batch.lanes[0].actions.map((action) => action.actionId)).toEqual([
+      "pointer",
+      "high-priority",
+      "third",
+      "low-priority"
+    ]);
+    expect(batch.lanes[0].actions.map((action) => action.position)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("sorts a positioned Action ahead of an unpositioned one, and falls back to walk order among unpositioned Actions", () => {
+    const root = repository([
+      {
+        slug: "alpha",
+        current: "pointer",
+        actions: [{ id: "pointer" }, { id: "unpositioned-a" }, { id: "positioned" }, { id: "unpositioned-b" }]
+      }
+    ]);
+    const positions = new Map([["alpha/positioned", 5]]);
+
+    const batch = resolveBatch(
+      [{ repositoryRoot: root, projectSlug: "alpha" }],
+      { queuePosition: (key) => positions.get(key) ?? null }
+    );
+
+    expect(batch.lanes[0].actions.map((action) => action.actionId)).toEqual([
+      "pointer",
+      "positioned",
+      "unpositioned-a",
+      "unpositioned-b"
+    ]);
+  });
 });
 
 describe("batch boundary", () => {
