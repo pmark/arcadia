@@ -564,4 +564,117 @@ describe("reverse an applied Decision deferral", () => {
     expect(reversal.data.applied).toBe(true);
     expect(reversal.data.consequence?.reversesReceiptId).toBe(firstReceipt);
   });
+
+  it("refuses when the Decision has been answered differently since the deferral, preserving that newer answer", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Keep it dispatchable" });
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/answered differently since the deferral/i);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+    expect(decisionFile(repo)).toContain("answer: Keep it dispatchable");
+  });
+
+  it("refuses when only the Plan pointer has moved since the deferral", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    // Move the Plan pointer but leave the Project pointer where the deferral left it.
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    const planBefore = planFile(repo);
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/pointer has moved since the deferral/i);
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+  });
+
+  it("refuses when the active Plan is no longer the deferral's Plan", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    // A different Plan now holds the same Action id, and the Project points at it.
+    writeFileSync(
+      path.join(repo, "docs/plans/other-plan.md"),
+      planFile(repo).replace(/^slug: defer-plan$/m, "slug: other-plan"),
+      "utf8"
+    );
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^active_plan: defer-plan$/m, "active_plan: other-plan"),
+      "utf8"
+    );
+    const decisionBefore = decisionFile(repo);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/different Plan than the Project now has active/i);
+
+    expect(decisionFile(repo)).toBe(decisionBefore);
+  });
+
+  it("refuses a deferral receipt that belongs to a different Decision", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    writeFileSync(path.join(repo, "docs/decisions/0058-defer-again.md"), [
+      "---", "arcadia: v1", "type: decision", 'id: "0058"', "slug: defer-again", "project: demo",
+      "status: open", "question: Defer again?", "confidence: high", "plan: defer-plan",
+      "action: park-me", "updated: 2026-09-18",
+      "options:", "  - label: Defer again", "    consequence: Parked again.", "    recommended: true", "    effect: defer",
+      "---", "", "# Decision 0058: Defer again?", ""
+    ].join("\n"), "utf8");
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add a second deferring Decision"], { cwd: repo });
+    const second = runDecisionApproveCommand({ workspace, project: "demo", id: "0058", answer: "Defer again" });
+    expect(second.data.applied).toBe(true);
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, receipt: second.data.receiptId! })
+    ).toThrow(/belongs to a different Decision/i);
+  });
+
+  it("refuses to replay a failed reversal commit after a document changed", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    execFileSync("git", ["config", "--unset", "user.email"], { cwd: repo });
+    execFileSync("git", ["config", "--unset", "user.name"], { cwd: repo });
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-commit-fail" })
+    ).toThrow(/could not be committed/);
+
+    // Recover Git, but change one of the reversal's documents before retrying.
+    vi.unstubAllEnvs();
+    execFileSync("git", ["config", "user.email", "deferral-test@example.invalid"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "Deferral Test"], { cwd: repo });
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: park-me$/m, "current_action: done-first"),
+      "utf8"
+    );
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-commit-fail" })
+    ).toThrow(/changed after the failed commit/i);
+  });
 });

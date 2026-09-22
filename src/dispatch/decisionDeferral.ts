@@ -6,7 +6,7 @@ import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { parseDoc } from "../docs/parse.js";
-import type { PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { DecisionDocStatus, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { WorkItemStatus } from "../domain/constants.js";
 import { commitOnlyPaths, tryGit } from "../git/worktrees.js";
 import { loadActionOrder } from "./order.js";
@@ -33,6 +33,13 @@ export interface DecisionDeferralConsequence {
   pointerBefore: string | null;
   pointerAfter: string | null;
   pointerMoved: boolean;
+  /**
+   * The Decision's recorded answer when the deferral applied. A reversal
+   * refuses to re-open the Decision when this no longer matches, so it can never
+   * silently clear a newer answer. Null when the deferral was applied before this
+   * field existed (such receipts skip the exact-answer check).
+   */
+  decisionAnswer: string | null;
 }
 
 export interface DecisionDeferralReceipt extends DecisionReceiptFields {
@@ -95,6 +102,8 @@ export interface DecisionDeferralInput {
   decisionRelativePath: string;
   /** The Decision's frontmatter after the answer is recorded. */
   decisionAfter: string;
+  /** The exact answer recorded on the Decision, so a reversal can detect a newer one. */
+  decisionAnswer: string | null;
   dryRun: boolean;
 }
 
@@ -130,7 +139,15 @@ export function applyDecisionDeferral(
     if (!existing.applied) {
       // A previous attempt wrote the documents but could not commit them. Retry
       // exactly that commit — recomputing from disk would see the already-written
-      // state as "no change" and leave the deferral uncommitted forever.
+      // state as "no change" and leave the deferral uncommitted forever. Verify
+      // the documents still reflect the recorded transition first, so a retry
+      // cannot commit state someone changed in between.
+      if (!receiptReflectedOnDisk(input.repoRoot, input.projectSlug, existing)) {
+        throw validationError("The deferral's documents changed after the failed commit, so the retry would commit altered state.", {
+          receiptId: existing.id,
+          remedy: "Restore the deferral's recorded documents, or answer the Decision again from the reconciled state."
+        });
+      }
       const retryError = commitDecisionDeferral(input.repoRoot, existing.changedPaths, existing);
       existing.applied = retryError === null;
       existing.commitError = retryError;
@@ -179,7 +196,8 @@ export function applyDecisionDeferral(
     actionStatusAfter: needsPark ? "deferred" : action.status,
     pointerBefore,
     pointerAfter: pointerMoved ? nextActionId : pointerBefore,
-    pointerMoved
+    pointerMoved,
+    decisionAnswer: input.decisionAnswer
   };
   if (input.dryRun) {
     return { consequence, receiptId: null, applied: false };
@@ -275,6 +293,10 @@ export interface DecisionReversalInput {
   decisionRelativePath: string;
   /** The Decision's frontmatter once it is re-opened by this reversal. */
   decisionAfter: string;
+  /** The Decision's recorded status, so a reversal can refuse to clear a newer decision. */
+  decisionStatus: DecisionDocStatus;
+  /** The Decision's recorded answer, so a reversal can refuse to clear a newer one. */
+  decisionAnswer: string | null;
   /** The applied deferral this reversal undoes. */
   deferral: DecisionDeferralReceipt;
   requestId: string;
@@ -304,6 +326,25 @@ export function reverseDecisionDeferral(
   db: Database.Database,
   input: DecisionReversalInput
 ): DecisionReversalResult {
+  // Bind the receipt to the Decision and Project being reversed before anything
+  // else, so a foreign receipt can never restore an Action in this Project or
+  // re-open a different Decision.
+  const { deferral } = input;
+  if (deferral.decisionId !== input.decisionId || deferral.decisionPath !== input.decisionRelativePath) {
+    throw validationError("This deferral receipt belongs to a different Decision, so it cannot be reversed here.", {
+      receiptDecision: deferral.decisionId,
+      receiptPath: deferral.decisionPath,
+      requestedDecision: input.decisionId,
+      requestedPath: input.decisionRelativePath
+    });
+  }
+  if (!deferral.actionKey.startsWith(`${input.projectSlug}/`)) {
+    throw validationError("This deferral receipt belongs to a different Project, so it cannot be reversed here.", {
+      receiptActionKey: deferral.actionKey,
+      project: input.projectSlug
+    });
+  }
+
   const existing = loadReceipt(db, input.requestId);
   if (existing) {
     if (!isReversalReceipt(existing) || existing.decisionId !== input.decisionId) {
@@ -322,6 +363,15 @@ export function reverseDecisionDeferral(
       return { consequence: existing.consequence, receiptId: existing.id, applied: true };
     }
     if (!existing.applied) {
+      // The first attempt wrote the documents but could not commit them. Verify
+      // they still reflect the recorded reversal before replaying the commit, so
+      // a retry cannot commit state someone changed in between.
+      if (!reversalReflectedOnDisk(input.repoRoot, input.projectSlug, existing)) {
+        throw validationError("The reversal's documents changed after the failed commit, so the retry would commit altered state.", {
+          receiptId: existing.id,
+          remedy: "Restore the reversal's recorded documents, or reconcile the Action and pointer by hand."
+        });
+      }
       const retryError = commitDecisionReversal(input.repoRoot, existing.changedPaths, existing);
       existing.applied = retryError === null;
       existing.commitError = retryError;
@@ -335,9 +385,17 @@ export function reverseDecisionDeferral(
     // than replay a reversal that no longer matches the repository.
   }
 
-  const { deferral } = input;
   const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, deferral.consequence.actionId);
-  const pointer = project.currentAction ?? plan.currentAction;
+  // The receipt names the Plan it parked the Action in. Resolving the Project's
+  // *current* active Plan is only safe when it is still that Plan; otherwise a
+  // different Plan holding the same Action id would be changed instead.
+  if (plan.relativePath !== deferral.consequence.planPath) {
+    throw validationError("The deferral names a different Plan than the Project now has active, so reversing it would change the wrong Plan.", {
+      deferralPlan: deferral.consequence.planPath,
+      activePlan: plan.relativePath,
+      remedy: "Reactivate that Plan, or leave the deferral in place."
+    });
+  }
   if (action.status !== deferral.consequence.actionStatusAfter) {
     throw validationError("The Action's status has changed since the deferral, so reversing it would discard newer checked-in truth.", {
       action: action.id,
@@ -346,11 +404,39 @@ export function reverseDecisionDeferral(
       remedy: "Reconcile the Action first, or leave the deferral in place."
     });
   }
-  if (deferral.consequence.pointerMoved && pointer !== deferral.consequence.pointerAfter) {
-    throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
-      deferralLeft: deferral.consequence.pointerAfter,
-      current: pointer,
-      remedy: "Reconcile the pointer first, or leave the deferral in place."
+  if (deferral.consequence.pointerMoved) {
+    // Both documents hold the pointer. Comparing only the effective one would
+    // let a newer Plan pointer be overwritten by a stale Project pointer.
+    const projectPointer = project.currentAction;
+    const planPointer = plan.currentAction;
+    if (projectPointer !== deferral.consequence.pointerAfter || planPointer !== deferral.consequence.pointerAfter) {
+      throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
+        deferralLeft: deferral.consequence.pointerAfter,
+        projectPointer,
+        planPointer,
+        remedy: "Reconcile the pointer first, or leave the deferral in place."
+      });
+    }
+  }
+  // Re-opening the Decision clears its answer, so refuse when a newer answer has
+  // been recorded since the deferral rather than silently discarding it. A
+  // receipt written before answers were recorded cannot prove this and skips the
+  // exact check.
+  if (input.decisionStatus !== "approved") {
+    throw validationError("The Decision is no longer recorded as approved, so its deferral cannot be reversed.", {
+      decision: input.decisionId,
+      status: input.decisionStatus,
+      remedy: "Re-answer the Decision, or leave the deferral in place."
+    });
+  }
+  const recordedAnswer = deferral.consequence.decisionAnswer ?? null;
+  const currentAnswer = input.decisionAnswer?.trim() ?? "";
+  if (recordedAnswer !== null && currentAnswer.toLowerCase() !== recordedAnswer.trim().toLowerCase()) {
+    throw validationError("The Decision has been answered differently since the deferral, so reversing it would discard that newer answer.", {
+      decision: input.decisionId,
+      recordedAnswer,
+      currentAnswer: input.decisionAnswer,
+      remedy: "Reconcile the Decision first, or leave the deferral in place."
     });
   }
 

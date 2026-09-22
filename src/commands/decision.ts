@@ -309,6 +309,7 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
         decisionAbsolutePath: absolutePath,
         decisionRelativePath: relativePath,
         decisionAfter: updatedContent,
+        decisionAnswer: prepared.answer,
         dryRun: options.dryRun === true
       });
       return createSuccess({
@@ -421,6 +422,8 @@ export function runDecisionReverseCommand(options: DecisionReverseOptions): Comm
       decisionAbsolutePath: absolutePath,
       decisionRelativePath: relativePath,
       decisionAfter,
+      decisionStatus: decisionDoc.status,
+      decisionAnswer: decisionDoc.answer,
       deferral,
       requestId,
       dryRun: options.dryRun === true
