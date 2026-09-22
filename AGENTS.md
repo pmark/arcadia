@@ -17,6 +17,13 @@ Two companions carry the rest, and both bind every agent:
   request becomes a governed Plan: an Outcome Alignment Interview first, then
   a Staff Planning Architect pass. Use it whenever you are starting a new
   planning cycle rather than continuing an existing Action.
+- [`docs/managed-production-readiness.md`](docs/managed-production-readiness.md)
+  — the canonical, continuously re-derived answer to how far Arcadia is from
+  running production unattended, and the shortest path there. Read it before
+  working any Action in `bootstrap-managed-production-to-build-flight-deck`,
+  and refresh it (it says how) whenever you complete a critical-path Action
+  or discover a new blocker — that discipline is what keeps it canonical
+  instead of a stale snapshot.
 
 Arcadia exists to maintain momentum across creative projects with minimal cognitive overhead.
 
