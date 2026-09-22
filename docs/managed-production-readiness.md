@@ -274,9 +274,9 @@ unattended production on the board.
 **Thirteen numbered entries: 11 filed Action ids and 2 operator steps — 11
 Action-shaped entries in total.**
 
-- **Code sessions, ready today with no blocking dependency (5):** entries
-  2, 3, 9, 10, plus 1 and 4 already done. Entries 2, 3, 9, and 10 are the
-  fastest place to spend a session right now.
+- **Code sessions, ready today with no blocking dependency (4):** entries
+  2, 3, 9, and 10. They are the fastest place to spend a session right now
+  (entries 1 and 4 are already done).
 - **Needs filing first: none.** The worker-hang Action this section used to
   list as unfiled is now filed and done.
 - **Proof and hardening runs (5):** entries 6, 8, 11, 12, 13 (4 open, 1
@@ -340,10 +340,10 @@ trusting further out than a session or two.
 | Open | 22 |
 | Deferred | 1 |
 | Unfinished (open + deferred) | 23 |
-| **On the critical path (filed)** | **10** (9 open + 1 deferred) |
+| **On the critical path (filed)** | **9** (8 open + 1 deferred) |
 | **On the critical path (not yet filed)** | **0** |
 | **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 13 (23 unfinished − 10 filed on the path) |
+| Unfinished but off the critical path | 14 (23 unfinished − 9 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (production-dispatch related) is already answered. |
 
 ---

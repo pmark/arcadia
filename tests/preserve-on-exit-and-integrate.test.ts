@@ -181,6 +181,34 @@ describe("preserve-on-exit and integrate", () => {
     expect(existsSync(session.worktree_path)).toBe(true);
   });
 
+  it("preserves but refuses integration when reconciliation does not complete the Action", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    // A committed candidate with no passing Run reconciles as incomplete_resumable,
+    // so no governed completion settles and nothing may be integrated.
+    writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nUnproven.\n");
+    git(session.worktree_path, ["add", "."]);
+    git(session.worktree_path, ["commit", "-m", "unproven candidate"]);
+    tmux.live.delete(session.tmux_session_name);
+    const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        handoff: { preserve: { validate: fixtureValidator(true) } }
+      })
+    );
+    const project = second.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.handoff?.preservation.kind).toBe("preserved");
+    expect(project.handoff?.integration.kind).toBe("refused");
+    expect((project.handoff?.integration as { reason: string }).reason).toMatch(/governed completion/);
+    expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+  });
+
   it("refuses an expired grant and leaves every candidate file in place", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

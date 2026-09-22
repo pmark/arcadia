@@ -13,7 +13,7 @@ import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./poli
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
-import { handoffIntegrated, integrateSessionCandidate, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
+import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
 
 /**
@@ -177,9 +177,23 @@ export function runManagedProductionTick(
         // grant this stops after preservation and reports the operator merge.
         const preservation = preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
         const result = reconcileSessionExit({ db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot });
-        const integration = preservation.kind === "preserved"
+        // Integrate only a candidate whose governed completion actually settled
+        // this tick. Without that, fast-forwarding the branch would land the
+        // agent's work on the base branch while the pointer still names the same
+        // Action, and the next tick would re-admit it. An unfinished or failed
+        // Session is preserved and reported, never merged.
+        const completed = result.receipt.outcome === "accepted_completion";
+        const integration = preservation.kind === "preserved" && completed
           ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.integrate ?? {})
-          : { kind: "refused" as const, reason: `Integration waits on a preserved candidate: ${preservation.reason}`, operatorMergeCommand: null };
+          : {
+              kind: "refused" as const,
+              reason: preservation.kind === "preserved"
+                ? `Integration waits on a governed completion; reconciliation outcome was ${result.receipt.outcome}.`
+                : `Integration waits on a preserved candidate: ${preservation.reason}`,
+              operatorMergeCommand: preservation.kind === "preserved"
+                ? operatorMergeCommand({ repoRoot, branch: lease.branch, baseBranch: preservation.baseBranch })
+                : null
+            };
         handoff = { preservation, integration };
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
