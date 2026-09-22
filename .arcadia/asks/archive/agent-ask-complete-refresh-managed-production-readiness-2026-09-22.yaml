@@ -1,0 +1,46 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-refresh-managed-production-readiness-2026-09-22",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/refresh-managed-production-readiness-2026-09-22",
+  "candidate_revision": "2cd83951fef34533e3e1e489a96ac6b4106401b9",
+  "desired_result": "Record that docs/managed-production-readiness.md was re-derived and merged (PR #487), with CodeRabbit approval and all required checks green, including a live conflict-resolution correction for substitute-unavailable-provider-before-binding completing mid-refresh.",
+  "evidence": [
+    {
+      "criterion": "The gate tables reflect each named Actions current status: and Gate 2 is marked closed now that verify-worker-recovery-before-success, fix-packet-lifecycle-latest-planning-decision, and translate-reasoning-effort-at-launch are done.",
+      "status": "met",
+      "note": "Gate 2 marked closed with all three Actions verified done directly from the Plan document."
+    },
+    {
+      "criterion": "prove-zero-prompt-production-loop is described accurately: reclassified to responsibility requires_review this session (Decision 0064, PR #481), so it is no longer wrongly dispatched to coding agents; separately, the real rehearsals Action A succeeded live with opencode on 2026-09-21 per MISSION_LOG, and the specific remaining technical gap is named (Issue #460).",
+      "status": "met",
+      "note": "Both facts stated in the executive summary, sourced from Decision 0064/PR #481 and a direct MISSION_LOG.md read."
+    },
+    {
+      "criterion": "The new current-pointer Action substitute-unavailable-provider-before-binding is named, with its concrete blocker (packet lifecycle planning_required, per arcadia session preview-launch).",
+      "status": "met",
+      "note": "Named in the initial derivation via arcadia session preview-launch output. It completed (PR #482) mid-refresh; the document was updated in a follow-up commit to reflect that instead of leaving it stale, and the new pointer (preserve-on-exit-and-integrate) is now documented as the live dispatch target."
+    },
+    {
+      "criterion": "The newly filed worker-hang defect (Issue #485) is named as a blocker to the indefinite-unattended claim specifically, distinct from the existing detect-hung-managed-production-sessions Action which covers hung Sessions, not a hung worker daemon itself.",
+      "status": "met",
+      "note": "Given its own top-level section, explicitly distinguished from detect-hung-managed-production-sessions in both the gates table and that section."
+    },
+    {
+      "criterion": "The critical path list is re-sequenced in dependency order against current Plan state, and the Last derived date and executive summary numbers (distance, gate counts, scoreboard) are updated to match.",
+      "status": "met",
+      "note": "Re-sequenced from live status/depends_on reads; CodeRabbit caught an initial arithmetic inconsistency (fix round 1), corrected and reconciled from the same enumerated list; further corrected after substitute-unavailable-provider-before-binding completed mid-refresh."
+    },
+    {
+      "criterion": "External blockers table is re-verified against live arcadia production capacity output and MISSION_LOG, correcting the stale opencode Unexpected server error claim.",
+      "status": "met",
+      "note": "Re-verified via arcadia production capacity (all three providers admitted) and MISSION_LOG.md 2026-09-21 opencode success entry; the stale claim corrected."
+    },
+    {
+      "criterion": "Every claim in the refreshed document traces to a live command output, a Plan document field, a Decision file, or a MISSION_LOG entry actually read during this Action -- no guessing forward from the prior version.",
+      "status": "met",
+      "note": "All claims sourced from arcadia schedule status, production status, production capacity, session preview-launch, direct Plan/Decision file reads, and MISSION_LOG.md, all executed and read during this session."
+    }
+  ]
+}

@@ -1339,7 +1339,7 @@ actions:
     references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md"]
   - id: refresh-managed-production-readiness-2026-09-22
     title: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: docs/managed-production-readiness.md accurately reflects live Plan/Decision/production state as of 2026-09-22 and names the shortest remaining path to indefinite unattended production.
