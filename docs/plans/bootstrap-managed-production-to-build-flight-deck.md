@@ -1360,7 +1360,7 @@ actions:
     references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
   - id: self-heal-hung-worker-heartbeat
     title: arcadia worker start/status detects a stale-heartbeat worker process as unhealthy rather than already running, and recovers it automatically (or fails loudly with an actionable remedy an automated caller can act on) instead of requiring a human to find the PID and force-kill it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: arcadia worker start/status detects a stale-heartbeat worker process as unhealthy rather than already running, and recovers it automatically (or fails loudly with an actionable remedy an automated caller can act on) instead of requiring a human to find the PID and force-kill it.
@@ -1401,7 +1401,7 @@ actions:
     references: ["src/docs/dispatch.ts", "apps/dashboard/components/production-control-panel.tsx", "apps/dashboard/app/runs/page.tsx", "apps/dashboard/hooks/use-production-control.ts", "docs/managed-production-readiness.md", "docs/github-board-guide.md", "docs/production-scheduling.md"]
 questions: []
 decisions: []
-current_action: self-heal-hung-worker-heartbeat
+current_action: surface-batch-readiness-view
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
