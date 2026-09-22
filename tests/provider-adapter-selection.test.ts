@@ -384,6 +384,67 @@ describe("detectHardProviderEvidence", () => {
     );
   });
 
+  it("substitutes for a provider detectHardProviderEvidence found disabled in the registry", () => {
+    // Regression for CodeRabbit finding on PR #482: stripping only the
+    // `hardEvidence` field is not enough for provider_unavailable, because the
+    // registry's own `enabled: false` already excludes the provider
+    // structurally either way. The "intended" counterfactual must bypass that
+    // registry restriction, or the substitution is silently lost.
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      providers: baseRegistry.providers.map((provider) =>
+        provider.id === "codex-cli"
+          ? { ...provider, enabled: false, unavailableReason: "synthetic: codex-cli disabled" }
+          : provider)
+    };
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "codex-cli", code: "provider_unavailable" })
+    );
+
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: registry,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: evidence
+    });
+
+    expect(selection.configuration.provider).not.toBe("codex-cli");
+    expect(selection.substitution).toMatchObject({
+      intendedProvider: "codex-cli",
+      code: "provider_unavailable"
+    });
+  });
+
+  it("substitutes for a provider detectHardProviderEvidence found with every binding disabled", () => {
+    const registry: ProviderAdapterRegistry = {
+      ...baseRegistry,
+      bindings: baseRegistry.bindings.map((binding) =>
+        binding.provider === "codex-cli" ? { ...binding, enabled: false } : binding)
+    };
+    const evidence = detectHardProviderEvidence(registry);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({ providerId: "codex-cli", code: "model_unavailable" })
+    );
+
+    const selection = selectProviderWithHardEvidenceSubstitution({
+      profiles,
+      adapters: registry,
+      requirement: resolved("routine_implementation"),
+      purpose: "build",
+      availability,
+      hardEvidence: evidence
+    });
+
+    expect(selection.configuration.provider).not.toBe("codex-cli");
+    expect(selection.substitution).toMatchObject({
+      intendedProvider: "codex-cli",
+      code: "model_unavailable"
+    });
+  });
+
   it("reports no evidence for a fully healthy registry", () => {
     const registry: ProviderAdapterRegistry = {
       ...baseRegistry,

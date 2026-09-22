@@ -279,6 +279,15 @@ export interface HardEvidenceAdmittedSelection {
  * difference can never be recorded as a substitution — only a difference hard
  * evidence caused can be.
  *
+ * "Intended" is computed against a registry where only the exact provider and
+ * bindings the hard evidence names are treated as available again — not by
+ * merely dropping the `hardEvidence` list. Some hard evidence (a disabled
+ * registry provider, every binding for it disabled, no launch adapter) is
+ * *also* what a disabled `providers`/`bindings` entry already excludes
+ * structurally, so dropping only `hardEvidence` would leave that provider
+ * excluded either way and silently produce `intended === actual` — losing the
+ * substitution record for exactly the evidence this function exists to prove.
+ *
  * This function makes no call itself once a packet exists: it is meant to run
  * only at the moment a new packet is about to bind, never again for an
  * existing one (see selectAgentProfileForWorkItem in src/codex/packets.ts).
@@ -291,9 +300,14 @@ export function selectProviderWithHardEvidenceSubstitution(
     excluded[evidence.providerId] = evidence;
   }
 
+  const adaptersWithoutHardEvidence = bypassHardEvidenceRestriction(input.adapters, excluded);
   const intended = ((): SelectedCodingAgentConfiguration | null => {
     try {
-      return selectCompliantCodingAgent({ ...input, hardEvidence: undefined });
+      return selectCompliantCodingAgent({
+        ...input,
+        adapters: adaptersWithoutHardEvidence,
+        hardEvidence: undefined
+      });
     } catch (error) {
       if (!(error instanceof ExecutionProfileUnsatisfiedError)) throw error;
       return null;
@@ -316,6 +330,30 @@ export function selectProviderWithHardEvidenceSubstitution(
       : null;
 
   return { configuration, substitution, excluded };
+}
+
+/**
+ * Rebuild a registry as if the providers named in `excluded` were never
+ * restricted, so an "intended" selection can be computed as a true
+ * counterfactual of the hard evidence — not merely of the `hardEvidence`
+ * input field, which by itself cannot undo a structurally disabled provider
+ * or binding. Only the exact providers named are touched; every other
+ * capability, tools, context, locality, sandbox and capacity constraint is
+ * untouched, so this never widens what an evidenced provider is eligible for
+ * beyond "as if this one restriction did not apply".
+ */
+function bypassHardEvidenceRestriction(
+  adapters: ProviderAdapterRegistry,
+  excluded: Record<string, HardProviderEvidence>
+): ProviderAdapterRegistry {
+  if (Object.keys(excluded).length === 0) return adapters;
+  return {
+    ...adapters,
+    providers: adapters.providers.map((provider) =>
+      excluded[provider.id] ? { ...provider, enabled: true, unavailableReason: undefined } : provider),
+    bindings: adapters.bindings.map((binding) =>
+      excluded[binding.provider] ? { ...binding, enabled: true } : binding)
+  };
 }
 
 /**

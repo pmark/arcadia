@@ -119,6 +119,13 @@ export function buildLaunchPreview(input: {
               `Action has an invalid execution requirement: ${parsed.issues.map((issue) => `${issue.field}: ${issue.message}`).join("; ")}`
             );
           } else {
+            // launchRefusals (below, from LAUNCH_ADAPTER_SUPPORT) is deliberately
+            // not also passed as capacityRefusals here: detectHardProviderEvidence
+            // already reports the identical fact as launch_precluded hard
+            // evidence, and passing it through both channels would exclude the
+            // provider from the "intended" counterfactual too, silently losing
+            // the substitution record this call exists to produce. launchRefusals
+            // is still used below to validate an *existing* immutable packet.
             const admitted = selectProviderWithHardEvidenceSubstitution({
               profiles: input.profiles,
               adapters: input.adapters,
@@ -126,7 +133,6 @@ export function buildLaunchPreview(input: {
               phase: "implementation",
               purpose: "build",
               availability: observeCodingAgentAvailability(input.profiles),
-              capacityRefusals: launchRefusals,
               hardEvidence: detectHardProviderEvidence(input.adapters)
             });
             selection = admitted.configuration;
