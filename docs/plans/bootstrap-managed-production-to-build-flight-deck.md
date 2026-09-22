@@ -1301,7 +1301,7 @@ actions:
     references: ["docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md", "src/codingAgents/capacity.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "docs/model-selection.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
 questions: []
 decisions: []
-current_action: substitute-unavailable-provider-before-binding
+current_action: prove-zero-prompt-production-loop
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
