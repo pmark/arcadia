@@ -1419,6 +1419,27 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: plan-scoped-agent-ask-complete
+    title: "arcadia agent-ask settle --intent complete accepts target_ref: plan/<plan-slug>#<action-id>, resolving and completing that Action in its own (possibly non-active) plan, writing PROJECT.md and the active plan's current_action only when the completed Action is actually in the active plan."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "arcadia agent-ask settle --intent complete accepts target_ref: plan/<plan-slug>#<action-id>, resolving and completing that Action in its own (possibly non-active) plan, writing PROJECT.md and the active plan's current_action only when the completed Action is actually in the active plan."
+    expected_artifact: Evidence satisfying Agent Ask plan-scoped-agent-ask-complete
+    clarification: clarified
+    confidence: high
+    source: Agent Ask action-plan-scoped-agent-ask-complete-2026-09-22
+    acceptance_criteria:
+      - "target_ref of the form plan/<plan-slug>#<action-id> resolves and completes that Action in the named plan, regardless of whether that plan is the Project's active_plan; plain action/<id> is unchanged and continues to mean the active plan."
+      - Completing an Action in a non-active plan does not write PROJECT.md and does not change the active plan's current_action or queue; the settlement records that the pointer and active plan were left untouched.
+      - A non-unique Action id across the Project's plans is refused with a clear error, matching the existing guard used by plan activation.
+      - "Every other complete-intent validation is unchanged for both forms: evidence must cover every declared acceptance criterion verbatim and in order, all evidence must be met, candidate_revision must match HEAD, unresolved required review Decisions refuse completion, and the existing clean-tree/preview-fingerprint/replay-receipt/Mission-Log behavior is preserved."
+      - "arcadia agent-ask contract's complete example and AGENTS.md's complete-intent description both document the plan/<slug>#<action-id> form, not only action/<id>."
+      - "Regression tests cover: completing an Action in a non-active plan while a different plan stays active throughout, asserting the active plan's document and PROJECT.md are byte-for-byte unchanged; and refusing an ambiguous or unresolvable plan-scoped target_ref."
+      - pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: serialize-current-action-writes
