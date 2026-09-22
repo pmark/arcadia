@@ -5,6 +5,7 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectBySlug } from "../db/repositories.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
+import { loadActionOrder } from "../dispatch/order.js";
 import { recordDiscovery, type DiscoveryKind, type DiscoveryResult } from "../scheduling/discovery.js";
 import {
   BOARD_PUSHES,
@@ -55,12 +56,14 @@ export function runScheduleStatusCommand(options: { workspace: string; project?:
       ? portfolio.projects.filter((entry) => entry.projectSlug === options.project)
       : portfolio.projects;
     if (options.project && scoped.length === 0) throw validationError("Unknown or inactive Project.", { project: options.project });
+    const positions = loadActionOrder(db).positions;
     return {
       schedule: options.project ? { ...portfolio, projects: scoped } : portfolio,
       batch: resolveBatch(
         scoped
           .filter((entry) => entry.repositoryRoot !== null)
-          .map((entry) => ({ repositoryRoot: entry.repositoryRoot!, projectSlug: entry.projectSlug }))
+          .map((entry) => ({ repositoryRoot: entry.repositoryRoot!, projectSlug: entry.projectSlug })),
+        { queuePosition: (key) => positions.get(key) ?? null }
       )
     };
   });
