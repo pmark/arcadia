@@ -11,7 +11,7 @@ updated: 2026-09-22
 actions:
   - id: add-action-scoped-worktree-claim
     title: agent_worktree_reservations gains a second, independent uniqueness constraint keyed on active (repository_path, project, action_id) alongside its existing worktree-path uniqueness -- neither replacing the other -- with an expiry-aware conflict query (not only cleanup-on-insert), a claim generation fenced against settlement writes, and explicit release only on a successfully applied terminal settlement or on preparation failure, with the 24-hour TTL as fallback cleanup only.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: agent_worktree_reservations gains a second, independent uniqueness constraint keyed on active (repository_path, project, action_id) alongside its existing worktree-path uniqueness -- neither replacing the other -- with an expiry-aware conflict query (not only cleanup-on-insert), a claim generation fenced against settlement writes, and explicit release only on a successfully applied terminal settlement or on preparation failure, with the 24-hour TTL as fallback cleanup only.
@@ -55,6 +55,7 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: dispatch-different-ready-action-per-session
 ---
 
 # Arcadia dispatches a different ready Action to each of several concurrent coding-agent sessions automatically, and never dispatches the same Action to two sessions at once. Evidenced by a live collision on 2026-09-22 (PR #487/#496): two worktrees were independently dispatched to the identical Action, roughly two minutes apart, before either session noticed.
