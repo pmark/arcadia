@@ -1299,6 +1299,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/decisions/0063-how-should-arcadia-handle-a-provider-that-cannot-run-the-work-given-that.md", "src/codingAgents/capacity.ts", "src/sessions/launchPreview.ts", "src/codingAgents/providerAdapters.ts", "docs/model-selection.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
+  - id: an-agent-ask-action-amendment-can
+    title: An Agent Ask action-amendment can move an existing Actions responsibility to requires_review or blocked, not only to agent or autonomous, per Decision 0045s already-ratified, direction-agnostic answer.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: An Agent Ask action-amendment can move an existing Actions responsibility to requires_review or blocked, not only to agent or autonomous, per Decision 0045s already-ratified, direction-agnostic answer.
+    expected_artifact: Evidence satisfying Agent Ask an-agent-ask-action-amendment-can
+    clarification: clarified
+    confidence: high
+    source: Agent Ask widen-agent-ask-responsibility-reclassification-2026-09-22
+    acceptance_criteria:
+      - arcadia agent-ask settle --responsibility requires_review (or blocked) succeeds for an action-amendment intent, on explicit operator direction in the live session, matching the existing agent/autonomous behavior.
+      - arcadia agent-ask settle --responsibility <unrecognized value> is refused with a clear error naming the accepted values.
+      - A regression test amends an existing Actions responsibility to requires_review through this path and asserts the written plan document and settlement effects.
+      - No change to the existing restriction that a brand-new Action still requires an explicit --responsibility at creation time.
+    depends_on: []
+    decisions: []
+    references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/cli.ts", "src/domain/constants.ts", "docs/decisions/0045-agent-ask-can-amend-action-responsibility.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md", "tests/agent-ask-settlement.test.ts"]
 questions: []
 decisions: []
 current_action: prove-zero-prompt-production-loop

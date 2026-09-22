@@ -1,0 +1,16 @@
+{
+  "agent_ask": "v1",
+  "request_id": "widen-agent-ask-responsibility-reclassification-2026-09-22",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "An Agent Ask action-amendment can move an existing Actions responsibility to requires_review or blocked, not only to agent or autonomous, per Decision 0045s already-ratified, direction-agnostic answer.",
+  "rationale": "Issue #453 and Decision 0064 (this repository) found that prove-zero-prompt-production-loop is repeatedly dispatched to coding agents although its own runbook forbids agent execution. The fix is to reclassify it to responsibility: requires_review, which already has the correct dispatch-exclusion semantics (src/docs/dispatch.ts:75, src/dispatch/queue.ts, src/sessions/index.ts:165). But src/commands/agentAsk.ts:204 restricted --responsibility to autonomous or agent only, blocking that reclassification even though Decision 0045 (2026-09-04) already ratified changing responsibility in either direction on live operator instruction. This Action widens that one validation to the full WorkClassification set.",
+  "acceptance": [
+    "arcadia agent-ask settle --responsibility requires_review (or blocked) succeeds for an action-amendment intent, on explicit operator direction in the live session, matching the existing agent/autonomous behavior.",
+    "arcadia agent-ask settle --responsibility <unrecognized value> is refused with a clear error naming the accepted values.",
+    "A regression test amends an existing Actions responsibility to requires_review through this path and asserts the written plan document and settlement effects.",
+    "No change to the existing restriction that a brand-new Action still requires an explicit --responsibility at creation time."
+  ],
+  "dependencies": [],
+  "references": ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/cli.ts", "src/domain/constants.ts", "docs/decisions/0045-agent-ask-can-amend-action-responsibility.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md", "tests/agent-ask-settlement.test.ts"]
+}
