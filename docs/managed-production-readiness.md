@@ -349,7 +349,7 @@ trusting further out than a session or two.
 | **On the critical path (filed)** | **7** (6 open + 1 deferred) |
 | **On the critical path (not yet filed)** | **0** |
 | **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 14 (23 unfinished − 9 filed on the path) |
+| Unfinished but off the critical path | 13 (20 unfinished − 7 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (production-dispatch related) is already answered. |
 
 ---
