@@ -1,0 +1,53 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-preserve-on-exit-and-integrate-2026-09-22",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/preserve-on-exit-and-integrate",
+  "desired_result": "Complete preserve-on-exit-and-integrate: a terminal managed-production Session's candidate is preserved host-side and, only under Decision 0058's separately recorded expiring grant, fast-forwarded onto the governed base branch so the next dependent Action is admitted with no operator merge.",
+  "rationale": "runManagedProductionTick now preserves the dead Session's candidate before reconciliation and integrates after it, under the separately recorded grant in the production policy scope. Deterministic fixtures cover the success path and every refusal (conflict, expired/absent grant, out-of-scope candidate, failed/absent validation) plus already-preserved and already-integrated idempotency. pnpm test passes; the core, Discord and Dashboard builds pass.",
+  "candidate_revision": "afffc480da2896c7c5244edd71062077fce26c82",
+  "evidence": [
+    {
+      "criterion": "When a managed-production Session reaches a terminal process state, the host preserves that Session's candidate through the existing candidate-preservation machinery (runPreserveCommand / preserveCandidate) without requiring the agent to have requested preservation while alive; a candidate already preserved is never re-committed.",
+      "status": "met",
+      "note": "preserveSessionCandidate calls preserveCandidate on the still-active lease inside runManagedProductionTick's dead-session branch; tests/preserve-on-exit-and-integrate.test.ts proves terminal-session detection and that a replayed preservation returns the same commit with one receipt row."
+    },
+    {
+      "criterion": "The host validates the candidate with the Project's declared objective validation_commands run host-side where dependencies are available, refuses to preserve on a failed, skipped or absent check, and preserves all candidate files on refusal.",
+      "status": "met",
+      "note": "The real path calls validatePreservationCandidate (host Seatbelt producer) with the declared validation_commands; fixtures prove a failed check and an absent check both refuse while the candidate worktree is left intact."
+    },
+    {
+      "criterion": "Candidate integration happens only under the explicit authority recorded by Decision 0058, never inferred from this Action's acceptance criteria or from a standing production grant that delegates only validation, acceptance and pointer transitions. Before integrating, the mechanism verifies the grant is unexpired and names this Project, Plan, Action, agent-owned branch and governed base branch.",
+      "status": "met",
+      "note": "integrateSessionCandidate reads scope.integrationGrant, which is separate from mechanicalTransitions; it checks scope Project/Plan/Action, grant Action coverage, expiry, agent-owned branch (SAFE_TASK_BRANCH plus the worktree's checked-out branch), and resolves the governed base branch."
+    },
+    {
+      "criterion": "Absent a valid grant the mechanism stops after preservation and reports the exact operator merge command; merge, deploy, publish, spend, credentials, messaging and destructive operations remain separate gates.",
+      "status": "met",
+      "note": "The no-grant and expired-grant fixtures assert preservation succeeded, integration is refused with a git merge --ff-only operator command, and the base branch is unchanged. Nothing else is touched."
+    },
+    {
+      "criterion": "Integration is a fast-forward or clean merge of the grant's own agent-owned branch into the governed base branch; a conflict, a non-agent-owned branch, a divergent base, or a candidate outside the grant scope stops integration, reports the exact blocker, and preserves all work.",
+      "status": "met",
+      "note": "Only a strict fast-forward is performed (git merge --ff-only); the divergent-base and out-of-scope fixtures assert refusal and intact work, and a non-agent branch is refused before any Git write."
+    },
+    {
+      "criterion": "After integration the Action advances through the existing canonical completion and pointer writers, and the worker admits the next eligible Action with no operator command in between; repeated, concurrent or interrupted reconciliation is idempotent and never duplicates a commit, completion, Decision or pointer move.",
+      "status": "met",
+      "note": "The tick reconciles (the existing canonical completion/pointer writers) after preservation and before integration, so the branch it fast-forwards already carries the settlement; the end-to-end fixture asserts the next Action launches in the same tick. Already-integrated and replayed-preservation fixtures prove idempotency."
+    },
+    {
+      "criterion": "A deterministic fixture proves terminal-session detection, host-side validation, preservation, integration and admission of the next Action, plus refused-integration cases (a conflict, an expired or absent grant, and an out-of-scope candidate) that preserve all work, and an already-preserved candidate that is not duplicated.",
+      "status": "met",
+      "note": "tests/preserve-on-exit-and-integrate.test.ts: 12 deterministic tests covering the full tick success path and every refusal."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass, and the PR states the exact operator procedure, target and recovery command or why no runnable surface exists.",
+      "status": "met",
+      "note": "pnpm test passed (one pre-existing packageBoundary beforeAll hook timeout under full-suite load; passes in isolation); pnpm build and pnpm dashboard:build exit 0. The PR carries the operator QA plan with the exact activate flags and recovery command."
+    }
+  ],
+  "requested_authority": "apply_if_approved"
+}
