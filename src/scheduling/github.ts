@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
+import { batchSlotFor, resolveBatch, type BatchResolution, type BatchSlot } from "../docs/batch.js";
 import { applyOperatorOrder, minimalMoves, sameSequence } from "./order.js";
 import { orderCandidates, writeProjectOrder, type ProjectSchedule, type ScheduledAction, type ScheduleStatus } from "./schedule.js";
 import { recordSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "./store.js";
@@ -8,7 +9,8 @@ import { recordSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } 
 /**
  * GitHub Projects is the operator-facing projection of a Project's queue:
  * one Issue per Action, one Project item per Issue, a single-select field
- * carrying the scheduling status, and item position carrying queue order.
+ * carrying the scheduling status, a second carrying the Action's place in the
+ * current push, and item position carrying queue order.
  *
  * Arcadia's SQLite queue is canonical. Everything flows Arcadia -> GitHub,
  * with one exception: the operator dragging cards. Reconciliation reads the
@@ -24,6 +26,44 @@ export const BOARD_STATUS_FIELD = "Arcadia status";
 export const BOARD_STATUSES = ["Needs operator", "Ready", "Running", "Blocked", "Done", "Backlog"] as const;
 export type BoardStatus = (typeof BOARD_STATUSES)[number];
 
+/**
+ * The push field. Bounded options, because a single-select's options must
+ * exist before a card can carry one and the projection path may never change
+ * the board's schema: the two push memberships, the four gates the batch walk
+ * can stop at, and the two ways an Action is simply not in this push.
+ *
+ * The lane itself is not an option. A lane is a repository, and an Arcadia
+ * board already holds one Project's Actions, so the only lane fact a card can
+ * carry is whether its lane is ordered work.
+ */
+export const BOARD_PUSH_FIELD = "Arcadia push";
+export const BOARD_PUSHES = [
+  "This push",
+  "This push · sequence",
+  "Next push",
+  "Decision needed",
+  "Deferred",
+  "Question open",
+  "Review needed",
+  "Not queued"
+] as const;
+export type BoardPush = (typeof BOARD_PUSHES)[number];
+
+export function boardPushFor(slot: BatchSlot): BoardPush {
+  switch (slot) {
+    case "this_push": return "This push";
+    case "this_push_sequence": return "This push · sequence";
+    case "next_push": return "Next push";
+    case "decision": return "Decision needed";
+    case "deferred": return "Deferred";
+    case "question_open": return "Question open";
+    case "capacity_proof_run": return "Review needed";
+    case "dependency":
+    case "unavailable":
+    case "not_queued": return "Not queued";
+  }
+}
+
 export interface BoardItem {
   itemId: string;
   issueNumber: number | null;
@@ -31,15 +71,24 @@ export interface BoardItem {
   url: string | null;
   title: string;
   status: string | null;
+  /** The `Arcadia push` value, or null when the board has no such field. */
+  push: string | null;
 }
 
 export interface SchedulingBoard {
+  /** The board's `Arcadia push` field, or null when the board has none. The
+   *  push projection is skipped rather than failing: an existing board gains
+   *  the field through `schedule github link`, and until then there is nothing
+   *  to keep fresh. */
+  readonly pushField: { id: string } | null;
   /** Every item in the board's own order. */
   listItems(): BoardItem[];
   createIssue(input: { title: string; body: string }): { number: number; url: string };
   /** Add an Issue to the Project; returns the new item id. */
   addIssue(input: { number: number; url: string }): string;
   setStatus(itemId: string, status: BoardStatus): void;
+  /** Write the push label, when the board has an `Arcadia push` field. */
+  setPush(itemId: string, push: BoardPush): void;
   /** Move an item directly after another, or to the top when `afterItemId` is null. */
   moveItem(itemId: string, afterItemId: string | null): void;
 }
@@ -60,6 +109,7 @@ export interface ProjectionResult {
   issuesCreated: string[];
   itemsAdded: string[];
   statusChanges: Array<{ actionKey: string; from: string | null; to: BoardStatus }>;
+  pushChanges: Array<{ actionKey: string; from: string | null; to: BoardPush }>;
   moves: Array<{ actionKey: string; after: string | null }>;
   revision: number;
   changed: boolean;
@@ -67,12 +117,25 @@ export interface ProjectionResult {
 
 /**
  * Push the schedule onto the board, touching only what differs: missing
- * Issues and items are created, statuses that changed are set, and the
- * queued items are moved with the fewest position updates that yield the
- * canonical order. Records the projected revision and order afterwards.
+ * Issues and items are created, statuses that changed are set, the computed
+ * push label is refreshed, and the queued items are moved with the fewest
+ * position updates that yield the canonical order. Records the projected
+ * revision and order afterwards.
+ *
+ * The push label is recomputed here, on every projection, rather than read
+ * from anywhere it could have been stored: the batch boundary moves as soon as
+ * a Decision is answered or an Action completes, and a stale label on a card
+ * is worse than none. `batch` is passed in by `reconcileBoard`, which needs the
+ * same computation to decide whether the labels are stale; a direct caller
+ * omitting it gets it computed from the schedule.
  */
-export function projectScheduleToBoard(db: Database.Database, schedule: ProjectSchedule, board: SchedulingBoard): ProjectionResult {
-  const result: ProjectionResult = { projectSlug: schedule.projectSlug, issuesCreated: [], itemsAdded: [], statusChanges: [], moves: [], revision: schedule.queueRevision, changed: false };
+export function projectScheduleToBoard(
+  db: Database.Database,
+  schedule: ProjectSchedule,
+  board: SchedulingBoard,
+  batch?: BatchResolution | null
+): ProjectionResult {
+  const result: ProjectionResult = { projectSlug: schedule.projectSlug, issuesCreated: [], itemsAdded: [], statusChanges: [], pushChanges: [], moves: [], revision: schedule.queueRevision, changed: false };
   // Mark the board as mid-projection before the first write. Every step below
   // can fail independently, and a board left half-moved matches neither the
   // canonical order nor the last projected one -- so until this clears, the
@@ -81,6 +144,7 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
   upsertSchedulingProject(db, schedule.projectSlug, { projectionInFlight: true });
   const items = new Map(board.listItems().map((item) => [item.itemId, item]));
   const actions = schedule.actions.map((action) => ({ ...action }));
+  const push = batch === undefined ? resolveProjectBatch(schedule) : batch;
 
   for (const action of actions) {
     if (action.githubIssueNumber === null) {
@@ -102,7 +166,7 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       // overwritten with `null` and every recovered item gets rewritten and
       // misreported as added.
       if (!items.has(itemId)) {
-        items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null });
+        items.set(itemId, { itemId, issueNumber: action.githubIssueNumber, url: action.githubIssueUrl ?? null, title: action.title, status: null, push: null });
         result.itemsAdded.push(action.key);
       }
     }
@@ -111,6 +175,14 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
     if (current !== desired) {
       board.setStatus(action.githubProjectItemId, desired);
       result.statusChanges.push({ actionKey: action.key, from: current, to: desired });
+    }
+    if (push && board.pushField) {
+      const desiredPush = boardPushFor(batchSlotFor(push, schedule.projectSlug, action.actionId));
+      const currentPush = items.get(action.githubProjectItemId)?.push ?? null;
+      if (currentPush !== desiredPush) {
+        board.setPush(action.githubProjectItemId, desiredPush);
+        result.pushChanges.push({ actionKey: action.key, from: currentPush, to: desiredPush });
+      }
     }
   }
 
@@ -129,7 +201,7 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
     }
   }
 
-  result.changed = result.issuesCreated.length > 0 || result.itemsAdded.length > 0 || result.statusChanges.length > 0 || result.moves.length > 0;
+  result.changed = result.issuesCreated.length > 0 || result.itemsAdded.length > 0 || result.statusChanges.length > 0 || result.pushChanges.length > 0 || result.moves.length > 0;
   // Reached only when every write above succeeded, so the board now genuinely
   // holds `desiredQueue` and the projection is no longer in flight.
   upsertSchedulingProject(db, schedule.projectSlug, {
@@ -142,12 +214,50 @@ export function projectScheduleToBoard(db: Database.Database, schedule: ProjectS
       projectSlug: schedule.projectSlug,
       actionKey: null,
       source: "arcadia",
-      reason: `Projected queue revision ${schedule.queueRevision} to GitHub: ${result.issuesCreated.length} issue(s) created, ${result.itemsAdded.length} item(s) added, ${result.statusChanges.length} status change(s), ${result.moves.length} move(s).`,
+      reason: `Projected queue revision ${schedule.queueRevision} to GitHub: ${result.issuesCreated.length} issue(s) created, ${result.itemsAdded.length} item(s) added, ${result.statusChanges.length} status change(s), ${result.pushChanges.length} push change(s), ${result.moves.length} move(s).`,
       previous: { order: currentQueueOrder },
       next: { order: desiredQueue }
     });
   }
   return result;
+}
+
+/** The Project's own push, or null when it has no resolvable repository. */
+function resolveProjectBatch(schedule: ProjectSchedule): BatchResolution | null {
+  if (!schedule.repositoryRoot) return null;
+  return resolveBatch([{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }]);
+}
+
+/**
+ * True when a card's `Arcadia push` value differs from what the batch says it
+ * should be. A board with no push field reports null for every item, which is
+ * not staleness: there is nothing to correct yet.
+ */
+function pushLabelsStale(items: BoardItem[], expected: Map<string, BoardPush>): boolean {
+  if (expected.size === 0) return false;
+  for (const item of items) {
+    const want = expected.get(item.itemId);
+    if (want !== undefined && item.push !== want) return true;
+  }
+  return false;
+}
+
+/**
+ * Every push label a projection of this schedule would write, keyed by board
+ * item id — the expected state `reconcileBoard` compares the board against to
+ * decide whether a re-projection is due.
+ */
+function expectedPushByItem(
+  schedule: ProjectSchedule,
+  batch: BatchResolution | null
+): Map<string, BoardPush> {
+  const expected = new Map<string, BoardPush>();
+  if (!batch) return expected;
+  for (const action of schedule.actions) {
+    if (!action.githubProjectItemId) continue;
+    expected.set(action.githubProjectItemId, boardPushFor(batchSlotFor(batch, schedule.projectSlug, action.actionId)));
+  }
+  return expected;
 }
 
 function issueBody(schedule: ProjectSchedule, action: ScheduledAction): string {
@@ -189,7 +299,8 @@ export function reconcileBoard(
 ): ReconcileResult {
   const keyByItem = new Map(schedule.actions.filter((action) => action.githubProjectItemId).map((action) => [action.githubProjectItemId!, action.key]));
   const queued = new Set(schedule.queue);
-  const observedOrder = board.listItems()
+  const items = board.listItems();
+  const observedOrder = items
     .map((item) => keyByItem.get(item.itemId))
     .filter((key): key is string => key !== undefined && queued.has(key));
   const lastProjected = schedule.record.lastProjectedOrder.filter((key) => queued.has(key));
@@ -232,11 +343,19 @@ export function reconcileBoard(
     current = input.rebuild();
   }
 
+  // The push labels are part of the projection, not a separate sync: the same
+  // computation decides whether they are stale and writes them when the
+  // projection runs, so a card can never carry a batch position nobody
+  // recomputed.
+  const batch = current.repositoryRoot
+    ? resolveBatch([{ repositoryRoot: current.repositoryRoot, projectSlug: current.projectSlug }])
+    : null;
   const needsProjection = projectionInFlight
     || current.queueRevision !== current.record.lastProjectedRevision
     || !sameSequence(observedOrder, current.queue.filter((key) => observedOrder.includes(key)))
-    || current.actions.some((action) => action.githubProjectItemId === null);
-  const projection = needsProjection ? projectScheduleToBoard(db, current, board) : null;
+    || current.actions.some((action) => action.githubProjectItemId === null)
+    || (board.pushField !== null && pushLabelsStale(items, expectedPushByItem(current, batch)));
+  const projection = needsProjection ? projectScheduleToBoard(db, current, board, batch) : null;
   // The board was read this pass either way; record that so polling for drags
   // can be throttled independently of how often the scheduler runs.
   upsertSchedulingProject(db, schedule.projectSlug, { lastReconciledAt: (input.now ?? new Date()).toISOString() });
@@ -301,9 +420,14 @@ interface StatusField {
   options: Map<string, string>;
 }
 
+interface BoardFields {
+  status: StatusField | null;
+  push: StatusField | null;
+}
+
 /**
- * The board's stable GitHub ids: its node id, its status field, and that
- * field's option ids.
+ * The board's stable GitHub ids: its node id, its status field and that
+ * field's option ids, and — once resolved — its push field.
  *
  * These change only when someone edits the board's structure, but resolving
  * them costs a `project view` and a `field-list` call every time. The worker
@@ -311,26 +435,34 @@ interface StatusField {
  * GraphQL points an hour on facts that had not changed -- enough to exhaust
  * the account's hourly limit and take every other `gh` call down with it.
  * Callers cache this on the Project's scheduling row and pass it back in.
+ *
+ * `pushField` distinguishes three states, which the cache stores verbatim:
+ * `undefined` means it has not been resolved yet, `null` means the board has
+ * no such field, and an object is the field. Only the first costs a call.
  */
 export interface BoardIdentity {
   projectId: string;
   statusFieldId: string;
   statusOptions: Record<string, string>;
+  pushField?: { id: string; options: Record<string, string> } | null;
 }
 
 /**
- * Items, in the board's own order, with the `Arcadia status` value each one
- * carries.
+ * Items, in the board's own order, with the `Arcadia status` and
+ * `Arcadia push` values each one carries.
  *
- * This is a GraphQL read rather than `gh project item-list` because the field
- * has to be addressed by its exact name. `item-list --format json` flattens
- * custom fields into camelCased keys derived from the field's title, so
- * "Arcadia status" arrives as some spelling this code would have to guess at;
- * guessing wrong reads every status as absent, and a projection that believes
- * every card is unset rewrites every status on every tick forever. GraphQL's
- * `fieldValueByName` takes the name verbatim and answers for that field only.
+ * This is a GraphQL read rather than `gh project item-list` because the fields
+ * have to be addressed by their exact names. `item-list --format json`
+ * flattens custom fields into camelCased keys derived from the field's title,
+ * so "Arcadia status" arrives as some spelling this code would have to guess
+ * at; guessing wrong reads every status as absent, and a projection that
+ * believes every card is unset rewrites every status on every tick forever.
+ * GraphQL's `fieldValueByName` takes the name verbatim and answers for that
+ * field alone — and answers null for a field the board does not have, so the
+ * same query works before and after `schedule github link` creates the push
+ * field.
  */
-const ITEMS_QUERY = `query($project: ID!, $status: String!, $after: String) {
+const ITEMS_QUERY = `query($project: ID!, $status: String!, $push: String!, $after: String) {
   node(id: $project) {
     ... on ProjectV2 {
       items(first: 100, after: $after) {
@@ -343,6 +475,9 @@ const ITEMS_QUERY = `query($project: ID!, $status: String!, $after: String) {
             ... on DraftIssue { title }
           }
           fieldValueByName(name: $status) {
+            ... on ProjectV2ItemFieldSingleSelectValue { name }
+          }
+          push: fieldValueByName(name: $push) {
             ... on ProjectV2ItemFieldSingleSelectValue { name }
           }
         }
@@ -360,6 +495,7 @@ interface ItemsResponse {
           id: string;
           content?: { number?: number; title?: string; url?: string } | null;
           fieldValueByName?: { name?: string } | null;
+          push?: { name?: string } | null;
         }>;
       };
     };
@@ -370,7 +506,10 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
   const items: BoardItem[] = [];
   let after: string | null = null;
   for (let page = 0; page < 50; page += 1) {
-    const args = ["api", "graphql", "-f", `query=${ITEMS_QUERY}`, "-F", `project=${projectId}`, "-f", `status=${BOARD_STATUS_FIELD}`];
+    const args = [
+      "api", "graphql", "-f", `query=${ITEMS_QUERY}`, "-F", `project=${projectId}`,
+      "-f", `status=${BOARD_STATUS_FIELD}`, "-f", `push=${BOARD_PUSH_FIELD}`
+    ];
     if (after) args.push("-F", `after=${after}`);
     const response = ghJson<ItemsResponse>(run, config.cwd, args, "project items query");
     const connection = response.data?.node?.items;
@@ -380,7 +519,8 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
         issueNumber: typeof node.content?.number === "number" ? node.content.number : null,
         url: typeof node.content?.url === "string" ? node.content.url : null,
         title: node.content?.title ?? "",
-        status: typeof node.fieldValueByName?.name === "string" ? node.fieldValueByName.name : null
+        status: typeof node.fieldValueByName?.name === "string" ? node.fieldValueByName.name : null,
+        push: typeof node.push?.name === "string" ? node.push.name : null
       });
     }
     if (!connection?.pageInfo?.hasNextPage || !connection.pageInfo.endCursor) return items;
@@ -395,6 +535,10 @@ function listBoardItems(run: CommandRunner, config: GitHubBoardConfig, projectId
  * with the remedy, so a preview or a worker tick cannot mutate GitHub's
  * structure as a side effect of looking at it. `schedule github link` is the
  * one command that creates the field.
+ *
+ * A missing `Arcadia push` field is not a refusal. It is the optional half of
+ * the projection — an existing board keeps working, and its cards simply carry
+ * no push label until the operator links the field.
  */
 export function createGitHubBoard(
   config: GitHubBoardConfig,
@@ -406,9 +550,11 @@ export function createGitHubBoard(
   const identity = cached ?? resolveBoardIdentity(config, run);
   const projectId = identity.projectId;
   const statusField: StatusField = { id: identity.statusFieldId, options: new Map(Object.entries(identity.statusOptions)) };
+  const pushField = identity.pushField ?? null;
 
   return {
     identity,
+    pushField,
     listItems() {
       return listBoardItems(run, config, projectId);
     },
@@ -449,6 +595,16 @@ export function createGitHubBoard(
       ]);
       if (!edited.ok) throw validationError(`GitHub item-edit failed: ${edited.stderr.trim()}`);
     },
+    setPush(itemId, push) {
+      if (!pushField) throw validationError(`GitHub Project ${owner}/${number} has no "${BOARD_PUSH_FIELD}" field.`, {
+        remedy: `Run \`arcadia schedule github link\` to add it; a projection never creates board fields.`
+      });
+      const optionId = pushField.options[push];
+      const edited = run(config.cwd, "gh", [
+        "project", "item-edit", "--project-id", projectId, "--id", itemId, "--field-id", pushField.id, "--single-select-option-id", optionId
+      ]);
+      if (!edited.ok) throw validationError(`GitHub item-edit failed: ${edited.stderr.trim()}`);
+    },
     moveItem(itemId, afterItemId) {
       const query = afterItemId
         ? "mutation($project: ID!, $item: ID!, $after: ID!) { updateProjectV2ItemPosition(input: {projectId: $project, itemId: $item, afterId: $after}) { items(first: 1) { totalCount } } }"
@@ -463,53 +619,93 @@ export function createGitHubBoard(
 
 /**
  * Resolve the board's ids from GitHub. Two calls, so callers cache the result
- * and only come back here when the cache is absent or has gone stale.
+ * and only come back here when the cache is absent or has gone stale. The push
+ * field is optional and resolved in the same `field-list` as the status field,
+ * so its presence or absence costs nothing extra.
  */
 export function resolveBoardIdentity(config: GitHubBoardConfig, run: CommandRunner = runGh): BoardIdentity {
   const view = ghJson<{ id: string }>(
     run, config.cwd, ["project", "view", String(config.number), "--owner", config.owner, "--format", "json"], "project view"
   );
-  const field = requireStatusField(run, config);
-  return { projectId: view.id, statusFieldId: field.id, statusOptions: Object.fromEntries(field.options) };
+  const fields = findBoardFields(run, config);
+  const status = requireStatusField(fields, config);
+  return {
+    projectId: view.id,
+    statusFieldId: status.id,
+    statusOptions: Object.fromEntries(status.options),
+    pushField: fields.push ? { id: fields.push.id, options: Object.fromEntries(fields.push.options) } : null
+  };
 }
 
 /**
- * Create the `Arcadia status` field when the board does not have one yet. Only
- * `schedule github link` calls this, so board schema changes stay an explicit
- * operator act rather than something a read path performs on its own.
+ * Create the `Arcadia status` and `Arcadia push` fields when the board does
+ * not have them. Only `schedule github link` calls this, so board schema
+ * changes stay an explicit operator act rather than something a read path
+ * performs on its own.
  */
-export function ensureBoardStatusField(config: GitHubBoardConfig, run: CommandRunner = runGh): { created: boolean } {
-  if (findStatusField(run, config)) return { created: false };
-  const created = run(config.cwd, "gh", [
-    "project", "field-create", String(config.number), "--owner", config.owner, "--name", BOARD_STATUS_FIELD,
-    "--data-type", "SINGLE_SELECT", "--single-select-options", BOARD_STATUSES.join(",")
-  ]);
-  if (!created.ok) throw validationError(`GitHub field-create failed: ${created.stderr.trim()}`);
-  requireStatusField(run, config);
-  return { created: true };
+export function ensureBoardFields(
+  config: GitHubBoardConfig,
+  run: CommandRunner = runGh
+): { statusCreated: boolean; pushCreated: boolean } {
+  const fields = findBoardFields(run, config);
+  let statusCreated = false;
+  let pushCreated = false;
+
+  if (!fields.status) {
+    createField(config, run, BOARD_STATUS_FIELD, BOARD_STATUSES);
+    statusCreated = true;
+  }
+  if (!fields.push) {
+    createField(config, run, BOARD_PUSH_FIELD, BOARD_PUSHES);
+    pushCreated = true;
+  }
+
+  // Re-read once so a creation that silently did nothing is a refusal here,
+  // not a confusing failure on the next projection.
+  const created = findBoardFields(run, config);
+  requireStatusField(created, config);
+  return { statusCreated, pushCreated };
 }
 
-function requireStatusField(run: CommandRunner, config: GitHubBoardConfig): StatusField {
-  const field = findStatusField(run, config);
-  if (!field) {
+function createField(config: GitHubBoardConfig, run: CommandRunner, name: string, options: readonly string[]): void {
+  const created = run(config.cwd, "gh", [
+    "project", "field-create", String(config.number), "--owner", config.owner, "--name", name,
+    "--data-type", "SINGLE_SELECT", "--single-select-options", options.join(",")
+  ]);
+  if (!created.ok) throw validationError(`GitHub field-create failed for "${name}": ${created.stderr.trim()}`);
+}
+
+function requireStatusField(fields: BoardFields, config: GitHubBoardConfig): StatusField {
+  if (!fields.status) {
     throw validationError(`GitHub Project ${config.owner}/${config.number} has no "${BOARD_STATUS_FIELD}" field.`, {
       remedy: `Run \`arcadia schedule github link --project <slug> --owner ${config.owner} --number ${config.number}\` to create it; reading and projecting never create board fields.`
     });
   }
-  const missing = BOARD_STATUSES.filter((status) => !field.options.has(status));
+  const missing = BOARD_STATUSES.filter((status) => !fields.status!.options.has(status));
   if (missing.length > 0) {
     throw validationError(`GitHub field "${BOARD_STATUS_FIELD}" is missing option(s): ${missing.join(", ")}.`, {
       remedy: `Add the missing single-select option(s) to "${BOARD_STATUS_FIELD}" on Project ${config.owner}/${config.number}.`
     });
   }
-  return field;
+  return fields.status;
 }
 
-function findStatusField(run: CommandRunner, config: GitHubBoardConfig): StatusField | null {
+/** Both fields from one `field-list`, since resolving either costs the same call. */
+function findBoardFields(run: CommandRunner, config: GitHubBoardConfig): BoardFields {
   const data = ghJson<{ fields: Array<{ id: string; name: string; type?: string; options?: Array<{ id: string; name: string }> }> }>(
     run, config.cwd, ["project", "field-list", String(config.number), "--owner", config.owner, "--format", "json", "--limit", "100"], "field-list"
   );
-  const field = data.fields.find((candidate) => candidate.name === BOARD_STATUS_FIELD);
+  return {
+    status: fieldNamed(data.fields, BOARD_STATUS_FIELD),
+    push: fieldNamed(data.fields, BOARD_PUSH_FIELD)
+  };
+}
+
+function fieldNamed(
+  fields: Array<{ id: string; name: string; options?: Array<{ id: string; name: string }> }>,
+  name: string
+): StatusField | null {
+  const field = fields.find((candidate) => candidate.name === name);
   if (!field) return null;
   return { id: field.id, options: new Map((field.options ?? []).map((option) => [option.name, option.id])) };
 }

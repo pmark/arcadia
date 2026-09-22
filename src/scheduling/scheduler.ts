@@ -51,7 +51,8 @@ export const defaultBoardFactory: BoardFactory = (schedule, db) => {
     upsertSchedulingProject(db, schedule.projectSlug, {
       githubProjectId: board.identity.projectId,
       githubStatusFieldId: board.identity.statusFieldId,
-      githubStatusOptions: board.identity.statusOptions
+      githubStatusOptions: board.identity.statusOptions,
+      githubPushField: board.identity.pushField ?? { absent: true }
     });
   }
   return board;
@@ -60,10 +61,16 @@ export const defaultBoardFactory: BoardFactory = (schedule, db) => {
 function cachedBoardIdentity(schedule: ProjectSchedule): BoardIdentity | null {
   const record = schedule.record;
   if (!record.githubProjectId || !record.githubStatusFieldId || !record.githubStatusOptions) return null;
+  // A resolved absence is a fact worth caching: re-resolving a board that has
+  // no `Arcadia push` field on every poll would spend a `field-list` call per
+  // minute forever. `undefined` here means "not yet resolved", which is the
+  // only state that costs a call.
+  if (record.githubPushField === null) return null;
   return {
     projectId: record.githubProjectId,
     statusFieldId: record.githubStatusFieldId,
-    statusOptions: record.githubStatusOptions
+    statusOptions: record.githubStatusOptions,
+    pushField: "absent" in record.githubPushField ? null : record.githubPushField
   };
 }
 
@@ -173,7 +180,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
           // Drop the cached ids: a renamed, recreated or deleted field is one
           // cause of this, and a cache that never expires would keep failing
           // the same way. The next pass pays two calls to re-resolve.
-          upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null });
+          upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null, githubPushField: null });
           log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError}`);
         }
       }

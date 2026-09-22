@@ -13,7 +13,7 @@ departs from the original MVP brief and why.
 | Managed documents (`PROJECT.md`, `docs/plans/*.md`) | What the Actions are, their dependencies, the governed pointer | Truth |
 | SQLite (`action_queue_positions`, `scheduling_*`) | Queue positions and revision, scheduling class, discovery lineage, GitHub ids, the scheduling Log | Truth |
 | GitHub Issues | One Issue per Action in the active Plan | Arcadia → GitHub |
-| GitHub Project | One item per Issue, an `Arcadia status` single-select field, item position | Arcadia → GitHub, except item position which is read back |
+| GitHub Project | One item per Issue, an `Arcadia status` and an `Arcadia push` single-select field, item position | Arcadia → GitHub, except item position which is read back |
 
 GitHub is a projection. Nothing on it other than card order ever changes
 Arcadia state, and card order changes it only through the canonical rule below.
@@ -40,6 +40,10 @@ is `ready`. Statuses are derived from the documents and live Sessions:
 | `needs_operator` | Open question, review required, unresolved Decision, or the Project is paused |
 | `done` | The Plan records it done |
 | `deferred` | Follow-up, or parked by an answered `defer` Decision; backlog either way, never queued |
+
+`Arcadia status` says why one card is not moving. `Arcadia push` says what the
+whole Project will get through before it next needs the operator, and it is
+derived, never stored: see "The push projection" below.
 
 Across Projects, `arcadia schedule prioritize --order a b c` sets one ordered
 list. The scheduler scans it and the first Project with runnable work is
@@ -117,8 +121,9 @@ On each pass with a linked board:
    which bumps `queue_revision`.
 6. Write two Log entries when needed: what the operator moved
    (`github_operator`) and what was normalized and why (`arcadia`).
-7. Re-project statuses and order to the board if the board differs from
-   canonical, or if the queue revision moved since the last projection.
+7. Re-project statuses, push labels and order to the board if the board differs
+   from canonical, a push label disagrees with the freshly computed batch, or
+   the queue revision moved since the last projection.
 8. Record `last_projected_revision` and the projected order.
 
 Invalid drags never open a Decision. The board simply goes back to canonical
@@ -133,6 +138,41 @@ that difference as an operator drag and persist a half-applied order as their
 intent, silently reverting part of an `advance queue` reorder and logging it
 against them. While the flag is set, operator detection is skipped and the
 pass re-projects instead.
+
+## The push projection
+
+`Arcadia status` is per card. `Arcadia push` is per push: which Actions the
+Project will work through before the operator is needed again, and what stops
+it. It comes from `resolveBatch` (`src/docs/batch.ts`), a thin wrapper over
+`resolveReadySet` that adds two things the ready set does not carry:
+
+- **lanes** — batch Actions grouped by repository. One repository is one lane,
+  and a lane holding more than one Action is labeled sequence-advised, because
+  the production policy allows one lease per repository. Different repositories
+  are already safe to run beside each other.
+- **a boundary** — the first of four operator gates on the plan's own walk
+  order (starting at `current_action`, wrapping once): an unanswered required
+  Decision, a deferred Action, a `question_open` Action, or a
+  `requires_review` proof run. Non-gate refusals (an unmet dependency, a
+  blocked responsibility) are reported as stops and the walk continues, because
+  only a gate ends a push. Everything after the gate is named in `nextPush` and
+  left unexpanded.
+
+Each lane also carries a token rollup: the tier points of its Actions and their
+total. Tiers map `none` 0, `small` 1, `medium` 2, `large` 3, `xlarge` 4.
+
+The batch is recomputed on every read — `arcadia schedule status` builds it for
+the dashboard and the board projection builds it once per pass — and never
+stored. `Arcadia push` is written by the same `projectScheduleToBoard` pass that
+writes statuses, on the same cadence, so there is no second sync path and no
+cache to go stale. A card whose label disagrees with the freshly computed batch
+makes the board stale and forces a re-projection, which is why a stale label
+does not survive a poll.
+
+The field is optional. A board linked before it existed keeps working; its cards
+carry no push label until `schedule github link` runs again and creates the
+field. `createGitHubBoard` never creates it, so a preview or a worker tick
+cannot change the board's schema.
 
 ## Discovery
 
@@ -202,9 +242,15 @@ Mission Log stays human-scale.
 - GraphQL for reading items and for `updateProjectV2ItemPosition`.
 
 Status is carried on a single-select field named `Arcadia status` with options
-`Needs operator`, `Ready`, `Running`, `Blocked`, `Done`, `Backlog`. GitHub's
-built-in `Status` field is left alone because its options cannot be renamed
-through the API; the operator groups the board view by `Arcadia status`.
+`Needs operator`, `Ready`, `Running`, `Blocked`, `Done`, `Backlog`; the push on
+a second single-select named `Arcadia push` with options `This push`,
+`This push · sequence`, `Next push`, `Decision needed`, `Deferred`,
+`Question open`, `Review needed`, `Not queued`. Both option sets are fixed
+because a single-select's options must exist before a card can carry one, and
+the projection path may not change the board's schema. GitHub's built-in
+`Status` field is left alone because its options cannot be renamed through the
+API; the operator groups the board view by `Arcadia status`, and a third view by
+`Arcadia push`.
 
 **Reading items is a GraphQL query, not `gh project item-list`.** `item-list
 --format json` flattens custom fields into camelCased keys derived from the
@@ -217,16 +263,21 @@ holds a `CommandRunner` fake that proves a second projection over a healthy
 board issues no writes at all.
 
 **Only `schedule github link` changes the board's schema.** It calls
-`ensureBoardStatusField`, which creates the `Arcadia status` field when the
-Project has none. Every other path — `schedule reconcile` with or without
-`--apply`, and every worker tick — opens the board through `createGitHubBoard`,
-which reads and refuses a board with no status field rather than creating one.
-A preview therefore performs no GitHub mutation of any kind, including schema.
+`ensureBoardFields`, which creates the `Arcadia status` field (required) and the
+`Arcadia push` field (optional) when the Project has neither. Every other path —
+`schedule reconcile` with or without `--apply`, and every worker tick — opens the
+board through `createGitHubBoard`, which reads and refuses a board with no
+status field rather than creating one, and skips the push projection entirely
+when the board has no push field. A preview therefore performs no GitHub
+mutation of any kind, including schema.
 
 GitHub Project views cannot be created through the API either, so the
-"execution" and "backlog" views are one manual step: in the board view, filter
-`-Arcadia status:Backlog,Done`; add a second view filtered to
-`Arcadia status:Backlog`.
+"execution", "backlog" and "push" views are one manual step: in the board view,
+filter `-Arcadia status:Backlog,Done`; add a second view filtered to
+`Arcadia status:Backlog`; add a third grouped by `Arcadia push` and filtered to
+`Arcadia push:This push,"This push · sequence"`. Grouping by a field is a
+GitHub UI capability; creating the *field* is Arcadia's, and creating the view
+is not.
 
 Every board operation sits behind the `SchedulingBoard` interface, so the
 tests drive an in-memory board and prove reconciliation without network

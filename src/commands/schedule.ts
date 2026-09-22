@@ -4,13 +4,16 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectBySlug } from "../db/repositories.js";
+import { resolveBatch, type BatchResolution } from "../docs/batch.js";
 import { recordDiscovery, type DiscoveryKind, type DiscoveryResult } from "../scheduling/discovery.js";
 import {
+  BOARD_PUSHES,
+  BOARD_PUSH_FIELD,
   BOARD_STATUSES,
   BOARD_STATUS_FIELD,
   createGitHubBoard,
   createGitHubProject,
-  ensureBoardStatusField,
+  ensureBoardFields,
   reconcileBoard,
   runGh,
   type ReconcileResult
@@ -36,29 +39,61 @@ import {
 
 export interface ScheduleStatusData {
   schedule: PortfolioSchedule;
+  /** The current push: the ready-set prefix, laned by repository, to the next
+   *  operator gate. Recomputed on every read from the same documents — never
+   *  stored, because a stale batch label is worse than none. */
+  batch: BatchResolution;
 }
 
 export function runScheduleStatusCommand(options: { workspace: string; project?: string }): CommandSuccess<ScheduleStatusData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const schedule = withReadOnlyDatabase(workspacePath, (db) => {
+  const data = withReadOnlyDatabase(workspacePath, (db): ScheduleStatusData => {
     const portfolio = buildPortfolioSchedule(db);
-    if (!options.project) return portfolio;
-    const projects = portfolio.projects.filter((entry) => entry.projectSlug === options.project);
-    if (projects.length === 0) throw validationError("Unknown or inactive Project.", { project: options.project });
-    return { ...portfolio, projects };
+    const scoped = options.project
+      ? portfolio.projects.filter((entry) => entry.projectSlug === options.project)
+      : portfolio.projects;
+    if (options.project && scoped.length === 0) throw validationError("Unknown or inactive Project.", { project: options.project });
+    return {
+      schedule: options.project ? { ...portfolio, projects: scoped } : portfolio,
+      batch: resolveBatch(
+        scoped
+          .filter((entry) => entry.repositoryRoot !== null)
+          .map((entry) => ({ repositoryRoot: entry.repositoryRoot!, projectSlug: entry.projectSlug }))
+      )
+    };
   });
-  return createSuccess({ command: "schedule.status", workspace: workspacePath, data: { schedule } });
+  return createSuccess({ command: "schedule.status", workspace: workspacePath, data });
 }
 
 export function renderScheduleStatusSuccess(response: CommandSuccess<ScheduleStatusData>): string[] {
-  const { schedule } = response.data;
+  const { schedule, batch } = response.data;
   const lines: string[] = [
     `Production schedule (${schedule.generatedAt})`,
     `Selection: ${schedule.selection ? `${schedule.selection.actionKey}` : "none"}`,
+    ...renderPush(batch),
     ""
   ];
   for (const project of schedule.projects) {
     lines.push(...renderProject(project), "");
+  }
+  return lines;
+}
+
+function renderPush(batch: BatchResolution): string[] {
+  if (batch.lanes.length === 0) return ["This push: nothing ready."];
+  const lines = [`This push (${batch.token.points} token points):`];
+  for (const lane of batch.lanes) {
+    lines.push(`  Lane ${lane.laneLabel}${lane.sequenceAdvised ? " (sequence advised)" : ""}:`);
+    for (const action of lane.actions) {
+      lines.push(`    ${action.position}. ${action.actionId} — ${action.title}`);
+    }
+    for (const stop of lane.stops) {
+      const label = stop === lane.boundary ? "Boundary" : "Waiting";
+      lines.push(`    ${label} [${stop.kind}] ${stop.actionId}: ${stop.prompt}`);
+    }
+    if (lane.nextPush.length > 0) {
+      lines.push(`    Next push (${lane.nextPush.length}): ${lane.nextPush.map((action) => action.actionId).join(", ")}`);
+    }
   }
   return lines;
 }
@@ -240,10 +275,12 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
       if (projectSlugs && !projectSlugs.includes(schedule.projectSlug)) continue;
       if (!schedule.github?.repository || !schedule.repositoryRoot) continue;
       const cached = schedule.record.githubProjectId && schedule.record.githubStatusFieldId && schedule.record.githubStatusOptions
+        && schedule.record.githubPushField !== null
         ? {
             projectId: schedule.record.githubProjectId,
             statusFieldId: schedule.record.githubStatusFieldId,
-            statusOptions: schedule.record.githubStatusOptions
+            statusOptions: schedule.record.githubStatusOptions,
+            pushField: "absent" in schedule.record.githubPushField ? null : schedule.record.githubPushField
           }
         : null;
       const board = createGitHubBoard(
@@ -320,6 +357,8 @@ export interface ScheduleGitHubLinkData {
   url: string | null;
   /** Whether this link created the board's `Arcadia status` field. */
   statusFieldCreated: boolean;
+  /** Whether this link created the board's `Arcadia push` field. */
+  pushFieldCreated: boolean;
 }
 
 export function runScheduleGitHubLinkCommand(options: {
@@ -351,22 +390,23 @@ export function runScheduleGitHubLinkCommand(options: {
       created = true;
     }
     // Link is the one command that may change the board's schema: it creates
-    // the `Arcadia status` field when the Project has none, then opens the
-    // board read-only to prove the result is usable.
-    const field = ensureBoardStatusField({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
+    // the `Arcadia status` and `Arcadia push` fields when the Project has
+    // neither, then opens the board read-only to prove the result is usable.
+    const field = ensureBoardFields({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
     createGitHubBoard({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
     upsertSchedulingProject(db, project.slug, { githubOwner: options.owner, githubProjectNumber: number, githubProjectId: id, githubRepository: repository, lastProjectedRevision: -1, lastProjectedOrder: [] });
-    recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository})${field.created ? `; created the "${BOARD_STATUS_FIELD}" field` : ""}.`, next: { owner: options.owner, number, repository, statusFieldCreated: field.created } });
-    return { projectSlug: project.slug, owner: options.owner, number, repository, created, url, statusFieldCreated: field.created };
+    recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository})${field.statusCreated ? `; created the "${BOARD_STATUS_FIELD}" field` : ""}${field.pushCreated ? `; created the "${BOARD_PUSH_FIELD}" field` : ""}.`, next: { owner: options.owner, number, repository, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated } });
+    return { projectSlug: project.slug, owner: options.owner, number, repository, created, url, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated };
   });
   return createSuccess({ command: "schedule.github.link", workspace: workspacePath, data });
 }
 
 export function renderScheduleGitHubLinkSuccess(response: CommandSuccess<ScheduleGitHubLinkData>): string[] {
-  const { projectSlug, owner, number, repository, created, url, statusFieldCreated } = response.data;
+  const { projectSlug, owner, number, repository, created, url, statusFieldCreated, pushFieldCreated } = response.data;
   return [
     `${created ? "Created and linked" : "Linked"} ${projectSlug} → GitHub Project ${owner}/${number}${url ? ` (${url})` : ""}; issues in ${repository}.`,
     statusFieldCreated ? `Created the "${BOARD_STATUS_FIELD}" single-select field with options: ${BOARD_STATUSES.join(", ")}.` : `The "${BOARD_STATUS_FIELD}" field already existed; nothing on the board was changed.`,
+    pushFieldCreated ? `Created the "${BOARD_PUSH_FIELD}" single-select field with options: ${BOARD_PUSHES.join(", ")}. Group the board by it to see the push, and filter "Arcadia push:Next push" out of the execution view.` : `The "${BOARD_PUSH_FIELD}" field already existed.`,
     "Run `arcadia schedule reconcile --apply` to project the queue onto the board."
   ];
 }

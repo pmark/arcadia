@@ -382,8 +382,9 @@ pnpm arcadia schedule log --workspace "$WORKSPACE"
 
 Each Project can project its queue onto a GitHub Project board: one Issue per
 Action, an `Arcadia status` field (`Needs operator`, `Ready`, `Running`,
-`Blocked`, `Done`, `Backlog`) and card order equal to queue order. Link an
-existing GitHub Project or create one, then reconcile:
+`Blocked`, `Done`, `Backlog`), an `Arcadia push` field naming what the Project
+will get through before it next needs you, and card order equal to queue order.
+Link an existing GitHub Project or create one, then reconcile:
 
 ```sh
 pnpm arcadia schedule github link --project arcadia --owner pmark --create --workspace "$WORKSPACE"
@@ -393,9 +394,10 @@ pnpm arcadia schedule reconcile --apply --project arcadia --workspace "$WORKSPAC
 ```
 
 `link` is the only command that changes the board's own structure: it creates
-the `Arcadia status` field when the Project has none. Preview and every worker
-tick only read, and refuse a board with no status field rather than creating
-one. `--project` scopes the whole pass, so a scoped run cannot reorder another
+the `Arcadia status` field and the optional `Arcadia push` field when the
+Project has neither. Preview and every worker tick only read, and refuse a board
+with no status field rather than creating one; a board with no push field simply
+carries no push labels. `--project` scopes the whole pass, so a scoped run cannot reorder another
 Project's board or move another Project's pointer.
 
 A linked board costs very little to keep synchronized. Arcadia publishes its
@@ -410,7 +412,16 @@ position; a card dragged above a higher class or above its own dependency is
 put back in canonical order and the reason is written to `schedule log`. No
 Decision is opened for an invalid drag. In the board view, group by `Arcadia
 status` and filter out `Backlog` and `Done` to see only the active Milestone;
-a second view filtered to `Backlog` is the backlog.
+a second view filtered to `Backlog` is the backlog; a third grouped by `Arcadia
+push` and filtered to `Arcadia push:This push,"This push · sequence"` is the
+current push. Creating a view is always a click in GitHub's own UI — its API
+cannot make one.
+
+`arcadia schedule status` prints the same push: lanes by repository, each
+lane's token-point total, the boundary that will stop it, and the named work
+after that boundary. The Runs dashboard shows it above its history, and each
+card's push label is rewritten by every board projection rather than cached, so
+it cannot outlive the Plan it describes.
 
 A coding Run that finds work it was not sent to do records it instead of
 doing it:
