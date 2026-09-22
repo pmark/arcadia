@@ -443,6 +443,15 @@ missing data point, and attribution coverage should exceed 95%.
 
 **DEC** Pricing is discovery, not a commercial decision. **No checkout ships in v1.**
 
+**DEC (2026-09-22)** Open Decision §25 #5 settled the posture as **open core plus a paid
+hosted service**, which this section was explicitly waiting on. The structures below stay
+listed because the site still asks about them, but the field has narrowed: the local core
+is intended to be free and open, so the realistic revenue candidates are the **hosted
+service**, a **setup/onboarding package**, and a **founder-assisted program**. Per-project
+and usage-based pricing remain plausible, but as shapes for the hosted tier rather than for
+the software itself. §25 #6 separately settled that early access is **free**, so no price is
+charged during the learning period and level-4 evidence is deliberately deferred.
+
 **Structures under consideration (shown or tested, never presented as final):**
 
 | Structure | What it would mean | Evidence that supports it |
@@ -816,6 +825,11 @@ The website is done when all of the following are true:
 
 These need an answer before or during Phase 0. Each states its consequence.
 
+**Four were settled by the operator on 2026-09-22** and are marked `DEC` below with the
+reasoning. They are recorded here rather than left in a conversation because each one
+changes what the site says or which experiments are worth running, and a decision that
+lives only in a chat log gets made again, differently, in three months.
+
 1. **Domain and naming.** Candidates: "MartianRover Arcadia Mission Control", "Arcadia
    Mission Control", "Mission Control", or **"MartianRover Arcadia Cloud"**. *Consequence:*
    determines the domain, every page title, all structured data, and the SEO surface —
@@ -833,21 +847,42 @@ These need an answer before or during Phase 0. Each states its consequence.
 3. **Relationship to the Arcadia repository.** Same repo (a `site/` directory) or its own?
    *Consequence:* same repo shares CI and governance but couples the marketing cadence to
    product releases; separate repo keeps the site disposable. Recommendation: separate.
-4. **How public is the dogfooding?** Do we show real Arcadia records — actual plans,
-   Decisions, evidence from building Arcadia with Arcadia? *Consequence:* the most credible
-   possible proof and a strong differentiator, versus exposing the state of an unfinished
-   system and our own work in progress.
-5. **Open-source posture.** Is any part of Arcadia intended to be open source?
-   *Consequence:* changes the pricing structures worth testing (§14), the trust argument in
-   §19, and the entire distribution strategy. Should be decided before pricing experiments,
-   not after.
-6. **Early-access pricing stance at launch.** Free preview, or paid early access from day
-   one? *Consequence:* free maximizes tester count and learning volume; paid produces the
-   only decisive willingness-to-pay evidence but will sharply reduce the cohort.
+4. **DEC (2026-09-22) — Dogfooding is shown live to early-access candidates only.** Real
+   Arcadia records — actual plans, Decisions, completion evidence from building Arcadia with
+   Arcadia — are shown in the interview and the invitation, not published on the site.
+   *Consequence:* full credibility at the point where it converts, with no public exposure
+   of unfinished work and no curation pass before every publish. The cost is accepted
+   knowingly: the landing page's claim stays a claim rather than evidence, so it does
+   nothing for the conversion rate the experiments measure. *Revisit if:* qualified
+   conversion stalls below 0.5% and interviews say the dogfooding story was what made it
+   credible.
+5. **DEC (2026-09-22) — Open core plus a paid hosted service.** The CLI and governance
+   engine are intended to be public; the hosted Mission Control is the paid product.
+   *Consequence:* this unblocks §14, which was explicitly waiting on it. The credible
+   pricing structures narrow to a free and open local core, a paid hosted service, a
+   setup/onboarding package, and a founder-assisted program; per-project and usage-based
+   pricing stay plausible for the hosted tier only. It also strengthens §19 — the
+   local-first, operator-owned-data claim becomes verifiable by reading the code rather
+   than asserted, which matters for an audience that is rightly suspicious of closed
+   software touching their repositories. What is sold becomes convenience and operation
+   rather than capability, and that is the accepted trade. *Still open underneath this:*
+   which licence, and where exactly the core/hosted line falls. Neither blocks the
+   website.
+6. **DEC (2026-09-22) — Early access is a free preview.** It costs nothing during the
+   early-access period. *Consequence:* maximizes tester count and learning volume at the
+   stage where learning is the entire point. Gate C needs five people who actually install,
+   already the hardest number in §20 to reach, and charging now would shrink that pool
+   against the one gate that matters most. The cost is that decisive willingness-to-pay
+   evidence (§14 level 4) is deferred; §14's levels 2 and 3 carry the pricing signal until
+   then. *Revisit when:* Gate C is met, or three unprompted "I would pay for this today"
+   signals arrive first.
 7. **Interview scheduling tool.** A booking link (Cal.com/Calendly) or manual email?
    *Consequence:* a booking link raises acceptance and adds a third-party dependency and one
    more privacy processor to disclose.
-8. **Launch channel and timing.** HN front-page attempt, or a quiet build-in-public ramp?
-   *Consequence:* HN delivers a large one-time sample that can actually power EXP-1 to
-   significance, but spends a one-shot attention asset on a site whose copy is not yet
-   evidence-tuned. Recommendation: quiet ramp first, HN after Gate A informs the copy.
+8. **DEC (2026-09-22) — Quiet ramp first, HN after Gate A.** Share directly with 10–20
+   people, fix the friction that shows up, and let the first 25 qualified registrations tune
+   the copy before spending the HN attempt. *Consequence:* HN is a one-shot asset, and
+   spending it on untested copy wastes both the traffic and the only sample large enough to
+   power EXP-1 to significance. This makes §23 Phase 3 a real gate rather than a formality:
+   Phase 4 does not start until Gate A's qualitative condition is met, not merely its
+   count.
