@@ -1380,7 +1380,7 @@ actions:
     references: ["src/commands/worker.ts", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
-current_action: preserve-on-exit-and-integrate
+current_action: self-heal-hung-worker-heartbeat
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
