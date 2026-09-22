@@ -1358,6 +1358,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/managed-production-readiness.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "PROJECT.md", "MISSION_LOG.md", "docs/decisions/0064-resolve-how-to-handle-prove-zero-prompt-production-loop-being-dispatched-to.md"]
+  - id: self-heal-hung-worker-heartbeat
+    title: arcadia worker start/status detects a stale-heartbeat worker process as unhealthy rather than already running, and recovers it automatically (or fails loudly with an actionable remedy an automated caller can act on) instead of requiring a human to find the PID and force-kill it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia worker start/status detects a stale-heartbeat worker process as unhealthy rather than already running, and recovers it automatically (or fails loudly with an actionable remedy an automated caller can act on) instead of requiring a human to find the PID and force-kill it.
+    expected_artifact: Evidence satisfying Agent Ask self-heal-hung-worker-heartbeat
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-worker-heartbeat-recovery-2026-09-22
+    acceptance_criteria:
+      - arcadia worker status classifies a process whose heartbeat exceeds the existing staleness threshold as unhealthy even when the process is alive, matching the same threshold arcadia-preserve-broker-* already uses to refuse.
+      - "arcadia worker start detects an unhealthy (stale-heartbeat) existing process rather than reporting Worker already running, and either terminates and relaunches it automatically or exits non-zero naming the exact stale PID and remedy -- it must not silently leave a hung process in place the way it did in Issue #485."
+      - "Recovery from a hung process is safe under launchds concurrent restart semantics: no duplicate worker processes, no orphaned pidfile pointing at a dead PID, and no lost in-flight preservation or production state beyond what a normal worker restart already tolerates."
+      - A regression test reproduces a stale-heartbeat-but-alive worker process (fixture, not a real 159-minute hang) and asserts status reports unhealthy and start recovers it without manual intervention.
+      - This Action does not attempt to root-cause why the original process accumulated 159 minutes of CPU time or ignored SIGTERM -- that investigation is out of scope here and, if still worth doing after this ships, is a separate deferred item; this Action only has to make the symptom self-healing.
+      - "docs/managed-production-readiness.md is updated to reflect the fix once it ships: the worker-hang section is closed out or rescoped depending on what actually shipped, per that documents own refresh discipline."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/worker.ts", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
 current_action: preserve-on-exit-and-integrate

@@ -1,0 +1,24 @@
+{
+  "agent_ask": "v1",
+  "request_id": "file-worker-heartbeat-recovery-2026-09-22",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "The worker daemon self-heals from a hung-but-alive state instead of needing an operators kill -9, so no gate in docs/managed-production-readiness.md rests on a human noticing the worker silently stopped refreshing its heartbeat.",
+  "rationale": "Discovered live in the prior session (2026-09-22): arcadia-preserve-broker-claude refused because the preservation heartbeat was stale. arcadia worker status correctly reported unhealthy (PID 2028, 159 minutes of CPU time, no fresh heartbeat), but arcadia worker start refused to help (Worker already running (PID 2028); leaving it in place) and arcadia worker stop sent a SIGTERM the hung process ignored. Only kill -9 plus launchds automatic respawn recovered it. Filed as Issue #485 with this evidence and a suggested direction. This is the single most consequential open item in docs/managed-production-readiness.md: every gate in that document assumes a worker that stays up, and right now that assumption needs a human in the loop, which directly contradicts the goal of indefinite sequential automated sessions.",
+  "actions": [
+    {
+      "id": "self-heal-hung-worker-heartbeat",
+      "desired_result": "arcadia worker start/status detects a stale-heartbeat worker process as unhealthy rather than already running, and recovers it automatically (or fails loudly with an actionable remedy an automated caller can act on) instead of requiring a human to find the PID and force-kill it.",
+      "acceptance": [
+        "arcadia worker status classifies a process whose heartbeat exceeds the existing staleness threshold as unhealthy even when the process is alive, matching the same threshold arcadia-preserve-broker-* already uses to refuse.",
+        "arcadia worker start detects an unhealthy (stale-heartbeat) existing process rather than reporting Worker already running, and either terminates and relaunches it automatically or exits non-zero naming the exact stale PID and remedy -- it must not silently leave a hung process in place the way it did in Issue #485.",
+        "Recovery from a hung process is safe under launchds concurrent restart semantics: no duplicate worker processes, no orphaned pidfile pointing at a dead PID, and no lost in-flight preservation or production state beyond what a normal worker restart already tolerates.",
+        "A regression test reproduces a stale-heartbeat-but-alive worker process (fixture, not a real 159-minute hang) and asserts status reports unhealthy and start recovers it without manual intervention.",
+        "This Action does not attempt to root-cause why the original process accumulated 159 minutes of CPU time or ignored SIGTERM -- that investigation is out of scope here and, if still worth doing after this ships, is a separate deferred item; this Action only has to make the symptom self-healing.",
+        "docs/managed-production-readiness.md is updated to reflect the fix once it ships: the worker-hang section is closed out or rescoped depending on what actually shipped, per that documents own refresh discipline."
+      ],
+      "dependencies": [],
+      "references": ["src/commands/worker.ts", "docs/managed-production-readiness.md"]
+    }
+  ]
+}
