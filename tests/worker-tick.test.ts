@@ -9,12 +9,15 @@ import {
   decideWorkerStart,
   isProcessAlive,
   isWorkspaceWorkerCommand,
+  runManagedProductionIteration,
   runWorkerInstallCommand,
   runWorkerStartCommand,
   runWorkerStatusCommand,
-  runWorkerStopCommand
+  runWorkerStopCommand,
+  terminateStaleWorker
 } from "../src/commands/worker.js";
-import { openDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
+import { createProjectWithInitialWork } from "../src/db/repositories.js";
 import { TRANSPORT_FRESHNESS_MS, preservationTransportReady } from "../src/sessions/preservationTransport.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { repoRoot, runCli } from "./cli-response-fixture.js";
@@ -90,14 +93,14 @@ function dropSignalHandlersInstalledBy(run: () => void): void {
  * until the loop turns, and asserting on liveness before that would fail on
  * the fixture rather than on the behaviour.
  */
-async function stubbornProcess(): Promise<{ pid: number; exited: Promise<void> }> {
+async function stubbornProcess(): Promise<{ pid: number; exited: Promise<void>; kill: (signal?: NodeJS.Signals) => void }> {
   const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000);"], {
     stdio: ["ignore", "pipe", "ignore"]
   });
   fixtures.push(child);
   await new Promise<void>((resolve) => child.stdout?.once("data", () => resolve()));
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  return { pid: child.pid, exited };
+  return { pid: child.pid, exited, kill: (signal) => { child.kill(signal); } };
 }
 
 describe("worker start already-running guard", () => {
@@ -194,10 +197,17 @@ describe("worker process identity", () => {
       `mise exec -- node /repo/node_modules/tsx/dist/cli.mjs /repo/src/cli.ts worker start --workspace ${workspacePath}`,
       workspacePath
     )).toBe(true);
-    // A default-workspace invocation names no path to compare against.
-    expect(isWorkspaceWorkerCommand("pnpm arcadia worker start", workspacePath)).toBe(true);
+    expect(isWorkspaceWorkerCommand(
+      `node /repo/src/cli.ts worker start --workspace=${workspacePath}`,
+      workspacePath
+    )).toBe(true);
     // Another workspace's worker is not this workspace's worker.
     expect(isWorkspaceWorkerCommand("node /repo/src/cli.ts worker start --workspace /somewhere/else", workspacePath)).toBe(false);
+    // A path that merely contains this one is a different workspace.
+    expect(isWorkspaceWorkerCommand(`node /repo/src/cli.ts worker start --workspace ${workspacePath}-two`, workspacePath)).toBe(false);
+    // A default-workspace invocation names no path, so it cannot be bound to
+    // this workspace and is refused rather than trusted.
+    expect(isWorkspaceWorkerCommand("pnpm arcadia worker start", workspacePath)).toBe(false);
     // Same workspace, different verb.
     expect(isWorkspaceWorkerCommand(`node /repo/src/cli.ts worker status --workspace ${workspacePath}`, workspacePath)).toBe(false);
     // An unrelated process the kernel recycled the PID onto.
@@ -291,11 +301,96 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       killGraceMs: 50
     }));
 
-    expect(output).toContain("still fresh");
+    expect(output).toContain("mid-tick");
+    expect(output).not.toContain("SIGKILL");
     expect(isProcessAlive(fixture.pid)).toBe(true);
+  });
+
+  it("re-reads the heartbeat after the SIGTERM grace before escalating", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "slow", at: Date.now() - 60_000 });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50,
+      // Stand in for a worker that was merely slow: it refreshes its own
+      // record while the grace period is still running. The pre-SIGTERM
+      // record said "hung", and escalating on it would kill live work.
+      sleep: () => writeRecord(root, { pid: fixture.pid, owner: "slow", at: Date.now() })
+    }));
+
+    expect(output).toContain("refreshed its heartbeat during the grace period");
+    expect(output).not.toContain("SIGKILL");
+    expect(isProcessAlive(fixture.pid)).toBe(true);
+  });
+
+  it("refuses to escalate when the workspace changed hands during the grace", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "replaced", at: Date.now() - 60_000 });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50,
+      sleep: () => writeRecord(root, { pid: fixture.pid, owner: "successor", at: Date.now() })
+    }));
+
+    expect(output).toContain("no longer owns the workspace pidfile");
+    expect(output).not.toContain("SIGKILL");
+    expect(isProcessAlive(fixture.pid)).toBe(true);
+  });
+
+  it("treats a target that died during the grace as terminated, not as a failure", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    const commandLine = `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`;
+
+    // Kill the fixture through the real `process.kill` path without letting the
+    // caller know: the next signal raises ESRCH, which a termination path must
+    // read as "already gone" rather than as a failed kill.
+    fixture.kill("SIGKILL");
+    await fixture.exited;
+
+    expect(() => terminateStaleWorker(root, { pid: fixture.pid, owner: "gone", at: Date.now() - 60_000 }, {
+      identify: () => commandLine,
+      sleep: () => {}
+    })).not.toThrow();
   });
 });
 
+describe("managed production iteration liveness", () => {
+  // A managed-production tick is synchronous, so the worker's 5s heartbeat
+  // timer cannot fire while it runs. The worker's own record is re-stamped from
+  // the same between-Projects point that already re-stamps the preservation
+  // projection; without that, a healthy worker mid-tick ages past the freshness
+  // window and `worker start` replaces it as if it had hung.
+  it("re-stamps the worker's own heartbeat from inside a blocking iteration", () => {
+    const { root, logfile } = workspace();
+    withDatabase(root, (db) => {
+      createProjectWithInitialWork(db, {
+        name: "Liveness Fixture Project",
+        mission: "Give the tick a Project to walk.",
+        status: "active",
+        currentMilestone: "Initial milestone",
+        nextAction: "Give the tick something to iterate over",
+        workClassification: "agent"
+      });
+    });
+
+    let progress = 0;
+    const db = openDatabase(root);
+    try {
+      runManagedProductionIteration(db, root, logfile, () => { progress += 1; });
+    } finally {
+      db.close();
+    }
+
+    expect(progress).toBeGreaterThan(0);
+  });
+});
 
 describe("worker install readiness", () => {
   it("refuses clearly when launchd cannot load the worker", () => {

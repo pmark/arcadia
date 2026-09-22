@@ -189,14 +189,23 @@ about the same process:
   respawn would otherwise ever reach this code — this is the step that makes the
   failure self-healing.
 - `arcadia worker stop` escalates identically, instead of reporting a SIGTERM it
-  cannot know was honoured. A worker whose heartbeat is *still fresh* keeps the
-  ordinary SIGTERM and is reported as mid-tick, because a long tick is not a
+  cannot know was honoured. It re-reads the record after the grace period and
+  refuses to escalate if the worker refreshed its heartbeat or handed the
+  workspace on in the meantime; a worker whose heartbeat is *still fresh* keeps
+  the ordinary SIGTERM and is reported as mid-tick, because a long tick is not a
   hang.
+- The worker re-stamps its **own** record from the same between-Projects point
+  that already re-stamps the preservation projection, so a long
+  managed-production tick no longer ages a healthy worker's heartbeat past the
+  limit — which would otherwise make `start` replace a worker that was merely
+  busy.
 - Before signalling anything, both callers read the PID's command line and
-  refuse unless it identifies this workspace's own Arcadia worker. A pidfile
-  outlives a worker killed with SIGKILL, and the kernel may reuse that PID; a
-  refusal names the PID, the pidfile, and the exact remedy rather than killing a
-  stranger.
+  refuse unless it names this workspace explicitly on an Arcadia CLI
+  `worker start` invocation. A pidfile outlives a worker killed with SIGKILL,
+  and the kernel may reuse that PID; a refusal names the PID, the pidfile, and
+  the exact remedy rather than killing a stranger. A default-workspace
+  invocation names no path and is refused, which costs nothing unattended: the
+  launch agent always passes `--workspace`.
 
 **Why it mattered enough to rank at the top of this document:** every gate above
 assumes the worker keeps running. `detect-hung-managed-production-sessions`
@@ -205,8 +214,14 @@ it says nothing about the watcher itself hanging. That gap is now closed.
 
 **What is deliberately still open.** Nobody has root-caused why the original
 process spun for 159 minutes or ignored SIGTERM; the Action's own acceptance
-criteria put that out of scope, and this document will not claim it. The
-deferral has a named trigger: **reopen the root-cause investigation when a
+criteria put that out of scope, and this document will not claim it. One
+exposure also remains, and it is pre-existing rather than introduced here: a
+**single** synchronous step with no boundary to re-stamp at — a long provider
+launch, or a legacy `executeApprovedReview` Run — can still outlast the 15s
+window, so a worker busy inside one unbroken step is indistinguishable from a
+hung one. Reopen this when it is observed rather than assumed: a
+`Recovered hung worker:` line that coincides with an in-flight Run.
+The deferral has a named trigger: **reopen the root-cause investigation when a
 second `Recovered hung worker:` line appears in `.arcadia/worker.log`**, since
 one hang is now a recovered event and two are a pattern. If the recovery itself
 ever fails, the non-zero exit names the stale PID, the pidfile, and the remedy,

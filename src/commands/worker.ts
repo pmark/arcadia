@@ -250,6 +250,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
   // Consecutive synchronous failures, so a persistent one is summarized rather
   // than written once per 2s tick.
   let consecutiveFailures = 0;
+  const identity = options.identity ?? { pid: options.pid, owner: "test" };
 
   const tick = () => {
     if (!owns()) {
@@ -257,10 +258,17 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
       return;
     }
     try {
-      try { writeWorkerHeartbeat(options.workspacePath, options.identity ?? { pid: options.pid, owner: "test" }); } catch {}
+      try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
       const db = openDb(options.workspacePath);
       try {
-        runWorkerIteration(db, options.workspacePath, options.pid, options.logfile);
+        runWorkerIteration(db, options.workspacePath, options.pid, options.logfile, () => {
+          // The iteration is synchronous and can block the event loop for
+          // minutes, so the 5s timer above cannot fire while it runs. Without
+          // this the worker's own record would age past the freshness window
+          // during a perfectly healthy tick, and `start` would replace a worker
+          // that is merely busy.
+          try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
+        });
       } finally {
         db.close();
       }
@@ -337,23 +345,33 @@ export function processCommandLine(pid: number): string | null {
 }
 
 /**
- * Whether a live PID is plausibly this workspace's own Arcadia worker rather
- * than a stranger the kernel recycled the PID onto.
+ * Whether a live PID is this workspace's own Arcadia worker rather than a
+ * stranger the kernel recycled the PID onto.
  *
  * A pidfile can outlive its owner: a worker killed with SIGKILL never runs its
  * cleanup, so its record survives and the OS is free to hand that PID to
  * anything. Signalling on the record's PID alone would then kill an unrelated
- * process. So the command line must show an Arcadia CLI `worker start`
- * invocation, and when that invocation names a workspace it must name this
- * one. A default-workspace invocation names none, which is the one shape that
- * is still accepted without a path to compare.
+ * process. So the invocation must be an Arcadia CLI `worker start` *and* it
+ * must name this workspace exactly.
+ *
+ * A default-workspace invocation names no path at all, and accepting it would
+ * authorize a signal against whichever workspace that invocation happened to
+ * resolve — including a different one — so it is refused. Nothing in the
+ * unattended path depends on the lenient reading: the launch agent always
+ * passes `--workspace`.
  */
 export function isWorkspaceWorkerCommand(commandLine: string, workspacePath: string): boolean {
   const arcadiaCliInvocation = /cli\.(?:ts|js|mjs)\b/.test(commandLine) || /(?:^|\s)arcadia(?:\s|$)/.test(commandLine);
   const arcadiaWorkerStart = arcadiaCliInvocation &&
     /(?:^|\s)worker(?:\s|$)/.test(commandLine) &&
     /(?:^|\s)start(?:\s|$)/.test(commandLine);
-  return arcadiaWorkerStart && (commandLine.includes(workspacePath) || !commandLine.includes("--workspace"));
+  return arcadiaWorkerStart && namedWorkspace(commandLine) === workspacePath;
+}
+
+/** The `--workspace` value an invocation names, quoted or not, or null. */
+function namedWorkspace(commandLine: string): string | null {
+  const match = /--workspace(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(commandLine);
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 }
 
 /**
@@ -374,6 +392,24 @@ function defaultSleep(ms: number): void {
   // Synchronous on purpose: recovery runs on the cold path of `worker start`,
   // before the tick loop exists, and must not require an event loop turn.
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * The one place a termination path signals a PID, so every caller treats a
+ * vanishing target the same way.
+ *
+ * The worker can exit between the liveness probe and the signal — the `ps`
+ * identity check alone takes a process spawn — and `process.kill` then throws
+ * `ESRCH`. For a termination path that is success, not failure: the process is
+ * gone, which is what the caller wanted. Every other errno (`EPERM` above all)
+ * is real and must surface rather than be mistaken for a completed kill.
+ */
+function defaultSignal(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
 }
 
 /**
@@ -456,7 +492,7 @@ function forceKillWorker(
 ): void {
   const pid = record.pid;
   const sleep = dependencies.sleep ?? defaultSleep;
-  const signal = dependencies.signal ?? ((target: number, value: NodeJS.Signals) => { process.kill(target, value); });
+  const signal = dependencies.signal ?? defaultSignal;
   signal(pid, "SIGKILL");
   if (waitForProcessExit(pid, dependencies.killGraceMs ?? WORKER_KILL_GRACE_MS, sleep)) return;
   throw validationError(
@@ -485,7 +521,7 @@ export function terminateStaleWorker(
 ): WorkerTermination {
   const pid = record.pid;
   const sleep = dependencies.sleep ?? defaultSleep;
-  const signal = dependencies.signal ?? ((target: number, value: NodeJS.Signals) => { process.kill(target, value); });
+  const signal = dependencies.signal ?? defaultSignal;
   const staleMs = Math.max(0, (dependencies.now ?? Date.now)() - record.at);
   assertWorkspaceWorker(workspacePath, record, dependencies);
 
@@ -620,11 +656,18 @@ export function runWorkerIteration(
   db: ReturnType<typeof openDatabase>,
   workspacePath: string,
   pid = process.pid,
-  logfile = logPath(workspacePath)
+  logfile = logPath(workspacePath),
+  /**
+   * Re-stamp the worker's own heartbeat. A managed-production tick is
+   * synchronous and can block the event loop for minutes, so the timer that
+   * normally refreshes this record cannot fire while it runs. Optional because
+   * callers that drive one iteration by hand have no worker identity to stamp.
+   */
+  progress?: () => void
 ): ReturnType<typeof getExecutionRun> {
   if (!process.env.CODEX_SANDBOX) processPreservationRequests(db, workspacePath);
   recoverOrphanedRuns(db, logfile);
-  runManagedProductionIteration(db, workspacePath, logfile);
+  runManagedProductionIteration(db, workspacePath, logfile, progress);
   const run = claimNextPendingRun(db, pid);
   if (!run?.review_item_id) {
     return run;
@@ -721,7 +764,8 @@ export function runWorkerIteration(
 export function runManagedProductionIteration(
   db: ReturnType<typeof openDatabase>,
   workspacePath: string,
-  logfile: string
+  logfile: string,
+  progress?: () => void
 ): void {
   try {
     const registries = loadPhase3Registries(workspacePath);
@@ -731,7 +775,14 @@ export function runManagedProductionIteration(
     const result = runManagedProductionTick(db, workspacePath, {
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters,
-      heartbeat: () => refreshPreservationHeartbeat(workspacePath),
+      heartbeat: () => {
+        // The worker's own record is stamped here for the same reason the
+        // preservation projection is: a tick that re-stamped only the
+        // projection would leave a healthy worker's heartbeat stale, which is
+        // exactly the evidence `status` and `start` read as a hang.
+        progress?.();
+        refreshPreservationHeartbeat(workspacePath);
+      },
       log: (message) => log(logfile, `[managed-production] ${message}`)
     });
     if (!result.policyActive) return;
@@ -851,7 +902,7 @@ export function runWorkerStopCommand(options: WorkerOptions, dependencies: Worke
   }
 
   const sleep = dependencies.sleep ?? defaultSleep;
-  const signal = dependencies.signal ?? ((target: number, value: NodeJS.Signals) => { process.kill(target, value); });
+  const signal = dependencies.signal ?? defaultSignal;
   // Verify before the first signal, not only before the escalation: a recycled
   // PID must not receive a SIGTERM either.
   assertWorkspaceWorker(workspacePath, record, dependencies);
@@ -861,15 +912,25 @@ export function runWorkerStopCommand(options: WorkerOptions, dependencies: Worke
     return;
   }
 
+  // Re-read rather than trusting the record that triggered the SIGTERM: the
+  // grace period is five seconds, and a worker that was merely slow can refresh
+  // its heartbeat, or hand the workspace to a successor, inside it. Escalating
+  // on the pre-SIGTERM record would SIGKILL a worker that has since proved it
+  // is alive.
   const now = (dependencies.now ?? Date.now)();
-  if (!isStaleWorkerHeartbeat(record, now)) {
-    process.stdout.write(`Sent SIGTERM to worker (PID ${pid}); it has not exited yet but its heartbeat is still fresh, so it is probably mid-tick. Run arcadia worker status before escalating.\n`);
+  const current = readWorkerRecord(workspacePath);
+  if (!current || current.pid !== record.pid || current.owner !== record.owner) {
+    process.stdout.write(`Sent SIGTERM to worker (PID ${pid}); it no longer owns the workspace pidfile, so it is stopping or was already replaced. Not escalating.\n`);
+    return;
+  }
+  if (!isStaleWorkerHeartbeat(current, now)) {
+    process.stdout.write(`Sent SIGTERM to worker (PID ${pid}); it has not exited yet but refreshed its heartbeat during the grace period, so it is probably mid-tick. Run arcadia worker status before escalating.\n`);
     return;
   }
 
   // A worker killed with SIGKILL never runs its own cleanup, so nothing else
   // will clear this record and it would outlive its owner.
-  forceKillWorker(workspacePath, record, Math.max(0, now - record.at), dependencies);
+  forceKillWorker(workspacePath, current, Math.max(0, now - current.at), dependencies);
   clearRecordForPid(workspacePath, pid);
   process.stdout.write(`Hung worker (PID ${pid}) ignored SIGTERM and was ended with SIGKILL; run arcadia worker start to bring it back.\n`);
 }
