@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import { batchSlotFor, resolveBatch, type BatchResolution, type BatchSlot } from "../docs/batch.js";
+import { loadActionOrder } from "../dispatch/order.js";
 import { applyOperatorOrder, minimalMoves, sameSequence } from "./order.js";
 import { orderCandidates, writeProjectOrder, type ProjectSchedule, type ScheduledAction, type ScheduleStatus } from "./schedule.js";
 import { recordSchedulingLog, upsertSchedulingAction, upsertSchedulingProject } from "./store.js";
@@ -144,7 +145,7 @@ export function projectScheduleToBoard(
   upsertSchedulingProject(db, schedule.projectSlug, { projectionInFlight: true });
   const items = new Map(board.listItems().map((item) => [item.itemId, item]));
   const actions = schedule.actions.map((action) => ({ ...action }));
-  const push = batch === undefined ? resolveProjectBatch(schedule) : batch;
+  const push = batch === undefined ? resolveProjectBatch(db, schedule) : batch;
 
   for (const action of actions) {
     if (action.githubIssueNumber === null) {
@@ -223,9 +224,13 @@ export function projectScheduleToBoard(
 }
 
 /** The Project's own push, or null when it has no resolvable repository. */
-function resolveProjectBatch(schedule: ProjectSchedule): BatchResolution | null {
+function resolveProjectBatch(db: Database.Database, schedule: ProjectSchedule): BatchResolution | null {
   if (!schedule.repositoryRoot) return null;
-  return resolveBatch([{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }]);
+  const positions = loadActionOrder(db).positions;
+  return resolveBatch(
+    [{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }],
+    { queuePosition: (key) => positions.get(key) ?? null }
+  );
 }
 
 /**
@@ -352,7 +357,7 @@ export function reconcileBoard(
   // computation decides whether they are stale and writes them when the
   // projection runs, so a card can never carry a batch position nobody
   // recomputed.
-  const batch = input.batch === undefined ? resolveProjectBatch(current) : input.batch;
+  const batch = input.batch === undefined ? resolveProjectBatch(db, current) : input.batch;
   const needsProjection = projectionInFlight
     || current.queueRevision !== current.record.lastProjectedRevision
     || !sameSequence(observedOrder, current.queue.filter((key) => observedOrder.includes(key)))

@@ -33,6 +33,17 @@ export interface BatchProjectInput {
   projectSlug?: string;
 }
 
+export interface ResolveBatchOptions {
+  /**
+   * The explicit priority `arcadia advance queue` holds for one Action, keyed
+   * `<projectSlug>/<actionId>` — the same key its positions table uses. Return
+   * `null` for an Action with no recorded position. Omit the option entirely
+   * to fall back to walk order alone, which is what every lane got before this
+   * existed.
+   */
+  queuePosition?: (key: string) => number | null;
+}
+
 /** A lane's token exposure: the tiers in play and what they add up to. */
 export interface BatchTokenRollup {
   /** Sum of `TOKEN_TIER_POINTS` over the Actions in scope. */
@@ -147,12 +158,22 @@ export type BatchSlot = "this_push" | "this_push_sequence" | "next_push" | "not_
  * Lanes then group the resulting batch Actions by repository, because that is
  * the boundary the production policy actually enforces: one repository, one
  * lease.
+ *
+ * Within a lane, the walk order above decides which Actions are *in* the
+ * push; `queuePosition` (when supplied) then decides what order they're
+ * listed in, since the walk's own order is only a document's declaration
+ * order and asserts no priority at all. The one exception is each Project's
+ * own leading Action — its pointer, or absent that, the first ready Action
+ * the walk finds — which always stays first: it is what dispatch actually
+ * authorizes right now, and no queue position should bump it back.
  */
-export function resolveBatch(inputs: BatchProjectInput[]): BatchResolution {
+export function resolveBatch(inputs: BatchProjectInput[], options: ResolveBatchOptions = {}): BatchResolution {
   const blockers: DispatchBlocker[] = [];
   const lanes = new Map<string, BatchLane>();
   const laneOrder: string[] = [];
   const token: BatchTokenRollup = { points: 0, tiers: [] };
+  const queuePosition = options.queuePosition ?? (() => null);
+  const pinnedActionKeys = new Set<string>();
 
   for (const input of inputs) {
     const readySet = resolveReadySet(input.repositoryRoot, input.projectSlug);
@@ -170,6 +191,15 @@ export function resolveBatch(inputs: BatchProjectInput[]): BatchResolution {
     const order = rotateToCurrent(readySet.currentAction, readySet.candidates);
 
     let lane = lanes.get(repositoryRoot);
+    // Only the lane's very own first Action is pinned — the first project to
+    // reach a repository decides what leads it. A second Project sharing the
+    // lane contributes its ready Actions like everything else after that: its
+    // own pointer is what dispatch would run *if* it held the lease, but this
+    // lane's lease is already spoken for by whichever Action leads it, so
+    // there is nothing to protect it from being reordered by queue priority.
+    if ((!lane || lane.actions.length === 0) && order.length > 0 && order[0].ready) {
+      pinnedActionKeys.add(`${projectSlug}/${order[0].actionId}`);
+    }
     if (!lane) {
       lane = {
         laneId: repositoryRoot,
@@ -242,6 +272,7 @@ export function resolveBatch(inputs: BatchProjectInput[]): BatchResolution {
 
   const resolvedLanes = laneOrder.map((id) => lanes.get(id)!);
   for (const lane of resolvedLanes) {
+    lane.actions = sortLaneActions(lane.actions, pinnedActionKeys, queuePosition);
     lane.sequenceAdvised = lane.actions.length > 1;
     lane.token = rollup(lane.actions.map((action) => action.tokenImpact));
     token.points += lane.token.points;
@@ -335,6 +366,42 @@ function stopPromptFor(candidate: ReadySetCandidate, decisionId: string | null):
     case "unavailable":
       return candidate.blockers[0]?.message ?? `"${candidate.actionId}" is not ready.`;
   }
+}
+
+/**
+ * Order a lane's ready Actions by explicit queue priority, pinning each
+ * Project's own leading Action (its pointer, or the first ready Action absent
+ * one) in front regardless of position. An Action with no recorded queue
+ * position sorts after every positioned one, in the walk order it was found —
+ * the same behavior every lane had before `queuePosition` existed, so a lane
+ * given no priority data at all is unchanged.
+ */
+function sortLaneActions(
+  actions: BatchAction[],
+  pinned: Set<string>,
+  queuePosition: (key: string) => number | null
+): BatchAction[] {
+  const ranked = actions.map((action, walkIndex) => ({
+    action,
+    key: `${action.projectSlug}/${action.actionId}`,
+    walkIndex
+  }));
+  ranked.sort((left, right) => {
+    const leftPinned = pinned.has(left.key);
+    const rightPinned = pinned.has(right.key);
+    if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
+    if (!leftPinned) {
+      const leftPosition = queuePosition(left.key);
+      const rightPosition = queuePosition(right.key);
+      if (leftPosition !== null && rightPosition !== null && leftPosition !== rightPosition) {
+        return leftPosition - rightPosition;
+      }
+      if (leftPosition !== null && rightPosition === null) return -1;
+      if (leftPosition === null && rightPosition !== null) return 1;
+    }
+    return left.walkIndex - right.walkIndex;
+  });
+  return ranked.map(({ action }, index) => ({ ...action, position: index + 1 }));
 }
 
 function rollup(tiers: Array<TokenImpact | null>): BatchTokenRollup {

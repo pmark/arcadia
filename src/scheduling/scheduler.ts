@@ -6,6 +6,7 @@ import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
+import { loadActionOrder } from "../dispatch/order.js";
 import { createGitHubBoard, reconcileBoard, runGh, type BoardIdentity, type ReconcileResult, type SchedulingBoard } from "./github.js";
 import { buildProjectSchedule, projectRepositoryRoot, type ProjectSchedule } from "./schedule.js";
 import { getSchedulingProject, recordSchedulingLog, upsertSchedulingProject } from "./store.js";
@@ -156,8 +157,13 @@ function repositoryBatch(
     .map((project) => ({ repositoryRoot: projectRepositoryRoot(db, project), projectSlug: project.slug }))
     .filter((entry): entry is { repositoryRoot: string; projectSlug: string } => entry.repositoryRoot === schedule.repositoryRoot);
 
+  // Ordered by the same explicit priority `arcadia advance queue` dispatches
+  // from, so the push a Project reports here matches what actually runs next
+  // rather than just the plan document's declaration order.
+  const positions = loadActionOrder(db).positions;
   const batch = resolveBatch(
-    inputs.length > 0 ? inputs : [{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }]
+    inputs.length > 0 ? inputs : [{ repositoryRoot: schedule.repositoryRoot, projectSlug: schedule.projectSlug }],
+    { queuePosition: (key) => positions.get(key) ?? null }
   );
   cache.set(schedule.repositoryRoot, batch);
   return batch;
