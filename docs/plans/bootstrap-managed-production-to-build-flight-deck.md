@@ -1339,7 +1339,7 @@ actions:
     references: ["AGENTS.md", "docs/managed-documents.md", "docs/arcadia-semantics.md", "docs/agents-context.md", "CONSTITUTION.md", ".claude/skills"]
 questions: []
 decisions: []
-current_action: substitute-unavailable-provider-before-binding
+current_action: formalize-two-phase-planning-process
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
