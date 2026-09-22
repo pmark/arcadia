@@ -290,12 +290,17 @@ export interface ReconcileResult {
  * the last projected order, apply it through the canonical rule, log it, and
  * re-project when the board differs from canonical or the queue revision has
  * moved since the last projection.
+ *
+ * `input.batch` is the push for this Project's *repository*, which a pass
+ * computes once and shares across every Project in it. Leaving it undefined
+ * makes this function resolve the batch for this Project alone, which is
+ * right for a single-Project repository and for direct callers.
  */
 export function reconcileBoard(
   db: Database.Database,
   schedule: ProjectSchedule,
   board: SchedulingBoard,
-  input: { requestId: string; rebuild: () => ProjectSchedule; now?: Date }
+  input: { requestId: string; rebuild: () => ProjectSchedule; now?: Date; batch?: BatchResolution | null }
 ): ReconcileResult {
   const keyByItem = new Map(schedule.actions.filter((action) => action.githubProjectItemId).map((action) => [action.githubProjectItemId!, action.key]));
   const queued = new Set(schedule.queue);
@@ -347,9 +352,7 @@ export function reconcileBoard(
   // computation decides whether they are stale and writes them when the
   // projection runs, so a card can never carry a batch position nobody
   // recomputed.
-  const batch = current.repositoryRoot
-    ? resolveBatch([{ repositoryRoot: current.repositoryRoot, projectSlug: current.projectSlug }])
-    : null;
+  const batch = input.batch === undefined ? resolveProjectBatch(current) : input.batch;
   const needsProjection = projectionInFlight
     || current.queueRevision !== current.record.lastProjectedRevision
     || !sameSequence(observedOrder, current.queue.filter((key) => observedOrder.includes(key)))
@@ -629,11 +632,12 @@ export function resolveBoardIdentity(config: GitHubBoardConfig, run: CommandRunn
   );
   const fields = findBoardFields(run, config);
   const status = requireStatusField(fields, config);
+  const push = requirePushField(fields, config);
   return {
     projectId: view.id,
     statusFieldId: status.id,
     statusOptions: Object.fromEntries(status.options),
-    pushField: fields.push ? { id: fields.push.id, options: Object.fromEntries(fields.push.options) } : null
+    pushField: push ? { id: push.id, options: Object.fromEntries(push.options) } : null
   };
 }
 
@@ -661,9 +665,12 @@ export function ensureBoardFields(
   }
 
   // Re-read once so a creation that silently did nothing is a refusal here,
-  // not a confusing failure on the next projection.
+  // not a confusing failure on the next projection. Both fields are verified:
+  // a push field missing an option would otherwise reach `setPush` as an
+  // undefined option id and fail on the next projection instead.
   const created = findBoardFields(run, config);
   requireStatusField(created, config);
+  requirePushField(created, config);
   return { statusCreated, pushCreated };
 }
 
@@ -688,6 +695,25 @@ function requireStatusField(fields: BoardFields, config: GitHubBoardConfig): Sta
     });
   }
   return fields.status;
+}
+
+/**
+ * The push field with every option it needs, or null when the board has none.
+ *
+ * A present-but-incomplete push field is refused rather than half-used: the
+ * projection writes one of eight fixed labels, and an option that does not
+ * exist would reach `gh` as an undefined option id and fail on the next tick
+ * instead of naming the malformed board.
+ */
+function requirePushField(fields: BoardFields, config: GitHubBoardConfig): StatusField | null {
+  if (!fields.push) return null;
+  const missing = BOARD_PUSHES.filter((push) => !fields.push!.options.has(push));
+  if (missing.length > 0) {
+    throw validationError(`GitHub field "${BOARD_PUSH_FIELD}" is missing option(s): ${missing.join(", ")}.`, {
+      remedy: `Add the missing single-select option(s) to "${BOARD_PUSH_FIELD}" on Project ${config.owner}/${config.number}, or delete the field and run \`arcadia schedule github link\` to recreate it.`
+    });
+  }
+  return fields.push;
 }
 
 /** Both fields from one `field-list`, since resolving either costs the same call. */

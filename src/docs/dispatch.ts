@@ -97,9 +97,9 @@ interface ActivePlanResolution {
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-function resolveActivePlan(repoRoot: string, projectSlug?: string): ActivePlanResolution {
+function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
-  const discovered = discoverDocs(repoRoot);
+  const discovered = alreadyRead ?? discoverDocs(repoRoot);
 
   for (const error of discovered.errors.filter((candidate) => isAuthoritativeControlPath(candidate.relativePath))) {
     blockers.push({
@@ -501,6 +501,22 @@ export function resolveActionReadiness(
   projectSlug: string,
   actionId: string
 ): ActionReadiness {
+  return actionReadinessFrom(discoverDocs(repoRoot), projectSlug, actionId);
+}
+
+/**
+ * The readiness of one Action against documents that have already been read.
+ *
+ * Split out because a caller that asks about many Actions in one project —
+ * `resolveReadySet` does, once per unfinished Action — would otherwise re-scan
+ * and re-parse every document in the repository per Action. Reading documents
+ * is the expensive half; this is the pure half.
+ */
+function actionReadinessFrom(
+  discovered: DiscoveryResult,
+  projectSlug: string,
+  actionId: string
+): ActionReadiness {
   const empty: ActionReadiness = {
     found: false,
     planSlug: null,
@@ -513,7 +529,6 @@ export function resolveActionReadiness(
     deferringDecisionId: null
   };
 
-  const discovered = discoverDocs(repoRoot);
   const plans = discovered.docs.filter(
     (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === projectSlug.toLowerCase()
   );
@@ -718,7 +733,11 @@ export interface ReadySetResolution {
  * unsafe is enabled by reporting what would be ready.
  */
 export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySetResolution {
-  const { project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
+  // Read the repository once and answer every question from that one read:
+  // resolving the active plan and every Action's readiness from separate scans
+  // would re-parse every document in the repository once per unfinished Action.
+  const discovered = discoverDocs(repoRoot);
+  const { project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug, discovered);
 
   if (!project || !plan) {
     return {
@@ -750,7 +769,7 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
   const evaluatedAll = plan.actions
     .filter((action) => action.status !== "done")
     .map((action) => {
-      const readiness = resolveActionReadiness(repoRoot, resolvedProjectSlug, action.id);
+      const readiness = actionReadinessFrom(discovered, resolvedProjectSlug, action.id);
       const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
       const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
       return { action, readiness, isReady };

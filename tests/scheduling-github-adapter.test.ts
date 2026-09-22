@@ -49,6 +49,8 @@ class FakeGh {
   items: FakeItem[] = [];
   hasStatusField: boolean;
   hasPushField: boolean;
+  /** Simulate a malformed board: the push field exists but lacks this option. */
+  missingPushOption: string | null = null;
   nextIssue = 100;
   nextItem = 1;
   /** Fail this many `moveItem` mutations, to cut a projection in half. */
@@ -94,7 +96,8 @@ class FakeGh {
           id: PUSH_FIELD_ID,
           name: BOARD_PUSH_FIELD,
           type: "ProjectV2SingleSelectField",
-          options: BOARD_PUSHES.map((push) => ({ id: PUSH_OPTION_IDS.get(push)!, name: push }))
+          options: BOARD_PUSHES.filter((push) => push !== this.missingPushOption)
+            .map((push) => ({ id: PUSH_OPTION_IDS.get(push)!, name: push }))
         } as never);
       }
       return ok(JSON.stringify({ fields }));
@@ -372,6 +375,14 @@ describe("gh-backed board", () => {
       return gh.runner(cwd2, command, args);
     });
     expect(() => failing.addIssue({ number: 101, url: "https://github.com/example/repo/issues/101" })).toThrow(/rate limit/);
+  });
+
+  it("refuses a push field that is missing an option instead of writing an undefined option id", () => {
+    const { cwd } = workspaceWithProject();
+    const gh = new FakeGh();
+    gh.missingPushOption = "Review needed";
+    expect(() => createGitHubBoard(boardConfig(cwd), gh.runner)).toThrow(/missing option\(s\): Review needed/);
+    expect(gh.writeCalls()).toEqual([]);
   });
 
   it("re-projects a stale push label even though the queue revision has not moved", () => {

@@ -84,6 +84,20 @@ export interface PortfolioSchedule {
   selection: { projectSlug: string; actionKey: string } | null;
 }
 
+/**
+ * A Project's repository as the scheduler sees it: resolved to a real path, or
+ * null when the configured path is missing or unusable.
+ *
+ * Exported so any caller that needs to know which Projects share a repository
+ * resolves it exactly the way `buildProjectSchedule` does — two spellings of
+ * the same checkout would put two Projects in two different push lanes.
+ */
+export function projectRepositoryRoot(db: Database.Database, project: Project): string | null {
+  const configuredPath = getProjectMetadata(db, project.id)?.repo_path?.trim() ?? null;
+  if (!configuredPath || !existsSync(configuredPath) || !statSync(configuredPath).isDirectory()) return null;
+  return realpathSync(path.resolve(configuredPath));
+}
+
 export function buildPortfolioSchedule(db: Database.Database, options: { now?: Date } = {}): PortfolioSchedule {
   const active = listProjects(db).filter((project) => project.status === "active");
   const projects = active
@@ -124,8 +138,8 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
     record
   };
 
-  const configuredPath = getProjectMetadata(db, project.id)?.repo_path?.trim() ?? null;
-  if (!configuredPath || !existsSync(configuredPath) || !statSync(configuredPath).isDirectory()) {
+  const repositoryRoot = projectRepositoryRoot(db, project);
+  if (!repositoryRoot) {
     base.blockers.push({
       relativePath: "project_metadata",
       field: "repo_path",
@@ -134,7 +148,6 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
     });
     return base;
   }
-  const repositoryRoot = realpathSync(path.resolve(configuredPath));
   base.repositoryRoot = repositoryRoot;
 
   const discovered = discoverDocs(repositoryRoot);

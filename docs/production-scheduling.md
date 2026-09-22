@@ -155,8 +155,10 @@ it. It comes from `resolveBatch` (`src/docs/batch.ts`), a thin wrapper over
   Decision, a deferred Action, a `question_open` Action, or a
   `requires_review` proof run. Non-gate refusals (an unmet dependency, a
   blocked responsibility) are reported as stops and the walk continues, because
-  only a gate ends a push. Everything after the gate is named in `nextPush` and
-  left unexpanded.
+  only a gate ends a push. After the gate, the Actions that cannot start are
+  named in `nextPush` and left unexpanded; a ready Action stays in the batch
+  wherever it is declared, because the production policy lets independent work
+  proceed past an operator stop.
 
 Each lane also carries a token rollup: the tier points of its Actions and their
 total. Tiers map `none` 0, `small` 1, `medium` 2, `large` 3, `xlarge` 4.
@@ -263,8 +265,9 @@ holds a `CommandRunner` fake that proves a second projection over a healthy
 board issues no writes at all.
 
 **Only `schedule github link` changes the board's schema.** It calls
-`ensureBoardFields`, which creates the `Arcadia status` field (required) and the
-`Arcadia push` field (optional) when the Project has neither. Every other path —
+`ensureBoardFields`, which creates whichever of the `Arcadia status` (required)
+and `Arcadia push` (optional) fields the board is missing — including a board
+that already has the status field and gains only the push field. Every other path —
 `schedule reconcile` with or without `--apply`, and every worker tick — opens the
 board through `createGitHubBoard`, which reads and refuses a board with no
 status field rather than creating one, and skips the push projection entirely

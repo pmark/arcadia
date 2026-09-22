@@ -394,8 +394,8 @@ pnpm arcadia schedule reconcile --apply --project arcadia --workspace "$WORKSPAC
 ```
 
 `link` is the only command that changes the board's own structure: it creates
-the `Arcadia status` field and the optional `Arcadia push` field when the
-Project has neither. Preview and every worker tick only read, and refuse a board
+whichever of the `Arcadia status` field and the optional `Arcadia push` field
+the board is missing, including a board that has only the status field. Preview and every worker tick only read, and refuse a board
 with no status field rather than creating one; a board with no push field simply
 carries no push labels. `--project` scopes the whole pass, so a scoped run cannot reorder another
 Project's board or move another Project's pointer.

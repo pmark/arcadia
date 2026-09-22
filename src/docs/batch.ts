@@ -207,8 +207,11 @@ export function resolveBatch(inputs: BatchProjectInput[]): BatchResolution {
       const stop = stopFor(candidate, projectSlug, projectName, planPath);
       lane.stops.push(stop);
       if (isGateKind(stop.kind)) {
-        lane.boundary = stop;
         boundaryIndex = index;
+        // The lane's boundary is the first gate any of its Projects reaches,
+        // not the last: a second Project sharing the repository must not
+        // overwrite where the push already stopped.
+        lane.boundary ??= stop;
       }
     }
 
@@ -248,16 +251,25 @@ export function resolveBatch(inputs: BatchProjectInput[]): BatchResolution {
   return { lanes: resolvedLanes, token, blockers };
 }
 
-/** Where one Action sits in the push, or `not_queued` when the walk never reached it. */
+/**
+ * Where one Action sits in the push, or `not_queued` when the walk never
+ * reached it.
+ *
+ * Matched on Project *and* Action id: a lane is a repository, and a repository
+ * can hold more than one Project, so an action id alone can name two different
+ * Actions.
+ */
 export function batchSlotFor(resolution: BatchResolution, projectSlug: string, actionId: string): BatchSlot {
+  const matches = (candidate: BatchActionRef) =>
+    candidate.projectSlug === projectSlug && candidate.actionId === actionId;
   for (const lane of resolution.lanes) {
     if (!lane.projectSlugs.includes(projectSlug)) continue;
-    if (lane.actions.some((action) => action.actionId === actionId)) {
+    if (lane.actions.some(matches)) {
       return lane.sequenceAdvised ? "this_push_sequence" : "this_push";
     }
-    const stop = lane.stops.find((candidate) => candidate.actionId === actionId);
+    const stop = lane.stops.find(matches);
     if (stop) return stop.kind;
-    if (lane.nextPush.some((action) => action.actionId === actionId)) return "next_push";
+    if (lane.nextPush.some(matches)) return "next_push";
   }
   return "not_queued";
 }

@@ -324,6 +324,42 @@ describe("batch boundary", () => {
   });
 });
 
+describe("batch lanes shared by more than one Project", () => {
+  it("keeps the lane boundary at the first Project's gate", () => {
+    const root = repository([
+      { slug: "alpha", current: "first", actions: [{ id: "first" }, { id: "gate-alpha", status: "deferred" }] },
+      { slug: "beta", current: "first", actions: [{ id: "first" }, { id: "gate-beta", responsibility: "requires_review" }] }
+    ]);
+
+    const batch = resolveBatch([
+      { repositoryRoot: root, projectSlug: "alpha" },
+      { repositoryRoot: root, projectSlug: "beta" }
+    ]);
+    const lane = batch.lanes[0];
+
+    expect(lane.projectSlugs).toEqual(["alpha", "beta"]);
+    // beta's gate must not overwrite where alpha's push already stopped.
+    expect(lane.boundary).toMatchObject({ kind: "deferred", actionId: "gate-alpha", projectSlug: "alpha" });
+    expect(lane.stops.map((stop) => stop.actionId)).toEqual(["gate-alpha", "gate-beta"]);
+  });
+
+  it("matches a lane entry by Project as well as Action id", () => {
+    const root = repository([
+      { slug: "alpha", current: "shared", actions: [{ id: "shared" }] },
+      { slug: "beta", current: "shared", actions: [{ id: "shared", status: "deferred" }] }
+    ]);
+
+    const batch = resolveBatch([
+      { repositoryRoot: root, projectSlug: "alpha" },
+      { repositoryRoot: root, projectSlug: "beta" }
+    ]);
+
+    // Same repository, same action id, different Projects: each gets its own slot.
+    expect(batchSlotFor(batch, "alpha", "shared")).toBe("this_push");
+    expect(batchSlotFor(batch, "beta", "shared")).toBe("deferred");
+  });
+});
+
 describe("batch token rollup", () => {
   it("adds each lane's tiers and the overall total", () => {
     const medium = repository([

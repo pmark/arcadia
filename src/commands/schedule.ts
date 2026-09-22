@@ -378,23 +378,34 @@ export function runScheduleGitHubLinkCommand(options: {
     if (!schedule.repositoryRoot) throw validationError("Project has no repository path; link needs one for gh to run in.", { blockers: schedule.blockers });
     const repository = options.repository ?? detectRepository(schedule.repositoryRoot);
     let number = options.number ?? null;
-    let id: string | null = null;
     let url: string | null = null;
     let created = false;
     if (number === null) {
       if (!options.create) throw validationError("Provide --number for an existing GitHub Project or --create to make one.");
       const made = createGitHubProject({ owner: options.owner, title: options.title ?? `${project.name} — Development`, cwd: schedule.repositoryRoot });
       number = made.number;
-      id = made.id;
       url = made.url;
       created = true;
     }
     // Link is the one command that may change the board's schema: it creates
-    // the `Arcadia status` and `Arcadia push` fields when the Project has
-    // neither, then opens the board read-only to prove the result is usable.
+    // whichever of the `Arcadia status` and `Arcadia push` fields is missing,
+    // then opens the board read-only to prove the result is usable.
     const field = ensureBoardFields({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
-    createGitHubBoard({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
-    upsertSchedulingProject(db, project.slug, { githubOwner: options.owner, githubProjectNumber: number, githubProjectId: id, githubRepository: repository, lastProjectedRevision: -1, lastProjectedOrder: [] });
+    // Persist the identity this open resolved, including the push field it now
+    // finds. Without this, a cached `{ absent: true }` from before the field
+    // existed would survive the link and no pass would ever project a label.
+    const board = createGitHubBoard({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
+    upsertSchedulingProject(db, project.slug, {
+      githubOwner: options.owner,
+      githubProjectNumber: number,
+      githubProjectId: board.identity.projectId,
+      githubRepository: repository,
+      githubStatusFieldId: board.identity.statusFieldId,
+      githubStatusOptions: board.identity.statusOptions,
+      githubPushField: board.identity.pushField ?? { absent: true },
+      lastProjectedRevision: -1,
+      lastProjectedOrder: []
+    });
     recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository})${field.statusCreated ? `; created the "${BOARD_STATUS_FIELD}" field` : ""}${field.pushCreated ? `; created the "${BOARD_PUSH_FIELD}" field` : ""}.`, next: { owner: options.owner, number, repository, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated } });
     return { projectSlug: project.slug, owner: options.owner, number, repository, created, url, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated };
   });
