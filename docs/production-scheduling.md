@@ -176,6 +176,11 @@ carry no push label until `schedule github link` runs again and creates the
 field. `createGitHubBoard` never creates it, so a preview or a worker tick
 cannot change the board's schema.
 
+A field added to the board by hand is not noticed: the scheduler caches a
+resolved absence so it need not re-read a settled board's field list on every
+poll. Running `schedule github link` is what refreshes that cache — for every
+Arcadia Project linked to the same board, not only the one named.
+
 ## Discovery
 
 `arcadia schedule discover --from <project/action> --kind <kind> --title ...

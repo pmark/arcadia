@@ -24,10 +24,12 @@ import { resumeProjectScheduling, runSchedulingPass, type SchedulingPassResult }
 import {
   getSchedulingAction,
   listSchedulingLog,
+  listSchedulingProjects,
   recordSchedulingLog,
   upsertSchedulingAction,
   upsertSchedulingProject,
-  type SchedulingLogEntry
+  type SchedulingLogEntry,
+  type SchedulingProjectRecord
 } from "../scheduling/store.js";
 
 /**
@@ -395,17 +397,29 @@ export function runScheduleGitHubLinkCommand(options: {
     // finds. Without this, a cached `{ absent: true }` from before the field
     // existed would survive the link and no pass would ever project a label.
     const board = createGitHubBoard({ owner: options.owner, number, repository, cwd: schedule.repositoryRoot });
-    upsertSchedulingProject(db, project.slug, {
-      githubOwner: options.owner,
-      githubProjectNumber: number,
+    const identity: Partial<Omit<SchedulingProjectRecord, "projectSlug">> = {
       githubProjectId: board.identity.projectId,
-      githubRepository: repository,
       githubStatusFieldId: board.identity.statusFieldId,
       githubStatusOptions: board.identity.statusOptions,
       githubPushField: board.identity.pushField ?? { absent: true },
       lastProjectedRevision: -1,
       lastProjectedOrder: []
-    });
+    };
+    // The same GitHub Project can be linked to more than one Arcadia Project,
+    // and each has its own scheduling record. Every record pointing at this
+    // board gets the identity just resolved — otherwise a sibling keeps its
+    // cached "no push field" and never projects a label.
+    const linkedSlugs = new Set([
+      project.slug,
+      ...listSchedulingProjects(db)
+        .filter((record) => record.githubOwner === options.owner && record.githubProjectNumber === number)
+        .map((record) => record.projectSlug)
+    ]);
+    for (const slug of linkedSlugs) {
+      upsertSchedulingProject(db, slug, slug === project.slug
+        ? { ...identity, githubOwner: options.owner, githubProjectNumber: number, githubRepository: repository }
+        : identity);
+    }
     recordSchedulingLog(db, { projectSlug: project.slug, actionKey: null, source: "arcadia", reason: `${created ? "Created and linked" : "Linked"} GitHub Project ${options.owner}/${number} (issues in ${repository})${field.statusCreated ? `; created the "${BOARD_STATUS_FIELD}" field` : ""}${field.pushCreated ? `; created the "${BOARD_PUSH_FIELD}" field` : ""}.`, next: { owner: options.owner, number, repository, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated } });
     return { projectSlug: project.slug, owner: options.owner, number, repository, created, url, statusFieldCreated: field.statusCreated, pushFieldCreated: field.pushCreated };
   });
