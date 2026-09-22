@@ -13,7 +13,9 @@ this document" at the bottom says how to re-derive it in about a minute.
 Last derived: **2026-09-22**, after `formalize-two-phase-planning-process` and
 `refresh-managed-production-readiness-2026-09-22` (this Action) landed, and
 after this session fixed `prove-zero-prompt-production-loop`'s wrongful
-dispatch to coding agents (Decision 0064, PR #481).
+dispatch to coding agents (Decision 0064, PR #481). `substitute-unavailable-provider-before-binding`
+completed independently (PR #482) *while this document was being written* —
+proof of the concurrency this document has to account for, not just describe.
 
 ---
 
@@ -60,14 +62,14 @@ is also not proven. Two separate things happened to it this session:
    open/unmerged.
 
 **Distance: 10 filed Actions — 9 open plus the 1 deferred proof — plus one
-not-yet-filed Action for the worker-hang defect (#485), out of the Plan's 25
+not-yet-filed Action for the worker-hang defect (#485), out of the Plan's 24
 unfinished Actions, plus 2 operator steps.** Of the 10 filed Actions: **5 are
-ordinary code sessions**, all ready today with no blocking dependency, and
-**5 are proof or hardening runs** (4 open, 1 deferred) that cost provider
-capacity rather than code. The other 15 unfinished Actions are real work, but
-the unattended claim does not depend on them; "What is *not* on the critical
-path" below names
-them.
+ordinary code sessions**, all ready today with no blocking dependency (and
+one of them, `preserve-on-exit-and-integrate`, is now the actual dispatch
+pointer), and **5 are proof or hardening runs** (4 open, 1 deferred) that
+cost provider capacity rather than code. The other 14 unfinished Actions are
+real work, but the unattended claim does not depend on them; "What is *not*
+on the critical path" below names them.
 
 Everything here counts individual Action ids, never grouped work items.
 
@@ -116,7 +118,7 @@ defect" below.
 | | Item | Why it blocks |
 | --- | --- | --- |
 | ✅ | **Decision 0058** — delegate bounded candidate integration? | Approved (R212, 2026-09-19). `preserve-on-exit-and-integrate` has its authority. |
-| ⬜ | `preserve-on-exit-and-integrate` | Its only dependency (`deliver-session-brief`) is now `done`, so it is ready to start. Without it, every Action needs one operator merge before the next dependent Action can start — the difference between "assisted" and "unattended." |
+| ⬜ | `preserve-on-exit-and-integrate` ← **current pointer** | `substitute-unavailable-provider-before-binding` (not on this document's critical path, but the dispatch pointer at the start of this Action's session) completed and merged (PR #482) while this document was being refreshed. The pointer advanced straight to this Action — the critical path's own #1 item is now the live dispatch target. Without it, every Action needs one operator merge before the next dependent Action can start — the difference between "assisted" and "unattended." |
 | ⬜ | `bind-candidate-revision-in-action-settle` | No dependencies; ready. `action settle` derives the wrong revision, so the documented candidate-worktree completion path fails. |
 | ✅ | `approval-must-apply-or-refuse` | Done (PR #447). |
 | ⬜ | `apply-answered-decision-consequences` | No dependencies; ready. An answered Decision does not move the Action it governs, so answering one changes nothing until a human acts on it. |
@@ -185,7 +187,7 @@ hung and ignored SIGTERM in the first place.
 Everything else can wait. This is the shortest honest route from here to
 unattended production on the board.
 
-1. `preserve-on-exit-and-integrate` — ready now (dependency cleared)
+1. `preserve-on-exit-and-integrate` — **now the actual dispatch pointer**, not just dependency-clear
 2. `bind-candidate-revision-in-action-settle` — ready now, no dependencies
 3. `apply-answered-decision-consequences` — ready now, no dependencies
 4. *(new, unfiled)* an Action for the worker-hang defect (Issue #485) — sizing
@@ -267,14 +269,14 @@ trusting further out than a session or two.
 | | Count |
 | --- | --- |
 | Actions in the active Plan | 70 |
-| Done | 45 |
-| Open | 24 |
+| Done | 46 (`substitute-unavailable-provider-before-binding` completed, PR #482, while this document was being refreshed) |
+| Open | 23 |
 | Deferred | 1 |
-| Unfinished (open + deferred) | 25 |
+| Unfinished (open + deferred) | 24 |
 | **On the critical path (filed)** | **10** (9 open + 1 deferred) |
 | **On the critical path (not yet filed)** | **1** (worker-hang defect, #485) |
 | **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 15 (25 unfinished − 10 filed on the path) |
+| Unfinished but off the critical path | 14 (24 unfinished − 10 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (this session, production-dispatch related) is already answered. |
 
 ---
