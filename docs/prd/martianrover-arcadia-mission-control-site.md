@@ -859,9 +859,9 @@ lives only in a chat log gets made again, differently, in three months.
 5. **DEC (2026-09-22) — Open core plus a paid hosted service.** The CLI and governance
    engine are intended to be public; the hosted Mission Control is the paid product.
    *Consequence:* this unblocks §14, which was explicitly waiting on it. The credible
-   pricing structures narrow to a free and open local core, a paid hosted service, and a
-   setup package; per-project and usage-based pricing stay plausible for the hosted tier
-   only. It also strengthens §19 — the local-first, operator-owned-data claim becomes
+   pricing structures narrow to a free and open local core, a paid hosted service, a
+   setup/onboarding package, and a founder-assisted program; per-project and usage-based
+   pricing stay plausible for the hosted tier only. It also strengthens §19 — the local-first, operator-owned-data claim becomes
    verifiable by reading the code rather than asserted, which matters for an audience that
    is rightly suspicious of closed software touching their repositories. What is sold
    becomes convenience and operation rather than capability, and that is the accepted
