@@ -191,27 +191,37 @@ describe("worker health classification", () => {
 
 describe("worker process identity", () => {
   const workspacePath = "/Users/example/workspaces/one";
+  const otherWorkspacePath = "/Users/example/workspaces/two";
+  const recognized = (commandLine: string, workspace = workspacePath, fallback: string | null = workspacePath) =>
+    isWorkspaceWorkerCommand(commandLine, workspace, fallback);
 
-  it("accepts only a live PID that is this workspace's own worker", () => {
-    expect(isWorkspaceWorkerCommand(
-      `mise exec -- node /repo/node_modules/tsx/dist/cli.mjs /repo/src/cli.ts worker start --workspace ${workspacePath}`,
-      workspacePath
+  it("binds an explicit --workspace by exact match", () => {
+    expect(recognized(
+      `mise exec -- node /repo/node_modules/tsx/dist/cli.mjs /repo/src/cli.ts worker start --workspace ${workspacePath}`
     )).toBe(true);
-    expect(isWorkspaceWorkerCommand(
-      `node /repo/src/cli.ts worker start --workspace=${workspacePath}`,
-      workspacePath
-    )).toBe(true);
+    expect(recognized(`node /repo/src/cli.ts worker start --workspace=${workspacePath}`)).toBe(true);
     // Another workspace's worker is not this workspace's worker.
-    expect(isWorkspaceWorkerCommand("node /repo/src/cli.ts worker start --workspace /somewhere/else", workspacePath)).toBe(false);
+    expect(recognized(`node /repo/src/cli.ts worker start --workspace ${otherWorkspacePath}`)).toBe(false);
     // A path that merely contains this one is a different workspace.
-    expect(isWorkspaceWorkerCommand(`node /repo/src/cli.ts worker start --workspace ${workspacePath}-two`, workspacePath)).toBe(false);
-    // A default-workspace invocation names no path, so it cannot be bound to
-    // this workspace and is refused rather than trusted.
-    expect(isWorkspaceWorkerCommand("pnpm arcadia worker start", workspacePath)).toBe(false);
+    expect(recognized(`node /repo/src/cli.ts worker start --workspace ${workspacePath}-two`)).toBe(false);
     // Same workspace, different verb.
-    expect(isWorkspaceWorkerCommand(`node /repo/src/cli.ts worker status --workspace ${workspacePath}`, workspacePath)).toBe(false);
+    expect(recognized(`node /repo/src/cli.ts worker status --workspace ${workspacePath}`)).toBe(false);
     // An unrelated process the kernel recycled the PID onto.
-    expect(isWorkspaceWorkerCommand("node -e setInterval(() => {}, 1000)", workspacePath)).toBe(false);
+    expect(recognized("node -e setInterval(() => {}, 1000)")).toBe(false);
+  });
+
+  // Issue #492: the live worker on the operator's host is started without
+  // `--workspace`, so refusing that shape outright made the recovery added for
+  // Issue #485 unreachable on the one host where it had actually happened.
+  it("binds a workspace-less invocation only to the default workspace", () => {
+    const argv = "node /repo/node_modules/tsx/dist/cli.mjs /repo/src/cli.ts worker start";
+    expect(recognized(argv, workspacePath, workspacePath)).toBe(true);
+    // Same invocation, but this is not the workspace a default resolves to.
+    expect(recognized(argv, otherWorkspacePath, workspacePath)).toBe(false);
+    // A host that cannot resolve a default refuses rather than assumes.
+    expect(recognized(argv, workspacePath, null)).toBe(false);
+    // The `pnpm arcadia worker start` shape is the same claim.
+    expect(recognized("pnpm arcadia worker start", workspacePath, workspacePath)).toBe(true);
   });
 
   it("refuses to signal a stale PID that is not this workspace's worker", async () => {
@@ -243,7 +253,10 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
     const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
     const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
     dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
-      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      // The exact shape the operator's own launch agent runs: no
+      // `--workspace`, the workspace resolved as the default (Issue #492).
+      identify: () => `node ${path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs")} ${path.join(repoRoot, "src", "cli.ts")} worker start`,
+      defaultWorkspace: () => root,
       terminateGraceMs: 50,
       killGraceMs: 50
     }));

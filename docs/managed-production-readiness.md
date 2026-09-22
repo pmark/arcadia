@@ -200,12 +200,15 @@ about the same process:
   limit — which would otherwise make `start` replace a worker that was merely
   busy.
 - Before signalling anything, both callers read the PID's command line and
-  refuse unless it names this workspace explicitly on an Arcadia CLI
-  `worker start` invocation. A pidfile outlives a worker killed with SIGKILL,
-  and the kernel may reuse that PID; a refusal names the PID, the pidfile, and
-  the exact remedy rather than killing a stranger. A default-workspace
-  invocation names no path and is refused, which costs nothing unattended: the
-  launch agent always passes `--workspace`.
+  refuse unless it is an Arcadia CLI `worker start` invocation bound to *this*
+  workspace — either by an exactly-matching `--workspace`, or, for the
+  workspace-less invocations this host's own launch agent uses, by this
+  workspace being the one a default invocation resolves to here. A pidfile
+  outlives a worker killed with SIGKILL, and the kernel may reuse that PID; a
+  refusal names the PID, the pidfile, and the exact remedy rather than killing a
+  stranger. The first shipped cut of this refused the workspace-less shape
+  outright, which made the whole recovery unreachable on the one host where
+  Issue #485 had actually happened; Issue #492 records that and the fix.
 
 **Why it mattered enough to rank at the top of this document:** every gate above
 assumes the worker keeps running. `detect-hung-managed-production-sessions`

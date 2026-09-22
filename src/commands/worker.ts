@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { validationError } from "../cli/errors.js";
 import { miseLeadingPath, miseNodeArgv, resolveMiseExecutable } from "../runtime/mise.js";
 import { openDatabase } from "../db/connection.js";
@@ -351,21 +352,46 @@ export function processCommandLine(pid: number): string | null {
  * A pidfile can outlive its owner: a worker killed with SIGKILL never runs its
  * cleanup, so its record survives and the OS is free to hand that PID to
  * anything. Signalling on the record's PID alone would then kill an unrelated
- * process. So the invocation must be an Arcadia CLI `worker start` *and* it
- * must name this workspace exactly.
+ * process. So the invocation must be an Arcadia CLI `worker start`, bound to
+ * *this* workspace by one of the only two claims a command line can support:
  *
- * A default-workspace invocation names no path at all, and accepting it would
- * authorize a signal against whichever workspace that invocation happened to
- * resolve — including a different one — so it is refused. Nothing in the
- * unattended path depends on the lenient reading: the launch agent always
- * passes `--workspace`.
+ * - it names `--workspace`, which must match exactly; or
+ * - it names none, making it a default-workspace invocation, and this workspace
+ *   must be the one such an invocation resolves to here.
+ *
+ * The second case is not a loophole. A worker for a *different* workspace never
+ * writes this workspace's pidfile, so a record found here can only have been
+ * written by a worker that resolved to this workspace — while refusing the case
+ * outright (Issue #492) left every worker started without the flag, including
+ * the live one on the operator's host, unrecoverable. `defaultWorkspacePath` is
+ * null when the host cannot resolve one, which refuses rather than assumes.
  */
-export function isWorkspaceWorkerCommand(commandLine: string, workspacePath: string): boolean {
+export function isWorkspaceWorkerCommand(
+  commandLine: string,
+  workspacePath: string,
+  defaultWorkspacePath: string | null
+): boolean {
   const arcadiaCliInvocation = /cli\.(?:ts|js|mjs)\b/.test(commandLine) || /(?:^|\s)arcadia(?:\s|$)/.test(commandLine);
   const arcadiaWorkerStart = arcadiaCliInvocation &&
     /(?:^|\s)worker(?:\s|$)/.test(commandLine) &&
     /(?:^|\s)start(?:\s|$)/.test(commandLine);
-  return arcadiaWorkerStart && namedWorkspace(commandLine) === workspacePath;
+  if (!arcadiaWorkerStart) return false;
+  const named = namedWorkspace(commandLine);
+  if (named !== null) return named === workspacePath;
+  return defaultWorkspacePath !== null && workspacePath === defaultWorkspacePath;
+}
+
+/**
+ * The workspace a workspace-less invocation resolves to here, or null when this
+ * host cannot resolve one. Never throws: an unresolvable default is a refusal
+ * on the recovery path, not a crash on it.
+ */
+function resolvedDefaultWorkspacePath(): string | null {
+  try {
+    return requireResolvedWorkspace({});
+  } catch {
+    return null;
+  }
 }
 
 /** The `--workspace` value an invocation names, quoted or not, or null. */
@@ -386,6 +412,10 @@ export interface WorkerRecoveryDependencies {
   terminateGraceMs?: number;
   killGraceMs?: number;
   now?: () => number;
+  /** The workspace a workspace-less invocation resolves to here; see
+   * `isWorkspaceWorkerCommand`. Overridable so a test can exercise the shape
+   * the operator's own launch agent uses (Issue #492). */
+  defaultWorkspace?: () => string | null;
 }
 
 function defaultSleep(ms: number): void {
@@ -465,7 +495,7 @@ function assertWorkspaceWorker(
 ): void {
   const pid = record.pid;
   const commandLine = (dependencies.identify ?? processCommandLine)(pid);
-  if (commandLine !== null && isWorkspaceWorkerCommand(commandLine, workspacePath)) return;
+  if (commandLine !== null && isWorkspaceWorkerCommand(commandLine, workspacePath, (dependencies.defaultWorkspace ?? resolvedDefaultWorkspacePath)())) return;
   const pidfile = pidfilePath(workspacePath);
   throw validationError(
     `Refusing to signal PID ${pid}: the pidfile at ${pidfile} names a process whose command line is not this workspace's Arcadia worker${commandLine === null ? " (its command line could not be read)" : ""}.`,
