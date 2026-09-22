@@ -49,12 +49,19 @@ consequence per option), captured as Agent Asks
 (`intent: outcome` / `intent: milestone` / `intent: decision`) ready to
 draft and settle.
 
-**How to run it today:** start a session with a high-reasoning model —
-a coding-agent session (Claude Code, Codex, opencode) if you want it to
-read the repository's current Outcome/Milestone/Plan state first, or a
-bare chat if not — and paste the role prompt below. There is no automatic
-trigger yet: `arcadia ask` does not route into this phase on its own. See
+**How to run it today:** start a session with a high-reasoning model and
+paste the role prompt below. There is no automatic trigger yet: `arcadia
+ask` does not route into this phase on its own. See
 [Deferred](#deferred-not-built-here) for why.
+
+- **Coding-agent session (Claude Code, Codex, opencode), recommended:** it
+  can read `CONSTITUTION.md` and the current Project's `PROJECT.md` itself,
+  as the prompt instructs, so no manual context assembly is needed.
+- **Bare chat, no repository access:** paste `CONSTITUTION.md` and the
+  current Project's `PROJECT.md` alongside the role prompt — the interview
+  needs both to avoid re-asking settled questions and to respect standing
+  approval boundaries. Without them, treat the interview's output as a
+  draft to re-check against those documents before drafting any Agent Ask.
 
 ```
 # Role
@@ -143,12 +150,17 @@ Treat these as given constraints, not open questions to re-litigate.
 Plan or creating a new one, containing dependency-ordered Actions ready to
 draft, preview, and settle.
 
-**How to run it today:** same as Phase 1 — a coding-agent session or a
-bare chat, given the role prompt below plus Phase 1's confirmed output.
-Prefer a coding-agent session with repository access here: this phase
-needs to read the target Plan and check which changes actually have a
-governed writer before proposing them (see the prompt's verification
-requirement below).
+**How to run it today:** a coding-agent session (Claude Code, Codex,
+opencode), not a bare chat. Unlike Phase 1, this phase is not usable
+without repository access: it must read `AGENTS.md`, `CONSTITUTION.md`,
+`docs/agents-context.md`, `docs/managed-documents.md`, and the target Plan
+document, check the target Plan for Actions that already exist before
+proposing new ones, and check `arcadia agent-ask contract` for a governed
+writer before planning any governance-state change (see the prompt's
+verification requirement below). A bare chat cannot do any of that
+reliably from pasted text alone, so treat bare-chat Phase 2 output as
+unverified until a coding-agent session checks it against the live
+repository.
 
 ```
 # Role
