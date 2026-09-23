@@ -27,7 +27,12 @@ import {
   PRODUCTION_CONTROL_DEADLINES,
   type ProductionScope
 } from "../src/production/policy.js";
-import { runManagedProductionTick, resetProductionRepairBudget, listRecentBaseBranchAdvances } from "../src/production/tick.js";
+import {
+  runManagedProductionTick,
+  resetProductionRepairBudget,
+  listRecentBaseBranchAdvances,
+  listOperatorEscalations
+} from "../src/production/tick.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -206,6 +211,153 @@ describe("runManagedProductionTick", () => {
     expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
     expect(tmux.launches).toHaveLength(0);
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
+
+    // A transient conflict (capacity/Off/stale-preview/lease) is an expected
+    // wait state: no durable escalation is ever recorded for it, tick after
+    // tick, exactly as before this capability existed.
+    const secondTickLog = vi.fn();
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        log: secondTickLog,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondTickLog).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
+  it("escalates a planning_required refusal to the operator once, and does not repeat the signal on every subsequent tick while it remains unresolved", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const ticks = [0, 60_000, 120_000].map((offsetMs) => {
+      const log = vi.fn();
+      const result = withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles,
+          adapters,
+          tmux,
+          now: new Date(fixture.now.getTime() + offsetMs),
+          log,
+          capacityObservation: fixtureCapacityObservation(),
+          agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+      return { result, log };
+    });
+
+    for (const { result } of ticks) {
+      expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    }
+    expect(tmux.launches).toHaveLength(0);
+
+    // The durable signal is written exactly once, on the tick that first
+    // discovered it -- never on the ticks that follow while it stays unresolved.
+    expect(ticks[0].log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract to the operator \(planning_required\)/));
+    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
+    // firstDetectedAt is pinned to the tick that discovered it, not the most
+    // recent one, proving the row was updated in place rather than replaced.
+    expect(new Date(escalations[0].firstDetectedAt).getTime()).toBe(fixture.now.getTime());
+    expect(new Date(escalations[0].lastSeenAt).getTime()).toBe(fixture.now.getTime() + 120_000);
+  });
+
+  it("prunes an escalation left over from an Action that is no longer current", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    // Simulate a stale row: some earlier Action was escalated and then
+    // stopped being current by a route this tick never observes directly
+    // (e.g. marked done through a `complete` Agent Ask rather than through
+    // this tick's own launch success). Nothing in the fixture ever makes
+    // "test-project/stale-old-action" current, so the only way this row can
+    // disappear is the pruning this test exists to prove.
+    withDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/stale-old-action', 'planning_required', 'stale', 'stale remedy', ?, ?)`
+        )
+        .run(fixture.now.toISOString(), fixture.now.toISOString())
+    );
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(0);
+  });
+
+  it("keeps an escalation during a temporary wait transition for the same Action", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+
+    // A competing managed Run now holds the repository -- `resolveProjectTransition`
+    // resolves `dispatch` (and therefore the selected Action) before it ever
+    // checks for this, so "wait" is a transient state for the *same* Action,
+    // not a pointer change, and must not be read as one.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    recordCompetingManagedRun(fixture.workspace, workItem.id);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
+  });
+
+  it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
+    const fixture = preparedFixture();
+    withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_operator_escalations"));
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toEqual([]);
   });
 
   it("never previews or refuses a launch for a Project outside the active policy scope, while still reconciling its live Session", () => {
@@ -428,6 +580,7 @@ describe("runManagedProductionTick", () => {
         liveAdmissions: 0,
         admissions: [],
         baseBranchAdvances: records,
+        operatorEscalations: [],
         offConsequence: "Off.",
         controlDeadlines: PRODUCTION_CONTROL_DEADLINES
       },
@@ -701,6 +854,16 @@ function recordPassingRun(workspace: string, workItemId: string): void {
   });
 }
 
+function recordCompetingManagedRun(workspace: string, workItemId: string): void {
+  withDatabase(workspace, (db) => {
+    const runId = "run-" + Math.random().toString(36).slice(2);
+    db.prepare(
+      `INSERT INTO execution_runs (id, work_item_id, plan_id, status, executor_name, pid, summary, created_at, updated_at)
+       VALUES (?, ?, NULL, 'pending_execution', 'claude', NULL, 'Fixture competing run.', ?, ?)`
+    ).run(runId, workItemId, "2026-08-30T12:00:00.000Z", "2026-08-30T12:00:00.000Z");
+  });
+}
+
 /**
  * Leaves the Action's own status untouched: `attemptAutomaticCompletion`
  * itself is what marks an Action done, by settling a `complete` Agent Ask
@@ -713,7 +876,7 @@ function completeActionInWorktree(worktreePath: string, actionId: string): void 
   git(worktreePath, ["commit", "-m", `complete ${actionId}`]);
 }
 
-function preparedFixture(options: { secondAction?: boolean } = {}) {
+function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -799,7 +962,7 @@ function preparedFixture(options: { secondAction?: boolean } = {}) {
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
-    preparePacket(db, "define-contract", project.id);
+    if (!options.skipPacket) preparePacket(db, "define-contract", project.id);
     if (options.secondAction) preparePacket(db, "second-action", project.id);
   });
   return {

@@ -26,6 +26,11 @@ being invisible. See "Concurrency: how many Sessions run at once" below for
 the scope decision this session produced (Decision 0066) on when
 same-repository parallel Sessions are worth building.
 
+**Addendum, same day:** `escalate-nonrecoverable-launch-refusals` itself is
+now **done** (not a full re-derivation — this Action was never on the
+critical path, so nothing else below changed). See "What is *not* on the
+critical path" and the scoreboard for the one-line update.
+
 Earlier same-day derivation: **2026-09-23**, re-derived while completing
 `prove-managed-production-fault-matrix`. Contract 20's Stage 1 was re-proven at
 `2332be48` — admission/launch, Off, capacity, and priority/authority at 100 seeds
@@ -360,8 +365,14 @@ Real work, none of it required before the unattended claim holds:
   build packet (`planning_required`); see "Concurrency" below. Not on the
   unattended-claim path either way.
 - `escalate-nonrecoverable-launch-refusals` — filed this derivation (Issue
-  #576). Improves legibility of any future stall like the one above; does not
-  gate the unattended claim itself.
+  #576) and **done** the same day: `planning_required` (and any other
+  packet-lifecycle refusal that needs an operator or agent action, not the
+  passage of time) is now classified apart from capacity/Off/stale-preview/lease
+  conflicts, recorded once in a durable `production_operator_escalations`
+  table instead of retried silently forever, and surfaced through
+  `arcadia production status` and the dashboard's `/runs` Alerts panel.
+  Improves legibility of any future stall like the one above; did not gate the
+  unattended claim itself.
 - The remaining open Actions in the Plan that are not about production at all:
   `detect-duplicate-ids-and-dangling-refs`,
   `combine-advance-monitor-next-into-one-brief`,
@@ -467,8 +478,8 @@ trusting further out than a session or two.
 | | Count |
 | --- | --- |
 | Actions in the active Plan | 89 (precisely counted this derivation by parsing each `- id:`/`status:` pair, not by a whole-file `status:` grep — the naive grep overcounts because acceptance-criteria text quotes status values) |
-| Done | 64 (+4 since the last scoreboard: `prove-managed-production-fault-matrix`, `make-go-total-across-plans`, `detect-hung-managed-production-sessions`, `prove-fault-matrix-remaining-boundaries` — the last three were already true and this document had not caught up) |
-| Open | 24 (includes `escalate-nonrecoverable-launch-refusals`, filed this derivation) |
+| Done | 65 (+5 since the last scoreboard: `prove-managed-production-fault-matrix`, `make-go-total-across-plans`, `detect-hung-managed-production-sessions`, `prove-fault-matrix-remaining-boundaries` — the last three were already true and this document had not caught up — plus `escalate-nonrecoverable-launch-refusals`, filed and completed the same day) |
+| Open | 23 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
 | Unfinished (open + deferred) | 25 |
 | **On the critical path (filed)** | **5** (4 open + 1 deferred) — down from 8, now that entries 9/10/13 are done |
