@@ -571,7 +571,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask build-agent-agnostic-learning-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask implement-agent-agnostic-learning-loop-2026-09-12
+    source: Agent Ask split-defect-loop-remainder-2026-09-23
     acceptance_criteria:
       - "`arcadia learn <summary>` records a durable lesson signal with a stable id, explicit Project or Arcadia scope, and automatically captured source, time, repository revision when available, confidence/freshness, and statement kind; successful intake makes zero model calls and requires no coding-agent session."
       - The record distinguishes direct operator statements, observed outcomes, agent inferences, and imported evidence; an inference never silently becomes an operator preference, Project truth, approved Decision, or authority grant.
@@ -582,7 +582,7 @@ actions:
       - A lesson meeting the existing stop-the-line test bypasses periodic cadence. All other learning is subordinate to current governed work; merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, constitutional changes, and unresolved operator judgment retain their existing gates.
       - Deterministic tests cover Arcadia and Project scope, zero-model intake, retry, likely duplicates, direct-statement versus inference provenance, stale evidence, correction/retraction, bounded reflection, safe test or reference promotion, refused cross-scope disclosure, worker restart, and stop-the-line escalation.
       - The operator-facing QA plan includes exact CLI intake, scope selection, worker/recovery command, signal and promoted-record inspection, correction/retraction, and observable expected results; state whether this is also the end-user procedure.
-    depends_on: [build-autonomous-defect-loop]
+    depends_on: [defect-bounded-triage-loop]
     decisions: []
     references: ["docs/decisions/0050-add-a-nearly-free-automatic-learning-loop-that-lets-any-arcadia-surface-or-proje.md", "docs/decisions/0020-compounding-agent-production-principles.md", "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "OPERATOR_CONTEXT.md"]
   - id: design-and-build-the-mechanism-that
@@ -1636,6 +1636,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/559"]
+  - id: defect-bounded-triage-loop
+    title: "Add the automatic bounded defect triage loop approved by Decision 0049: the persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, reuses fresh included-capacity receipts, and leaves a durable disposition and evidence for each signal."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Add the automatic bounded defect triage loop approved by Decision 0049: the persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, reuses fresh included-capacity receipts, and leaves a durable disposition and evidence for each signal."
+    expected_artifact: Evidence satisfying Agent Ask defect-bounded-triage-loop
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-defect-loop-remainder-2026-09-23
+    acceptance_criteria:
+      - The existing persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, and reuses fresh included-capacity receipts when available; unknown capacity, purchased credits, and reset redemption never count as free.
+      - "Each triage run leaves a durable disposition and evidence: close noise, enrich or link a duplicate, preserve a waiting item with a concrete trigger, promote a formal governed Action into the explicit queue, or perform a validated low-risk reversible repair within standing authority."
+      - A stop-the-line defect bypasses periodic cadence when it blocks unrelated work, requires a remembered human workaround, or blocks its own reporting or repair; promotion changes the queue and current pointer rather than merely adding an urgent label.
+      - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
+      - Deterministic tests cover periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
+      - The operator-facing QA plan includes the worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
+    depends_on: [build-autonomous-defect-loop]
+    decisions: []
+    references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
 questions: []
 decisions: []
 current_action: honor-policy-providers-at-launch
