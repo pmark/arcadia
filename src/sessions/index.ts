@@ -897,7 +897,8 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { comm
     actionId: session.action_id,
     worktreePath: session.worktree_path,
     branch: session.branch,
-    agent
+    agent,
+    baseRevision: session.base_revision
   });
   if (session.provider === "codex-cli") {
     const args = ["--model", session.model];

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -21,7 +22,8 @@ describe("renderActionBrief", () => {
       actionId: "define-contract",
       worktreePath: "/worktrees/define-contract",
       branch: "opencode/define-contract",
-      agent: "opencode"
+      agent: "opencode",
+      baseRevision: head(repo)
     });
 
     expect(brief).toContain("Project: test-project");
@@ -42,7 +44,8 @@ describe("renderActionBrief", () => {
       actionId: "define-contract",
       worktreePath: "/worktrees/define-contract",
       branch: "opencode/define-contract",
-      agent: "opencode"
+      agent: "opencode",
+      baseRevision: head(repo)
     });
 
     const first = brief.indexOf("The contract exists.");
@@ -63,7 +66,8 @@ describe("renderActionBrief", () => {
       actionId: "define-contract",
       worktreePath: "/worktrees/define-contract",
       branch: "opencode/define-contract",
-      agent: "codex"
+      agent: "codex",
+      baseRevision: head(repo)
     });
 
     expect(brief).toContain("do not merge, deploy, publish, push to shared");
@@ -84,7 +88,8 @@ describe("renderActionBrief", () => {
         actionId: "define-contract",
         worktreePath: "/worktrees/define-contract",
         branch: "opencode/define-contract",
-        agent
+        agent,
+        baseRevision: head(repo)
       });
       expect(brief).toContain(launcher);
     }
@@ -100,7 +105,8 @@ describe("renderActionBrief", () => {
         actionId: "does-not-exist",
         worktreePath: "/worktrees/define-contract",
         branch: "opencode/define-contract",
-        agent: "opencode"
+        agent: "opencode",
+      baseRevision: head(repo)
       })
     ).toThrowError(/Action "does-not-exist" was not found in plan "copy-proof"/);
   });
@@ -115,7 +121,8 @@ describe("renderActionBrief", () => {
         actionId: "define-contract",
         worktreePath: "/worktrees/define-contract",
         branch: "opencode/define-contract",
-        agent: "opencode"
+        agent: "opencode",
+      baseRevision: head(repo)
       });
       throw new Error("Expected ArcadiaError");
     } catch (error) {
@@ -123,6 +130,38 @@ describe("renderActionBrief", () => {
       expect((error as ArcadiaError).code).toBe("VALIDATION_ERROR");
       expect((error as Error).message).toContain('plan "no-such-plan" was not found');
     }
+  });
+
+  it("embeds the Constitution committed at the base revision exactly once, with its fingerprint", () => {
+    const repo = briefRepo();
+    const rendered = brief(repo);
+    expect(rendered).toMatch(/CONSTITUTION\.md \(sha256 [0-9a-f]{12}\) also binds this action/);
+    expect(rendered.split("Approval boundaries are hard stops.").length - 1).toBe(1);
+  });
+
+  it("refuses to launch when the worktree's Constitution drifted from the base revision", () => {
+    const repo = briefRepo();
+    const base = head(repo);
+    writeFileSync(path.join(repo, "CONSTITUTION.md"), "# Constitution\n\n- Anything goes.\n");
+    expect(() => brief(repo, base)).toThrow(/cannot launch: CONSTITUTION\.md in the worktree differs.*pinned to base revision/);
+    rmSync(path.join(repo, "CONSTITUTION.md"));
+    expect(() => brief(repo, base)).toThrow(/CONSTITUTION\.md in the worktree differs/);
+  });
+
+  it("refuses to launch when the Constitution is unreadable or the base revision is unknown", () => {
+    const repo = briefRepo();
+    const base = head(repo);
+    rmSync(path.join(repo, "CONSTITUTION.md"));
+    mkdirSync(path.join(repo, "CONSTITUTION.md"));
+    expect(() => brief(repo, base)).toThrow(/cannot launch: .*could not be read/);
+    expect(() => brief(repo, "0".repeat(40))).toThrow(/cannot be verified/);
+  });
+
+  it("does not mistake a checkout's CRLF conversion for a changed Constitution", () => {
+    const repo = briefRepo();
+    execFileSync("git", ["config", "core.autocrlf", "true"], { cwd: repo });
+    writeFileSync(path.join(repo, "CONSTITUTION.md"), "# Constitution\r\n\r\n## Authority\r\n\r\n- Approval boundaries are hard stops.\r\n");
+    expect(brief(repo)).toContain("Approval boundaries are hard stops.");
   });
 
   it("fails closed when the Action declares no acceptance criteria", () => {
@@ -135,7 +174,8 @@ describe("renderActionBrief", () => {
         actionId: "legacy-action",
         worktreePath: "/worktrees/legacy-action",
         branch: "opencode/legacy-action",
-        agent: "opencode"
+        agent: "opencode",
+      baseRevision: head(repo)
       });
       throw new Error("Expected ArcadiaError");
     } catch (error) {
@@ -184,5 +224,19 @@ actions:
     acceptance_criteria: []
 ---
 `);
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  execFileSync("git", ["-c", "user.email=brief@example.invalid", "-c", "user.name=Brief", "add", "."], { cwd: root });
+  execFileSync("git", ["-c", "user.email=brief@example.invalid", "-c", "user.name=Brief", "commit", "-qm", "fixture"], { cwd: root });
   return root;
+}
+
+function head(repo: string): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+}
+
+function brief(repo: string, baseRevision = head(repo)): string {
+  return renderActionBrief({
+    repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+    worktreePath: "/worktrees/define-contract", branch: "opencode/define-contract", agent: "opencode", baseRevision
+  });
 }

@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { validationError } from "../cli/errors.js";
 import { checkCapabilityRegistry } from "./capabilities.js";
 import { discoverDocs, isAuthoritativeControlPath, type DiscoveryResult } from "./discover.js";
 import type {
@@ -46,20 +48,23 @@ export interface DispatchContext {
   /** What the agent is authorized to do, derived from responsibility. */
   authorization: string;
   /**
-   * The repository's `CONSTITUTION.md`, verbatim minus its title, or `[]` when
-   * the repository has none.
+   * Which `CONSTITUTION.md` binds this dispatch — its path and content
+   * fingerprint — or null when the repository has none.
    *
-   * Nothing parses the Constitution. Before this field existed, the only thing
-   * making a coding agent honor it was whether the agent happened to open the
-   * file: it was linked from the agent guides but imported by nothing and
-   * printed by nothing. Carrying it on the dispatch context puts the standing
-   * constraints in front of every agent at the moment authority is granted, on
-   * the one path both `arcadia next` and `arcadia go` already share.
-   *
-   * Deliberately verbatim rather than parsed: the text is the contract, and a
-   * summary would be a second copy free to drift from it.
+   * A reference, not the text. The text used to ride here verbatim, so every
+   * surface that serialized the context (the go and advance brokers' JSON,
+   * `next --json`) repeated the whole Constitution, and an agent reading the
+   * broker result and then the `next` brief received it twice. Each rendered
+   * brief now loads the text exactly once through `loadConstitution`, which
+   * refuses when the file no longer matches this fingerprint.
    */
-  standingConstraints: string[];
+  constitution: ConstitutionReference | null;
+}
+
+export interface ConstitutionReference {
+  path: "CONSTITUTION.md";
+  /** Hex SHA-256 of the file's exact bytes. */
+  sha256: string;
 }
 
 export interface DispatchResolution {
@@ -288,7 +293,7 @@ export function resolveDispatch(
   blockers.push(...readiness.blockers);
   const { requiredDecisions, operatorQuestion } = readiness;
 
-  const constitution = readStandingConstraints(repoRoot);
+  const constitution = readConstitution(repoRoot);
   if (constitution.blocker) {
     blockers.push(constitution.blocker);
   }
@@ -316,20 +321,20 @@ export function resolveDispatch(
     actionPath: plan.relativePath,
     requiredDecisions,
     authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review.",
-    standingConstraints: constitution.constraints
+    constitution: constitution.reference
   };
 
   return { context, blockers, operatorQuestion };
 }
 
 /**
- * Read `CONSTITUTION.md` from the repository root, dropping its H1 title and
- * any leading or trailing blank lines.
+ * Read `CONSTITUTION.md` from the repository root: its fingerprint, and its
+ * text minus the H1 title and any leading or trailing blank lines.
  *
- * A missing Constitution yields no constraints and no blocker. Foreign
- * repositories Arcadia manages are not required to have one, and refusing to
- * dispatch over its absence would block work on a rule the repository never
- * adopted.
+ * A missing Constitution yields no reference, no constraints, and no blocker.
+ * Foreign repositories Arcadia manages are not required to have one, and
+ * refusing to dispatch over its absence would block work on a rule the
+ * repository never adopted.
  *
  * Any other read failure -- a permissions problem, a directory at that path,
  * bad media -- means the repository *has* adopted a Constitution that cannot
@@ -339,17 +344,19 @@ export function resolveDispatch(
  * surfaces through the CLI as an opaque `UNEXPECTED_ERROR`, which tells the
  * operator nothing about which file to fix.
  */
-export function readStandingConstraints(repoRoot: string): {
+export function readConstitution(repoRoot: string): {
+  reference: ConstitutionReference | null;
   constraints: string[];
   blocker: DispatchBlocker | null;
 } {
-  let raw: string;
+  let raw: Buffer;
   try {
-    raw = readFileSync(join(repoRoot, "CONSTITUTION.md"), "utf8");
+    raw = readFileSync(join(repoRoot, "CONSTITUTION.md"));
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return { constraints: [], blocker: null };
+    if (code === "ENOENT") return { reference: null, constraints: [], blocker: null };
     return {
+      reference: null,
       constraints: [],
       blocker: {
         relativePath: "CONSTITUTION.md",
@@ -362,7 +369,16 @@ export function readStandingConstraints(repoRoot: string): {
       }
     };
   }
+  // Hash the bytes, not decoded text: decoding folds invalid sequences into
+  // U+FFFD, which would let a byte-level change keep the same fingerprint.
+  return {
+    reference: { path: "CONSTITUTION.md", sha256: createHash("sha256").update(raw).digest("hex") },
+    constraints: constitutionBody(raw.toString("utf8")),
+    blocker: null
+  };
+}
 
+function constitutionBody(raw: string): string[] {
   const lines = raw.split(/\r?\n/);
   const body = lines[0]?.startsWith("# ") ? lines.slice(1) : lines;
 
@@ -370,8 +386,28 @@ export function readStandingConstraints(repoRoot: string): {
   let end = body.length;
   while (start < end && body[start].trim() === "") start += 1;
   while (end > start && body[end - 1].trim() === "") end -= 1;
+  return body.slice(start, end);
+}
 
-  return { constraints: body.slice(start, end), blocker: null };
+/**
+ * Load the Constitution text a brief embeds, verified against the reference
+ * the dispatch pinned. Fails closed -- never renders a brief without, or with
+ * a different, contract -- when the file became unreadable, disappeared,
+ * appeared, or changed after it was pinned.
+ */
+export function loadConstitution(repoRoot: string, expected: ConstitutionReference | null): string[] {
+  const current = readConstitution(repoRoot);
+  if (current.blocker) {
+    throw validationError(current.blocker.message, { relativePath: "CONSTITUTION.md", remedy: current.blocker.remedy });
+  }
+  if ((current.reference?.sha256 ?? null) !== (expected?.sha256 ?? null)) {
+    throw validationError(
+      "CONSTITUTION.md changed after this handoff pinned it, so the brief would carry a contract other than the one granted. " +
+        "Commit or discard the change, then re-run the command to pin the current Constitution.",
+      { relativePath: "CONSTITUTION.md", expected: expected?.sha256 ?? null, actual: current.reference?.sha256 ?? null }
+    );
+  }
+  return current.constraints;
 }
 
 /** Everything the documents say about whether one action may start. */
