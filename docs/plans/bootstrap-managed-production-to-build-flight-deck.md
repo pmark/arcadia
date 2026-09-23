@@ -1244,7 +1244,7 @@ actions:
     references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "scripts/services.sh", "src/commands/worker.ts", "artifacts/generated/operator-scripts"]
   - id: reference-constitution-without-duplicating-it
     title: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Replace repeated Constitution text in dispatch, next, and session briefs with one canonical repository reference and content fingerprint; load only the applicable canonical clauses at an authority-sensitive boundary.

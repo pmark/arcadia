@@ -564,3 +564,10 @@ updated: 2026-09-23
 - **Result:** Every declared acceptance criterion was accepted as met: "Define an observable, deterministic signal for 'stalled' (e.g. no new tmux pane output, no new Run/receipt activity) and a bounded deadline before a live-but-stalled Session is flagged."; "A flagged stalled Session is surfaced as an explicit uncertain/needs-attention state, never silently reconciled as successful or silently relaunched."; "The existing repository lease and admission are preserved (not released) while a Session is only suspected stalled, pending operator or bounded automatic repair."; "False positives are bounded: a Session doing real long-running work is not flagged merely for being slow.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-detect-hung-managed-production-sessions-2026-09-22).
+
+## 2026-09-23 — Completed arcadia/reference-constitution-without-duplicating-it
+
+- **Did:** Completed Action arcadia/reference-constitution-without-duplicating-it from accepted evidence (Candidate 24cafda9f87e748f104ca5f020634be55d0af40c).
+- **Result:** Every declared acceptance criterion was accepted as met: "A dispatch and agent brief identify the repository CONSTITUTION.md and its content fingerprint without embedding its full text more than once across the handoff path."; "An agent still receives or deterministically loads the canonical Constitution before performing an authority-sensitive action, and a changed or unreadable Constitution fails closed with an actionable remedy."; "Regression tests prove dispatch and session briefs remain bounded while constitution drift or unreadability cannot silently weaken the contract.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-reference-constitution-without-duplicating-it-2026-09-23).
