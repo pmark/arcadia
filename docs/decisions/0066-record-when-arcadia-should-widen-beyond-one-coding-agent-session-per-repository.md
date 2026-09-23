@@ -4,7 +4,7 @@ type: decision
 id: "0066"
 slug: record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository
 project: arcadia
-status: open
+status: approved
 question: Record when Arcadia should widen beyond one coding-agent Session per repository, so the choice made in the 2026-09-23 concurrency strategy session has a durable, revivable record instead of being re-litigated informally.
 gap_type: missing-decision
 recommendation: Defer same-repository concurrent Sessions until prove-two-action-unattended-production and the queued number-505/507/549-class concurrency-safety fixes have landed
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-23
+answer: Defer same-repository concurrent Sessions until prove-two-action-unattended-production and the queued number-505/507/549-class concurrency-safety fixes have landed
+decided: 2026-09-23
 ---
 
 # Decision 0066: Record when Arcadia should widen beyond one coding-agent Session per repository, so the choice made in the 2026-09-23 concurrency strategy session has a durable, revivable record instead of being re-litigated informally.
