@@ -1712,6 +1712,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/tick.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/issues/576"]
+  - id: auto-resolve-planning-required
+    title: When the dispatch pointer's current Action has no build packet (packetLifecycle.kind === "planning_required"), Arcadia automatically prepares one using the existing consistent packet-template machinery in src/codex/packets.ts (renderPrompt), or automatically requests the Decision-gated real planning run when the Action genuinely needs one -- rather than leaving the Action silently or visibly stuck until a human or agent notices.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: When the dispatch pointer's current Action has no build packet (packetLifecycle.kind === "planning_required"), Arcadia automatically prepares one using the existing consistent packet-template machinery in src/codex/packets.ts (renderPrompt), or automatically requests the Decision-gated real planning run when the Action genuinely needs one -- rather than leaving the Action silently or visibly stuck until a human or agent notices.
+    expected_artifact: Evidence satisfying Agent Ask auto-resolve-planning-required
+    clarification: clarified
+    confidence: high
+    source: Agent Ask auto-resolve-planning-required-2026-09-23
+    acceptance_criteria:
+      - "Reproduces the observed failure: an Action reaching the front of the dispatch pointer with no packet does not require a human or a separately-dispatched agent session to run `arcadia work plan` by hand before it can launch."
+      - When completing the Action needs no Decision-gated planning run, its packet is prepared deterministically through the existing packets.ts template system -- no new or inconsistent prompt scheme is introduced.
+      - When the Action genuinely needs a real, Decision-gated planning run (CodexPlanningRunApproval), that run is requested automatically, and the existing approval gate is preserved -- this Action never bypasses it.
+      - "A currently-open production_operator_escalations row for this exact Action (see src/production/tick.ts, PR #579) clears once the packet is prepared or the planning run is requested, through the tick's normal resolution path -- not a special case."
+      - "A deterministic test reproduces both branches: the no-Decision-needed case resolves automatically within a bounded number of ticks; the Decision-gated case requests the planning run and stops there, never bypassing approval."
+      - pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/codex/packets.ts", "src/sessions/packetLifecycle.ts", "src/production/tick.ts", "docs/planning-process.md", "https://github.com/pmark/arcadia/issues/584"]
 questions: []
 decisions: []
 current_action: preflight-provider-signin-before-launch
