@@ -133,6 +133,17 @@ export function runManagedProductionTick(
   const policyRead = readProductionPolicySafely(db);
   const active = policyRead.status === "ok" && policyRead.policy.desiredState === "active";
 
+  // When a standing policy is Active, its scope names the only Projects the
+  // worker is authorized to launch in. Base-branch observation and launch are
+  // production management, so both stay inside that scope: an out-of-scope
+  // Project is never previewed and never produces a misleading "not ready"
+  // refusal. Reconciliation of an already-live Session is a safety path, not
+  // management, so it still runs for every active Project and a Session that
+  // predates the current grant is never left unreconciled.
+  const scopedProjectSlugs =
+    active && policyRead.status === "ok" ? policyRead.policy.scope?.projects ?? [] : null;
+  const inScopeProjects = scopedProjectSlugs === null ? null : new Set(scopedProjectSlugs);
+
   // Scheduling runs first: reconcile each linked GitHub board and point every
   // Project at its canonical next Action, so admission below launches what the
   // queue says rather than whatever the pointer last happened to name.
@@ -158,13 +169,16 @@ export function runManagedProductionTick(
       continue;
     }
     const repoRoot = path.resolve(configuredPath);
+    const projectInScope = inScopeProjects === null || inScopeProjects.has(project.slug);
 
-    let baseBranchAdvance: BaseBranchAdvanceObservation | null;
-    try {
-      baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
-    } catch (error) {
-      log(`Base branch observation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
-      baseBranchAdvance = null;
+    let baseBranchAdvance: BaseBranchAdvanceObservation | null = null;
+    if (projectInScope) {
+      try {
+        baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
+      } catch (error) {
+        log(`Base branch observation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        baseBranchAdvance = null;
+      }
     }
     options.heartbeat?.();
 
@@ -238,15 +252,26 @@ export function runManagedProductionTick(
     }
 
     let launch: ManagedProductionLaunchAttempt | null = null;
-    if (active && reconciled.length === 0) {
+    const mayLaunch = active && projectInScope;
+    if (active && !projectInScope) {
+      // Outside the standing grant: no preview, no admission, no refusal line.
+      // Nothing is resolved or spawned for it here; the reconciliation above
+      // has already done the only work an out-of-scope Project is owed.
+      launch = {
+        attempted: false,
+        outcome: "skipped",
+        reason: "Project is outside the standing production policy scope; production does not launch here.",
+        actionKey: null
+      };
+    } else if (mayLaunch && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
-    } else if (active && handoff !== null && handoffIntegrated(handoff)) {
+    } else if (mayLaunch && handoff !== null && handoffIntegrated(handoff)) {
       // The candidate is preserved and its exact branch is now on the governed
       // base branch, carrying the completion and pointer settlement. Admit the
       // next eligible Action in this same tick -- no operator command, no
       // one-tick wait.
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
-    } else if (active) {
+    } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       if (refusal?.operatorMergeCommand) {
         log(`Candidate for ${project.slug} preserved but not integrated: ${refusal.reason} Operator merge: ${refusal.operatorMergeCommand}`);
