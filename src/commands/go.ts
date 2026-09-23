@@ -398,6 +398,58 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   }
 
   if (options.apply && options.agent) {
+    // Re-resolve the pointer itself from the current base branch before
+    // trusting `dispatch` (from `projectRoot`, computed above) to name the
+    // Action this call is about to claim or resume. `projectRoot` can already
+    // be stale here: an "already-integrated" source with no worktree checked
+    // out on the base branch falls back to the about-to-retire source
+    // checkout, which is frozen at whatever content it held before another
+    // session's PR settled this very Action and repointed past it (Issue
+    // #511). No `actionId` override: this must read whatever the current
+    // base's `current_action` names now, not assert a specific one. A
+    // version that is `done`, blocked, or no longer the base's
+    // `current_action` means the pointer moved on since `dispatch` was
+    // computed -- claim whatever it now names instead of duplicating
+    // already-settled work. A detached scratch checkout of the base branch is
+    // the only guaranteed-current copy of the governed documents when nothing
+    // local sits on it, so create one only when needed and remove it
+    // immediately after use, the same pattern `validateReconciledDispatch`
+    // already uses.
+    {
+      const scratch: { checkout: { root: string; path: string } | null } = { checkout: null };
+      let freshPointer: DispatchResolution;
+      try {
+        const freshRoot = existsSync(dispatchRoot)
+          ? dispatchRoot
+          : (() => {
+              const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-pointer-refresh-"));
+              const checkoutPath = path.join(root, "checkout");
+              scratch.checkout = { root, path: checkoutPath };
+              git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkoutPath, baseBranch]);
+              return checkoutPath;
+            })();
+        freshPointer = resolveDispatch(freshRoot, projectSlug);
+      } finally {
+        if (scratch.checkout) {
+          tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", scratch.checkout.path]);
+          rmSync(scratch.checkout.root, { recursive: true, force: true });
+        }
+      }
+      // A stale, no-longer-dispatchable fresh read must refuse outright here,
+      // not silently keep the earlier (equally stale) `dispatch` -- that would
+      // reintroduce exactly the bug this re-resolution exists to close.
+      if (!isDispatchable(freshPointer)) {
+        throw validationError("The pointer Action is no longer dispatchable on the current base branch.", {
+          projectSlug,
+          staleActionId: dispatch.context?.action.id ?? null,
+          blockers: freshPointer.blockers,
+          operatorQuestion: freshPointer.operatorQuestion,
+          remedy: "Re-run `arcadia go`; it will resolve whatever Action the current base now names, or repair the governed pointer."
+        });
+      }
+      dispatch = freshPointer;
+    }
+
     const actionId = dispatch.context?.action.id;
     if (!actionId) {
       throw validationError("Arcadia go cannot name the next agent worktree without a resolved Action.");
