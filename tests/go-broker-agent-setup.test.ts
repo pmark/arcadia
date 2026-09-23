@@ -5,10 +5,12 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +19,7 @@ import { renderGoBrokerStatusSuccess, runGoBrokerStatusCommand } from "../src/co
 import {
   configureGoBrokerAgents,
   inspectGoBrokerAgentSetup,
+  planWorkspaceTrust,
   removeArcadiaGoRules,
   resolveAgentSetupPaths
 } from "../src/agentSetup/goBrokerAgentSetup.js";
@@ -463,6 +466,182 @@ describe("go broker agent setup", () => {
     })).toThrow("Protected broker setup is not ready");
   });
 });
+
+describe("go broker workspace trust", () => {
+  it("trusts each configured Project repository at its root", () => {
+    const fixture = createFixture();
+    const alpha = createRepository(fixture.home, "Dev/alpha");
+    const beta = createRepository(fixture.home, "Dev/beta");
+    const paths = resolveAgentSetupPaths(fixture.home);
+
+    const result = configureGoBrokerAgents(setupOptions(fixture, [alpha, beta]));
+
+    const config = readFileSync(paths.codexConfig, "utf8");
+    for (const repository of [alpha, beta]) {
+      expect(config).toContain(`[projects.${JSON.stringify(repository)}]\ntrust_level = "trusted"\n`);
+    }
+    expect(result.status.checks.codexWorkspaceTrust).toBe(true);
+    expect(result.status.workspaceTrust).toEqual({ required: [alpha, beta].sort(), missing: [], refused: [] });
+  });
+
+  it("refuses the home directory, a shared worktree root, and a parent directory", () => {
+    const fixture = createFixture();
+    const project = createRepository(fixture.home, "Dev/MR/project");
+    const parent = path.dirname(project);
+    const sharedRoot = path.join(realHome(fixture), ".codex", "worktrees");
+    mkdirSync(path.join(sharedRoot, ".git"), { recursive: true });
+    mkdirSync(path.join(realHome(fixture), ".git"), { recursive: true });
+    mkdirSync(path.join(parent, ".git"), { recursive: true });
+
+    const plan = planWorkspaceTrust([realHome(fixture), sharedRoot, parent, project], fixture.home);
+
+    expect(plan.trusted).toEqual([project]);
+    expect(plan.refused).toEqual(expect.arrayContaining([
+      { repository: realHome(fixture), reason: expect.stringContaining("home directory") },
+      { repository: sharedRoot, reason: expect.stringContaining("shared agent worktree root") },
+      { repository: parent, reason: expect.stringContaining("parent directory") }
+    ]));
+
+    configureGoBrokerAgents(setupOptions(fixture, [realHome(fixture), sharedRoot, parent, project]));
+    const config = readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8");
+    expect(config).toContain(`[projects.${JSON.stringify(project)}]`);
+    for (const refused of [realHome(fixture), sharedRoot, parent]) {
+      expect(config).not.toContain(`[projects.${JSON.stringify(refused)}]`);
+    }
+  });
+
+  it("refuses a shared-root child named like a traversal and a path Git does not own", () => {
+    const fixture = createFixture();
+    const dotted = path.join(realHome(fixture), ".codex", "worktrees", "..session");
+    mkdirSync(dotted, { recursive: true });
+    execFileSync("git", ["init", "-q", dotted]);
+    const fakeRepository = path.join(realHome(fixture), "Dev", "fake");
+    mkdirSync(path.join(fakeRepository, ".git"), { recursive: true });
+
+    const plan = planWorkspaceTrust([dotted, fakeRepository], fixture.home);
+
+    expect(plan.trusted).toEqual([]);
+    expect(plan.refused).toEqual(expect.arrayContaining([
+      { repository: dotted, reason: expect.stringContaining("shared agent worktree root") },
+      { repository: fakeRepository, reason: "is not a Git repository root" }
+    ]));
+  });
+
+  it("recognizes an existing table written with spaced TOML key syntax", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "Dev/spaced");
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, `[ projects . ${JSON.stringify(repository)} ]\ntrust_level = "trusted"\n`);
+
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(config).not.toContain(`[projects.${JSON.stringify(repository)}]`);
+    expect(config).toContain(`[ projects . ${JSON.stringify(repository)} ]\ntrust_level = "trusted"`);
+  });
+
+  it("reports the exact missing repository and makes status not ready", () => {
+    const fixture = createFixture();
+    const trusted = createRepository(fixture.home, "Dev/trusted");
+    const untrusted = createRepository(fixture.home, "Dev/untrusted");
+    configureGoBrokerAgents(setupOptions(fixture, [trusted]));
+
+    const status = inspectGoBrokerAgentSetup(setupOptions(fixture, [trusted, untrusted]));
+
+    expect(status.ready).toBe(false);
+    expect(status.checks.codexWorkspaceTrust).toBe(false);
+    expect(status.workspaceTrust.missing).toEqual([untrusted]);
+    expect(status.issues).toContain(`codexWorkspaceTrust missing: ${untrusted}`);
+  });
+
+  it("is idempotent and preserves unrelated entries byte-for-byte", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "Dev/project");
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, [
+      'model = "gpt-test"',
+      "",
+      "[features]",
+      "voice = true",
+      "",
+      "[projects.\"/somewhere/else\"]",
+      'trust_level = "untrusted"',
+      "",
+      "[mcp_servers.example]",
+      'command = "example"   # keep this comment',
+      ""
+    ].join("\n"));
+
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+    const first = readFileSync(paths.codexConfig, "utf8");
+    const second = configureGoBrokerAgents(setupOptions(fixture, [repository]));
+
+    expect(readFileSync(paths.codexConfig, "utf8")).toBe(first);
+    expect(second.changed).not.toContain(paths.codexConfig);
+    expect(first.split(`[projects.${JSON.stringify(repository)}]`)).toHaveLength(2);
+    expect(first).toContain('[projects."/somewhere/else"]\ntrust_level = "untrusted"\n');
+    expect(first).toContain('command = "example"   # keep this comment');
+  });
+
+  it("neither duplicates nor downgrades an existing trusted entry", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "Dev/project");
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, `[projects.${JSON.stringify(repository)}]\ntrust_level = "trusted"\n`);
+
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(config.split(`[projects.${JSON.stringify(repository)}]`)).toHaveLength(2);
+    expect(config).toContain(`[projects.${JSON.stringify(repository)}]\ntrust_level = "trusted"`);
+  });
+
+  it("trusts a repository it has never seen so its prepared worktree resolves to a trusted root", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "Dev/never-seen");
+    execFileSync("git", ["-C", repository, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-qm", "init"]);
+    const worktree = path.join(realHome(fixture), ".codex", "worktrees", "never-seen-1", "never-seen");
+    execFileSync("git", ["-C", repository, "worktree", "add", "-q", "-b", "codex/never-seen-1", worktree]);
+    const paths = resolveAgentSetupPaths(fixture.home);
+    expect(existsSync(paths.codexConfig)).toBe(false);
+
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+
+    // Codex resolves a linked worktree to its main checkout before looking up trust.
+    const commonDir = execFileSync("git", ["-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+      encoding: "utf8"
+    }).trim();
+    const trustRoot = path.dirname(commonDir);
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(trustRoot).toBe(repository);
+    expect(config).toContain(`[projects.${JSON.stringify(trustRoot)}]\ntrust_level = "trusted"`);
+    expect(config).not.toContain(`[projects.${JSON.stringify(worktree)}]`);
+    expect(config).toMatch(/^approval_policy = "on-request"$/m);
+    expect(inspectGoBrokerAgentSetup(setupOptions(fixture, [repository])).ready).toBe(true);
+  });
+});
+
+function setupOptions(fixture: { home: string; executables: ReturnType<typeof createFixture>["executables"] }, projectRepositories: string[]) {
+  return {
+    home: fixture.home,
+    executables: fixture.executables,
+    skillTemplate: template,
+    agentAskSkillTemplate: agentAskTemplate,
+    projectRepositories
+  };
+}
+
+function realHome(fixture: { home: string }): string {
+  return realpathSync(fixture.home);
+}
+
+function createRepository(home: string, relative: string): string {
+  const repository = path.join(realpathSync(home), relative);
+  mkdirSync(repository, { recursive: true });
+  execFileSync("git", ["init", "-q", "-b", "main", repository]);
+  return repository;
+}
 
 function createFixture(withExecutables = true) {
   const home = mkdtempSync(path.join(tmpdir(), "arcadia-agent-setup-"));
