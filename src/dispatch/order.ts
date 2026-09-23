@@ -10,7 +10,17 @@ export interface ActionOrderState {
 export type ActionOrderOperation =
   | { kind: "move"; move: string; placement: "top" | "before" | "after"; anchor: string | null }
   | { kind: "arrange"; order: string[] }
-  | { kind: "undo"; receiptId: string };
+  | { kind: "undo"; receiptId: string }
+  /**
+   * Freeze every currently-unpositioned approved Action into an explicit
+   * position, preserving the positions that already exist and appending the
+   * rest in the deterministic order they were already projected in.
+   *
+   * Decision 0048 limits this to a one-time, previewed, reversible seed for
+   * legacy work that never received an explicit order. It deliberately never
+   * reads timestamps: after the seed, only an explicit move changes priority.
+   */
+  | { kind: "seed" };
 
 export interface ActionOrderReceipt {
   id: string;
@@ -105,8 +115,7 @@ export function arrangeActionOrder(db: Database.Database, input: MutationInput &
 export function undoActionOrder(db: Database.Database, input: MutationInput & {
   currentKeys: string[];
   receiptId: string;
-}): ActionOrderReceipt {
-  const operation: ActionOrderOperation = { kind: "undo", receiptId: input.receiptId };
+}): ActionOrderReceipt {  const operation: ActionOrderOperation = { kind: "undo", receiptId: input.receiptId };
   const replay = replayReceipt(db, input.requestId, operation);
   if (replay) return replay;
   const state = validateMutation(db, input);
@@ -125,6 +134,30 @@ export function undoActionOrder(db: Database.Database, input: MutationInput & {
     throw validationError("Action membership changed after this receipt; refresh and arrange the current queue instead.");
   }
   return finishMutation(db, state, before, target.before, operation, input);
+}
+
+/**
+ * One-time FIFO seed for approved Actions that never received an explicit
+ * position (Decision 0048).
+ *
+ * The seed is not a new priority model: it simply freezes the order the queue
+ * was already projecting, so that from then on only an explicit `move`,
+ * `before`, `after`, or `arrange` changes priority and timestamps never do. It
+ * preserves every existing explicit position and refuses when there is nothing
+ * left to seed, so re-running it cannot reorder already-ordered work.
+ */
+export function seedActionOrderFifo(db: Database.Database, input: MutationInput & {
+  currentKeys: string[];
+}): ActionOrderReceipt {
+  const operation: ActionOrderOperation = { kind: "seed" };
+  const replay = replayReceipt(db, input.requestId, operation);
+  if (replay) return replay;
+  const state = validateMutation(db, input);
+  const before = explicitOrder(input.currentKeys, state.positions);
+  if (before.every((key) => state.positions.has(key))) {
+    throw validationError("Every approved Action already has an explicit queue position; there is nothing to seed.");
+  }
+  return finishMutation(db, state, before, before, operation, input);
 }
 
 function validateMutation(db: Database.Database, input: MutationInput): ActionOrderState {

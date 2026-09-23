@@ -13,7 +13,6 @@ import { isDispatchable, resolveActionReadiness, resolveReadySet, type DispatchB
 import { discoverDocs } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
-import { nowIso } from "../utils/time.js";
 import { getSession, listActiveAgentSessions, resolveProjectTransition, type AgentSession } from "../sessions/index.js";
 import { loadActionOrder, loadLatestApplicableActionOrderReceipt, type ActionOrderReceipt } from "./order.js";
 
@@ -402,84 +401,102 @@ function inspectProject(
       return;
     }
 
-    for (const candidate of readySet.ready) {
-      if (candidate.actionId === activeSessionActionId) continue;
-      const action = activePlan?.actions.find((entry) => entry.id === candidate.actionId) ?? null;
-      const pointerAuthorized = dispatch.context?.action.id === candidate.actionId && isDispatchable(dispatch);
-      ready.push({
-        id: `ready:${project.id}:${candidate.actionId}`,
-        state: "ready",
-        attentionKind: null,
-        selected: pointerAuthorized,
-        pointerAuthorized,
-        projectId: project.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-        repositoryRoot: resolvedRoot,
-        planSlug: readySet.planSlug,
-        planPath: readySet.planPath,
-        actionId: candidate.actionId,
-        actionTitle: candidate.title,
-        responsibility: candidate.responsibility,
-        expectedArtifact: action?.expectedArtifact ?? null,
-        tokenImpact: readySet.planTokenImpact,
-        tokenBudget: readySet.planTokenBudget,
-        ...actionContext(projectDoc, activePlan, action),
-        status: "ready",
-        reason: pointerAuthorized
-          ? "The checked-in Project pointer authorizes this ready Action."
-          : "Action is ready but waiting_for_pointer; queue order alone does not authorize dispatch.",
-        nextAction: action?.nextAction ?? `Prepare the plan for ${candidate.title}.`,
-        blockers: [],
-        runId: null,
-        decisionId: null,
-        updatedAt: readySet.planPath ? project.updated_at : nowIso()
-      });
+    // Every approved Plan of this Project contributes to the one explicit
+    // queue (Decision 0048): an eligible Action in any active Plan can become
+    // the pointer when the active Plan ends, so the operator must be able to
+    // see, order, and reorder it here. Only the active Plan's current Action is
+    // ever pointer-authorized; the rest are `waiting_for_pointer` until the
+    // transition resolver activates their Plan.
+    const activePlans = discovered.docs.filter(
+      (doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.status === "active"
+    );
+    const readyIds = new Set<string>();
+    for (const plan of activePlans) {
+      for (const action of plan.actions) {
+        if (action.status === "done" || action.status === "blocked" || action.status === "deferred") continue;
+        if (action.id === activeSessionActionId) continue;
+        const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
+        const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
+        if (readiness.blockers.length > 0 || readiness.operatorQuestion !== null || !authorized) continue;
+        const pointerAuthorized = dispatch.context?.action.id === action.id && isDispatchable(dispatch);
+        readyIds.add(action.id);
+        ready.push({
+          id: `ready:${project.id}:${action.id}`,
+          state: "ready",
+          attentionKind: null,
+          selected: pointerAuthorized,
+          pointerAuthorized,
+          projectId: project.id,
+          projectName: project.name,
+          projectSlug: project.slug,
+          repositoryRoot: resolvedRoot,
+          planSlug: plan.slug,
+          planPath: plan.relativePath,
+          actionId: action.id,
+          actionTitle: action.title,
+          responsibility: action.responsibility,
+          expectedArtifact: action.expectedArtifact,
+          tokenImpact: plan.tokenImpact,
+          tokenBudget: plan.tokenBudget,
+          ...actionContext(projectDoc, plan, action),
+          status: "ready",
+          reason: pointerAuthorized
+            ? "The checked-in Project pointer authorizes this ready Action."
+            : "Action is ready but waiting_for_pointer; queue order alone does not authorize dispatch.",
+          nextAction: action.nextAction ?? `Prepare the plan for ${action.title}.`,
+          blockers: [],
+          runId: null,
+          decisionId: null,
+          updatedAt: project.updated_at
+        });
+      }
     }
 
-    const readyIds = new Set(readySet.ready.map((candidate) => candidate.actionId));
-    for (const action of activePlan?.actions.filter((candidate) => candidate.status !== "done") ?? []) {
-      if (readyIds.has(action.id) || action.id === activeSessionActionId) continue;
-      const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
-      const responsibilityReason = action.responsibility === "requires_review"
-        ? "Action requires operator review and remains ordered but ineligible."
-        : action.responsibility === "blocked"
-          ? "Action is externally blocked and remains ordered but ineligible."
-          : readiness.operatorQuestion
-            ? "Action has an open clarification question and remains ordered but ineligible."
-            : readiness.blockers[0]?.message ?? "Action is not yet eligible for dispatch.";
-      const nextAction = readiness.operatorQuestion
-        ? readiness.operatorQuestion
-        : readiness.blockers[0]?.remedy
-          ?? action.nextAction
-          ?? "Resolve the Action's eligibility before dispatching it.";
-      attention.push({
-        id: `action:${project.id}:${action.id}`,
-        state: "attention",
-        attentionKind: action.responsibility === "requires_review" || action.responsibility === "blocked" ? "responsibility" : "document",
-        selected: dispatch.context?.action.id === action.id,
-        pointerAuthorized: false,
-        projectId: project.id,
-        projectName: project.name,
-        projectSlug: project.slug,
-        repositoryRoot: resolvedRoot,
-        planSlug: activePlan?.slug ?? readySet.planSlug,
-        planPath: activePlan?.relativePath ?? readySet.planPath,
-        actionId: action.id,
-        actionTitle: action.title,
-        responsibility: action.responsibility,
-        expectedArtifact: action.expectedArtifact,
-        tokenImpact: activePlan?.tokenImpact ?? readySet.planTokenImpact,
-        tokenBudget: activePlan?.tokenBudget ?? readySet.planTokenBudget,
-        ...actionContext(projectDoc, activePlan, action),
-        status: action.status,
-        reason: responsibilityReason,
-        nextAction,
-        blockers: dedupeBlockers(readiness.blockers),
-        runId: null,
-        decisionId: null,
-        updatedAt: project.updated_at
-      });
+    for (const plan of activePlans) {
+      for (const action of plan.actions) {
+        if (action.status === "done") continue;
+        if (readyIds.has(action.id) || action.id === activeSessionActionId) continue;
+        const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
+        const responsibilityReason = action.responsibility === "requires_review"
+          ? "Action requires operator review and remains ordered but ineligible."
+          : action.responsibility === "blocked"
+            ? "Action is externally blocked and remains ordered but ineligible."
+            : readiness.operatorQuestion
+              ? "Action has an open clarification question and remains ordered but ineligible."
+              : readiness.blockers[0]?.message ?? "Action is not yet eligible for dispatch.";
+        const nextAction = readiness.operatorQuestion
+          ? readiness.operatorQuestion
+          : readiness.blockers[0]?.remedy
+            ?? action.nextAction
+            ?? "Resolve the Action's eligibility before dispatching it.";
+        attention.push({
+          id: `action:${project.id}:${action.id}`,
+          state: "attention",
+          attentionKind: action.responsibility === "requires_review" || action.responsibility === "blocked" ? "responsibility" : "document",
+          selected: dispatch.context?.action.id === action.id,
+          pointerAuthorized: false,
+          projectId: project.id,
+          projectName: project.name,
+          projectSlug: project.slug,
+          repositoryRoot: resolvedRoot,
+          planSlug: plan.slug,
+          planPath: plan.relativePath,
+          actionId: action.id,
+          actionTitle: action.title,
+          responsibility: action.responsibility,
+          expectedArtifact: action.expectedArtifact,
+          tokenImpact: plan.tokenImpact,
+          tokenBudget: plan.tokenBudget,
+          ...actionContext(projectDoc, plan, action),
+          status: action.status,
+          reason: responsibilityReason,
+          nextAction,
+          blockers: dedupeBlockers(readiness.blockers),
+          runId: null,
+          decisionId: null,
+          updatedAt: project.updated_at
+        });
+      }
     }
 
     if (!isDispatchable(dispatch)) {

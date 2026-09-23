@@ -13,6 +13,7 @@ import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./poli
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
 
@@ -259,7 +260,21 @@ function attemptProjectLaunch(
     return { attempted: false, outcome: "skipped", reason: `Scheduling is paused: ${paused}`, actionKey: null };
   }
 
-  const transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
+  let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
+  if (transition.kind === "activate" && transition.activation?.candidate) {
+    // Decision 0048: the active Plan cannot continue, but the explicit queue
+    // names exactly one approved Plan and Action. Activate it in this same tick
+    // and re-resolve, so production continues without an operator round trip.
+    const requestId = `worker-activate-${input.projectSlug}-${git(input.repoRoot, ["rev-parse", "HEAD"]).trim()}`;
+    try {
+      activateNextPlan(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, requestId, apply: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      input.log(`Plan activation failed for ${input.projectSlug}: ${message}`);
+      return { attempted: true, outcome: "failed", reason: `Plan activation failed: ${message}`, actionKey: null };
+    }
+    transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
+  }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }

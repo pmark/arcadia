@@ -11,6 +11,9 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { resolvePlanActivation } from "../dispatch/planActivation.js";
+import { loadActionOrder } from "../dispatch/order.js";
+import { activateNextPlan, type ActivateNextPlanResult } from "../dispatch/planActivationApply.js";
 import {
   SAFE_TASK_BRANCH,
   assertClean,
@@ -135,6 +138,8 @@ export interface GoCommandData {
   } | null;
   dispatch: DispatchResolution;
   dispatchable: boolean;
+  /** The cross-Plan activation this invocation performed (or would perform), if any. */
+  activation: ActivateNextPlanResult | null;
   transition: ProjectTransition;
   session: AgentSession | null;
   handoff: {
@@ -237,15 +242,48 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
   const projectRoot = integration === "already-integrated" ? (baseRecord?.path ?? sourceRecord.path) : sourceRecord.path;
   const projectSlug = resolveProjectSlug(projectRoot);
-  const sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+  let sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+  let activationResult: ActivateNextPlanResult | null = null;
   if (!isDispatchable(sourceDispatch)) {
-    throw validationError("The repository does not resolve exactly one dispatchable Arcadia action.", {
-      projectSlug,
-      blockers: sourceDispatch.blockers,
-      operatorQuestion: sourceDispatch.operatorQuestion,
-      currentAction: sourceDispatch.context?.action.id ?? null,
-      remedy: "Repair the governed pointer or answer its Decision before starting another coding-agent session."
-    });
+    // Decision 0048: when the active Plan is absent or complete, the explicit
+    // queue may determine exactly one approved Plan and Action that can
+    // continue. Apply that activation here, in the same operator invocation,
+    // rather than refusing and requiring a separate round trip.
+    const workspaceForActivation = options.workspace
+      ? resolveReadyWorkspace(options.workspace).workspacePath
+      : null;
+    const resolution = workspaceForActivation
+      ? withReadOnlyDatabase(workspaceForActivation, (db) =>
+          resolvePlanActivation({ repoRoot: projectRoot, projectSlug, positions: loadActionOrder(db).positions }))
+      : resolvePlanActivation({ repoRoot: projectRoot, projectSlug, positions: new Map() });
+    const activatable = (resolution.status === "candidate" || resolution.status === "unordered") && resolution.candidate !== null;
+    if (!activatable) {
+      throw validationError("The repository does not resolve exactly one dispatchable Arcadia action.", {
+        projectSlug,
+        blockers: sourceDispatch.blockers,
+        operatorQuestion: sourceDispatch.operatorQuestion,
+        currentAction: sourceDispatch.context?.action.id ?? null,
+        activation: resolution.status,
+        remedy: "Repair the governed pointer or answer its Decision before starting another coding-agent session."
+      });
+    }
+    if (options.apply && options.agent) {
+      if (!workspaceForActivation) {
+        throw validationError("Plan activation needs a resolvable Arcadia workspace.", { projectSlug });
+      }
+      const baseId = `go-activate-${projectSlug}-${git(projectRoot, ["rev-parse", "HEAD"]).trim()}`;
+      activationResult = withDatabase(workspaceForActivation, (db) =>
+        activateNextPlan(db, { repoRoot: projectRoot, projectSlug, requestId: baseId, apply: true }));
+      sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+      if (!isDispatchable(sourceDispatch)) {
+        throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
+          projectSlug,
+          actionKey: activationResult.activation?.actionKey ?? resolution.candidate?.actionKey ?? null,
+          blockers: sourceDispatch.blockers,
+          operatorQuestion: sourceDispatch.operatorQuestion
+        });
+      }
+    }
   }
 
   let sourceWorktreeRemoved = false;
@@ -536,6 +574,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       modelResolution,
       dispatch,
       dispatchable: isDispatchable(dispatch),
+      activation: activationResult,
       transition,
       session,
       handoff: {
