@@ -4,7 +4,7 @@ type: decision
 id: "0065"
 slug: decide-where-the-long-lived-claude-code-token-from-claude-setup-token-that
 project: arcadia
-status: open
+status: approved
 question: Decide where the long-lived Claude Code token (from claude setup-token) that managed Sessions receive as CLAUDE_CODE_OAUTH_TOKEN is stored and how the worker reads it.
 gap_type: missing-decision
 recommendation: Owner-only file in the workspace config
@@ -21,6 +21,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-23
+answer: Owner-only file in the workspace config
+decided: 2026-09-23
 ---
 
 # Decision 0065: Decide where the long-lived Claude Code token (from claude setup-token) that managed Sessions receive as CLAUDE_CODE_OAUTH_TOKEN is stored and how the worker reads it.
