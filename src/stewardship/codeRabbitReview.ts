@@ -250,17 +250,21 @@ export function declineCodeRabbitFinding(repo: string, threadId: string, reason:
  * `repo` (the child process's `cwd`) is validated first: a missing or
  * non-directory `cwd` also makes `execFileSync` throw ENOENT, and reporting
  * that as "gh is not installed" would misdirect a caller whose repository
- * path is simply wrong. Validating up front means the ENOENT this function
- * catches from `execFileSync` itself can only be the binary.
+ * path is simply wrong. The upfront check handles the common case; `repo`
+ * is checked again inside the ENOENT branch below to close the (much
+ * smaller) window where it is removed between that check and the spawn.
  */
 function runGh(repo: string, args: string[], options?: { maxBuffer?: number }): string {
-  if (!existsSync(repo) || !statSync(repo).isDirectory()) {
+  if (!isExistingDirectory(repo)) {
     throw validationError("The repository path does not exist.", { path: repo });
   }
   try {
     return execFileSync("gh", args, { cwd: repo, encoding: "utf8", maxBuffer: options?.maxBuffer });
   } catch (error) {
     if (isEnoent(error)) {
+      if (!isExistingDirectory(repo)) {
+        throw validationError("The repository path does not exist.", { path: repo, cause: (error as Error).message });
+      }
       throw validationError(
         "The `gh` CLI is not installed or not on PATH, so this command cannot run.",
         {
@@ -275,6 +279,10 @@ function runGh(repo: string, args: string[], options?: { maxBuffer?: number }): 
 
 function isEnoent(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ENOENT";
+}
+
+function isExistingDirectory(repo: string): boolean {
+  return existsSync(repo) && statSync(repo).isDirectory();
 }
 
 interface PullState {

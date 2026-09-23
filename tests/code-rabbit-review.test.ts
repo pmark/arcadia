@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { condense, decide, declineCodeRabbitFinding, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
 
@@ -180,5 +183,28 @@ describe("coderabbit loop without a `gh` binary (Issue #517)", () => {
     expect(() => declineCodeRabbitFinding("/no/such/repository/path", "thread1", "not applicable")).toThrowError(
       expect.objectContaining({ message: "The repository path does not exist." })
     );
+  });
+
+  it("still reports a missing repository path when it is removed between the up-front check and the spawn", async () => {
+    // The race CodeRabbit flagged on PR #519: repo exists when runGh's
+    // up-front check runs, then disappears before execFileSync starts.
+    const repo = mkdtempSync(path.join(tmpdir(), "code-rabbit-review-race-"));
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync: () => {
+        rmSync(repo, { recursive: true, force: true });
+        const error = new Error("spawnSync gh ENOENT") as NodeJS.ErrnoException;
+        error.code = "ENOENT";
+        throw error;
+      }
+    }));
+    const { declineCodeRabbitFinding: declineWithDeletedRepo } = await import("../src/stewardship/codeRabbitReview.js");
+
+    expect(() => declineWithDeletedRepo(repo, "thread1", "not applicable")).toThrowError(
+      expect.objectContaining({ message: "The repository path does not exist." })
+    );
+
+    vi.doUnmock("node:child_process");
+    vi.resetModules();
   });
 });
