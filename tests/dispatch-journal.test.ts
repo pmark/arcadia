@@ -408,6 +408,28 @@ describe("arcadia next Back Burner interruption", () => {
   });
 });
 
+describe("arcadia next Constitution handoff", () => {
+  it("carries only a reference in data and embeds the text exactly once in the brief", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    writeDoc(repo, "CONSTITUTION.md", "# Constitution\n\n- Capability never grants authority.\n");
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const result = runNextCommand({ workspace, project: "demo" });
+    expect(result.data.context?.constitution).toMatchObject({ path: "CONSTITUTION.md" });
+    expect(JSON.stringify(result.data)).not.toContain("Capability never grants authority");
+    const brief = renderNextSuccess(result).join("\n");
+    expect(brief).toMatch(/Standing constraints \(CONSTITUTION\.md, sha256 [0-9a-f]{12}\)/);
+    expect(brief.split("Capability never grants authority").length - 1).toBe(1);
+
+    // A Constitution changed between resolution and rendering never renders.
+    writeDoc(repo, "CONSTITUTION.md", "# Constitution\n\n- Anything goes.\n");
+    expect(() => renderNextSuccess(result)).toThrow(/CONSTITUTION\.md changed after this handoff pinned it/);
+  });
+});
+
 describe("dispatch journal", () => {
   it("tallies blocked resolutions by field, most frequent first", () => {
     const workspace = path.join(scratch(), "ws");

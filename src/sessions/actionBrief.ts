@@ -1,6 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
-import { readStandingConstraints } from "../docs/dispatch.js";
+import { constitutionReference, loadConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import type { SessionAgent } from "./index.js";
 
@@ -27,6 +28,12 @@ export interface ActionBriefInput {
   worktreePath: string;
   branch: string;
   agent: SessionAgent;
+  /**
+   * The Session's recorded base revision. The Constitution committed there is
+   * the contract the Session was granted; a worktree whose CONSTITUTION.md no
+   * longer matches it cannot launch.
+   */
+  baseRevision: string;
 }
 
 /**
@@ -64,11 +71,15 @@ export function renderActionBrief(input: ActionBriefInput): string {
     );
   }
 
-  const constitution = readStandingConstraints(input.repoRoot);
-  if (constitution.blocker) {
+  const pinned = pinnedConstitution(input);
+  let constraints: string[];
+  try {
+    constraints = loadConstitution(input.repoRoot, pinned);
+  } catch (error) {
     throw validationError(
-      `A managed-production Session cannot launch: ${constitution.blocker.message}`,
-      { planSlug: input.planSlug, actionId: input.actionId, relativePath: constitution.blocker.relativePath }
+      `A managed-production Session cannot launch: ${(error as Error).message} ` +
+        `The Constitution is pinned to base revision ${input.baseRevision}.`,
+      { planSlug: input.planSlug, actionId: input.actionId, relativePath: "CONSTITUTION.md", baseRevision: input.baseRevision }
     );
   }
 
@@ -91,8 +102,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
     "branches, or edit the Project pointer; those remain operator gates."
   ];
-  if (constitution.constraints.length > 0) {
-    lines.push("", "The repository's CONSTITUTION.md also binds this action:", "", ...constitution.constraints);
+  if (pinned) {
+    lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }
   lines.push(
     "",
@@ -103,6 +114,26 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "     `met` evidence entry per acceptance criterion above, verbatim and in order."
   );
   return lines.join("\n");
+}
+
+/** The Constitution committed at the Session's base revision, or null when that revision has none. */
+function pinnedConstitution(input: ActionBriefInput): ConstitutionReference | null {
+  const git = (args: string[]) => execFileSync("git", ["-C", input.repoRoot, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  try {
+    git(["cat-file", "-e", `${input.baseRevision}^{commit}`]);
+  } catch {
+    throw validationError(
+      `A managed-production Session cannot launch: base revision ${input.baseRevision} is not in repository ${input.repoRoot}, ` +
+        "so the Constitution it was granted under cannot be verified.",
+      { planSlug: input.planSlug, actionId: input.actionId, baseRevision: input.baseRevision }
+    );
+  }
+  try {
+    git(["cat-file", "-e", `${input.baseRevision}:CONSTITUTION.md`]);
+  } catch {
+    return null;
+  }
+  return constitutionReference(git(["show", `${input.baseRevision}:CONSTITUTION.md`]));
 }
 
 function numbered(values: string[]): string[] {

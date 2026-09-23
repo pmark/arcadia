@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { isDispatchable, resolveDispatch, resolveReadySet } from "../src/docs/dispatch.js";
+import { isDispatchable, loadConstitution, resolveDispatch, resolveReadySet } from "../src/docs/dispatch.js";
 
 const temporary: string[] = [];
 
@@ -752,41 +753,40 @@ describe("ready set (compute-ready-set)", () => {
 });
 
 describe("standing constraints", () => {
-  it("carries the Constitution verbatim, minus its title", () => {
+  const text = "# Arcadia Constitution\n\n## Authority\n\n- Capability never grants authority.\n";
+
+  it("carries a reference and content fingerprint, never the Constitution text", () => {
     const root = repo();
     write(root, "PROJECT.md", projectDoc());
     write(root, "docs/plans/main-plan.md", planDoc());
-    write(
-      root,
-      "CONSTITUTION.md",
-      "# Arcadia Constitution\n\n- Approval boundaries are hard stops.\n- Deterministic progress, not cleverness.\n"
-    );
+    write(root, "CONSTITUTION.md", text);
 
     const resolution = resolveDispatch(root, "demo");
 
-    expect(resolution.context?.standingConstraints).toEqual([
-      "- Approval boundaries are hard stops.",
-      "- Deterministic progress, not cleverness."
-    ]);
+    expect(resolution.context?.constitution).toEqual({
+      path: "CONSTITUTION.md",
+      sha256: createHash("sha256").update(text).digest("hex")
+    });
+    expect(JSON.stringify(resolution)).not.toContain("Capability never grants authority");
   });
 
-  it("preserves section headings so a grouped Constitution survives intact", () => {
+  it("loads the text, minus its title, only while it matches the pinned fingerprint", () => {
     const root = repo();
     write(root, "PROJECT.md", projectDoc());
     write(root, "docs/plans/main-plan.md", planDoc());
-    write(
-      root,
-      "CONSTITUTION.md",
-      "# Arcadia Constitution\n\n## Authority\n\n- Capability never grants authority.\n"
-    );
+    write(root, "CONSTITUTION.md", text);
+    const pinned = resolveDispatch(root, "demo").context!.constitution;
 
-    const resolution = resolveDispatch(root, "demo");
+    expect(loadConstitution(root, pinned)).toEqual(["## Authority", "", "- Capability never grants authority."]);
 
-    expect(resolution.context?.standingConstraints).toEqual([
-      "## Authority",
-      "",
-      "- Capability never grants authority."
-    ]);
+    // Drift after the pin -- weakened, removed, or newly adopted -- must not
+    // render a brief under a contract other than the one granted.
+    write(root, "CONSTITUTION.md", "# Arcadia Constitution\n\n- Anything goes.\n");
+    expect(() => loadConstitution(root, pinned)).toThrow(/CONSTITUTION\.md changed after this handoff pinned it/);
+    rmSync(path.join(root, "CONSTITUTION.md"));
+    expect(() => loadConstitution(root, pinned)).toThrow(/changed after this handoff pinned it/);
+    write(root, "CONSTITUTION.md", text);
+    expect(() => loadConstitution(root, null)).toThrow(/changed after this handoff pinned it/);
   });
 
   it("does not block dispatch when a repository has no Constitution", () => {
@@ -796,7 +796,8 @@ describe("standing constraints", () => {
 
     const resolution = resolveDispatch(root, "demo");
 
-    expect(resolution.context?.standingConstraints).toEqual([]);
+    expect(resolution.context?.constitution).toBeNull();
+    expect(loadConstitution(root, null)).toEqual([]);
     expect(resolution.blockers).toEqual([]);
     expect(isDispatchable(resolution)).toBe(true);
   });
@@ -817,6 +818,7 @@ describe("standing constraints", () => {
     const blocker = resolution.blockers.find((entry) => entry.relativePath === "CONSTITUTION.md");
     expect(blocker?.message).toContain("could not be read");
     expect(blocker?.remedy).toContain("readable UTF-8 file");
-    expect(resolution.context?.standingConstraints).toEqual([]);
+    expect(resolution.context?.constitution).toBeNull();
+    expect(() => loadConstitution(root, null)).toThrow(/could not be read/);
   });
 });
