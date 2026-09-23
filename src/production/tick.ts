@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectMetadata } from "../db/repositories.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
@@ -43,6 +44,8 @@ export interface ManagedProductionTickOptions {
   capacityObservation?: ProviderCapacityObservation;
   /** Test-only override for where a newly launched agent worktree is created. */
   agentWorktreeRoot?: string;
+  /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
+  providerSignIn?: (provider: string) => ProviderSignInStatus | null;
   /**
    * Re-stamp the preservation transport heartbeat between per-Project steps.
    * The tick blocks the event loop for minutes, so the worker's own 5s timer
@@ -110,6 +113,25 @@ export function ensureProductionTickTables(db: Database.Database): void {
       repository_path TEXT NOT NULL,
       base_branch TEXT NOT NULL,
       observed_sha TEXT NOT NULL,
+      observed_at TEXT NOT NULL
+    );
+  `);
+  ensureProductionLaunchBlockersTable(db);
+}
+
+/**
+ * A `arcadia production status` read runs on a read-only connection and
+ * cannot create a missing table itself, so this is also wired into
+ * `applyMigrations` (unlike the two ad hoc tables above, which only their own
+ * write paths touch) -- a fresh workspace has it before the worker ever ticks.
+ */
+export function ensureProductionLaunchBlockersTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS production_launch_blockers (
+      project_slug TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      action_key TEXT,
       observed_at TEXT NOT NULL
     );
   `);
@@ -374,9 +396,11 @@ function attemptProjectLaunch(
       now: input.now,
       tmux: input.tmux,
       capacityObservation: input.options.capacityObservation,
-      agentWorktreeRoot: input.options.agentWorktreeRoot
+      agentWorktreeRoot: input.options.agentWorktreeRoot,
+      providerSignIn: input.options.providerSignIn
     });
     resetRepairAttempts(db, actionKey);
+    clearLaunchBlocker(db, input.projectSlug);
     input.log(`${result.reused ? "Reused" : "Launched"} Session ${result.session.id} for ${actionKey} under the standing production policy.`);
     return {
       attempted: true,
@@ -390,7 +414,18 @@ function attemptProjectLaunch(
     // a repair-worthy failure. Anything else is a real defect in preparing or
     // spawning the Session and counts against the finite repair budget.
     if (error instanceof ArcadiaError && error.details?.conflict) {
-      const code = typeof error.details?.code === "string" ? ` [${error.details.code}]` : "";
+      const rawCode = typeof error.details?.code === "string" ? error.details.code : null;
+      // A signed-out provider is a durable Project launch blocker -- unlike
+      // capacity/Off/stale-preview/lease conflicts, it will not resolve on its
+      // own the next time this tick runs, so it is worth surfacing in
+      // `arcadia production status` rather than only this log line. Any other
+      // conflict code supersedes and clears a stale sign-in blocker.
+      if (rawCode === "provider_not_signed_in") {
+        recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
+      } else {
+        clearLaunchBlocker(db, input.projectSlug);
+      }
+      const code = rawCode ? ` [${rawCode}]` : "";
       input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
@@ -544,6 +579,67 @@ export function listRecentBaseBranchAdvances(db: Database.Database, limit = 10):
     });
   }
   return records;
+}
+
+export interface LaunchBlockerRecord {
+  projectSlug: string;
+  code: string;
+  reason: string;
+  actionKey: string | null;
+  observedAt: string;
+}
+
+/**
+ * Persist why `projectSlug` is not launching right now, so `arcadia
+ * production status` can show the Project launch blocker instead of it
+ * existing only as a line in the worker log. Overwrites any prior blocker for
+ * the same Project: only the current reason is durable, not a history.
+ */
+function recordLaunchBlocker(
+  db: Database.Database,
+  input: { projectSlug: string; code: string; reason: string; actionKey: string | null; at: Date }
+): void {
+  ensureProductionLaunchBlockersTable(db);
+  db.prepare(
+    `INSERT INTO production_launch_blockers (project_slug, code, reason, action_key, observed_at)
+       VALUES (@project_slug, @code, @reason, @action_key, @observed_at)
+     ON CONFLICT(project_slug) DO UPDATE SET
+       code = @code, reason = @reason, action_key = @action_key, observed_at = @observed_at`
+  ).run({
+    project_slug: input.projectSlug,
+    code: input.code,
+    reason: input.reason,
+    action_key: input.actionKey,
+    observed_at: input.at.toISOString()
+  });
+}
+
+/** Clears a Project's recorded launch blocker once it stops applying. */
+function clearLaunchBlocker(db: Database.Database, projectSlug: string): void {
+  ensureProductionLaunchBlockersTable(db);
+  db.prepare("DELETE FROM production_launch_blockers WHERE project_slug = ?").run(projectSlug);
+}
+
+/**
+ * Read-only projection of every Project's current launch blocker, for
+ * `arcadia production status`. A Project absent here is not currently
+ * refused for a durable reason -- it may simply not have been considered yet.
+ */
+export function listLaunchBlockers(db: Database.Database): LaunchBlockerRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT project_slug, code, reason, action_key, observed_at
+         FROM production_launch_blockers
+        ORDER BY observed_at DESC`
+    )
+    .all() as Array<{ project_slug: string; code: string; reason: string; action_key: string | null; observed_at: string }>;
+  return rows.map((row) => ({
+    projectSlug: row.project_slug,
+    code: row.code,
+    reason: row.reason,
+    actionKey: row.action_key,
+    observedAt: row.observed_at
+  }));
 }
 
 function recordEvent(db: Database.Database, input: { eventType: string; projectId: string | null; payload: unknown; at: string }): void {

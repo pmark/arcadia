@@ -27,8 +27,10 @@ import {
   type ProductionTransitionResult
 } from "../production/policy.js";
 import {
+  listLaunchBlockers,
   listRecentBaseBranchAdvances,
-  type BaseBranchAdvanceRecord
+  type BaseBranchAdvanceRecord,
+  type LaunchBlockerRecord
 } from "../production/tick.js";
 
 export interface ProductionStatusOptions {
@@ -69,6 +71,8 @@ export interface ProductionStatusData {
   admissions: AdmissionReceipt[];
   /** Recent base-branch advances observed by the tick, newest first. */
   baseBranchAdvances: BaseBranchAdvanceRecord[];
+  /** Every Project currently refused with a durable, non-transient launch blocker (e.g. a signed-out provider). */
+  launchBlockers: LaunchBlockerRecord[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
@@ -98,6 +102,7 @@ export function runProductionStatusCommand(
       liveAdmissions: live,
       admissions,
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
+      launchBlockers: listLaunchBlockers(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES
     };
@@ -281,6 +286,14 @@ export function renderProductionStatusSuccess(
       lines.push(
         `    ${advance.projectSlug} ${advance.baseBranch} ${from} → ${advance.newSha.slice(0, 12)} at ${advance.observedAt}`
       );
+    }
+  }
+
+  const blockers = response.data.launchBlockers;
+  if (blockers.length > 0) {
+    lines.push(`  Launch blocked (${blockers.length}):`);
+    for (const blocker of blockers) {
+      lines.push(`    ${blocker.projectSlug} [${blocker.code}] ${blocker.reason} (since ${blocker.observedAt})`);
     }
   }
 

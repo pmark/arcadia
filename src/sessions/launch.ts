@@ -1,7 +1,9 @@
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { providerLabel } from "../codingAgents/adapters.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
@@ -54,6 +56,8 @@ export interface GuardedLaunchInput {
   agentWorktreeRoot?: string;
   /** Test-only override for the standing-policy provider capacity observation. */
   capacityObservation?: ProviderCapacityObservation;
+  /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
+  providerSignIn?: (provider: string) => ProviderSignInStatus | null;
   now?: Date;
   tmux?: TmuxAdapter;
   testHooks?: {
@@ -161,6 +165,18 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       { conflict: true }
     );
   }
+  // Checked from this worker process's own context, before issueAdmission
+  // reserves a concurrency slot and before any worktree or lease is created:
+  // a signed-out provider must take no admission and no lease, so the next
+  // tick can retry it for free once sign-in is restored.
+  const signIn = (input.providerSignIn ?? checkProviderSignIn)(preview.selection.provider);
+  if (signIn && !signIn.signedIn) {
+    throw validationError(
+      `Provider "${providerLabel(preview.selection.provider)}" is not signed in for this worker. ${signIn.remedy}`,
+      { code: "provider_not_signed_in", conflict: true, provider: preview.selection.provider }
+    );
+  }
+
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
 

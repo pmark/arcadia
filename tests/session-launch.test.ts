@@ -74,6 +74,41 @@ describe("launchGuardedHostSession", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
+  it("launches normally when the selected provider's sign-in check reports it signed in", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const signIn = () => ({ signedIn: true, remedy: "unused" });
+
+    const result = doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, signIn);
+    expect(result.reused).toBe(false);
+    expect(result.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses to launch a signed-out provider before reserving admission, a worktree, or the repository lease", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const signIn = (provider: string) => ({ signedIn: false, remedy: `Sign in to ${provider} on this worker.` });
+
+    let caught: unknown;
+    try {
+      doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, signIn);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ArcadiaError);
+    const error = caught as ArcadiaError;
+    expect(error.message).toContain("Claude Code");
+    expect(error.message).toContain("is not signed in for this worker");
+    expect(error.message).toContain("Sign in to claude-code-cli on this worker.");
+    expect(error.details).toMatchObject({ code: "provider_not_signed_in", conflict: true, provider: "claude-code-cli" });
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
   it("launches the packet-selected opencode adapter headlessly with its reasoning variant", () => {
     const fixture = preparedFixture({
       provider: "opencode-cli",
@@ -743,7 +778,8 @@ function doLaunch(
   tmux: FakeTmux,
   previewFingerprint: string,
   requestId = "req-1",
-  worktreeSuffix?: string
+  worktreeSuffix?: string,
+  providerSignIn?: (provider: string) => { signedIn: boolean; remedy: string } | null
 ): GuardedLaunchResult {
   return withDatabase(fixture.workspace, (db) =>
     launchGuardedHostSession({
@@ -757,7 +793,8 @@ function doLaunch(
       adapters,
       now: fixture.now,
       tmux,
-      agentWorktreeRoot: path.join(fixture.root, worktreeSuffix ?? requestId)
+      agentWorktreeRoot: path.join(fixture.root, worktreeSuffix ?? requestId),
+      providerSignIn
     })
   );
 }
