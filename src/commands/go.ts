@@ -403,6 +403,24 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     // is abandoned so a lost race cannot leave `dispatch` describing an Action
     // this call did not get.
     const pointerDispatch = dispatch;
+    // The checkout the queue-walk fallback re-resolves candidate Actions from.
+    // `dispatch` above was resolved before Git cleanup and holds its result, but
+    // the walk reads documents *after* it -- and when the base branch is checked
+    // out nowhere, the source worktree those documents were read from has just
+    // been removed. A detached scratch checkout of the base branch is then the
+    // only surviving copy of them, so create one lazily (only when the fallback
+    // would otherwise have nothing to read) and remove it before returning, the
+    // same pattern `validateReconciledDispatch` already uses.
+    const scratchDispatch: { checkout: { root: string; path: string } | null } = { checkout: null };
+    const fallbackDispatchRoot = (): string => {
+      if (existsSync(dispatchRoot)) return dispatchRoot;
+      if (scratchDispatch.checkout) return scratchDispatch.checkout.path;
+      const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-fallback-"));
+      const checkoutPath = path.join(root, "checkout");
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkoutPath, baseBranch]);
+      scratchDispatch.checkout = { root, path: checkoutPath };
+      return checkoutPath;
+    };
     try {
       nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
         // The pointer's Action first, always. Only when it is already held by a
@@ -482,7 +500,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           // its readiness from the configured checkout, which is not necessarily
           // the checkout this handoff dispatches from.
           if (attemptActionId !== actionId) {
-            const fallbackDispatch = resolveDispatch(dispatchRoot, projectSlug, { actionId: attemptActionId });
+            const fallbackDispatch = resolveDispatch(fallbackDispatchRoot(), projectSlug, { actionId: attemptActionId });
             if (!isDispatchable(fallbackDispatch)) continue;
             dispatch = fallbackDispatch;
             queueFallback = {
@@ -551,6 +569,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
       throw error;
+    } finally {
+      if (scratchDispatch.checkout) {
+        tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", scratchDispatch.checkout.path]);
+        rmSync(scratchDispatch.checkout.root, { recursive: true, force: true });
+      }
     }
 
     if (options.launch && workspacePath) {

@@ -609,7 +609,13 @@ describe("Agent Ask complete — the settling worktree's own Action claim", () =
   }
 });
 
-const CLAIM_NOW = new Date("2026-09-22T04:48:04.586Z");
+/**
+ * Claims carry a 24-hour TTL, and the production code that reads one back --
+ * `settleAgentAsk`, `runAdvanceCommand` -- looks it up against the real clock.
+ * A fixed past instant would make these tests pass today and fail tomorrow, so
+ * the claim clock is the real one.
+ */
+const CLAIM_NOW = new Date();
 
 function fixture(options: {
   secondDependsOnFirst?: boolean;

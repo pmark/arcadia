@@ -393,7 +393,9 @@ describe("Agent Ask settlement", () => {
     const { workspace, repo } = fixture();
     const candidate = path.join(path.dirname(repo), "candidate-project-update");
     execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-project-update", candidate], { cwd: repo });
-    const now = new Date("2026-09-22T04:48:04.586Z");
+    // Real clock: the claim's 24-hour TTL is read back against it by
+    // `settleAgentAsk`, so a fixed past instant would expire this test.
+    const now = new Date();
     withDatabase(workspace, (db) => reserveAgentWorktree(db, {
       repositoryPath: repo, worktreePath: candidate, branch: "claude/candidate-project-update",
       now, project: "demo", actionId: "first"

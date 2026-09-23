@@ -243,6 +243,12 @@ export function settleAgentAsk(db: Database.Database, input: {
   // Verified, and released when the Action it names is done, inside the same
   // transaction as this settlement's document writes -- never as a check before
   // it, which would leave exactly the window the generation exists to close.
+  //
+  // Set for *every* accepted settlement that writes, not only the two intents
+  // that resolve or retarget the pointer: `outcome`, `milestone` and
+  // `project_update` all write the same PROJECT.md fields through the same
+  // helpers, so fencing only one of them would leave a superseded worktree free
+  // to write the same state by naming a different intent.
   let claimFence: (ActionClaimFence & { release?: boolean }) | null = null;
   const queue = buildAgentQueue(db);
   if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
@@ -266,6 +272,9 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (input.disposition === "rejected") {
     effects.push("Preserved the proposal and created no Project or queue changes.");
   } else {
+    // A rejection writes nothing about the work -- it only archives the Ask
+    // file -- so it is not fenced; every accepted settlement is.
+    if (settlingClaim) claimFence = { ...settlingClaim };
     const discovered = discoverDocs(repoRoot);
     const projectDoc = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
     const plan = discovered.docs.find(
@@ -368,11 +377,6 @@ export function settleAgentAsk(db: Database.Database, input: {
       }
       case "project_update": {
         requireNoQueueOptions(input);
-        // Project-level state, written from a claimed worktree: nothing here
-        // resolves an Action, so the claim is not released -- but a worktree
-        // whose claim has since been superseded must not write Project state
-        // over the session that now holds the work.
-        if (settlingClaim) claimFence = { ...settlingClaim };
         if (targetRef === "outcome") {
           const before = readFileSync(projectPath, "utf8");
           fileMutations.push({ path: projectPath, before, after: replaceTopLevelField(before, "goal", proposal.normalized.desiredResult) });
@@ -669,7 +673,10 @@ export function settleAgentAsk(db: Database.Database, input: {
             }
           );
         }
-        if (settlingClaim) claimFence = { ...settlingClaim, release: true };
+        // Completion is the one settlement that resolves the claimed Action, so
+        // it is the one that releases the claim; every other intent leaves the
+        // worktree still holding its work.
+        if (claimFence) claimFence.release = true;
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
