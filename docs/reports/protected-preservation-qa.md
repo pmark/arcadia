@@ -412,3 +412,47 @@ Review follow-up round 2 (2026-09-23, PR #552):
   `ARCADIA_PRESERVATION_HOST_TEST=1`: 71 passed. Full `pnpm test`: 2052
   passed, 13 skipped, 0 failures. `pnpm build` and
   `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up round 3 (2026-09-23, PR #552, the CodeRabbit loop's final
+fix round before its cap):
+
+- CodeRabbit's third pass found round 2's own regex-based comma-list capture
+  silently stopped at an `as` alias inside a Python `import` list
+  (`import verifier as v, bypass` bound only `verifier.py`), that a
+  same-directory Python import resolving to a *package* (`helper/__init__.py`)
+  rather than a same-named module was never bound, and that `REQUIRE_PROBES`
+  omitted a native `.node` addon resolution. All three closed, the first two
+  with a deliberately narrower approach than another incremental regex patch:
+  rather than keep widening one fragile pattern, a bare Python `import` line
+  is now matched in full against a strict single-line grammar (a
+  comma-separated, alias-tolerant, dotted-name list with nothing else on the
+  line); a line that does not match that grammar exactly — a trailing
+  backslash continuation, any other construct — is **refused outright**
+  (`Cannot establish the Python import closure for ...`) rather than silently
+  partially bound. This is the fail-closed alternative CodeRabbit itself
+  offered ("reject any import statement the scanner cannot fully bind") and
+  it closes the whole class of comma/alias/continuation gaps at once instead
+  of chasing the next one a fourth time. Same-directory Python resolution now
+  always binds both `module.py` and `module/__init__.py` unconditionally, and
+  `REQUIRE_PROBES` gained `.node`/`/index.node`.
+  `tests/preservation-check-binding.test.ts` gained four more cases: an
+  aliased entry before a later comma now binds correctly, a backslash
+  continuation is refused rather than silently under-bound, a package
+  `__init__.py` binds and its rewrite is refused, and a native addon binds
+  and its rewrite is refused.
+- A transient failure in `tests/preservation-validation.test.ts`'s "refuses
+  worktree mutation during validation" during one `ARCADIA_PRESERVATION_HOST_TEST=1`
+  run was investigated rather than dismissed on sight, since it followed a
+  code change: it passed in isolation and in three repeated full-file runs
+  both before and after this round's diff, at the same duration either way
+  (~17-21s), and does not exercise any code path this round touched (the
+  fixture's declared check is JS, not Python, and its script content is
+  unchanged between base and candidate). Concluded host contention — this
+  environment runs several concurrent background `arcadia` worker processes
+  outside this session's control — not a regression, and not reproducible on
+  retry.
+- Re-validation: focused suite (7 files, including the four new cases) with
+  `ARCADIA_PRESERVATION_HOST_TEST=1`: 78 passed (three repeated full-file runs
+  of `preservation-validation.test.ts` alone, 12/12 each). Full `pnpm test`:
+  2056 passed, 13 skipped, 0 failures. `pnpm build` and
+  `pnpm --filter arcadia-dashboard build`: exit 0.

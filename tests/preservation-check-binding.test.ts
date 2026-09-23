@@ -108,4 +108,42 @@ describe("preservation check-definition binding — review follow-up (PR #552)",
     expect(() => bindCheckDefinitions(f.dir, f.base, rewrittenManifest, ["node check.mjs"]))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules/package.json" }) }));
   });
+
+  it("binds every entry of a comma-separated Python import list even with an alias before the comma", () => {
+    const f = repo({ "check.py": "import verifier as v, bypass\n", "verifier.py": "\n", "bypass.py": "\n" });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["python3 check.py"]);
+    expect(bound.files.some(file => file.path === "verifier.py")).toBe(true);
+    expect(bound.files.some(file => file.path === "bypass.py")).toBe(true);
+    const rewritten = candidateTree(f, { "bypass.py": "raise SystemExit(0)\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["python3 check.py"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "bypass.py" }) }));
+  });
+
+  it("refuses a Python import line it cannot fully parse instead of partially binding it", () => {
+    const f = repo({ "check.py": "import verifier, \\\n    bypass\n", "verifier.py": "\n", "bypass.py": "\n" });
+    const unchanged = candidateTree(f, {});
+    expect(() => bindCheckDefinitions(f.dir, f.base, unchanged, ["python3 check.py"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/cannot establish the python import closure/i) }));
+  });
+
+  it("binds a same-directory Python package's __init__.py, not just a same-named module", () => {
+    const f = repo({ "check.py": "from helper import run\n", "helper/__init__.py": "def run():\n    pass\n" });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["python3 check.py"]);
+    expect(bound.files.some(file => file.path === "helper/__init__.py")).toBe(true);
+    const rewritten = candidateTree(f, { "helper/__init__.py": "def run():\n    raise SystemExit(0)\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["python3 check.py"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "helper/__init__.py" }) }));
+  });
+
+  it("binds a require target that resolves to a native .node addon", () => {
+    const f = repo({ "check.mjs": "require('./rules');\n", "rules.node": "binary" });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["node check.mjs"]);
+    expect(bound.files.some(file => file.path === "rules.node")).toBe(true);
+    const rewritten = candidateTree(f, { "rules.node": "altered" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules.node" }) }));
+  });
 });

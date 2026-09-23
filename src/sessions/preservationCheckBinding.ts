@@ -16,18 +16,23 @@ import { validationError } from "../cli/errors.js";
  * a leading launcher wrapper (`env`, `sudo`, …) or a known interpreter, never
  * every path-shaped argument — and that script's static relative
  * `import`/`export from`/`import()`/`require()` closure for JS/TS (including
- * one level of directory-import `package.json` "main" resolution), or its
- * same-directory `import`/`from … import` closure, including a
- * comma-separated `import` list, for a directly invoked Python script, all
- * read from the trusted base. It does not cover data the check reads by
- * design (the candidate content it judges), a specifier computed at run
- * time, a dynamic or dotted-package Python import, a "main" chain more than
- * one `package.json` deep, interpreter configuration such as `package.json`
- * "type", or a declared command whose executed script this module cannot
- * identify at all (inline `-c` code, an unrecognized launcher, a bare system
- * command) — such a check runs exactly as before this binding existed.
- * Changing a check therefore needs the change landed on the base first, then
- * a fresh authorization. */
+ * a native `.node` addon and one level of directory-import `package.json`
+ * "main" resolution), or its same-directory `import`/`from … import` closure
+ * for a directly invoked Python script — including both a module and its
+ * same-named package (`x.py` or `x/__init__.py`), and every entry of a
+ * comma-separated, alias-tolerant `import` list — all read from the trusted
+ * base. A Python `import` line this scanner cannot fully parse as that
+ * supported shape (a line continuation, an unsupported construct) is
+ * rejected outright rather than partially bound. It does not cover data the
+ * check reads by design (the candidate content it judges), a specifier
+ * computed at run time, a dotted Python package import (`import os.path`,
+ * resolved by its own stdlib/installed leading segment, not a same-directory
+ * file), a "main" chain more than one `package.json` deep, interpreter
+ * configuration such as `package.json` "type", or a declared command whose
+ * executed script this module cannot identify at all (inline `-c` code, an
+ * unrecognized launcher, a bare system command) — such a check runs exactly
+ * as before this binding existed. Changing a check therefore needs the
+ * change landed on the base first, then a fresh authorization. */
 
 export const PRESERVATION_CHECK_MODIFIED_CODE = "validation_check_modified";
 
@@ -38,24 +43,30 @@ const SHELL_SEGMENT = /(?:&&|\|\||[;&|()`\n])/;
 const SCRIPT_EXTENSIONS = /\.(?:[cm]?[jt]sx?)$/;
 const PYTHON_EXTENSION = /\.py$/;
 // CommonJS/ESM resolution probes these for an extensionless `require("./x")`
-// or a directory import, in Node's own preference order.
-const REQUIRE_PROBES = ["", ".js", ".cjs", ".mjs", ".json", "/index.js", "/index.cjs", "/index.mjs", "/index.json"];
+// or a directory import, in Node's own preference order, including a native
+// addon (`.node`) a directory or bare specifier may resolve to.
+const REQUIRE_PROBES = ["", ".js", ".cjs", ".mjs", ".json", ".node",
+  "/index.js", "/index.cjs", "/index.mjs", "/index.json", "/index.node"];
 // Tolerates a single `/* ... */` comment between the call/keyword and the
 // specifier (`require(/* note */ "./judge.cjs")`), which a bare regex would
 // otherwise silently fail to match — silence here means an unbound helper.
 const RELATIVE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(?:\/\*[\s\S]*?\*\/\s*)?["'](\.{1,2}\/[^"'\n]+)["']/g;
-// `import x[, y, …]` / `from x import y`: a declared Python check always runs
-// as a direct script (`python3 check.py`), where Python puts the script's own
-// directory first on `sys.path` — a dotted relative import (`from .x import
-// y`) does not even work there ("attempted relative import with no known
-// parent package"), so an unqualified top-level name is the only form that
-// actually resolves against the importing file's directory. `import` accepts
-// a comma-separated list (`import verifier, bypass`); every entry is bound,
-// each stripped of an `as` alias and any dotted package suffix. A dotted
-// package name (`import os.path`) resolves to its own leading segment, which
-// is stdlib/installed, not a same-directory file, and the existence check
-// below drops it.
-const PYTHON_IMPORT = /^\s*(?:from\s+(\w+)\s+import\b|import\s+([\w.]+(?:\s*,\s*[\w.]+)*))/gm;
+// A declared Python check always runs as a direct script (`python3 check.py`),
+// where Python puts the script's own directory first on `sys.path` — a dotted
+// relative import (`from .x import y`) does not even work there ("attempted
+// relative import with no known parent package"), so an unqualified top-level
+// name is the only form that actually resolves against the importing file's
+// directory. `from x import y` needs only x (the names pulled from it do not
+// change which file is bound, regardless of how that line continues or
+// groups them, so it is always fully handled). A bare `import …` line is
+// matched in full and must be an exactly parseable comma list of dotted
+// names with optional `as` aliases — anything else (a trailing line
+// continuation, an unsupported construct) fails the full-line match and is
+// rejected below rather than partially bound.
+const PYTHON_FROM_IMPORT = /^\s*from\s+(\w+)\s+import\b/gm;
+const PYTHON_BARE_IMPORT_LINE = /^\s*import\s+.*$/gm;
+const PYTHON_BARE_IMPORT_SUPPORTED =
+  /^\s*import\s+(\w+(?:\.\w+)*(?:\s+as\s+\w+)?(?:\s*,\s*\w+(?:\.\w+)*(?:\s+as\s+\w+)?)*)\s*(?:#.*)?$/;
 
 export function bindCheckDefinitions(repository: string, baseRevision: string, candidateTree: string, commands: string[]): CheckDefinitionBinding {
   const base = blobs(repository, baseRevision);
@@ -69,12 +80,27 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (PYTHON_EXTENSION.test(file)) {
       const source = execFileSync("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       const dir = path.posix.dirname(file);
-      for (const match of source.matchAll(PYTHON_IMPORT)) {
-        if (match[1]) { visit(path.posix.join(dir, `${match[1]}.py`)); continue; }
-        if (!match[2]) continue;
-        for (const entry of match[2].split(",")) {
+      const visitPythonModule = (name: string) => {
+        // A same-directory import resolves to a plain module or, when that
+        // file is absent, a regular package whose __init__.py Python executes
+        // on import — bind both candidates unconditionally so a candidate
+        // cannot introduce or swap either form unnoticed.
+        visit(path.posix.join(dir, `${name}.py`));
+        visit(path.posix.join(dir, name, "__init__.py"));
+      };
+      for (const match of source.matchAll(PYTHON_FROM_IMPORT)) visitPythonModule(match[1]);
+      for (const match of source.matchAll(PYTHON_BARE_IMPORT_LINE)) {
+        const supported = PYTHON_BARE_IMPORT_SUPPORTED.exec(match[0]);
+        if (!supported) {
+          throw validationError(
+            `Cannot establish the Python import closure for \`${file}\`: the line \`${match[0].trim()}\` is not a plain, single-line, comma-separated import this binding can fully parse. ` +
+            "Declare a simpler self-contained import, or land the check change on the base branch first and prepare a fresh authorization.",
+            { code: PRESERVATION_CHECK_MODIFIED_CODE, path: file }
+          );
+        }
+        for (const entry of supported[1].split(",")) {
           const module = entry.split(/\bas\b/)[0].trim().split(".")[0].trim();
-          if (module) visit(path.posix.join(dir, `${module}.py`));
+          if (module) visitPythonModule(module);
         }
       }
       return;
