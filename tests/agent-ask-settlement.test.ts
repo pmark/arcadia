@@ -601,6 +601,30 @@ describe("Agent Ask settlement", () => {
     expect(content).toContain("gate_question: approval_boundary");
   });
 
+  it("recognizes an inflection of an approval-boundary word, not only its root form", () => {
+    // CodeRabbit review on PR #575: `merge\w*` does not match "merging" (the
+    // literal substring "merge" is not a prefix of "merging"), so an Ask
+    // about proceeding with a merge and no gate_question was wrongly refused
+    // instead of opening the required approval Decision.
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("merging-boundary", "decision", "Should we proceed with merging this PR?")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-merging-boundary",
+      disposition: "accepted", revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-merging-boundary",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    expect(applied.data.receipt.effects.join(" ")).toContain("gate: approval_boundary");
+    const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-proceed-with-merging-this-pr.md"), "utf8");
+    expect(content).toContain("gate_question: approval_boundary");
+  });
+
   it("amends an existing Action without changing its Responsibility or queue position", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({

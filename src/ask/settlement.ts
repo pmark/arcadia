@@ -1570,7 +1570,7 @@ function addMilestoneMutations(mutations: FileMutation[], projectPath: string, p
  * A `decision` Ask naming one of these always opens a Decision, regardless of
  * the filer's own gate-question triage.
  */
-const APPROVAL_BOUNDARY_PATTERN = /\b(merge\w*|deploy\w*|publish\w*|spend\w*|credentials?|production|messag\w*)\b/i;
+const APPROVAL_BOUNDARY_PATTERN = /\b(merg\w*|deploy\w*|publish\w*|spend\w*|credentials?|production|messag\w*)\b/i;
 
 /**
  * Which Constitution gate question justifies opening a Decision for a
