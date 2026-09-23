@@ -585,3 +585,10 @@ updated: 2026-09-23
 - **Result:** Every declared acceptance criterion was accepted as met: "`arcadia go` re-resolves the pointer Action from the current base branch before preparing or resuming its worktree, not only from the possibly-stale `projectRoot` checkout."; "When the current-base version of the pointer Action is `done`, or is no longer the `current_action`, `go` refuses or walks to the next eligible Action instead of preparing a duplicate candidate for already-completed work."; "A regression test starts from an older checkout whose pointer Action is already done on the base branch and asserts no new worktree or claim is created for it."; "`pnpm test` and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refresh-pointer-action-against-current-base-2026-09-23).
+
+## 2026-09-23 — Completed arcadia/prove-managed-production-fault-matrix
+
+- **Did:** Completed Action arcadia/prove-managed-production-fault-matrix from accepted evidence (Candidate d6aae22e64c43693cc923c035a4b7a21bc9f86a4).
+- **Result:** Every declared acceptance criterion was accepted as met: "The admission/launch, Off, capacity, and priority/authority race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings against the real policy and claim store with zero invariant violations, retaining the failing seed and timeline for any violation."; "The harness is shown to reject injected defects: disabling each guard it covers in turn makes the matrix fail with a named seed, and any guard it cannot catch is recorded as such."; "A single release evidence index maps every contract-20 invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure, with missing live evidence left unproven.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-managed-production-fault-matrix-2026-09-23).

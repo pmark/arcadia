@@ -750,7 +750,7 @@ actions:
     references: []
   - id: prove-managed-production-fault-matrix
     title: Prove the contract-20 fault-injection matrix and staged evidence bundle before unattended Flight Deck handoff.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prove contract 20's deterministic fault matrix for the policy and claim store boundaries, and publish the release evidence index.
