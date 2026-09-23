@@ -12,6 +12,9 @@ import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/conn
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { resolvePlanActivation } from "../dispatch/planActivation.js";
+import { loadActionOrder } from "../dispatch/order.js";
+import { activateNextPlan, type ActivateNextPlanResult } from "../dispatch/planActivationApply.js";
 import {
   SAFE_TASK_BRANCH,
   assertClean,
@@ -147,6 +150,8 @@ export interface GoCommandData {
    */
   queueFallback: { pointerActionId: string; actionId: string; reason: string } | null;
   dispatchable: boolean;
+  /** The cross-Plan activation this invocation performed (or would perform), if any. */
+  activation: ActivateNextPlanResult | null;
   transition: ProjectTransition;
   session: AgentSession | null;
   handoff: {
@@ -250,14 +255,52 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   const projectRoot = integration === "already-integrated" ? (baseRecord?.path ?? sourceRecord.path) : sourceRecord.path;
   const projectSlug = resolveProjectSlug(projectRoot);
   const sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+  let activationResult: ActivateNextPlanResult | null = null;
+  let workspaceForActivation: string | null = null;
+  // Decision 0048: when the active Plan is absent or complete, the explicit
+  // queue may determine exactly one approved Plan and Action that can continue.
+  // The activation itself is performed further below, after any source-branch
+  // reconciliation and against the governed base checkout — never on the agent
+  // task branch that is about to be retired. Applying it requires the same
+  // authority a launch does (`--apply` plus an explicit `--agent`); a preview
+  // reports the activation, and every other non-dispatchable state keeps the
+  // original fail-closed refusal.
+  let needsActivation = false;
   if (!isDispatchable(sourceDispatch)) {
-    throw validationError("The repository does not resolve exactly one dispatchable Arcadia action.", {
-      projectSlug,
-      blockers: sourceDispatch.blockers,
-      operatorQuestion: sourceDispatch.operatorQuestion,
-      currentAction: sourceDispatch.context?.action.id ?? null,
-      remedy: "Repair the governed pointer or answer its Decision before starting another coding-agent session."
-    });
+    // Resolve the workspace — including the default when none was passed —
+    // before touching Git, so a Plan-boundary application cannot reconcile and
+    // retire the source branch only to fail for want of a workspace mid-way.
+    if (options.workspace || (options.apply && options.agent)) {
+      workspaceForActivation = resolveReadyWorkspace(options.workspace).workspacePath;
+    }
+    const resolution = workspaceForActivation
+      ? withReadOnlyDatabase(workspaceForActivation, (db) =>
+          resolvePlanActivation({ repoRoot: projectRoot, projectSlug, positions: loadActionOrder(db).positions }))
+      : resolvePlanActivation({ repoRoot: projectRoot, projectSlug, positions: new Map() });
+    const activatable = (resolution.status === "candidate" || resolution.status === "unordered") && resolution.candidate !== null;
+    if (!activatable) {
+      throw validationError("The repository does not resolve exactly one dispatchable Arcadia action.", {
+        projectSlug,
+        blockers: sourceDispatch.blockers,
+        operatorQuestion: sourceDispatch.operatorQuestion,
+        currentAction: sourceDispatch.context?.action.id ?? null,
+        activation: resolution.status,
+        remedy: "Repair the governed pointer or answer its Decision before starting another coding-agent session."
+      });
+    }
+    if (options.apply && !options.agent) {
+      throw validationError("Activating the queued Plan requires --apply with an explicit --agent.", {
+        projectSlug,
+        actionKey: resolution.candidate?.actionKey ?? null,
+        remedy: "Re-run with an explicit --agent so the activated Action's worktree can be prepared, or preview without --apply."
+      });
+    }
+    needsActivation = options.apply === true && options.agent !== undefined;
+    if (!needsActivation && workspaceForActivation) {
+      // A preview reports the same non-mutating activation the apply would do.
+      activationResult = withDatabase(workspaceForActivation, (db) =>
+        activateNextPlan(db, { repoRoot: projectRoot, projectSlug, requestId: `go-preview-${projectSlug}`, apply: false }));
+    }
   }
 
   let sourceWorktreeRemoved = false;
@@ -284,7 +327,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
       const baseDispatchRoot = baseRecord?.path ?? sourceRecord.path;
       const baseDispatch = resolveDispatch(baseDispatchRoot, projectSlug);
-      if (!isDispatchable(baseDispatch)) {
+      if (!isDispatchable(baseDispatch) && !needsActivation) {
         throw validationError("The fast-forward completed, but dispatch validation failed from the base worktree.", {
           projectSlug,
           blockers: baseDispatch.blockers,
@@ -292,8 +335,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           remedy: "Keep the source worktree and repair the governed pointer from the base worktree."
         });
       }
-      dispatch = baseDispatch;
       dispatchRoot = baseDispatchRoot;
+      if (isDispatchable(baseDispatch)) dispatch = baseDispatch;
     }
 
     if (!baseRecord && samePath(worktrees[0].path, sourceRecord.path)) {
@@ -312,6 +355,46 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     deleteVerifiedSafeSourceBranch(controlWorktree, baseBranch, sourceBranch, sourceRecord.head);
     sourceBranchDeleted = true;
     git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
+  }
+
+  let temporaryActivationRoot: string | null = null;
+  try {
+  if (needsActivation) {
+    if (!workspaceForActivation) {
+      throw validationError("Plan activation needs a resolvable Arcadia workspace.", { projectSlug });
+    }
+    // Activate on a checkout of the governed base branch after reconciliation,
+    // never on the agent task branch: the activation commit must survive the
+    // source-branch retirement above, and the next worktree is prepared from
+    // this same base. When no registered worktree holds `baseBranch` (it was
+    // updated while unattached), pin a temporary worktree to it so the commit
+    // cannot land on an unrelated control branch. That worktree is retained
+    // until the launch and transition checks below have read it.
+    let activationRoot = baseRecord?.path ?? null;
+    if (!activationRoot) {
+      if (samePath(controlWorktree, sourceRecord.path)) {
+        // The integration block switched the primary checkout back to baseBranch.
+        activationRoot = controlWorktree;
+      } else {
+        temporaryActivationRoot = mkdtempSync(path.join(tmpdir(), "arcadia-activation-"));
+        git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-q", "--force", temporaryActivationRoot, baseBranch]);
+        activationRoot = temporaryActivationRoot;
+      }
+    }
+    const baseId = `go-activate-${projectSlug}-${git(activationRoot, ["rev-parse", "HEAD"]).trim()}`;
+    activationResult = withDatabase(workspaceForActivation, (db) =>
+      activateNextPlan(db, { repoRoot: activationRoot, projectSlug, requestId: baseId, apply: true }));
+    const activated = resolveDispatch(activationRoot, projectSlug);
+    if (!isDispatchable(activated)) {
+      throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
+        projectSlug,
+        actionKey: activationResult.activation?.actionKey ?? null,
+        blockers: activated.blockers,
+        operatorQuestion: activated.operatorQuestion
+      });
+    }
+    dispatch = activated;
+    dispatchRoot = activationRoot;
   }
 
   if (options.apply && options.agent) {
@@ -369,7 +452,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     const tmux = options.tmux ?? systemTmux;
     if (options.launch && workspacePath) {
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
-        repoRoot: controlWorktree,
+        repoRoot: dispatchRoot,
         projectSlug,
         db,
         tmux
@@ -617,27 +700,28 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
   let preservation: PreservationReadiness | undefined;
   if (nextWorktree && !options.launch) {
+    const preservationWorktree = nextWorktree.path;
     const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
     preservation = withDatabase(workspacePath, db => {
       try {
-        bindManualPreservation(db, { repository: controlWorktree, worktree: nextWorktree.path, baseBranch, projectSlug });
+        bindManualPreservation(db, { repository: controlWorktree, worktree: preservationWorktree, baseBranch, projectSlug });
       } catch (error) {
-        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
+        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: preservationWorktree, projectSlug });
         readiness.blockers.unshift({ code: "manual_binding_failed", reason: error instanceof Error ? error.message : String(error) });
         return { ...readiness, ready: false };
       }
-      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
+      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: preservationWorktree, projectSlug });
     });
   }
 
-  const transition = session && options.workspace
+  const transition = options.workspace
     ? withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) => resolveProjectTransition({
-        repoRoot: controlWorktree,
+        repoRoot: dispatchRoot,
         projectSlug,
         db,
         tmux: options.tmux ?? systemTmux
       }))
-    : resolveProjectTransition({ repoRoot: controlWorktree, projectSlug });
+    : resolveProjectTransition({ repoRoot: dispatchRoot, projectSlug });
 
   return createSuccess({
     command: "go",
@@ -660,6 +744,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       dispatch,
       queueFallback,
       dispatchable: isDispatchable(dispatch),
+      activation: activationResult,
       transition,
       session,
       handoff: {
@@ -673,6 +758,17 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       askRecoveries
     }
   });
+  } finally {
+    // The temporary activation worktree was only borrowed to hold `baseBranch`
+    // while the activation, launch and transition checks read it. Remove it
+    // once all of them have finished, whether they returned or threw. `tryGit`
+    // so a cleanup failure can never replace the error that is already
+    // propagating out of the try block.
+    if (temporaryActivationRoot) {
+      tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", temporaryActivationRoot]);
+      tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
+    }
+  }
 }
 
 /**

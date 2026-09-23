@@ -12,13 +12,28 @@ import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { resolvePlanActivation, type PlanActivationResolution } from "../dispatch/planActivation.js";
+import { loadActionOrder } from "../dispatch/order.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { createId } from "../utils/id.js";
 import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 
-export type ProjectTransitionKind = "launch" | "plan" | "decision" | "repair" | "reconcile" | "wait" | "complete_milestone";
+export type ProjectTransitionKind =
+  | "launch"
+  | "plan"
+  | "decision"
+  | "repair"
+  | "reconcile"
+  | "wait"
+  | "complete_milestone"
+  /**
+   * The active Plan can no longer continue, but the explicit queue determines
+   * exactly one approved Plan and Action that can. `activation` carries that
+   * selection; applying it is the caller's job (Decision 0048).
+   */
+  | "activate";
 
 export interface ProjectTransition {
   kind: ProjectTransitionKind;
@@ -26,6 +41,12 @@ export interface ProjectTransition {
   nextAction: string;
   sessionId: string | null;
   dispatch: DispatchResolution;
+  /**
+   * Present for a plan-boundary transition, so a caller can apply (or preview)
+   * the exact cross-Plan activation the queue selected instead of re-deriving
+   * it. Null/absent everywhere else.
+   */
+  activation?: PlanActivationResolution | null;
 }
 
 export interface AgentSession {
@@ -201,6 +222,51 @@ export function resolveProjectTransition(input: {
   if (isDispatchable(dispatch)) {
     return { kind: "launch", reason: "The selected Action is dispatchable.", nextAction: dispatch.context!.action.nextAction!, sessionId: null, dispatch };
   }
+  // A lease or run makes waiting/reconciling the only move, even when the
+  // pointer itself is at a Plan boundary: the earlier branch already returned
+  // for that case, so reaching here means no lease or competing Run is live.
+  if (input.db) {
+    const boundary = planBoundaryTransition(dispatch);
+    if (boundary) {
+      const activation = resolvePlanActivation({
+        repoRoot: input.repoRoot,
+        projectSlug: input.projectSlug,
+        positions: loadActionOrder(input.db).positions
+      });
+      if (activation.status === "candidate" || activation.status === "unordered") {
+        return {
+          kind: "activate",
+          reason: activation.reason,
+          nextAction: activation.candidate
+            ? `Activate Plan "${activation.candidate.planSlug}" and make ${activation.candidate.actionKey} current.`
+            : activation.reason,
+          sessionId: null,
+          dispatch,
+          activation
+        };
+      }
+      if (activation.status === "ambiguous") {
+        return {
+          kind: "decision",
+          reason: activation.reason,
+          nextAction: `Answer the ambiguity before advancing: ${activation.reason}`,
+          sessionId: null,
+          dispatch,
+          activation
+        };
+      }
+      if (!activation.remainingWork) {
+        return {
+          kind: "complete_milestone",
+          reason: "Every Action in this Project's active Plans is done, blocked, or deferred.",
+          nextAction: "Record the Project milestone as complete, or activate a new Plan.",
+          sessionId: null,
+          dispatch,
+          activation
+        };
+      }
+    }
+  }
   if (dispatch.operatorQuestion || dispatch.context?.action.responsibility === "requires_review") {
     return { kind: "decision", reason: dispatch.operatorQuestion ?? "The selected Action belongs to the operator.", nextAction: dispatch.operatorQuestion ?? dispatch.context?.action.nextAction ?? "Record the required Decision.", sessionId: null, dispatch };
   }
@@ -218,6 +284,28 @@ export function resolveProjectTransition(input: {
     sessionId: null,
     dispatch
   };
+}
+
+/**
+ * True when the dispatch resolution describes a Plan boundary the total
+ * transition resolver may cross (Decision 0048): the active Plan is absent,
+ * complete, or points at a done Action. Deliberately false for a genuine
+ * document defect — a parse error, an inactive Project, a missing PROJECT.md —
+ * so those still surface as a repair rather than silently activating a
+ * different Plan over them.
+ */
+function planBoundaryTransition(dispatch: DispatchResolution): boolean {
+  if (dispatch.context) {
+    return dispatch.context.action.status === "done" || dispatch.context.planStatus === "complete";
+  }
+  if (dispatch.blockers.length === 0) return false;
+  return dispatch.blockers.every((blocker) =>
+    blocker.field === "active_plan" ||
+    blocker.field === "current_action" ||
+    // A plan-level `status` blocker only crosses a *finished* Plan. A draft or
+    // superseded pointer is a document defect to repair, not a boundary.
+    (blocker.field === "status" && /(^|\/)docs\/plans\//.test(blocker.relativePath) && blocker.message.includes('is "complete"'))
+  );
 }
 
 export function prepareSession(input: {

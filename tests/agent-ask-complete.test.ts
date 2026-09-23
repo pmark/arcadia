@@ -116,6 +116,25 @@ describe("Agent Ask complete", () => {
     expect(project).toMatchObject({ currentAction: null });
   });
 
+  it("activates the Plan whose earliest eligible Action is highest in the explicit queue when the active Plan completes", () => {
+    const { workspace, repo, head } = fixture({ secondDone: true, withActiveSidePlan: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-cross-plan", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-cross-plan", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-cross-plan", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.effects.join(" ")).toContain("activated Plan side-plan");
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ activePlan: "side-plan", currentAction: "side-one" });
+    const sidePlan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "side-plan");
+    expect(sidePlan).toMatchObject({ status: "active", currentAction: "side-one" });
+    const demoPlan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(demoPlan).toMatchObject({ status: "complete", currentAction: null });
+  });
+
   it("settles deterministic completion evidence without an operator flag", () => {
     const { workspace, repo, head } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-no-operator", "first", head) });
@@ -630,6 +649,8 @@ function fixture(options: {
   queueOrder?: string[];
   /** Add a second, inactive draft Plan with its own two open Actions. */
   withInactivePlan?: boolean;
+  /** Add a second, approved active Plan whose Actions are already explicitly ordered. */
+  withActiveSidePlan?: boolean;
   /** Give the inactive Plan's first Action the same id as demo-plan's `first`. */
   withDuplicateActionId?: boolean;
 } = {}): { workspace: string; repo: string; head: string } {
@@ -648,6 +669,16 @@ function fixture(options: {
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
   if (options.withInactivePlan) {
     writeFileSync(path.join(repo, "docs/plans/side-plan.md"), inactivePlanDoc(options.withDuplicateActionId), "utf8");
+  }
+  if (options.withActiveSidePlan) {
+    writeFileSync(path.join(repo, "docs/plans/side-plan.md"),
+      inactivePlanDoc(false)
+        .replace("status: draft", "status: active")
+        .replace(
+          "token_budget: Deterministic completion with one accepted evidence pass.",
+          "token_budget: Deterministic completion with one accepted evidence pass.\nrecommended_model: gpt-5.6-sol"
+        ),
+      "utf8");
   }
   if (options.withOpenDecision) {
     writeFileSync(path.join(repo, "docs/decisions/0001-review-first.md"), [
@@ -674,6 +705,7 @@ function fixture(options: {
   execFileSync("git", ["commit", "-qm", "Add Ask fixture"], { cwd: repo });
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
   const actionIds = options.withThird ? ["first", "second", "third"] : ["first", "second"];
+  if (options.withActiveSidePlan) actionIds.push("side-one", "side-two");
   initWorkspace(workspace);
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, {

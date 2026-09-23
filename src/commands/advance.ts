@@ -95,6 +95,10 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
     ...(data.claimedAction ? [`Claimed action: ${data.claimedAction} (resolved from this worktree's own claim, not the queue)`] : []),
     data.transition.reason,
     `Next: ${data.transition.nextAction}`,
+    ...(data.transition.kind === "activate" && data.transition.activation?.candidate ? [
+      `Activate Plan: ${data.transition.activation.candidate.planSlug}`,
+      `Activate Action: ${data.transition.activation.candidate.actionKey}`
+    ] : []),
     ...(data.preservation ? [
       `Preservation: ${data.preservation.ready ? "ready" : "needs configuration or repair"}`,
       ...data.preservation.blockers.map((b: { code: string; reason: string }) => `${b.code}: ${b.reason}`)
@@ -473,6 +477,7 @@ function renderOrderOperation(receipt: ActionOrderReceipt): string {
     return `move ${operation.move} ${operation.placement}${operation.anchor ? ` ${operation.anchor}` : ""}`;
   }
   if (operation.kind === "undo") return `undo ${operation.receiptId}`;
+  if (operation.kind === "seed") return "seed FIFO order for unpositioned Actions";
   return `arrange ${operation.order.join(" → ")}`;
 }
 

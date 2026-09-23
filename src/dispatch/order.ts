@@ -10,7 +10,17 @@ export interface ActionOrderState {
 export type ActionOrderOperation =
   | { kind: "move"; move: string; placement: "top" | "before" | "after"; anchor: string | null }
   | { kind: "arrange"; order: string[] }
-  | { kind: "undo"; receiptId: string };
+  | { kind: "undo"; receiptId: string }
+  /**
+   * Freeze every currently-unpositioned approved Action into an explicit
+   * position, preserving the positions that already exist and appending the
+   * rest in the deterministic order they were already projected in.
+   *
+   * Decision 0048 limits this to a one-time, previewed, reversible seed for
+   * legacy work that never received an explicit order. It deliberately never
+   * reads timestamps: after the seed, only an explicit move changes priority.
+   */
+  | { kind: "seed" };
 
 export interface ActionOrderReceipt {
   id: string;
@@ -105,15 +115,18 @@ export function arrangeActionOrder(db: Database.Database, input: MutationInput &
 export function undoActionOrder(db: Database.Database, input: MutationInput & {
   currentKeys: string[];
   receiptId: string;
-}): ActionOrderReceipt {
-  const operation: ActionOrderOperation = { kind: "undo", receiptId: input.receiptId };
+}): ActionOrderReceipt {  const operation: ActionOrderOperation = { kind: "undo", receiptId: input.receiptId };
   const replay = replayReceipt(db, input.requestId, operation);
   if (replay) return replay;
   const state = validateMutation(db, input);
   const targetRow = db.prepare("SELECT receipt_json FROM action_queue_receipts WHERE id = ?").get(input.receiptId) as { receipt_json: string } | undefined;
   if (!targetRow) throw validationError("Action queue receipt was not found.", { receiptId: input.receiptId });
   const target = JSON.parse(targetRow.receipt_json) as ActionOrderReceipt;
-  const before = explicitOrder(input.currentKeys, state.positions);
+  // The relevant universe is every key the receipt ordered. A FIFO seed may
+  // have included positioned keys the caller's `currentKeys` does not project
+  // (a paused Project's Actions); dropping them here would delete positions the
+  // seed deliberately preserved.
+  const before = explicitOrder(uniqueKeys([...input.currentKeys, ...target.after]), state.positions);
   if (!target.applied || target.revisionAfter !== state.revision || JSON.stringify(target.after) !== JSON.stringify(before)) {
     throw validationError("Action queue undo is stale; only the current applied order can be undone safely.", {
       receiptId: target.id,
@@ -125,6 +138,33 @@ export function undoActionOrder(db: Database.Database, input: MutationInput & {
     throw validationError("Action membership changed after this receipt; refresh and arrange the current queue instead.");
   }
   return finishMutation(db, state, before, target.before, operation, input);
+}
+
+/**
+ * One-time FIFO seed for approved Actions that never received an explicit
+ * position (Decision 0048).
+ *
+ * The seed is not a new priority model: it simply freezes the order the queue
+ * was already projecting, so that from then on only an explicit `move`,
+ * `before`, `after`, or `arrange` changes priority and timestamps never do. It
+ * preserves every existing explicit position and refuses when there is nothing
+ * left to seed, so re-running it cannot reorder already-ordered work.
+ */
+export function seedActionOrderFifo(db: Database.Database, input: MutationInput & {
+  currentKeys: string[];
+}): ActionOrderReceipt {
+  const operation: ActionOrderOperation = { kind: "seed" };
+  const replay = replayReceipt(db, input.requestId, operation);
+  if (replay) return replay;
+  const state = validateMutation(db, input);
+  // Preserve every key that already holds an explicit position, even one this
+  // projection does not know about: `finishMutation` rewrites the whole table,
+  // so a key missing from `before` would silently lose its operator-set order.
+  const before = explicitOrder(uniqueKeys([...input.currentKeys, ...state.positions.keys()]), state.positions);
+  if (before.every((key) => state.positions.has(key))) {
+    throw validationError("Every approved Action already has an explicit queue position; there is nothing to seed.");
+  }
+  return finishMutation(db, state, before, before, operation, input);
 }
 
 function validateMutation(db: Database.Database, input: MutationInput): ActionOrderState {
@@ -194,6 +234,11 @@ function explicitOrder(currentKeys: string[], positions: Map<string, number>): s
     if (rightPosition !== undefined) return 1;
     return currentKeys.indexOf(left) - currentKeys.indexOf(right) || left.localeCompare(right);
   });
+}
+
+/** Insertion-ordered, de-duplicated union of key lists. */
+function uniqueKeys(keys: Iterable<string>): string[] {
+  return [...new Set(keys)];
 }
 
 function sameMembers(left: string[], right: string[]): boolean {

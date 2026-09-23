@@ -935,7 +935,13 @@ pnpm arcadia go --repo /path/to/project --source /path/to/finished-worktree --ag
 ```
 
 The command refuses dirty, detached, source-divergent, non-agent-owned, or
-non-dispatchable state. If the checked-out base itself is ahead and behind its
+non-dispatchable state. When the active Plan is absent, complete, or points at
+a finished Action, `go` no longer stops there: it activates the approved Plan
+whose earliest eligible Action is highest in the explicit Action queue, makes
+that Action current, and continues in the same invocation — seeding a
+one-time, reversible FIFO order first when approved legacy Actions have never
+been ordered. A genuine queue tie, an inactive Project, or a document defect
+still refuses. See Decision 0048. If the checked-out base itself is ahead and behind its
 remote, the host controller admits only recognized Arcadia-generated
 governance commits, one complete merge base, and a conflict-free result. It
 fetches that one upstream into an isolated controller ref, writes one

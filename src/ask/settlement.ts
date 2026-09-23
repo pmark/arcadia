@@ -12,7 +12,8 @@ import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
-import { arrangeActionOrder } from "../dispatch/order.js";
+import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
+import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
@@ -711,6 +712,23 @@ export function settleAgentAsk(db: Database.Database, input: {
         const nextResolution = selectNextAfterCompletion(targetPlan, actionId, decisionDocsForPlan, queueAfter, project.slug);
         const updated = today();
         const planComplete = nextResolution.kind === "planComplete";
+        // Decision 0048: an Action completion uses the same total transition
+        // resolver as Arcadia Go. When the active Plan is now complete, the
+        // explicit queue may name exactly one approved successor Plan; activate
+        // it here rather than leaving the pointer on a finished Plan. The Action
+        // being completed is ignored so it is never offered as its own successor.
+        const activation = planComplete && completingActivePlan
+          ? resolvePlanActivation({
+              repoRoot,
+              projectSlug: project.slug,
+              positions: loadActionOrder(db).positions,
+              ignoredActionKeys: new Set([`${project.slug}/${actionId}`])
+            })
+          : null;
+        const activatedNext = activation?.status === "candidate" ? activation.candidate : null;
+        const activatedPlanDoc = activatedNext
+          ? discovered.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.slug === activatedNext.planSlug) ?? null
+          : null;
         // Resolve the pointer target once and pin it. A compare-and-set retry
         // re-applies these transforms to fresh base content; it never re-derives
         // current_action from fresh queue state, which could silently retarget a
@@ -718,9 +736,13 @@ export function settleAgentAsk(db: Database.Database, input: {
         const planTransform = (current: string): string => setTopLevelFields(markActionDone(current, actionId),
           planComplete ? { status: "complete", current_action: null, updated } : { current_action: nextResolution.actionId, updated });
         const projectTransform = (current: string): string => setTopLevelFields(current,
-          { current_action: planComplete ? null : nextResolution.actionId, updated });
+          activatedNext
+            ? { active_plan: activatedNext.planSlug, current_action: activatedNext.actionId, updated }
+            : { current_action: planComplete ? null : nextResolution.actionId, updated });
         effects.push(`Marked Action ${project.slug}/${actionId} done with accepted evidence for all ${declared.length} criteria.`);
-        if (planComplete) {
+        if (activatedNext) {
+          effects.push(`Plan ${targetPlan.slug} is complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`);
+        } else if (planComplete) {
           effects.push(`Plan ${targetPlan.slug} is complete; every Action is done.${completingActivePlan ? " Select a new active Plan when ready." : ""}`);
         } else {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
@@ -732,6 +754,21 @@ export function settleAgentAsk(db: Database.Database, input: {
             { path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" },
             { path: projectPath, before: projectBefore, after: projectTransform(projectBefore), retransform: projectTransform, pair: "project" }
           );
+          if (activatedNext && activatedPlanDoc) {
+            const activatedPlanPath = path.join(repoRoot, activatedPlanDoc.relativePath);
+            const activatedPlanBefore = readFileSync(activatedPlanPath, "utf8");
+            const activatedPlanTransform = (current: string): string => setTopLevelFields(current, {
+              status: "active",
+              current_action: activatedNext.actionId,
+              updated
+            });
+            fileMutations.push({
+              path: activatedPlanPath,
+              before: activatedPlanBefore,
+              after: activatedPlanTransform(activatedPlanBefore),
+              retransform: activatedPlanTransform
+            });
+          }
         } else {
           // Completing an Action in another Plan records that Plan's own progress
           // and leaves `active_plan`, `current_action`, and the execution queue
@@ -745,7 +782,9 @@ export function settleAgentAsk(db: Database.Database, input: {
         const completionLogBefore = existsSync(completionLogPath) ? readFileSync(completionLogPath, "utf8") : null;
         const appendCompletion = (current: string | null): string => appendCompletionLog(current, project.slug, {
           actionId, candidateRevision: head, evidence, requestId: proposal.normalized.requestId,
-          note: nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
+          note: activatedNext
+            ? `Plan complete; activated Plan ${activatedNext.planSlug} from the explicit queue at ${activatedNext.actionKey}.`
+            : nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
         });
         fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletion(completionLogBefore), reappend: appendCompletion });
         completionActionId = actionId;
