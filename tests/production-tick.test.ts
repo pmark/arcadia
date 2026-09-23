@@ -47,6 +47,8 @@ class FakeTmux implements TmuxAdapter {
   launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
   /** Fixture-controlled pane content per Session; capturePane returns "" for any name not present here. */
   paneOutput = new Map<string, string>();
+  /** When true, capturePane returns null (a failed/unavailable capture) for every Session. */
+  failCapture = false;
   available() {
     return this.isAvailable;
   }
@@ -59,6 +61,7 @@ class FakeTmux implements TmuxAdapter {
     this.live.add(input.name);
   }
   capturePane(name: string) {
+    if (this.failCapture) return null;
     return this.paneOutput.get(name) ?? "";
   }
 }
@@ -532,6 +535,53 @@ describe("runManagedProductionTick", () => {
       db.prepare("SELECT 1 FROM events WHERE event_type = 'managed_production.session_stalled'").all()
     );
     expect(events).toHaveLength(0);
+  });
+
+  it("a failed or unavailable pane capture never falsely clears a stall flag or masks a real one", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.paneOutput.set(session.tmux_session_name, "$ steady state\n");
+
+    // Baseline, then flag stalled with a successful (unchanging) capture.
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const flagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(flagged.stall_flagged_at).not.toBeNull();
+
+    // Capture starts failing (transiently unavailable) while the Run state
+    // still hasn't changed either. A failed capture must not look like a
+    // change -- it must neither clear the existing flag nor be needed to
+    // sustain it.
+    tmux.failCapture = true;
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 60_000),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const stillFlagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(stillFlagged.stall_flagged_at).not.toBeNull();
+
+    const events = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT 1 FROM events WHERE event_type = 'managed_production.session_stalled'").all()
+    );
+    // Still exactly one -- capture failure did not cause a second flag/event.
+    expect(events).toHaveLength(1);
   });
 });
 

@@ -84,11 +84,13 @@ export interface AgentSession {
   exit_status: number | null;
   created_at: string;
   updated_at: string;
-  /** Hash of last-observed tmux pane output + Run/receipt state. Null until first observed. */
-  last_activity_signature: string | null;
-  /** When `last_activity_signature` last changed. */
+  /** Hash of last-captured tmux pane scrollback. Null until a capture has ever succeeded. */
+  last_pane_signature: string | null;
+  /** Hash of last-observed Run/receipt state (status + updated_at). Null until first observed. */
+  last_run_signature: string | null;
+  /** When either signature last changed. Null until first observed. */
   last_activity_at: string | null;
-  /** Set once no activity has been observed for the stall deadline; cleared on resumed activity. */
+  /** Set once neither signature has changed for the stall deadline; cleared on resumed activity. */
   stall_flagged_at: string | null;
 }
 
@@ -172,12 +174,19 @@ export interface TmuxAdapter {
   hasSession(name: string): boolean;
   launch(input: { name: string; cwd: string; command: string; args: string[] }): void;
   /**
-   * The visible text of a live pane, used only as a progress signal (see
-   * `src/production/stallDetection.ts`). Optional because it is meaningless
-   * once a Session's tmux is already gone, and every existing test double
-   * that implements `TmuxAdapter` predates this capability.
+   * The pane's full scrollback (not just the currently visible screen), used
+   * only as a progress signal (see `src/production/stallDetection.ts`) --
+   * scrollback grows as new lines are produced even when the visible screen
+   * happens to show a repeating pattern (a spinner, a recurring log line),
+   * so it changes far more reliably than a bare visible-screen snapshot
+   * would. Returns `null`, never `""`, when a capture could not be taken, so
+   * a transient failure is distinguishable from a genuinely empty pane and
+   * is never mistaken for either new activity or its absence. Optional
+   * because it is meaningless once a Session's tmux is already gone, and
+   * every existing test double that implements `TmuxAdapter` predates this
+   * capability.
    */
-  capturePane?(name: string): string;
+  capturePane?(name: string): string | null;
 }
 
 export const systemTmux: TmuxAdapter = {
@@ -193,7 +202,7 @@ export const systemTmux: TmuxAdapter = {
     });
   },
   capturePane(name) {
-    try { return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p"], { encoding: "utf8" }); } catch { return ""; }
+    try { return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p", "-S", "-"], { encoding: "utf8" }); } catch { return null; }
   }
 };
 
@@ -449,7 +458,7 @@ export function prepareSession(input: {
       host: input.host ?? hostname(),
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
       created_at: timestamp, updated_at: timestamp,
-      last_activity_signature: null, last_activity_at: null, stall_flagged_at: null
+      last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     if (handoff) {

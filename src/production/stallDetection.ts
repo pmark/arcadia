@@ -18,14 +18,22 @@ function latestRunSignal(db: Database.Database, workItemId: string): { status: s
   return { status: row?.status ?? null, updatedAt: row?.updated_at ?? null };
 }
 
-function activitySignature(paneText: string | null, run: { status: string | null; updatedAt: string | null }): string {
-  return createHash("sha256").update(`${paneText ?? ""}\u0000${run.status ?? ""}\u0000${run.updatedAt ?? ""}`).digest("hex");
+function hashOf(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
 }
 
 /**
  * Observe whether a live (tmux-alive) managed Session has made any progress
  * since it was last observed, and flag it stalled once neither its tmux pane
- * output nor its Run/receipt state has changed for `deadlineMs`.
+ * scrollback nor its Run/receipt state has changed for `deadlineMs`.
+ *
+ * Pane and Run signals are tracked as two independent signatures, never
+ * merged into one hash. A tick where `capturePane` is unavailable or fails
+ * returns `null`, which contributes no pane signal at all that tick -- it can
+ * never look like "the pane went blank" (spuriously clearing a stall flag) or
+ * "definitely no output" (spuriously starting or extending a stall) on its
+ * own. A confirmed stall or confirmed activity always requires the Run/receipt
+ * signal to agree, or the pane signal to agree, on their own separate terms.
  *
  * This never touches `agent_sessions.status`, and therefore never releases
  * the repository lease that status holds (`getRepositoryLease` only reads
@@ -40,6 +48,12 @@ function activitySignature(paneText: string | null, run: { status: string | null
  * it (e.g. right after this capability ships) has no prior signature to
  * compare against, and assuming "no prior signature" means "no progress"
  * would flag every live Session in the portfolio on the same tick.
+ *
+ * Callers should run this and any resulting event write inside one write
+ * transaction (see `runManagedProductionTick`): if the event insert for a
+ * newly-flagged stall fails, the flag write must roll back with it, or a
+ * later tick would see `stall_flagged_at` already set and never retry the
+ * event.
  */
 export function observeSessionActivity(
   db: Database.Database,
@@ -49,26 +63,33 @@ export function observeSessionActivity(
   deadlineMs: number
 ): SessionActivityObservation {
   const paneText = tmux.capturePane ? tmux.capturePane(session.tmux_session_name) : null;
+  const paneSignature = paneText === null ? null : hashOf(paneText);
   const run = latestRunSignal(db, session.work_item_id);
-  const signature = activitySignature(paneText, run);
+  const runSignature = hashOf(`${run.status ?? ""}\u0000${run.updatedAt ?? ""}`);
   const nowIso = now.toISOString();
 
-  if (session.last_activity_signature === null) {
+  if (session.last_activity_at === null) {
     db.prepare(
-      "UPDATE agent_sessions SET last_activity_at = ?, last_activity_signature = ?, updated_at = ? WHERE id = ?"
-    ).run(nowIso, signature, nowIso, session.id);
+      "UPDATE agent_sessions SET last_activity_at = ?, last_pane_signature = ?, last_run_signature = ?, updated_at = ? WHERE id = ?"
+    ).run(nowIso, paneSignature, runSignature, nowIso, session.id);
     return { newlyStalled: false, recovered: false, stalled: false };
   }
 
-  if (signature !== session.last_activity_signature) {
+  // A capture failure/unavailability (paneSignature === null) never counts as
+  // a pane change -- only a *successful* capture that differs from the last
+  // one does.
+  const paneChanged = paneSignature !== null && paneSignature !== session.last_pane_signature;
+  const runChanged = runSignature !== session.last_run_signature;
+
+  if (paneChanged || runChanged) {
     const recovered = session.stall_flagged_at !== null;
     db.prepare(
-      "UPDATE agent_sessions SET last_activity_at = ?, last_activity_signature = ?, stall_flagged_at = NULL, updated_at = ? WHERE id = ?"
-    ).run(nowIso, signature, nowIso, session.id);
+      "UPDATE agent_sessions SET last_activity_at = ?, last_pane_signature = ?, last_run_signature = ?, stall_flagged_at = NULL, updated_at = ? WHERE id = ?"
+    ).run(nowIso, paneSignature ?? session.last_pane_signature, runSignature, nowIso, session.id);
     return { newlyStalled: false, recovered, stalled: false };
   }
 
-  const lastActivityMs = new Date(session.last_activity_at ?? nowIso).getTime();
+  const lastActivityMs = new Date(session.last_activity_at).getTime();
   const elapsedMs = now.getTime() - lastActivityMs;
   if (elapsedMs < deadlineMs) {
     return { newlyStalled: false, recovered: false, stalled: false };

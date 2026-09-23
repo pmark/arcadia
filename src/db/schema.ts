@@ -273,17 +273,19 @@ function ensureAgentSessionsTable(db: Database.Database): void {
  * Progress bookkeeping for a *live* Session, distinct from `status`. `status`
  * still answers only "does this repository's lease exist" (`prepared`/
  * `running` hold it); these columns answer "is the live Session actually
- * moving" without ever touching that lease. `last_activity_signature` is the
- * last observed hash of tmux pane output plus Run/receipt state;
- * `last_activity_at` is when that signature last changed; `stall_flagged_at`
- * is set once no change has been observed for the stall deadline, and cleared
- * the moment activity resumes. See `src/production/stallDetection.ts`.
+ * moving" without ever touching that lease. `last_pane_signature` and
+ * `last_run_signature` are tracked separately -- never merged into one hash --
+ * so that a tick where tmux pane capture is unavailable or fails carries no
+ * pane signal at all that tick, rather than a false "the pane went blank"
+ * change; `last_activity_at` is when either last changed; `stall_flagged_at`
+ * is set once neither has changed for the stall deadline, and cleared the
+ * moment either shows new activity. See `src/production/stallDetection.ts`.
  */
 function ensureAgentSessionStallColumns(db: Database.Database): void {
   const columns = new Set(
     (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
   );
-  for (const name of ["last_activity_at", "last_activity_signature", "stall_flagged_at"]) {
+  for (const name of ["last_activity_at", "last_pane_signature", "last_run_signature", "stall_flagged_at"]) {
     if (!columns.has(name)) {
       db.prepare(`ALTER TABLE agent_sessions ADD COLUMN ${name} TEXT`).run();
     }

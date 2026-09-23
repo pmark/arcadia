@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { writeTransaction } from "../db/connection.js";
 import { getProjectMetadata } from "../db/repositories.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -208,15 +209,22 @@ export function runManagedProductionTick(
         // tmux is alive; check whether it is actually moving. Neither branch
         // here touches `lease`/`status`, so the repository lease this Session
         // holds is untouched either way -- a suspected stall is surfaced, not
-        // reconciled.
-        const activity = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
+        // reconciled. The flag write and its event are one transaction: if the
+        // event insert failed after the flag alone committed, a later tick
+        // would see `stall_flagged_at` already set and never retry the event.
+        const activity = writeTransaction(db, () => {
+          const observed = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
+          if (observed.newlyStalled) {
+            recordEvent(db, {
+              eventType: "managed_production.session_stalled",
+              projectId: project.id,
+              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
+              at: now.toISOString()
+            });
+          }
+          return observed;
+        });
         if (activity.newlyStalled) {
-          recordEvent(db, {
-            eventType: "managed_production.session_stalled",
-            projectId: project.id,
-            payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
-            at: now.toISOString()
-          });
           log(
             `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
               `${PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs}ms; flagged stalled. Its repository lease is preserved, pending operator review or bounded repair.`
