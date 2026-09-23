@@ -461,7 +461,7 @@ actions:
     references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "src/commands/go.ts", "src/goBroker.ts", "docs/working-copy-safety.md"]
   - id: register-agent-workspace-trust
     title: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "`go-broker install` establishes and verifies agent workspace trust for each configured Arcadia Project repository, and `go-broker status` reports it as a first-class readiness condition."
@@ -1714,7 +1714,7 @@ actions:
     references: ["src/production/tick.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/issues/576"]
 questions: []
 decisions: []
-current_action: register-agent-workspace-trust
+current_action: escalate-nonrecoverable-launch-refusals
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
