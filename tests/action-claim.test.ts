@@ -16,7 +16,10 @@ import {
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const temporary: string[] = [];
-const NOW = new Date("2026-09-22T04:48:04.586Z");
+// Wall-clock, not a fixed instant: the pointer transition checks the claim with
+// its own `new Date()`, so a fixed NOW expired every claim 24h after it was
+// written and failed the settlement test forever after (Issue #524).
+const NOW = new Date();
 
 afterEach(() => {
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
