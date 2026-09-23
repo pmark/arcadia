@@ -19,6 +19,7 @@
 // only the `gh` auth the agent already pushes with, and no workspace.
 
 import { execFileSync } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 
 export const MAX_FIX_ROUNDS = 3;
@@ -245,8 +246,17 @@ export function declineCodeRabbitFinding(repo: string, threadId: string, reason:
  * surfacing as an opaque UNEXPECTED_ERROR (Issue #517). Environments that
  * only carry MCP-based GitHub access (no `gh` on PATH, as in a Claude Code
  * Remote/cloud session) hit this on the very first call.
+ *
+ * `repo` (the child process's `cwd`) is validated first: a missing or
+ * non-directory `cwd` also makes `execFileSync` throw ENOENT, and reporting
+ * that as "gh is not installed" would misdirect a caller whose repository
+ * path is simply wrong. Validating up front means the ENOENT this function
+ * catches from `execFileSync` itself can only be the binary.
  */
 function runGh(repo: string, args: string[], options?: { maxBuffer?: number }): string {
+  if (!existsSync(repo) || !statSync(repo).isDirectory()) {
+    throw validationError("The repository path does not exist.", { path: repo });
+  }
   try {
     return execFileSync("gh", args, { cwd: repo, encoding: "utf8", maxBuffer: options?.maxBuffer });
   } catch (error) {

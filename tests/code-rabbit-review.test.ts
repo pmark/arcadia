@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
+import { condense, decide, declineCodeRabbitFinding, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
 
 const review = (commitId: string, state: string, submittedAt: string, body = ""): Review => ({ commitId, state, submittedAt, body });
 const thread = (id: string, overrides: Partial<Thread> = {}): Thread => ({
@@ -172,5 +172,13 @@ describe("coderabbit loop without a `gh` binary (Issue #517)", () => {
 
     vi.doUnmock("node:child_process");
     vi.resetModules();
+  });
+
+  it("reports a missing repository path as its own error, not as a missing gh binary", () => {
+    // A deleted or mistyped repo path also makes execFileSync throw ENOENT
+    // (a bad `cwd`, not a missing command); runGh must not conflate the two.
+    expect(() => declineCodeRabbitFinding("/no/such/repository/path", "thread1", "not applicable")).toThrowError(
+      expect.objectContaining({ message: "The repository path does not exist." })
+    );
   });
 });
