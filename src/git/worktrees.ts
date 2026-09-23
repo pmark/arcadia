@@ -208,6 +208,59 @@ export function commitOnlyPaths(repoRoot: string, relativePaths: string[], messa
 }
 
 /**
+ * Git environment variables that relocate the repository a command reads,
+ * overriding the `cwd` it was given. An ownership check that inherits them can
+ * be pointed at an owned Project's Git directory from an unrelated path.
+ */
+const GIT_LOCATION_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_DISCOVERY_ACROSS_FILESYSTEM"
+] as const;
+
+/** Run a read-only Git query against exactly the repository at `cwd`, never one an inherited variable redirects it to. */
+function tryGitAt(cwd: string, args: string[]): string | null {
+  const env = { ...process.env };
+  for (const key of GIT_LOCATION_ENV) delete env[key];
+  const result = spawnSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+/**
+ * Whether `candidate` and `repository` are the same Git repository — the same
+ * checkout, or a worktree registered to it.
+ *
+ * A prepared worktree's path is never equal to the registered main-checkout
+ * `repo_path`, so comparing paths alone rejects the one place an Arcadia Go
+ * session runs its preflight from. Ownership needs both halves of the identity:
+ * the candidate must share the repository's Git common directory, and its
+ * top-level must be a worktree the repository itself registers. The common
+ * directory alone can be pointed at an owned Project from an unrelated path
+ * (an inherited `GIT_DIR`, or a crafted `.git` gitfile); the registered path
+ * alone can be a replaced directory that is now an independent repository.
+ * Either would leak another Project's paths past the protected broker's scope
+ * boundary (#470), while the prepared worktree the broker runs from (#478)
+ * satisfies both.
+ */
+export function sharesRepository(candidate: string, repository: string): boolean {
+  if (samePath(candidate, repository)) return true;
+  const candidateCommon = tryGitAt(candidate, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const repositoryCommon = tryGitAt(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!candidateCommon || !repositoryCommon || !samePath(candidateCommon, repositoryCommon)) return false;
+  const candidateTop = tryGitAt(candidate, ["rev-parse", "--show-toplevel"]);
+  if (!candidateTop) return false;
+  const registered = tryGitAt(repository, ["worktree", "list", "--porcelain"]);
+  if (!registered) return false;
+  return parseWorktrees(registered).some((worktree) => samePath(worktree.path, candidateTop));
+}
+
+/**
  * The checkout a command run from `cwd` should write a Project's documents to.
  *
  * A Project records one `repo_path`, normally the main checkout. When the
@@ -218,12 +271,9 @@ export function commitOnlyPaths(repoRoot: string, relativePaths: string[], messa
  * `cwd` in an unrelated repository, resolves to `repoPath` unchanged.
  */
 export function projectCheckoutFor(repoPath: string, cwd: string): string {
-  const projectCommon = tryGit(repoPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  const cwdCommon = tryGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  const cwdTop = tryGit(cwd, ["rev-parse", "--show-toplevel"]);
-  if (!projectCommon || !cwdCommon || !cwdTop) return repoPath;
-  if (realpathSync(projectCommon) !== realpathSync(cwdCommon)) return repoPath;
-  return realpathSync(cwdTop) === realpathSync(repoPath) ? repoPath : cwdTop;
+  const cwdTop = tryGitAt(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!sharesRepository(cwd, repoPath) || !cwdTop) return repoPath;
+  return samePath(cwdTop, repoPath) ? repoPath : cwdTop;
 }
 
 export function parseWorktrees(output: string): WorktreeRecord[] {
