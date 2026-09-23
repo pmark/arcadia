@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-22
+updated: 2026-09-23
 ---
 
 # Mission Log: Arcadia
@@ -543,3 +543,10 @@ updated: 2026-09-22
 - **Result:** Every declared acceptance criterion was accepted as met: "When a Decision that governs an Action is answered, Arcadia applies the chosen option consequence to that Action checked-in plan record in the same transition (a deferral parks the Action so dispatch stops selecting it), or refuses the answer with a named reason and leaves the Decision and the Action unchanged."; "When the answer parks the current Action, the governed pointer advances to the next eligible Action in the existing explicit queue with no second operator command and no hand-edited plan field."; "The transition is previewable, idempotent and reversible: one receipt records the Decision, the Action field change and the pointer move, and a retry returns the same receipt without duplicate effects."; "An agent cannot perform this transition directly; Arcadia writes the canonical records, and no local script, second pointer writer or new queue is introduced."; "Preserve the proof Artifact: deterministic tests covering the deferral-applies, the refusal naming the missing apply path, the pointer advance, and the idempotent retry, plus the exact operator command in the pull request.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-apply-answered-decision-consequences-2026-09-22).
+
+## 2026-09-23 — Completed arcadia/dispatch-different-ready-action-per-session
+
+- **Did:** Completed Action arcadia/dispatch-different-ready-action-per-session from accepted evidence (Candidate 8b5640b6e5286732eb3c7f55cd8eb9763211706d).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia go's queue-walk-and-claim runs inside the same writeTransaction that already serializes evaluateExistingCandidate and worktree reservation (src/commands/go.ts), attempting an atomic conditional claim per candidate in the order buildAgentQueue already computes."; "Losing a claim race on one candidate continues the walk to the next dependency-ready, still-unclaimed entry rather than stopping or retrying the lost one."; "arcadia advance run inside a worktree that already holds a claim resolves that claim's Action directly and never consults the queue-walk fallback."; "current_action in PROJECT.md and the Plan document remains a single value; no reader of it (dashboard, docket, arcadia next's narrative brief) is required to change."; "arcadia agent-ask settle (project_update and complete) loads the settling worktree's own claim, verifies its action_id matches the Action settlement is about to resolve, and carries that claim's generation through the settlement's writes and release, per add-action-scoped-worktree-claim's generation fencing."; "Deterministic tests cover: two concurrent arcadia go invocations against the same current_action each landing on a different ready Action; a queue-walk correctly skipping a dependency-blocked or already-claimed entry; arcadia advance never reassigning an in-progress worktree; and a settlement refusing when its worktree's claim does not match the Action it is settling."; "pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Plan complete; every Action is done.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-dispatch-different-ready-action-per-session-2026-09-22).
