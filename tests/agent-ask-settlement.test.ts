@@ -235,6 +235,38 @@ describe("Agent Ask settlement", () => {
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
   });
 
+  it("places a new Action despite unpositioned Actions in another Plan the pointer is not on (#529)", () => {
+    const { workspace, repo } = fixture();
+    writeFileSync(path.join(repo, "docs/plans/side-plan.md"),
+      planDoc().replaceAll("demo-plan", "side-plan").replaceAll("existing", "side-work"));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add a second active Plan"], { cwd: repo });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-other-plan-unpositioned") });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-other-plan-unpositioned",
+      disposition: "accepted" as const, responsibility: "agent" as const, top: true };
+    const preview = runAgentAskSettleCommand(options);
+    expect(preview.data.receipt.queueActionKey).toBe("demo/add-settlement-proof");
+    expect(() => runAgentAskSettleCommand({ ...options, requestId: "settle-unpositioned-anchor", top: false, after: "demo/side-work" }))
+      .toThrow(/Queue anchor demo\/side-work has no queue position yet/);
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    // The other Plan's Action is left for the operator to rank, not silently positioned.
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()])
+      .toEqual(["demo/add-settlement-proof", "demo/existing"]));
+  });
+
+  it("names this Plan's unpositioned Actions and the reorder remedy when refusing placement", () => {
+    const { workspace, repo } = fixture();
+    const file = path.join(repo, "docs/plans/demo-plan.md");
+    const content = readFileSync(file, "utf8");
+    const unordered = content.slice(content.indexOf("  - id:"), content.indexOf("questions:")).replace("id: existing", "id: unordered");
+    writeFileSync(file, content.replace("questions: []", unordered + "questions: []"));
+    execFileSync("git", ["commit", "-qam", "Add an unpositioned Action"], { cwd: repo });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-own-plan-unpositioned") });
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id,
+      requestId: "settle-own-plan-unpositioned", disposition: "accepted", responsibility: "agent", top: true }))
+      .toThrow(/Plan demo-plan before accepting another into the queue: demo\/unordered\. Run `arcadia advance queue reorder/);
+  });
+
   it("lands a settlement run from a candidate worktree on its branch, leaving the base branch untouched", () => {
     const { workspace, repo } = fixture();
     const candidate = path.join(path.dirname(repo), "candidate");
