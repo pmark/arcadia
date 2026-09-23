@@ -323,7 +323,8 @@ export function runGoBrokerStatusCommand(
       cause: [
         `Workspace trust: ${trust.required.length - trust.missing.length}/${trust.required.length} Project repositories trusted`,
         ...broker.issues,
-        ...agentSetup.issues
+        ...agentSetup.issues,
+        ...trust.refused.map(({ repository, reason }) => `never trusted: ${repository} (${reason})`)
       ].join("; "),
       ready: false,
       revision: broker.revision,
