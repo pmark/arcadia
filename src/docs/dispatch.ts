@@ -205,15 +205,28 @@ function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?:
  * Reads documents, never the database: the contract makes checked-in
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
+ *
+ * `options.actionId` resolves the same brief for a *named* Action of the active
+ * plan instead of the pointer's. It exists for the one caller that already
+ * knows which Action it is answering about because it holds that Action's
+ * worktree claim: `arcadia go`'s queue-walk fallback, and the `arcadia advance`
+ * run inside the worktree that fallback prepared. It reads the pointer's
+ * documents and writes nothing, so `current_action` stays a single value and no
+ * reader of it changes — an override is a second *reader*, not a second pointer.
  */
-export function resolveDispatch(repoRoot: string, projectSlug?: string): DispatchResolution {
+export function resolveDispatch(
+  repoRoot: string,
+  projectSlug?: string,
+  options?: { actionId?: string }
+): DispatchResolution {
   const { discovered, project, plan, blockers } = resolveActivePlan(repoRoot, projectSlug);
 
   if (!project || !plan) {
     return { context: null, blockers, operatorQuestion: null };
   }
 
-  const currentActionId = project.currentAction ?? plan.currentAction;
+  const claimedActionId = options?.actionId ?? null;
+  const currentActionId = claimedActionId ?? project.currentAction ?? plan.currentAction;
 
   if (!currentActionId) {
     blockers.push({
@@ -232,22 +245,36 @@ export function resolveDispatch(repoRoot: string, projectSlug?: string): Dispatc
   // the plan never became a doc; reaching here with no match would be a bug.
   const action = plan.actions.find((candidate) => candidate.id === currentActionId) ?? null;
   if (!action) {
-    blockers.push({
-      relativePath: project.currentAction ? project.relativePath : plan.relativePath,
-      field: "current_action",
-      message: `current_action "${currentActionId}" matches no action in plan "${plan.slug}".`,
-      remedy: "Point current_action at an existing action id."
-    });
+    blockers.push(claimedActionId
+      ? {
+          relativePath: plan.relativePath,
+          field: "claimed_action",
+          message: `Claimed Action "${claimedActionId}" matches no action in plan "${plan.slug}".`,
+          remedy: "Release the stale worktree claim, or dispatch this worktree against an Action the active plan declares."
+        }
+      : {
+          relativePath: project.currentAction ? project.relativePath : plan.relativePath,
+          field: "current_action",
+          message: `current_action "${currentActionId}" matches no action in plan "${plan.slug}".`,
+          remedy: "Point current_action at an existing action id."
+        });
     return { context: null, blockers, operatorQuestion: null };
   }
 
   if (action.status === "done") {
-    blockers.push({
-      relativePath: plan.relativePath,
-      field: "current_action",
-      message: `current_action "${action.id}" is already done.`,
-      remedy: "Select the next current_action, or record one operator question if the choice is not obvious."
-    });
+    blockers.push(claimedActionId
+      ? {
+          relativePath: plan.relativePath,
+          field: "claimed_action",
+          message: `Claimed Action "${action.id}" is already done.`,
+          remedy: "Release the claim on the finished Action; this worktree has no remaining governed work."
+        }
+      : {
+          relativePath: plan.relativePath,
+          field: "current_action",
+          message: `current_action "${action.id}" is already done.`,
+          remedy: "Select the next current_action, or record one operator question if the choice is not obvious."
+        });
   }
 
 

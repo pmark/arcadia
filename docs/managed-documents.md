@@ -89,6 +89,14 @@ Exactly one Action may be current across the whole project. A second plan
 declaring `current_action` is reported as a competing objective rather than
 silently losing.
 
+`current_action` names the Action a *first* coding-agent session should
+advance, not the only Action in flight. When a second session asks for work and
+a live worktree already claims the pointer's Action, `arcadia go` dispatches the
+next dependency-ready, unclaimed entry in the ordered Agent Queue instead — and
+does not move the pointer. The claim lives in the workspace database beside the
+worktree reservation, never in these documents: `current_action` stays one
+value, and every reader of it keeps reading it the same way.
+
 ### Where the chain comes from in a new repository
 
 `arcadia project setup-context <project>` seeds both documents when a repository

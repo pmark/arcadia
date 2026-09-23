@@ -954,6 +954,17 @@ the missing piece and its remedy, and no worktree is prepared. The personal
 `arcadia-go` skill performs the preview/apply
 sequence and uses the current agent's native session handoff when available.
 
+A second concurrent session gets a *different* Action, never the same one. Each
+prepared worktree claims the Action it was given, so when `current_action` is
+already claimed by a live worktree, `--agent --apply` walks the ordered Agent
+Queue and claims the next dependency-ready, still-unclaimed entry instead of
+refusing. The handoff says so explicitly, and `current_action` is not moved — it
+stays a single value naming the first session's Action. When every ready Action
+is already claimed, the refusal is the same one as before, naming the worktree
+that holds the pointer's Action. Only a claimed Action is walked past: a live
+Session, an unreconciled exit, or an unpreserved candidate still refuses,
+because those are about the repository rather than about which Action is free.
+
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
 launcher or an `arcadia go` prefix. Install the protected broker from a clean,
 reviewed Arcadia commit as an explicit operator action:
@@ -1202,6 +1213,16 @@ Bare `arcadia advance` and `arcadia advance --session <id>` resolve the same
 deterministic Project transition used by `go` and the Agent Queue. Its result
 is exactly one of launch, plan, Decision, repair, reconcile, wait, or Milestone
 completion, with one concrete next step.
+
+Run inside a prepared worktree, it resolves **that worktree's own claimed
+Action** and prints it as `Claimed action:`, rather than reading
+`current_action`. That is what keeps a session dispatched by the queue-walk
+above on its own work: the claim decides, never queue order, so an in-progress
+worktree is never reassigned however the queue moves. In the main checkout, or
+any worktree holding no claim, the governed pointer is still the answer.
+`arcadia agent-ask settle` honors the same claim — a completion written from a
+worktree must be about the Action that worktree claims, and settling it is what
+releases the claim.
 
 To shelve an idea until a concrete condition is true, use the existing Ask
 path with `--back-burner`. For example:

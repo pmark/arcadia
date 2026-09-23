@@ -9,6 +9,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/connection.js";
+import { buildAgentQueue } from "../dispatch/queue.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import {
@@ -134,6 +135,17 @@ export interface GoCommandData {
     note: string | null;
   } | null;
   dispatch: DispatchResolution;
+  /**
+   * Set when the governed pointer's Action was already claimed by a live
+   * worktree and `go` dispatched the next unclaimed, dependency-ready queue
+   * entry instead of refusing. Null on the ordinary path, where the pointer's
+   * Action is what was dispatched.
+   *
+   * `dispatch` above already describes the Action actually handed off, so a
+   * reader that only wants the brief needs nothing from here; this exists so
+   * the divergence from `current_action` is visible rather than silent.
+   */
+  queueFallback: { pointerActionId: string; actionId: string; reason: string } | null;
   dispatchable: boolean;
   transition: ProjectTransition;
   session: AgentSession | null;
@@ -254,6 +266,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   let modelResolution: GoCommandData["modelResolution"] = null;
   let session: AgentSession | null = null;
   let dispatch = sourceDispatch;
+  // The checkout `dispatch` was resolved from, so a queue-walk fallback can
+  // re-resolve a different Action's brief against exactly the same documents
+  // rather than a second, possibly staler, worktree's copy of them.
+  let dispatchRoot = projectRoot;
+  let queueFallback: GoCommandData["queueFallback"] = null;
   if (options.apply && integration !== "not-needed" && integration !== null) {
     if (integration === "fast-forward") {
       if (baseRecord) {
@@ -265,7 +282,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         git(sourceRecord.path, ["-c", "core.hooksPath=/dev/null", "branch", "-f", baseBranch, sourceBranch]);
       }
 
-      const baseDispatch = resolveDispatch(baseRecord?.path ?? sourceRecord.path, projectSlug);
+      const baseDispatchRoot = baseRecord?.path ?? sourceRecord.path;
+      const baseDispatch = resolveDispatch(baseDispatchRoot, projectSlug);
       if (!isDispatchable(baseDispatch)) {
         throw validationError("The fast-forward completed, but dispatch validation failed from the base worktree.", {
           projectSlug,
@@ -275,6 +293,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         });
       }
       dispatch = baseDispatch;
+      dispatchRoot = baseDispatchRoot;
     }
 
     if (!baseRecord && samePath(worktrees[0].path, sourceRecord.path)) {
@@ -379,70 +398,169 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     // The generation this call claimed, so a preparation that fails after the
     // claim committed can release it explicitly rather than leaving the Action
     // blocked for the TTL's full 24 hours over work that never started.
-    const claim: { generation: string | null } = { generation: null };
+    const claim: { generation: string | null; actionId: string } = { generation: null, actionId };
+    // The pointer Action's own resolution, restored whenever a fallback attempt
+    // is abandoned so a lost race cannot leave `dispatch` describing an Action
+    // this call did not get.
+    const pointerDispatch = dispatch;
+    // The checkout the queue-walk fallback re-resolves candidate Actions from.
+    // `dispatch` above was resolved before Git cleanup and holds its result, but
+    // the walk reads documents *after* it -- and when the base branch is checked
+    // out nowhere, the source worktree those documents were read from has just
+    // been removed. A detached scratch checkout of the base branch is then the
+    // only surviving copy of them, so create one lazily (only when the fallback
+    // would otherwise have nothing to read) and remove it before returning, the
+    // same pattern `validateReconciledDispatch` already uses.
+    const scratchDispatch: { checkout: { root: string; path: string } | null } = { checkout: null };
+    const fallbackDispatchRoot = (): string => {
+      if (existsSync(dispatchRoot)) return dispatchRoot;
+      if (scratchDispatch.checkout) return scratchDispatch.checkout.path;
+      const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-fallback-"));
+      const checkoutPath = path.join(root, "checkout");
+      // Recorded before Git runs, not after: a `worktree add` that throws can
+      // still have left the scratch root -- and a partial registration -- on
+      // disk, and cleanup only reaches what this holder names.
+      scratchDispatch.checkout = { root, path: checkoutPath };
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkoutPath, baseBranch]);
+      return checkoutPath;
+    };
     try {
       nextWorktree = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
-        const candidate = evaluateExistingCandidate(db, {
-          controlWorktree,
-          projectSlug,
-          actionId,
-          agent: options.agent!,
-          tmux,
-          now
-        });
-        if (candidate.kind === "refuse") {
-          throw validationError(candidate.reason!, candidate.details);
-        }
+        // The pointer's Action first, always. Only when it is already held by a
+        // live worktree does the walk below offer anything else, and then only
+        // Actions the ordered queue already reports as dependency-ready.
+        const attempts: string[] = [actionId];
+        // The refusal to report if nothing in `attempts` can be claimed: the
+        // pointer Action's own, because that is the Action the operator asked
+        // about and the one whose remedy they need.
+        let refusal: CandidateEvaluation | null = null;
+        // A claim race lost at the insert rather than at the lookup: the same
+        // outcome, reported by the unique index instead of by the query, and
+        // the refusal to re-raise when nothing else in the walk can be claimed.
+        let lostRace: Error | null = null;
+        let walked = false;
 
-        if (candidate.kind === "resume") {
-          // Per Decision 0051: the same governed Action still owns this
-          // candidate and its prior Session is proven terminal (reconciled,
-          // not merely exited), so resume it in place -- same worktree and
-          // branch, repository lease handed over -- rather than preparing a
-          // second one. No Git write happens here beyond refreshing the
-          // handoff reservation so `tidy` does not retire it out from under
-          // the resumed Session before it is used.
-          reserveAgentWorktree(db, {
-            repositoryPath: controlWorktree,
-            worktreePath: candidate.path!,
-            branch: candidate.branch!,
-            now,
-            project: projectSlug,
-            actionId
-          });
-          return {
+        for (let index = 0; index < attempts.length; index += 1) {
+          const attemptActionId = attempts[index];
+          const candidate = evaluateExistingCandidate(db, {
+            controlWorktree,
+            projectSlug,
+            actionId: attemptActionId,
             agent: options.agent!,
-            path: candidate.path!,
-            branch: candidate.branch!,
-            model,
-            effort,
-            command: buildAgentLaunchCommand(options.agent!, candidate.path!, model, effort)
-          };
-        }
+            tmux,
+            now
+          });
 
-        const created = prepareAgentWorktree({
-          agent: options.agent!,
-          actionId,
-          baseBranch,
-          repositoryPath: controlWorktree,
-          rootOverride: options.agentWorktreeRoot,
-          now,
-          model,
-          effort,
-          beforeCreate(prepared) {
-            claim.generation = reserveAgentWorktree(db, {
+          if (candidate.kind === "refuse") {
+            refusal ??= candidate;
+            if (attemptActionId === actionId) {
+              // The pointer's own Action. Every refusal but this one is
+              // repository-scoped -- a live Session, an unreconciled exit, an
+              // unresolved candidate for another Action -- and a different ready
+              // Action would hit it identically, so there is nothing to walk to.
+              // Only a claimed Action is a refusal another Action can answer.
+              if (candidate.code !== "action_claimed") break;
+              walked = true;
+              attempts.push(...queueWalkCandidates(db, { projectSlug, exclude: attempts, now }));
+            }
+            // A fallback candidate's refusal is necessarily about that Action
+            // alone: every repository-scoped refusal would already have fired on
+            // the pointer attempt above and broken the walk before reaching
+            // here. So skip this entry and try the next, rather than letting one
+            // Action's unresolved candidate stop the whole walk.
+            continue;
+          }
+
+          if (candidate.kind === "resume") {
+            // Per Decision 0051: the same governed Action still owns this
+            // candidate and its prior Session is proven terminal (reconciled,
+            // not merely exited), so resume it in place -- same worktree and
+            // branch, repository lease handed over -- rather than preparing a
+            // second one. No Git write happens here beyond refreshing the
+            // handoff reservation so `tidy` does not retire it out from under
+            // the resumed Session before it is used.
+            reserveAgentWorktree(db, {
               repositoryPath: controlWorktree,
-              worktreePath: prepared.path,
-              branch: prepared.branch,
+              worktreePath: candidate.path!,
+              branch: candidate.branch!,
               now,
               project: projectSlug,
-              actionId
-            }).claim_generation;
+              actionId: attemptActionId
+            });
+            claim.actionId = attemptActionId;
+            return {
+              agent: options.agent!,
+              path: candidate.path!,
+              branch: candidate.branch!,
+              model,
+              effort,
+              command: buildAgentLaunchCommand(options.agent!, candidate.path!, model, effort)
+            };
           }
-        });
-        reservationCommitCleanup.candidate = created;
-        options.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
-        return created;
+
+          // A fallback Action is dispatched from the same documents the pointer
+          // was resolved from, and has to clear the same bar: the queue computed
+          // its readiness from the configured checkout, which is not necessarily
+          // the checkout this handoff dispatches from.
+          if (attemptActionId !== actionId) {
+            const fallbackDispatch = resolveDispatch(fallbackDispatchRoot(), projectSlug, { actionId: attemptActionId });
+            if (!isDispatchable(fallbackDispatch)) continue;
+            dispatch = fallbackDispatch;
+            queueFallback = {
+              pointerActionId: actionId,
+              actionId: attemptActionId,
+              reason: refusal?.reason ?? "The governed pointer's Action is already claimed by a live worktree."
+            };
+          }
+
+          try {
+            const created = prepareAgentWorktree({
+              agent: options.agent!,
+              actionId: attemptActionId,
+              baseBranch,
+              repositoryPath: controlWorktree,
+              rootOverride: options.agentWorktreeRoot,
+              now,
+              model,
+              effort,
+              beforeCreate(prepared) {
+                claim.generation = reserveAgentWorktree(db, {
+                  repositoryPath: controlWorktree,
+                  worktreePath: prepared.path,
+                  branch: prepared.branch,
+                  now,
+                  project: projectSlug,
+                  actionId: attemptActionId
+                }).claim_generation;
+              }
+            });
+            claim.actionId = attemptActionId;
+            reservationCommitCleanup.candidate = created;
+            options.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
+            return created;
+          } catch (error) {
+            // Losing the claim race is the one failure the walk continues past,
+            // and it costs nothing to recover from: `prepareAgentWorktree`
+            // claims in `beforeCreate`, before it creates the branch or the
+            // worktree, so a lost race leaves no Git state to undo. Anything
+            // else -- a path collision, a Git failure -- is this call's own
+            // problem and is raised, not walked away from.
+            if (!isActionClaimRefusal(error)) throw error;
+            lostRace ??= error;
+            dispatch = pointerDispatch;
+            queueFallback = null;
+            if (attemptActionId === actionId && !walked) {
+              walked = true;
+              attempts.push(...queueWalkCandidates(db, { projectSlug, exclude: attempts, now }));
+            }
+          }
+        }
+
+        if (refusal) throw validationError(refusal.reason!, refusal.details);
+        throw lostRace ?? validationError(
+          "Arcadia go found no unclaimed, dependency-ready Action to dispatch.",
+          { projectSlug, pointerActionId: actionId, remedy: "Finish or retire a live candidate, or add a ready Action to the queue." }
+        );
       }));
     } catch (error) {
       // If SQLite cannot commit after Git created the worktree, do not leave a
@@ -454,6 +572,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
       throw error;
+    } finally {
+      if (scratchDispatch.checkout) {
+        tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", scratchDispatch.checkout.path]);
+        rmSync(scratchDispatch.checkout.root, { recursive: true, force: true });
+      }
     }
 
     if (options.launch && workspacePath) {
@@ -483,7 +606,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           withDatabase(workspacePath, (db) => writeTransaction(db, () => releaseActionClaim(db, {
             repositoryPath: controlWorktree,
             project: projectSlug,
-            actionId,
+            actionId: claim.actionId,
             generation: claim.generation!
           })));
         }
@@ -535,6 +658,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       nextWorktree,
       modelResolution,
       dispatch,
+      queueFallback,
       dispatchable: isDispatchable(dispatch),
       transition,
       session,
@@ -590,10 +714,63 @@ function protectedWorktreePaths(repo: string, workspace: string | undefined, tmu
 
 interface CandidateEvaluation {
   kind: "clear" | "resume" | "refuse";
+  /**
+   * Set on `refuse` when the refusal is about *this Action* rather than about
+   * this repository: another live worktree already claims it. It is the one
+   * refusal a different ready Action can answer, so it is the one the
+   * queue-walk fallback is allowed to continue past. Every other refusal --
+   * a live Session, an unproven exit, an unresolved candidate for a different
+   * Action -- would refuse identically whichever Action were asked about.
+   */
+  code?: "action_claimed";
   path?: string;
   branch?: string;
   reason?: string;
   details?: Record<string, unknown>;
+}
+
+/**
+ * The next dependency-ready, still-unclaimed Actions `go` may fall back to,
+ * in the order `buildAgentQueue` already computes -- the same order the
+ * operator reads in `arcadia advance queue` and reorders with
+ * `advance queue reorder`, so the fallback can never disagree with the
+ * queue about what comes next.
+ *
+ * Only `ready` entries are offered: the queue already classifies a
+ * dependency-blocked, question-open, decision-held or operator-owned Action as
+ * `attention`, and an Action a live Session or Run owns as `running`, so
+ * skipping everything else falls out of reading the queue rather than from a
+ * second, drifting copy of its rules here.
+ *
+ * Best-effort: a workspace whose Project is not registered, or whose queue
+ * cannot be built at all, yields no fallback and leaves the pointer Action's
+ * original refusal standing -- which is exactly the behavior before this
+ * existed.
+ */
+function queueWalkCandidates(
+  db: Database.Database,
+  input: { projectSlug: string; exclude: readonly string[]; now: Date }
+): string[] {
+  let queue;
+  try {
+    queue = buildAgentQueue(db, { now: input.now });
+  } catch {
+    return [];
+  }
+  const seen = new Set(input.exclude);
+  const candidates: string[] = [];
+  for (const entry of queue.ordered) {
+    if (entry.state !== "ready" || entry.projectSlug !== input.projectSlug || !entry.actionId) continue;
+    if (seen.has(entry.actionId)) continue;
+    seen.add(entry.actionId);
+    candidates.push(entry.actionId);
+  }
+  return candidates;
+}
+
+/** Whether an error is `reserveAgentWorktree` refusing a lost Action-claim race. */
+function isActionClaimRefusal(error: unknown): error is Error {
+  return error instanceof Error && error.message.includes("already claimed by a live worktree");
 }
 
 /**
@@ -704,6 +881,7 @@ function evaluateExistingCandidate(
   if (claimed) {
     return {
       kind: "refuse",
+      code: "action_claimed",
       reason: "Another live worktree already claims this Action; Arcadia go will not dispatch it a second time.",
       details: {
         actionId: input.actionId,
@@ -792,6 +970,10 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     "",
     `Dispatchable: ${data.dispatchable ? "yes" : "no"}`,
     `Current action: ${action?.id ?? "unresolved"}`,
+    ...(data.queueFallback ? [
+      `  ${data.queueFallback.pointerActionId} is already claimed by a live worktree; dispatched the next ready queue entry instead.`,
+      "  The governed pointer was not moved.",
+    ] : []),
     `Expected artifact: ${action?.expectedArtifact ?? "not declared"}`,
     "",
     data.nextWorktree

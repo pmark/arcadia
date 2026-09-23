@@ -16,6 +16,7 @@ import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import
 import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -383,6 +384,51 @@ describe("Agent Ask settlement", () => {
 
     expect(applied.data.receipt.effects.join(" ")).toContain("Milestone");
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("milestone: Reach the retargeted milestone");
+  });
+
+  it("refuses a project_update from a worktree whose Action claim has been superseded", () => {
+    // Project-level state written from a claimed candidate. The Action is not
+    // resolved here, so nothing releases the claim -- but a worktree another
+    // session has since taken the work from must not write over it.
+    const { workspace, repo } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-project-update");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-project-update", candidate], { cwd: repo });
+    // Real clock: the claim's 24-hour TTL is read back against it by
+    // `settleAgentAsk`, so a fixed past instant would expire this test.
+    const now = new Date();
+    withDatabase(workspace, (db) => reserveAgentWorktree(db, {
+      repositoryPath: repo, worktreePath: candidate, branch: "claude/candidate-project-update",
+      now, project: "demo", actionId: "first"
+    }));
+
+    const proposal = runAgentAskPreviewCommand({
+      workspace, dir: candidate,
+      request: askForIntent("claimed-project-update", "project_update", "Reach the claimed milestone", "milestone")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-claimed-project-update",
+      disposition: "accepted", revision: 1, cwd: candidate
+    });
+    const projectBefore = readFileSync(path.join(candidate, "PROJECT.md"), "utf8");
+
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-claimed-project-update",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint,
+      apply: true, cwd: candidate,
+      hooks: {
+        beforeDocumentWrite() {
+          withDatabase(workspace, (db) => {
+            db.prepare("UPDATE agent_worktree_reservations SET expires_at = ?").run(now.toISOString());
+            reserveAgentWorktree(db, {
+              repositoryPath: repo, worktreePath: path.join(path.dirname(repo), "candidate-took-over"),
+              branch: "claude/candidate-took-over", now, project: "demo", actionId: "first"
+            });
+          });
+        }
+      }
+    })).toThrow(/no longer the one this settlement started with/);
+
+    expect(readFileSync(path.join(candidate, "PROJECT.md"), "utf8")).toBe(projectBefore);
   });
 
   it("writes a settled decision Ask's options into the Decision document, recommendation flagged", () => {
