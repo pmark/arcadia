@@ -17,6 +17,12 @@ import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
+import {
+  assertActionClaimGeneration,
+  getActiveWorktreeReservation,
+  releaseActionClaim,
+  type ActionClaimFence
+} from "../sessions/index.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
@@ -215,7 +221,36 @@ export function settleAgentAsk(db: Database.Database, input: {
   const project = getProjectBySlug(db, proposal.normalized.project);
   const metadata = project ? getProjectMetadata(db, project.id) : null;
   if (!project || !metadata?.repo_path) throw validationError("Agent Ask Project repository is not configured.");
-  const repoRoot = projectCheckoutFor(path.resolve(metadata.repo_path), input.cwd ?? process.cwd());
+  const controlRepoPath = path.resolve(metadata.repo_path);
+  const repoRoot = projectCheckoutFor(controlRepoPath, input.cwd ?? process.cwd());
+  // The Action claim this settling worktree holds, when it holds one. A
+  // worktree `go` dispatched carries its Action's claim and its generation, and
+  // that claim is what makes this settlement *this worktree's* settlement: a
+  // completion written from here must be about the Action this worktree was
+  // given, must still hold the same generation at the moment it writes, and
+  // releases the claim only once that Action is genuinely done.
+  //
+  // Null in the main checkout and in any worktree with no live claim, where
+  // settlement behaves exactly as it did before claims existed.
+  const settlingReservation = getActiveWorktreeReservation(db, controlRepoPath, repoRoot);
+  const settlingClaim = settlingReservation?.action_id && settlingReservation.project && settlingReservation.claim_generation
+    ? {
+        repositoryPath: settlingReservation.repository_path,
+        project: settlingReservation.project,
+        actionId: settlingReservation.action_id,
+        generation: settlingReservation.claim_generation
+      } satisfies ActionClaimFence
+    : null;
+  // Verified, and released when the Action it names is done, inside the same
+  // transaction as this settlement's document writes -- never as a check before
+  // it, which would leave exactly the window the generation exists to close.
+  //
+  // Set for *every* accepted settlement that writes, not only the two intents
+  // that resolve or retarget the pointer: `outcome`, `milestone` and
+  // `project_update` all write the same PROJECT.md fields through the same
+  // helpers, so fencing only one of them would leave a superseded worktree free
+  // to write the same state by naming a different intent.
+  let claimFence: (ActionClaimFence & { release?: boolean }) | null = null;
   const queue = buildAgentQueue(db);
   if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
     throw validationError("Action queue revision changed; refresh the Agent Ask settlement preview.", {
@@ -238,6 +273,9 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (input.disposition === "rejected") {
     effects.push("Preserved the proposal and created no Project or queue changes.");
   } else {
+    // A rejection writes nothing about the work -- it only archives the Ask
+    // file -- so it is not fenced; every accepted settlement is.
+    if (settlingClaim) claimFence = { ...settlingClaim };
     const discovered = discoverDocs(repoRoot);
     const projectDoc = discovered.docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
     const plan = discovered.docs.find(
@@ -621,6 +659,25 @@ export function settleAgentAsk(db: Database.Database, input: {
             actionId, responsibility: action.responsibility
           });
         }
+        // A claimed worktree may only complete the Action it was dispatched to.
+        // Completing a different one would mark work done from a checkout that
+        // was never given it, and would release nothing -- the claim it does
+        // hold would sit until the 24-hour TTL, blocking legitimate dispatch.
+        if (settlingClaim && settlingClaim.actionId !== actionId) {
+          throw validationError(
+            "This worktree's Action claim does not name the Action this settlement completes.",
+            {
+              claimedActionId: settlingClaim.actionId,
+              completingActionId: actionId,
+              worktreePath: repoRoot,
+              remedy: `Settle ${settlingClaim.actionId}'s completion from this worktree, or complete ${actionId} from the worktree that claims it.`
+            }
+          );
+        }
+        // Completion is the one settlement that resolves the claimed Action, so
+        // it is the one that releases the claim; every other intent leaves the
+        // worktree still holding its work.
+        if (claimFence) claimFence.release = true;
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
@@ -864,6 +921,9 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (fileMutations.length > 0) writeTransaction(db, () => {
     const applied: FileMutation[] = [];
     try {
+      // First inside the transaction, before anything is written: a settlement
+      // whose claim has been superseded writes nothing at all.
+      if (claimFence) assertActionClaimGeneration(db, claimFence);
       // The PROJECT.md + Plan pair is written through the same fingerprint-checked
       // compare-and-set `arcadia advance queue make-next` uses: a concurrent
       // settlement that moved the pointer between this settlement's resolution and
@@ -962,6 +1022,13 @@ export function settleAgentAsk(db: Database.Database, input: {
           errors: blocking,
           unrelatedCorpusErrors: validation.errors.length - blocking.length,
         });
+      }
+      // Release last, still inside the transaction and still fenced on the same
+      // generation, so the claim outlives every write it was guarding and a
+      // rollback takes the release with it.
+      if (claimFence?.release) {
+        releaseActionClaim(db, claimFence);
+        effects.push(`Released this worktree's claim on ${claimFence.project}/${claimFence.actionId}.`);
       }
     } catch (error) {
       // Roll back exactly what this attempt wrote, inside the interlock, so a

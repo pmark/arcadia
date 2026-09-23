@@ -544,6 +544,13 @@ updated: 2026-09-23
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-apply-answered-decision-consequences-2026-09-22).
 
+## 2026-09-23 — Completed arcadia/dispatch-different-ready-action-per-session
+
+- **Did:** Completed Action arcadia/dispatch-different-ready-action-per-session from accepted evidence (Candidate 8b5640b6e5286732eb3c7f55cd8eb9763211706d).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia go's queue-walk-and-claim runs inside the same writeTransaction that already serializes evaluateExistingCandidate and worktree reservation (src/commands/go.ts), attempting an atomic conditional claim per candidate in the order buildAgentQueue already computes."; "Losing a claim race on one candidate continues the walk to the next dependency-ready, still-unclaimed entry rather than stopping or retrying the lost one."; "arcadia advance run inside a worktree that already holds a claim resolves that claim's Action directly and never consults the queue-walk fallback."; "current_action in PROJECT.md and the Plan document remains a single value; no reader of it (dashboard, docket, arcadia next's narrative brief) is required to change."; "arcadia agent-ask settle (project_update and complete) loads the settling worktree's own claim, verifies its action_id matches the Action settlement is about to resolve, and carries that claim's generation through the settlement's writes and release, per add-action-scoped-worktree-claim's generation fencing."; "Deterministic tests cover: two concurrent arcadia go invocations against the same current_action each landing on a different ready Action; a queue-walk correctly skipping a dependency-blocked or already-claimed entry; arcadia advance never reassigning an in-progress worktree; and a settlement refusing when its worktree's claim does not match the Action it is settling."; "pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Plan complete; every Action is done.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-dispatch-different-ready-action-per-session-2026-09-22).
+
 ## 2026-09-23 — Completed arcadia/make-go-total-across-plans
 
 - **Did:** Completed Action arcadia/make-go-total-across-plans from accepted evidence (Candidate 8b0474a8d26b897fa544094d34687e8a04bb8f80).
