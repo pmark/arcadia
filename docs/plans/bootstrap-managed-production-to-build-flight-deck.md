@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-22
+updated: 2026-09-23
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -524,7 +524,7 @@ actions:
     references: ["docs/proposals/validate-governed-documents.md", "docs/proposals/gate-judgment-not-mechanics.md", "docs/decisions/0009-agent-neutral-go-handoff.md", "docs/decisions/0023-work-pointer-under-concurrency.md", "docs/working-copy-safety.md", "src/commands/go.ts", "src/goBroker.ts", "src/ask/settlement.ts", "src/agentSetup/goBrokerAgentSetup.ts"]
   - id: make-go-total-across-plans
     title: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the shared transition resolver and Arcadia Go activate the Plan whose earliest eligible Action is highest in the explicit queue whenever the active Plan is absent or complete.
@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: make-go-total-across-plans
+current_action: detect-hung-managed-production-sessions
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
