@@ -1494,7 +1494,7 @@ actions:
     references: ["src/ask/settlement.ts", "src/commands/advance.ts", "docs/COMMANDS.md"]
 questions: []
 decisions: []
-current_action: prove-managed-production-fault-matrix
+current_action: register-agent-workspace-trust
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
