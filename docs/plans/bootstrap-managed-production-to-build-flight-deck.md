@@ -1674,6 +1674,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/568"]
+  - id: pass-managed-claude-token-into-sessions
+    title: The worker reads the operator token from the workspace config file at launch and passes it only into the claude-code-cli Session environment as CLAUDE_CODE_OAUTH_TOKEN.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: The worker reads the operator token from the workspace config file at launch and passes it only into the claude-code-cli Session environment as CLAUDE_CODE_OAUTH_TOKEN.
+    expected_artifact: Evidence satisfying Agent Ask pass-managed-claude-token-into-sessions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask pass-managed-claude-token-0065-2026-09-23
+    acceptance_criteria:
+      - At claude-code-cli Session launch the worker reads the token from one documented file under the workspace config directory and passes it only into that Session process environment as CLAUDE_CODE_OAUTH_TOKEN; no other child process receives it.
+      - The worker refuses to use the file, with a named remedy, when it is readable by group or others, is empty, or is a symlink out of the workspace config directory.
+      - The token value never appears in logs, receipts, events, command lines visible to ps, packets, or error messages.
+      - The sign-in preflight from preflight-provider-signin-before-launch treats a valid token file as signed in for claude-code-cli.
+      - START_HERE documents the one-time operator setup (claude setup-token, then writing the file with 0600 permissions) and rotation, and a /runs operator button performs the write-and-verify step without the agent ever handling the value.
+      - Regression tests cover token pass-through, each refused file state, and absence of the value from logs and the tmux command line.
+    depends_on: [preflight-provider-signin-before-launch]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/568"]
 questions: []
 decisions: []
 current_action: register-agent-workspace-trust
