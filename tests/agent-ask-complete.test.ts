@@ -195,6 +195,44 @@ describe("Agent Ask complete", () => {
     })).toThrow(new RegExp(`does not match .*HEAD ${head}`));
   });
 
+  it("refuses completion when the declared expected Artifact was not produced", () => {
+    const { workspace, repo, head } = fixture({ expectedArtifactPath: "docs/contract.md", writeExpectedArtifact: false });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-missing-artifact", "first", head) });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-missing-artifact", disposition: "accepted"
+    })).toThrow(/declared expected Artifact was not produced/);
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("status: open");
+  });
+
+  it("accepts completion when the declared expected Artifact (a real path) exists", () => {
+    const { workspace, repo, head } = fixture({ expectedArtifactPath: "docs/contract.md", writeExpectedArtifact: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-present-artifact", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-present-artifact", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-present-artifact", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain("status: done");
+  });
+
+  it("does not refuse completion when the declared expected Artifact is prose, not a path", () => {
+    // The default fixture's `expected_artifact: First proof` has a space, so it
+    // never resolves to a filesystem path and is never checked for existence.
+    const { workspace, head } = fixture();
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-prose-artifact", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-prose-artifact", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-prose-artifact", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+  });
+
   it("settles a complete Ask from its own drafted file inside a candidate worktree, with no manual relocation and no commit rewrite", () => {
     const { workspace, repo, head } = fixture();
     const candidate = path.join(path.dirname(repo), "candidate-complete");
@@ -654,6 +692,10 @@ function fixture(options: {
   withActiveSidePlan?: boolean;
   /** Give the inactive Plan's first Action the same id as demo-plan's `first`. */
   withDuplicateActionId?: boolean;
+  /** Repo-relative path replacing `first`'s prose `expected_artifact`. */
+  expectedArtifactPath?: string;
+  /** Write `expectedArtifactPath` to disk before the fixture's initial commit. */
+  writeExpectedArtifact?: boolean;
 } = {}): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-complete-"));
   roots.push(root);
@@ -668,6 +710,10 @@ function fixture(options: {
   if (options.withOpenDecision || options.secondDeferredByDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(options), "utf8");
+  if (options.expectedArtifactPath && options.writeExpectedArtifact) {
+    mkdirSync(path.dirname(path.join(repo, options.expectedArtifactPath)), { recursive: true });
+    writeFileSync(path.join(repo, options.expectedArtifactPath), "proof\n", "utf8");
+  }
   if (options.withInactivePlan) {
     writeFileSync(path.join(repo, "docs/plans/side-plan.md"), inactivePlanDoc(options.withDuplicateActionId), "utf8");
   }
@@ -764,6 +810,8 @@ function planDoc(options: {
   firstDone?: boolean;
   withOpenDecision?: boolean;
   withThird?: boolean;
+  /** Repo-relative path replacing `first`'s prose `expected_artifact`. */
+  expectedArtifactPath?: string;
 }): string {
   return ["---", "arcadia: v1", "type: plan", "slug: demo-plan", "project: demo", "status: active",
     "milestone: Completion", "current_action: first", "token_impact: medium",
@@ -772,7 +820,7 @@ function planDoc(options: {
     "updated: 2026-09-01", "actions:",
     "  - id: first", "    title: First Action", `    status: ${options.firstDone ? "done" : "open"}`,
     "    responsibility: agent", "    effort: session", "    next_action: Finish the first Action.",
-    "    expected_artifact: First proof", "    clarification: clarified", "    confidence: high",
+    `    expected_artifact: ${options.expectedArtifactPath ?? "First proof"}`, "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - First proof exists.", "    depends_on: []",
     `    decisions: [${options.withOpenDecision ? "review-first" : ""}]`, "    references: []",
     "  - id: second", "    title: Second Action", `    status: ${options.secondDone ? "done" : "open"}`,

@@ -41,6 +41,24 @@ const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
  * must not make a settlement refuse merely because another pending Ask was
  * drafted in the same checkout. All other dirt remains fail-closed.
  */
+/** Non-path markers that contain no whitespace but are not a repo-relative
+ * path either: a URL (which has its own `/` separators) or a placeholder. */
+const NON_PATH_ARTIFACT_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/|n\/a$|tbd(?:\/none)?$)/i;
+
+/**
+ * Whether a Plan's `expected_artifact` reads as a repo-relative path rather
+ * than prose. Prose ("First proof", "Evidence satisfying Agent Ask X")
+ * always contains a space; a path never does and either has a directory
+ * separator or a file extension. A URL or a placeholder like `N/A` also has
+ * no whitespace and may contain a `/`, so those are excluded explicitly
+ * rather than mistaken for a path this repository could ever contain.
+ */
+function looksLikeArtifactPath(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /\s/.test(trimmed) || NON_PATH_ARTIFACT_PATTERN.test(trimmed)) return false;
+  return trimmed.includes("/") || /\.[A-Za-z0-9]+$/.test(trimmed);
+}
+
 function untrackedDraftAskPaths(repoRoot: string): string[] {
   const directory = path.join(repoRoot, ".arcadia", "asks");
   try {
@@ -688,6 +706,20 @@ export function settleAgentAsk(db: Database.Database, input: {
             `Completion Candidate revision ${candidateRevision} does not match ${repoRoot}'s current HEAD ${head}.`,
             { expectedHead: head, receivedRevision: candidateRevision, repoRoot }
           );
+        }
+        // `expected_artifact` is free text in most Plans ("First proof",
+        // "Evidence satisfying Agent Ask X") but a real repo-relative path in
+        // others (session-reconciliation's `docs/contract.md`). Only the path
+        // shape is checkable, so only that shape is checked: prose never
+        // refuses a completion it was never meant to gate.
+        if (action.expectedArtifact && looksLikeArtifactPath(action.expectedArtifact)) {
+          const resolvedArtifact = path.resolve(repoRoot, action.expectedArtifact);
+          const withinRepo = resolvedArtifact === repoRoot || resolvedArtifact.startsWith(`${repoRoot}${path.sep}`);
+          if (withinRepo && !existsSync(resolvedArtifact)) {
+            throw validationError("Completion refused: the declared expected Artifact was not produced.", {
+              actionId, expectedArtifact: action.expectedArtifact, resolvedPath: resolvedArtifact
+            });
+          }
         }
         const declared = action.acceptanceCriteria;
         if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind completion evidence to.", { actionId });
