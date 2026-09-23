@@ -259,17 +259,17 @@ describe("runManagedProductionTick", () => {
 
     // The durable signal is written exactly once, on the tick that first
     // discovered it -- never on the ticks that follow while it stays unresolved.
-    expect(ticks[0]!.log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract to the operator \(planning_required\)/));
-    expect(ticks[1]!.log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
-    expect(ticks[2]!.log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[0].log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract to the operator \(planning_required\)/));
+    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
 
     const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
     // firstDetectedAt is pinned to the tick that discovered it, not the most
     // recent one, proving the row was updated in place rather than replaced.
-    expect(new Date(escalations[0]!.firstDetectedAt).getTime()).toBe(fixture.now.getTime());
-    expect(new Date(escalations[0]!.lastSeenAt).getTime()).toBe(fixture.now.getTime() + 120_000);
+    expect(new Date(escalations[0].firstDetectedAt).getTime()).toBe(fixture.now.getTime());
+    expect(new Date(escalations[0].lastSeenAt).getTime()).toBe(fixture.now.getTime() + 120_000);
   });
 
   it("prunes an escalation left over from an Action that is no longer current", () => {
