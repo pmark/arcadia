@@ -428,6 +428,19 @@ describe("arcadia next Constitution handoff", () => {
     writeDoc(repo, "CONSTITUTION.md", "# Constitution\n\n- Anything goes.\n");
     expect(() => renderNextSuccess(result)).toThrow(/CONSTITUTION\.md changed after this handoff pinned it/);
   });
+
+  it("refuses a brief when a Constitution is adopted after resolution found none", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    const workspace = workspaceFor(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const result = runNextCommand({ workspace, project: "demo" });
+    expect(result.data.context?.constitution).toBeNull();
+    writeDoc(repo, "CONSTITUTION.md", "# Constitution\n\n- Capability never grants authority.\n");
+    expect(() => renderNextSuccess(result)).toThrow(/CONSTITUTION\.md changed after this handoff pinned it/);
+  });
 });
 
 describe("dispatch journal", () => {

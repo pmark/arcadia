@@ -143,9 +143,9 @@ describe("renderActionBrief", () => {
     const repo = briefRepo();
     const base = head(repo);
     writeFileSync(path.join(repo, "CONSTITUTION.md"), "# Constitution\n\n- Anything goes.\n");
-    expect(() => brief(repo, base)).toThrow(/cannot launch: CONSTITUTION\.md changed after this handoff pinned it.*pinned to base revision/);
+    expect(() => brief(repo, base)).toThrow(/cannot launch: CONSTITUTION\.md in the worktree differs.*pinned to base revision/);
     rmSync(path.join(repo, "CONSTITUTION.md"));
-    expect(() => brief(repo, base)).toThrow(/CONSTITUTION\.md changed/);
+    expect(() => brief(repo, base)).toThrow(/CONSTITUTION\.md in the worktree differs/);
   });
 
   it("refuses to launch when the Constitution is unreadable or the base revision is unknown", () => {
@@ -154,7 +154,14 @@ describe("renderActionBrief", () => {
     rmSync(path.join(repo, "CONSTITUTION.md"));
     mkdirSync(path.join(repo, "CONSTITUTION.md"));
     expect(() => brief(repo, base)).toThrow(/cannot launch: .*could not be read/);
-    expect(() => brief(repo, "0".repeat(40))).toThrow(/base revision 0{40} is not in repository/);
+    expect(() => brief(repo, "0".repeat(40))).toThrow(/cannot be verified/);
+  });
+
+  it("does not mistake a checkout's CRLF conversion for a changed Constitution", () => {
+    const repo = briefRepo();
+    execFileSync("git", ["config", "core.autocrlf", "true"], { cwd: repo });
+    writeFileSync(path.join(repo, "CONSTITUTION.md"), "# Constitution\r\n\r\n## Authority\r\n\r\n- Approval boundaries are hard stops.\r\n");
+    expect(brief(repo)).toContain("Approval boundaries are hard stops.");
   });
 
   it("fails closed when the Action declares no acceptance criteria", () => {

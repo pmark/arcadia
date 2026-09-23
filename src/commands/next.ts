@@ -244,8 +244,10 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
   // agent work under the same constraints as implementing an action. The
   // dispatch context carries only its fingerprint; this is the one place the
   // brief embeds the text, verified against that fingerprint.
+  // Loaded unconditionally: a Constitution adopted after resolution must
+  // refuse the brief, not be skipped because the pin said there was none.
+  const constraints = loadConstitution(context.repoRoot, context.constitution);
   if (context.constitution) {
-    const constraints = loadConstitution(context.repoRoot, context.constitution);
     lines.push("", `Standing constraints (CONSTITUTION.md, sha256 ${context.constitution.sha256.slice(0, 12)}) — these bind this action:`);
     lines.push(...constraints.map((line) => (line ? `  ${line}` : "")));
   }

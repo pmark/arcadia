@@ -349,9 +349,9 @@ export function readConstitution(repoRoot: string): {
   constraints: string[];
   blocker: DispatchBlocker | null;
 } {
-  let raw: string;
+  let raw: Buffer;
   try {
-    raw = readFileSync(join(repoRoot, "CONSTITUTION.md"), "utf8");
+    raw = readFileSync(join(repoRoot, "CONSTITUTION.md"));
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return { reference: null, constraints: [], blocker: null };
@@ -369,11 +369,13 @@ export function readConstitution(repoRoot: string): {
       }
     };
   }
-  return { reference: constitutionReference(raw), constraints: constitutionBody(raw), blocker: null };
-}
-
-export function constitutionReference(raw: string): ConstitutionReference {
-  return { path: "CONSTITUTION.md", sha256: createHash("sha256").update(raw).digest("hex") };
+  // Hash the bytes, not decoded text: decoding folds invalid sequences into
+  // U+FFFD, which would let a byte-level change keep the same fingerprint.
+  return {
+    reference: { path: "CONSTITUTION.md", sha256: createHash("sha256").update(raw).digest("hex") },
+    constraints: constitutionBody(raw.toString("utf8")),
+    blocker: null
+  };
 }
 
 function constitutionBody(raw: string): string[] {
