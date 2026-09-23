@@ -64,6 +64,10 @@ export interface BatchAction extends BatchActionRef {
   planPath: string;
   tokenImpact: TokenImpact | null;
   tokenPoints: number;
+  /** From the plan's `recommended_model`. Null when the plan does not declare one. */
+  recommendedModel: string | null;
+  /** From the plan's `recommended_reasoning_effort`. Null when not declared. */
+  recommendedReasoningEffort: string | null;
   /** 1-based position inside this lane's walk. */
   position: number;
 }
@@ -187,6 +191,8 @@ export function resolveBatch(inputs: BatchProjectInput[], options: ResolveBatchO
     const repositoryRoot = path.resolve(input.repositoryRoot);
     const planTokenImpact = readySet.planTokenImpact;
     const planTokenPoints = planTokenImpact ? TOKEN_TIER_POINTS[planTokenImpact] : 0;
+    const planRecommendedModel = readySet.planRecommendedModel;
+    const planRecommendedReasoningEffort = readySet.planRecommendedReasoningEffort;
 
     const order = rotateToCurrent(readySet.currentAction, readySet.candidates);
 
@@ -258,6 +264,8 @@ export function resolveBatch(inputs: BatchProjectInput[], options: ResolveBatchO
         planPath,
         tokenImpact: planTokenImpact,
         tokenPoints: planTokenPoints,
+        recommendedModel: planRecommendedModel,
+        recommendedReasoningEffort: planRecommendedReasoningEffort,
         position: lane.actions.length + 1
       });
     }

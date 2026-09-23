@@ -230,9 +230,16 @@ function PushLane({ lane }: { lane: ScheduleBatchLane }) {
       {lane.actions.length > 0 ? (
         <ol className="mt-2 grid min-w-0 gap-1.5">
           {lane.actions.map((action) => (
-            <li key={action.actionId} className="flex min-w-0 items-center gap-2 text-sm">
+            <li key={action.actionId} className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
               <span className="shrink-0 text-xs text-muted">{action.position}.</span>
               <span className="truncate text-ink">{action.title}</span>
+              <span className="shrink-0 font-mono text-xs text-muted">{action.actionId}</span>
+              {action.recommendedModel ? (
+                <span className="shrink-0 rounded-full bg-steel/10 px-2 py-0.5 text-xs font-medium text-steel">
+                  {action.recommendedModel}
+                  {action.recommendedReasoningEffort ? ` / ${action.recommendedReasoningEffort}` : ""}
+                </span>
+              ) : null}
               <span className="ml-auto shrink-0 text-xs text-muted">{action.tokenImpact ?? "unset"}</span>
             </li>
           ))}
