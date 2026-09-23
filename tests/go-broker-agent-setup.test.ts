@@ -510,6 +510,36 @@ describe("go broker workspace trust", () => {
     }
   });
 
+  it("refuses a shared-root child named like a traversal and a path Git does not own", () => {
+    const fixture = createFixture();
+    const dotted = path.join(realHome(fixture), ".codex", "worktrees", "..session");
+    mkdirSync(dotted, { recursive: true });
+    execFileSync("git", ["init", "-q", dotted]);
+    const fakeRepository = path.join(realHome(fixture), "Dev", "fake");
+    mkdirSync(path.join(fakeRepository, ".git"), { recursive: true });
+
+    const plan = planWorkspaceTrust([dotted, fakeRepository], fixture.home);
+
+    expect(plan.trusted).toEqual([]);
+    expect(plan.refused).toEqual(expect.arrayContaining([
+      { repository: dotted, reason: expect.stringContaining("shared agent worktree root") },
+      { repository: fakeRepository, reason: "is not a Git repository root" }
+    ]));
+  });
+
+  it("recognizes an existing table written with spaced TOML key syntax", () => {
+    const fixture = createFixture();
+    const repository = createRepository(fixture.home, "Dev/spaced");
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, `[ projects . ${JSON.stringify(repository)} ]\ntrust_level = "trusted"\n`);
+
+    configureGoBrokerAgents(setupOptions(fixture, [repository]));
+
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(config).not.toContain(`[projects.${JSON.stringify(repository)}]`);
+    expect(config).toContain(`[ projects . ${JSON.stringify(repository)} ]\ntrust_level = "trusted"`);
+  });
+
   it("reports the exact missing repository and makes status not ready", () => {
     const fixture = createFixture();
     const trusted = createRepository(fixture.home, "Dev/trusted");

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -308,7 +309,7 @@ export function planWorkspaceTrust(
           ? "is, contains, or lies inside a shared agent worktree root"
           : candidates.some((other) => other !== repository && isSameOrAncestor(repository, other))
             ? "is a parent directory of another configured Project repository"
-            : !existsSync(path.join(repository, ".git"))
+            : !isGitWorktreeRoot(repository)
               ? "is not a Git repository root"
               : null;
     if (reason) refused.push({ repository, reason });
@@ -319,7 +320,20 @@ export function planWorkspaceTrust(
 
 function isSameOrAncestor(ancestor: string, candidate: string): boolean {
   const relative = path.relative(ancestor, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+/** Git itself, not a `.git` marker, decides whether a path is a worktree root. */
+function isGitWorktreeRoot(candidate: string): boolean {
+  try {
+    const topLevel = execFileSync("git", ["-C", candidate, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return canonicalPath(topLevel) === candidate;
+  } catch {
+    return false;
+  }
 }
 
 function canonicalPath(candidate: string): string {
@@ -332,7 +346,7 @@ function canonicalPath(candidate: string): string {
 }
 
 function codexProjectHeader(repository: string): RegExp {
-  return new RegExp(`^\\s*\\[projects\\.(?:${escapeRegExp(JSON.stringify(repository))}|${escapeRegExp(`'${repository}'`)})\\]\\s*(?:#.*)?$`);
+  return new RegExp(`^\\s*\\[\\s*projects\\s*\\.\\s*(?:${escapeRegExp(JSON.stringify(repository))}|${escapeRegExp(`'${repository}'`)})\\s*\\]\\s*(?:#.*)?$`);
 }
 
 function codexTrustLevel(content: string, repository: string): string | null {

@@ -22,9 +22,9 @@ Action: `register-agent-workspace-trust`
 Codex resolves a linked Git worktree to its main checkout before looking up
 trust. A prepared worktree under `~/.codex/worktrees/…` therefore inherits the
 trust recorded for its Project's repository root, and the shared worktree root
-itself never needs — and never gets — trust. The zero-prompt fixture test
-asserts exactly that resolution: the worktree's `--git-common-dir` parent is
-the trusted root, and no entry names the worktree path.
+itself never needs — and never gets — trust. The fixture test checks the Git
+side of that resolution: the worktree's `--git-common-dir` parent is the
+trusted root, and no entry names the worktree path.
 
 ## Scoping (what is never trusted)
 
@@ -36,7 +36,7 @@ existing Git repository root, and refuses:
 | The home directory, or any parent of it | `is the home directory or one of its parents` |
 | A shared worktree root (`~/.codex`, `~/.claude`, `~/.opencode` `…/worktrees`), anything inside it, or anything containing it | `is, contains, or lies inside a shared agent worktree root` |
 | A directory that contains another configured Project | `is a parent directory of another configured Project repository` |
-| A path with no `.git` | `is not a Git repository root` |
+| A path Git does not report as its own worktree root (`git rev-parse --show-toplevel`) | `is not a Git repository root` |
 
 A refused path is reported by status but does not by itself fail readiness, so
 one misconfigured Project cannot block every other Project's dispatch.
@@ -90,9 +90,11 @@ Tests (`tests/go-broker-agent-setup.test.ts`, `go broker workspace trust`):
    `untrusted` Project entry and a commented line survive verbatim.
 5. `neither duplicates nor downgrades an existing trusted entry`
 6. `trusts a repository it has never seen so its prepared worktree resolves to
-   a trusted root` — disposable fixture: a fresh repository and a linked
-   worktree under the fixture's `~/.codex/worktrees`, a config that did not
-   exist, one install, and a status that reports ready.
+   a trusted root` — a Git-and-config check on a disposable fixture: a fresh
+   repository and a linked worktree under the fixture's `~/.codex/worktrees`, a
+   config that did not exist, one install, the worktree's Git common directory
+   resolving to the root that now carries the trusted entry, and a status that
+   reports ready. It does not execute Codex's own trust lookup.
 
 Live read-only status on the operator's machine, run from this candidate
 before any reinstall, named the two Project repositories Codex has never been
@@ -105,10 +107,10 @@ codexWorkspaceTrust missing: /Users/pmark/Dev/MR/sites/martianrover-com2
 
 ### What is not proven here
 
-The zero-prompt criterion is proven on a disposable fixture at the trust-lookup
-level (the Codex worktree-to-root resolution and the written trust entry), not
-by launching a real Codex TUI. A real launch would need either the operator's
-Codex credentials in a disposable `CODEX_HOME` or a throwaway trust entry
+The zero-prompt criterion is checked on a disposable fixture only at the
+Git-and-config level (Git's worktree-to-root resolution and the written trust
+entry); the no-prompt result itself is not proven until a real Codex launch.
+A real launch would need either the operator's Codex credentials in a disposable `CODEX_HOME` or a throwaway trust entry
 written into the operator's real config; neither is acceptable for an
 unattended agent. The operator QA below closes that gap on real repositories.
 

@@ -36,6 +36,7 @@ import { dependencyRequiringPreservationCheck, PRESERVATION_DEPENDENCY_CODE } fr
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { samePath } from "../git/worktrees.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 
 const BROKER_AGENTS = SESSION_AGENTS as readonly (keyof ProviderExecutables)[];
@@ -89,16 +90,20 @@ export interface GoBrokerInstallOptions {
  * and status never invent a trust target.
  */
 function readConfiguredProjectRepositories(repository: string): string[] {
+  let workspace: string;
   try {
-    const workspace = requireResolvedWorkspace({ cwd: repository });
-    return withReadOnlyDatabase(workspace, (db) =>
-      listProjects(db)
-        .map((project) => getProjectMetadata(db, project.id)?.repo_path)
-        .filter((repoPath): repoPath is string => typeof repoPath === "string" && repoPath.length > 0)
-    );
+    workspace = requireResolvedWorkspace({ cwd: repository });
   } catch {
     return [];
   }
+  if (!existsSync(getWorkspacePaths(workspace).databaseFile)) return [];
+  // A database that exists but cannot be read must fail loudly: an empty
+  // list here would report every Project's trust as satisfied.
+  return withReadOnlyDatabase(workspace, (db) =>
+    listProjects(db)
+      .map((project) => getProjectMetadata(db, project.id)?.repo_path)
+      .filter((repoPath): repoPath is string => typeof repoPath === "string" && repoPath.length > 0)
+  );
 }
 
 export function permissionSnippets(
@@ -313,7 +318,13 @@ export function runGoBrokerStatusCommand(
     preservationChecks = null;
   }
   if (broker.issues.length > 0 || !agentSetup.ready) {
+    const trust = agentSetup.workspaceTrust;
     throw validationError("Protected broker setup is not ready.", {
+      cause: [
+        `Workspace trust: ${trust.required.length - trust.missing.length}/${trust.required.length} Project repositories trusted`,
+        ...broker.issues,
+        ...agentSetup.issues
+      ].join("; "),
       ready: false,
       revision: broker.revision,
       releaseDirectory: broker.releaseDirectory,
