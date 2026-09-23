@@ -1093,10 +1093,16 @@ export function settleAgentAsk(db: Database.Database, input: {
         effects.push(`Artifact receipt: ${artifact.id}.`);
       }
       if (arrangeQueue && queueActionKeys.length > 0) {
-        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
+        // Arranging rewrites every position, so an Action that was unpositioned
+        // before this settlement — in another Plan or Project — would otherwise
+        // be ranked without anyone choosing its place. Leave it unpositioned.
+        const previouslyUnpositioned = new Set(queue.ordered.flatMap((entry) =>
+          entry.orderStatus === "unpositioned" && entry.orderKey ? [entry.orderKey] : []));
+        const arranged = (key: string): boolean => !previouslyUnpositioned.has(key) || queueActionKeys.includes(key);
+        const currentKeys = buildAgentQueue(db).ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []).filter(arranged);
         arrangeActionOrder(db, {
           currentKeys,
-          order: queueAfter,
+          order: queueAfter.filter(arranged),
           requestId: `agent-ask:${input.settlementRequestId}`,
           expectedRevision: queue.revision,
           apply: true

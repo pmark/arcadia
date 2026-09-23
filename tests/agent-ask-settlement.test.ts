@@ -242,9 +242,14 @@ describe("Agent Ask settlement", () => {
     execFileSync("git", ["add", "."], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Add a second active Plan"], { cwd: repo });
     const proposal = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-other-plan-unpositioned") });
-    const preview = runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id,
-      requestId: "settle-other-plan-unpositioned", disposition: "accepted", responsibility: "agent", top: true });
+    const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-other-plan-unpositioned",
+      disposition: "accepted" as const, responsibility: "agent" as const, top: true };
+    const preview = runAgentAskSettleCommand(options);
     expect(preview.data.receipt.queueActionKey).toBe("demo/add-settlement-proof");
+    runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    // The other Plan's Action is left for the operator to rank, not silently positioned.
+    withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()])
+      .toEqual(["demo/add-settlement-proof", "demo/existing"]));
   });
 
   it("names this Plan's unpositioned Actions and the reorder remedy when refusing placement", () => {
