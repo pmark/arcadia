@@ -592,3 +592,10 @@ updated: 2026-09-23
 - **Result:** Every declared acceptance criterion was accepted as met: "The admission/launch, Off, capacity, and priority/authority race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings against the real policy and claim store with zero invariant violations, retaining the failing seed and timeline for any violation."; "The harness is shown to reject injected defects: disabling each guard it covers in turn makes the matrix fail with a named seed, and any guard it cannot catch is recorded as such."; "A single release evidence index maps every contract-20 invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure, with missing live evidence left unproven.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-prove-managed-production-fault-matrix-2026-09-23).
+
+## 2026-09-23 — Completed arcadia/prove-fault-matrix-remaining-boundaries
+
+- **Did:** Completed Action arcadia/prove-fault-matrix-remaining-boundaries from accepted evidence (Candidate da3f9cb093df5662293581ac3f02db83dc3e205b).
+- **Result:** Every declared acceptance criterion was accepted as met: "The completion/pointer, process-health, and runtime race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings with crash injection points specified in the harness, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed."; "A completion whose declared Artifact is absent is refused, with a test."; "docs/evidence/managed-production-release-evidence-index.md is updated with each new row's status, revision, and reproduction procedure.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-fault-matrix-remaining-boundaries-2026-09-23).
