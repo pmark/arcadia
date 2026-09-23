@@ -1,14 +1,19 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { prepareBuildPacketForAcceptedPlan } from "../commands/work.js";
 import {
   createReviewItem,
   getProjectBySlug,
+  getProjectMetadata,
   getWorkItemByDocRef,
   listCodexInvocationsForWorkItem,
   updateReviewItemStatus
 } from "../db/repositories.js";
 import type { CodexInvocation, WorkItemSummary } from "../domain/types.js";
+import { packetSha256 } from "../execution/planningAuthorization.js";
+import { findPromotionDecisionOrProblem } from "../sessions/launchPreview.js";
 
 /**
  * The Zero Prompt Rehearsal fixture Project
@@ -82,7 +87,7 @@ function seedOne(
   }
 
   const existing = existingBuildInvocation(db, workItem);
-  if (existing) {
+  if (existing && hasApprovedPromotion(db, workspacePath, projectId, workItem, existing)) {
     return { actionId, invocationId: existing.id, reused: true };
   }
 
@@ -123,4 +128,38 @@ function existingBuildInvocation(db: Database.Database, workItem: WorkItemSummar
       .filter((candidate) => candidate.purpose === "build" && candidate.status === "packet_created")
       .at(-1) ?? null
   );
+}
+
+/**
+ * The supported managed-build path can create a `packet_created` invocation
+ * before its promotion Decision is resolved, so a `packet_created` row alone
+ * is not proof the guarded launch path will accept it: `buildLaunchPreview`
+ * separately requires an *approved* Decision whose recorded `planningPromotion`
+ * still matches the packet on disk (`findPromotionDecisionOrProblem` in
+ * `src/sessions/launchPreview.ts`). Run that same check here before reusing an
+ * existing invocation, so this seeder never reports `reused: true` for a
+ * packet that launch would actually refuse.
+ */
+function hasApprovedPromotion(
+  db: Database.Database,
+  workspacePath: string,
+  projectId: string,
+  workItem: WorkItemSummary,
+  invocation: CodexInvocation
+): boolean {
+  const packetPath = path.join(workspacePath, invocation.prompt_path);
+  if (!existsSync(packetPath)) return false;
+  const repoPath = getProjectMetadata(db, projectId)?.repo_path?.trim() ?? "";
+  const actionDocRef = workItem.doc_ref?.trim() ?? "";
+  const promotion = findPromotionDecisionOrProblem(db, {
+    projectId,
+    invocationId: invocation.id,
+    actionId: actionDocRef.split("#").at(-1) ?? workItem.id,
+    actionDocRef,
+    repoRoot: repoPath,
+    packetPath: invocation.prompt_path,
+    packetSha256: packetSha256(packetPath),
+    providerProfile: invocation.agent_profile
+  });
+  return promotion.problem === null;
 }
