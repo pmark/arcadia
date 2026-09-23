@@ -496,6 +496,8 @@ export interface ScheduleBatchAction {
   planPath: string;
   tokenImpact: string | null;
   tokenPoints: number;
+  recommendedModel: string | null;
+  recommendedReasoningEffort: string | null;
   position: number;
 }
 
