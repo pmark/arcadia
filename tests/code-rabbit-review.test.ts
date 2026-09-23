@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { condense, decide, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { condense, decide, declineCodeRabbitFinding, extractPrompt, hasOutsideDiffFindings, MAX_FIX_ROUNDS, type Review, type Thread } from "../src/stewardship/codeRabbitReview.js";
 
 const review = (commitId: string, state: string, submittedAt: string, body = ""): Review => ({ commitId, state, submittedAt, body });
 const thread = (id: string, overrides: Partial<Thread> = {}): Thread => ({
@@ -132,5 +135,76 @@ describe("coderabbit body helpers", () => {
     const body = "<details>\n<summary>🤖 Prompt to fix review comments</summary>\n\n```\nFix line 63.\n```\n\n</details>";
     expect(extractPrompt(body)).toBe("Fix line 63.");
     expect(extractPrompt("nothing here")).toBeNull();
+  });
+});
+
+describe("coderabbit loop without a `gh` binary (Issue #517)", () => {
+  it("names the missing gh binary instead of surfacing a raw ENOENT", async () => {
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync: () => {
+        const error = new Error("spawnSync gh ENOENT") as NodeJS.ErrnoException;
+        error.code = "ENOENT";
+        throw error;
+      }
+    }));
+    const { waitForCodeRabbitReview, declineCodeRabbitFinding } = await import("../src/stewardship/codeRabbitReview.js");
+
+    await expect(waitForCodeRabbitReview({ repo: ".", pr: 1, timeoutMin: 1 })).rejects.toMatchObject({
+      message: expect.stringContaining("`gh` CLI is not installed"),
+      details: expect.objectContaining({ remedy: expect.stringContaining("cli.github.com") })
+    });
+    expect(() => declineCodeRabbitFinding(".", "thread1", "not applicable")).toThrowError(
+      expect.objectContaining({ message: expect.stringContaining("`gh` CLI is not installed") })
+    );
+
+    vi.doUnmock("node:child_process");
+    vi.resetModules();
+  });
+
+  it("still surfaces a non-ENOENT gh failure unchanged", async () => {
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync: () => {
+        throw new Error("gh: authentication required");
+      }
+    }));
+    const { declineCodeRabbitFinding } = await import("../src/stewardship/codeRabbitReview.js");
+
+    expect(() => declineCodeRabbitFinding(".", "thread1", "not applicable")).toThrowError(/authentication required/);
+
+    vi.doUnmock("node:child_process");
+    vi.resetModules();
+  });
+
+  it("reports a missing repository path as its own error, not as a missing gh binary", () => {
+    // A deleted or mistyped repo path also makes execFileSync throw ENOENT
+    // (a bad `cwd`, not a missing command); runGh must not conflate the two.
+    expect(() => declineCodeRabbitFinding("/no/such/repository/path", "thread1", "not applicable")).toThrowError(
+      expect.objectContaining({ message: "The repository path does not exist." })
+    );
+  });
+
+  it("still reports a missing repository path when it is removed between the up-front check and the spawn", async () => {
+    // The race CodeRabbit flagged on PR #519: repo exists when runGh's
+    // up-front check runs, then disappears before execFileSync starts.
+    const repo = mkdtempSync(path.join(tmpdir(), "code-rabbit-review-race-"));
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync: () => {
+        rmSync(repo, { recursive: true, force: true });
+        const error = new Error("spawnSync gh ENOENT") as NodeJS.ErrnoException;
+        error.code = "ENOENT";
+        throw error;
+      }
+    }));
+    const { declineCodeRabbitFinding: declineWithDeletedRepo } = await import("../src/stewardship/codeRabbitReview.js");
+
+    expect(() => declineWithDeletedRepo(repo, "thread1", "not applicable")).toThrowError(
+      expect.objectContaining({ message: "The repository path does not exist." })
+    );
+
+    vi.doUnmock("node:child_process");
+    vi.resetModules();
   });
 });
