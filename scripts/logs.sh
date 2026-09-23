@@ -24,7 +24,8 @@ MAIN_CHECKOUT="$(dirname "$common_dir")"
 LOG_DIR="$HOME/Library/Logs/arcadia-services-$(printf '%s' "$MAIN_CHECKOUT" | cksum | awk '{print $1}')"
 
 if [[ "$TARGET" == "session" ]]; then
-  sessions="$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^arcadia-' || true)"
+  # Oldest first, so the default (last line) is the newest Session.
+  sessions="$(tmux list-sessions -F '#{session_created} #{session_name}' 2>/dev/null | awk '$2 ~ /^arcadia-/' | sort -n | cut -d' ' -f2- || true)"
   if [[ -z "$sessions" ]]; then
     echo "No live coding-agent Session (no arcadia-* tmux session)." >&2
     exit 1
@@ -71,9 +72,9 @@ fi
 echo "Following ${#files[@]} log(s) in $LOG_DIR (Ctrl-C to stop)" >&2
 # tail's "==> file <==" headers become a per-line source prefix. The macOS
 # keychain "trust settings" lines are noise from every CLI start and are dropped.
-tail -n "$LINES" -F "${files[@]}" 2>/dev/null |
+tail -v -n "$LINES" -F "${files[@]}" 2>/dev/null |
   awk '
-    /^==> .* <==$/ { n = split($2, part, "/"); src = part[n]; sub(/\.log$/, "", src); next }
+    /^==> .* <==$/ { src = substr($0, 5, length($0) - 8); sub(/.*\//, "", src); sub(/\.log$/, "", src); next }
     /failed to copy trust settings of system certificate/ { next }
     NF { printf "%-18s %s\n", src, $0; fflush() }
   '
