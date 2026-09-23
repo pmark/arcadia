@@ -417,8 +417,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       if (scratchDispatch.checkout) return scratchDispatch.checkout.path;
       const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-fallback-"));
       const checkoutPath = path.join(root, "checkout");
-      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkoutPath, baseBranch]);
+      // Recorded before Git runs, not after: a `worktree add` that throws can
+      // still have left the scratch root -- and a partial registration -- on
+      // disk, and cleanup only reaches what this holder names.
       scratchDispatch.checkout = { root, path: checkoutPath };
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", checkoutPath, baseBranch]);
       return checkoutPath;
     };
     try {
