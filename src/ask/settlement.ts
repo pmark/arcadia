@@ -678,8 +678,9 @@ export function settleAgentAsk(db: Database.Database, input: {
         // candidate branch while the base checkout's pointer still names the
         // Action until the pull request merges. Releasing here let the next
         // `arcadia go` read that pointer, find no claim, and dispatch the same
-        // Action to a second worktree. The claim ends when the candidate is
-        // retired or its TTL lapses, by which point the base pointer has moved.
+        // Action to a second worktree. The claim now ends when the candidate is
+        // retired or its TTL lapses. The TTL can lapse before the candidate
+        // merges; that is a separate gap, tracked as Issue #549.
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
