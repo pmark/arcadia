@@ -1,6 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
-import { readStandingConstraints } from "../docs/dispatch.js";
+import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import type { SessionAgent } from "./index.js";
 
@@ -27,6 +28,12 @@ export interface ActionBriefInput {
   worktreePath: string;
   branch: string;
   agent: SessionAgent;
+  /**
+   * The Session's recorded base revision. The Constitution committed there is
+   * the contract the Session was granted; a worktree whose CONSTITUTION.md no
+   * longer matches it cannot launch.
+   */
+  baseRevision: string;
 }
 
 /**
@@ -64,13 +71,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     );
   }
 
-  const constitution = readStandingConstraints(input.repoRoot);
-  if (constitution.blocker) {
-    throw validationError(
-      `A managed-production Session cannot launch: ${constitution.blocker.message}`,
-      { planSlug: input.planSlug, actionId: input.actionId, relativePath: constitution.blocker.relativePath }
-    );
-  }
+  const pinned = pinnedConstitution(input);
+  const constraints = loadConstitution(input.repoRoot, pinned);
 
   const lines: string[] = [
     "Arcadia managed-production Action brief",
@@ -91,8 +93,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
     "branches, or edit the Project pointer; those remain operator gates."
   ];
-  if (constitution.constraints.length > 0) {
-    lines.push("", "The repository's CONSTITUTION.md also binds this action:", "", ...constitution.constraints);
+  if (pinned) {
+    lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }
   lines.push(
     "",
@@ -103,6 +105,44 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "     `met` evidence entry per acceptance criterion above, verbatim and in order."
   );
   return lines.join("\n");
+}
+
+/**
+ * Verify the worktree's CONSTITUTION.md is the one committed at the Session's
+ * base revision, and return the reference the brief loads it under (null when
+ * neither has one).
+ *
+ * Compared as Git blob ids, with `git hash-object` applying the same clean
+ * filters `git add` would, so a checkout's line-ending conversion is not
+ * mistaken for a changed contract. Only a base tree that genuinely has no
+ * CONSTITUTION.md yields "none"; any Git read failure refuses the launch.
+ */
+function pinnedConstitution(input: ActionBriefInput): ConstitutionReference | null {
+  const refuse = (reason: string): never => {
+    throw validationError(
+      `A managed-production Session cannot launch: ${reason} The Constitution is pinned to base revision ${input.baseRevision}.`,
+      { planSlug: input.planSlug, actionId: input.actionId, relativePath: "CONSTITUTION.md", baseRevision: input.baseRevision }
+    );
+  };
+  const git = (args: string[]): string => {
+    try {
+      return execFileSync("git", ["-C", input.repoRoot, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    } catch {
+      return refuse(`git ${args.join(" ")} failed in ${input.repoRoot}, so the Constitution the Session was granted under cannot be verified.`);
+    }
+  };
+  git(["cat-file", "-e", `${input.baseRevision}^{commit}`]);
+  const entry = git(["ls-tree", input.baseRevision, "--", "CONSTITUTION.md"]);
+  const pinnedBlob = entry ? entry.split(/\s+/)[2] : null;
+
+  const current = readConstitution(input.repoRoot);
+  if (current.blocker) refuse(current.blocker.message);
+  const currentBlob = current.reference ? git(["hash-object", "--path=CONSTITUTION.md", "--", "CONSTITUTION.md"]) : null;
+  if (currentBlob !== pinnedBlob) {
+    refuse("CONSTITUTION.md in the worktree differs from the one committed at the Session's base revision. " +
+      "Restore the committed Constitution, or land the change through review before launching.");
+  }
+  return current.reference;
 }
 
 function numbered(values: string[]): string[] {

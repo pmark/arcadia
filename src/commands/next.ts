@@ -9,6 +9,7 @@ import { withDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata, listBackBurnerItems, listProjects } from "../db/repositories.js";
 import {
   isDispatchable,
+  loadConstitution,
   resolveDispatch,
   resolveReadySet,
   type DispatchResolution,
@@ -240,10 +241,15 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
   // The Constitution binds every action this brief dispatches, so it belongs
   // beside the authorization line rather than behind a link the agent has to
   // choose to follow. Printed whatever the outcome: repairing a blocker is
-  // agent work under the same constraints as implementing an action.
-  if (context.standingConstraints.length > 0) {
-    lines.push("", "Standing constraints (CONSTITUTION.md) — these bind this action:");
-    lines.push(...context.standingConstraints.map((line) => (line ? `  ${line}` : "")));
+  // agent work under the same constraints as implementing an action. The
+  // dispatch context carries only its fingerprint; this is the one place the
+  // brief embeds the text, verified against that fingerprint.
+  // Loaded unconditionally: a Constitution adopted after resolution must
+  // refuse the brief, not be skipped because the pin said there was none.
+  const constraints = loadConstitution(context.repoRoot, context.constitution);
+  if (context.constitution) {
+    lines.push("", `Standing constraints (CONSTITUTION.md, sha256 ${context.constitution.sha256.slice(0, 12)}) — these bind this action:`);
+    lines.push(...constraints.map((line) => (line ? `  ${line}` : "")));
   }
 
   if (blockers.length > 0) {
