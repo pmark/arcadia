@@ -1704,6 +1704,22 @@ If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services*
 scripts/services.sh restart
 ```
 
+To watch what the services are doing, follow their logs in one terminal. Every
+line is prefixed with its source (`worker.out`, `dashboard.err`, …):
+
+```sh
+pnpm logs            # every service, stdout and stderr
+pnpm logs worker     # just the worker: admissions, refusals, reconciliations
+pnpm logs errors     # every service's stderr
+pnpm logs session    # watch the newest live coding-agent Session, read-only
+```
+
+`dashboard`, `intelligence`, and `discord` select one service. `session` attaches
+read-only to the agent's tmux pane, so you see exactly what the agent sees
+without being able to type into it (detach with Ctrl-b d); `pnpm logs session
+<name>` picks a specific one. `LOG_LINES=100 pnpm logs` shows more history first.
+It only reads; it never starts, stops, or signals a service.
+
 Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
 `package.json`. The restart script installs and validates that toolchain, then
 writes every managed LaunchAgent to start through `mise exec`; login-shell PATH

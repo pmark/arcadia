@@ -37,6 +37,7 @@
     "lint:fix": "eslint --fix src test tests scripts apps/dashboard apps/discord-bot",
     "arcadia": "mise exec -- node --import tsx src/cli.ts",
     "dashboard": "pnpm --filter arcadia-dashboard dev",
+    "logs": "bash scripts/logs.sh",
     "dashboard:build": "pnpm --filter arcadia-dashboard build",
     "test:e2e": "playwright test",
     "smoke": "tsx scripts/smoke.ts",
