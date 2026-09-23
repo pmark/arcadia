@@ -557,6 +557,49 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listCurrentlyStalledSessions(db))).toHaveLength(0);
   });
 
+  it("stops listing a flagged Session as stalled once it actually dies and is reconciled", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.panes.set(session.tmux_session_name, "$ compiling...\n");
+
+    const baseline = new Date(fixture.now.getTime() + 1_000);
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: baseline, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const atDeadline = new Date(baseline.getTime() + PRODUCTION_CONTROL_DEADLINES.sessionStallDeadlineMs);
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: atDeadline, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listCurrentlyStalledSessions(db))).toHaveLength(1);
+
+    // The Session actually dies: the dead-lease branch reconciles it, which
+    // never calls `detectSessionStall` again for this Session id.
+    completeActionInWorktree(session.worktree_path, "define-contract");
+    recordPassingRun(fixture.workspace, session.work_item_id);
+    tmux.live.delete(session.tmux_session_name);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(atDeadline.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    // A terminated Session is no longer "stalled, lease preserved" -- it has
+    // no lease at all, and must not linger in this projection forever.
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listCurrentlyStalledSessions(db))).toHaveLength(0);
+  });
+
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

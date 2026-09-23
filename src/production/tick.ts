@@ -626,6 +626,13 @@ export interface SessionStallRecord {
  * Mirrors `listRecentBaseBranchAdvances`: the durable record is the dedup row
  * plus the `events` row `detectSessionStall` writes, surfaced here rather than
  * in MISSION_LOG.md.
+ *
+ * Joined against `agent_sessions` and filtered to a still-held lease: once a
+ * Session actually dies, the dead-lease branch reconciles it without ever
+ * calling `detectSessionStall` again, so nothing else clears `flagged_at` on
+ * its observation row. Without this filter a terminated Session would stay
+ * listed as "stalled, lease preserved" forever, which is simply false once
+ * the lease is gone.
  */
 export function listCurrentlyStalledSessions(db: Database.Database): SessionStallRecord[] {
   // The observation table is created by `ensureProductionTickTables` inside a
@@ -635,10 +642,11 @@ export function listCurrentlyStalledSessions(db: Database.Database): SessionStal
   if (!hasTable) return [];
   const rows = db
     .prepare(
-      `SELECT session_id, project_slug, action_key, last_progress_at, flagged_at
-         FROM production_session_stall_observations
-        WHERE flagged_at IS NOT NULL
-        ORDER BY flagged_at DESC`
+      `SELECT o.session_id, o.project_slug, o.action_key, o.last_progress_at, o.flagged_at
+         FROM production_session_stall_observations o
+         JOIN agent_sessions s ON s.id = o.session_id
+        WHERE o.flagged_at IS NOT NULL AND s.status IN ('prepared', 'running')
+        ORDER BY o.flagged_at DESC`
     )
     .all() as Array<{ session_id: string; project_slug: string; action_key: string; last_progress_at: string; flagged_at: string }>;
   return rows.map((row) => ({
