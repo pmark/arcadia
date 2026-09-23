@@ -732,7 +732,7 @@ actions:
     references: ["docs/arcadia-development-orchestration-vision.md", "docs/decisions/0019-streamline-pr-qa-before-expansion.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "src/sessions/reconciliation.ts", "src/stewardship/critic.ts", "src/stewardship/artifactValidator.ts", "src/ask/settlement.ts"]
   - id: detect-hung-managed-production-sessions
     title: The worker notices a managed-production Session whose tmux stays alive but has stopped making real progress, not only one whose tmux has died.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The worker notices a managed-production Session whose tmux stays alive but has stopped making real progress, not only one whose tmux has died.
@@ -1442,7 +1442,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: detect-hung-managed-production-sessions
+current_action: prove-managed-production-fault-matrix
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
