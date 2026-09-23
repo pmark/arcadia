@@ -1,7 +1,9 @@
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { providerLabel } from "../codingAgents/adapters.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
@@ -54,6 +56,15 @@ export interface GuardedLaunchInput {
   agentWorktreeRoot?: string;
   /** Test-only override for the standing-policy provider capacity observation. */
   capacityObservation?: ProviderCapacityObservation;
+  /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
+  providerSignIn?: (provider: string) => ProviderSignInStatus | null;
+  /**
+   * Called the moment sign-in is confirmed -- not merely attempted -- so a
+   * caller tracking a durable "signed out" blocker (the managed-production
+   * tick) can clear it right away, independent of whether a later launch
+   * step (worktree creation, spawn) goes on to fail for an unrelated reason.
+   */
+  onProviderSignInConfirmed?: (provider: string) => void;
   now?: Date;
   tmux?: TmuxAdapter;
   testHooks?: {
@@ -100,6 +111,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
   const registry = loadModelTierRegistry(input.workspace);
+  const providerSignIn = input.providerSignIn ?? checkProviderSignIn;
+  const onProviderSignInConfirmed = input.onProviderSignInConfirmed;
 
   const preview = buildLaunchPreview({
     db: input.db,
@@ -124,7 +137,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry), preview, admission: null };
+    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -169,6 +182,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       { conflict: true }
     );
   }
+  // Checked from this worker process's own context, before issueAdmission
+  // reserves a concurrency slot and before any worktree or lease is created:
+  // a signed-out provider must take no admission and no lease, so the next
+  // tick can retry it for free once sign-in is restored.
+  checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider), onProviderSignInConfirmed);
+
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
 
@@ -289,7 +308,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry), preview, admission: null };
+      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
     }
     throw error;
   }
@@ -343,17 +362,40 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 }
 
-/** A "prepared" lease whose tmux Session was never actually started (a crash between insert and spawn) is resumed rather than left stuck. */
+/**
+ * A "prepared" lease whose tmux Session was never actually started (a crash
+ * between insert and spawn) is resumed rather than left stuck. Resuming still
+ * spawns the provider process, so it is gated on the same sign-in preflight
+ * as a fresh launch; only the already-live return above it is exempt.
+ */
 function resumeOrReturn(
   db: Database.Database,
   session: AgentSession,
   tmux: TmuxAdapter,
-  registry?: ModelTierRegistry
+  registry: ModelTierRegistry | undefined,
+  providerSignIn: (provider: string) => ProviderSignInStatus | null,
+  onProviderSignInConfirmed?: (provider: string) => void
 ): AgentSession {
   if (session.status === "running" || tmux.hasSession(session.tmux_session_name)) {
     return getSession(db, session.id) ?? session;
   }
+  checkSignInOrRefuse(session.provider, providerSignIn(session.provider), onProviderSignInConfirmed);
   return launchPreparedSession(db, session, tmux, registry);
+}
+
+function checkSignInOrRefuse(
+  provider: string,
+  signIn: ProviderSignInStatus | null,
+  onConfirmed?: (provider: string) => void
+): void {
+  if (!signIn) return;
+  if (!signIn.signedIn) {
+    throw validationError(
+      `Provider "${providerLabel(provider)}" is not signed in for this worker. ${signIn.remedy}`,
+      { code: "provider_not_signed_in", conflict: true, provider }
+    );
+  }
+  onConfirmed?.(provider);
 }
 
 function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {

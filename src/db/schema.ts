@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { applyCapabilityMigrations } from "../capabilities/migrations.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
+import { ensureProductionLaunchBlockersTable } from "../production/tick.js";
 import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
@@ -85,6 +86,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDeferredWorkItemStatus(db);
   ensureDecisionDeferralReceiptsTable(db);
   ensureProductionPolicyTables(db);
+  ensureProductionLaunchBlockersTable(db);
   ensureSchedulingTables(db);
   ensureProductionOperatorEscalationsTable(db);
   applyCapabilityMigrations(db);
