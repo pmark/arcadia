@@ -20,7 +20,6 @@ import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/wo
 import {
   assertActionClaimGeneration,
   getActiveWorktreeReservation,
-  releaseActionClaim,
   type ActionClaimFence
 } from "../sessions/index.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
@@ -227,8 +226,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // worktree `go` dispatched carries its Action's claim and its generation, and
   // that claim is what makes this settlement *this worktree's* settlement: a
   // completion written from here must be about the Action this worktree was
-  // given, must still hold the same generation at the moment it writes, and
-  // releases the claim only once that Action is genuinely done.
+  // given, and must still hold the same generation at the moment it writes.
   //
   // Null in the main checkout and in any worktree with no live claim, where
   // settlement behaves exactly as it did before claims existed.
@@ -241,7 +239,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         generation: settlingReservation.claim_generation
       } satisfies ActionClaimFence
     : null;
-  // Verified, and released when the Action it names is done, inside the same
+  // Verified inside the same
   // transaction as this settlement's document writes -- never as a check before
   // it, which would leave exactly the window the generation exists to close.
   //
@@ -250,7 +248,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   // `project_update` all write the same PROJECT.md fields through the same
   // helpers, so fencing only one of them would leave a superseded worktree free
   // to write the same state by naming a different intent.
-  let claimFence: (ActionClaimFence & { release?: boolean }) | null = null;
+  let claimFence: ActionClaimFence | null = null;
   const queue = buildAgentQueue(db);
   if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
     throw validationError("Action queue revision changed; refresh the Agent Ask settlement preview.", {
@@ -663,8 +661,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         }
         // A claimed worktree may only complete the Action it was dispatched to.
         // Completing a different one would mark work done from a checkout that
-        // was never given it, and would release nothing -- the claim it does
-        // hold would sit until the 24-hour TTL, blocking legitimate dispatch.
+        // was never given it.
         if (settlingClaim && settlingClaim.actionId !== actionId) {
           throw validationError(
             "This worktree's Action claim does not name the Action this settlement completes.",
@@ -676,10 +673,14 @@ export function settleAgentAsk(db: Database.Database, input: {
             }
           );
         }
-        // Completion is the one settlement that resolves the claimed Action, so
-        // it is the one that releases the claim; every other intent leaves the
-        // worktree still holding its work.
-        if (claimFence) claimFence.release = true;
+        // Completion does not release the claim (Issue #538). A claimed
+        // worktree is always a candidate, so this completion lands on the
+        // candidate branch while the base checkout's pointer still names the
+        // Action until the pull request merges. Releasing here let the next
+        // `arcadia go` read that pointer, find no claim, and dispatch the same
+        // Action to a second worktree. The claim now ends when the candidate is
+        // retired or its TTL lapses. The TTL can lapse before the candidate
+        // merges; that is a separate gap, tracked as Issue #549.
         const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
         const candidateRevision = proposal.normalized.candidateRevision!;
         if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
@@ -1024,13 +1025,6 @@ export function settleAgentAsk(db: Database.Database, input: {
           errors: blocking,
           unrelatedCorpusErrors: validation.errors.length - blocking.length,
         });
-      }
-      // Release last, still inside the transaction and still fenced on the same
-      // generation, so the claim outlives every write it was guarding and a
-      // rollback takes the release with it.
-      if (claimFence?.release) {
-        releaseActionClaim(db, claimFence);
-        effects.push(`Released this worktree's claim on ${claimFence.project}/${claimFence.actionId}.`);
       }
     } catch (error) {
       // Roll back exactly what this attempt wrote, inside the interlock, so a
