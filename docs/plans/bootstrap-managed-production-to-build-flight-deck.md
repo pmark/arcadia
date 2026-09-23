@@ -1622,6 +1622,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
+  - id: honor-policy-providers-at-launch
+    title: Packet preparation and launch preview honor the active standing policy permitted providers, and a mismatch is a named, surfaced prerequisite rather than a silent per-tick admission refusal.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Packet preparation and launch preview honor the active standing policy permitted providers, and a mismatch is a named, surfaced prerequisite rather than a silent per-tick admission refusal.
+    expected_artifact: Evidence satisfying Agent Ask honor-policy-providers-at-launch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask honor-policy-providers-559-2026-09-23
+    acceptance_criteria:
+      - While a standing production policy is active, every build-packet preparation path (work plan, ask, planning promotion) selects only among the policy scope.providers when a compliant permitted provider exists, and records why when none does.
+      - buildLaunchPreview reports a named prerequisite when the selected or packet-bound provider is not in the active policy scope.providers, naming the provider, the permitted list, and the remedy (re-grant or re-prepare the packet).
+      - The managed-production tick logs a launch refusal with its named prerequisites instead of the generic not-ready message, and does not repeat an identical refusal line on every tick.
+      - Regression tests cover a packet bound to a forbidden provider, a permitted-provider packet preparation under an active policy, and the deduplicated refusal log.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/559"]
 questions: []
 decisions: []
 current_action: settle-commit-survives-gitignored-asks
