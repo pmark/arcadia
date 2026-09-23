@@ -59,6 +59,10 @@ import { parseActionDocRef } from "../docs/types.js";
 import { ensureBuiltInSkills, planStepsForWorkItem } from "../execution/skills.js";
 import { executePlan, resolvePlanForRun } from "../execution/runner.js";
 import {
+  seedZeroPromptRehearsalBuildPackets,
+  type ZeroPromptRehearsalPacketResult
+} from "../fixtures/zeroPromptRehearsal.js";
+import {
   packetSha256,
   parseDecisionContext,
   queueApprovedPlanningRun
@@ -1058,6 +1062,18 @@ export function renderWorkPlanSuccess(response: CommandSuccess<WorkPlanCommandDa
   return lines;
 }
 
+export function renderWorkSeedZeroPromptRehearsalPacketsSuccess(
+  response: CommandSuccess<WorkSeedZeroPromptRehearsalPacketsCommandData>
+): string[] {
+  return [
+    "Zero Prompt Rehearsal fixture build packets:",
+    ...response.data.results.map(
+      (result) =>
+        `  ${result.actionId}: ${result.reused ? "already had" : "created"} build packet ${result.invocationId}`
+    )
+  ];
+}
+
 export function renderWorkRunSuccess(response: CommandSuccess<WorkRunCommandData>): string[] {
   return [
     `Created run: ${response.data.run.id}`,
@@ -1191,6 +1207,33 @@ export function prepareBuildPacketForAcceptedPlan(
     }
   });
   return prepared;
+}
+
+export interface WorkSeedZeroPromptRehearsalPacketsCommandData {
+  results: ZeroPromptRehearsalPacketResult[];
+}
+
+/**
+ * Give the Zero Prompt Rehearsal fixture Project's two Actions a real build
+ * packet each, so the guarded session-launch path can resolve them without a
+ * manual planning step. Scoped to that one fixture Project by slug and by its
+ * two named Action ids (see `src/fixtures/zeroPromptRehearsal.ts`); it never
+ * touches any other Project's Actions or the general planning/dispatch
+ * routing.
+ */
+export function runWorkSeedZeroPromptRehearsalPacketsCommand(options: {
+  workspace: string;
+}): CommandSuccess<WorkSeedZeroPromptRehearsalPacketsCommandData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const results = withDatabase(workspacePath, (db) =>
+    seedZeroPromptRehearsalBuildPackets(db, workspacePath)
+  );
+  return createSuccess({
+    command: "work.seed-zero-prompt-rehearsal-packets",
+    workspace: workspacePath,
+    data: { results },
+    warnings: []
+  });
 }
 
 /**
