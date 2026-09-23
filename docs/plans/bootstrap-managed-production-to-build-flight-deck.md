@@ -1473,6 +1473,25 @@ actions:
     depends_on: [prove-fault-matrix-remaining-boundaries, prove-two-action-unattended-production, prove-multi-provider-production-recovery]
     decisions: []
     references: ["docs/evidence/managed-production-release-evidence-index.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md"]
+  - id: add-segment-queue-arrange
+    title: Add a batch queue operation that places an ordered list of keys at one position, keeping every other row's relative order, and make settle placement preserve the active Plan's existing relative order.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a batch queue operation that places an ordered list of keys at one position, keeping every other row's relative order, and make settle placement preserve the active Plan's existing relative order.
+    expected_artifact: Evidence satisfying Agent Ask add-segment-queue-arrange
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-segment-queue-arrange-2026-09-22
+    acceptance_criteria:
+      - One `arcadia advance queue` invocation places an ordered list of existing approved keys at the top, or before or after an anchor, with preview, --apply, --request-id idempotency, and --revision optimistic concurrency; every key not listed keeps its relative order, and the whole move commits atomically as one queue revision.
+      - The command refuses, before writing, an order that puts an Action ahead of a dependency, naming the offending key and dependency.
+      - "`agent-ask settle` with --top, --before, or --after inserts newly created Actions without changing the relative order of the active Plan's existing positioned rows, placing each new Action immediately after its latest dependency when no anchor is given."
+      - Deterministic tests cover the segment move, the dependency refusal, idempotent replay, a stale-revision refusal, and a settle insertion that leaves existing Plan order unchanged.
+      - START_HERE.md or docs/COMMANDS.md documents the command with one example.
+    depends_on: []
+    decisions: []
+    references: ["src/ask/settlement.ts", "src/commands/advance.ts", "docs/COMMANDS.md"]
 questions: []
 decisions: []
 current_action: prove-managed-production-fault-matrix
