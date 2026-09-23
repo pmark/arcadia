@@ -68,7 +68,12 @@ export function prepareAgentWorktree(input: {
   try {
     trustMiseConfig(input.repositoryPath, worktreePath);
   } catch (error) {
+    // `worktree remove` does not delete the branch `worktree add -b` just
+    // created; left behind, a retry with the same `input.now` (the stamp
+    // that names both) fails at `git worktree add -b` on a branch that
+    // already exists, masking the real cause behind an unrelated Git error.
     tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", worktreePath]);
+    tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "branch", "-D", branch]);
     throw error;
   }
   return candidate;
@@ -113,12 +118,16 @@ function trustMiseConfig(repositoryPath: string, worktreePath: string): void {
   if (!miseBin) return;
   const result = spawnSync(miseBin, ["trust", "--yes", miseConfig], { encoding: "utf8" });
   if (result.error || result.status !== 0) {
+    // The caller removes `worktreePath` on this throw, so `miseConfig` will
+    // not exist by the time anyone reads this message -- point at the
+    // failure and the retry, not at a file that is already gone.
     throw validationError("Could not pre-trust the prepared worktree's mise.toml.", {
       repositoryPath,
       worktreePath,
       miseBin,
       cause: result.error?.message ?? result.stderr?.trim() ?? `mise trust exited ${result.status}`,
-      remedy: `Run \`${miseBin} trust --yes ${miseConfig}\` by hand, then retry preparation.`
+      remedy: "Resolve the reported mise trust failure (check the mise installation and its permissions " +
+        "on ~/.local/state/mise/trusted-configs/), then retry worktree preparation."
     });
   }
 }

@@ -156,14 +156,18 @@ work has happened — running it right after `go` is a guaranteed
   prepared worktree. A request does not authorize merge, deployment, completion,
   or acceptance beyond the existing canonical command's authority checks.
 - A prepared worktree's `mise.toml` is pre-trusted by the host broker at
-  preparation time, before the worktree is ever handed to a sandboxed agent;
-  preparation itself fails closed and removes the worktree if that trust call
-  cannot complete, rather than handing over a worktree that will only fail
-  later inside the sandbox. If a mise-wrapped command still fails with
-  `mise ERROR ... Operation not permitted` on a worktree prepared before this
-  fix, that one worktree predates it — retrying under
-  `dangerouslyDisableSandbox` for that single command is the named exception,
-  not a pattern to repeat going forward.
+  preparation time, before the worktree is ever handed to a sandboxed agent —
+  provided the host itself can resolve a `mise` executable (its fixed
+  launch-agent paths, or `PATH`). When the config exists and a `mise` binary
+  is found but the trust call itself fails, preparation fails closed and
+  removes the worktree rather than handing over one that will only fail later
+  inside the sandbox; when no `mise` binary is found at all, preparation
+  proceeds untrusted, same as before this fix. If a mise-wrapped command still
+  fails with `mise ERROR ... Operation not permitted` on a worktree prepared
+  after this fix, that means the host had no resolvable `mise` — install one
+  where the host process can find it, or retry under `dangerouslyDisableSandbox`
+  for that single command as the named exception, not a pattern to repeat
+  going forward.
 - The protected broker installer configures the default `~/.codex/config.toml`
   and every present named `~/.codex/*.config.toml` profile with the exact
   `~/.codex/worktrees`, `~/.claude/worktrees`, and `~/.opencode/worktrees`
