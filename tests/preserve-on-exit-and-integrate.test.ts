@@ -46,6 +46,9 @@ class FakeTmux implements TmuxAdapter {
   hasSession(name: string) {
     return this.live.has(name);
   }
+  capturePane() {
+    return null;
+  }
   launch(input: { name: string; cwd: string; command: string; args: string[] }) {
     this.launches.push(input);
     this.live.add(input.name);

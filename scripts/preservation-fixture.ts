@@ -66,7 +66,7 @@ function buildPreservationFixture(root: string | undefined, command: string, mod
     const scope = normalizeProductionScope({ intent: "Prove local fixture preservation only", projects: [project.slug], plans: [`${project.slug}/proof`], actions: [`${project.slug}/write-marker`], providers: ["codex-cli"], maxConcurrentSessions: 1, mechanicalTransitions: ["validation"], remotePreservation: false });
     activateProduction(db, { requestId: "fixture-authority", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "fixture-operator" });
     reserveAgentWorktree(db, { repositoryPath: repo, worktreePath: candidate, branch: "codex/preservation-fixture", now: new Date() });
-    return prepareSession({ db, workspace, repoRoot: repo, dispatch: resolveDispatch(repo, project.slug), agent: "codex", model: "fixture", effort: null, baseRevision: base, branch: "codex/preservation-fixture", worktreePath: candidate, now: new Date(), tmux: { available: () => true, hasSession: () => false, launch: () => { throw Error("Fixture must not launch a coding agent"); } } });
+    return prepareSession({ db, workspace, repoRoot: repo, dispatch: resolveDispatch(repo, project.slug), agent: "codex", model: "fixture", effort: null, baseRevision: base, branch: "codex/preservation-fixture", worktreePath: candidate, now: new Date(), tmux: { available: () => true, hasSession: () => false, capturePane: () => null, launch: () => { throw Error("Fixture must not launch a coding agent"); } } });
   });
   return { root, repo, candidate, workspace, lease, base };
 }

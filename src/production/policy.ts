@@ -57,7 +57,17 @@ export const PRODUCTION_CONTROL_DEADLINES = {
   /** Finite repair budget per Action, so failures cannot loop on tokens. */
   maxRepairAttemptsPerAction: 2,
   /** Deadline for any single provider call made under this policy. */
-  providerCallDeadlineMs: 120_000
+  providerCallDeadlineMs: 120_000,
+  /**
+   * A live tmux Session whose pane output has not changed for this long is
+   * flagged stalled (contract 20's "Hung agent, lost tmux identity" fault
+   * row). Fifteen minutes is well above normal think/tool-call latency and
+   * routine long-running build/test output gaps, so it bounds false positives
+   * on real long-running work; it is short enough that a genuinely hung agent
+   * is flagged within one operator work session rather than silently sitting
+   * for hours.
+   */
+  sessionStallDeadlineMs: 900_000
 } as const;
 
 /**

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -10,7 +11,7 @@ import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./policy.js";
-import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
+import { getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
@@ -82,6 +83,18 @@ export interface ManagedProductionTickProjectResult {
   reconciled: Array<{ sessionId: string; outcome: string }>;
   handoff: SessionHandoffResult | null;
   launch: ManagedProductionLaunchAttempt | null;
+  /** Null unless a live Session was observed this tick; see `detectSessionStall`. */
+  stall: SessionStallObservation | null;
+}
+
+export interface SessionStallObservation {
+  sessionId: string;
+  actionKey: string;
+  /** True once this Session has been continuously unchanged for at least the deadline. */
+  stalled: boolean;
+  /** True only on the tick that crosses the deadline -- the tick that recorded the event. */
+  justFlagged: boolean;
+  lastProgressAt: string;
 }
 
 export interface ManagedProductionTickResult {
@@ -108,6 +121,15 @@ export function ensureProductionTickTables(db: Database.Database): void {
       base_branch TEXT NOT NULL,
       observed_sha TEXT NOT NULL,
       observed_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS production_session_stall_observations (
+      session_id TEXT PRIMARY KEY,
+      project_slug TEXT NOT NULL,
+      action_key TEXT NOT NULL,
+      pane_hash TEXT,
+      last_progress_at TEXT NOT NULL,
+      flagged_at TEXT,
+      updated_at TEXT NOT NULL
     );
   `);
 }
@@ -151,7 +173,7 @@ export function runManagedProductionTick(
     const metadata = getProjectMetadata(db, project.id);
     const configuredPath = metadata?.repo_path?.trim() || null;
     if (!configuredPath || !existsSync(configuredPath)) {
-      projects.push({ projectSlug: project.slug, repositoryRoot: null, baseBranchAdvance: null, reconciled: [], handoff: null, launch: null });
+      projects.push({ projectSlug: project.slug, repositoryRoot: null, baseBranchAdvance: null, reconciled: [], handoff: null, launch: null, stall: null });
       continue;
     }
     const repoRoot = path.resolve(configuredPath);
@@ -167,9 +189,18 @@ export function runManagedProductionTick(
 
     const reconciled: Array<{ sessionId: string; outcome: string }> = [];
     let handoff: SessionHandoffResult | null = null;
+    let stall: SessionStallObservation | null = null;
     try {
       const lease = getRepositoryLease(db, repoRoot);
-      if (lease && !tmux.hasSession(lease.tmux_session_name)) {
+      const leaseLive = lease ? tmux.hasSession(lease.tmux_session_name) : false;
+      if (lease && leaseLive) {
+        try {
+          stall = detectSessionStall(db, { lease, tmux, now, log });
+        } catch (error) {
+          log(`Stall observation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (lease && !leaseLive) {
         // Preserve the dead Session's candidate before reconciliation marks it
         // terminal (validation runs against the still-active lease), then
         // reconcile through the canonical completion/pointer writers, then
@@ -233,7 +264,7 @@ export function runManagedProductionTick(
     }
 
     options.heartbeat?.();
-    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, handoff, launch });
+    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, handoff, launch, stall });
   }
 
   return { policyActive: active, scheduling, schedulingError, projects };
@@ -476,6 +507,147 @@ export function listRecentBaseBranchAdvances(db: Database.Database, limit = 10):
     });
   }
   return records;
+}
+
+interface StallObservationRow {
+  pane_hash: string | null;
+  last_progress_at: string;
+  flagged_at: string | null;
+}
+
+/**
+ * Distinguish a live-but-hung Session from one making real progress, without
+ * ever touching its repository lease. `tmux.hasSession` (the dead-Session
+ * check above) only answers "does the process still exist"; a hung agent's
+ * tmux pane stays alive forever, so this reads the pane's own text as the
+ * observable, deterministic progress signal contract 20's "Process health"
+ * fault row asks for.
+ *
+ * A tick where the pane's content is unchanged from the previous tick is not
+ * itself evidence of a stall -- an agent silently compiling for a minute
+ * looks the same as one that is truly stuck. Only `sessionStallDeadlineMs` of
+ * *continuously* unchanged output crosses into "flagged", and that happens at
+ * most once per stall (the row's `flagged_at` gates the one `events` row this
+ * emits) so the worker log and `production status` never duplicate it. Any
+ * change in pane content -- including a session recovering after being
+ * flagged -- resets the deadline and, if it had been flagged, records that
+ * recovery too. A pane that cannot be read this tick (`capturePane` returns
+ * null) is a missing observation, never a signal on its own: this function
+ * leaves the previous observation untouched and reports nothing rather than
+ * guessing.
+ */
+function detectSessionStall(
+  db: Database.Database,
+  input: { lease: AgentSession; tmux: Pick<TmuxAdapter, "capturePane">; now: Date; log: (message: string) => void }
+): SessionStallObservation | null {
+  const pane = input.tmux.capturePane(input.lease.tmux_session_name);
+  if (pane === null) return null;
+
+  const paneHash = createHash("sha256").update(pane).digest("hex");
+  const at = input.now.toISOString();
+  const actionKey = `${input.lease.project_slug}/${input.lease.action_id}`;
+
+  const existing = db
+    .prepare("SELECT pane_hash, last_progress_at, flagged_at FROM production_session_stall_observations WHERE session_id = ?")
+    .get(input.lease.id) as StallObservationRow | undefined;
+
+  if (!existing || existing.pane_hash !== paneHash) {
+    const wasFlagged = existing?.flagged_at != null;
+    db.prepare(
+      `INSERT INTO production_session_stall_observations (session_id, project_slug, action_key, pane_hash, last_progress_at, flagged_at, updated_at)
+         VALUES (@session_id, @project_slug, @action_key, @pane_hash, @last_progress_at, NULL, @updated_at)
+       ON CONFLICT(session_id) DO UPDATE SET
+         project_slug = @project_slug, action_key = @action_key, pane_hash = @pane_hash,
+         last_progress_at = @last_progress_at, flagged_at = NULL, updated_at = @updated_at`
+    ).run({
+      session_id: input.lease.id,
+      project_slug: input.lease.project_slug,
+      action_key: actionKey,
+      pane_hash: paneHash,
+      last_progress_at: at,
+      updated_at: at
+    });
+    if (wasFlagged) {
+      recordEvent(db, {
+        eventType: "managed_production.session_stall_cleared",
+        projectId: input.lease.project_id,
+        payload: { sessionId: input.lease.id, projectSlug: input.lease.project_slug, actionKey },
+        at
+      });
+      input.log(`Session ${input.lease.id} for ${actionKey} resumed producing output; stall cleared.`);
+    }
+    return { sessionId: input.lease.id, actionKey, stalled: false, justFlagged: false, lastProgressAt: at };
+  }
+
+  const elapsedMs = input.now.getTime() - new Date(existing.last_progress_at).getTime();
+  if (elapsedMs < PRODUCTION_CONTROL_DEADLINES.sessionStallDeadlineMs) {
+    return { sessionId: input.lease.id, actionKey, stalled: false, justFlagged: false, lastProgressAt: existing.last_progress_at };
+  }
+
+  if (existing.flagged_at != null) {
+    return { sessionId: input.lease.id, actionKey, stalled: true, justFlagged: false, lastProgressAt: existing.last_progress_at };
+  }
+
+  db.prepare("UPDATE production_session_stall_observations SET flagged_at = ?, updated_at = ? WHERE session_id = ?").run(
+    at,
+    at,
+    input.lease.id
+  );
+  recordEvent(db, {
+    eventType: "managed_production.session_stalled",
+    projectId: input.lease.project_id,
+    payload: {
+      sessionId: input.lease.id,
+      projectSlug: input.lease.project_slug,
+      actionKey,
+      lastProgressAt: existing.last_progress_at,
+      deadlineMs: PRODUCTION_CONTROL_DEADLINES.sessionStallDeadlineMs
+    },
+    at
+  });
+  input.log(
+    `Session ${input.lease.id} for ${actionKey} flagged stalled: no pane output change since ${existing.last_progress_at} ` +
+      `(deadline ${PRODUCTION_CONTROL_DEADLINES.sessionStallDeadlineMs}ms). Lease preserved; needs operator or bounded automatic repair.`
+  );
+  return { sessionId: input.lease.id, actionKey, stalled: true, justFlagged: true, lastProgressAt: existing.last_progress_at };
+}
+
+export interface SessionStallRecord {
+  sessionId: string;
+  projectSlug: string;
+  actionKey: string;
+  lastProgressAt: string;
+  flaggedAt: string;
+}
+
+/**
+ * Read-only projection of Sessions currently flagged stalled -- pending
+ * operator attention or bounded automatic repair, never silently reconciled.
+ * Mirrors `listRecentBaseBranchAdvances`: the durable record is the dedup row
+ * plus the `events` row `detectSessionStall` writes, surfaced here rather than
+ * in MISSION_LOG.md.
+ */
+export function listCurrentlyStalledSessions(db: Database.Database): SessionStallRecord[] {
+  // The observation table is created by `ensureProductionTickTables` inside a
+  // write transaction the first time a tick runs; a read-only status query
+  // before that (or against a workspace that has never ticked) must not crash.
+  const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_session_stall_observations'").get();
+  if (!hasTable) return [];
+  const rows = db
+    .prepare(
+      `SELECT session_id, project_slug, action_key, last_progress_at, flagged_at
+         FROM production_session_stall_observations
+        WHERE flagged_at IS NOT NULL
+        ORDER BY flagged_at DESC`
+    )
+    .all() as Array<{ session_id: string; project_slug: string; action_key: string; last_progress_at: string; flagged_at: string }>;
+  return rows.map((row) => ({
+    sessionId: row.session_id,
+    projectSlug: row.project_slug,
+    actionKey: row.action_key,
+    lastProgressAt: row.last_progress_at,
+    flaggedAt: row.flagged_at
+  }));
 }
 
 function recordEvent(db: Database.Database, input: { eventType: string; projectId: string | null; payload: unknown; at: string }): void {

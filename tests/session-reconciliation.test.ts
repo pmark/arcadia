@@ -28,6 +28,7 @@ class FakeTmux implements TmuxAdapter {
   launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
   available() { return this.isAvailable; }
   hasSession() { return this.collision || this.live; }
+  capturePane() { return null; }
   launch(input: { name: string; cwd: string; command: string; args: string[] }) {
     if (this.failLaunch) throw new Error("synthetic spawn failure");
     this.launches.push(input);

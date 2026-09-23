@@ -27,8 +27,10 @@ import {
   type ProductionTransitionResult
 } from "../production/policy.js";
 import {
+  listCurrentlyStalledSessions,
   listRecentBaseBranchAdvances,
-  type BaseBranchAdvanceRecord
+  type BaseBranchAdvanceRecord,
+  type SessionStallRecord
 } from "../production/tick.js";
 
 export interface ProductionStatusOptions {
@@ -69,6 +71,8 @@ export interface ProductionStatusData {
   admissions: AdmissionReceipt[];
   /** Recent base-branch advances observed by the tick, newest first. */
   baseBranchAdvances: BaseBranchAdvanceRecord[];
+  /** Sessions currently flagged live-but-stalled, pending operator or bounded automatic repair. */
+  stalledSessions: SessionStallRecord[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
@@ -98,6 +102,7 @@ export function runProductionStatusCommand(
       liveAdmissions: live,
       admissions,
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
+      stalledSessions: listCurrentlyStalledSessions(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES
     };
@@ -281,6 +286,14 @@ export function renderProductionStatusSuccess(
       lines.push(
         `    ${advance.projectSlug} ${advance.baseBranch} ${from} → ${advance.newSha.slice(0, 12)} at ${advance.observedAt}`
       );
+    }
+  }
+
+  const stalled = response.data.stalledSessions;
+  if (stalled.length > 0) {
+    lines.push(`  Stalled Sessions (${stalled.length}) — needs-attention, lease preserved:`);
+    for (const session of stalled) {
+      lines.push(`    ${session.actionKey} (Session ${session.sessionId}) no progress since ${session.lastProgressAt}, flagged ${session.flaggedAt}`);
     }
   }
 

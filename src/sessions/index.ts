@@ -165,6 +165,13 @@ export interface TmuxAdapter {
   available(): boolean;
   hasSession(name: string): boolean;
   launch(input: { name: string; cwd: string; command: string; args: string[] }): void;
+  /**
+   * The pane's current visible text, or null when it cannot be read (tmux
+   * unavailable, the session is gone, or capture itself failed). Null is a
+   * missing observation, never evidence of a stalled Session -- callers must
+   * treat it as "no signal this tick", not as "no output".
+   */
+  capturePane(name: string): string | null;
 }
 
 export const systemTmux: TmuxAdapter = {
@@ -173,6 +180,9 @@ export const systemTmux: TmuxAdapter = {
   },
   hasSession(name) {
     try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore" }); return true; } catch { return false; }
+  },
+  capturePane(name) {
+    try { return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p"], { encoding: "utf8" }); } catch { return null; }
   },
   launch(input) {
     execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, input.command, ...input.args], {
