@@ -1551,7 +1551,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/526", "src/commands/go.ts", "src/git/worktrees.ts"]
   - id: refresh-pointer-action-against-current-base
     title: Re-resolve the pointer Action against the current base branch before `arcadia go` prepares or resumes its worktree, refusing when that version is already done.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Re-resolve the pointer Action against the current base branch before `arcadia go` prepares or resumes its worktree, refusing when that version is already done.
