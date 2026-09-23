@@ -11,7 +11,7 @@ import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDi
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
-import { buildAgentQueue, unpositionedCountForProject } from "../dispatch/queue.js";
+import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
 import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
@@ -316,8 +316,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           }
         } else {
           if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
-          const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
-          if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before accepting another into the queue.", { unpositionedCount: unpositionedInProject });
+          requirePlanPositioned(queue, project.slug, plan.slug, "accepting another into the queue");
           if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
@@ -481,8 +480,7 @@ export function settleAgentAsk(db: Database.Database, input: {
               if (target.status !== "active" || target.slug !== plan.slug) {
                 throw validationError("Only the active Plan can be placed in the execution queue; draft Plans remain inactive.", { targetRef });
               }
-              const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
-              if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before reprioritizing it.", { unpositionedCount: unpositionedInProject });
+              requirePlanPositioned(queue, project.slug, target.slug, "reprioritizing it");
               queueActionKeys = dependencyOrderedActionIds(target.actions
                 .filter((action) => action.status !== "done")
                 .map((action) => ({ id: action.id, dependencies: action.dependsOn })))
@@ -536,8 +534,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           }
           if (input.anchor && !input.placement) throw validationError("A queue anchor requires --before or --after.");
           if (input.placement) {
-            const unpositionedInProject = unpositionedCountForProject(queue, project.slug);
-            if (unpositionedInProject > 0) throw validationError("Position every existing approved Action in this Plan before reprioritizing it.", { unpositionedCount: unpositionedInProject });
+            requirePlanPositioned(queue, project.slug, target.slug, "reprioritizing it");
           }
 
           let after = before;
@@ -1472,6 +1469,17 @@ function splitPlanScopedActionRef(targetRef: string): { planRef: string; actionR
     throw validationError("A Plan-scoped target_ref must read plan/<plan-slug>#<action-id>.", { targetRef });
   }
   return { planRef, actionRef };
+}
+
+/** Refuse queue placement while this Plan's own Actions are unpositioned, naming them and the remedy. */
+function requirePlanPositioned(queue: AgentQueue, projectSlug: string, planSlug: string, purpose: string): void {
+  const unpositioned = unpositionedEntriesForPlan(queue, projectSlug, planSlug).map((entry) => entry.orderKey!);
+  if (unpositioned.length === 0) return;
+  throw validationError(
+    `Position every existing approved Action in Plan ${planSlug} before ${purpose}: ${unpositioned.join(", ")}. ` +
+      "Run `arcadia advance queue reorder --move <project/action> --top|--before|--after` for each.",
+    { plan: planSlug, unpositionedCount: unpositioned.length, unpositioned }
+  );
 }
 
 function requireNoQueueOptions(input: { responsibility?: AgentAskResponsibility; placement?: AgentAskPlacement; anchor?: string }): void {

@@ -289,14 +289,16 @@ export function buildAgentQueue(
 }
 
 /**
- * Unpositioned count within one project's slice of the portfolio-wide queue.
- * `AgentQueue.orderValid`/`unpositionedCount` cover every active project, so a
- * guard that reads them directly blocks every project whenever any project
- * has unpositioned Actions. A guard deciding whether to accept work for one
- * project should ask this instead.
+ * Unpositioned Actions within one Plan's slice of the portfolio-wide queue.
+ * `AgentQueue.orderValid`/`unpositionedCount` cover every active Plan of every
+ * Project (Decision 0048), so a guard that reads them directly blocks one
+ * Plan whenever any other Plan — even one the pointer is not on — has
+ * unpositioned Actions. A guard deciding whether to accept work into one Plan
+ * should ask this instead (issue #529).
  */
-export function unpositionedCountForProject(queue: AgentQueue, projectSlug: string): number {
-  return queue.ordered.filter((entry) => entry.orderStatus === "unpositioned" && entry.projectSlug === projectSlug).length;
+export function unpositionedEntriesForPlan(queue: AgentQueue, projectSlug: string, planSlug: string): AgentQueueEntry[] {
+  return queue.ordered.filter((entry) =>
+    entry.orderStatus === "unpositioned" && entry.projectSlug === projectSlug && entry.planSlug === planSlug);
 }
 
 function dedupeActionEntries(entries: AgentQueueEntry[]): AgentQueueEntry[] {
