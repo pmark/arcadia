@@ -166,4 +166,32 @@ describe("scopeToRepository", () => {
       linked
     )).toThrow(/No active Project owns/);
   });
+
+  it("refuses a directory whose .git gitfile points at an owned repository (#478)", () => {
+    const repository = createRepository();
+    const impostor = path.join(path.dirname(repository), "impostor");
+    mkdirSync(impostor);
+    writeFileSync(path.join(impostor, ".git"), `gitdir: ${path.join(repository, ".git")}\n`);
+
+    expect(() => scopeToRepository(
+      [{ id: "a", name: "Arcadia", repositoryPath: repository }],
+      impostor
+    )).toThrow(/No active Project owns/);
+  });
+
+  it("ignores an inherited GIT_DIR that points at an owned repository (#478)", () => {
+    const owned = createRepository();
+    const unrelated = createRepository();
+    const previous = process.env.GIT_DIR;
+    process.env.GIT_DIR = path.join(owned, ".git");
+    try {
+      expect(() => scopeToRepository(
+        [{ id: "a", name: "Arcadia", repositoryPath: owned }],
+        unrelated
+      )).toThrow(/No active Project owns/);
+    } finally {
+      if (previous === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = previous;
+    }
+  });
 });
