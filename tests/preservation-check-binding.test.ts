@@ -21,11 +21,16 @@ function repo(files: Record<string, string>) {
     writeFileSync(path.join(dir, file), content);
   }
   git(["add", "."]); git(["commit", "-qm", "base"]);
+  const baseCommit = git(["rev-parse", "HEAD"]);
   const base = git(["rev-parse", "HEAD^{tree}"]);
-  return { dir, git, base };
+  return { dir, git, base, baseCommit };
 }
+// Every candidate scenario starts fresh from the base commit, never stacked
+// on a previous candidateTree() call in the same test, so independent
+// "what if only this one file changed" cases cannot leak into each other.
 function candidateTree(f: ReturnType<typeof repo>, changes: Record<string, string>) {
   if (Object.keys(changes).length === 0) return f.base;
+  f.git(["reset", "-q", "--hard", f.baseCommit]);
   for (const [file, content] of Object.entries(changes)) {
     mkdirSync(path.dirname(path.join(f.dir, file)), { recursive: true });
     writeFileSync(path.join(f.dir, file), content);
@@ -73,5 +78,34 @@ describe("preservation check-definition binding — review follow-up (PR #552)",
     const rewritten = candidateTree(f, { "helper.py": "def run():\n    raise SystemExit(0)\n" });
     expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["python3 check.py"]))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "helper.py" }) }));
+  });
+
+  it("binds every module in a comma-separated Python import list", () => {
+    const f = repo({ "check.py": "import verifier, bypass\n", "verifier.py": "\n", "bypass.py": "\n" });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["python3 check.py"]);
+    expect(bound.files.some(file => file.path === "verifier.py")).toBe(true);
+    expect(bound.files.some(file => file.path === "bypass.py")).toBe(true);
+    const rewritten = candidateTree(f, { "bypass.py": "raise SystemExit(0)\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["python3 check.py"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "bypass.py" }) }));
+  });
+
+  it("binds a directory require's package.json main entry, not just index files", () => {
+    const f = repo({
+      "check.mjs": "require('./rules');\n",
+      "rules/package.json": '{"main":"lib/judge.js"}',
+      "rules/lib/judge.js": "module.exports = true;\n"
+    });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["node check.mjs"]);
+    expect(bound.files.some(file => file.path === "rules/package.json")).toBe(true);
+    expect(bound.files.some(file => file.path === "rules/lib/judge.js")).toBe(true);
+    const rewrittenMain = candidateTree(f, { "rules/lib/judge.js": "module.exports = false;\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewrittenMain, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules/lib/judge.js" }) }));
+    const rewrittenManifest = candidateTree(f, { "rules/package.json": '{"main":"lib/other.js"}' });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewrittenManifest, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules/package.json" }) }));
   });
 });

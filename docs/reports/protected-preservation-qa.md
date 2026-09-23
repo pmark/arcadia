@@ -381,3 +381,34 @@ Review follow-up (2026-09-23, PR #552):
   `preserve-on-exit-and-integrate`) with `ARCADIA_PRESERVATION_HOST_TEST=1`:
   6 files passed, 69 passed. Full `pnpm test`: 2050 passed, 13 skipped, 0
   failures. `pnpm build` and `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up round 2 (2026-09-23, PR #552):
+
+- CodeRabbit's second pass found two more real closure gaps in the round-1
+  fix: a directory `require("./rules")` whose target resolves through
+  `rules/package.json`'s `"main"` field rather than an index file left that
+  manifest and its resolved entry unbound, and a comma-separated Python
+  `import verifier, bypass` bound only the first name, leaving `bypass.py`
+  free for a candidate to rewrite. Both closed: `visitDirectoryImport` now
+  binds the directory's `package.json` and, when present, one level of its
+  resolved `"main"` entry (a manifest chaining to another manifest is not
+  followed further — documented as a boundary, not silently assumed away);
+  the Python import walk now binds every entry in a comma-separated `import`
+  list, each stripped of an `as` alias and dotted-package suffix.
+  `tests/preservation-check-binding.test.ts` gained two more cases proving
+  both the new binding and the refusal on a rewrite of the newly bound file.
+- Fixing round 1's `env` launcher example inside a header comment
+  (`` `import "./rules"` ``) tripped Arcadia's own declared preservation
+  check, `scripts/preservation-self-check.mjs`: its relative-import scanner
+  is comment-blind, so prose that reads like an import statement is
+  indistinguishable from a real one. Reworded the comment to state the
+  example without that literal shape; `node scripts/preservation-self-check.mjs`
+  now passes (1152 files inspected) and `tests/preservation-self-check.test.ts`
+  passes. This is itself a small, live instance of the exact class of problem
+  this Action closes: a check that judges source by pattern-matching text, not
+  by parsing it, and a good reason declaring-check authors should keep
+  examples of import-like syntax out of scanned comments.
+- Re-validation: focused suite (7 files, including the two new cases) with
+  `ARCADIA_PRESERVATION_HOST_TEST=1`: 71 passed. Full `pnpm test`: 2052
+  passed, 13 skipped, 0 failures. `pnpm build` and
+  `pnpm --filter arcadia-dashboard build`: exit 0.

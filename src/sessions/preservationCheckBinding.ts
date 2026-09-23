@@ -15,16 +15,19 @@ import { validationError } from "../cli/errors.js";
  * Security boundary: this covers the command's named script — resolved through
  * a leading launcher wrapper (`env`, `sudo`, …) or a known interpreter, never
  * every path-shaped argument — and that script's static relative
- * `import`/`export from`/`import()`/`require()` closure for JS/TS, or its
- * same-directory top-level `import`/`from … import` closure for a directly
- * invoked Python script, all read from the trusted base. It does not cover
- * data the check reads by design (the candidate content it judges), a
- * specifier computed at run time, a dynamic or dotted-package Python import,
- * interpreter configuration such as `package.json` "type", or a declared
- * command whose executed script this module cannot identify at all (inline
- * `-c` code, an unrecognized launcher, a bare system command) — such a check
- * runs exactly as before this binding existed. Changing a check therefore
- * needs the change landed on the base first, then a fresh authorization. */
+ * `import`/`export from`/`import()`/`require()` closure for JS/TS (including
+ * one level of directory-import `package.json` "main" resolution), or its
+ * same-directory `import`/`from … import` closure, including a
+ * comma-separated `import` list, for a directly invoked Python script, all
+ * read from the trusted base. It does not cover data the check reads by
+ * design (the candidate content it judges), a specifier computed at run
+ * time, a dynamic or dotted-package Python import, a "main" chain more than
+ * one `package.json` deep, interpreter configuration such as `package.json`
+ * "type", or a declared command whose executed script this module cannot
+ * identify at all (inline `-c` code, an unrecognized launcher, a bare system
+ * command) — such a check runs exactly as before this binding existed.
+ * Changing a check therefore needs the change landed on the base first, then
+ * a fresh authorization. */
 
 export const PRESERVATION_CHECK_MODIFIED_CODE = "validation_check_modified";
 
@@ -41,15 +44,18 @@ const REQUIRE_PROBES = ["", ".js", ".cjs", ".mjs", ".json", "/index.js", "/index
 // specifier (`require(/* note */ "./judge.cjs")`), which a bare regex would
 // otherwise silently fail to match — silence here means an unbound helper.
 const RELATIVE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)(?:\/\*[\s\S]*?\*\/\s*)?["'](\.{1,2}\/[^"'\n]+)["']/g;
-// `import x` / `from x import y`: a declared Python check always runs as a
-// direct script (`python3 check.py`), where Python puts the script's own
+// `import x[, y, …]` / `from x import y`: a declared Python check always runs
+// as a direct script (`python3 check.py`), where Python puts the script's own
 // directory first on `sys.path` — a dotted relative import (`from .x import
 // y`) does not even work there ("attempted relative import with no known
 // parent package"), so an unqualified top-level name is the only form that
-// actually resolves against the importing file's directory. A dotted
-// package name (`import os.path`) is left unbound; it is stdlib/installed,
-// not a same-directory file, and the existence check below drops it.
-const PYTHON_IMPORT = /^\s*(?:from\s+(\w+)\s+import\b|import\s+(\w+))/gm;
+// actually resolves against the importing file's directory. `import` accepts
+// a comma-separated list (`import verifier, bypass`); every entry is bound,
+// each stripped of an `as` alias and any dotted package suffix. A dotted
+// package name (`import os.path`) resolves to its own leading segment, which
+// is stdlib/installed, not a same-directory file, and the existence check
+// below drops it.
+const PYTHON_IMPORT = /^\s*(?:from\s+(\w+)\s+import\b|import\s+([\w.]+(?:\s*,\s*[\w.]+)*))/gm;
 
 export function bindCheckDefinitions(repository: string, baseRevision: string, candidateTree: string, commands: string[]): CheckDefinitionBinding {
   const base = blobs(repository, baseRevision);
@@ -64,9 +70,12 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
       const source = execFileSync("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       const dir = path.posix.dirname(file);
       for (const match of source.matchAll(PYTHON_IMPORT)) {
-        const module = match[1] || match[2];
-        if (!module) continue;
-        visit(path.posix.join(dir, `${module}.py`));
+        if (match[1]) { visit(path.posix.join(dir, `${match[1]}.py`)); continue; }
+        if (!match[2]) continue;
+        for (const entry of match[2].split(",")) {
+          const module = entry.split(/\bas\b/)[0].trim().split(".")[0].trim();
+          if (module) visit(path.posix.join(dir, `${module}.py`));
+        }
       }
       return;
     }
@@ -75,11 +84,35 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     for (const match of source.matchAll(RELATIVE_SPECIFIER)) {
       const target = inTree(path.posix.join(path.posix.dirname(file), match[1]));
       if (!target) continue;
-      for (const probe of REQUIRE_PROBES) visit(target + probe);
+      visitDirectoryImport(target);
     }
   };
+  // A bare `require("./rules")` (the string, not a real import — written this
+  // way so Arcadia's own preservation-self-check does not mistake this
+  // comment for an unresolved relative import) can resolve through a file
+  // probe (`rules.js`, `rules/index.js`, …) or, if none of those exist,
+  // through `rules/package.json`'s "main" field — Node's own directory-import
+  // resolution. Binding only the file probes leaves that manifest and its
+  // resolved entry free for a candidate to rewrite unnoticed. Resolves one
+  // level of "main" (a package.json chaining to another package.json is not
+  // followed further); the manifest itself is always bound, so a candidate
+  // that added a chain the base never had is still refused as a changed file.
+  const visitDirectoryImport = (target: string) => {
+    for (const probe of REQUIRE_PROBES) visit(target + probe);
+    const manifestPath = `${target}/package.json`;
+    visit(manifestPath);
+    const manifestBlob = base.get(manifestPath);
+    if (!manifestBlob) return;
+    let main = "index.js";
+    try {
+      const manifest = JSON.parse(execFileSync("git", ["cat-file", "blob", manifestBlob], { cwd: repository, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }));
+      if (typeof manifest.main === "string" && manifest.main.trim()) main = manifest.main;
+    } catch { /* unparsable manifest is already bound; any candidate rewrite of it is still refused */ }
+    const mainTarget = inTree(path.posix.join(target, main));
+    if (mainTarget) for (const probe of REQUIRE_PROBES) visit(mainTarget + probe);
+  };
   for (const command of commands) {
-    for (const file of namedFiles(command, base, candidate)) visit(file);
+    for (const file of namedFiles(command, base, candidate)) visitDirectoryImport(file);
   }
   const files = [...bound].map(([file, blob]) => ({ path: file, blob })).sort((a, b) => a.path.localeCompare(b.path));
   for (const file of files) {
