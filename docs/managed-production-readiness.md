@@ -174,7 +174,7 @@ Nothing here is code. These are live runs that either happen or do not.
 | ⬜ | `prove-zero-prompt-production-loop` | **Reclassified `requires_review` this session (Decision 0064) — no longer a dispatch hazard.** Action A succeeded live on 2026-09-21 with `opencode`. Remaining gap: Issue #460 (no Session record without `--launch`, so `session reconcile` has nothing to reconcile), plus the fixture's own unmerged PR #2. Still an operator-terminal run, by design. |
 | 🟡 | `prove-two-action-unattended-production` | `status: deferred`. **This is where the unattended claim is actually earned.** Blocks three other Actions while deferred (see "The one knot worth naming"). |
 | ⬜ | `prove-multi-provider-production-recovery` | Continuous production across providers and capacity exhaustion. |
-| ⬜ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. |
+| 🟡 | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. **Stage 1 is proven for 4 of 7 boundaries** (admission/launch, Off, capacity, priority/authority: 100 seeds each, zero violations, harness mutation-verified), and the release evidence index is at `docs/evidence/managed-production-release-evidence-index.md`. As filed, the Action cannot complete in an agent session: its live criteria are the deferred two-Action rehearsal and a soak that needs operator capacity authority. The proposed division is Agent Ask `divide-prove-managed-production-fault-matrix-2026-09-22`, not yet settled. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
 
 ### Gate 6 — The operator surface ⬜ **open — unchanged since 2026-09-20**
