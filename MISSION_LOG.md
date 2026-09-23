@@ -593,6 +593,20 @@ updated: 2026-09-23
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-prove-managed-production-fault-matrix-2026-09-23).
 
+## 2026-09-23 — Completed arcadia/give-zero-prompt-fixture-actions-a-build-packet
+
+- **Did:** Completed Action arcadia/give-zero-prompt-fixture-actions-a-build-packet from accepted evidence (Candidate d4b054ad89e6669273bb7ce0b952c9f12df0d342).
+- **Result:** Every declared acceptance criterion was accepted as met: "The Zero Prompt Rehearsal fixture Project's Actions carry a real build packet, so `arcadia session preview-launch` resolves them instead of reporting `planning_required`."; "The guarded session-launch path can launch the fixture's Action B with no manual packet step, while the existing manual runbook path remains available and unchanged."; "A deterministic test resolves the fixture's Action through the guarded launch path and asserts a launchable packet rather than `planning_required`."; "`pnpm test` and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-give-zero-prompt-fixture-actions-a-build-packet-2026-09-23-v2).
+
+## 2026-09-23 — Completed arcadia/bind-preservation-checks-to-host-owned-code
+
+- **Did:** Completed Action arcadia/bind-preservation-checks-to-host-owned-code from accepted evidence (Candidate e1a64a6fa7651dfba6ad75adde5d97e40037dcd3).
+- **Result:** Every declared acceptance criterion was accepted as met: "A candidate can no longer pass protected preservation by rewriting the code its declared check executes: the check definition or its content digest is bound to the authorized packet, and a candidate that changes it is refused with a named reason."; "The chosen enforcing mechanism is a host-owned checker or a content digest bound to the authorized packet, recorded with its security boundary; documentation-only treatment is explicitly out of scope because it cannot refuse a rewritten check."; "Deterministic tests cover a candidate that neuters its check (refused, candidate files preserved) and an unchanged candidate (preserved), per contract 20's negative-case requirement."; "`pnpm test` and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-bind-preservation-checks-to-host-owned-code-2026-09-23b).
+
 ## 2026-09-23 — Completed arcadia/prove-fault-matrix-remaining-boundaries
 
 - **Did:** Completed Action arcadia/prove-fault-matrix-remaining-boundaries from accepted evidence (Candidate da3f9cb093df5662293581ac3f02db83dc3e205b).

@@ -6,6 +6,7 @@ import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture
 import { withDatabase } from "../src/db/connection.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
+import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/sessions/preservationCheckBinding.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
 const fixtures: ReturnType<typeof preservationFixture>[] = [];
@@ -51,6 +52,29 @@ describe("preservation authority and content", () => {
     fixtureGit(f.candidate, ["add", ".arcadia-go-request"]);
     expect(() => snapshotCandidate(f.candidate)).toThrow("go transport file must not be tracked");
   });
+  it("refuses a candidate that neutered its own declared check, before executing anything, leaving the candidate untouched", () => {
+    const f = fixture();
+    writeFileSync(path.join(f.candidate, "check.mjs"), "process.exit(0);\n");
+    withDatabase(f.workspace, db => {
+      let error: unknown;
+      try { validatePreservationCandidate(db, f.workspace, f.lease); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({ message: expect.stringMatching(/cannot rewrite the check/), details: { code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.mjs" } });
+    });
+    // Refused, not repaired: the candidate's own rewrite is left exactly as the
+    // candidate wrote it, and no commit was fabricated on the repository.
+    expect(readFileSync(path.join(f.candidate, "check.mjs"), "utf8")).toBe("process.exit(0);\n");
+    expect(fixtureGit(f.repo, ["rev-parse", "HEAD"])).toBe(f.base);
+  });
+  it("binds an unchanged candidate's check to the authorized base without refusing it", () => {
+    const f = fixture();
+    const tree = snapshotCandidate(f.candidate);
+    // Unlike the neutered-check case above, this candidate never touched
+    // check.mjs, so binding must not refuse it: the check stays eligible to run.
+    const bound = bindCheckDefinitions(f.repo, f.base, tree, ["node check.mjs"]);
+    expect(bound.baseRevision).toBe(f.base);
+    const checkFile = bound.files.find(file => file.path === "check.mjs");
+    expect(checkFile?.blob).toBe(fixtureGit(f.repo, ["rev-parse", `${f.base}:check.mjs`]));
+  });
 });
 
 // Native sandboxing cannot be nested in an agent sandbox. Run explicitly on
@@ -70,7 +94,7 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     // Use the generic validator here so a workspace read can be tested without
     // altering a managed packet or weakening its frozen-command binding.
     expect(() => validateBoundCandidate(denied.workspace, { id: "workspace-denial", repository: denied.repo,
-      worktree: denied.candidate, commands: [`node -e 'require("node:fs").readdirSync(${JSON.stringify(denied.workspace)})'`] }, {}, () => {})).toThrow(/validation failed/);
+      worktree: denied.candidate, base: denied.base, commands: [`node -e 'require("node:fs").readdirSync(${JSON.stringify(denied.workspace)})'`] }, {}, () => {})).toThrow(/validation failed/);
   });
   it("preserves the tested tree, then refuses altered content on replay", () => {
     const f = fixture(); const before = readFileSync(path.join(f.repo, "PROJECT.md"));
