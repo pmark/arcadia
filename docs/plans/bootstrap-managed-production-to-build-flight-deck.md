@@ -1492,6 +1492,136 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/ask/settlement.ts", "src/commands/advance.ts", "docs/COMMANDS.md"]
+  - id: settle-commit-survives-gitignored-asks
+    title: Make `arcadia agent-ask settle --apply` land its managed-document commit even when the Project gitignores `.arcadia/asks/`.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make `arcadia agent-ask settle --apply` land its managed-document commit even when the Project gitignores `.arcadia/asks/`.
+    expected_artifact: Evidence satisfying Agent Ask settle-commit-survives-gitignored-asks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - The archived Ask path is never added to the managed-document commit when `git check-ignore` reports it ignored, and the managed documents still commit regardless of the archived file's ignore status.
+      - When the Project tracks `.arcadia/asks/`, the archived Ask is still staged and committed alongside the managed documents.
+      - A deterministic test settles an Ask in a repository whose `.gitignore` excludes `.arcadia/asks/` and asserts the managed documents are committed with a clean working tree.
+      - A second test covers the tracked case and asserts the archived file is committed.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/512", "src/ask/settlement.ts"]
+  - id: serialize-decision-deferral-pointer-write
+    title: Put `applyDecisionDeferral`'s pointer read-modify-write inside the same workspace write interlock and compare-and-set discipline the settlement and `transitionActionPointer` already use.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Put `applyDecisionDeferral`'s pointer read-modify-write inside the same workspace write interlock and compare-and-set discipline the settlement and `transitionActionPointer` already use.
+    expected_artifact: Evidence satisfying Agent Ask serialize-decision-deferral-pointer-write
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - "`applyDecisionDeferral` reads PROJECT.md and the active Plan, applies its transforms, and writes the pair inside the same `writeTransaction` (BEGIN IMMEDIATE) the settlement path uses, re-reading the base under the lock."
+      - A compare-and-set failure, where the base changed since the Plan was resolved, refuses or retries against fresh state instead of overwriting the concurrent pointer move; the two documents never end up pointing at different `current_action` values.
+      - A regression test races a deferral apply against a concurrent settlement or pointer move and asserts one final `current_action` in both documents and no silently lost move.
+      - Existing deferral, reversal and `--dry-run` behavior is unchanged; `pnpm test` and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/505", "src/dispatch/decisionDeferral.ts", "src/ask/settlement.ts"]
+  - id: guard-go-fallback-against-claimed-actions
+    title: Make `arcadia go`'s fallback dispatch run the same live-worktree and Action-claim predicate as the primary path before handing any Action to a session.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make `arcadia go`'s fallback dispatch run the same live-worktree and Action-claim predicate as the primary path before handing any Action to a session.
+    expected_artifact: Evidence satisfying Agent Ask guard-go-fallback-against-claimed-actions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - Every fallback candidate `arcadia go` considers is checked for an existing live worktree/Action claim in a loop before dispatch, not only the pointer Action.
+      - A fallback candidate already claimed by another live worktree is skipped and the walk continues to the next dependency-ready unclaimed Action; when none remains, `go` refuses with a named reason and a remedy.
+      - The final `resolveProjectTransition` dispatch is bound to the same reserved fallback Action as `dispatch` and `queueFallback`; a regression assertion proves `transition.dispatch.context.action.id` equals `dispatch.context.action.id` and `queueFallback.actionId`.
+      - A deterministic test runs two concurrent `go` invocations against the same pointer and asserts they either land on two different ready Actions or one refuses, never two sessions on one Action.
+      - A regression test reproduces the observed two-PR case (two prepared worktrees for one Action) and proves the second dispatch is refused.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/526", "src/commands/go.ts", "src/git/worktrees.ts"]
+  - id: refresh-pointer-action-against-current-base
+    title: Re-resolve the pointer Action against the current base branch before `arcadia go` prepares or resumes its worktree, refusing when that version is already done.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Re-resolve the pointer Action against the current base branch before `arcadia go` prepares or resumes its worktree, refusing when that version is already done.
+    expected_artifact: Evidence satisfying Agent Ask refresh-pointer-action-against-current-base
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - "`arcadia go` re-resolves the pointer Action from the current base branch before preparing or resuming its worktree, not only from the possibly-stale `projectRoot` checkout."
+      - When the current-base version of the pointer Action is `done`, or is no longer the `current_action`, `go` refuses or walks to the next eligible Action instead of preparing a duplicate candidate for already-completed work.
+      - A regression test starts from an older checkout whose pointer Action is already done on the base branch and asserts no new worktree or claim is created for it.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/511", "src/commands/go.ts", "src/docs/dispatch.ts"]
+  - id: bind-preservation-checks-to-host-owned-code
+    title: Stop a candidate from neutering its own protected-preservation check by binding the declared check's definition or content digest to the authorized packet.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stop a candidate from neutering its own protected-preservation check by binding the declared check's definition or content digest to the authorized packet.
+    expected_artifact: Evidence satisfying Agent Ask bind-preservation-checks-to-host-owned-code
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - "A candidate can no longer pass protected preservation by rewriting the code its declared check executes: the check definition or its content digest is bound to the authorized packet, and a candidate that changes it is refused with a named reason."
+      - The chosen enforcing mechanism is a host-owned checker or a content digest bound to the authorized packet, recorded with its security boundary; documentation-only treatment is explicitly out of scope because it cannot refuse a rewritten check.
+      - Deterministic tests cover a candidate that neuters its check (refused, candidate files preserved) and an unchanged candidate (preserved), per contract 20's negative-case requirement.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/326", "src/sessions/preservationValidation.ts", "docs/reports/protected-preservation-qa.md"]
+  - id: give-zero-prompt-fixture-actions-a-build-packet
+    title: Give the Zero Prompt Rehearsal fixture Project's Actions a real build packet so the guarded session-launch path resolves them instead of reporting `planning_required`.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give the Zero Prompt Rehearsal fixture Project's Actions a real build packet so the guarded session-launch path resolves them instead of reporting `planning_required`.
+    expected_artifact: Evidence satisfying Agent Ask give-zero-prompt-fixture-actions-a-build-packet
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - The Zero Prompt Rehearsal fixture Project's Actions carry a real build packet, so `arcadia session preview-launch` resolves them instead of reporting `planning_required`.
+      - The guarded session-launch path can launch the fixture's Action B with no manual packet step, while the existing manual runbook path remains available and unchanged.
+      - A deterministic test resolves the fixture's Action through the guarded launch path and asserts a launchable packet rather than `planning_required`.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/460", "docs/reports/prove-zero-prompt-production-loop-runbook.md", "docs/managed-production-readiness.md"]
+  - id: treat-blocked-status-as-undispatchable
+    title: "Make `resolveDispatch`/`isDispatchable` treat a `status: blocked` Action as not dispatchable, consistent with `resolveReadySet` and `buildProjectSchedule`."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Make `resolveDispatch`/`isDispatchable` treat a `status: blocked` Action as not dispatchable, consistent with `resolveReadySet` and `buildProjectSchedule`."
+    expected_artifact: Evidence satisfying Agent Ask treat-blocked-status-as-undispatchable
+    clarification: clarified
+    confidence: high
+    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    acceptance_criteria:
+      - "`resolveDispatch`/`isDispatchable` treats an Action with `status: blocked` as not dispatchable and pushes a named blocker, consistent with `resolveReadySet` and `buildProjectSchedule`."
+      - "`arcadia next` no longer prints the coding-agent authorization for a blocked Action and `arcadia go` cannot prepare a worktree for it."
+      - "`docs/managed-documents.md` states how `status: blocked` relates to `responsibility: blocked` and to dispatch readiness."
+      - "A regression test reproduces the fixture (`status: blocked`, `responsibility: agent`) and asserts not dispatchable, while an unblocked Action stays dispatchable."
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
 questions: []
 decisions: []
 current_action: prove-managed-production-fault-matrix
