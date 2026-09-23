@@ -753,17 +753,15 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove the contract-20 fault-injection matrix and staged evidence bundle before any unattended production handoff.
+    next_action: Prove contract 20's deterministic fault matrix for the policy and claim store boundaries, and publish the release evidence index.
     expected_artifact: Evidence satisfying Agent Ask prove-managed-production-fault-matrix
     clarification: clarified
     confidence: high
-    source: Agent Ask retire-flight-deck-from-fault-matrix-2026-09-20
+    source: Agent Ask divide-prove-managed-production-fault-matrix-2026-09-22
     acceptance_criteria:
-      - Each deterministic race scenario in the contract-20 boundary table (admission/launch, completion/pointer, Off, process health, capacity, priority/authority, runtime) is repeated at least 100 times with reproducible seeds/interleavings, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed.
-      - The two-dependent-Action live rehearsal passes from one activation with no manual Session relay, with every human intervention recorded.
-      - Both configured providers complete real bounded Actions, with capacity failure/reset tests naming which evidence is real and which is simulated.
-      - "A bounded real soak completes: at least ten accepted small Actions across at least two Projects and both providers, across two worker restarts, an Off/reactivation, and one injected recoverable failure, with zero duplicate launches, lost outputs, unauthorized transitions, falsely accepted results, or manual Session relays."
-      - A single release evidence index maps every required invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure.
+      - The admission/launch, Off, capacity, and priority/authority race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings against the real policy and claim store with zero invariant violations, retaining the failing seed and timeline for any violation.
+      - "The harness is shown to reject injected defects: disabling each guard it covers in turn makes the matrix fail with a named seed, and any guard it cannot catch is recorded as such."
+      - A single release evidence index maps every contract-20 invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure, with missing live evidence left unproven.
     depends_on: [feed-and-supervise-managed-production]
     decisions: []
     references: []
@@ -1440,6 +1438,41 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: prove-fault-matrix-remaining-boundaries
+    title: Extend the seeded contract-20 fault matrix to the completion/pointer, process-health, and runtime boundaries, and close the missing-artifact quality-gate negative case.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Extend the seeded contract-20 fault matrix to the completion/pointer, process-health, and runtime boundaries, and close the missing-artifact quality-gate negative case.
+    expected_artifact: Evidence satisfying Agent Ask prove-fault-matrix-remaining-boundaries
+    clarification: clarified
+    confidence: high
+    source: Agent Ask divide-prove-managed-production-fault-matrix-2026-09-22
+    acceptance_criteria:
+      - The completion/pointer, process-health, and runtime race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings with crash injection points specified in the harness, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed.
+      - A completion whose declared Artifact is absent is refused, with a test.
+      - docs/evidence/managed-production-release-evidence-index.md is updated with each new row's status, revision, and reproduction procedure.
+    depends_on: [prove-managed-production-fault-matrix, detect-hung-managed-production-sessions]
+    decisions: []
+    references: ["tests/production-fault-matrix.test.ts", "docs/evidence/managed-production-release-evidence-index.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md"]
+  - id: run-managed-production-live-soak
+    title: Run contract 20's live stages 2-4 under operator-granted scope and capacity authority, and record the results in the release evidence index.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Run contract 20's live stages 2-4 under operator-granted scope and capacity authority, and record the results in the release evidence index.
+    expected_artifact: Evidence satisfying Agent Ask run-managed-production-live-soak
+    clarification: clarified
+    confidence: high
+    source: Agent Ask divide-prove-managed-production-fault-matrix-2026-09-22
+    acceptance_criteria:
+      - The two-dependent-Action live rehearsal passes from one activation with no manual Session relay, with every human intervention recorded.
+      - Both configured providers complete real bounded Actions, with capacity failure/reset tests naming which evidence is real and which is simulated.
+      - "A bounded real soak completes: at least ten accepted small Actions across at least two Projects and both providers, across two worker restarts, an Off/reactivation, and one injected recoverable failure, with zero duplicate launches, lost outputs, unauthorized transitions, falsely accepted results, or manual Session relays."
+      - docs/evidence/managed-production-release-evidence-index.md maps each live stage to pass/fail/unproven, revision, artifact, and reproduction procedure.
+    depends_on: [prove-fault-matrix-remaining-boundaries, prove-two-action-unattended-production, prove-multi-provider-production-recovery]
+    decisions: []
+    references: ["docs/evidence/managed-production-release-evidence-index.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md"]
 questions: []
 decisions: []
 current_action: prove-managed-production-fault-matrix
