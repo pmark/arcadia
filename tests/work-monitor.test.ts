@@ -194,4 +194,18 @@ describe("scopeToRepository", () => {
       else process.env.GIT_DIR = previous;
     }
   });
+
+  it("refuses a registered worktree path whose directory became an independent repository (#478)", () => {
+    const repository = createRepository();
+    const linked = path.join(path.dirname(repository), "linked");
+    git(repository, ["worktree", "add", "-b", "agent/replaced", linked]);
+    rmSync(linked, { recursive: true, force: true });
+    mkdirSync(linked);
+    git(linked, ["init", "-b", "main"]);
+
+    expect(() => scopeToRepository(
+      [{ id: "a", name: "Arcadia", repositoryPath: repository }],
+      linked
+    )).toThrow(/No active Project owns/);
+  });
 });

@@ -238,15 +238,21 @@ function tryGitAt(cwd: string, args: string[]): string | null {
  *
  * A prepared worktree's path is never equal to the registered main-checkout
  * `repo_path`, so comparing paths alone rejects the one place an Arcadia Go
- * session runs its preflight from. Membership in the repository's own
- * `git worktree list` is what identifies the owner: it accepts every linked
- * worktree of that repository (#478) while refusing a directory that merely
- * points at its Git directory, whether through an inherited `GIT_DIR` or a
- * crafted `.git` gitfile — either of which would otherwise leak another
- * Project's paths past the protected broker's scope boundary (#470).
+ * session runs its preflight from. Ownership needs both halves of the identity:
+ * the candidate must share the repository's Git common directory, and its
+ * top-level must be a worktree the repository itself registers. The common
+ * directory alone can be pointed at an owned Project from an unrelated path
+ * (an inherited `GIT_DIR`, or a crafted `.git` gitfile); the registered path
+ * alone can be a replaced directory that is now an independent repository.
+ * Either would leak another Project's paths past the protected broker's scope
+ * boundary (#470), while the prepared worktree the broker runs from (#478)
+ * satisfies both.
  */
 export function sharesRepository(candidate: string, repository: string): boolean {
   if (samePath(candidate, repository)) return true;
+  const candidateCommon = tryGitAt(candidate, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const repositoryCommon = tryGitAt(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!candidateCommon || !repositoryCommon || !samePath(candidateCommon, repositoryCommon)) return false;
   const candidateTop = tryGitAt(candidate, ["rev-parse", "--show-toplevel"]);
   if (!candidateTop) return false;
   const registered = tryGitAt(repository, ["worktree", "list", "--porcelain"]);
