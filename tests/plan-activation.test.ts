@@ -122,7 +122,7 @@ function workspace(repoRoot: string): string {
 }
 
 function commitFixture(repoRoot: string): void {
-  execFileSync("git", ["init", "-q"], { cwd: repoRoot });
+  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repoRoot });
   execFileSync("git", ["config", "user.email", "activation@example.invalid"], { cwd: repoRoot });
   execFileSync("git", ["config", "user.name", "Activation Test"], { cwd: repoRoot });
   execFileSync("git", ["add", "-A"], { cwd: repoRoot });
@@ -460,6 +460,8 @@ describe("arcadia go cross-Plan activation", () => {
     expect(result.data.activation?.activation?.actionKey).toBe("demo/b1");
     expect(execFileSync("git", ["show", "main:PROJECT.md"], { cwd: repo, encoding: "utf8" })).toContain("active_plan: plan-b");
     expect(result.data.nextWorktree?.branch).toContain("b1");
+    // The retained temporary worktree must survive the final transition read.
+    expect(result.data.transition.kind).toBe("launch");
   });
 });
 

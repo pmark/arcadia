@@ -340,6 +340,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
   }
 
+  let temporaryActivationRoot: string | null = null;
+  try {
   if (needsActivation) {
     if (!workspaceForActivation) {
       throw validationError("Plan activation needs a resolvable Arcadia workspace.", { projectSlug });
@@ -349,9 +351,9 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     // source-branch retirement above, and the next worktree is prepared from
     // this same base. When no registered worktree holds `baseBranch` (it was
     // updated while unattached), pin a temporary worktree to it so the commit
-    // cannot land on an unrelated control branch.
+    // cannot land on an unrelated control branch. That worktree is retained
+    // until the launch and transition checks below have read it.
     let activationRoot = baseRecord?.path ?? null;
-    let temporaryActivationRoot: string | null = null;
     if (!activationRoot) {
       if (samePath(controlWorktree, sourceRecord.path)) {
         // The integration block switched the primary checkout back to baseBranch.
@@ -362,27 +364,20 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         activationRoot = temporaryActivationRoot;
       }
     }
-    try {
-      const baseId = `go-activate-${projectSlug}-${git(activationRoot, ["rev-parse", "HEAD"]).trim()}`;
-      activationResult = withDatabase(workspaceForActivation, (db) =>
-        activateNextPlan(db, { repoRoot: activationRoot, projectSlug, requestId: baseId, apply: true }));
-      const activated = resolveDispatch(activationRoot, projectSlug);
-      if (!isDispatchable(activated)) {
-        throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
-          projectSlug,
-          actionKey: activationResult.activation?.actionKey ?? null,
-          blockers: activated.blockers,
-          operatorQuestion: activated.operatorQuestion
-        });
-      }
-      dispatch = activated;
-      dispatchRoot = activationRoot;
-    } finally {
-      if (temporaryActivationRoot) {
-        git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", temporaryActivationRoot]);
-        git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
-      }
+    const baseId = `go-activate-${projectSlug}-${git(activationRoot, ["rev-parse", "HEAD"]).trim()}`;
+    activationResult = withDatabase(workspaceForActivation, (db) =>
+      activateNextPlan(db, { repoRoot: activationRoot, projectSlug, requestId: baseId, apply: true }));
+    const activated = resolveDispatch(activationRoot, projectSlug);
+    if (!isDispatchable(activated)) {
+      throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
+        projectSlug,
+        actionKey: activationResult.activation?.actionKey ?? null,
+        blockers: activated.blockers,
+        operatorQuestion: activated.operatorQuestion
+      });
     }
+    dispatch = activated;
+    dispatchRoot = activationRoot;
   }
 
   if (options.apply && options.agent) {
@@ -440,7 +435,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     const tmux = options.tmux ?? systemTmux;
     if (options.launch && workspacePath) {
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
-        repoRoot: controlWorktree,
+        repoRoot: dispatchRoot,
         projectSlug,
         db,
         tmux
@@ -584,16 +579,17 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
   let preservation: PreservationReadiness | undefined;
   if (nextWorktree && !options.launch) {
+    const preservationWorktree = nextWorktree.path;
     const workspacePath = resolveReadyWorkspace(options.workspace).workspacePath;
     preservation = withDatabase(workspacePath, db => {
       try {
-        bindManualPreservation(db, { repository: controlWorktree, worktree: nextWorktree.path, baseBranch, projectSlug });
+        bindManualPreservation(db, { repository: controlWorktree, worktree: preservationWorktree, baseBranch, projectSlug });
       } catch (error) {
-        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
+        const readiness = readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: preservationWorktree, projectSlug });
         readiness.blockers.unshift({ code: "manual_binding_failed", reason: error instanceof Error ? error.message : String(error) });
         return { ...readiness, ready: false };
       }
-      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: nextWorktree.path, projectSlug });
+      return readPreservationReadiness(db, { workspace: workspacePath, repository: controlWorktree, worktree: preservationWorktree, projectSlug });
     });
   }
 
@@ -640,6 +636,15 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       askRecoveries
     }
   });
+  } finally {
+    // The temporary activation worktree was only borrowed to hold `baseBranch`
+    // while the activation, launch and transition checks read it. Remove it
+    // once all of them have finished, whether they returned or threw.
+    if (temporaryActivationRoot) {
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", temporaryActivationRoot]);
+      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
+    }
+  }
 }
 
 /**
