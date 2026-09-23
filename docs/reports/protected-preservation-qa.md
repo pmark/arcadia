@@ -284,3 +284,61 @@ Original implementation evidence:
 The installed production worker and global broker were not upgraded by this
 work. Integration, acceptance, completion and pointer advancement remain
 separate governed operations. The implementation Action remains open for review.
+
+## Bind declared checks to the authorized packet (Action `bind-preservation-checks-to-host-owned-code`, GitHub Issue #326)
+
+The prior "not adopted" note above left `validateBoundCandidate` binding each
+declared command's *text* to the packet, not the content it executes — a
+candidate that replaced `scripts/preservation-self-check.mjs` with
+`process.exit(0)` still passed, because the check ran from the candidate's own
+materialized tree (`src/sessions/preservationValidation.ts:62-104` at the time
+Issue #326 was filed).
+
+**Chosen mechanism:** a content-digest binding, not a new host-owned checker
+process. `src/sessions/preservationCheckBinding.ts` resolves, for each declared
+command, the script file it actually executes — the command's own path if run
+directly, or the positional argument following a known interpreter
+(`node`/`python3`/`sh`/`bash`/…) — plus that file's static relative
+`import`/`export from`/`import()`/`require()` closure, all read from the
+*authorized base revision* (the Session lease's `base_revision`, or the manual
+Go binding's `baseRevision`), never from the candidate. `validateBoundCandidate`
+calls this before running anything: every bound file's Git blob at the base
+must equal what the candidate tree has (or both absent); any difference is
+refused by name (`Candidate changed \`<path>\`, which declared preservation
+check \`<command>\` executes; a candidate cannot rewrite the check that judges
+it.`) with no check executed and nothing committed.
+
+**Security boundary, stated plainly:** this binds the command's named files and
+their static relative-import closure as read from the trusted base. It does
+not cover data the check reads by design (the candidate content it judges — a
+check inspecting `marker.txt` is meant to see the candidate's `marker.txt`,
+which is why only the resolved *executed script*, not every path-shaped
+argument, is bound), specifiers computed at run time (dynamic string
+concatenation into `require()`), or interpreter configuration such as
+`package.json` `"type"`. Changing a genuine check therefore requires landing
+the change on the base branch first, then preparing and authorizing a fresh
+packet — the same path any other candidate change to shared checks already
+requires. Documentation-only treatment was explicitly rejected: it cannot
+refuse a rewritten check, which is the entire defect Issue #326 reported.
+
+Evidence (2026-09-23, prepared claude candidate at base `7f4f9c94`):
+
+- Deterministic suite (`preservation-validation`, `preservation-checks`,
+  `manual-preservation`): 3 files passed, 28 passed, 7 native skips (skip by
+  design off the host). Includes two new cases: a candidate that neuters its
+  declared check (`process.exit(0)` in place of `check.mjs`) is refused before
+  execution with the named reason, and the candidate's own files are left
+  untouched — no repair, no fabricated commit; a second candidate that leaves
+  its check unchanged binds without refusal.
+- Native Seatbelt suite run explicitly on the host
+  (`ARCADIA_PRESERVATION_HOST_TEST=1`): 4 files passed, 58 passed, including
+  the pre-existing "refuses failed checks and source-writing checks" case,
+  which exercises a declared check that writes into a tracked data file
+  (`printf forged > marker.txt`) — confirming the binding does not refuse a
+  check's own write/output targets, only the script it executes.
+- `pnpm test`: 2042 passed, 15 skipped, 1 unrelated failure
+  (`test/intelligence/packageBoundary.test.ts`'s `beforeAll` build hook timed
+  out under load; passes standalone in 195ms — host contention, not a
+  regression, matching the pattern already noted above for CLI-spawn suites).
+- `pnpm build` (lint, `tsc -p tsconfig.json`, Discord bot build) and
+  `pnpm --filter arcadia-dashboard build`: exit 0.

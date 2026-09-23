@@ -64,7 +64,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       const binding = bindManualPreservation(db, { repository: controlWorktree, worktree: source, baseBranch, projectSlug });
       const assertBinding = () => assertManualPreservationBinding(db, binding);
       const validation = validateBoundCandidate(options.workspace, {
-        id: binding.reservationId, repository: controlWorktree, worktree: source, commands: binding.commands
+        id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
       }, binding, assertBinding);
       return preserveCandidate(db, {
         requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
