@@ -246,6 +246,8 @@ describe("Agent Ask settlement", () => {
       disposition: "accepted" as const, responsibility: "agent" as const, top: true };
     const preview = runAgentAskSettleCommand(options);
     expect(preview.data.receipt.queueActionKey).toBe("demo/add-settlement-proof");
+    expect(() => runAgentAskSettleCommand({ ...options, requestId: "settle-unpositioned-anchor", top: false, after: "demo/side-work" }))
+      .toThrow(/Queue anchor demo\/side-work has no queue position yet/);
     runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
     // The other Plan's Action is left for the operator to rank, not silently positioned.
     withDatabase(workspace, (db) => expect([...loadActionOrder(db).positions.keys()])
