@@ -761,10 +761,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   } finally {
     // The temporary activation worktree was only borrowed to hold `baseBranch`
     // while the activation, launch and transition checks read it. Remove it
-    // once all of them have finished, whether they returned or threw.
+    // once all of them have finished, whether they returned or threw. `tryGit`
+    // so a cleanup failure can never replace the error that is already
+    // propagating out of the try block.
     if (temporaryActivationRoot) {
-      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", temporaryActivationRoot]);
-      git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
+      tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", temporaryActivationRoot]);
+      tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
     }
   }
 }
