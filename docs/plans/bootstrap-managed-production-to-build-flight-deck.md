@@ -1587,7 +1587,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/326", "src/sessions/preservationValidation.ts", "docs/reports/protected-preservation-qa.md"]
   - id: give-zero-prompt-fixture-actions-a-build-packet
     title: Give the Zero Prompt Rehearsal fixture Project's Actions a real build packet so the guarded session-launch path resolves them instead of reporting `planning_required`.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give the Zero Prompt Rehearsal fixture Project's Actions a real build packet so the guarded session-launch path resolves them instead of reporting `planning_required`.
