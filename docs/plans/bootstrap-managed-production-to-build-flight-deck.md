@@ -1658,7 +1658,7 @@ actions:
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
 questions: []
 decisions: []
-current_action: honor-policy-providers-at-launch
+current_action: register-agent-workspace-trust
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
