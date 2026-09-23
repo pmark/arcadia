@@ -208,6 +208,66 @@ describe("runManagedProductionTick", () => {
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
   });
 
+  it("never previews or refuses a launch for a Project outside the active policy scope, while still reconciling its live Session", () => {
+    const fixture = preparedFixture({ secondAction: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const first = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(first.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+
+    // Re-grant production scoped to a different Project, so test-project is now
+    // outside the standing policy while its Session is still live.
+    const narrowed = normalizeProductionScope({ ...productionScope, projects: ["another-project"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-narrowed",
+        scope: narrowed,
+        scopeFingerprint: fingerprintProductionScope(narrowed),
+        grantedBy: "operator"
+      })
+    );
+
+    // The candidate makes real, evidenced progress and its tmux dies without
+    // ever calling `session reconcile` itself: reconciliation is a safety path
+    // and must still notice an out-of-scope Project's dead Session.
+    completeActionInWorktree(session.worktree_path, "define-contract");
+    recordPassingRun(fixture.workspace, session.work_item_id);
+    tmux.live.delete(session.tmux_session_name);
+
+    // Advance the governed base branch independently of the Session worktree,
+    // so a tick that still observed out-of-scope Projects would report it.
+    writeFileSync(path.join(fixture.repo, "EXTERNAL.md"), "merged externally\n");
+    git(fixture.repo, ["add", "EXTERNAL.md"]);
+    git(fixture.repo, ["commit", "-m", "external merge"]);
+
+    const log = vi.fn();
+    const second = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        log, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const project = second.projects.find((entry) => entry.projectSlug === "test-project")!;
+    // Reconciliation still ran: the dead Session is reconciled out of scope.
+    // Without scope authority no mechanical completion settles, so the
+    // evidenced candidate is classified resumable rather than accepted.
+    expect(project.reconciled).toHaveLength(1);
+    expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    // Base-branch observation was skipped entirely for the out-of-scope Project.
+    expect(project.baseBranchAdvance).toBeNull();
+    // But no launch was attempted and no misleading refusal was logged.
+    expect(project.launch).toMatchObject({ attempted: false, outcome: "skipped" });
+    expect(project.launch?.reason).toMatch(/outside the standing production policy scope/);
+    expect(tmux.launches).toHaveLength(1);
+    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Launch refused/));
+  });
+
   it("skips a repository that already holds a lease rather than launching a second Session", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
