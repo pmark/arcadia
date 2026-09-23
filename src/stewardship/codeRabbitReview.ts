@@ -176,7 +176,7 @@ export interface CodeRabbitReviewOptions {
 
 export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions): Promise<CodeRabbitReviewResult> {
   const { repo, pr, timeoutMin } = options;
-  const gh = (args: string[]): string => execFileSync("gh", args, { cwd: repo, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const gh = (args: string[]): string => runGh(repo, args, { maxBuffer: 32 * 1024 * 1024 });
   const ghJson = <T>(args: string[]): T => JSON.parse(gh(args)) as T;
   const repository = gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]).trim();
   const deadline = Date.now() + timeoutMin * 60_000;
@@ -223,7 +223,7 @@ export interface DeclineFindingResult {
 // For a finding the agent judges wrong: reply with the reason and resolve the
 // thread, so it stops blocking approval without being silently ignored.
 export function declineCodeRabbitFinding(repo: string, threadId: string, reason: string): DeclineFindingResult {
-  const gh = (args: string[]): string => execFileSync("gh", args, { cwd: repo, encoding: "utf8" });
+  const gh = (args: string[]): string => runGh(repo, args);
   const reply = `mutation($id:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id,body:$body}){comment{url}}}`;
   const resolve = `mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}`;
   const replied = JSON.parse(gh(["api", "graphql", "-f", `query=${reply}`, "-f", `id=${threadId}`, "-f", `body=Declined: ${reason}`])) as {
@@ -237,6 +237,34 @@ export function declineCodeRabbitFinding(repo: string, threadId: string, reason:
     replyUrl: replied.data.addPullRequestReviewThreadReply.comment?.url ?? null,
     resolved: resolved.data.resolveReviewThread.thread.isResolved
   };
+}
+
+/**
+ * Every `gh` invocation in this file goes through here so a missing binary
+ * fails with one clear, named remedy instead of a raw `spawnSync gh ENOENT`
+ * surfacing as an opaque UNEXPECTED_ERROR (Issue #517). Environments that
+ * only carry MCP-based GitHub access (no `gh` on PATH, as in a Claude Code
+ * Remote/cloud session) hit this on the very first call.
+ */
+function runGh(repo: string, args: string[], options?: { maxBuffer?: number }): string {
+  try {
+    return execFileSync("gh", args, { cwd: repo, encoding: "utf8", maxBuffer: options?.maxBuffer });
+  } catch (error) {
+    if (isEnoent(error)) {
+      throw validationError(
+        "The `gh` CLI is not installed or not on PATH, so this command cannot run.",
+        {
+          remedy: "Install the GitHub CLI (https://cli.github.com) and authenticate it, or run this command from an environment that has `gh` on PATH — for example a local checkout, rather than a session whose GitHub access is MCP-only.",
+          cause: (error as Error).message
+        }
+      );
+    }
+    throw error;
+  }
+}
+
+function isEnoent(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ENOENT";
 }
 
 interface PullState {
