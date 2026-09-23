@@ -1,0 +1,18 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-auto-resolve-planning-required-2026-09-23",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/auto-resolve-planning-required",
+  "candidate_revision": "23885c2b270d112f0d5c94e27cdf2072077954e1",
+  "evidence": [
+    { "criterion": "Reproduces the observed failure: an Action reaching the front of the dispatch pointer with no packet does not require a human or a separately-dispatched agent session to run `arcadia work plan` by hand before it can launch.", "status": "met" },
+    { "criterion": "When completing the Action needs no Decision-gated planning run, its packet is prepared deterministically through the existing packets.ts template system -- no new or inconsistent prompt scheme is introduced.", "status": "met" },
+    { "criterion": "When the Action genuinely needs a real, Decision-gated planning run (CodexPlanningRunApproval), that run is requested automatically, and the existing approval gate is preserved -- this Action never bypasses it.", "status": "met" },
+    { "criterion": "A currently-open production_operator_escalations row for this exact Action (see src/production/tick.ts, PR #579) clears once the packet is prepared or the planning run is requested, through the tick's normal resolution path -- not a special case.", "status": "met" },
+    { "criterion": "A deterministic test reproduces both branches: the no-Decision-needed case resolves automatically within a bounded number of ticks; the Decision-gated case requests the planning run and stops there, never bypassing approval.", "status": "met" },
+    { "criterion": "pnpm test and the core, Discord and Dashboard builds pass.", "status": "met" }
+  ],
+  "desired_result": "Mark auto-resolve-planning-required done: production/tick.ts now automatically resolves a planning_required Action through the existing arcadia work plan machinery instead of stalling until a human or agent notices, per Issue #584.",
+  "rationale": "attemptAutomaticPlanningResolution in src/production/tick.ts triggers runWorkPlanCommand (src/commands/work.ts) automatically from the managed-production tick's own launch-refusal handling when packetLifecycle.kind is planning_required, reusing the existing packets.ts prompt template and the existing CodexPlanningRunApproval/CodexBuildPacketApproval approval gates unchanged. Two new deterministic vitest tests in tests/production-tick.test.ts cover both branches end to end; pnpm test, pnpm build (lint+tsc+discord-bot), and the Dashboard (next build) all pass."
+}
