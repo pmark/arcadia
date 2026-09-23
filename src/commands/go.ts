@@ -437,14 +437,23 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
       // A stale, no-longer-dispatchable fresh read must refuse outright here,
       // not silently keep the earlier (equally stale) `dispatch` -- that would
-      // reintroduce exactly the bug this re-resolution exists to close.
+      // reintroduce exactly the bug this re-resolution exists to close. This
+      // check runs after the Git reconciliation above, which already retired
+      // the source worktree/branch (or switched the primary checkout back to
+      // the base branch) whenever integration required it -- that cleanup is
+      // not undone by this refusal, so report it rather than leaving the
+      // operator to guess whether their source branch still exists.
       if (!isDispatchable(freshPointer)) {
         throw validationError("The pointer Action is no longer dispatchable on the current base branch.", {
           projectSlug,
           staleActionId: dispatch.context?.action.id ?? null,
           blockers: freshPointer.blockers,
           operatorQuestion: freshPointer.operatorQuestion,
-          remedy: "Re-run `arcadia go`; it will resolve whatever Action the current base now names, or repair the governed pointer."
+          gitReconciliationAlreadyApplied: integration === "fast-forward" || integration === "already-integrated",
+          sourceWorktreeRemoved,
+          sourceBranchDeleted,
+          remedy: "Re-run `arcadia go` from the control checkout " + controlWorktree +
+            "; it will resolve whatever Action the current base now names, or repair the governed pointer."
         });
       }
       dispatch = freshPointer;

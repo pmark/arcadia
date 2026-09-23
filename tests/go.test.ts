@@ -623,6 +623,9 @@ describe("arcadia go — base branch remote sync", () => {
     git(fixture.remote, ["add", "docs/plans/copy-proof.md"]);
     git(fixture.remote, ["commit", "-m", "mark define-contract done without repointing current_action"]);
     git(fixture.main, ["switch", "-c", "claude/unrelated-parking"]);
+    const agentRoot = path.join(fixture.root, "agent-worktrees");
+    const worktreeCountBefore = git(fixture.main, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
 
     const failure = expectValidation(
       () => runGoCommand({
@@ -630,12 +633,23 @@ describe("arcadia go — base branch remote sync", () => {
         source: fixture.feature,
         apply: true,
         agent: "claude",
-        workspace: fixture.workspace
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
       }),
       "no longer dispatchable"
     );
 
     expect(failure.details).toMatchObject({ staleActionId: "define-contract" });
+    // No worktree and no DB claim were created for the refused Action: the
+    // agent worktree root that would have held one was never populated, and
+    // the repository's registered worktree count never grows past whatever
+    // the (unrelated) Git reconciliation above already retired.
+    expect(existsSync(agentRoot)).toBe(false);
+    const worktreeCountAfter = git(fixture.main, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
+    expect(worktreeCountAfter).toBeLessThanOrEqual(worktreeCountBefore);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get())).toEqual({ n: 0 });
   });
 
   it("reconciles recognized governed base commits before issuing the prepared-worktree receipt", () => {
