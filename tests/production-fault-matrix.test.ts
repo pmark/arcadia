@@ -77,7 +77,7 @@ function rng(seed: number): () => number {
 }
 
 function pick<T>(random: () => number, values: readonly T[]): T {
-  return values[Math.floor(random() * values.length)]!;
+  return values[Math.floor(random() * values.length)];
 }
 
 type CapacityState = "fresh" | "refused" | "unknown" | "mismatched";
@@ -277,7 +277,7 @@ function step(harness: Harness, op: OpName): void {
     case "claim": {
       const target = worker.pending.find((p) => !p.claimGeneration);
       if (!target) return;
-      const actionId = target.actionKey.split("/")[1]!;
+      const actionId = target.actionKey.split("/")[1];
       try {
         const reservation = reserveAgentWorktree(worker.db, {
           repositoryPath: REPO,
@@ -310,7 +310,7 @@ function step(harness: Harness, op: OpName): void {
         target.committed = true;
       } else {
         // Abandon the unlaunched candidate exactly as launchGuardedHostSession does.
-        releaseActionClaim(worker.db, { repositoryPath: REPO, project: "demo", actionId: target.actionKey.split("/")[1]!, generation: target.claimGeneration! });
+        releaseActionClaim(worker.db, { repositoryPath: REPO, project: "demo", actionId: target.actionKey.split("/")[1], generation: target.claimGeneration! });
         worker.pending = worker.pending.filter((p) => p !== target);
       }
       return;
@@ -319,7 +319,7 @@ function step(harness: Harness, op: OpName): void {
       const target = worker.pending.find((p) => p.committed);
       if (!target) return;
       releaseAdmission(worker.db, target.requestId, at);
-      releaseActionClaim(worker.db, { repositoryPath: REPO, project: "demo", actionId: target.actionKey.split("/")[1]!, generation: target.claimGeneration! });
+      releaseActionClaim(worker.db, { repositoryPath: REPO, project: "demo", actionId: target.actionKey.split("/")[1], generation: target.claimGeneration! });
       worker.pending = worker.pending.filter((p) => p !== target);
       log(`${worker.name} finish ${target.requestId}`);
       return;
@@ -384,7 +384,7 @@ function checkInvariants(harness: Harness): void {
     WHERE status = 'committed' GROUP BY action_key HAVING n > 1`).all() as Array<{ action_key: string; n: number }>;
   if (duplicateCommitted.length) violation(harness, `duplicate live execution: ${JSON.stringify(duplicateCommitted)}`);
   const duplicateClaims = db.prepare(`SELECT action_id, COUNT(*) AS n FROM agent_worktree_reservations
-    WHERE action_id IS NOT NULL AND expires_at > ? GROUP BY repository_path, project, action_id HAVING n > 1`).all(at) as unknown[];
+    WHERE action_id IS NOT NULL AND expires_at > ? GROUP BY repository_path, project, action_id HAVING n > 1`).all(at);
   if (duplicateClaims.length) violation(harness, `duplicate live claim: ${JSON.stringify(duplicateClaims)}`);
 
   // A worker's belief that it is running must be backed by durable state.
@@ -426,7 +426,7 @@ function runScenario(scenario: string, seed: number): { steps: number; admitted:
   try {
     grant(harness);
     for (let index = 0; index < STEPS_PER_RUN; index += 1) {
-      step(harness, weightedOp(random, SCENARIOS[scenario]!));
+      step(harness, weightedOp(random, SCENARIOS[scenario]));
       checkInvariants(harness);
     }
     const counts = operator.prepare(`SELECT

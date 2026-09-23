@@ -6,9 +6,9 @@ pass/fail/unproven, revision, artifact, and reproduction procedure. This is that
 index. **Missing live evidence stays `unproven`; any `fail` or `unproven` row
 blocks unattended Flight Deck handoff.**
 
-Revision: every `pass` below was observed on branch
-`claude/prove-managed-production-fault-matrix-20260923T051028566Z` (base
-`764411b8`) on 2026-09-22. A `pass` is invalidated by any later change to the
+Revision: every `pass` below was observed at commit `3cd8586d` (tested
+code; later commits on its branch change only documentation), on base
+`764411b8`, on 2026-09-22. A `pass` is invalidated by any later change to the
 code it covers — rerun its reproduction on the release revision.
 
 Status: **not releasable.** Stage 1 is partly proven. Stages 2–4 and 6 are
@@ -19,7 +19,7 @@ unproven, because each one needs a live run or an operator action.
 Reproduce any row:
 
 ```sh
-ARCADIA_FAULT_MATRIX_EVIDENCE_DIR=$TMPDIR/fault-matrix \
+ARCADIA_FAULT_MATRIX_EVIDENCE_DIR=${TMPDIR:-/tmp}/fault-matrix \
   mise exec -- npx vitest run tests/production-fault-matrix.test.ts
 ```
 
@@ -62,7 +62,7 @@ was rerun, and the guard was restored:
 | Stale commit evidence | pass | same file, "refuses a stale Candidate revision"; `tests/session-reconciliation.test.ts` stale candidate revision |
 | Unresolved blocking review | pass | same file, "refuses completion while a required review Decision is unresolved" |
 | Missing artifact | **unproven** | No test rejects a completion whose declared Artifact is absent. |
-| False agent completion claim | pass (mechanism) | Completion requires verbatim per-criterion `met` evidence and a matching candidate revision. Whether a *false* `met` is caught depends on review, which Stage 2 and later exercise live. |
+| False agent completion claim | **unproven** | Completion requires verbatim per-criterion `met` evidence and a matching candidate revision, but no test or live artifact yet shows a *false* `met` being rejected. |
 
 ## Stages 2–6 — live evidence
 
