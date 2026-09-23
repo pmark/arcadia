@@ -75,7 +75,7 @@ work has happened — running it right after `go` is a guaranteed
    bare command refuses with
    `VALIDATION_ERROR: More than one Project is active...`; when that happens,
    re-run it with `--project <slug>`, using the slug from the advance broker's
-   own response at `data.dispatch.context.projectSlug`:
+   own response at `data.transition.dispatch.context.projectSlug`:
 
    ```sh
    pnpm arcadia next --project <slug>
@@ -156,11 +156,14 @@ work has happened — running it right after `go` is a guaranteed
   prepared worktree. A request does not authorize merge, deployment, completion,
   or acceptance beyond the existing canonical command's authority checks.
 - A prepared worktree's `mise.toml` is pre-trusted by the host broker at
-  preparation time, before the worktree is ever handed to a sandboxed agent.
-  If a mise-wrapped command still fails with `mise ERROR ... Operation not
-  permitted` on a worktree prepared before this fix, that one worktree
-  predates it — retrying under `dangerouslyDisableSandbox` for that single
-  command is the named exception, not a pattern to repeat going forward.
+  preparation time, before the worktree is ever handed to a sandboxed agent;
+  preparation itself fails closed and removes the worktree if that trust call
+  cannot complete, rather than handing over a worktree that will only fail
+  later inside the sandbox. If a mise-wrapped command still fails with
+  `mise ERROR ... Operation not permitted` on a worktree prepared before this
+  fix, that one worktree predates it — retrying under
+  `dangerouslyDisableSandbox` for that single command is the named exception,
+  not a pattern to repeat going forward.
 - The protected broker installer configures the default `~/.codex/config.toml`
   and every present named `~/.codex/*.config.toml` profile with the exact
   `~/.codex/worktrees`, `~/.claude/worktrees`, and `~/.opencode/worktrees`

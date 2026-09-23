@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
-import { git } from "../git/worktrees.js";
+import { git, tryGit } from "../git/worktrees.js";
 import { resolveMiseExecutable } from "../runtime/mise.js";
 
 export interface PreparedAgentWorktree {
@@ -65,8 +65,30 @@ export function prepareAgentWorktree(input: {
   input.beforeCreate?.(candidate);
   mkdirSync(path.dirname(worktreePath), { recursive: true });
   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
-  trustMiseConfig(worktreePath);
+  try {
+    trustMiseConfig(input.repositoryPath, worktreePath);
+  } catch (error) {
+    tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", worktreePath]);
+    throw error;
+  }
   return candidate;
+}
+
+/**
+ * A `mise` executable for trusting a worktree's config, preferring the fixed
+ * launch-agent path (`resolveMiseExecutable`) but falling back to `PATH` --
+ * unlike that function's other callers, this one runs synchronously inside an
+ * interactive or agent-driven process that inherits a real shell `PATH`, not
+ * a launchd plist with none, so a `mise` installed outside the fixed
+ * candidates (a Linux package at `/usr/bin/mise`, a cargo install) is still
+ * found instead of silently skipping pre-trust.
+ */
+function resolveMiseForTrust(): string | null {
+  const fixed = resolveMiseExecutable();
+  if (existsSync(fixed)) return fixed;
+  const located = spawnSync("which", ["mise"], { encoding: "utf8" });
+  const fromPath = located.status === 0 ? located.stdout.trim() : "";
+  return fromPath && existsSync(fromPath) ? fromPath : null;
 }
 
 /**
@@ -76,16 +98,29 @@ export function prepareAgentWorktree(input: {
  * to `~/.local/state/mise/trusted-configs/`, outside every coding-agent
  * sandbox's writable paths, so the very first mise-wrapped command in a fresh
  * worktree fails with "Operation not permitted" before any real work starts.
- * Best-effort: a missing `mise.toml`, a missing `mise` binary, or a failed
- * trust call all leave the worktree exactly as `git worktree add` produced
- * it, so the repository stays usable even without mise pinning.
+ * A missing `mise.toml` or a missing `mise` binary is not this worktree's
+ * problem to solve -- those leave it exactly as `git worktree add` produced
+ * it. A `mise trust` call that actually runs and fails is different: it means
+ * the same first-use sandbox failure this function exists to prevent is
+ * still ahead of the agent, so it is surfaced here, host-side, where there is
+ * still a chance to repair it, instead of appearing later as an
+ * unattributed sandbox error the agent has no path back to this cause from.
  */
-function trustMiseConfig(worktreePath: string): void {
+function trustMiseConfig(repositoryPath: string, worktreePath: string): void {
   const miseConfig = path.join(worktreePath, "mise.toml");
   if (!existsSync(miseConfig)) return;
-  const miseBin = resolveMiseExecutable();
-  if (!existsSync(miseBin)) return;
-  spawnSync(miseBin, ["trust", "--yes", miseConfig], { stdio: "ignore" });
+  const miseBin = resolveMiseForTrust();
+  if (!miseBin) return;
+  const result = spawnSync(miseBin, ["trust", "--yes", miseConfig], { encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    throw validationError("Could not pre-trust the prepared worktree's mise.toml.", {
+      repositoryPath,
+      worktreePath,
+      miseBin,
+      cause: result.error?.message ?? result.stderr?.trim() ?? `mise trust exited ${result.status}`,
+      remedy: `Run \`${miseBin} trust --yes ${miseConfig}\` by hand, then retry preparation.`
+    });
+  }
 }
 
 const CLAUDE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);
