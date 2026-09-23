@@ -1642,7 +1642,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/559"]
 questions: []
 decisions: []
-current_action: settle-commit-survives-gitignored-asks
+current_action: honor-policy-providers-at-launch
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
