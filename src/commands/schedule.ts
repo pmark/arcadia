@@ -90,8 +90,8 @@ function renderPush(batch: BatchResolution): string[] {
   for (const lane of batch.lanes) {
     lines.push(`  Lane ${lane.laneLabel}${lane.sequenceAdvised ? " (sequence advised)" : ""}:`);
     for (const action of lane.actions) {
-      const model = action.recommendedModel
-        ? ` [${action.recommendedModel}${action.recommendedReasoningEffort ? `/${action.recommendedReasoningEffort}` : ""}]`
+      const model = action.recommendedModel || action.recommendedReasoningEffort
+        ? ` [${action.recommendedModel ?? ""}${action.recommendedModel && action.recommendedReasoningEffort ? "/" : ""}${action.recommendedReasoningEffort ?? ""}]`
         : "";
       lines.push(`    ${action.position}. ${action.actionId} — ${action.title}${model}`);
     }

@@ -234,10 +234,11 @@ function PushLane({ lane }: { lane: ScheduleBatchLane }) {
               <span className="shrink-0 text-xs text-muted">{action.position}.</span>
               <span className="truncate text-ink">{action.title}</span>
               <span className="shrink-0 font-mono text-xs text-muted">{action.actionId}</span>
-              {action.recommendedModel ? (
+              {action.recommendedModel || action.recommendedReasoningEffort ? (
                 <span className="shrink-0 rounded-full bg-steel/10 px-2 py-0.5 text-xs font-medium text-steel">
-                  {action.recommendedModel}
-                  {action.recommendedReasoningEffort ? ` / ${action.recommendedReasoningEffort}` : ""}
+                  {action.recommendedModel ?? ""}
+                  {action.recommendedModel && action.recommendedReasoningEffort ? " / " : ""}
+                  {action.recommendedReasoningEffort ?? ""}
                 </span>
               ) : null}
               <span className="ml-auto shrink-0 text-xs text-muted">{action.tokenImpact ?? "unset"}</span>
