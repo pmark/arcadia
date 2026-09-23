@@ -8,6 +8,7 @@ import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
+import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
@@ -150,6 +151,32 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
 const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required"]);
 
 /**
+ * The build/planning profile a fresh packet should bind to, so automatic
+ * preparation never hands `runWorkPlanCommand`'s deterministic default to an
+ * immutable packet the standing policy's own scope will then refuse forever
+ * (CodeRabbit, PR #586): once bound, a packet's provider cannot be changed
+ * except by preparing a new one, so getting this right happens before
+ * preparation, not after. Returns null -- meaning "use the default" -- when
+ * no policy is Active, the Active policy has no provider scope, or no
+ * available profile of this purpose satisfies that scope; `runWorkPlanCommand`
+ * still throws its own clear error in that last case, same as before this
+ * selection existed, rather than silently binding an unpermitted provider.
+ */
+function selectPolicyPermittedProfileName(
+  db: Database.Database,
+  profiles: CodingAgentProfile[],
+  purpose: "build" | "planning"
+): string | null {
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
+    return null;
+  }
+  const permittedProviders = policyRead.policy.scope.providers;
+  const candidate = profiles.find((profile) => profile.purpose === purpose && permittedProviders.includes(profile.provider));
+  return candidate?.name ?? null;
+}
+
+/**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
  * automatically through the exact same `arcadia work plan` machinery a human
  * or agent would otherwise have to notice and run by hand (Issue #584):
@@ -157,7 +184,11 @@ const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_req
  * own declared steps, whether it needs a build packet (no Decision-gated
  * planning run) or a real planning run (`CodexPlanningRunApproval`) -- this
  * only supplies the trigger, never a second copy of that decision or of
- * `packets.ts`'s prompt template.
+ * `packets.ts`'s prompt template. `planStepsForWorkItem` is called first,
+ * read-only, purely to predict which of those two branches `work plan` will
+ * take -- the exact same deterministic function it uses internally -- so a
+ * policy-permitted profile of the right purpose can be requested before the
+ * immutable packet is created, never after.
  *
  * Returns the packet lifecycle kind a successful preparation produces --
  * `build_packet_ready` or `planning_approval_pending`, both already
@@ -170,7 +201,7 @@ const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_req
  */
 function attemptAutomaticPlanningResolution(
   db: Database.Database,
-  input: { workspace: string },
+  input: { workspace: string; profiles: CodingAgentProfile[] },
   transition: ProjectTransition,
   actionKey: string,
   log: (message: string) => void
@@ -183,8 +214,15 @@ function attemptAutomaticPlanningResolution(
   if (!workItem) {
     return null;
   }
+  const steps = planStepsForWorkItem(workItem);
+  const predictedPurpose = steps.length === 1 && steps[0]?.executorType === "codex_build"
+    ? "build"
+    : steps.length === 1 && steps[0]?.executorType === "codex_planning"
+      ? "planning"
+      : null;
+  const requestedProfile = predictedPurpose ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose) ?? undefined : undefined;
   try {
-    const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id });
+    const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
     if (prepared.data.buildInvocation) {
       log(`Automatically prepared a build packet for ${actionKey} (was planning_required); it still needs its own build-packet approval.`);
       return "build_packet_ready";
@@ -612,7 +650,13 @@ function attemptProjectLaunch(
       input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
       const resolvedLifecycleKind = packetLifecycleKind === "planning_required"
-        ? attemptAutomaticPlanningResolution(db, input, transition, actionKey, input.log) ?? packetLifecycleKind
+        ? attemptAutomaticPlanningResolution(
+            db,
+            { workspace: input.workspace, profiles: input.options.profiles },
+            transition,
+            actionKey,
+            input.log
+          ) ?? packetLifecycleKind
         : packetLifecycleKind;
       if (resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)) {
         const remedy = typeof error.details?.packetLifecycleRemedy === "string" ? error.details.packetLifecycleRemedy : null;

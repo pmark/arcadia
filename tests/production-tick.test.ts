@@ -473,6 +473,73 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
+  it("never binds an automatically prepared build packet to a provider the standing policy does not permit", () => {
+    // The workspace's own registry default build profile is `codex_build`
+    // (codex-cli) -- see config/defaults/coding-agent-profiles.json -- but
+    // this file's shared `profiles`/`productionScope` fixture permits only
+    // claude-code-cli. Before requesting a policy-permitted profile up front,
+    // automatic preparation would bind the immutable packet to codex-cli
+    // anyway, report `build_packet_ready`, and clear the escalation -- and
+    // every later tick would then refuse with `provider_not_permitted`
+    // forever, invisibly, because that refusal carries no packetLifecycleKind
+    // and the packet can never rebind itself (CodeRabbit finding, PR #586).
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/Automatically prepared a build packet for test-project\/define-contract/)
+    );
+
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const invocation = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          "SELECT agent_profile FROM codex_invocations WHERE work_item_id = ? AND purpose = 'build' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id)
+    ) as { agent_profile: string };
+    expect(invocation.agent_profile).toBe("claude_build");
+
+    // A second tick, with the resulting CodexBuildPacketApproval approved,
+    // reaches launch on the permitted provider -- proving the packet was
+    // never stuck bound to codex-cli in the first place.
+    withDatabase(fixture.workspace, (db) => {
+      const approval = db
+        .prepare(
+          "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id) as { id: string };
+      updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture approval." });
+    });
+    const secondResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
   it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
     const fixture = preparedFixture();
     withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_operator_escalations"));
