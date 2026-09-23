@@ -308,6 +308,50 @@ describe("runManagedProductionTick", () => {
     expect(escalations).toHaveLength(0);
   });
 
+  it("keeps an escalation during a temporary wait transition for the same Action", () => {
+    const fixture = preparedFixture({ skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+
+    // A competing managed Run now holds the repository -- `resolveProjectTransition`
+    // resolves `dispatch` (and therefore the selected Action) before it ever
+    // checks for this, so "wait" is a transient state for the *same* Action,
+    // not a pointer change, and must not be read as one.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    recordCompetingManagedRun(fixture.workspace, workItem.id);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
+  });
+
   it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
     const fixture = preparedFixture();
     withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_operator_escalations"));
@@ -806,6 +850,16 @@ function recordPassingRun(workspace: string, workItemId: string): void {
     db.prepare(
       `INSERT INTO execution_runs (id, work_item_id, plan_id, status, executor_name, pid, summary, created_at, updated_at)
        VALUES (?, ?, NULL, 'completed', 'claude', NULL, 'Fixture passing run.', ?, ?)`
+    ).run(runId, workItemId, "2026-08-30T12:00:00.000Z", "2026-08-30T12:00:00.000Z");
+  });
+}
+
+function recordCompetingManagedRun(workspace: string, workItemId: string): void {
+  withDatabase(workspace, (db) => {
+    const runId = "run-" + Math.random().toString(36).slice(2);
+    db.prepare(
+      `INSERT INTO execution_runs (id, work_item_id, plan_id, status, executor_name, pid, summary, created_at, updated_at)
+       VALUES (?, ?, NULL, 'pending_execution', 'claude', NULL, 'Fixture competing run.', ?, ?)`
     ).run(runId, workItemId, "2026-08-30T12:00:00.000Z", "2026-08-30T12:00:00.000Z");
   });
 }

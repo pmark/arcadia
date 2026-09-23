@@ -461,7 +461,15 @@ function attemptProjectLaunch(
     transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
-    pruneStaleOperatorEscalations(db, input.projectSlug, null);
+    // `dispatch` is resolved before the lease/competing-run check that
+    // produces "wait"/"reconcile" (see `resolveProjectTransition`), so its
+    // context still names the selected Action even when this tick cannot
+    // launch it this instant. Preserve that Action's own escalation, if any,
+    // rather than treating a transient wait as though the pointer moved on;
+    // only a transition with no resolvable Action at all (a Plan boundary)
+    // has nothing to preserve.
+    const currentActionKey = transition.dispatch.context ? `${input.projectSlug}/${transition.dispatch.context.action.id}` : null;
+    pruneStaleOperatorEscalations(db, input.projectSlug, currentActionKey);
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }
 
