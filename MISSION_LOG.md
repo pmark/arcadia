@@ -607,9 +607,17 @@ updated: 2026-09-23
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-bind-preservation-checks-to-host-owned-code-2026-09-23b).
 
+## 2026-09-23 — Completed arcadia/prove-fault-matrix-remaining-boundaries
+
+- **Did:** Completed Action arcadia/prove-fault-matrix-remaining-boundaries from accepted evidence (Candidate da3f9cb093df5662293581ac3f02db83dc3e205b).
+- **Result:** Every declared acceptance criterion was accepted as met: "The completion/pointer, process-health, and runtime race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings with crash injection points specified in the harness, with zero invariant violations and retained failing-seed/timeline evidence for any violation found and fixed."; "A completion whose declared Artifact is absent is refused, with a test."; "docs/evidence/managed-production-release-evidence-index.md is updated with each new row's status, revision, and reproduction procedure.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-fault-matrix-remaining-boundaries-2026-09-23).
+
 ## 2026-09-23 — Completed arcadia/build-autonomous-defect-loop
 
 - **Did:** Completed Action arcadia/build-autonomous-defect-loop from accepted evidence (Candidate a13d4f0da1f6ccb592431744bc2283a1a8433774).
 - **Result:** Every declared acceptance criterion was accepted as met: "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls."; "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id."; "Deterministic tests cover zero-model intake, exact-retry idempotency, and duplicate candidates."; "The operator-facing QA plan names the exact CLI intake, Back Burner and defect-signal inspection steps, observable expected results, and whether the procedure is also the end-user procedure.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-build-autonomous-defect-loop-2026-09-23).
+

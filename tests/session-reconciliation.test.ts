@@ -728,7 +728,7 @@ actions:
     effort: session
     clarification: clarified
     next_action: Define the bounded contract.
-    expected_artifact: docs/contract.md
+    expected_artifact: contract.md
     acceptance_criteria:
       - The contract exists.
     decisions: ["0001"]
