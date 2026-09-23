@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
@@ -6,6 +5,7 @@ import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { openReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { sharesRepository } from "../git/worktrees.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
 import type { WorkMonitorProject, WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
@@ -27,20 +27,20 @@ export function listMonitoredProjects(
     }));
 }
 
-function realPathOrResolved(input: string): string {
-  try { return realpathSync(input); } catch { return input; }
-}
-
 /**
  * Keep only the Project that owns `repositoryPath`. A coding agent's protected
  * broker must not show it other Projects' worktrees, paths and changed files:
  * the zero-prompt rehearsal agent read a leaked Arcadia path and tripped its
  * `external_directory` sandbox rule (#470). No owner is an error, not an empty
  * scan, so a mistyped source cannot pass as "nothing to report".
+ *
+ * Ownership is repository identity, not path equality: a prepared worktree
+ * shares its Project's Git common directory even though its path never equals
+ * the registered main checkout, so the protected broker's own preflight works
+ * from the worktree it was launched in (#478).
  */
 export function scopeToRepository(projects: WorkMonitorProject[], repositoryPath: string): WorkMonitorProject[] {
-  const wanted = realPathOrResolved(repositoryPath);
-  const owned = projects.filter((project) => project.repositoryPath && realPathOrResolved(project.repositoryPath) === wanted);
+  const owned = projects.filter((project) => project.repositoryPath && sharesRepository(repositoryPath, project.repositoryPath));
   if (owned.length === 0) {
     throw validationError("No active Project owns the repository this work monitor was scoped to.", { repositoryPath });
   }

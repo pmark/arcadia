@@ -142,4 +142,28 @@ describe("scopeToRepository", () => {
   it("refuses a repository no Project owns instead of returning an empty scan", () => {
     expect(() => scopeToRepository(projects, "/tmp/scope-elsewhere")).toThrow(/No active Project owns/);
   });
+
+  it("recognizes a prepared worktree as owned by its Project's repository (#478)", () => {
+    const repository = createRepository();
+    const linked = path.join(path.dirname(repository), "linked");
+    git(repository, ["worktree", "add", "-b", "agent/prepared", linked]);
+
+    const real = [
+      { id: "a", name: "Arcadia", repositoryPath: repository },
+      { id: "o", name: "Other", repositoryPath: createRepository() }
+    ];
+
+    expect(scopeToRepository(real, linked).map((p) => p.id)).toEqual(["a"]);
+  });
+
+  it("refuses a worktree of a repository no Project owns", () => {
+    const unowned = createRepository();
+    const linked = path.join(path.dirname(unowned), "linked");
+    git(unowned, ["worktree", "add", "-b", "agent/unowned", linked]);
+
+    expect(() => scopeToRepository(
+      [{ id: "a", name: "Arcadia", repositoryPath: createRepository() }],
+      linked
+    )).toThrow(/No active Project owns/);
+  });
 });

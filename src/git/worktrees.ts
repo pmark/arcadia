@@ -208,6 +208,23 @@ export function commitOnlyPaths(repoRoot: string, relativePaths: string[], messa
 }
 
 /**
+ * Whether `candidate` and `repository` are the same Git repository — the same
+ * checkout, or any linked worktree of it.
+ *
+ * A prepared worktree's path is never equal to the registered main-checkout
+ * `repo_path`, so comparing paths alone rejects the one place an Arcadia Go
+ * session runs its preflight from. Every worktree of one repository shares a
+ * single Git common directory, which is what identifies the owner (#478).
+ */
+export function sharesRepository(candidate: string, repository: string): boolean {
+  if (samePath(candidate, repository)) return true;
+  const candidateCommon = tryGit(candidate, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const repositoryCommon = tryGit(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!candidateCommon || !repositoryCommon) return false;
+  return samePath(candidateCommon, repositoryCommon);
+}
+
+/**
  * The checkout a command run from `cwd` should write a Project's documents to.
  *
  * A Project records one `repo_path`, normally the main checkout. When the
@@ -218,12 +235,9 @@ export function commitOnlyPaths(repoRoot: string, relativePaths: string[], messa
  * `cwd` in an unrelated repository, resolves to `repoPath` unchanged.
  */
 export function projectCheckoutFor(repoPath: string, cwd: string): string {
-  const projectCommon = tryGit(repoPath, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  const cwdCommon = tryGit(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   const cwdTop = tryGit(cwd, ["rev-parse", "--show-toplevel"]);
-  if (!projectCommon || !cwdCommon || !cwdTop) return repoPath;
-  if (realpathSync(projectCommon) !== realpathSync(cwdCommon)) return repoPath;
-  return realpathSync(cwdTop) === realpathSync(repoPath) ? repoPath : cwdTop;
+  if (!sharesRepository(cwd, repoPath) || !cwdTop) return repoPath;
+  return samePath(cwdTop, repoPath) ? repoPath : cwdTop;
 }
 
 export function parseWorktrees(output: string): WorktreeRecord[] {
