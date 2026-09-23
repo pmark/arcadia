@@ -10,7 +10,17 @@ reading of `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-fligh
 disagree with this file, they are right and this file is stale. "Refreshing
 this document" at the bottom says how to re-derive it in about a minute.
 
-Last derived: **2026-09-22**, re-derived while completing
+Last derived: **2026-09-23**, re-derived while completing
+`prove-managed-production-fault-matrix`. Contract 20's Stage 1 was re-proven at
+`2332be48` — admission/launch, Off, capacity, and priority/authority at 100 seeds
+each, zero violations, the harness mutation-verified against four injected
+defects plus one recorded equivalent mutant — and
+`docs/evidence/managed-production-release-evidence-index.md` was refreshed to
+that revision. The live criteria the Action could never satisfy in an agent
+session are now their own Actions: `prove-fault-matrix-remaining-boundaries`
+(completion/pointer, process-health, runtime, and the missing-artifact gate) and
+`run-managed-production-live-soak` (contract-20 stages 2-4, under operator-granted
+scope). Previous derivation: **2026-09-22**, while completing
 `apply-answered-decision-consequences` (PR #515, `arcadia decision reverse`). An
 answered Decision's deferral can now be applied *and reversed* in one governed
 transition, so the "an answer changes nothing until a human acts" gap this
@@ -174,7 +184,9 @@ Nothing here is code. These are live runs that either happen or do not.
 | ⬜ | `prove-zero-prompt-production-loop` | **Reclassified `requires_review` this session (Decision 0064) — no longer a dispatch hazard.** Action A succeeded live on 2026-09-21 with `opencode`. Remaining gap: Issue #460 (no Session record without `--launch`, so `session reconcile` has nothing to reconcile), plus the fixture's own unmerged PR #2. Still an operator-terminal run, by design. |
 | 🟡 | `prove-two-action-unattended-production` | `status: deferred`. **This is where the unattended claim is actually earned.** Blocks three other Actions while deferred (see "The one knot worth naming"). |
 | ⬜ | `prove-multi-provider-production-recovery` | Continuous production across providers and capacity exhaustion. |
-| 🟡 | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. **Stage 1 is proven for 4 of 7 boundaries** (admission/launch, Off, capacity, priority/authority: 100 seeds each, zero violations, harness mutation-verified), and the release evidence index is at `docs/evidence/managed-production-release-evidence-index.md`. As filed, the Action cannot complete in an agent session: its live criteria are the deferred two-Action rehearsal and a soak that needs operator capacity authority. The proposed division is Agent Ask `divide-prove-managed-production-fault-matrix-2026-09-22`, not yet settled. |
+| ✅ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. **Done.** Stage 1 is proven for 4 of 7 boundaries (admission/launch, Off, capacity, priority/authority: 100 seeds each, zero violations, harness mutation-verified against four injected defects and one recorded equivalent mutant), re-proven at `2332be48` on 2026-09-23. The release evidence index is at `docs/evidence/managed-production-release-evidence-index.md`. The live criteria the Action could never meet in an agent session were divided out by the settled Agent Ask `divide-prove-managed-production-fault-matrix-2026-09-22` into the two rows below. |
+| ⬜ | `prove-fault-matrix-remaining-boundaries` | Completion/pointer, process-health, and runtime boundaries, plus the missing-artifact quality gate. Depends on this Action and on `detect-hung-managed-production-sessions`. |
+| ⬜ | `run-managed-production-live-soak` | Contract-20 live stages 2-4 under operator-granted scope and capacity authority. Depends on `prove-fault-matrix-remaining-boundaries`, `prove-two-action-unattended-production`, and `prove-multi-provider-production-recovery`. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
 
 ### Gate 6 — The operator surface ⬜ **open — unchanged since 2026-09-20**
@@ -274,18 +286,23 @@ unattended production on the board.
 9. `make-go-total-across-plans` — ready now (dependency cleared)
 10. `detect-hung-managed-production-sessions` — ready now (dependency cleared)
 11. `prove-multi-provider-production-recovery`
-12. `prove-managed-production-fault-matrix`
-13. `harden-zero-prompt-production-loop`
+12. ✅ `prove-managed-production-fault-matrix` — **done** (Stage 1 re-proven at
+    `2332be48`; the live stages are entries 13-14)
+13. `prove-fault-matrix-remaining-boundaries` — completion/pointer,
+    process-health, and runtime boundaries, plus the missing-artifact gate
+14. `run-managed-production-live-soak` — contract-20 live stages 2-4, under
+    operator-granted scope and capacity authority
+15. `harden-zero-prompt-production-loop`
 
-**Thirteen numbered entries: 11 filed Action ids and 2 operator steps — 11
-Action-shaped entries in total. Four are done; seven remain.**
+**Fifteen numbered entries: 13 filed Action ids and 2 operator steps — 13
+Action-shaped entries in total. Five are done; eight remain.**
 
 - **Code sessions, ready today with no blocking dependency (2):** entries 9
   and 10. They are the fastest place to spend a session right now (entries 1-4
   are already done).
 - **Needs filing first: none.** The worker-hang Action this section used to
   list as unfiled is now filed and done.
-- **Proof and hardening runs (5):** entries 6, 8, 11, 12, 13 (4 open, 1
+- **Proof and hardening runs (6):** entries 6, 8, 11, 13, 14, 15 (5 open, 1
   deferred). These cost provider capacity, not code, and several are
   operator-terminal by design.
 - **Yours (2):** entries 5 (or delegate it as a filed Action) and 7. Minutes
@@ -325,7 +342,7 @@ two are easy to conflate and are not the same Action.
 
 ## External blockers (not code)
 
-Re-verified 2026-09-22 via `arcadia production capacity`; re-check before
+Re-verified 2026-09-23 via `arcadia production capacity`; re-check before
 trusting further out than a session or two.
 
 | Blocker | State | Clears by |
@@ -341,15 +358,15 @@ trusting further out than a session or two.
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 74 |
-| Done | 54 (`apply-answered-decision-consequences` and `bind-candidate-revision-in-action-settle` completed since the last scoreboard) |
-| Open | 19 |
+| Actions in the active Plan | 84 |
+| Done | 60 (`prove-managed-production-fault-matrix` completed since the last scoreboard) |
+| Open | 23 |
 | Deferred | 1 |
-| Unfinished (open + deferred) | 20 |
-| **On the critical path (filed)** | **7** (6 open + 1 deferred) |
+| Unfinished (open + deferred) | 24 |
+| **On the critical path (filed)** | **8** (7 open + 1 deferred) |
 | **On the critical path (not yet filed)** | **0** |
 | **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 13 (20 unfinished − 7 filed on the path) |
+| Unfinished but off the critical path | 16 (24 unfinished − 8 filed on the path) |
 | Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (production-dispatch related) is already answered. |
 
 ---
