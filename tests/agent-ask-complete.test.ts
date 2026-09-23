@@ -8,6 +8,12 @@ import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import {
+  canonicalPath,
+  getActiveActionClaim,
+  getActiveWorktreeReservation,
+  reserveAgentWorktree
+} from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -460,6 +466,150 @@ describe("Agent Ask complete", () => {
     expect(readFileSync(planPath, "utf8")).not.toContain("status: done");
   });
 });
+
+describe("Agent Ask complete — the settling worktree's own Action claim", () => {
+  /** A candidate worktree of `repo`, optionally holding a claim on `actionId`. */
+  function claimedCandidate(
+    repo: string,
+    workspace: string,
+    name: string,
+    actionId: string | null
+  ): { path: string; head: string; generation: string | null } {
+    const candidate = path.join(path.dirname(repo), name);
+    execFileSync("git", ["worktree", "add", "-q", "-b", `claude/${name}`, candidate], { cwd: repo });
+    const generation = actionId === null ? null : withDatabase(workspace, (db) => reserveAgentWorktree(db, {
+      repositoryPath: repo,
+      worktreePath: candidate,
+      branch: `claude/${name}`,
+      now: CLAIM_NOW,
+      project: "demo",
+      actionId
+    }).claim_generation);
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
+    return { path: candidate, head, generation };
+  }
+
+  it("refuses a completion whose Action is not the one this worktree claims, and writes nothing", () => {
+    const { workspace, repo } = fixture();
+    // `go`'s queue-walk gave this worktree `second`; it is trying to complete
+    // `first`, which another live session is holding.
+    const candidate = claimedCandidate(repo, workspace, "candidate-wrong-action", "second");
+    const proposal = runAgentAskPreviewCommand({
+      workspace, request: completeAsk("complete-wrong-claim", "first", candidate.head), dir: candidate.path
+    });
+
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-wrong-claim",
+      disposition: "accepted", cwd: candidate.path
+    })).toThrow(/claim does not name the Action this settlement completes/);
+
+    // Refused during resolution, before the preview fingerprint exists: no
+    // document was written, and the claim it does hold is untouched.
+    expect(actionStatus(candidate.path, "first")).toBe("open");
+    withDatabase(workspace, (db) => {
+      expect(getActiveActionClaim(db, repo, "demo", "second", CLAIM_NOW)?.claim_generation).toBe(candidate.generation);
+    });
+  });
+
+  it("releases the worktree's claim in the same settlement that completes its Action, keeping the reservation", () => {
+    const { workspace, repo } = fixture();
+    const candidate = claimedCandidate(repo, workspace, "candidate-right-action", "first");
+    const proposal = runAgentAskPreviewCommand({
+      workspace, request: completeAsk("complete-right-claim", "first", candidate.head), dir: candidate.path
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-right-claim",
+      disposition: "accepted", cwd: candidate.path
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-right-claim", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate.path
+    });
+
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Released this worktree's claim on demo/first.");
+    expect(actionStatus(candidate.path, "first")).toBe("done");
+    withDatabase(workspace, (db) => {
+      // Released by the settlement itself, not by the 24-hour TTL -- and the
+      // worktree reservation survives it, so `tidy` still refuses to retire the
+      // finished candidate out from under the operator before it is handed off.
+      expect(getActiveActionClaim(db, repo, "demo", "first", CLAIM_NOW)).toBeNull();
+      expect(getActiveWorktreeReservation(db, repo, candidate.path, CLAIM_NOW)).toMatchObject({
+        action_id: null, claim_generation: null, branch: "claude/candidate-right-action"
+      });
+    });
+  });
+
+  it("refuses to write when the claim is superseded between resolution and the document write", () => {
+    const { workspace, repo } = fixture();
+    const candidate = claimedCandidate(repo, workspace, "candidate-superseded", "first");
+    const proposal = runAgentAskPreviewCommand({
+      workspace, request: completeAsk("complete-superseded", "first", candidate.head), dir: candidate.path
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-superseded",
+      disposition: "accepted", cwd: candidate.path
+    });
+
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-superseded", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate.path,
+      hooks: {
+        // This session lapsed and a second one reclaimed `first` and did
+        // genuinely new work. This session, still alive and merely slow,
+        // reaches its write with the generation it started with.
+        beforeDocumentWrite() {
+          withDatabase(workspace, (db) => {
+            db.prepare("UPDATE agent_worktree_reservations SET expires_at = ?").run(CLAIM_NOW.toISOString());
+            reserveAgentWorktree(db, {
+              repositoryPath: repo,
+              worktreePath: path.join(path.dirname(repo), "candidate-reclaimed"),
+              branch: "claude/candidate-reclaimed",
+              now: CLAIM_NOW,
+              project: "demo",
+              actionId: "first"
+            });
+          });
+        }
+      }
+    })).toThrow(/no longer the one this settlement started with/);
+
+    // Nothing written, and the newer session's claim is exactly where it was.
+    expect(actionStatus(candidate.path, "first")).toBe("open");
+    withDatabase(workspace, (db) => {
+      expect(getActiveActionClaim(db, repo, "demo", "first", CLAIM_NOW)?.worktree_path)
+        .toBe(canonicalPath(path.join(path.dirname(repo), "candidate-reclaimed")));
+    });
+  });
+
+  it("leaves an unclaimed checkout's completion exactly as it was before claims existed", () => {
+    const { workspace, repo } = fixture();
+    const candidate = claimedCandidate(repo, workspace, "candidate-unclaimed", null);
+    const proposal = runAgentAskPreviewCommand({
+      workspace, request: completeAsk("complete-unclaimed", "first", candidate.head), dir: candidate.path
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-unclaimed",
+      disposition: "accepted", cwd: candidate.path
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-unclaimed", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate.path
+    });
+
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("Released this worktree's claim");
+    expect(actionStatus(candidate.path, "first")).toBe("done");
+  });
+
+  /** One Action's status as the checked-in active Plan currently records it. */
+  function actionStatus(checkout: string, actionId: string): string | undefined {
+    const plan = discoverDocs(checkout).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    return plan?.type === "plan" ? plan.actions.find((action) => action.id === actionId)?.status : undefined;
+  }
+});
+
+const CLAIM_NOW = new Date("2026-09-22T04:48:04.586Z");
 
 function fixture(options: {
   secondDependsOnFirst?: boolean;

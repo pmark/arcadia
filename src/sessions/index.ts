@@ -165,8 +165,16 @@ export function resolveProjectTransition(input: {
   projectSlug: string;
   db?: Database.Database;
   tmux?: Pick<TmuxAdapter, "hasSession">;
+  /**
+   * Resolve this Action's brief instead of the pointer's. Set by a caller that
+   * already knows which Action it is answering about because it holds that
+   * Action's worktree claim -- `arcadia advance` inside a worktree `go`'s
+   * queue-walk fallback dispatched. Reads only; the pointer is not consulted
+   * and not moved.
+   */
+  actionId?: string;
 }): ProjectTransition {
-  const dispatch = resolveDispatch(input.repoRoot, input.projectSlug);
+  const dispatch = resolveDispatch(input.repoRoot, input.projectSlug, { actionId: input.actionId });
   if (input.db) {
     const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
     if (lease) {

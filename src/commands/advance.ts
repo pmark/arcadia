@@ -10,7 +10,14 @@ import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderR
 import { transitionActionPointer, type PointerTransitionReceipt } from "../dispatch/pointer.js";
 import { discoverDocs } from "../docs/discover.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
-import { getLatestSession, getSession, resolveProjectTransition, sessionView, type ProjectTransition } from "../sessions/index.js";
+import {
+  getActiveWorktreeReservation,
+  getLatestSession,
+  getSession,
+  resolveProjectTransition,
+  sessionView,
+  type ProjectTransition
+} from "../sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../sessions/launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "../sessions/launchPreview.js";
 import { reconcileSessionExit, type ReconcileSessionExitResult } from "../sessions/reconciliation.js";
@@ -23,6 +30,14 @@ export interface AdvanceCommandData {
   session: ReturnType<typeof sessionView> | null;
   transition: ProjectTransition | null;
   preservation?: PreservationReadiness;
+  /**
+   * The Action this worktree's own claim names, when it holds one. `go`'s
+   * queue-walk fallback dispatches a worktree to an Action that is not the
+   * governed pointer, so a session that read `current_action` here would be
+   * briefed on someone else's work. Null in the main checkout and in any
+   * worktree with no live claim, where the pointer is the answer.
+   */
+  claimedAction?: string | null;
 }
 
 export function runAdvanceCommand(options: { workspace: string; repo: string; session?: string }): CommandSuccess<AdvanceCommandData> {
@@ -36,13 +51,28 @@ export function runAdvanceCommand(options: { workspace: string; repo: string; se
   const repoRoot = existingDirectory(options.repo, "repository");
   const project = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project");
   if (!project || project.type !== "project") throw new Error("Arcadia advance requires one managed Project document.");
-  const transition = withReadOnlyDatabase(workspacePath, (db) => resolveProjectTransition({ repoRoot, projectSlug: project.slug, db }));
   const worktrees = tryGit(repoRoot, ["worktree", "list", "--porcelain"]);
   const repository = worktrees ? parseWorktrees(worktrees)[0]?.path : undefined;
+  // This worktree's own claim decides which Action it is briefed on -- read
+  // directly, never through the queue. A prepared candidate is already assigned;
+  // re-deriving its work from queue order would be free to reassign it
+  // mid-flight to whatever happens to be next, which is the opposite of what a
+  // claim is for.
+  const claimedAction = repository
+    ? withReadOnlyDatabase(workspacePath, (db) =>
+        getActiveWorktreeReservation(db, repository, repoRoot)?.action_id ?? null)
+    : null;
+  const transition = withReadOnlyDatabase(workspacePath, (db) => resolveProjectTransition({
+    repoRoot, projectSlug: project.slug, db, ...(claimedAction ? { actionId: claimedAction } : {})
+  }));
   const preservation = repository ? withReadOnlyDatabase(workspacePath, db => readPreservationReadiness(db, {
     workspace: workspacePath, repository, worktree: repoRoot, projectSlug: project.slug
   })) : undefined;
-  return createSuccess({ command: "advance", workspace: workspacePath, data: { session: null, transition, ...(preservation ? { preservation } : {}) } });
+  return createSuccess({
+    command: "advance",
+    workspace: workspacePath,
+    data: { session: null, transition, claimedAction, ...(preservation ? { preservation } : {}) }
+  });
 }
 
 export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceCommand>): string[] {
@@ -62,6 +92,7 @@ export function renderAdvanceSuccess(response: ReturnType<typeof runAdvanceComma
   }
   return [
     `Transition: ${data.transition.kind}`,
+    ...(data.claimedAction ? [`Claimed action: ${data.claimedAction} (resolved from this worktree's own claim, not the queue)`] : []),
     data.transition.reason,
     `Next: ${data.transition.nextAction}`,
     ...(data.preservation ? [
