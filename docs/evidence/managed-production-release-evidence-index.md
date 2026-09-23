@@ -42,10 +42,14 @@ directory. Passing runs write `summary-<scenario>.json`.
 | Priority and authority | **pass** (store layer) | 100 / 0 (257 fenced) | `priority-authority` scenario | Covered: a rescope or reorder during in-flight work fences stale admissions by epoch, and nothing is admitted outside scope or on an unpermitted provider. Not covered: a changed packet or base, or an unaccepted dependency (the session-launch preview tests prove these one case at a time). |
 | Runtime | **unproven** | — | `tests/runtime-pinning.test.ts` (worker restarts only on crash) | Candidate-build, controller-upgrade-failure, and schema-incompatibility injection are not built. |
 
-The three unproven Stage 1 rows (completion/pointer, process health, runtime) are
-owned by `prove-fault-matrix-remaining-boundaries`, which depends on this Action
-and on `detect-hung-managed-production-sessions`; the missing-artifact quality
-gate below is owned there too.
+The three unproven Stage 1 rows (completion/pointer, process health, runtime)
+and the missing-artifact quality gate below are owned by
+`prove-fault-matrix-remaining-boundaries`, which depends on this Action and on
+`detect-hung-managed-production-sessions`. The false-agent-completion quality
+gate is also unproven and currently has no owning Action: its assignment is a
+governance change to another Action's settled acceptance criteria, not a
+hand-edit here. Until an Action closes it, its `unproven` status below is what
+keeps it blocking unattended handoff.
 
 ### The harness rejects real defects (negative cases)
 
