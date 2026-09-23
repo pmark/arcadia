@@ -443,6 +443,39 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
+  it("clears a sign-in blocker the moment sign-in is confirmed, even when the launch then fails for an unrelated reason", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const signedOut = () => ({ signedIn: false, remedy: "Run \"claude auth login\" on this worker." });
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        providerSignIn: signedOut
+      })
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db))).toHaveLength(1);
+
+    // Sign-in is now confirmed, but the spawn itself fails for an unrelated
+    // reason (a real, repair-worthy defect). The stale sign-in blocker must
+    // not linger and keep telling the operator to sign in.
+    tmux.failLaunch = true;
+    const signedIn = () => ({ signedIn: true, remedy: "unused" });
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        providerSignIn: signedIn
+      })
+    );
+
+    const project = result.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.launch?.outcome).toBe("failed");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db))).toHaveLength(0);
+  });
+
   it("never previews or refuses a launch for a Project outside the active policy scope, while still reconciling its live Session", () => {
     const fixture = preparedFixture({ secondAction: true });
     const tmux = new FakeTmux();

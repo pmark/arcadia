@@ -44,7 +44,7 @@ function checkClaudeCodeSignIn(): ProviderSignInStatus | null {
   // `providerSignIn` override instead of relying on this default.
   if (process.env.VITEST) return null;
 
-  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or "claude setup-token" for an unattended worker, then retry.';
+  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and set its printed token as CLAUDE_CODE_OAUTH_TOKEN in the worker\'s launch environment (setup-token only prints the token; it does not save it), then retry.';
 
   try {
     const raw = execFileSync("claude", ["auth", "status", "--json"], {

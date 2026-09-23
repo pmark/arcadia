@@ -522,7 +522,12 @@ function attemptProjectLaunch(
       tmux: input.tmux,
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
-      providerSignIn: input.options.providerSignIn
+      providerSignIn: input.options.providerSignIn,
+      // Clear a stale sign-in blocker the moment sign-in is confirmed, not
+      // only on full launch success: a later, unrelated launch failure (a
+      // repair-worthy defect, counted against the budget) must not leave
+      // `arcadia production status` still telling the operator to sign in.
+      onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
     });
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);

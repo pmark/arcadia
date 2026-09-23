@@ -298,7 +298,7 @@ export function renderProductionStatusSuccess(
   if (blockers.length > 0) {
     lines.push(`  Launch blocked (${blockers.length}):`);
     for (const blocker of blockers) {
-      lines.push(`    ${blocker.projectSlug} [${blocker.code}] ${blocker.reason} (since ${blocker.observedAt})`);
+      lines.push(`    ${blocker.projectSlug} [${blocker.code}] ${blocker.reason} (last observed ${blocker.observedAt})`);
     }
   }
 

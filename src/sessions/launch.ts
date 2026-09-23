@@ -58,6 +58,13 @@ export interface GuardedLaunchInput {
   capacityObservation?: ProviderCapacityObservation;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string) => ProviderSignInStatus | null;
+  /**
+   * Called the moment sign-in is confirmed -- not merely attempted -- so a
+   * caller tracking a durable "signed out" blocker (the managed-production
+   * tick) can clear it right away, independent of whether a later launch
+   * step (worktree creation, spawn) goes on to fail for an unrelated reason.
+   */
+  onProviderSignInConfirmed?: (provider: string) => void;
   now?: Date;
   tmux?: TmuxAdapter;
   testHooks?: {
@@ -105,6 +112,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const tmux = input.tmux ?? systemTmux;
   const registry = loadModelTierRegistry(input.workspace);
   const providerSignIn = input.providerSignIn ?? checkProviderSignIn;
+  const onProviderSignInConfirmed = input.onProviderSignInConfirmed;
 
   const preview = buildLaunchPreview({
     db: input.db,
@@ -129,7 +137,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn), preview, admission: null };
+    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -178,7 +186,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // reserves a concurrency slot and before any worktree or lease is created:
   // a signed-out provider must take no admission and no lease, so the next
   // tick can retry it for free once sign-in is restored.
-  refuseIfSignedOut(preview.selection.provider, providerSignIn(preview.selection.provider));
+  checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider), onProviderSignInConfirmed);
 
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
@@ -300,7 +308,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn), preview, admission: null };
+      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
     }
     throw error;
   }
@@ -365,21 +373,29 @@ function resumeOrReturn(
   session: AgentSession,
   tmux: TmuxAdapter,
   registry: ModelTierRegistry | undefined,
-  providerSignIn: (provider: string) => ProviderSignInStatus | null
+  providerSignIn: (provider: string) => ProviderSignInStatus | null,
+  onProviderSignInConfirmed?: (provider: string) => void
 ): AgentSession {
   if (session.status === "running" || tmux.hasSession(session.tmux_session_name)) {
     return getSession(db, session.id) ?? session;
   }
-  refuseIfSignedOut(session.provider, providerSignIn(session.provider));
+  checkSignInOrRefuse(session.provider, providerSignIn(session.provider), onProviderSignInConfirmed);
   return launchPreparedSession(db, session, tmux, registry);
 }
 
-function refuseIfSignedOut(provider: string, signIn: ProviderSignInStatus | null): void {
-  if (!signIn || signIn.signedIn) return;
-  throw validationError(
-    `Provider "${providerLabel(provider)}" is not signed in for this worker. ${signIn.remedy}`,
-    { code: "provider_not_signed_in", conflict: true, provider }
-  );
+function checkSignInOrRefuse(
+  provider: string,
+  signIn: ProviderSignInStatus | null,
+  onConfirmed?: (provider: string) => void
+): void {
+  if (!signIn) return;
+  if (!signIn.signedIn) {
+    throw validationError(
+      `Provider "${providerLabel(provider)}" is not signed in for this worker. ${signIn.remedy}`,
+      { code: "provider_not_signed_in", conflict: true, provider }
+    );
+  }
+  onConfirmed?.(provider);
 }
 
 function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {
