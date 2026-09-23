@@ -1475,7 +1475,7 @@ actions:
     references: ["docs/evidence/managed-production-release-evidence-index.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md"]
 questions: []
 decisions: []
-current_action: prove-managed-production-fault-matrix
+current_action: register-agent-workspace-trust
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
