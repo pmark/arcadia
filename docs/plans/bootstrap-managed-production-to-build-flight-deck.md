@@ -546,7 +546,7 @@ actions:
     references: ["docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/decisions/0012-the-session-primitive.md", "docs/decisions/0039-prioritize-agent-ask-and-work-queue.md", "docs/plans/agent-ask-execution-queue.md", "src/commands/advance.ts", "src/commands/go.ts", "src/docs/dispatch.ts"]
   - id: build-autonomous-defect-loop
     title: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Add the one-line `arcadia defect` intake approved by Decision 0049: a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision, and optional evidence, recorded with zero model calls, idempotent on exact retry, and reporting likely duplicates without discarding distinct reports."
