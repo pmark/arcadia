@@ -1734,7 +1734,7 @@ actions:
     references: ["src/codex/packets.ts", "src/sessions/packetLifecycle.ts", "src/production/tick.ts", "docs/planning-process.md", "https://github.com/pmark/arcadia/issues/584"]
 questions: []
 decisions: []
-current_action: pass-managed-claude-token-into-sessions
+current_action: auto-resolve-planning-required
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
