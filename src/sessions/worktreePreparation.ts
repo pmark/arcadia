@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { git } from "../git/worktrees.js";
+import { resolveMiseExecutable } from "../runtime/mise.js";
 
 export interface PreparedAgentWorktree {
   agent: "codex" | "claude" | "opencode";
@@ -63,7 +65,27 @@ export function prepareAgentWorktree(input: {
   input.beforeCreate?.(candidate);
   mkdirSync(path.dirname(worktreePath), { recursive: true });
   git(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "-b", branch, worktreePath, input.baseBranch]);
+  trustMiseConfig(worktreePath);
   return candidate;
+}
+
+/**
+ * Pre-trusts the new worktree's `mise.toml` from the host side, where this
+ * function always runs (see `prepareAgentWorktree`'s callers). Left untrusted,
+ * the agent's own sandbox hits it first: mise's on-first-use trust write goes
+ * to `~/.local/state/mise/trusted-configs/`, outside every coding-agent
+ * sandbox's writable paths, so the very first mise-wrapped command in a fresh
+ * worktree fails with "Operation not permitted" before any real work starts.
+ * Best-effort: a missing `mise.toml`, a missing `mise` binary, or a failed
+ * trust call all leave the worktree exactly as `git worktree add` produced
+ * it, so the repository stays usable even without mise pinning.
+ */
+function trustMiseConfig(worktreePath: string): void {
+  const miseConfig = path.join(worktreePath, "mise.toml");
+  if (!existsSync(miseConfig)) return;
+  const miseBin = resolveMiseExecutable();
+  if (!existsSync(miseBin)) return;
+  spawnSync(miseBin, ["trust", "--yes", miseConfig], { stdio: "ignore" });
 }
 
 const CLAUDE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);

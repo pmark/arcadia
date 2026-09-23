@@ -15,10 +15,15 @@ provider, the fixed `go` launcher always submits a request to the host worker; i
 does not run Git mutation in the sandbox.
 
 If the request is exactly `arcadia advance` in a prepared worktree, begin at
-step 3. That phrase is the continuation
+step 2. That phrase is the continuation
 prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
+
+Steps below run in this order. Preservation (step 5) is deliberately last: it
+requests protected preservation of finished work, so it cannot run before any
+work has happened — running it right after `go` is a guaranteed
+`VALIDATION_ERROR`, not a valid shortcut.
 
 1. If the operator says `arcadia go`, run the fixed provider launcher from the
    current Project repository or prepared Session worktree:
@@ -35,11 +40,78 @@ prompt, not permission to invoke the mutable CLI command directly.
    recreate the Git logic by hand. If the worker is unavailable, the refusal is
    the repair action: start the updated worker and rerun the same launcher.
    On success, continue from `data.nextWorktree.path`: use that directory for
-   subsequent commands and run the fixed `advance` launcher there (step 3).
+   subsequent commands and run the fixed `advance` launcher there (step 2).
    Do not stop at printing the broker JSON. If the active environment cannot
    write the returned worktree, report that exact environment mismatch once;
    do not request repeated Git or filesystem escalations.
-2. Read the returned `preservation` readiness. A manual `go` handoff normally
+2. If the request is `arcadia advance` in an already prepared worktree, set
+   the command tool's working directory to that worktree and run:
+
+   ```sh
+   __ARCADIA_CODEX_ADVANCE_BROKER__
+   # Claude Code uses: __ARCADIA_CLAUDE_ADVANCE_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_ADVANCE_BROKER__
+   ```
+
+   Never run mutable `arcadia advance` directly and never pass an argument to
+   either protected launcher.
+
+   Before running any dependency-needing command in this worktree — including
+   the `pnpm arcadia next` call below — check whether `node_modules` exists.
+   If missing, run:
+
+   ```sh
+   node scripts/bridge-worktree-deps.mjs
+   ```
+
+   This symlinks the main checkout's installed dependencies into the worktree.
+   Skipping this step surfaces later as a raw
+   `Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tsx'` with no pointer
+   back to this fix — do not treat that error as a code defect.
+
+   Once the broker succeeds and dependencies are bridged, run
+   `pnpm arcadia next` from that worktree — a read-only noun command, not a
+   protected launcher. If this machine has more than one active Project, the
+   bare command refuses with
+   `VALIDATION_ERROR: More than one Project is active...`; when that happens,
+   re-run it with `--project <slug>`, using the slug from the advance broker's
+   own response at `data.dispatch.context.projectSlug`:
+
+   ```sh
+   pnpm arcadia next --project <slug>
+   ```
+
+   Then, in your own next chat reply, paste that command's full stdout
+   verbatim (a fenced code block is fine) as the session's opening brief,
+   before doing anything else. Running the command is not enough by itself:
+   the operator reads the chat, not the raw tool-call transcript, so a
+   summary like "dispatch brief confirmed" does not satisfy this step — the
+   literal brief text must appear in a message the operator sees.
+
+   That brief names the resolved `active_plan` and `current_action`. If the
+   environment exposes a session-title tool (Claude Code Remote's
+   `set_session_title`), call it now with `<active_plan>: <current_action>`
+   so the session is identifiable in a session list instead of carrying a
+   generic default like "Arcadia Go". Skip this silently where no such tool
+   exists.
+3. Before changing code, run the matching fixed read-only work-monitor launcher
+   from that prepared worktree:
+
+   ```sh
+   __ARCADIA_CODEX_WORK_MONITOR_BROKER__
+   # Claude Code uses: __ARCADIA_CLAUDE_WORK_MONITOR_BROKER__
+   # opencode uses: __ARCADIA_OPENCODE_WORK_MONITOR_BROKER__
+   ```
+
+   It runs only `arcadia work monitor --no-pull-requests` against the resolved
+   local workspace. Report any preservation blocker it finds; do not ask for
+   approval to run this read-only preflight.
+4. Inspect the selected Action and its local implementation boundaries using
+   ordinary read-only commands (`git status`, `rg`, and targeted file reads)
+   without asking for approval. Read-only discovery is already authorized by a
+   request to continue Arcadia work. Ask only when a later action needs an
+   approval boundary that the repository or provider has not already granted.
+5. Read the returned `preservation` readiness. A manual `go` handoff normally
    has `session: null`: this is not stale state and does not require a planning
    packet, a managed Session, or production activation. The host binds its
    existing worktree reservation to the current Action and configured checks;
@@ -49,7 +121,9 @@ prompt, not permission to invoke the mutable CLI command directly.
    configuration/runtime defects: diagnose and repair within existing authority,
    and report the exact remaining defect instead of inventing an approval.
 
-   After the declared objective checks are ready, request protected preservation:
+   After the declared objective checks are ready — i.e. once the work this
+   session set out to do is done, not right after `go` — request protected
+   preservation:
 
    ```sh
    __ARCADIA_CODEX_PRESERVE_BROKER__
@@ -64,50 +138,6 @@ prompt, not permission to invoke the mutable CLI command directly.
    An unavailable host worker is a named stop; never run Git mutation or weaken
    the sandbox to bypass it. Preservation does not accept, integrate, complete,
    or advance the Action. Retain the receipt and any LOCAL ONLY recovery action.
-3. If the request is `arcadia advance` in an already prepared worktree, set
-   the command tool's working directory to that worktree and run:
-
-   ```sh
-   __ARCADIA_CODEX_ADVANCE_BROKER__
-   # Claude Code uses: __ARCADIA_CLAUDE_ADVANCE_BROKER__
-   # opencode uses: __ARCADIA_OPENCODE_ADVANCE_BROKER__
-   ```
-
-   Never run mutable `arcadia advance` directly and never pass an argument to
-   either protected launcher.
-
-   Once the broker succeeds, run `pnpm arcadia next` from that worktree — a
-   read-only noun command, not a protected launcher. Then, in your own next
-   chat reply, paste that command's full stdout verbatim (a fenced code
-   block is fine) as the session's opening brief, before doing anything
-   else. Running the command is not enough by itself: the operator reads
-   the chat, not the raw tool-call transcript, so a summary like "dispatch
-   brief confirmed" does not satisfy this step — the literal brief text
-   must appear in a message the operator sees.
-
-   That brief names the resolved `active_plan` and `current_action`. If the
-   environment exposes a session-title tool (Claude Code Remote's
-   `set_session_title`), call it now with `<active_plan>: <current_action>`
-   so the session is identifiable in a session list instead of carrying a
-   generic default like "Arcadia Go". Skip this silently where no such tool
-   exists.
-4. Before changing code, run the matching fixed read-only work-monitor launcher
-   from that prepared worktree:
-
-   ```sh
-   __ARCADIA_CODEX_WORK_MONITOR_BROKER__
-   # Claude Code uses: __ARCADIA_CLAUDE_WORK_MONITOR_BROKER__
-   # opencode uses: __ARCADIA_OPENCODE_WORK_MONITOR_BROKER__
-   ```
-
-   It runs only `arcadia work monitor --no-pull-requests` against the resolved
-   local workspace. Report any preservation blocker it finds; do not ask for
-   approval to run this read-only preflight.
-5. Inspect the selected Action and its local implementation boundaries using
-   ordinary read-only commands (`git status`, `rg`, and targeted file reads)
-   without asking for approval. Read-only discovery is already authorized by a
-   request to continue Arcadia work. Ask only when a later action needs an
-   approval boundary that the repository or provider has not already granted.
 
 ## Agent handoff
 
@@ -125,9 +155,12 @@ prompt, not permission to invoke the mutable CLI command directly.
   and identical apply outside the coding-agent sandbox. Continue in the returned
   prepared worktree. A request does not authorize merge, deployment, completion,
   or acceptance beyond the existing canonical command's authority checks.
-- After entering a prepared worktree, check whether `node_modules` exists. If
-  missing, use that repository's dependency-bridge command or documented
-  symlink rather than improvising a per-worktree dependency install.
+- A prepared worktree's `mise.toml` is pre-trusted by the host broker at
+  preparation time, before the worktree is ever handed to a sandboxed agent.
+  If a mise-wrapped command still fails with `mise ERROR ... Operation not
+  permitted` on a worktree prepared before this fix, that one worktree
+  predates it — retrying under `dangerouslyDisableSandbox` for that single
+  command is the named exception, not a pattern to repeat going forward.
 - The protected broker installer configures the default `~/.codex/config.toml`
   and every present named `~/.codex/*.config.toml` profile with the exact
   `~/.codex/worktrees`, `~/.claude/worktrees`, and `~/.opencode/worktrees`
