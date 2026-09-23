@@ -242,16 +242,21 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
   const projectRoot = integration === "already-integrated" ? (baseRecord?.path ?? sourceRecord.path) : sourceRecord.path;
   const projectSlug = resolveProjectSlug(projectRoot);
-  let sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+  const sourceDispatch = resolveDispatch(projectRoot, projectSlug);
   let activationResult: ActivateNextPlanResult | null = null;
+  const workspaceForActivation = options.workspace
+    ? resolveReadyWorkspace(options.workspace).workspacePath
+    : null;
+  // Decision 0048: when the active Plan is absent or complete, the explicit
+  // queue may determine exactly one approved Plan and Action that can continue.
+  // The activation itself is performed further below, after any source-branch
+  // reconciliation and against the governed base checkout — never on the agent
+  // task branch that is about to be retired. Applying it requires the same
+  // authority a launch does (`--apply` plus an explicit `--agent`); a preview
+  // reports the activation, and every other non-dispatchable state keeps the
+  // original fail-closed refusal.
+  let needsActivation = false;
   if (!isDispatchable(sourceDispatch)) {
-    // Decision 0048: when the active Plan is absent or complete, the explicit
-    // queue may determine exactly one approved Plan and Action that can
-    // continue. Apply that activation here, in the same operator invocation,
-    // rather than refusing and requiring a separate round trip.
-    const workspaceForActivation = options.workspace
-      ? resolveReadyWorkspace(options.workspace).workspacePath
-      : null;
     const resolution = workspaceForActivation
       ? withReadOnlyDatabase(workspaceForActivation, (db) =>
           resolvePlanActivation({ repoRoot: projectRoot, projectSlug, positions: loadActionOrder(db).positions }))
@@ -267,23 +272,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         remedy: "Repair the governed pointer or answer its Decision before starting another coding-agent session."
       });
     }
-    if (options.apply && options.agent) {
-      if (!workspaceForActivation) {
-        throw validationError("Plan activation needs a resolvable Arcadia workspace.", { projectSlug });
-      }
-      const baseId = `go-activate-${projectSlug}-${git(projectRoot, ["rev-parse", "HEAD"]).trim()}`;
-      activationResult = withDatabase(workspaceForActivation, (db) =>
-        activateNextPlan(db, { repoRoot: projectRoot, projectSlug, requestId: baseId, apply: true }));
-      sourceDispatch = resolveDispatch(projectRoot, projectSlug);
-      if (!isDispatchable(sourceDispatch)) {
-        throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
-          projectSlug,
-          actionKey: activationResult.activation?.actionKey ?? resolution.candidate?.actionKey ?? null,
-          blockers: sourceDispatch.blockers,
-          operatorQuestion: sourceDispatch.operatorQuestion
-        });
-      }
+    if (options.apply && !options.agent) {
+      throw validationError("Activating the queued Plan requires --apply with an explicit --agent.", {
+        projectSlug,
+        actionKey: resolution.candidate?.actionKey ?? null,
+        remedy: "Re-run with an explicit --agent so the activated Action's worktree can be prepared, or preview without --apply."
+      });
     }
+    needsActivation = options.apply === true && options.agent !== undefined;
   }
 
   let sourceWorktreeRemoved = false;
@@ -292,6 +288,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   let modelResolution: GoCommandData["modelResolution"] = null;
   let session: AgentSession | null = null;
   let dispatch = sourceDispatch;
+  let dispatchRoot = projectRoot;
   if (options.apply && integration !== "not-needed" && integration !== null) {
     if (integration === "fast-forward") {
       if (baseRecord) {
@@ -304,7 +301,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
 
       const baseDispatch = resolveDispatch(baseRecord?.path ?? sourceRecord.path, projectSlug);
-      if (!isDispatchable(baseDispatch)) {
+      if (!isDispatchable(baseDispatch) && !needsActivation) {
         throw validationError("The fast-forward completed, but dispatch validation failed from the base worktree.", {
           projectSlug,
           blockers: baseDispatch.blockers,
@@ -312,7 +309,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           remedy: "Keep the source worktree and repair the governed pointer from the base worktree."
         });
       }
-      dispatch = baseDispatch;
+      dispatchRoot = baseRecord?.path ?? sourceRecord.path;
+      if (isDispatchable(baseDispatch)) dispatch = baseDispatch;
     }
 
     if (!baseRecord && samePath(worktrees[0].path, sourceRecord.path)) {
@@ -331,6 +329,30 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     deleteVerifiedSafeSourceBranch(controlWorktree, baseBranch, sourceBranch, sourceRecord.head);
     sourceBranchDeleted = true;
     git(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "prune"]);
+  }
+
+  if (needsActivation) {
+    if (!workspaceForActivation) {
+      throw validationError("Plan activation needs a resolvable Arcadia workspace.", { projectSlug });
+    }
+    // Activate on the governed base checkout after reconciliation, never on the
+    // agent task branch: the activation commit must survive the source-branch
+    // retirement above, and the next worktree is prepared from this same base.
+    const activationRoot = baseRecord?.path ?? controlWorktree;
+    const baseId = `go-activate-${projectSlug}-${git(activationRoot, ["rev-parse", "HEAD"]).trim()}`;
+    activationResult = withDatabase(workspaceForActivation, (db) =>
+      activateNextPlan(db, { repoRoot: activationRoot, projectSlug, requestId: baseId, apply: true }));
+    const activated = resolveDispatch(activationRoot, projectSlug);
+    if (!isDispatchable(activated)) {
+      throw validationError("Plan activation did not produce a dispatchable Arcadia action.", {
+        projectSlug,
+        actionKey: activationResult.activation?.actionKey ?? null,
+        blockers: activated.blockers,
+        operatorQuestion: activated.operatorQuestion
+      });
+    }
+    dispatch = activated;
+    dispatchRoot = activationRoot;
   }
 
   if (options.apply && options.agent) {
@@ -545,14 +567,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     });
   }
 
-  const transition = session && options.workspace
+  const transition = options.workspace
     ? withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) => resolveProjectTransition({
-        repoRoot: controlWorktree,
+        repoRoot: dispatchRoot,
         projectSlug,
         db,
         tmux: options.tmux ?? systemTmux
       }))
-    : resolveProjectTransition({ repoRoot: controlWorktree, projectSlug });
+    : resolveProjectTransition({ repoRoot: dispatchRoot, projectSlug });
 
   return createSuccess({
     command: "go",

@@ -288,7 +288,7 @@ export function resolveProjectTransition(input: {
  */
 function planBoundaryTransition(dispatch: DispatchResolution): boolean {
   if (dispatch.context) {
-    return dispatch.context.action.status === "done" || dispatch.context.planStatus !== "active";
+    return dispatch.context.action.status === "done" || dispatch.context.planStatus === "complete";
   }
   if (dispatch.blockers.length === 0) return false;
   return dispatch.blockers.every((blocker) =>

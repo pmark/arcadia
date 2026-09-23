@@ -166,6 +166,7 @@ export function activatePlan(db: Database.Database, input: {
       remedy: "Check out a branch in the Project repository before applying the Plan activation."
     });
   }
+  let pairWritten = false;
   try {
     writeTransaction(db, () => {
       const currentProject = readFileSync(projectAbsolutePath, "utf8");
@@ -178,6 +179,7 @@ export function activatePlan(db: Database.Database, input: {
         });
       }
       writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
+      pairWritten = true;
       const dispatch = resolveDispatch(input.repoRoot, input.projectSlug);
       if (!isDispatchable(dispatch) || dispatch.context?.action.id !== candidate.actionId) {
         throw validationError("Plan activation did not produce dispatchable checked-in truth.", {
@@ -193,8 +195,13 @@ export function activatePlan(db: Database.Database, input: {
           input.repoRoot, headBefore, JSON.stringify(receipt), receipt.createdAt);
     });
   } catch (error) {
-    writeFileSyncSafe(projectAbsolutePath, projectBefore);
-    writeFileSyncSafe(planAbsolutePath, planBefore);
+    // Restore only when this call actually wrote the pair. A compare-and-set
+    // refusal throws before any write, and blindly restoring the pre-read
+    // content then would clobber the concurrent writer that caused the refusal.
+    if (pairWritten) {
+      writeFileSyncSafe(projectAbsolutePath, projectBefore);
+      writeFileSyncSafe(planAbsolutePath, planBefore);
+    }
     throw error;
   }
   const changedPaths = [
@@ -308,13 +315,13 @@ export function activateNextPlan(db: Database.Database, input: {
     positions: loadActionOrder(db).positions
   });
   if (resolution.status !== "unordered" && resolution.status !== "candidate") {
-    return { queueRevision: buildAgentQueue(db).revision, seed: null, activation: null, resolution };
+    return { queueRevision: loadActionOrder(db).revision, seed: null, activation: null, resolution };
   }
   if (resolution.status === "unordered" && !input.apply) {
     // Preview the seed but do not apply it: applying would bump the queue
     // revision, so an activation preview computed now would be stale.
     const seed = seedActivationOrder(db, { ...input, requestId: `${input.requestId}:seed`, apply: false });
-    return { queueRevision: buildAgentQueue(db).revision, seed, activation: null, resolution };
+    return { queueRevision: loadActionOrder(db).revision, seed, activation: null, resolution };
   }
   let seed: ActionOrderReceipt | null = null;
   if (resolution.status === "unordered") {
@@ -326,17 +333,17 @@ export function activateNextPlan(db: Database.Database, input: {
     });
   }
   if (!resolution.candidate || (resolution.status !== "candidate" && resolution.status !== "unordered")) {
-    return { queueRevision: buildAgentQueue(db).revision, seed, activation: null, resolution };
+    return { queueRevision: loadActionOrder(db).revision, seed, activation: null, resolution };
   }
   const activation = activatePlan(db, {
     repoRoot: input.repoRoot,
     projectSlug: input.projectSlug,
     actionKey: resolution.candidate.actionKey,
-    queueRevision: buildAgentQueue(db).revision,
+    queueRevision: loadActionOrder(db).revision,
     requestId: input.requestId,
     apply: input.apply
   });
-  return { queueRevision: buildAgentQueue(db).revision, seed, activation, resolution };
+  return { queueRevision: loadActionOrder(db).revision, seed, activation, resolution };
 }
 
 /** Replace a top-level frontmatter field, inserting it before the closing `---` if absent. */

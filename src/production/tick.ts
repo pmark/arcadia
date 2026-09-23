@@ -265,8 +265,10 @@ function attemptProjectLaunch(
     // Decision 0048: the active Plan cannot continue, but the explicit queue
     // names exactly one approved Plan and Action. Activate it in this same tick
     // and re-resolve, so production continues without an operator round trip.
-    const requestId = `worker-activate-${input.projectSlug}-${git(input.repoRoot, ["rev-parse", "HEAD"]).trim()}`;
+    // `git` throws on a repository with no commits yet; keep it inside the try
+    // so one Project's Git failure cannot stop the whole tick.
     try {
+      const requestId = `worker-activate-${input.projectSlug}-${git(input.repoRoot, ["rev-parse", "HEAD"]).trim()}`;
       activateNextPlan(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, requestId, apply: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

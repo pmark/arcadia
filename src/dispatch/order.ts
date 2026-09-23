@@ -122,7 +122,11 @@ export function undoActionOrder(db: Database.Database, input: MutationInput & {
   const targetRow = db.prepare("SELECT receipt_json FROM action_queue_receipts WHERE id = ?").get(input.receiptId) as { receipt_json: string } | undefined;
   if (!targetRow) throw validationError("Action queue receipt was not found.", { receiptId: input.receiptId });
   const target = JSON.parse(targetRow.receipt_json) as ActionOrderReceipt;
-  const before = explicitOrder(input.currentKeys, state.positions);
+  // The relevant universe is every key the receipt ordered. A FIFO seed may
+  // have included positioned keys the caller's `currentKeys` does not project
+  // (a paused Project's Actions); dropping them here would delete positions the
+  // seed deliberately preserved.
+  const before = explicitOrder(uniqueKeys([...input.currentKeys, ...target.after]), state.positions);
   if (!target.applied || target.revisionAfter !== state.revision || JSON.stringify(target.after) !== JSON.stringify(before)) {
     throw validationError("Action queue undo is stale; only the current applied order can be undone safely.", {
       receiptId: target.id,
@@ -153,7 +157,10 @@ export function seedActionOrderFifo(db: Database.Database, input: MutationInput 
   const replay = replayReceipt(db, input.requestId, operation);
   if (replay) return replay;
   const state = validateMutation(db, input);
-  const before = explicitOrder(input.currentKeys, state.positions);
+  // Preserve every key that already holds an explicit position, even one this
+  // projection does not know about: `finishMutation` rewrites the whole table,
+  // so a key missing from `before` would silently lose its operator-set order.
+  const before = explicitOrder(uniqueKeys([...input.currentKeys, ...state.positions.keys()]), state.positions);
   if (before.every((key) => state.positions.has(key))) {
     throw validationError("Every approved Action already has an explicit queue position; there is nothing to seed.");
   }
@@ -227,6 +234,11 @@ function explicitOrder(currentKeys: string[], positions: Map<string, number>): s
     if (rightPosition !== undefined) return 1;
     return currentKeys.indexOf(left) - currentKeys.indexOf(right) || left.localeCompare(right);
   });
+}
+
+/** Insertion-ordered, de-duplicated union of key lists. */
+function uniqueKeys(keys: Iterable<string>): string[] {
+  return [...new Set(keys)];
 }
 
 function sameMembers(left: string[], right: string[]): boolean {

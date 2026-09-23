@@ -343,6 +343,37 @@ describe("resolveProjectTransition at a Plan boundary", () => {
 });
 
 describe("arcadia go cross-Plan activation", () => {
+  it("previews a Plan-boundary activation without writing or mutating Git", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const workspacePath = workspace(repo);
+
+    const result = runGoCommand({ repo, source: repo, workspace: workspacePath });
+
+    expect(result.data.applied).toBe(false);
+    expect(result.data.dispatchable).toBe(false);
+    expect(result.data.transition.kind).toBe("activate");
+    expect(result.data.transition.activation?.candidate?.actionKey).toBe("demo/b1");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).trim()).toBe("");
+  });
+
+  it("refuses to apply an activation without an explicit --agent", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const workspacePath = workspace(repo);
+
+    expect(() => runGoCommand({ repo, source: repo, apply: true, workspace: workspacePath }))
+      .toThrow(/requires --apply with an explicit --agent/);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
+  });
+
   it("activates the queued Plan and prepares the next Action's worktree in one go invocation", () => {
     const repo = scratch();
     writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
@@ -367,6 +398,38 @@ describe("arcadia go cross-Plan activation", () => {
     expect(result.data.dispatch.context?.action.id).toBe("b1");
     expect(result.data.nextWorktree?.branch).toContain("b1");
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-b");
+  });
+
+  it("activates the queued Plan on the base after fast-forwarding a task-branch source", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const feature = path.join(scratch(), "feature");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "codex/task-branch", feature], { cwd: repo });
+    writeFileSync(path.join(feature, "proof.txt"), "proof\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: feature });
+    execFileSync("git", ["commit", "-qm", "add proof"], { cwd: feature });
+    const workspacePath = workspace(repo);
+
+    const result = runGoCommand({
+      repo,
+      source: feature,
+      apply: true,
+      agent: "codex",
+      workspace: workspacePath,
+      agentWorktreeRoot: path.join(scratch(), "worktrees")
+    });
+
+    expect(result.data.integration).toBe("fast-forward");
+    expect(result.data.sourceWorktreeRemoved).toBe(true);
+    expect(result.data.sourceBranchDeleted).toBe(true);
+    expect(result.data.activation?.activation?.actionKey).toBe("demo/b1");
+    expect(result.data.dispatch.context?.action.id).toBe("b1");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-b");
+    // The next worktree is prepared from the base, which carries the activation.
+    expect(result.data.nextWorktree?.branch).toContain("b1");
   });
 });
 
