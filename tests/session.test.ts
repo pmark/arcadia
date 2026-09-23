@@ -113,6 +113,12 @@ describe("tmux-backed Sessions", () => {
     expect(view.observedStatus).toBe("running");
     expect(view.reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
     expect(view.resumeCommand).toContain(`claude --resume ${result.data.session!.provider_session_id}`);
+
+    // A Session flagged stalled by the worker tick is surfaced as its own
+    // observed state -- never silently reported as ordinary "running" -- for
+    // as long as its tmux stays live.
+    const stalledSession = { ...result.data.session!, stall_flagged_at: "2026-09-22T12:00:00.000Z" };
+    expect(sessionView(stalledSession, tmux).observedStatus).toBe("stalled");
   });
 
   it("launches the packet-selected Codex adapter and never invents an exact resume command", () => {

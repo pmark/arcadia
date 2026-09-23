@@ -45,6 +45,8 @@ class FakeTmux implements TmuxAdapter {
   failLaunch = false;
   live = new Set<string>();
   launches: Array<{ name: string; cwd: string; command: string; args: string[] }> = [];
+  /** Fixture-controlled pane content per Session; capturePane returns "" for any name not present here. */
+  paneOutput = new Map<string, string>();
   available() {
     return this.isAvailable;
   }
@@ -55,6 +57,9 @@ class FakeTmux implements TmuxAdapter {
     if (this.failLaunch) throw new Error("synthetic spawn failure");
     this.launches.push(input);
     this.live.add(input.name);
+  }
+  capturePane(name: string) {
+    return this.paneOutput.get(name) ?? "";
   }
 }
 
@@ -419,6 +424,114 @@ describe("runManagedProductionTick", () => {
     );
     const recoveredProject = recovered.projects.find((entry) => entry.projectSlug === "test-project")!;
     expect(recoveredProject.launch?.outcome).toBe("launched");
+  });
+
+  it("flags a live Session stalled once its tmux pane and Run state stop changing, without releasing its lease or relaunching", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const launchTick = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(launchTick.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.paneOutput.set(session.tmux_session_name, "$ claude is thinking...\n");
+
+    // First observation of a live Session only establishes a baseline -- it
+    // must never flag on sight, or every live Session in the portfolio would
+    // flag the moment this capability ships.
+    const baselineTick = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(baselineTick.projects[0]?.reconciled).toHaveLength(0);
+    const afterBaseline = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(afterBaseline.stall_flagged_at).toBeNull();
+    expect(afterBaseline.last_activity_at).not.toBeNull();
+
+    // The pane text and Run state never change again. Once the stall deadline
+    // has elapsed since the baseline, the Session is flagged -- but its lease
+    // (still `status = 'running'`) is untouched, so no relaunch is attempted.
+    const stallTick = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const stallResult = stallTick.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(stallResult.reconciled).toHaveLength(0);
+    expect(stallResult.launch?.outcome).toBe("skipped");
+    expect(stallResult.launch?.reason).toContain(session.id);
+
+    const flagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(flagged.stall_flagged_at).not.toBeNull();
+    expect(flagged.status).toBe("running");
+    expect(tmux.launches).toHaveLength(1);
+
+    const events = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT payload_json FROM events WHERE event_type = 'managed_production.session_stalled'").all()
+    ) as Array<{ payload_json: string }>;
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(events[0].payload_json).sessionId).toBe(session.id);
+
+    // A later tick over the same unchanged state does not re-flag or re-record.
+    const stillStalledTick = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 120_000),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(stillStalledTick.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("skipped");
+    const eventsAfter = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT payload_json FROM events WHERE event_type = 'managed_production.session_stalled'").all()
+    ) as Array<{ payload_json: string }>;
+    expect(eventsAfter).toHaveLength(1);
+
+    // The Session's tmux resumes producing new output: the flag clears, and
+    // `sessionView` stops surfacing it as needs-attention.
+    tmux.paneOutput.set(session.tmux_session_name, "$ claude wrote a file\n");
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 180_000),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const recovered = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(recovered.stall_flagged_at).toBeNull();
+  });
+
+  it("never flags a live Session doing real long-running work, even past the stall deadline", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+
+    // Every tick sees fresh pane output -- a slow but genuinely working agent,
+    // e.g. mid-build or mid-test-suite -- spanning well past the deadline.
+    const ticks = 5;
+    const stepMs = Math.floor((PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs * 2) / ticks);
+    for (let i = 1; i <= ticks; i++) {
+      tmux.paneOutput.set(session.tmux_session_name, `$ still working, step ${i}\n`);
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles, adapters, tmux, now: new Date(fixture.now.getTime() + i * stepMs), agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    }
+
+    const stillWorking = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(stillWorking.stall_flagged_at).toBeNull();
+    const events = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT 1 FROM events WHERE event_type = 'managed_production.session_stalled'").all()
+    );
+    expect(events).toHaveLength(0);
   });
 });
 

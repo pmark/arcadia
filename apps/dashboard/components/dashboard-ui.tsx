@@ -1380,7 +1380,7 @@ function statusClass(status: string): string {
     return "border-gold/30 bg-gold/10 text-gold";
   }
 
-  if (isRequiresReviewStatus(status) || status === "failed" || status === "blocked") {
+  if (isRequiresReviewStatus(status) || status === "failed" || status === "blocked" || status === "stalled") {
     return "border-clay/30 bg-clay/10 text-clay";
   }
 

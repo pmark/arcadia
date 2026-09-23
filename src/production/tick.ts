@@ -13,6 +13,7 @@ import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./poli
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
@@ -20,10 +21,11 @@ import { createId } from "../utils/id.js";
 /**
  * The continuous half of managed production: on every worker tick, while the
  * standing policy is Active, reconcile any repository whose Session died
- * without being observed, admit and launch the next eligible Action for every
- * other eligible repository, and independently notice when a repository's
- * base branch moved for a reason this tick did not itself cause (a human or
- * another host merged its PR). This module owns none of the primitives it
+ * without being observed, flag (never reconcile) a live Session whose tmux
+ * has stopped showing any real progress, admit and launch the next eligible
+ * Action for every other eligible repository, and independently notice when a
+ * repository's base branch moved for a reason this tick did not itself cause
+ * (a human or another host merged its PR). This module owns none of the primitives it
  * calls -- admission, launch, and reconciliation are exactly the same calls a
  * human-triggered `arcadia advance`/`session launch` already makes -- it only
  * decides, once per tick, which repository each of those calls applies to,
@@ -201,6 +203,26 @@ export function runManagedProductionTick(
         if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
+        }
+      } else if (lease) {
+        // tmux is alive; check whether it is actually moving. Neither branch
+        // here touches `lease`/`status`, so the repository lease this Session
+        // holds is untouched either way -- a suspected stall is surfaced, not
+        // reconciled.
+        const activity = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
+        if (activity.newlyStalled) {
+          recordEvent(db, {
+            eventType: "managed_production.session_stalled",
+            projectId: project.id,
+            payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
+            at: now.toISOString()
+          });
+          log(
+            `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
+              `${PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs}ms; flagged stalled. Its repository lease is preserved, pending operator review or bounded repair.`
+          );
+        } else if (activity.recovered) {
+          log(`Session ${lease.id} for ${project.slug} resumed activity; its stalled flag is cleared.`);
         }
       }
     } catch (error) {

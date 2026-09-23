@@ -84,6 +84,12 @@ export interface AgentSession {
   exit_status: number | null;
   created_at: string;
   updated_at: string;
+  /** Hash of last-observed tmux pane output + Run/receipt state. Null until first observed. */
+  last_activity_signature: string | null;
+  /** When `last_activity_signature` last changed. */
+  last_activity_at: string | null;
+  /** Set once no activity has been observed for the stall deadline; cleared on resumed activity. */
+  stall_flagged_at: string | null;
 }
 
 export type SessionAgent = "codex" | "claude" | "opencode";
@@ -165,6 +171,13 @@ export interface TmuxAdapter {
   available(): boolean;
   hasSession(name: string): boolean;
   launch(input: { name: string; cwd: string; command: string; args: string[] }): void;
+  /**
+   * The visible text of a live pane, used only as a progress signal (see
+   * `src/production/stallDetection.ts`). Optional because it is meaningless
+   * once a Session's tmux is already gone, and every existing test double
+   * that implements `TmuxAdapter` predates this capability.
+   */
+  capturePane?(name: string): string;
 }
 
 export const systemTmux: TmuxAdapter = {
@@ -178,6 +191,9 @@ export const systemTmux: TmuxAdapter = {
     execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, input.command, ...input.args], {
       stdio: "ignore"
     });
+  },
+  capturePane(name) {
+    try { return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p"], { encoding: "utf8" }); } catch { return ""; }
   }
 };
 
@@ -432,7 +448,8 @@ export function prepareSession(input: {
       provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
       host: input.host ?? hostname(),
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
-      created_at: timestamp, updated_at: timestamp
+      created_at: timestamp, updated_at: timestamp,
+      last_activity_signature: null, last_activity_at: null, stall_flagged_at: null
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     if (handoff) {
@@ -813,7 +830,7 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
   const resumable = session.provider === "claude-code-cli";
   return {
     ...session,
-    observedStatus: live ? "running" : session.status === "prepared" ? "prepared" : "exited",
+    observedStatus: live ? (session.stall_flagged_at ? "stalled" : "running") : session.status === "prepared" ? "prepared" : "exited",
     live,
     reattachCommand: `tmux attach-session -t ${session.tmux_session_name}`,
     resumeCommand: resumable ? `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}` : null,
