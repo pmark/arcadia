@@ -138,6 +138,121 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
 }
 
 /**
+ * Packet-lifecycle kinds (see `resolvePacketLifecycle`) whose remedy needs an
+ * operator or agent action, never the passage of time. `planning_approval_pending`
+ * and `planning_in_progress` are excluded on purpose: both already carry an
+ * open Decision, which is already operator-visible through Review. Only
+ * `planning_required` has no other surface today -- nothing has asked for
+ * planning yet, so silently retrying the same launch forever (Issue #576)
+ * never gets anyone's attention.
+ */
+const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required"]);
+
+/**
+ * Record (or refresh) a launch refusal that will not resolve on its own.
+ * Returns true only the first time this action key is recorded, so the
+ * caller can surface a signal once per continuous episode instead of on
+ * every tick -- the row itself, not a fresh notification each tick, is the
+ * durable, operator-visible fact.
+ */
+function recordOperatorEscalation(
+  db: Database.Database,
+  input: { actionKey: string; kind: string; message: string; remedy: string | null; now: Date }
+): boolean {
+  const at = input.now.toISOString();
+  const existing = db.prepare("SELECT action_key FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
+    | { action_key: string }
+    | undefined;
+  db.prepare(
+    `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+       VALUES (@action_key, @kind, @message, @remedy, @at, @at)
+     ON CONFLICT(action_key) DO UPDATE SET
+       kind = @kind, message = @message, remedy = @remedy, last_seen_at = @at`
+  ).run({ action_key: input.actionKey, kind: input.kind, message: input.message, remedy: input.remedy, at });
+  return !existing;
+}
+
+/** Clear a previously recorded escalation once its Action launches or its refusal stops being non-self-resolving. */
+function clearOperatorEscalation(db: Database.Database, actionKey: string): void {
+  db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(actionKey);
+}
+
+/**
+ * Drop any escalation left over from a *different* Action in this Project.
+ * `recordOperatorEscalation`/`clearOperatorEscalation` only ever touch the
+ * actionKey the current tick is looking at, so an Action that stops being
+ * current by some other route -- the pointer advances, or it is marked done
+ * through a `complete` Agent Ask rather than through this tick's own launch
+ * success -- would otherwise leave a stale row that `listOperatorEscalations`
+ * keeps reporting forever. Called with the Project's live actionKey (or
+ * `null` when nothing is currently dispatchable), so it always reconciles
+ * against the one actionKey this tick knows to be current.
+ */
+function pruneStaleOperatorEscalations(db: Database.Database, projectSlug: string, currentActionKey: string | null): void {
+  db.prepare("DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ?").run(
+    `${projectSlug}/%`,
+    currentActionKey ?? ""
+  );
+}
+
+export interface OperatorEscalation {
+  actionKey: string;
+  kind: string;
+  message: string;
+  remedy: string | null;
+  firstDetectedAt: string;
+  lastSeenAt: string;
+}
+
+/**
+ * Every currently unresolved non-self-resolving launch refusal, oldest first.
+ * Unlike `listRecentBaseBranchAdvances` this is not a historical log to page
+ * through -- rows are deleted on resolution and pruned when stale (see
+ * `pruneStaleOperatorEscalations`), so the live set is always small, and a
+ * page limit would only silently hide escalations past an arbitrary cutoff.
+ *
+ * Deliberately does not call `ensureProductionTickTables`: this is read
+ * through `arcadia production status`'s read-only connection, which cannot
+ * run a `CREATE TABLE` migration. `production_operator_escalations` lives in
+ * `db/schema.ts` instead of here for exactly that reason -- it is applied on
+ * every writable open, so it already exists by the time any read-only open
+ * is possible against a workspace created *after* this table shipped. A
+ * workspace whose database predates it has no writable open to have run that
+ * migration yet either, so "no such table" here means the same thing a
+ * successful, empty query would: no escalation has been recorded.
+ */
+export function listOperatorEscalations(db: Database.Database): OperatorEscalation[] {
+  let rows: Array<{
+    action_key: string;
+    kind: string;
+    message: string;
+    remedy: string | null;
+    first_detected_at: string;
+    last_seen_at: string;
+  }>;
+  try {
+    rows = db
+      .prepare(
+        `SELECT action_key, kind, message, remedy, first_detected_at, last_seen_at
+           FROM production_operator_escalations
+          ORDER BY first_detected_at ASC`
+      )
+      .all() as typeof rows;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("no such table")) return [];
+    throw error;
+  }
+  return rows.map((row) => ({
+    actionKey: row.action_key,
+    kind: row.kind,
+    message: row.message,
+    remedy: row.remedy,
+    firstDetectedAt: row.first_detected_at,
+    lastSeenAt: row.last_seen_at
+  }));
+}
+
+/**
  * Whether the standing policy authorizes managing `projectSlug` right now.
  * Re-read rather than snapshotted: the tick blocks for minutes between the
  * scheduling pass and each Project, so a policy narrowed mid-tick must apply to
@@ -368,10 +483,20 @@ function attemptProjectLaunch(
     transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
+    // `dispatch` is resolved before the lease/competing-run check that
+    // produces "wait"/"reconcile" (see `resolveProjectTransition`), so its
+    // context still names the selected Action even when this tick cannot
+    // launch it this instant. Preserve that Action's own escalation, if any,
+    // rather than treating a transient wait as though the pointer moved on;
+    // only a transition with no resolvable Action at all (a Plan boundary)
+    // has nothing to preserve.
+    const currentActionKey = transition.dispatch.context ? `${input.projectSlug}/${transition.dispatch.context.action.id}` : null;
+    pruneStaleOperatorEscalations(db, input.projectSlug, currentActionKey);
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }
 
   const actionKey = `${input.projectSlug}/${transition.dispatch.context.action.id}`;
+  pruneStaleOperatorEscalations(db, input.projectSlug, actionKey);
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
     return {
@@ -401,6 +526,7 @@ function attemptProjectLaunch(
     });
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
+    clearOperatorEscalation(db, actionKey);
     input.log(`${result.reused ? "Reused" : "Launched"} Session ${result.session.id} for ${actionKey} under the standing production policy.`);
     return {
       attempted: true,
@@ -427,6 +553,22 @@ function attemptProjectLaunch(
       }
       const code = rawCode ? ` [${rawCode}]` : "";
       input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
+      const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
+      if (packetLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(packetLifecycleKind)) {
+        const remedy = typeof error.details?.packetLifecycleRemedy === "string" ? error.details.packetLifecycleRemedy : null;
+        const newlyDetected = recordOperatorEscalation(db, {
+          actionKey,
+          kind: packetLifecycleKind,
+          message: error.message,
+          remedy,
+          now: input.now
+        });
+        if (newlyDetected) {
+          input.log(`Escalated ${actionKey} to the operator (${packetLifecycleKind}): ${remedy ?? error.message}`);
+        }
+      } else {
+        clearOperatorEscalation(db, actionKey);
+      }
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
     const message = error instanceof Error ? error.message : String(error);

@@ -392,6 +392,15 @@ export interface ProductionStatusResponse {
   };
   display: { state: string; label: string; observedAt: string };
   liveAdmissions: number;
+  /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
+  operatorEscalations: Array<{
+    actionKey: string;
+    kind: string;
+    message: string;
+    remedy: string | null;
+    firstDetectedAt: string;
+    lastSeenAt: string;
+  }>;
 }
 
 export async function loadProductionStatus(): Promise<ArcadiaJsonSuccess<ProductionStatusResponse>> {

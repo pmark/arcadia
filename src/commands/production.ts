@@ -28,9 +28,11 @@ import {
 } from "../production/policy.js";
 import {
   listLaunchBlockers,
+  listOperatorEscalations,
   listRecentBaseBranchAdvances,
   type BaseBranchAdvanceRecord,
-  type LaunchBlockerRecord
+  type LaunchBlockerRecord,
+  type OperatorEscalation
 } from "../production/tick.js";
 
 export interface ProductionStatusOptions {
@@ -73,6 +75,8 @@ export interface ProductionStatusData {
   baseBranchAdvances: BaseBranchAdvanceRecord[];
   /** Every Project currently refused with a durable, non-transient launch blocker (e.g. a signed-out provider). */
   launchBlockers: LaunchBlockerRecord[];
+  /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
+  operatorEscalations: OperatorEscalation[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
@@ -103,6 +107,7 @@ export function runProductionStatusCommand(
       admissions,
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
+      operatorEscalations: listOperatorEscalations(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES
     };
@@ -294,6 +299,14 @@ export function renderProductionStatusSuccess(
     lines.push(`  Launch blocked (${blockers.length}):`);
     for (const blocker of blockers) {
       lines.push(`    ${blocker.projectSlug} [${blocker.code}] ${blocker.reason} (since ${blocker.observedAt})`);
+    }
+  }
+
+  const escalations = response.data.operatorEscalations;
+  if (escalations.length > 0) {
+    lines.push(`  Needs an operator or agent (${escalations.length}):`);
+    for (const escalation of escalations) {
+      lines.push(`    ${escalation.actionKey} [${escalation.kind}] since ${escalation.firstDetectedAt}: ${escalation.remedy ?? escalation.message}`);
     }
   }
 

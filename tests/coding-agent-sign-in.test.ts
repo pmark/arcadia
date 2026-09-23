@@ -46,6 +46,21 @@ describe("checkProviderSignIn", () => {
     expect(result?.remedy).toContain("claude auth login");
   });
 
+  it("reports a confirmed signed-out provider even when the CLI exits nonzero, as it does with no sign-in", () => {
+    // `claude auth status` exits nonzero on a confirmed "no sign-in" result
+    // while still printing its JSON verdict; execFileSync throws in that case
+    // but attaches the captured stdout to the error.
+    const nonzeroExit = Object.assign(new Error("Command failed"), {
+      status: 1,
+      stdout: JSON.stringify({ loggedIn: false })
+    });
+    execFileSyncMock.mockImplementation(() => {
+      throw nonzeroExit;
+    });
+    const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"));
+    expect(result).toMatchObject({ signedIn: false });
+  });
+
   it("throws, rather than reporting a confirmed sign-out, when the claude executable is missing", () => {
     const spawnError = Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
     execFileSyncMock.mockImplementation(() => {

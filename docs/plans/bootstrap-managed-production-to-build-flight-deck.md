@@ -1696,7 +1696,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/568"]
   - id: escalate-nonrecoverable-launch-refusals
     title: Distinguish a non-self-resolving launch refusal (starting with planning_required) from a transient wait-state conflict, and surface it to the operator instead of retrying silently forever.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Distinguish a non-self-resolving launch refusal (starting with planning_required) from a transient wait-state conflict, and surface it to the operator instead of retrying silently forever.
@@ -1714,7 +1714,7 @@ actions:
     references: ["src/production/tick.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/issues/576"]
 questions: []
 decisions: []
-current_action: escalate-nonrecoverable-launch-refusals
+current_action: preflight-provider-signin-before-launch
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

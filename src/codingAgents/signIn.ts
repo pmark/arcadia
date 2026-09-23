@@ -31,6 +31,12 @@ export function checkProviderSignIn(provider: string): ProviderSignInStatus | nu
  * on-disk credentials file, and the macOS keychain) and reports `loggedIn`
  * without a network round trip, so this is a fast, local, worker-context
  * check rather than a guess from cached telemetry.
+ *
+ * The CLI exits nonzero when it finds no sign-in, so `execFileSync` throws
+ * even on a clean, confirmed "signed out" result -- but the thrown error
+ * still carries the JSON verdict on its `stdout`. A confirmed verdict is
+ * read from `stdout` whether or not the process exited zero; only when no
+ * verdict can be read at all is this treated as a probe failure.
  */
 function checkClaudeCodeSignIn(): ProviderSignInStatus | null {
   // Tests must not depend on this host's real Claude Code sign-in state.
@@ -40,32 +46,45 @@ function checkClaudeCodeSignIn(): ProviderSignInStatus | null {
 
   const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or "claude setup-token" for an unattended worker, then retry.';
 
-  let raw: string;
   try {
-    raw = execFileSync("claude", ["auth", "status", "--json"], {
+    const raw = execFileSync("claude", ["auth", "status", "--json"], {
       encoding: "utf8",
       timeout: SIGN_IN_CHECK_TIMEOUT_MS,
       maxBuffer: 1024 * 1024
     });
+    const confirmed = readLoggedInVerdict(raw);
+    if (confirmed === null) {
+      throw new Error('"claude auth status --json" produced output this worker could not parse.');
+    }
+    return { signedIn: confirmed, remedy };
   } catch (error) {
+    const stdout = readStdout(error);
+    const confirmed = stdout !== null ? readLoggedInVerdict(stdout) : null;
+    if (confirmed !== null) return { signedIn: confirmed, remedy };
+
     throw new Error(
       `Could not check Claude Code sign-in on this worker (${describeProbeFailure(error)}). ` +
       "This is a worker environment problem, not a confirmed sign-out, so it will not resolve on its own.",
       { cause: error }
     );
   }
+}
 
-  let parsed: { loggedIn?: unknown };
+/** Extracts a confirmed `loggedIn` verdict from `claude auth status --json` output, or `null` if it cannot be read. */
+function readLoggedInVerdict(raw: string): boolean | null {
   try {
-    parsed = JSON.parse(raw) as { loggedIn?: unknown };
-  } catch (error) {
-    throw new Error(
-      `"claude auth status --json" produced output this worker could not parse: ${(error as Error).message}.`,
-      { cause: error }
-    );
+    const parsed = JSON.parse(raw) as { loggedIn?: unknown };
+    return typeof parsed.loggedIn === "boolean" ? parsed.loggedIn : null;
+  } catch {
+    return null;
   }
+}
 
-  return { signedIn: parsed.loggedIn === true, remedy };
+/** `execFileSync`'s thrown error on a nonzero exit still carries the process's captured stdout. */
+function readStdout(error: unknown): string | null {
+  const stdout = (error as { stdout?: string | Buffer | null } | null)?.stdout;
+  if (!stdout) return null;
+  return typeof stdout === "string" ? stdout : stdout.toString("utf8");
 }
 
 /** Distinguishes why the sign-in probe itself failed to run, for a diagnosable failure message. */
