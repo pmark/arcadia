@@ -57,7 +57,16 @@ export const PRODUCTION_CONTROL_DEADLINES = {
   /** Finite repair budget per Action, so failures cannot loop on tokens. */
   maxRepairAttemptsPerAction: 2,
   /** Deadline for any single provider call made under this policy. */
-  providerCallDeadlineMs: 120_000
+  providerCallDeadlineMs: 120_000,
+  /**
+   * How long a live tmux Session may show no new pane output and no new
+   * Run/receipt activity before it is flagged stalled. Set well above
+   * `providerCallDeadlineMs` so one slow provider call or a long build/test
+   * step -- real, if quiet, progress -- never trips it; a Session that is
+   * flagged still holds its repository lease, so this bounds only how long
+   * an operator waits to be told something looks wedged, not any budget.
+   */
+  stalledSessionDeadlineMs: 20 * 60 * 1000
 } as const;
 
 /**

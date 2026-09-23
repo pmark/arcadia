@@ -84,6 +84,14 @@ export interface AgentSession {
   exit_status: number | null;
   created_at: string;
   updated_at: string;
+  /** Hash of last-captured tmux pane scrollback. Null until a capture has ever succeeded. */
+  last_pane_signature: string | null;
+  /** Hash of last-observed Run/receipt state (status + updated_at). Null until first observed. */
+  last_run_signature: string | null;
+  /** When either signature last changed. Null until first observed. */
+  last_activity_at: string | null;
+  /** Set once neither signature has changed for the stall deadline; cleared on resumed activity. */
+  stall_flagged_at: string | null;
 }
 
 export type SessionAgent = "codex" | "claude" | "opencode";
@@ -165,6 +173,20 @@ export interface TmuxAdapter {
   available(): boolean;
   hasSession(name: string): boolean;
   launch(input: { name: string; cwd: string; command: string; args: string[] }): void;
+  /**
+   * The pane's full scrollback (not just the currently visible screen), used
+   * only as a progress signal (see `src/production/stallDetection.ts`) --
+   * scrollback grows as new lines are produced even when the visible screen
+   * happens to show a repeating pattern (a spinner, a recurring log line),
+   * so it changes far more reliably than a bare visible-screen snapshot
+   * would. Returns `null`, never `""`, when a capture could not be taken, so
+   * a transient failure is distinguishable from a genuinely empty pane and
+   * is never mistaken for either new activity or its absence. Optional
+   * because it is meaningless once a Session's tmux is already gone, and
+   * every existing test double that implements `TmuxAdapter` predates this
+   * capability.
+   */
+  capturePane?(name: string): string | null;
 }
 
 export const systemTmux: TmuxAdapter = {
@@ -178,6 +200,22 @@ export const systemTmux: TmuxAdapter = {
     execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, input.command, ...input.args], {
       stdio: "ignore"
     });
+  },
+  capturePane(name) {
+    // -S -2000 bounds the captured scrollback to (at most) tmux's own default
+    // history-limit, rather than the unbounded "-" (whole history): a verbose
+    // long-running command against a raised history-limit could otherwise
+    // exceed execFileSync's buffer and throw on every later tick, permanently
+    // disabling the pane signal for that Session. maxBuffer is raised well
+    // past the default 1 MiB as a second margin against the same failure.
+    try {
+      return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p", "-S", "-2000"], {
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024
+      });
+    } catch {
+      return null;
+    }
   }
 };
 
@@ -432,7 +470,8 @@ export function prepareSession(input: {
       provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
       host: input.host ?? hostname(),
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
-      created_at: timestamp, updated_at: timestamp
+      created_at: timestamp, updated_at: timestamp,
+      last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     if (handoff) {
@@ -813,7 +852,7 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
   const resumable = session.provider === "claude-code-cli";
   return {
     ...session,
-    observedStatus: live ? "running" : session.status === "prepared" ? "prepared" : "exited",
+    observedStatus: live ? (session.stall_flagged_at ? "stalled" : "running") : session.status === "prepared" ? "prepared" : "exited",
     live,
     reattachCommand: `tmux attach-session -t ${session.tmux_session_name}`,
     resumeCommand: resumable ? `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}` : null,

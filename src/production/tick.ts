@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
+import { writeTransaction } from "../db/connection.js";
 import { getProjectMetadata } from "../db/repositories.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -13,6 +14,7 @@ import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./poli
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
@@ -20,10 +22,11 @@ import { createId } from "../utils/id.js";
 /**
  * The continuous half of managed production: on every worker tick, while the
  * standing policy is Active, reconcile any repository whose Session died
- * without being observed, admit and launch the next eligible Action for every
- * other eligible repository, and independently notice when a repository's
- * base branch moved for a reason this tick did not itself cause (a human or
- * another host merged its PR). This module owns none of the primitives it
+ * without being observed, flag (never reconcile) a live Session whose tmux
+ * has stopped showing any real progress, admit and launch the next eligible
+ * Action for every other eligible repository, and independently notice when a
+ * repository's base branch moved for a reason this tick did not itself cause
+ * (a human or another host merged its PR). This module owns none of the primitives it
  * calls -- admission, launch, and reconciliation are exactly the same calls a
  * human-triggered `arcadia advance`/`session launch` already makes -- it only
  * decides, once per tick, which repository each of those calls applies to,
@@ -201,6 +204,33 @@ export function runManagedProductionTick(
         if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
+        }
+      } else if (lease) {
+        // tmux is alive; check whether it is actually moving. Neither branch
+        // here touches `lease`/`status`, so the repository lease this Session
+        // holds is untouched either way -- a suspected stall is surfaced, not
+        // reconciled. The flag write and its event are one transaction: if the
+        // event insert failed after the flag alone committed, a later tick
+        // would see `stall_flagged_at` already set and never retry the event.
+        const activity = writeTransaction(db, () => {
+          const observed = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
+          if (observed.newlyStalled) {
+            recordEvent(db, {
+              eventType: "managed_production.session_stalled",
+              projectId: project.id,
+              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
+              at: now.toISOString()
+            });
+          }
+          return observed;
+        });
+        if (activity.newlyStalled) {
+          log(
+            `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
+              `${PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs}ms; flagged stalled. Its repository lease is preserved, pending operator review or bounded repair.`
+          );
+        } else if (activity.recovered) {
+          log(`Session ${lease.id} for ${project.slug} resumed activity; its stalled flag is cleared.`);
         }
       }
     } catch (error) {
