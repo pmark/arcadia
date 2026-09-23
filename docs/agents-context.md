@@ -251,7 +251,7 @@ required everywhere.
 | `milestone` | The Project and active Plan Milestone | No |
 | `plan` | With `target_ref`, amends that Plan's Actions; without one, creates a complete **inactive draft** Plan | No |
 | `action` | Creates or amends Actions in the active Plan and places them in the queue | No |
-| `decision` | Creates one open Decision, optionally with `options` (each a `label`, a `consequence`, and at most one `recommended: true`) | Always |
+| `decision` | Creates one open Decision, optionally with `options` (each a `label`, a `consequence`, and at most one `recommended: true`) | Triaged — see below |
 | `artifact` | Creates one planned Artifact reference | No |
 | `log` | Appends one Project Log entry | No |
 | `proposal` | Preserves evidence only — no executable Action | No |
@@ -268,6 +268,31 @@ per Decision 0042's queue-order rule.
 Give each child Action an explicit `id` — a lowercase hyphenated slug, at most
 64 characters. It becomes the handle typed into `advance queue reorder` and
 `depends_on`, so choosing it deliberately beats accepting a derived one.
+
+### Decision intent triage
+
+A `decision` Ask opens a Decision only when the Constitution's gate test holds
+(CONSTITUTION.md's Authority section): a reasonable person could choose
+differently, or the move resists reversal or reaches outside the work at hand.
+Name which one fires with `gate_question: reasonable_disagreement` or
+`gate_question: resists_reversal`. Naming an approval boundary — merge,
+deploy, publish, spend, credentials, production, or messaging, in
+`desired_result`, `rationale`, or any option's `label`/`consequence` — always
+opens a Decision regardless of `gate_question`, since those are hard stops
+under CONSTITUTION.md's Authority section on their own.
+
+Settlement refuses a `decision` Ask that names neither: apply the recommended
+option yourself and report the assumption in the pull request (typically an
+`intent: log` Ask recording what was applied and why), rather than filing a
+Decision a reasonable person could not actually disagree with. This is what
+Decision 0052 should have been — an agent-answerable reading of an Action's
+own acceptance criteria, with a clear recommendation and nothing a reasonable
+person would weigh differently — and reached the operator anyway.
+
+The Decision document this settlement writes records `gate_question` in its
+frontmatter (`reasonable_disagreement`, `resists_reversal`, or
+`approval_boundary`), so a stale or wrongly triaged Decision is auditable
+after the fact instead of asserted.
 
 ### Three shapes
 
