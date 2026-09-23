@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { activateNextPlan, activatePlan } from "../src/dispatch/planActivationApply.js";
 import { resolvePlanActivation } from "../src/dispatch/planActivation.js";
-import { seedActionOrderFifo } from "../src/dispatch/order.js";
+import { seedActionOrderFifo, arrangeActionOrder } from "../src/dispatch/order.js";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -431,6 +431,36 @@ describe("arcadia go cross-Plan activation", () => {
     // The next worktree is prepared from the base, which carries the activation.
     expect(result.data.nextWorktree?.branch).toContain("b1");
   });
+
+  it("activates on a temporary checkout of baseBranch when the base is unattached", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }] }));
+    commitFixture(repo);
+    const feature = path.join(scratch(), "feature");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "codex/linked", feature], { cwd: repo });
+    writeFileSync(path.join(feature, "proof.txt"), "proof\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: feature });
+    execFileSync("git", ["commit", "-qm", "add proof"], { cwd: feature });
+    // Leave `main` unattached: the primary checkout is on another branch, so no
+    // registered worktree holds the base branch.
+    execFileSync("git", ["switch", "-q", "-c", "unrelated"], { cwd: repo });
+    const workspacePath = workspace(repo);
+
+    const result = runGoCommand({
+      repo,
+      source: feature,
+      apply: true,
+      agent: "codex",
+      workspace: workspacePath,
+      agentWorktreeRoot: path.join(scratch(), "worktrees")
+    });
+
+    expect(result.data.activation?.activation?.actionKey).toBe("demo/b1");
+    expect(execFileSync("git", ["show", "main:PROJECT.md"], { cwd: repo, encoding: "utf8" })).toContain("active_plan: plan-b");
+    expect(result.data.nextWorktree?.branch).toContain("b1");
+  });
 });
 
 describe("queue projection across approved Plans", () => {
@@ -459,7 +489,8 @@ describe("queue projection across approved Plans", () => {
   });
 });
 
-describe("activatePlan receipts", () => {  it("rebuilds a deterministic queue revision and refuses a stale fingerprint", () => {
+describe("activatePlan receipts", () => {
+  it("rebuilds a deterministic queue revision and refuses a stale fingerprint", () => {
     const repo = scratch();
     writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
     writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
@@ -495,5 +526,34 @@ describe("activatePlan receipts", () => {  it("rebuilds a deterministic queue re
         apply: true
       }));
     expect(applied.applied).toBe(true);
+  });
+
+  it("refuses a stale queue revision even when the same Action is still first", () => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", projectDoc({ activePlan: "plan-a", currentAction: "a1" }));
+    writeDoc(repo, "docs/plans/plan-a.md", planDoc({ slug: "plan-a", actions: [{ id: "a1", status: "done" }] }));
+    writeDoc(repo, "docs/plans/plan-b.md", planDoc({ slug: "plan-b", actions: [{ id: "b1" }, { id: "b2" }] }));
+    commitFixture(repo);
+    const workspacePath = workspace(repo);
+    withDatabase(workspacePath, (db) =>
+      arrangeActionOrder(db, { currentKeys: ["demo/b1", "demo/b2"], order: ["demo/b1", "demo/b2"], requestId: "order-1", apply: true }));
+
+    const preview = withDatabase(workspacePath, (db) =>
+      activatePlan(db, { repoRoot: repo, projectSlug: "demo", actionKey: "demo/b1", queueRevision: 1, requestId: "apply-stale" }));
+    // A reorder that leaves b1 first still advances the queue revision.
+    withDatabase(workspacePath, (db) =>
+      arrangeActionOrder(db, { currentKeys: ["demo/b1", "demo/b2"], order: ["demo/b1", "demo/b2"], requestId: "order-2", revision: 1, apply: true }));
+
+    expect(() => withDatabase(workspacePath, (db) =>
+      activatePlan(db, {
+        repoRoot: repo,
+        projectSlug: "demo",
+        actionKey: "demo/b1",
+        queueRevision: 1,
+        requestId: "apply-stale",
+        previewFingerprint: preview.previewFingerprint,
+        apply: true
+      }))).toThrow(/queue revision changed/);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
   });
 });

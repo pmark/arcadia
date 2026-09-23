@@ -166,20 +166,30 @@ export function activatePlan(db: Database.Database, input: {
       remedy: "Check out a branch in the Project repository before applying the Plan activation."
     });
   }
-  let pairWritten = false;
-  try {
-    writeTransaction(db, () => {
-      const currentProject = readFileSync(projectAbsolutePath, "utf8");
-      const currentPlan = readFileSync(planAbsolutePath, "utf8");
-      if (sha256(currentProject) !== receipt.projectBeforeSha256 || sha256(currentPlan) !== receipt.planBeforeSha256) {
-        throw validationError("Plan activation apply does not match the current preview.", {
-          expectedPreviewFingerprint: previewFingerprint,
-          receivedPreviewFingerprint: input.previewFingerprint ?? null,
-          remedy: "Preview activation again, then apply that exact fingerprint against the current queue revision."
-        });
-      }
-      writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
-      pairWritten = true;
+  writeTransaction(db, () => {
+    const currentProject = readFileSync(projectAbsolutePath, "utf8");
+    const currentPlan = readFileSync(planAbsolutePath, "utf8");
+    if (sha256(currentProject) !== receipt.projectBeforeSha256 || sha256(currentPlan) !== receipt.planBeforeSha256) {
+      throw validationError("Plan activation apply does not match the current preview.", {
+        expectedPreviewFingerprint: previewFingerprint,
+        receivedPreviewFingerprint: input.previewFingerprint ?? null,
+        remedy: "Preview activation again, then apply that exact fingerprint against the current queue revision."
+      });
+    }
+    // The queue revision is part of what the preview was computed against. A
+    // reorder between preview and apply that leaves this same Action first
+    // must still refuse, or the recorded receipt would claim an order the
+    // operator never saw.
+    const currentOrder = loadActionOrder(db);
+    if (currentOrder.revision !== input.queueRevision) {
+      throw validationError("Plan activation queue revision changed; refresh before applying.", {
+        actionKey: input.actionKey,
+        expectedRevision: input.queueRevision,
+        actualRevision: currentOrder.revision
+      });
+    }
+    writePairAtomically(projectAbsolutePath, projectBefore, projectAfter, planAbsolutePath, planBefore, planAfter);
+    try {
       const dispatch = resolveDispatch(input.repoRoot, input.projectSlug);
       if (!isDispatchable(dispatch) || dispatch.context?.action.id !== candidate.actionId) {
         throw validationError("Plan activation did not produce dispatchable checked-in truth.", {
@@ -193,17 +203,15 @@ export function activatePlan(db: Database.Database, input: {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(receipt.id, receipt.requestId, receipt.actionKey, previewFingerprint, input.queueRevision,
           input.repoRoot, headBefore, JSON.stringify(receipt), receipt.createdAt);
-    });
-  } catch (error) {
-    // Restore only when this call actually wrote the pair. A compare-and-set
-    // refusal throws before any write, and blindly restoring the pre-read
-    // content then would clobber the concurrent writer that caused the refusal.
-    if (pairWritten) {
-      writeFileSyncSafe(projectAbsolutePath, projectBefore);
-      writeFileSyncSafe(planAbsolutePath, planBefore);
+    } catch (error) {
+      // Undo inside the workspace write interlock, and only the exact content
+      // this call wrote: the CAS re-read above established nobody else moved
+      // these files, so a newer concurrent write can never be clobbered.
+      restorePairIfUnchanged(projectAbsolutePath, receipt.projectAfterSha256, projectBefore,
+        planAbsolutePath, receipt.planAfterSha256, planBefore);
+      throw error;
     }
-    throw error;
-  }
+  });
   const changedPaths = [
     receipt.projectBeforeSha256 === receipt.projectAfterSha256 ? null : receipt.projectPath,
     receipt.planBeforeSha256 === receipt.planAfterSha256 ? null : receipt.planPath
@@ -378,6 +386,32 @@ function writeFileSyncSafe(filePath: string, content: string): void {
     writeFileSync(filePath, content, "utf8");
   } catch {
     // Best-effort restore; the filesystem error is the caller's to surface.
+  }
+}
+
+/**
+ * Restore each document to its pre-write content only when it still holds
+ * exactly what this call wrote. A newer concurrent writer's content is left
+ * alone, so an aborted activation can never clobber it. Called while the
+ * workspace write interlock is held.
+ */
+function restorePairIfUnchanged(
+  projectPath: string,
+  projectAfterSha256: string,
+  projectBefore: string,
+  planPath: string,
+  planAfterSha256: string,
+  planBefore: string
+): void {
+  if (currentSha256(projectPath) === projectAfterSha256) writeFileSyncSafe(projectPath, projectBefore);
+  if (currentSha256(planPath) === planAfterSha256) writeFileSyncSafe(planPath, planBefore);
+}
+
+function currentSha256(filePath: string): string | null {
+  try {
+    return sha256(readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
   }
 }
 
