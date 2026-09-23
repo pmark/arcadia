@@ -638,7 +638,7 @@ actions:
     references: []
   - id: triage-decisions-before-opening
     title: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: A Decision opens only when the Constitution gate test holds (a reasonable person could choose differently, or the move resists reversal or reaches outside the work); otherwise the agent applies its recommendation and reports it in the PR.

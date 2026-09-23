@@ -621,3 +621,9 @@ updated: 2026-09-23
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-build-autonomous-defect-loop-2026-09-23).
 
+## 2026-09-23 — Completed arcadia/triage-decisions-before-opening
+
+- **Did:** Completed Action arcadia/triage-decisions-before-opening from accepted evidence (Candidate 1f28c7338797d67f74e764f395e5e344c2a38588).
+- **Result:** Every declared acceptance criterion was accepted as met: "Decision-intent settlement records which gate question fired, and refuses to open a Decision when neither fires and the move is reversible, converting it into a PR-reported assumption."; "Approval boundaries (merge, deploy, publish, spend, credentials, production, messaging) always open a Decision regardless of triage."; "A fixture shaped like Decision 0052 is reported, not opened.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-triage-decisions-before-opening-2026-09-23).
