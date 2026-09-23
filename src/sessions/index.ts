@@ -202,7 +202,20 @@ export const systemTmux: TmuxAdapter = {
     });
   },
   capturePane(name) {
-    try { return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p", "-S", "-"], { encoding: "utf8" }); } catch { return null; }
+    // -S -2000 bounds the captured scrollback to (at most) tmux's own default
+    // history-limit, rather than the unbounded "-" (whole history): a verbose
+    // long-running command against a raised history-limit could otherwise
+    // exceed execFileSync's buffer and throw on every later tick, permanently
+    // disabling the pane signal for that Session. maxBuffer is raised well
+    // past the default 1 MiB as a second margin against the same failure.
+    try {
+      return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p", "-S", "-2000"], {
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024
+      });
+    } catch {
+      return null;
+    }
   }
 };
 

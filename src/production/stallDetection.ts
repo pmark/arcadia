@@ -77,8 +77,13 @@ export function observeSessionActivity(
 
   // A capture failure/unavailability (paneSignature === null) never counts as
   // a pane change -- only a *successful* capture that differs from the last
-  // one does.
-  const paneChanged = paneSignature !== null && paneSignature !== session.last_pane_signature;
+  // one does. And a successful capture only counts as a change when there was
+  // a prior successful capture to differ from: if every earlier tick's
+  // capture failed (`last_pane_signature` still null), this tick's capture is
+  // establishing the pane baseline for the first time, not observing new
+  // output -- exactly like the very first observation above.
+  const paneEstablishesBaseline = paneSignature !== null && session.last_pane_signature === null;
+  const paneChanged = paneSignature !== null && session.last_pane_signature !== null && paneSignature !== session.last_pane_signature;
   const runChanged = runSignature !== session.last_run_signature;
 
   if (paneChanged || runChanged) {
@@ -87,6 +92,13 @@ export function observeSessionActivity(
       "UPDATE agent_sessions SET last_activity_at = ?, last_pane_signature = ?, last_run_signature = ?, stall_flagged_at = NULL, updated_at = ? WHERE id = ?"
     ).run(nowIso, paneSignature ?? session.last_pane_signature, runSignature, nowIso, session.id);
     return { newlyStalled: false, recovered, stalled: false };
+  }
+
+  if (paneEstablishesBaseline) {
+    // Record the baseline without touching the activity clock or an existing
+    // stall flag -- neither is evidence one way or the other yet.
+    db.prepare("UPDATE agent_sessions SET last_pane_signature = ?, updated_at = ? WHERE id = ?").run(paneSignature, nowIso, session.id);
+    return { newlyStalled: false, recovered: false, stalled: session.stall_flagged_at !== null };
   }
 
   const lastActivityMs = new Date(session.last_activity_at).getTime();

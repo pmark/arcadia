@@ -583,6 +583,52 @@ describe("runManagedProductionTick", () => {
     // Still exactly one -- capture failure did not cause a second flag/event.
     expect(events).toHaveLength(1);
   });
+
+  it("a first-ever successful pane capture after earlier failures only establishes a baseline, never counted as progress", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    tmux.failCapture = true;
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+
+    // Establishes the overall baseline (last_activity_at) with a failed capture.
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+
+    // Crosses the deadline entirely on failed captures (Run state never
+    // changes either), so the Session is flagged on run/receipt grounds alone.
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const flagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(flagged.stall_flagged_at).not.toBeNull();
+    expect(flagged.last_pane_signature).toBeNull();
+
+    // Capture starts succeeding for the very first time. This is our first
+    // ever look at the pane, not evidence anything changed -- it must not
+    // clear the flag or reset the deadline clock.
+    tmux.failCapture = false;
+    tmux.paneOutput.set(session.tmux_session_name, "$ whatever was already on screen\n");
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux,
+        now: new Date(fixture.now.getTime() + 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 60_000),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const stillFlagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(stillFlagged.stall_flagged_at).not.toBeNull();
+    expect(stillFlagged.last_pane_signature).not.toBeNull();
+  });
 });
 
 function recordPassingRun(workspace: string, workItemId: string): void {
