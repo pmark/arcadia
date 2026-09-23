@@ -129,11 +129,14 @@ derivation's correction, `make-go-total-across-plans`,
 `prove-fault-matrix-remaining-boundaries` moved from "open" to "done," which
 removes what used to be the two ordinary code sessions this section named as
 ready today. **Nothing on the critical path is a freely-dispatchable coding
-session right now** — every remaining filed Action is blocked on the deferred
-proof (directly or transitively), and the deferred proof's own trigger
-requires the operator to run it personally. The other 20 unfinished Actions
-are real work, but the unattended claim does not depend on them; "What is
-*not* on the critical path" below names them.
+session right now, but the two remaining blocker chains are not the same
+one:** `prove-zero-prompt-production-loop` (entry 6) and
+`harden-zero-prompt-production-loop` (entry 15) are blocked on **Issue #460**
+— a preflight chain, unrelated to deferral — while entries 8, 11, and 14 are
+blocked on `prove-two-action-unattended-production` itself being `deferred`,
+whose own trigger requires the operator to run it personally. The other 20
+unfinished Actions are real work, but the unattended claim does not depend on
+them; "What is *not* on the critical path" below names them.
 
 Everything here counts individual Action ids, never grouped work items.
 
@@ -204,7 +207,7 @@ previously showed them open.
 | ⬜ | `triage-decisions-before-opening` | Not blocking; off the critical path. |
 | ⬜ | `cut-managed-production-tick-cost` | Not blocking; off the critical path. |
 
-### Gate 5 — Proof ⬜ **open — 4 Actions, all on the critical path, provider capacity required, and now 100% operator-gated**
+### Gate 5 — Proof ⬜ **open — 5 Actions (4 open, 1 deferred), all on the critical path, provider capacity required, and now 100% operator-gated**
 
 Nothing here is code. These are live runs that either happen or do not.
 
