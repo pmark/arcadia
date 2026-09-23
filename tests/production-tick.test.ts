@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -232,10 +232,25 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
-  it("escalates a planning_required refusal to the operator once, and does not repeat the signal on every subsequent tick while it remains unresolved", () => {
+  it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), and never escalates it to the operator", () => {
     const fixture = preparedFixture({ skipPacket: true });
     const tmux = new FakeTmux();
     activatePolicy(fixture);
+
+    // Seed a pre-existing escalation, as if an earlier tick (before this fix,
+    // or an earlier attempt) had already surfaced this exact stall to the
+    // operator. Proving it clears -- not merely that a fresh one is never
+    // created -- is what "clears... through the tick's normal resolution
+    // path" actually requires.
+    withDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/define-contract', 'planning_required', 'stall', 'remedy', ?, ?)`
+        )
+        .run(fixture.now.toISOString(), fixture.now.toISOString())
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
 
     const ticks = [0, 60_000, 120_000].map((offsetMs) => {
       const log = vi.fn();
@@ -258,19 +273,35 @@ describe("runManagedProductionTick", () => {
     }
     expect(tmux.launches).toHaveLength(0);
 
-    // The durable signal is written exactly once, on the tick that first
-    // discovered it -- never on the ticks that follow while it stays unresolved.
-    expect(ticks[0].log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract to the operator \(planning_required\)/));
-    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
-    expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    // The stall is resolved automatically the very first tick that discovers
+    // it -- no human or agent had to notice and run `arcadia work plan` by
+    // hand -- and it is never escalated, on this or any later tick, because
+    // the resulting Decision is already operator-visible through Review.
+    expect(ticks[0].log).toHaveBeenCalledWith(
+      expect.stringMatching(/Automatically requested a Decision-gated planning run for test-project\/define-contract/)
+    );
+    for (const { log } of ticks) {
+      expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    }
+    // Only the first tick does the work; once the Decision exists, later
+    // ticks find `planning_approval_pending` and never re-invoke `work plan`.
+    expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
+    expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
 
-    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
-    expect(escalations).toHaveLength(1);
-    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
-    // firstDetectedAt is pinned to the tick that discovered it, not the most
-    // recent one, proving the row was updated in place rather than replaced.
-    expect(new Date(escalations[0].firstDetectedAt).getTime()).toBe(fixture.now.getTime());
-    expect(new Date(escalations[0].lastSeenAt).getTime()).toBe(fixture.now.getTime() + 120_000);
+    // The pre-existing escalation seeded above is gone: it cleared through the
+    // tick's ordinary escalate/clear branch (the resolved kind is no longer in
+    // the non-self-resolving set), not a bespoke clearing path.
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+
+    // The approval gate itself is preserved, not bypassed: exactly one open
+    // CodexPlanningRunApproval Decision exists, unapproved, for this Action.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const decisions = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db
+        .prepare("SELECT resolved_intent, status FROM review_items WHERE work_item_id = ? ORDER BY created_at ASC")
+        .all(workItem.id)
+    ) as Array<{ resolved_intent: string; status: string }>;
+    expect(decisions).toEqual([{ resolved_intent: "CodexPlanningRunApproval", status: "open" }]);
   });
 
   it("prunes an escalation left over from an Action that is no longer current", () => {
@@ -314,23 +345,27 @@ describe("runManagedProductionTick", () => {
     const tmux = new FakeTmux();
     activatePolicy(fixture);
 
+    // Seed a pre-existing escalation directly rather than by running a tick:
+    // `planning_required` now resolves itself automatically (see the test
+    // above), so this scenario -- an escalation that already exists, from
+    // before this fix or from a resolution attempt that genuinely could not
+    // help -- must be constructed rather than produced as a side effect. The
+    // behavior under test is pruning during a transient wait, independent of
+    // how the row got there.
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
     withDatabase(fixture.workspace, (db) =>
-      runManagedProductionTick(db, fixture.workspace, {
-        profiles,
-        adapters,
-        tmux,
-        now: fixture.now,
-        capacityObservation: fixtureCapacityObservation(),
-        agentWorktreeRoot: fixture.agentWorktreeRoot
-      })
+      db
+        .prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/define-contract', 'planning_required', 'stall', 'remedy', ?, ?)`
+        )
+        .run(fixture.now.toISOString(), fixture.now.toISOString())
     );
-    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
 
     // A competing managed Run now holds the repository -- `resolveProjectTransition`
     // resolves `dispatch` (and therefore the selected Action) before it ever
     // checks for this, so "wait" is a transient state for the *same* Action,
     // not a pointer change, and must not be read as one.
-    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
     recordCompetingManagedRun(fixture.workspace, workItem.id);
 
     const result = withDatabase(fixture.workspace, (db) =>
@@ -351,6 +386,158 @@ describe("runManagedProductionTick", () => {
     const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
+  });
+
+  it("automatically prepares a build packet deterministically when the Action needs no Decision-gated planning run, and reaches launch within a bounded number of ticks", () => {
+    // `runWorkPlanCommand` selects the workspace's own registry default build
+    // profile (`codex_build`/codex-cli) when the Action carries no execution
+    // requirement, which is a different provider than this file's shared
+    // `profiles`/`adapters` fixture (claude-code-cli) -- so this test proves
+    // capacity for the provider the automatic preparation actually binds to.
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const codexScope = normalizeProductionScope({ ...productionScope, providers: ["codex-cli"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-codex",
+        scope: codexScope,
+        scopeFingerprint: fingerprintProductionScope(codexScope),
+        grantedBy: "operator"
+      })
+    );
+    const log = vi.fn();
+
+    const firstResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles: codexProfiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: codexCapacity,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(firstResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/Automatically prepared a build packet for test-project\/define-contract/)
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+
+    // No new prompt scheme was invented: the prepared packet's prompt text
+    // comes from packets.ts's own `renderPrompt` template, the same one every
+    // other packet in this codebase uses.
+    const invocation = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          "SELECT id, prompt_path FROM codex_invocations WHERE work_item_id = ? AND purpose = 'build' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id)
+    ) as { id: string; prompt_path: string };
+    const promptText = readFileSync(path.join(fixture.workspace, invocation.prompt_path), "utf8");
+    expect(promptText).toMatch(/^# Arcadia .* Build Packet/);
+
+    // The build packet still needs its own, pre-existing, unrelated approval
+    // gate (`CodexBuildPacketApproval`) -- this fix never bypasses it. Approve
+    // it exactly as Review already does today, standing in for the operator.
+    withDatabase(fixture.workspace, (db) => {
+      const approval = db
+        .prepare(
+          "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id) as { id: string };
+      updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture approval." });
+    });
+
+    const secondResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles: codexProfiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: codexCapacity,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
+  it("never binds an automatically prepared build packet to a provider the standing policy does not permit", () => {
+    // The workspace's own registry default build profile is `codex_build`
+    // (codex-cli) -- see config/defaults/coding-agent-profiles.json -- but
+    // this file's shared `profiles`/`productionScope` fixture permits only
+    // claude-code-cli. Before requesting a policy-permitted profile up front,
+    // automatic preparation would bind the immutable packet to codex-cli
+    // anyway, report `build_packet_ready`, and clear the escalation -- and
+    // every later tick would then refuse with `provider_not_permitted`
+    // forever, invisibly, because that refusal carries no packetLifecycleKind
+    // and the packet can never rebind itself (CodeRabbit finding, PR #586).
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/Automatically prepared a build packet for test-project\/define-contract/)
+    );
+
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const invocation = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          "SELECT agent_profile FROM codex_invocations WHERE work_item_id = ? AND purpose = 'build' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id)
+    ) as { agent_profile: string };
+    expect(invocation.agent_profile).toBe("claude_build");
+
+    // A second tick, with the resulting CodexBuildPacketApproval approved,
+    // reaches launch on the permitted provider -- proving the packet was
+    // never stuck bound to codex-cli in the first place.
+    withDatabase(fixture.workspace, (db) => {
+      const approval = db
+        .prepare(
+          "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id) as { id: string };
+      updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture approval." });
+    });
+    const secondResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
   });
 
   it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
@@ -993,7 +1180,7 @@ function completeActionInWorktree(worktreePath: string, actionId: string): void 
   git(worktreePath, ["commit", "-m", `complete ${actionId}`]);
 }
 
-function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean } = {}) {
+function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean; buildAction?: boolean } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -1001,7 +1188,7 @@ function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean
   mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
   mkdirSync(path.join(repo, "docs", "decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
-  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), planDocument(options.secondAction ?? false));
+  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), planDocument(options.secondAction ?? false, options.buildAction ?? false));
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.email", "arcadia@example.test"]);
@@ -1122,7 +1309,7 @@ updated: 2026-08-30
 # Test Project
 `;
 
-function planDocument(secondAction: boolean): string {
+function planDocument(secondAction: boolean, buildAction = false): string {
   const second = secondAction
     ? `
   - id: second-action
@@ -1137,6 +1324,12 @@ function planDocument(secondAction: boolean): string {
       - The second thing exists.
     decisions: ["0001"]`
     : "";
+  // `planStepsForWorkItem` routes an "agent" Action to a `codex_build` step
+  // (deterministic, no Decision-gated planning run) only when its title/next
+  // action names an implementation verb; everything else -- including the
+  // default wording below -- routes to `codex_planning` (Decision-gated).
+  const title = buildAction ? "Implement the contract" : "Define the contract";
+  const nextAction = buildAction ? "Implement the bounded contract." : "Define the bounded contract.";
   return `---
 arcadia: v1
 type: plan
@@ -1152,12 +1345,12 @@ recommended_reasoning_effort: high
 updated: 2026-08-30
 actions:
   - id: define-contract
-    title: Define the contract
+    title: ${title}
     status: open
     responsibility: agent
     effort: session
     clarification: clarified
-    next_action: Define the bounded contract.
+    next_action: ${nextAction}
     expected_artifact: docs/contract.md
     acceptance_criteria:
       - The contract exists.

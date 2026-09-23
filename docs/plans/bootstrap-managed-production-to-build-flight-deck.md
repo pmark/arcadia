@@ -1714,7 +1714,7 @@ actions:
     references: ["src/production/tick.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/issues/576"]
   - id: auto-resolve-planning-required
     title: When the dispatch pointer's current Action has no build packet (packetLifecycle.kind === "planning_required"), Arcadia automatically prepares one using the existing consistent packet-template machinery in src/codex/packets.ts (renderPrompt), or automatically requests the Decision-gated real planning run when the Action genuinely needs one -- rather than leaving the Action silently or visibly stuck until a human or agent notices.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: When the dispatch pointer's current Action has no build packet (packetLifecycle.kind === "planning_required"), Arcadia automatically prepares one using the existing consistent packet-template machinery in src/codex/packets.ts (renderPrompt), or automatically requests the Decision-gated real planning run when the Action genuinely needs one -- rather than leaving the Action silently or visibly stuck until a human or agent notices.
