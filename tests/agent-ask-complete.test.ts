@@ -530,7 +530,7 @@ describe("Agent Ask complete — the settling worktree's own Action claim", () =
     });
   });
 
-  it("releases the worktree's claim in the same settlement that completes its Action, keeping the reservation", () => {
+  it("keeps the worktree's claim through a candidate completion, so go cannot re-dispatch the Action before merge", () => {
     const { workspace, repo } = fixture();
     const candidate = claimedCandidate(repo, workspace, "candidate-right-action", "first");
     const proposal = runAgentAskPreviewCommand({
@@ -546,15 +546,16 @@ describe("Agent Ask complete — the settling worktree's own Action claim", () =
     });
 
     expect(applied.data.receipt.applied).toBe(true);
-    expect(applied.data.receipt.effects.join(" ")).toContain("Released this worktree's claim on demo/first.");
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("Released this worktree's claim");
     expect(actionStatus(candidate.path, "first")).toBe("done");
+    // Issue #538: the completion exists only on the candidate branch. The base
+    // checkout's pointer still names `first` until the pull request merges, so
+    // the claim must survive or the next `go` hands `first` to a second worktree.
+    expect(actionStatus(repo, "first")).toBe("open");
     withDatabase(workspace, (db) => {
-      // Released by the settlement itself, not by the 24-hour TTL -- and the
-      // worktree reservation survives it, so `tidy` still refuses to retire the
-      // finished candidate out from under the operator before it is handed off.
-      expect(getActiveActionClaim(db, repo, "demo", "first", CLAIM_NOW)).toBeNull();
+      expect(getActiveActionClaim(db, repo, "demo", "first", CLAIM_NOW)?.claim_generation).toBe(candidate.generation);
       expect(getActiveWorktreeReservation(db, repo, candidate.path, CLAIM_NOW)).toMatchObject({
-        action_id: null, claim_generation: null, branch: "claude/candidate-right-action"
+        action_id: "first", branch: "claude/candidate-right-action"
       });
     });
   });

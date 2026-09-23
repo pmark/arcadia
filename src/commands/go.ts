@@ -714,14 +714,22 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     });
   }
 
+  // After a queue-walk fallback, describe the Action this call dispatched, not
+  // the pointer's. The pointer's Action is the one another live worktree
+  // holds, and a `transition` naming it sent a session into that peer's
+  // worktree even though `nextWorktree` named the fallback (Issue #526).
+  // Assigned inside the claim transaction's callback, which TypeScript's
+  // narrowing cannot see, so widen it back to its declared type.
+  const transitionActionId = (queueFallback as GoCommandData["queueFallback"])?.actionId;
   const transition = options.workspace
     ? withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) => resolveProjectTransition({
         repoRoot: dispatchRoot,
         projectSlug,
         db,
-        tmux: options.tmux ?? systemTmux
+        tmux: options.tmux ?? systemTmux,
+        actionId: transitionActionId
       }))
-    : resolveProjectTransition({ repoRoot: dispatchRoot, projectSlug });
+    : resolveProjectTransition({ repoRoot: dispatchRoot, projectSlug, actionId: transitionActionId });
 
   return createSuccess({
     command: "go",

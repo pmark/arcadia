@@ -103,6 +103,10 @@ describe("arcadia go — one ready Action per concurrent session", () => {
     expect(second.dispatch.context?.action.id).toBe("gamma");
     expect(second.queueFallback).toMatchObject({ pointerActionId: "alpha", actionId: "gamma" });
     expect(second.nextWorktree?.branch).toMatch(/^claude\/gamma-\d{8}T\d{9}Z$/);
+    // Issue #526: every part of the response names the dispatched Action. A
+    // `transition` still naming alpha sent a session into alpha's live worktree.
+    expect(first.transition.dispatch.context?.action.id).toBe("alpha");
+    expect(second.transition.dispatch.context?.action.id).toBe("gamma");
 
     // `current_action` never moved; it is still a single value naming alpha.
     expect(readPointer(fixture)).toBe("current_action: alpha");
