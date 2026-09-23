@@ -584,6 +584,74 @@ describe("arcadia go — base branch remote sync", () => {
     expect(git(fixture.main, ["log", "--format=%s", "main"])).toContain("remote-only commit");
   });
 
+  it("re-resolves the pointer Action from the fetched base when no worktree sits on it, instead of a stale already-integrated checkout", () => {
+    // Regression for GitHub Issue #511: another session settles the pointer
+    // Action and pushes, while this session's own (already-integrated, never
+    // advanced) source worktree stays frozen at the pre-settlement content --
+    // and no worktree is checked out on `main` locally to have picked up the
+    // fetch, so `projectRoot` used to fall back to that stale source.
+    const fixture = createFixtureWithRemote("claude/stale-checkout");
+    settleNextAction(fixture.remote);
+    // Park the primary checkout off `main`, exactly as a live agent worktree
+    // would leave it: nothing local is checked out on the base branch.
+    git(fixture.main, ["switch", "-c", "claude/unrelated-parking"]);
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace
+    });
+
+    expect(result.data.integration).toBe("already-integrated");
+    expect(result.data.baseWorktree).toBeNull();
+    // The stale checkout never names `define-contract`: re-resolved from the
+    // truly current (fetched) base, the pointer is `dispatch-next`, and a
+    // worktree is claimed for that Action, not a duplicate of settled work.
+    expect(result.data.dispatch.context?.action.id).toBe("dispatch-next");
+    expect(result.data.queueFallback).toBeNull();
+    expect(result.data.nextWorktree).not.toBeNull();
+    expect(result.data.nextWorktree?.branch).toContain("dispatch-next");
+    expect(result.data.nextWorktree?.branch).not.toContain("define-contract");
+  });
+
+  it("refuses outright, claiming no worktree, when the fetched base no longer resolves the pointer Action as dispatchable at all", () => {
+    const fixture = createFixtureWithRemote("claude/stale-checkout-done");
+    const donePlan = planDocument.replace("status: in_progress", "status: done");
+    writeFileSync(path.join(fixture.remote, "docs", "plans", "copy-proof.md"), donePlan);
+    git(fixture.remote, ["add", "docs/plans/copy-proof.md"]);
+    git(fixture.remote, ["commit", "-m", "mark define-contract done without repointing current_action"]);
+    git(fixture.main, ["switch", "-c", "claude/unrelated-parking"]);
+    const agentRoot = path.join(fixture.root, "agent-worktrees");
+    const worktreeCountBefore = git(fixture.main, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.feature,
+        apply: true,
+        agent: "claude",
+        workspace: fixture.workspace,
+        agentWorktreeRoot: agentRoot
+      }),
+      "no longer dispatchable"
+    );
+
+    expect(failure.details).toMatchObject({ staleActionId: "define-contract" });
+    // No worktree and no DB claim were created for the refused Action: the
+    // agent worktree root that would have held one was never populated, and
+    // the repository's registered worktree count never grows past whatever
+    // the (unrelated) Git reconciliation above already retired.
+    expect(existsSync(agentRoot)).toBe(false);
+    const worktreeCountAfter = git(fixture.main, ["worktree", "list", "--porcelain"])
+      .split("\n").filter((line) => line.startsWith("worktree ")).length;
+    expect(worktreeCountAfter).toBeLessThanOrEqual(worktreeCountBefore);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get())).toEqual({ n: 0 });
+  });
+
   it("reconciles recognized governed base commits before issuing the prepared-worktree receipt", () => {
     const fixture = createFixtureWithRemote("claude/diverged-base");
     writeFileSync(path.join(fixture.remote, "remote-one.txt"), "remote one\n");
