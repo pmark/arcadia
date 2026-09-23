@@ -1,0 +1,16 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-bind-preservation-checks-to-host-owned-code-2026-09-23b",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/bind-preservation-checks-to-host-owned-code",
+  "candidate_revision": "e1a64a6fa7651dfba6ad75adde5d97e40037dcd3",
+  "desired_result": "Mark bind-preservation-checks-to-host-owned-code done: a candidate can no longer pass preservation by rewriting the code its declared check executes.",
+  "rationale": "src/sessions/preservationCheckBinding.ts binds each declared command's resolved script file and its static relative-import closure to the authorized base revision; validateBoundCandidate refuses a candidate whose bound files differ from the base before running anything. Deterministic tests cover both the neutered-check refusal and the unchanged-check pass; the native host suite still passes including the write-target case. pnpm test, pnpm build and the dashboard build all pass.",
+  "evidence": [
+    { "criterion": "A candidate can no longer pass protected preservation by rewriting the code its declared check executes: the check definition or its content digest is bound to the authorized packet, and a candidate that changes it is refused with a named reason.", "status": "met", "note": "src/sessions/preservationCheckBinding.ts binds each declared command's resolved script and its relative-import closure to base_revision/baseRevision; validateBoundCandidate refuses before executing anything with a named path and command. Test: tests/preservation-validation.test.ts 'refuses a candidate that neutered its own declared check...'" },
+    { "criterion": "The chosen enforcing mechanism is a host-owned checker or a content digest bound to the authorized packet, recorded with its security boundary; documentation-only treatment is explicitly out of scope because it cannot refuse a rewritten check.", "status": "met", "note": "Content-digest binding (Git blob comparison against the authorized base revision), executed in code, not documentation. Security boundary recorded in the module's header comment and in docs/reports/protected-preservation-qa.md's new dated section." },
+    { "criterion": "Deterministic tests cover a candidate that neuters its check (refused, candidate files preserved) and an unchanged candidate (preserved), per contract 20's negative-case requirement.", "status": "met", "note": "tests/preservation-validation.test.ts: 'refuses a candidate that neutered its own declared check...' (refused, check.mjs left as the candidate wrote it, no commit) and 'binds an unchanged candidate's check to the authorized base without refusing it' (no throw)." },
+    { "criterion": "`pnpm test` and the core, Discord and Dashboard builds pass.", "status": "met", "note": "pnpm test: 2042 passed, 15 skipped, 1 unrelated flake (packageBoundary.test.ts beforeAll timeout under load, passes standalone in 195ms). pnpm build (lint+tsc+discord-bot): exit 0. pnpm --filter arcadia-dashboard build: exit 0." }
+  ]
+}

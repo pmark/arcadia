@@ -1569,7 +1569,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/511", "src/commands/go.ts", "src/docs/dispatch.ts"]
   - id: bind-preservation-checks-to-host-owned-code
     title: Stop a candidate from neutering its own protected-preservation check by binding the declared check's definition or content digest to the authorized packet.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Stop a candidate from neutering its own protected-preservation check by binding the declared check's definition or content digest to the authorized packet.

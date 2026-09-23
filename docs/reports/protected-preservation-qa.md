@@ -284,3 +284,175 @@ Original implementation evidence:
 The installed production worker and global broker were not upgraded by this
 work. Integration, acceptance, completion and pointer advancement remain
 separate governed operations. The implementation Action remains open for review.
+
+## Bind declared checks to the authorized packet (Action `bind-preservation-checks-to-host-owned-code`, GitHub Issue #326)
+
+The prior "not adopted" note above left `validateBoundCandidate` binding each
+declared command's *text* to the packet, not the content it executes — a
+candidate that replaced `scripts/preservation-self-check.mjs` with
+`process.exit(0)` still passed, because the check ran from the candidate's own
+materialized tree (`src/sessions/preservationValidation.ts:62-104` at the time
+Issue #326 was filed).
+
+**Chosen mechanism:** a content-digest binding, not a new host-owned checker
+process. `src/sessions/preservationCheckBinding.ts` resolves, for each declared
+command, the script file it actually executes — the command's own path if run
+directly, or the positional argument following a known interpreter
+(`node`/`python3`/`sh`/`bash`/…) — plus that file's static relative
+`import`/`export from`/`import()`/`require()` closure, all read from the
+*authorized base revision* (the Session lease's `base_revision`, or the manual
+Go binding's `baseRevision`), never from the candidate. `validateBoundCandidate`
+calls this before running anything: every bound file's Git blob at the base
+must equal what the candidate tree has (or both absent); any difference is
+refused by name (`Candidate changed \`<path>\`, which declared preservation
+check \`<command>\` executes; a candidate cannot rewrite the check that judges
+it.`) with no check executed and nothing committed.
+
+**Security boundary, stated plainly:** this binds the command's named files and
+their static relative-import closure as read from the trusted base. It does
+not cover data the check reads by design (the candidate content it judges — a
+check inspecting `marker.txt` is meant to see the candidate's `marker.txt`,
+which is why only the resolved *executed script*, not every path-shaped
+argument, is bound), specifiers computed at run time (dynamic string
+concatenation into `require()`), or interpreter configuration such as
+`package.json` `"type"`. Changing a genuine check therefore requires landing
+the change on the base branch first, then preparing and authorizing a fresh
+packet — the same path any other candidate change to shared checks already
+requires. Documentation-only treatment was explicitly rejected: it cannot
+refuse a rewritten check, which is the entire defect Issue #326 reported.
+
+Evidence (2026-09-23, prepared claude candidate at base `7f4f9c94`):
+
+- Deterministic suite (`preservation-validation`, `preservation-checks`,
+  `manual-preservation`): 3 files passed, 28 passed, 7 native skips (skip by
+  design off the host). Includes two new cases: a candidate that neuters its
+  declared check (`process.exit(0)` in place of `check.mjs`) is refused before
+  execution with the named reason, and the candidate's own files are left
+  untouched — no repair, no fabricated commit; a second candidate that leaves
+  its check unchanged binds without refusal.
+- Native Seatbelt suite run explicitly on the host
+  (`ARCADIA_PRESERVATION_HOST_TEST=1`): 4 files passed, 58 passed, including
+  the pre-existing "refuses failed checks and source-writing checks" case,
+  which exercises a declared check that writes into a tracked data file
+  (`printf forged > marker.txt`) — confirming the binding does not refuse a
+  check's own write/output targets, only the script it executes.
+- `pnpm test`: 2042 passed, 15 skipped, 1 unrelated failure
+  (`test/intelligence/packageBoundary.test.ts`'s `beforeAll` build hook timed
+  out under load; passes standalone in 195ms — host contention, not a
+  regression, matching the pattern already noted above for CLI-spawn suites).
+- `pnpm build` (lint, `tsc -p tsconfig.json`, Discord bot build) and
+  `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up (2026-09-23, PR #552):
+
+- CodeRabbit's Advanced-Tier security pass found four real closure gaps in
+  the first cut of `preservationCheckBinding.ts`, all fixed in the same
+  candidate: a launcher wrapper (`env node check.mjs`) left the script
+  unidentified and the check unbound entirely, the tightest of the four,
+  since it silently ran the declared check with no protection at all rather
+  than narrowly missing one helper file; `REQUIRE_PROBES` missed a directory
+  `require("./rules")` resolving to `rules/index.json`; the relative-import
+  regex missed a specifier preceded by a `/* comment */`; and a directly
+  invoked Python check's same-directory `import helper` closure was not
+  traced at all. `LAUNCHER_TOKENS` (mirroring `preservationChecks.ts`'s own
+  launcher handling), the widened `REQUIRE_PROBES`, a comment-tolerant
+  `RELATIVE_SPECIFIER`, and a new same-directory Python import walk close all
+  four; `tests/preservation-check-binding.test.ts` adds one regression case
+  per gap (unchanged binds, rewritten refuses). The module's header comment
+  states the resulting boundary plainly, including what remains uncovered by
+  design (inline interpreter code, a dotted Python package import, an
+  unidentifiable bare system command).
+- A fifth finding asked the archived settlement record
+  (`.arcadia/asks/archive/agent-ask-complete-bind-preservation-checks-to-host-owned-code-2026-09-23b.yaml`)
+  and its paired `MISSION_LOG.md` entry to be corrected to a zero-failure
+  `pnpm test` run. Those are immutable settled governance records per
+  `AGENTS.md`'s "Asking Arcadia to change Project state" — hand-editing a
+  landed completion record to read differently after the fact would
+  misrepresent what was actually observed at settlement time, which is worse
+  than the informational gap it would fix. The record already disclosed the
+  one failure and its cause rather than hiding it. This section is the
+  correct place for the superseding evidence instead: `pnpm test` immediately
+  after this review round ran clean — **2050 passed, 13 skipped, 0
+  failures** — confirming the earlier failure was exactly the transient host
+  contention it was recorded as.
+- Re-validation after the four fixes: focused suite
+  (`preservation-check-binding` — new, `preservation-validation`,
+  `preservation-checks`, `manual-preservation`, `candidate-preservation`,
+  `preserve-on-exit-and-integrate`) with `ARCADIA_PRESERVATION_HOST_TEST=1`:
+  6 files passed, 69 passed. Full `pnpm test`: 2050 passed, 13 skipped, 0
+  failures. `pnpm build` and `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up round 2 (2026-09-23, PR #552):
+
+- CodeRabbit's second pass found two more real closure gaps in the round-1
+  fix: a directory `require("./rules")` whose target resolves through
+  `rules/package.json`'s `"main"` field rather than an index file left that
+  manifest and its resolved entry unbound, and a comma-separated Python
+  `import verifier, bypass` bound only the first name, leaving `bypass.py`
+  free for a candidate to rewrite. Both closed: `visitDirectoryImport` now
+  binds the directory's `package.json` and, when present, one level of its
+  resolved `"main"` entry (a manifest chaining to another manifest is not
+  followed further — documented as a boundary, not silently assumed away);
+  the Python import walk now binds every entry in a comma-separated `import`
+  list, each stripped of an `as` alias and dotted-package suffix.
+  `tests/preservation-check-binding.test.ts` gained two more cases proving
+  both the new binding and the refusal on a rewrite of the newly bound file.
+- Fixing round 1's `env` launcher example inside a header comment
+  (`` `import "./rules"` ``) tripped Arcadia's own declared preservation
+  check, `scripts/preservation-self-check.mjs`: its relative-import scanner
+  is comment-blind, so prose that reads like an import statement is
+  indistinguishable from a real one. Reworded the comment to state the
+  example without that literal shape; `node scripts/preservation-self-check.mjs`
+  now passes (1152 files inspected) and `tests/preservation-self-check.test.ts`
+  passes. This is itself a small, live instance of the exact class of problem
+  this Action closes: a check that judges source by pattern-matching text, not
+  by parsing it, and a good reason declaring-check authors should keep
+  examples of import-like syntax out of scanned comments.
+- Re-validation: focused suite (7 files, including the two new cases) with
+  `ARCADIA_PRESERVATION_HOST_TEST=1`: 71 passed. Full `pnpm test`: 2052
+  passed, 13 skipped, 0 failures. `pnpm build` and
+  `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up round 3 (2026-09-23, PR #552, the CodeRabbit loop's final
+fix round before its cap):
+
+- CodeRabbit's third pass found round 2's own regex-based comma-list capture
+  silently stopped at an `as` alias inside a Python `import` list
+  (`import verifier as v, bypass` bound only `verifier.py`), that a
+  same-directory Python import resolving to a *package* (`helper/__init__.py`)
+  rather than a same-named module was never bound, and that `REQUIRE_PROBES`
+  omitted a native `.node` addon resolution. All three closed, the first two
+  with a deliberately narrower approach than another incremental regex patch:
+  rather than keep widening one fragile pattern, a bare Python `import` line
+  is now matched in full against a strict single-line grammar (a
+  comma-separated, alias-tolerant, dotted-name list with nothing else on the
+  line); a line that does not match that grammar exactly — a trailing
+  backslash continuation, any other construct — is **refused outright**
+  (`Cannot establish the Python import closure for ...`) rather than silently
+  partially bound. This is the fail-closed alternative CodeRabbit itself
+  offered ("reject any import statement the scanner cannot fully bind") and
+  it closes the whole class of comma/alias/continuation gaps at once instead
+  of chasing the next one a fourth time. Same-directory Python resolution now
+  always binds both `module.py` and `module/__init__.py` unconditionally, and
+  `REQUIRE_PROBES` gained `.node`/`/index.node`.
+  `tests/preservation-check-binding.test.ts` gained four more cases: an
+  aliased entry before a later comma now binds correctly, a backslash
+  continuation is refused rather than silently under-bound, a package
+  `__init__.py` binds and its rewrite is refused, and a native addon binds
+  and its rewrite is refused.
+- A transient failure in `tests/preservation-validation.test.ts`'s "refuses
+  worktree mutation during validation" during one `ARCADIA_PRESERVATION_HOST_TEST=1`
+  run was investigated rather than dismissed on sight, since it followed a
+  code change: it passed in isolation and in three repeated full-file runs
+  both before and after this round's diff, at the same duration either way
+  (~17-21s), and does not exercise any code path this round touched (the
+  fixture's declared check is JS, not Python, and its script content is
+  unchanged between base and candidate). Concluded host contention — this
+  environment runs several concurrent background `arcadia` worker processes
+  outside this session's control — not a regression, and not reproducible on
+  retry.
+- Re-validation: focused suite (7 files, including the four new cases) with
+  `ARCADIA_PRESERVATION_HOST_TEST=1`: 78 passed (three repeated full-file runs
+  of `preservation-validation.test.ts` alone, 12/12 each). Full `pnpm test`:
+  2056 passed, 13 skipped, 0 failures. `pnpm build` and
+  `pnpm --filter arcadia-dashboard build`: exit 0.

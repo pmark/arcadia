@@ -11,6 +11,7 @@ import { readProductionPolicy } from "../production/policy.js";
 import { findPromotionDecision, type AgentSession } from "./index.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
+import { bindCheckDefinitions } from "./preservationCheckBinding.js";
 
 export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession) {
   const current = db.prepare("SELECT * FROM agent_sessions WHERE id = ?").get(lease.id) as AgentSession | undefined;
@@ -55,14 +56,16 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
  * Unsupported hosts fail closed; this is not a general command execution API. */
 export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession) {
   const binding = preservationAuthority(db, workspace, lease);
-  return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, commands: binding.commands }, binding, () => {
+  return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, base: lease.base_revision, commands: binding.commands }, binding, () => {
     if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
   });
 }
 
-export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; commands: string[] }, binding: T, assertBinding: () => void) {
+export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; base: string; commands: string[] }, binding: T, assertBinding: () => void) {
   assertBinding();
   const tree = snapshotCandidate(candidate.worktree);
+  // Refuse before executing anything: a check the candidate rewrote cannot judge it.
+  const checkDefinition = bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
   if (process.platform !== "darwin") throw validationError("Protected preservation validation currently requires the macOS Seatbelt host.");
   const evidenceRoot = path.join(workspace, "artifacts", "preservation", candidate.id);
   mkdirSync(evidenceRoot, { recursive: true });
@@ -90,12 +93,12 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
       return { command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
         stdout: run.stdout, stderr: run.stderr };
     });
-    const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
+    const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, checkDefinition, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
     writeFileSync(evidenceRef, JSON.stringify(evidence, null, 2), { mode: 0o600 });
     if (results.some(r => r.exitStatus !== 0 || r.error || r.signal)) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef });
     assertBinding();
     if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
-    return { passed: true, evidenceRef, candidateFingerprint: tree, binding };
+    return { passed: true, evidenceRef, candidateFingerprint: tree, checkDefinition, binding };
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
     rmSync(root, { recursive: true, force: true });
