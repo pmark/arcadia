@@ -1694,6 +1694,24 @@ actions:
     depends_on: [preflight-provider-signin-before-launch]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/568"]
+  - id: escalate-nonrecoverable-launch-refusals
+    title: Distinguish a non-self-resolving launch refusal (starting with planning_required) from a transient wait-state conflict, and surface it to the operator instead of retrying silently forever.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Distinguish a non-self-resolving launch refusal (starting with planning_required) from a transient wait-state conflict, and surface it to the operator instead of retrying silently forever.
+    expected_artifact: Evidence satisfying Agent Ask escalate-nonrecoverable-launch-refusals
+    clarification: clarified
+    confidence: high
+    source: Agent Ask escalate-nonrecoverable-launch-refusals-2026-09-23
+    acceptance_criteria:
+      - production/tick.ts's conflict-refusal handling classifies planning_required, and any other refusal whose remedy requires an operator or agent action rather than the passage of time, separately from capacity/Off/stale-preview/lease conflicts.
+      - A non-self-resolving refusal is surfaced once per a bounded window (not on every tick) through a durable, operator-visible signal -- the existing /runs terminal-approvals surface or an equivalent named mechanism -- rather than appearing only as routine worker.out.log noise.
+      - "A deterministic test reproduces both cases: a transient conflict (e.g. capacity) keeps retrying silently exactly as today; a planning_required refusal is surfaced once and does not repeat the same signal on every subsequent tick while it remains unresolved."
+      - pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/production/tick.ts", "src/sessions/launch.ts", "https://github.com/pmark/arcadia/issues/576"]
 questions: []
 decisions: []
 current_action: register-agent-workspace-trust
