@@ -624,8 +624,19 @@ function clearLaunchBlocker(db: Database.Database, projectSlug: string): void {
  * Read-only projection of every Project's current launch blocker, for
  * `arcadia production status`. A Project absent here is not currently
  * refused for a durable reason -- it may simply not have been considered yet.
+ *
+ * `arcadia production status` opens the database read-only and never applies
+ * migrations itself, so a workspace whose database predates this table (and
+ * has had no writable connection open since) would otherwise see this throw
+ * "no such table" instead of an empty, honest status. Guard on
+ * `sqlite_master` rather than assuming the table always exists.
  */
 export function listLaunchBlockers(db: Database.Database): LaunchBlockerRecord[] {
+  const tableExists = db
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_launch_blockers'`)
+    .get();
+  if (!tableExists) return [];
+
   const rows = db
     .prepare(
       `SELECT project_slug, code, reason, action_key, observed_at
