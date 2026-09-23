@@ -72,8 +72,24 @@ export function prepareAgentWorktree(input: {
     // created; left behind, a retry with the same `input.now` (the stamp
     // that names both) fails at `git worktree add -b` on a branch that
     // already exists, masking the real cause behind an unrelated Git error.
-    tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", worktreePath]);
-    tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "branch", "-D", branch]);
+    // Report a cleanup failure alongside the original one instead of
+    // recommending a plain retry over state that is still sitting there.
+    const worktreeRemoved = tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", "--force", worktreePath]) !== null;
+    const branchRemoved = tryGit(input.repositoryPath, ["-c", "core.hooksPath=/dev/null", "branch", "-D", branch]) !== null;
+    if (!worktreeRemoved || !branchRemoved) {
+      const original = error as { message?: string; details?: Record<string, unknown> };
+      throw validationError("Could not pre-trust the prepared worktree's mise.toml, and cleanup after that failure did not fully complete.", {
+        ...(original.details ?? {}),
+        originalError: original.message ?? String(error),
+        worktreePath,
+        branch,
+        worktreeRemoved,
+        branchRemoved,
+        remedy: `${worktreeRemoved ? "" : `Remove the leftover worktree at ${worktreePath} `}` +
+          `${branchRemoved ? "" : `${worktreeRemoved ? "Remove" : "and remove"} the leftover branch ${branch} `}` +
+          "by hand, resolve the original mise trust failure above, then retry preparation."
+      });
+    }
     throw error;
   }
   return candidate;
