@@ -237,6 +237,21 @@ describe("runManagedProductionTick", () => {
     const tmux = new FakeTmux();
     activatePolicy(fixture);
 
+    // Seed a pre-existing escalation, as if an earlier tick (before this fix,
+    // or an earlier attempt) had already surfaced this exact stall to the
+    // operator. Proving it clears -- not merely that a fresh one is never
+    // created -- is what "clears... through the tick's normal resolution
+    // path" actually requires.
+    withDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/define-contract', 'planning_required', 'stall', 'remedy', ?, ?)`
+        )
+        .run(fixture.now.toISOString(), fixture.now.toISOString())
+    );
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+
     const ticks = [0, 60_000, 120_000].map((offsetMs) => {
       const log = vi.fn();
       const result = withDatabase(fixture.workspace, (db) =>
@@ -273,6 +288,9 @@ describe("runManagedProductionTick", () => {
     expect(ticks[1].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
     expect(ticks[2].log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically/));
 
+    // The pre-existing escalation seeded above is gone: it cleared through the
+    // tick's ordinary escalate/clear branch (the resolved kind is no longer in
+    // the non-self-resolving set), not a bespoke clearing path.
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
 
     // The approval gate itself is preserved, not bypassed: exactly one open
