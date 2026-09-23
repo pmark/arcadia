@@ -116,6 +116,19 @@ export function ensureProductionTickTables(db: Database.Database): void {
 }
 
 /**
+ * Whether the standing policy authorizes managing `projectSlug` right now.
+ * Re-read rather than snapshotted: the tick blocks for minutes between the
+ * scheduling pass and each Project, so a policy narrowed mid-tick must apply to
+ * the Projects not yet processed. With no Active policy there is no scope
+ * filter and every active Project is eligible.
+ */
+function projectInActiveScope(db: Database.Database, projectSlug: string): boolean {
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok" || read.policy.desiredState !== "active") return true;
+  return (read.policy.scope?.projects ?? []).includes(projectSlug);
+}
+
+/**
  * Run one managed-production tick across every active Project. Never throws
  * for an individual repository's failure -- a broken or refused repository is
  * reported in its own result entry so one Project's trouble never stops the
@@ -140,9 +153,6 @@ export function runManagedProductionTick(
   // refusal. Reconciliation of an already-live Session is a safety path, not
   // management, so it still runs for every active Project and a Session that
   // predates the current grant is never left unreconciled.
-  const scopedProjectSlugs =
-    active && policyRead.status === "ok" ? policyRead.policy.scope?.projects ?? [] : null;
-  const inScopeProjects = scopedProjectSlugs === null ? null : new Set(scopedProjectSlugs);
 
   // Scheduling runs first: reconcile each linked GitHub board and point every
   // Project at its canonical next Action, so admission below launches what the
@@ -169,10 +179,9 @@ export function runManagedProductionTick(
       continue;
     }
     const repoRoot = path.resolve(configuredPath);
-    const projectInScope = inScopeProjects === null || inScopeProjects.has(project.slug);
 
     let baseBranchAdvance: BaseBranchAdvanceObservation | null = null;
-    if (projectInScope) {
+    if (projectInActiveScope(db, project.slug)) {
       try {
         baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
       } catch (error) {
@@ -252,8 +261,12 @@ export function runManagedProductionTick(
     }
 
     let launch: ManagedProductionLaunchAttempt | null = null;
-    const mayLaunch = active && projectInScope;
-    if (active && !projectInScope) {
+    // Re-read the policy: the tick can block for minutes between the scheduling
+    // pass and this Project's launch decision, so a grant narrowed mid-tick
+    // must take effect here rather than being frozen at the tick's start.
+    const launchInScope = projectInActiveScope(db, project.slug);
+    const mayLaunch = active && launchInScope;
+    if (active && !launchInScope) {
       // Outside the standing grant: no preview, no admission, no refusal line.
       // Nothing is resolved or spawned for it here; the reconciliation above
       // has already done the only work an out-of-scope Project is owed.

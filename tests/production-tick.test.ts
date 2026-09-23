@@ -240,6 +240,12 @@ describe("runManagedProductionTick", () => {
     recordPassingRun(fixture.workspace, session.work_item_id);
     tmux.live.delete(session.tmux_session_name);
 
+    // Advance the governed base branch independently of the Session worktree,
+    // so a tick that still observed out-of-scope Projects would report it.
+    writeFileSync(path.join(fixture.repo, "EXTERNAL.md"), "merged externally\n");
+    git(fixture.repo, ["add", "EXTERNAL.md"]);
+    git(fixture.repo, ["commit", "-m", "external merge"]);
+
     const log = vi.fn();
     const second = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
@@ -253,6 +259,8 @@ describe("runManagedProductionTick", () => {
     // evidenced candidate is classified resumable rather than accepted.
     expect(project.reconciled).toHaveLength(1);
     expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    // Base-branch observation was skipped entirely for the out-of-scope Project.
+    expect(project.baseBranchAdvance).toBeNull();
     // But no launch was attempted and no misleading refusal was logged.
     expect(project.launch).toMatchObject({ attempted: false, outcome: "skipped" });
     expect(project.launch?.reason).toMatch(/outside the standing production policy scope/);
