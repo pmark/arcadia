@@ -2,6 +2,7 @@ import type {
   ClarificationConfidence,
   ClarificationStatus,
   GapType,
+  GateQuestion,
   ProjectStatus,
   WorkClassification,
   WorkItemStatus
@@ -231,6 +232,8 @@ export interface DecisionDoc extends DocLocation {
   status: DecisionDocStatus;
   question: string;
   gapType: GapType | null;
+  /** Which Constitution gate question justified opening this Decision. Null for a Decision predating triage. */
+  gateQuestion: GateQuestion | null;
   recommendation: string | null;
   /** Ordered choices the Decision is between. Empty when the Ask offered none. */
   options: DecisionOptionDoc[];

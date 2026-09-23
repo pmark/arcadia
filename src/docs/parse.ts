@@ -3,6 +3,7 @@ import {
   CLARIFICATION_CONFIDENCE_LEVELS,
   CLARIFICATION_STATUSES,
   GAP_TYPES,
+  GATE_QUESTIONS,
   MILESTONE_STATUSES,
   PROJECT_STATUSES,
   WORK_CLASSIFICATIONS,
@@ -268,6 +269,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
         problems.add("question", "`question` is required, or state it as the document's first `#` heading.");
       }
       const gapType = optionalEnum(problems, data, "gap_type", GAP_TYPES);
+      const gateQuestion = optionalEnum(problems, data, "gate_question", GATE_QUESTIONS);
       const confidence = optionalEnum(problems, data, "confidence", CLARIFICATION_CONFIDENCE_LEVELS);
       const decided = optionalDate(problems, data, "decided");
 
@@ -295,6 +297,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           status: status as never,
           question: question!,
           gapType: gapType as never,
+          gateQuestion: gateQuestion as never,
           recommendation: optionalString(data, "recommendation"),
           options,
           confidence: confidence as never,

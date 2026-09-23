@@ -75,6 +75,18 @@ export const GAP_TYPES = [
  */
 export const CLARIFICATION_CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 
+/**
+ * Why a Decision opened, per CONSTITUTION.md's Authority gate test: a
+ * reasonable person could choose differently (`reasonable_disagreement`), the
+ * move resists reversal or reaches outside the work at hand
+ * (`resists_reversal`), or it names an approval boundary (merge, deploy,
+ * publish, spend, credentials, production, messaging) that always opens a
+ * Decision regardless of triage (`approval_boundary`). Recorded on every
+ * Decision a `decision`-intent Agent Ask opens, so triage is auditable rather
+ * than asserted.
+ */
+export const GATE_QUESTIONS = ["reasonable_disagreement", "resists_reversal", "approval_boundary"] as const;
+
 export const QUEUE_LABELS: Record<QueueName, string> = {
   inbox: "Inbox",
   work_queue: "Work Queue",
@@ -111,6 +123,7 @@ export type AskFeedbackDecision = (typeof ASK_FEEDBACK_DECISIONS)[number];
 export type ClarificationStatus = (typeof CLARIFICATION_STATUSES)[number];
 export type GapType = (typeof GAP_TYPES)[number];
 export type ClarificationConfidence = (typeof CLARIFICATION_CONFIDENCE_LEVELS)[number];
+export type GateQuestion = (typeof GATE_QUESTIONS)[number];
 
 export function isRequiresReviewValue(value: string | null | undefined): boolean {
   return value === "requires_review";

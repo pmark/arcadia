@@ -327,7 +327,7 @@ describe("Agent Ask settlement", () => {
     const scenarios = [
       { intent: "outcome", desired: "Deliver a safer outcome", effect: "Updated Project demo Outcome." },
       { intent: "milestone", desired: "Reach the settlement milestone", effect: "Updated Project demo and active Plan demo-plan Milestone." },
-      { intent: "decision", desired: "Should this approach ship?", effect: "Created one open Decision" },
+      { intent: "decision", desired: "Should this approach ship?", effect: "Created one open Decision", gateQuestion: "reasonable_disagreement" },
       { intent: "auto", desired: "Make the ambiguous thing happen", effect: "Created one open interpretation Decision" },
       { intent: "log", desired: "Recorded settlement learning", effect: "Appended one Project Log entry" },
       { intent: "artifact", desired: "Settlement design reference", targetRef: "docs/design.md", effect: "Created one planned Artifact reference" },
@@ -340,7 +340,7 @@ describe("Agent Ask settlement", () => {
       const requestId = `effect-${index}`;
       const proposal = runAgentAskPreviewCommand({
         workspace,
-        request: askForIntent(requestId, scenario.intent, scenario.desired, scenario.targetRef)
+        request: askForIntent(requestId, scenario.intent, scenario.desired, scenario.targetRef, [], scenario.gateQuestion)
       });
       const preview = runAgentAskSettleCommand({
         workspace,
@@ -513,6 +513,7 @@ describe("Agent Ask settlement", () => {
       "  Paragraph one explains the discovery in detail.",
       "",
       "  Paragraph two explains why the operator should decide, not the agent.",
+      "gate_question: reasonable_disagreement",
       "requested_authority: apply_if_approved", ""
     ].join("\n");
     const proposal = runAgentAskPreviewCommand({ workspace, request });
@@ -536,9 +537,92 @@ describe("Agent Ask settlement", () => {
     const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-ship-the-risky-change.md"), "utf8");
     const frontmatter = content.slice(0, content.indexOf("\n---", 4));
     expect(frontmatter).not.toContain("recommendation:");
+    expect(frontmatter).toContain("gate_question: reasonable_disagreement");
     expect(content).toContain("## Rationale");
     expect(content).toContain("Paragraph one explains the discovery in detail.");
     expect(content).toContain("Paragraph two explains why the operator should decide, not the agent.");
+  });
+
+  it("refuses a decision Ask shaped like Decision 0052, instead of opening it", () => {
+    // Decision 0052 asked the operator to choose between two already-analyzed
+    // readings of an Action's own acceptance criterion, with a clear
+    // recommendation and nothing a reasonable person would weigh differently,
+    // and nothing that resisted reversal or reached outside the work. The
+    // rationale that filed it said as much: "I judged this a call for the
+    // operator rather than something to decide unilaterally by re-reading nine
+    // lines of acceptance-criteria prose." That is exactly the shape the gate
+    // test exists to catch before it reaches the operator.
+    const { workspace, repo } = fixture();
+    const request = [
+      "agent_ask: v1", "request_id: settle-criterion-reading-2026-09-23", "project: demo", "intent: decision",
+      "desired_result: Settle whether the draft-isolation Action's acceptance criterion 1 is satisfied by the "
+        + "already-shipped recovery design, or whether additional isolation work is required before the Action "
+        + "can be marked complete.",
+      "rationale: Re-reading the acceptance criteria against the shipped code settles this outright; recorded as "
+        + "a Decision only because earlier sessions did not decide it themselves.",
+      "options:",
+      "  - label: Recovery satisfies criterion 1 as shipped",
+      "    consequence: No further code changes; the Action's remaining item becomes verifying criterion 2.",
+      "    recommended: true",
+      "  - label: Criterion 1 requires further isolation work",
+      "    consequence: A new Action is needed; materially larger scope.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+
+    expect(() => runAgentAskSettleCommand({
+      workspace,
+      proposal: proposal.data.proposal.id,
+      requestId: "settle-criterion-reading-settle",
+      disposition: "accepted",
+      revision: 1
+    })).toThrow(/neither Constitution gate question fires/);
+
+    expect(existsSync(path.join(repo, "docs/decisions"))).toBe(false);
+  });
+
+  it("opens a Decision for a named approval boundary even without a stated gate question", () => {
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("deploy-boundary", "decision", "Should we deploy the new worker to production now?")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-deploy-boundary",
+      disposition: "accepted", revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-deploy-boundary",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    expect(applied.data.receipt.effects.join(" ")).toContain("gate: approval_boundary");
+    const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-deploy-the-new-worker-to-production-now.md"), "utf8");
+    expect(content).toContain("gate_question: approval_boundary");
+  });
+
+  it("recognizes an inflection of an approval-boundary word, not only its root form", () => {
+    // CodeRabbit review on PR #575: `merge\w*` does not match "merging" (the
+    // literal substring "merge" is not a prefix of "merging"), so an Ask
+    // about proceeding with a merge and no gate_question was wrongly refused
+    // instead of opening the required approval Decision.
+    const { workspace, repo } = fixture();
+    const proposal = runAgentAskPreviewCommand({
+      workspace,
+      request: askForIntent("merging-boundary", "decision", "Should we proceed with merging this PR?")
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-merging-boundary",
+      disposition: "accepted", revision: 1
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-merging-boundary",
+      disposition: "accepted", revision: 1, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    expect(applied.data.receipt.effects.join(" ")).toContain("gate: approval_boundary");
+    const content = readFileSync(path.join(repo, "docs/decisions/0001-should-we-proceed-with-merging-this-pr.md"), "utf8");
+    expect(content).toContain("gate_question: approval_boundary");
   });
 
   it("amends an existing Action without changing its Responsibility or queue position", () => {
@@ -1509,7 +1593,7 @@ describe("Agent Ask safety boundaries", () => {
     const { workspace, repo } = fixture();
     const question = "Should Arcadia treat plan and Action priority as a projection of the live queue, "
       + "re-derived at dispatch, so priority belongs in advance queue order and never becomes a Decision?";
-    const applied = settleOne(workspace, "decision", question, "long-decision-question");
+    const applied = settleOne(workspace, "decision", question, "long-decision-question", "resists_reversal");
     expect(applied.data.receipt.applied).toBe(true);
     const decisionFile = readdirSync(path.join(repo, "docs/decisions")).find((name) => name.startsWith("0001-"));
     expect(decisionFile).toBeDefined();
@@ -1630,8 +1714,8 @@ describe("Agent Ask safety boundaries", () => {
     const { workspace, repo } = fixture();
     const question = "Should Arcadia treat plan and Action priority as a projection of the live queue, "
       + "re-derived at dispatch, so priority belongs in advance queue order and never becomes a Decision?";
-    settleOne(workspace, "decision", question, "collide-1");
-    settleOne(workspace, "decision", question, "collide-2");
+    settleOne(workspace, "decision", question, "collide-1", "resists_reversal");
+    settleOne(workspace, "decision", question, "collide-2", "resists_reversal");
     const slugs = readdirSync(path.join(repo, "docs/decisions"))
       .map((name) => name.replace(/^\d+-/, "").replace(/\.md$/, ""));
     expect(slugs).toHaveLength(2);
@@ -1644,8 +1728,8 @@ describe("Agent Ask safety boundaries", () => {
 });
 
 /** Preview one Ask, then apply its settlement. Returns the applied result. */
-function settleOne(workspace: string, intent: string, desired: string, requestId: string) {
-  const proposal = runAgentAskPreviewCommand({ workspace, request: askForIntent(requestId, intent, desired) });
+function settleOne(workspace: string, intent: string, desired: string, requestId: string, gateQuestion?: string) {
+  const proposal = runAgentAskPreviewCommand({ workspace, request: askForIntent(requestId, intent, desired, undefined, [], gateQuestion) });
   const preview = runAgentAskSettleCommand({
     workspace, proposal: proposal.data.proposal.id, requestId: `${requestId}-settle`, disposition: "accepted"
   });
@@ -1820,12 +1904,13 @@ function addOtherProject(workspace: string, repo: string): void {
   });
 }
 
-function askForIntent(requestId: string, intent: string, desired: string, targetRef?: string, acceptance: string[] = []): string {
+function askForIntent(requestId: string, intent: string, desired: string, targetRef?: string, acceptance: string[] = [], gateQuestion?: string): string {
   return [
     "agent_ask: v1", `request_id: ${requestId}`, "project: demo", `intent: ${intent}`,
     `desired_result: ${desired}`, "rationale: It advances the governed Project",
     "acceptance:", ...acceptance.map((criterion) => `  - ${criterion}`),
     "dependencies: []", ...(targetRef ? [`target_ref: ${targetRef}`] : []),
+    ...(gateQuestion ? [`gate_question: ${gateQuestion}`] : []),
     "requested_authority: apply_if_approved", ""
   ].join("\n");
 }

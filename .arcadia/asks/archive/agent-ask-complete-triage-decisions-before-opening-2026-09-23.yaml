@@ -1,0 +1,14 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-triage-decisions-before-opening-2026-09-23",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/triage-decisions-before-opening",
+  "candidate_revision": "1f28c7338797d67f74e764f395e5e344c2a38588",
+  "desired_result": "Mark triage-decisions-before-opening complete.",
+  "evidence": [
+    {"criterion": "Decision-intent settlement records which gate question fired, and refuses to open a Decision when neither fires and the move is reversible, converting it into a PR-reported assumption.", "status": "met", "note": "settlement.ts records gate_question in every opened Decision's frontmatter and resolveDecisionGateQuestion throws before any write when neither gate fires and no approval boundary is named; covered by three new tests in tests/agent-ask-settlement.test.ts."},
+    {"criterion": "Approval boundaries (merge, deploy, publish, spend, credentials, production, messaging) always open a Decision regardless of triage.", "status": "met", "note": "APPROVAL_BOUNDARY_PATTERN in settlement.ts always yields gate_question: approval_boundary before the gate_question field is consulted; covered by the new approval-boundary test."},
+    {"criterion": "A fixture shaped like Decision 0052 is reported, not opened.", "status": "met", "note": "New test 'refuses a decision Ask shaped like Decision 0052, instead of opening it' reproduces its shape (agent-answerable acceptance-criterion reading, recommendation, no reasonable disagreement, no approval boundary) and asserts settlement throws and no docs/decisions directory is created."}
+  ]
+}

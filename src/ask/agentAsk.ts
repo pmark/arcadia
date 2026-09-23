@@ -6,6 +6,17 @@ export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "propo
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
 export type AgentAskAuthority = "propose" | "apply_if_approved";
 export const AGENT_ASK_AUTHORITIES = ["propose", "apply_if_approved"] as const;
+/**
+ * Which Constitution gate question the filer judges fires for a `decision`
+ * Ask (CONSTITUTION.md's Authority section, first two of its three
+ * questions): could a reasonable person choose differently
+ * (`reasonable_disagreement`), or does the move resist reversal or reach
+ * outside the work at hand (`resists_reversal`). Settlement refuses to open a
+ * Decision when this is omitted and the request names no approval boundary —
+ * see `resolveDecisionGateQuestion` in `../ask/settlement.js`.
+ */
+export const AGENT_ASK_GATE_QUESTIONS = ["reasonable_disagreement", "resists_reversal"] as const;
+export type AgentAskGateQuestion = (typeof AGENT_ASK_GATE_QUESTIONS)[number];
 export interface NormalizedAgentAskAction {
   id: string | null;
   desiredResult: string;
@@ -25,7 +36,7 @@ export interface NormalizedAgentAskOption { label: string; consequence: string; 
  */
 export type AgentAskEvidenceStatus = "met" | "failed" | "skipped";
 export interface NormalizedAgentAskEvidence { criterion: string; status: AgentAskEvidenceStatus; note: string | null; }
-export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; }
+export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -38,7 +49,7 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
   sourcePath: string | null;
 }
 
-export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
 export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref"]);
 export const STRICT_EVIDENCE_FIELDS = new Set(["criterion", "status", "note"]);
@@ -61,7 +72,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   const strict = isRecord(parsed) && Object.hasOwn(parsed, "agent_ask");
   if (!strict) {
     const requestId = requiredText(input.requestId, "Natural Agent Ask requires --request-id.");
-    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [] };
+    return { version: "v1", format: "natural", requestId, project: input.project?.trim() || "unknown", intent: "auto", desiredResult: request, rationale: null, acceptance: [], dependencies: [], references: [], actions: [], targetRef: null, requestedAuthority: "propose", options: [], candidateRevision: null, evidence: [], gateQuestion: null };
   }
   const data = parsed as Record<string, unknown>;
   const unknown = Object.keys(data).filter((key) => !STRICT_FIELDS.has(key));
@@ -110,7 +121,14 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (intent === "complete" && evidence.length === 0) {
     throw validationError("A complete Agent Ask requires at least one evidence entry.");
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance: stringList(data.acceptance, "acceptance"), dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence };
+  const gateQuestion = optionalText(data.gate_question);
+  if (gateQuestion !== null && intent !== "decision") {
+    throw validationError("Agent Ask gate_question is only supported for decision intent.");
+  }
+  if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
+    throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
+  }
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance: stringList(data.acceptance, "acceptance"), dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }

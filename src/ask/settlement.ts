@@ -15,7 +15,7 @@ import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "..
 import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
-import type { WorkClassification } from "../domain/constants.js";
+import type { GateQuestion, WorkClassification } from "../domain/constants.js";
 import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
@@ -828,16 +828,21 @@ export function settleAgentAsk(db: Database.Database, input: {
       }
       case "decision": {
         requireNoQueueOptions(input);
+        const gateQuestion = resolveDecisionGateQuestion(proposal.normalized);
         addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
           project.slug, plan.slug, null, proposal.normalized.desiredResult, proposal.normalized.rationale, proposal.normalized.requestId,
-          proposal.normalized.options);
-        effects.push("Created one open Decision; agent input did not answer it.");
+          proposal.normalized.options, gateQuestion);
+        effects.push(`Created one open Decision (gate: ${gateQuestion}); agent input did not answer it.`);
         break;
       }
       case "auto": {
         requireNoQueueOptions(input);
+        // Arcadia could not determine the requested structure at all, which is
+        // itself a case a reasonable person could resolve differently — the
+        // gate always fires here, so this intent carries no triage.
         addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
-          project.slug, plan.slug, null, `How should Arcadia structure this request: ${proposal.normalized.desiredResult}`, proposal.normalized.rationale, proposal.normalized.requestId);
+          project.slug, plan.slug, null, `How should Arcadia structure this request: ${proposal.normalized.desiredResult}`, proposal.normalized.rationale, proposal.normalized.requestId,
+          [], "reasonable_disagreement");
         effects.push("Created one open interpretation Decision; no Project structure was guessed.");
         break;
       }
@@ -1559,6 +1564,39 @@ function addMilestoneMutations(mutations: FileMutation[], projectPath: string, p
   );
 }
 
+/**
+ * Approval boundaries named in CONSTITUTION.md's Authority section: merge,
+ * deploy, publish, spend, credentials, production access, and messaging.
+ * A `decision` Ask naming one of these always opens a Decision, regardless of
+ * the filer's own gate-question triage.
+ */
+const APPROVAL_BOUNDARY_PATTERN = /\b(merg\w*|deploy\w*|publish\w*|spend\w*|credentials?|production|messag\w*)\b/i;
+
+/**
+ * Which Constitution gate question justifies opening a Decision for a
+ * `decision`-intent Ask, per the triage this Action introduced (Agent Ask
+ * `one-session-completes-one-action-2026-09-13`, `triage-decisions-before-
+ * opening`): a Decision shaped like 0052 — an agent-answerable scope call
+ * with a recommendation, no reasonable disagreement, and no approval boundary
+ * — should never have reached the operator. Refuses (rather than silently
+ * downgrading) when neither gate fires, so the filer applies its own
+ * recommendation and reports it in the PR instead.
+ */
+function resolveDecisionGateQuestion(normalized: NormalizedAgentAsk): GateQuestion {
+  const boundaryText = [normalized.desiredResult, normalized.rationale, ...normalized.options.flatMap((option) => [option.label, option.consequence])]
+    .filter((text): text is string => text !== null);
+  if (boundaryText.some((text) => APPROVAL_BOUNDARY_PATTERN.test(text))) return "approval_boundary";
+  if (normalized.gateQuestion) return normalized.gateQuestion;
+  throw validationError(
+    "Agent Ask decision intent refused: neither Constitution gate question fires and no approval boundary is named, so this is not a Decision.",
+    {
+      requestId: normalized.requestId,
+      gateQuestions: ["reasonable_disagreement", "resists_reversal"],
+      remedy: "Apply the recommended option yourself and report the assumption in the pull request (intent: log), or set gate_question when a reasonable person could choose differently or the move resists reversal or reaches outside the work."
+    }
+  );
+}
+
 function addDecisionMutation(
   mutations: FileMutation[],
   decisions: DecisionDoc[],
@@ -1569,7 +1607,8 @@ function addDecisionMutation(
   question: string,
   rationale: string | null,
   requestId: string,
-  options: NormalizedAgentAskOption[] = []
+  options: NormalizedAgentAskOption[],
+  gateQuestion: GateQuestion
 ): void {
   const nextNumber = decisions.reduce((highest, decision) => Math.max(highest, Number.parseInt(decision.id, 10) || 0), 0) + 1;
   const id = String(nextNumber).padStart(4, "0");
@@ -1604,6 +1643,7 @@ function addDecisionMutation(
   const frontmatter = [
     "---", "arcadia: v1", "type: decision", `id: ${JSON.stringify(id)}`, `slug: ${slug}`,
     `project: ${projectSlug}`, "status: open", `question: ${yamlScalar(question)}`, "gap_type: missing-decision",
+    `gate_question: ${gateQuestion}`,
     ...(recommendation ? [`recommendation: ${yamlScalar(recommendation)}`] : []),
     ...optionsFrontmatter,
     "confidence: high", `plan: ${planSlug}`, ...(actionId ? [`action: ${actionId}`] : []),
