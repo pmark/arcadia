@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,15 +19,51 @@ import { defectFingerprint } from "../src/defect/signal.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const workspaces: string[] = [];
+const originalInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
 
 afterEach(() => {
   for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true });
+  if (originalInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+  else process.env.ARCADIA_INVOKED_FROM = originalInvokedFrom;
 });
 
 function workspace(): string {
   const directory = mkdtempSync(path.join(tmpdir(), "arcadia-defect-intake-"));
   workspaces.push(directory);
   initWorkspace(directory);
+  return directory;
+}
+
+/**
+ * Point `invocationRoot()` at a throwaway directory that does (or does not)
+ * declare a managed Project, so the enclosing-Project resolution is tested
+ * against known content rather than whatever checkout vitest happens to run in.
+ */
+function invocationDir(projectSlug: string | null): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "arcadia-defect-invocation-"));
+  workspaces.push(directory);
+  if (projectSlug) {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      path.join(directory, "PROJECT.md"),
+      [
+        "---",
+        "arcadia: v1",
+        "type: project",
+        `slug: ${projectSlug}`,
+        "name: Invocation Project",
+        "status: active",
+        "goal: Prove the enclosing Project resolves.",
+        "updated: 2026-09-23",
+        "---",
+        "",
+        "# Invocation Project",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+  }
+  process.env.ARCADIA_INVOKED_FROM = directory;
   return directory;
 }
 
@@ -90,6 +126,7 @@ describe("arcadia defect intake", () => {
   it("resolves the enclosing Project when none is named", () => {
     const ws = workspace();
     const projectId = seedProject(ws, "Arcadia");
+    invocationDir("arcadia");
 
     const result = runDefectIntakeCommand({
       workspace: ws,
@@ -102,6 +139,7 @@ describe("arcadia defect intake", () => {
 
   it("leaves a report unscoped when no Project is named or discoverable", () => {
     const ws = workspace();
+    invocationDir(null);
 
     const result = runDefectIntakeCommand({
       workspace: ws,

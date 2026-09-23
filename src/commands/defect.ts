@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { validationError, projectNotFound } from "../cli/errors.js";
 import { enclosingProjectRoot, invocationRoot } from "../cli/invocation.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -12,8 +14,7 @@ import {
   listDefectSignals
 } from "../db/repositories.js";
 import type { DefectSignalSummary } from "../domain/types.js";
-import { discoverDocs } from "../docs/discover.js";
-import type { ProjectDoc } from "../docs/types.js";
+import { parseDoc } from "../docs/parse.js";
 import { summarySimilarity, LIKELY_DUPLICATE_THRESHOLD } from "../defect/signal.js";
 import { tryGit } from "../git/worktrees.js";
 
@@ -191,6 +192,11 @@ export function renderDefectShowSuccess(response: CommandSuccess<DefectShowData>
  * by slug rather than by repository path so a report filed from an agent
  * worktree — a different path from the main checkout — still lands on the right
  * Project.
+ *
+ * Only the enclosing `PROJECT.md` is read. A full-tree document scan could pick
+ * a nested Project doc instead of the enclosing one, and the Project is part of
+ * the report's fingerprint, so the wrong choice would silently change both its
+ * scope and its retry identity.
  */
 function resolveProjectId(db: Parameters<typeof getProject>[0], project: string | undefined): string | null {
   if (project?.trim()) {
@@ -200,10 +206,10 @@ function resolveProjectId(db: Parameters<typeof getProject>[0], project: string 
   }
   const root = enclosingProjectRoot();
   if (!root) return null;
+  const projectFile = path.join(root, "PROJECT.md");
   try {
-    const discovered = discoverDocs(root);
-    const doc = discovered.docs.find((candidate): candidate is ProjectDoc => candidate.type === "project");
-    return doc ? getProjectBySlug(db, doc.slug)?.id ?? null : null;
+    const { doc } = parseDoc("PROJECT.md", projectFile, readFileSync(projectFile, "utf8"));
+    return doc?.type === "project" ? getProjectBySlug(db, doc.slug)?.id ?? null : null;
   } catch {
     return null;
   }
