@@ -342,3 +342,42 @@ Evidence (2026-09-23, prepared claude candidate at base `7f4f9c94`):
   regression, matching the pattern already noted above for CLI-spawn suites).
 - `pnpm build` (lint, `tsc -p tsconfig.json`, Discord bot build) and
   `pnpm --filter arcadia-dashboard build`: exit 0.
+
+Review follow-up (2026-09-23, PR #552):
+
+- CodeRabbit's Advanced-Tier security pass found four real closure gaps in
+  the first cut of `preservationCheckBinding.ts`, all fixed in the same
+  candidate: a launcher wrapper (`env node check.mjs`) left the script
+  unidentified and the check unbound entirely, the tightest of the four,
+  since it silently ran the declared check with no protection at all rather
+  than narrowly missing one helper file; `REQUIRE_PROBES` missed a directory
+  `require("./rules")` resolving to `rules/index.json`; the relative-import
+  regex missed a specifier preceded by a `/* comment */`; and a directly
+  invoked Python check's same-directory `import helper` closure was not
+  traced at all. `LAUNCHER_TOKENS` (mirroring `preservationChecks.ts`'s own
+  launcher handling), the widened `REQUIRE_PROBES`, a comment-tolerant
+  `RELATIVE_SPECIFIER`, and a new same-directory Python import walk close all
+  four; `tests/preservation-check-binding.test.ts` adds one regression case
+  per gap (unchanged binds, rewritten refuses). The module's header comment
+  states the resulting boundary plainly, including what remains uncovered by
+  design (inline interpreter code, a dotted Python package import, an
+  unidentifiable bare system command).
+- A fifth finding asked the archived settlement record
+  (`.arcadia/asks/archive/agent-ask-complete-bind-preservation-checks-to-host-owned-code-2026-09-23b.yaml`)
+  and its paired `MISSION_LOG.md` entry to be corrected to a zero-failure
+  `pnpm test` run. Those are immutable settled governance records per
+  `AGENTS.md`'s "Asking Arcadia to change Project state" — hand-editing a
+  landed completion record to read differently after the fact would
+  misrepresent what was actually observed at settlement time, which is worse
+  than the informational gap it would fix. The record already disclosed the
+  one failure and its cause rather than hiding it. This section is the
+  correct place for the superseding evidence instead: `pnpm test` immediately
+  after this review round ran clean — **2050 passed, 13 skipped, 0
+  failures** — confirming the earlier failure was exactly the transient host
+  contention it was recorded as.
+- Re-validation after the four fixes: focused suite
+  (`preservation-check-binding` — new, `preservation-validation`,
+  `preservation-checks`, `manual-preservation`, `candidate-preservation`,
+  `preserve-on-exit-and-integrate`) with `ARCADIA_PRESERVATION_HOST_TEST=1`:
+  6 files passed, 69 passed. Full `pnpm test`: 2050 passed, 13 skipped, 0
+  failures. `pnpm build` and `pnpm --filter arcadia-dashboard build`: exit 0.
