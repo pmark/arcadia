@@ -202,6 +202,13 @@ export const systemTmux: TmuxAdapter = {
     });
   },
   capturePane(name) {
+    // The trailing colon matters: `capture-pane` takes a *pane* target, and
+    // tmux only resolves an exact-match session to its active pane when the
+    // target ends in `:` (`=name:`). A bare `=name` is a valid session target
+    // for `has-session` but makes `capture-pane` fail with "can't find pane",
+    // which this method would swallow into `null` -- silently discarding the
+    // pane progress signal for every live Session (Issue #564).
+    //
     // -S -2000 bounds the captured scrollback to (at most) tmux's own default
     // history-limit, rather than the unbounded "-" (whole history): a verbose
     // long-running command against a raised history-limit could otherwise
@@ -209,7 +216,7 @@ export const systemTmux: TmuxAdapter = {
     // disabling the pane signal for that Session. maxBuffer is raised well
     // past the default 1 MiB as a second margin against the same failure.
     try {
-      return execFileSync("tmux", ["capture-pane", "-t", `=${name}`, "-p", "-S", "-2000"], {
+      return execFileSync("tmux", ["capture-pane", "-t", `=${name}:`, "-p", "-S", "-2000"], {
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024
       });
