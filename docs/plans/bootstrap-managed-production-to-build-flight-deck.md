@@ -1656,6 +1656,24 @@ actions:
     depends_on: [build-autonomous-defect-loop]
     decisions: []
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
+  - id: preflight-provider-signin-before-launch
+    title: Launch verifies provider sign-in from the worker context before reserving admission or the repository lease, and refuses with a named remedy when it is missing.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Launch verifies provider sign-in from the worker context before reserving admission or the repository lease, and refuses with a named remedy when it is missing.
+    expected_artifact: Evidence satisfying Agent Ask preflight-provider-signin-before-launch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask preflight-provider-signin-568-2026-09-23
+    acceptance_criteria:
+      - Before issueAdmission and before any worktree or lease is created, launchGuardedHostSession checks sign-in for the selected provider from the worker process context (claude-code-cli via claude auth status, or an equivalent documented check per provider) and refuses when it is not signed in.
+      - The refusal names the provider, says it is not signed in for the worker, gives the operator remedy, and appears in arcadia production status as the Project launch blocker rather than only in the worker log.
+      - A signed-out provider takes no repository lease and no concurrency slot, and the next tick retries without counting against the repair budget.
+      - Regression tests cover a signed-in launch, a signed-out refusal with no lease taken, and the surfaced status reason.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/568"]
 questions: []
 decisions: []
 current_action: register-agent-workspace-trust
