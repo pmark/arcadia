@@ -41,15 +41,21 @@ const DEFAULT_PROJECTION_BUSY_TIMEOUT_MS = 15_000;
  * must not make a settlement refuse merely because another pending Ask was
  * drafted in the same checkout. All other dirt remains fail-closed.
  */
+/** Non-path markers that contain no whitespace but are not a repo-relative
+ * path either: a URL (which has its own `/` separators) or a placeholder. */
+const NON_PATH_ARTIFACT_PATTERN = /^(?:[a-z][a-z0-9+.-]*:\/\/|n\/a$|tbd(?:\/none)?$)/i;
+
 /**
  * Whether a Plan's `expected_artifact` reads as a repo-relative path rather
  * than prose. Prose ("First proof", "Evidence satisfying Agent Ask X")
  * always contains a space; a path never does and either has a directory
- * separator or a file extension.
+ * separator or a file extension. A URL or a placeholder like `N/A` also has
+ * no whitespace and may contain a `/`, so those are excluded explicitly
+ * rather than mistaken for a path this repository could ever contain.
  */
 function looksLikeArtifactPath(value: string): boolean {
   const trimmed = value.trim();
-  if (!trimmed || /\s/.test(trimmed)) return false;
+  if (!trimmed || /\s/.test(trimmed) || NON_PATH_ARTIFACT_PATTERN.test(trimmed)) return false;
   return trimmed.includes("/") || /\.[A-Za-z0-9]+$/.test(trimmed);
 }
 

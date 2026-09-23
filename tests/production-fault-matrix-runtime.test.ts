@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -175,6 +175,18 @@ function runScenario(seed: number): ScenarioResult {
   }
   if (!candidateWasCreated && cleanupAttempted) {
     violation(seed, "cleanup ran even though the candidate worktree was never created", { calls });
+  }
+  // A successful cleanup must leave nothing behind: `removeProbeWrapper` only
+  // removes the timestamped wrapper directory when `rmdirSync` finds it
+  // empty, so a leftover entry here means the candidate itself, or a file
+  // inside the wrapper, was never actually removed.
+  if (candidateWasCreated && !failCleanup) {
+    const worktreesRoot = path.join(home, ".codex", "worktrees");
+    let leftover: string[] = [];
+    try { leftover = readdirSync(worktreesRoot); } catch { /* root never created is fine too */ }
+    if (leftover.length > 0) {
+      violation(seed, "cleanup left entries behind in the worktrees root", { worktreesRoot, leftover });
+    }
   }
 
   return { checkedSteps: result?.checked.length ?? 0, failed: thrown !== null };

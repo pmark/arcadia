@@ -119,25 +119,36 @@ function insertRun(db: Database.Database, input: { workItemId: string; status: s
  * in (`src/production/tick.ts:215-226`): one transaction covers the flag
  * write and the stall event, so a failure between them rolls both back rather
  * than leaving a flag with no event a later tick would never retry. */
+/**
+ * Runs one observation and, on a confirmed new stall, increments the
+ * session's own `flaggedCount` -- centralized here, once, rather than at
+ * each call site, so every observation path (including a future one) counts
+ * consistently. The increment runs only after `writeTransaction` returns
+ * normally: `crashBeforeEvent` makes the whole transaction throw, so a
+ * crashed attempt is correctly never counted.
+ */
 function observeInTransaction(
   db: Database.Database,
-  session: ReturnType<typeof readSession>,
+  session: SessionState,
   tmux: { capturePane(name: string): string | null },
   now: Date,
   deadlineMs: number,
   crashBeforeEvent: boolean
 ): ReturnType<typeof observeSessionActivity> {
-  return writeTransaction(db, () => {
-    const observed = observeSessionActivity(db, session as never, tmux, now, deadlineMs);
-    if (observed.newlyStalled) {
+  const before = readSession(db, session.id);
+  const observed = writeTransaction(db, () => {
+    const result = observeSessionActivity(db, before as never, tmux, now, deadlineMs);
+    if (result.newlyStalled) {
       if (crashBeforeEvent) throw new Error("injected crash: after flag write, before event insert");
       db.prepare(
         `INSERT INTO events (id, event_type, source_module, project_id, work_item_id, artifact_id, review_item_id, payload_json, created_at)
          VALUES (?, 'managed_production.session_stalled', 'managed_production_tick', NULL, NULL, NULL, NULL, ?, ?)`
       ).run(createId("event"), JSON.stringify({ schemaVersion: 1, sessionId: session.id }), now.toISOString());
     }
-    return observed;
+    return result;
   });
+  if (observed.newlyStalled) session.flaggedCount += 1;
+  return observed;
 }
 
 function stallEventCount(db: Database.Database, sessionId: string): number {
@@ -166,6 +177,8 @@ interface Harness {
   clock: number;
   sessions: SessionState[];
   timeline: string[];
+  /** How many times the crash-before-event op actually crashed, so the top-level test can assert this path was exercised at least once. */
+  crashCount: number;
 }
 
 type OpName = "progress-pane" | "progress-run" | "no-progress" | "capture-null" | "capture-throw" | "crash-before-event" | "tick-clock";
@@ -228,30 +241,24 @@ function step(harness: Harness, op: OpName): void {
   switch (op) {
     case "progress-pane": {
       session.paneText = `${session.paneText}\nline-${harness.random()}`;
-      const before = readSession(worker, session.id);
-      const observed = observeInTransaction(worker, before, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
+      const observed = observeInTransaction(worker, session, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
       log(`${session.id} progress-pane -> recovered=${observed.recovered} stalled=${observed.stalled}`);
       return;
     }
     case "progress-run": {
       session.runStatus = session.runStatus === "running" ? "requires_review" : "running";
       insertRun(worker, { workItemId: session.workItemId, status: session.runStatus, now: at });
-      const before = readSession(worker, session.id);
-      const observed = observeInTransaction(worker, before, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
+      const observed = observeInTransaction(worker, session, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
       log(`${session.id} progress-run -> recovered=${observed.recovered} stalled=${observed.stalled}`);
       return;
     }
     case "no-progress": {
-      const before = readSession(worker, session.id);
-      const observed = observeInTransaction(worker, before, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
-      if (observed.newlyStalled) session.flaggedCount += 1;
+      const observed = observeInTransaction(worker, session, { capturePane: () => session.paneText }, at, DEADLINE_MS, false);
       log(`${session.id} no-progress -> newlyStalled=${observed.newlyStalled} stalled=${observed.stalled}`);
       return;
     }
     case "capture-null": {
-      const before = readSession(worker, session.id);
-      const observed = observeInTransaction(worker, before, { capturePane: () => null }, at, DEADLINE_MS, false);
-      if (observed.newlyStalled) session.flaggedCount += 1;
+      const observed = observeInTransaction(worker, session, { capturePane: () => null }, at, DEADLINE_MS, false);
       log(`${session.id} capture-null -> newlyStalled=${observed.newlyStalled} stalled=${observed.stalled}`);
       return;
     }
@@ -263,7 +270,7 @@ function step(harness: Harness, op: OpName): void {
       // try/catch (`src/production/tick.ts:236-238`).
       const before = readSession(worker, session.id);
       try {
-        observeInTransaction(worker, before, { capturePane: () => { throw new Error("tmux capture failed"); } }, at, DEADLINE_MS, false);
+        observeInTransaction(worker, session, { capturePane: () => { throw new Error("tmux capture failed"); } }, at, DEADLINE_MS, false);
         violation(harness, `${session.id}: capture-throw did not propagate`);
       } catch (error) {
         if (!(error instanceof Error) || !error.message.includes("tmux capture failed")) throw error;
@@ -282,9 +289,10 @@ function step(harness: Harness, op: OpName): void {
       const before = readSession(worker, session.id);
       let crashed = false;
       try {
-        observeInTransaction(worker, before, { capturePane: () => session.paneText }, at, 0, true);
+        observeInTransaction(worker, session, { capturePane: () => session.paneText }, at, 0, true);
       } catch (error) {
         crashed = true;
+        harness.crashCount += 1;
         if (!(error instanceof Error) || !error.message.includes("injected crash")) throw error;
       }
       const after = readSession(worker, session.id);
@@ -294,8 +302,7 @@ function step(harness: Harness, op: OpName): void {
       log(`${session.id} crash-before-event -> crashed=${crashed}, rolled back cleanly`);
       // Retry immediately without the injected crash: production's next tick
       // does exactly this, and it must now commit both halves together.
-      const retried = observeInTransaction(worker, after, { capturePane: () => session.paneText }, at, 0, false);
-      if (retried.newlyStalled) session.flaggedCount += 1;
+      const retried = observeInTransaction(worker, session, { capturePane: () => session.paneText }, at, 0, false);
       log(`${session.id} crash-before-event retry -> newlyStalled=${retried.newlyStalled}`);
       return;
     }
@@ -307,7 +314,7 @@ function step(harness: Harness, op: OpName): void {
   }
 }
 
-function runScenario(seed: number): { steps: number; flagged: number; recovered: number } {
+function runScenario(seed: number): { steps: number; flagged: number; recovered: number; crashed: number } {
   const target = workspace();
   const random = rng(seed);
   const operator = openDatabase(target);
@@ -318,7 +325,7 @@ function runScenario(seed: number): { steps: number; flagged: number; recovered:
     insertSession(operator, { id, tmuxSessionName: `tmux-${id}`, workItemId: `wi-${id}`, now: baseNow });
     return { id, workItemId: `wi-${id}`, tmuxSessionName: `tmux-${id}`, paneText: `boot-${index}`, runStatus: "running", flaggedCount: 0 };
   });
-  const harness: Harness = { seed, random, operator, workers, clock: 0, sessions, timeline: [] };
+  const harness: Harness = { seed, random, operator, workers, clock: 0, sessions, timeline: [], crashCount: 0 };
   let recovered = 0;
   try {
     for (let index = 0; index < STEPS_PER_RUN; index += 1) {
@@ -332,7 +339,7 @@ function runScenario(seed: number): { steps: number; flagged: number; recovered:
       checkInvariants(harness);
     }
     const flagged = harness.sessions.reduce((sum, session) => sum + session.flaggedCount, 0);
-    return { steps: STEPS_PER_RUN, flagged, recovered };
+    return { steps: STEPS_PER_RUN, flagged, recovered, crashed: harness.crashCount };
   } finally {
     for (const worker of workers) worker.close();
     operator.close();
@@ -341,18 +348,20 @@ function runScenario(seed: number): { steps: number; flagged: number; recovered:
 
 describe("contract-20 fault matrix (process health)", () => {
   it(`process-health: ${SEEDS_PER_SCENARIO} seeded interleavings hold every invariant`, () => {
-    const totals = { steps: 0, flagged: 0, recovered: 0 };
+    const totals = { steps: 0, flagged: 0, recovered: 0, crashed: 0 };
     for (let seed = 1; seed <= SEEDS_PER_SCENARIO; seed += 1) {
       const result = runScenario(seed);
       totals.steps += result.steps;
       totals.flagged += result.flagged;
       totals.recovered += result.recovered;
+      totals.crashed += result.crashed;
     }
     // Guard against a vacuous pass: the scenario must actually flag and
     // recover stalls, and exercise the crash-before-event rollback, not just
     // churn through no-op ticks.
     expect(totals.flagged).toBeGreaterThan(0);
     expect(totals.recovered).toBeGreaterThan(0);
+    expect(totals.crashed).toBeGreaterThan(0);
     const dir = process.env.ARCADIA_FAULT_MATRIX_EVIDENCE_DIR;
     if (dir) {
       mkdirSync(dir, { recursive: true });
