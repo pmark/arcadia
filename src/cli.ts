@@ -46,6 +46,14 @@ import {
   runBackBurnerShowCommand
 } from "./commands/backBurner.js";
 import {
+  renderDefectIntakeSuccess,
+  renderDefectListSuccess,
+  renderDefectShowSuccess,
+  runDefectIntakeCommand,
+  runDefectListCommand,
+  runDefectShowCommand
+} from "./commands/defect.js";
+import {
   renderCapacityAttestSuccess,
   renderCapacityStatusSuccess,
   runCapacityAttestCommand,
@@ -1138,6 +1146,57 @@ export function buildProgram(): Command {
       renderBackBurnerArchiveSuccess
     )
   );
+
+  const defect = program
+    .command("defect")
+    .description("Record and inspect durable defect signals")
+    .argument("[summary]", "One-line defect summary")
+    .option("--project <project>", "Project id or slug; defaults to the enclosing Project")
+    .option("--source <source>", "Ingress source for the signal (default: cli.defect)")
+    .option("--evidence <text>", "Optional evidence; repeatable", collectRepeatable, [])
+    .option("--revision <sha>", "Repository revision to record (default: current HEAD)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace());
+  addJsonOption(defect).action((summary: string | undefined, options: {
+    workspace: string;
+    project?: string;
+    source?: string;
+    evidence: string[];
+    revision?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "defect.record",
+      options,
+      () => {
+        const text = summary?.trim();
+        if (!text) {
+          throw validationError("A defect summary is required: arcadia defect \"<summary>\".", {});
+        }
+        return runDefectIntakeCommand({ ...options, summary: text });
+      },
+      renderDefectIntakeSuccess
+    )
+  );
+  // `defect` (the parent) is directly invocable and declares --json/--workspace
+  // and --project for its own action, so Commander consumes those flags at the
+  // parent level before the subcommands see them. `optsWithGlobals()` recovers
+  // them from wherever they landed, the same fix `production capacity attest`
+  // uses.
+  addJsonOption(
+    defect.command("list").description("List recorded defect signals")
+  ).action((_options: unknown, cmd: Command) => {
+    const merged: { workspace: string; project?: string; json?: boolean } = cmd.optsWithGlobals();
+    return runCliAction("defect.list", merged, () => runDefectListCommand(merged), renderDefectListSuccess);
+  });
+  addJsonOption(
+    defect
+      .command("show")
+      .description("Show one defect signal")
+      .argument("<id>", "Defect signal id")
+  ).action((id: string, _options: unknown, cmd: Command) => {
+    const merged: { workspace: string; json?: boolean } = cmd.optsWithGlobals();
+    return runCliAction("defect.show", merged, () => runDefectShowCommand({ ...merged, id }), renderDefectShowSuccess);
+  });
 
   const feedback = program.command("feedback").description("Record and list Decisions on Ask responses");
   addJsonOption(

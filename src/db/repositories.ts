@@ -45,6 +45,7 @@ import {
   type WorkItemStatus
 } from "../domain/constants.js";
 import { evaluateBackBurnerSurface, isValidSurfaceDate } from "../backBurner/surfacing.js";
+import { defectFingerprint, mergeEvidence, normalizeEvidence } from "../defect/signal.js";
 import { ORIENTATION_EFFORTS } from "../orientation/types.js";
 import type {
   Artifact,
@@ -66,12 +67,15 @@ import type {
   CreateAskRequestInput,
   CreateBackBurnerItemInput,
   CreateCodexInvocationInput,
+  CreateDefectSignalInput,
   CreateMissionLogInput,
   CreateProjectInput,
   CreateReviewFeedbackInput,
   CreateReviewItemInput,
   CreateWorkItemInput,
   CreatedProjectBundle,
+  DefectSignal,
+  DefectSignalSummary,
   ExecutionPlan,
   ExecutionPlanStep,
   ExecutionPlanStepSummary,
@@ -1906,6 +1910,110 @@ function normalizeSurfaceCondition(condition: CreateBackBurnerItemInput["surface
     return { surface_kind: "predicate", surface_date: null, surface_dependency_work_item_id: null, surface_dependency_status: null, surface_predicate: required(value.name, "Back Burner surface predicate") };
   }
   return { surface_kind: "manual", surface_date: null, surface_dependency_work_item_id: null, surface_dependency_status: null, surface_predicate: null };
+}
+
+/**
+ * Record one defect signal, or resolve an exact retry to the record already
+ * filed. The Back Burner item and its defect metadata are written together, so
+ * a signal can never exist without the intake record every surface lists.
+ *
+ * `created: false` is the idempotent path: the summary, Project, and source are
+ * unchanged, so the existing record is returned with any new evidence merged in
+ * rather than a second record being minted.
+ */
+export function createDefectSignal(
+  db: Database.Database,
+  input: CreateDefectSignalInput
+): { signal: DefectSignalSummary; created: boolean } {
+  const summary = required(input.summary, "Defect summary");
+  const source = required(input.source, "Defect source");
+  const projectId = input.projectId ?? null;
+  if (projectId && !getProject(db, projectId)) {
+    throw new Error(`Defect Project was not found: ${projectId}`);
+  }
+
+  const fingerprint = defectFingerprint(summary, projectId, source);
+  const existing = getDefectSignalByFingerprint(db, fingerprint);
+  if (existing) {
+    const merged = mergeEvidence(existing.evidence, input.evidence ?? []);
+    db.prepare(
+      `UPDATE defect_signals
+        SET evidence_json = @evidence, repository_revision = @revision, updated_at = @updatedAt
+        WHERE id = @id`
+    ).run({
+      id: existing.id,
+      evidence: JSON.stringify(merged),
+      revision: input.repositoryRevision ?? existing.repository_revision,
+      updatedAt: nowIso()
+    });
+    return { signal: getDefectSignal(db, existing.id)!, created: false };
+  }
+
+  const timestamp = nowIso();
+  const backBurnerItem = createBackBurnerItem(db, {
+    originalInput: summary,
+    ingressSource: source,
+    classification: "BugReport",
+    confidence: 1,
+    reason: "Reported as a defect through `arcadia defect`.",
+    suggestedNextStep: "Investigate and reproduce before promoting to an Action.",
+    projectId
+  });
+  const signal: DefectSignal = {
+    id: createId("defectSignal"),
+    back_burner_item_id: backBurnerItem.id,
+    project_id: projectId,
+    source,
+    fingerprint,
+    repository_revision: nullable(input.repositoryRevision),
+    evidence_json: JSON.stringify(normalizeEvidence(input.evidence ?? [])),
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+  db.prepare(
+    `INSERT INTO defect_signals
+      (id, back_burner_item_id, project_id, source, fingerprint, repository_revision, evidence_json, created_at, updated_at)
+      VALUES
+      (@id, @back_burner_item_id, @project_id, @source, @fingerprint, @repository_revision, @evidence_json, @created_at, @updated_at)`
+  ).run(signal);
+  return { signal: getDefectSignal(db, signal.id)!, created: true };
+}
+
+export function getDefectSignal(db: Database.Database, id: string): DefectSignalSummary | null {
+  const row = db.prepare(defectSignalSelectSql("WHERE ds.id = ?")).get(id) as DefectSignalSummary | undefined;
+  return row ? hydrateDefectSignal(row) : null;
+}
+
+export function getDefectSignalByFingerprint(db: Database.Database, fingerprint: string): DefectSignalSummary | null {
+  const row = db.prepare(defectSignalSelectSql("WHERE ds.fingerprint = ?")).get(fingerprint) as DefectSignalSummary | undefined;
+  return row ? hydrateDefectSignal(row) : null;
+}
+
+export function listDefectSignals(
+  db: Database.Database,
+  filters: { project?: string } = {}
+): DefectSignalSummary[] {
+  const items = (db.prepare(defectSignalSelectSql("ORDER BY ds.created_at DESC")).all() as DefectSignalSummary[])
+    .map(hydrateDefectSignal);
+  return items.filter((item) =>
+    !filters.project || item.project_id === filters.project || item.project_slug === filters.project
+  );
+}
+
+function defectSignalSelectSql(whereSql: string): string {
+  return `SELECT
+    ds.*,
+    bbi.original_input AS summary,
+    p.name AS project_name,
+    p.slug AS project_slug
+  FROM defect_signals ds
+  JOIN back_burner_items bbi ON bbi.id = ds.back_burner_item_id
+  LEFT JOIN projects p ON p.id = ds.project_id
+  ${whereSql}`;
+}
+
+function hydrateDefectSignal(row: DefectSignalSummary): DefectSignalSummary {
+  return { ...row, evidence: decodeStringArray(row.evidence_json) };
 }
 
 function reviewItemSelectSql(whereSql: string): string {

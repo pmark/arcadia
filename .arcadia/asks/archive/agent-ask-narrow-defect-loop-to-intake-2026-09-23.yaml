@@ -1,0 +1,29 @@
+{
+  "agent_ask": "v1",
+  "request_id": "narrow-defect-loop-to-intake-2026-09-23",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/bootstrap-managed-production-to-build-flight-deck",
+  "requested_authority": "apply_if_approved",
+  "desired_result": "Narrow build-autonomous-defect-loop to the zero-model `arcadia defect` intake that this session implemented and tested, moving the periodic worker triage, capacity-gated model step, promotion, stop-the-line escalation, and low-risk repair into a separate governed Action so no approved scope is dropped.",
+  "rationale": "Decision 0049 approves bounded autonomous defect triage as one Action, but the loop spans a deterministic zero-model intake, a periodic worker pass with its own token/attempt budget and capacity gate, and an authority-sensitive promotion/repair path that mutates the governed queue and pointer. This session implemented and tested the durable intake (the first two acceptance criteria) and narrowed this Action to that slice so the pointer can advance. The remaining criteria move verbatim into a new Action, defect-bounded-triage-loop, queued from the base branch after this candidate merges. This follows the Way's divide-instead-of-stall rule; it narrows no approved authority and defers nothing silently.",
+  "actions": [
+    {
+      "target_ref": "action/build-autonomous-defect-loop",
+      "desired_result": "Add the one-line `arcadia defect` intake approved by Decision 0049: a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision, and optional evidence, recorded with zero model calls, idempotent on exact retry, and reporting likely duplicates without discarding distinct reports.",
+      "acceptance": [
+        "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls.",
+        "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id.",
+        "Deterministic tests cover zero-model intake, exact-retry idempotency, and duplicate candidates.",
+        "The operator-facing QA plan names the exact CLI intake, Back Burner and defect-signal inspection steps, observable expected results, and whether the procedure is also the end-user procedure."
+      ],
+      "dependencies": ["make-go-total-across-plans"],
+      "references": [
+        "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md",
+        "src/commands/defect.ts",
+        "src/defect/signal.ts",
+        "src/db/repositories.ts"
+      ]
+    }
+  ]
+}

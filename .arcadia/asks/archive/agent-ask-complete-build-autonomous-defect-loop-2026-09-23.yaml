@@ -1,0 +1,27 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-build-autonomous-defect-loop-2026-09-23",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/build-autonomous-defect-loop",
+  "candidate_revision": "a13d4f0da1f6ccb592431744bc2283a1a8433774",
+  "evidence": [
+    {
+      "criterion": "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls.",
+      "status": "met"
+    },
+    {
+      "criterion": "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id.",
+      "status": "met"
+    },
+    {
+      "criterion": "Deterministic tests cover zero-model intake, exact-retry idempotency, and duplicate candidates.",
+      "status": "met"
+    },
+    {
+      "criterion": "The operator-facing QA plan names the exact CLI intake, Back Burner and defect-signal inspection steps, observable expected results, and whether the procedure is also the end-user procedure.",
+      "status": "met"
+    }
+  ],
+  "desired_result": "Mark build-autonomous-defect-loop complete."
+}

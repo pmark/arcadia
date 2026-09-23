@@ -487,6 +487,40 @@ export type BackBurnerSurfaceCondition =
   | { kind: "dependency"; workItemId: string; status: WorkItemStatus }
   | { kind: "predicate"; name: string };
 
+/**
+ * The durable record `arcadia defect` writes: the Back Burner intake item every
+ * surface already lists, plus the deterministic metadata defect triage needs —
+ * a content fingerprint (which makes an exact retry idempotent), the repository
+ * revision the report was filed against, and the reporter's optional evidence.
+ */
+export interface DefectSignal {
+  id: string;
+  back_burner_item_id: string;
+  project_id: string | null;
+  source: string;
+  fingerprint: string;
+  repository_revision: string | null;
+  evidence_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DefectSignalSummary extends DefectSignal {
+  /** The report's original text, read from its Back Burner item. */
+  summary: string;
+  project_name: string | null;
+  project_slug: string | null;
+  evidence: string[];
+}
+
+export interface CreateDefectSignalInput {
+  summary: string;
+  source: string;
+  projectId?: string | null;
+  repositoryRevision?: string | null;
+  evidence?: string[];
+}
+
 export interface QueueGroups {
   inbox: WorkItemSummary[];
   work_queue: WorkItemSummary[];

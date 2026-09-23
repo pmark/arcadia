@@ -546,26 +546,22 @@ actions:
     references: ["docs/decisions/0048-make-arcadia-go-a-total-governed-transition-that-keeps-advancing-whenever-the-ne.md", "docs/decisions/0012-the-session-primitive.md", "docs/decisions/0039-prioritize-agent-ask-and-work-queue.md", "docs/plans/agent-ask-execution-queue.md", "src/commands/advance.ts", "src/commands/go.ts", "src/docs/dispatch.ts"]
   - id: build-autonomous-defect-loop
     title: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Add the one-line defect intake and automatic bounded triage loop approved by Decision 0049.
+    next_action: "Add the one-line `arcadia defect` intake approved by Decision 0049: a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision, and optional evidence, recorded with zero model calls, idempotent on exact retry, and reporting likely duplicates without discarding distinct reports."
     expected_artifact: Evidence satisfying Agent Ask build-autonomous-defect-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask implement-autonomous-defect-triage-2026-09-12
+    source: Agent Ask narrow-defect-loop-to-intake-2026-09-23
     acceptance_criteria:
       - "`arcadia defect <summary>` records a durable Back Burner defect signal with a stable id and automatically captured Project, source, time, repository revision when available, and optional evidence; successful intake makes zero model calls."
       - "Repeated intake is lossless and replay-safe: exact retries are idempotent, deterministic matching identifies likely duplicates without silently discarding distinct reports, and the reporter receives the durable record id."
-      - The existing persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, and reuses fresh included-capacity receipts when available; unknown capacity, purchased credits, and reset redemption never count as free.
-      - "Each triage run leaves a durable disposition and evidence: close noise, enrich or link a duplicate, preserve a waiting item with a concrete trigger, promote a formal governed Action into the explicit queue, or perform a validated low-risk reversible repair within standing authority."
-      - A stop-the-line defect bypasses periodic cadence when it blocks unrelated work, requires a remembered human workaround, or blocks its own reporting or repair; promotion changes the queue and current pointer rather than merely adding an urgent label.
-      - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
-      - Deterministic tests cover zero-model intake, retry, duplicate candidates, periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
-      - The operator-facing QA plan includes exact CLI intake, worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
+      - Deterministic tests cover zero-model intake, exact-retry idempotency, and duplicate candidates.
+      - The operator-facing QA plan names the exact CLI intake, Back Burner and defect-signal inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
     depends_on: [make-go-total-across-plans]
     decisions: []
-    references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/decisions/0037-project-to-arcadia-signal-channel.md", "docs/plans/provider-capacity-harvesting.md", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "src/commands/worker.ts"]
+    references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "src/commands/defect.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
   - id: build-agent-agnostic-learning-loop
     title: Let Arcadia and every Project capture concise lessons cheaply and automatically turn supported lessons into durable reusable capability.
     status: open

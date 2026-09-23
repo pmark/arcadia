@@ -43,6 +43,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureReviewFeedbackTable(db);
   ensureBackBurnerItemsTable(db);
   ensureBackBurnerSurfaceColumns(db);
+  ensureDefectSignalTables(db);
   ensureAskRequestStewardshipColumn(db);
   ensureAskCaptureEnvelopeTables(db);
   ensureAgentAskProposalTable(db);
@@ -1197,6 +1198,33 @@ function ensureBackBurnerSurfaceColumns(db: Database.Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_project ON back_burner_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_surface_kind ON back_burner_items(surface_kind);
+  `);
+}
+
+/**
+ * Defect signals are the durable record `arcadia defect` writes: a Back Burner
+ * item (the intake record every surface already lists) plus the deterministic
+ * metadata triage needs. Kept beside the Back Burner tables rather than adding
+ * defect-only columns to `back_burner_items`, so the general-purpose intake
+ * table keeps one shape and defect state has one authoritative home.
+ *
+ * `fingerprint` is unique: the intake is idempotent, so an exact retry resolves
+ * to the same row and merges its evidence instead of minting a second record.
+ */
+function ensureDefectSignalTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS defect_signals (
+      id TEXT PRIMARY KEY,
+      back_burner_item_id TEXT NOT NULL UNIQUE REFERENCES back_burner_items(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+      source TEXT NOT NULL,
+      fingerprint TEXT NOT NULL UNIQUE,
+      repository_revision TEXT,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_defect_signals_project ON defect_signals(project_id);
   `);
 }
 

@@ -17,6 +17,7 @@ const PREFIXES = {
   reviewFeedback: "rfb",
   askFeedback: "afb",
   backBurnerItem: "bb",
+  defectSignal: "def",
   approvalGate: "gate",
   codexInvocation: "codex",
   codexTask: "ctask",
