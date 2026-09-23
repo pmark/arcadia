@@ -1658,7 +1658,7 @@ actions:
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
   - id: preflight-provider-signin-before-launch
     title: Launch verifies provider sign-in from the worker context before reserving admission or the repository lease, and refuses with a named remedy when it is missing.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Launch verifies provider sign-in from the worker context before reserving admission or the repository lease, and refuses with a named remedy when it is missing.
@@ -1734,7 +1734,7 @@ actions:
     references: ["src/codex/packets.ts", "src/sessions/packetLifecycle.ts", "src/production/tick.ts", "docs/planning-process.md", "https://github.com/pmark/arcadia/issues/584"]
 questions: []
 decisions: []
-current_action: preflight-provider-signin-before-launch
+current_action: pass-managed-claude-token-into-sessions
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
