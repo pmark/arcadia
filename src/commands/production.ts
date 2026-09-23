@@ -27,8 +27,10 @@ import {
   type ProductionTransitionResult
 } from "../production/policy.js";
 import {
+  listOperatorEscalations,
   listRecentBaseBranchAdvances,
-  type BaseBranchAdvanceRecord
+  type BaseBranchAdvanceRecord,
+  type OperatorEscalation
 } from "../production/tick.js";
 
 export interface ProductionStatusOptions {
@@ -69,6 +71,8 @@ export interface ProductionStatusData {
   admissions: AdmissionReceipt[];
   /** Recent base-branch advances observed by the tick, newest first. */
   baseBranchAdvances: BaseBranchAdvanceRecord[];
+  /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
+  operatorEscalations: OperatorEscalation[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
@@ -98,6 +102,7 @@ export function runProductionStatusCommand(
       liveAdmissions: live,
       admissions,
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
+      operatorEscalations: listOperatorEscalations(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES
     };
@@ -281,6 +286,14 @@ export function renderProductionStatusSuccess(
       lines.push(
         `    ${advance.projectSlug} ${advance.baseBranch} ${from} → ${advance.newSha.slice(0, 12)} at ${advance.observedAt}`
       );
+    }
+  }
+
+  const escalations = response.data.operatorEscalations;
+  if (escalations.length > 0) {
+    lines.push(`  Needs an operator or agent (${escalations.length}):`);
+    for (const escalation of escalations) {
+      lines.push(`    ${escalation.actionKey} [${escalation.kind}] since ${escalation.firstDetectedAt}: ${escalation.remedy ?? escalation.message}`);
     }
   }
 

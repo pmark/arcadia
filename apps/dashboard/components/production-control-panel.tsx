@@ -41,7 +41,9 @@ export function ProductionControlPanel({
   const providers = policy?.scope?.providers ?? [];
   const project = queue?.schedule?.projects[0] ?? null;
   const boardUrl = project?.github ? githubProjectUrl(project.github.owner, project.github.number) : null;
-  const alertCount = alerts ? alerts.alerts.capacityRefusals.length + alerts.alerts.blockedDispatches.length : 0;
+  const operatorEscalations = core?.production.operatorEscalations ?? [];
+  const alertCount =
+    (alerts ? alerts.alerts.capacityRefusals.length + alerts.alerts.blockedDispatches.length : 0) + operatorEscalations.length;
   const batch = queue?.schedule?.batch ?? null;
   const lanes = batch?.lanes ?? [];
   const nextPush = lanes.flatMap((lane) => lane.nextPush.map((action) => ({ ...action, laneLabel: lane.laneLabel })));
@@ -127,7 +129,7 @@ export function ProductionControlPanel({
         </PanelStat>
 
         <PanelStat label="Alerts">
-          {alerts ? (
+          {alerts || core ? (
             alertCount === 0 ? (
               <span className="text-sm text-muted">None</span>
             ) : (
@@ -145,14 +147,19 @@ export function ProductionControlPanel({
       </div>
 
       {alertsError ? <p className="text-xs text-clay">Alerts unavailable: {alertsError}</p> : null}
-      {alerts && alertCount > 0 ? (
+      {alertCount > 0 ? (
         <div className="grid min-w-0 gap-1.5 rounded-md border border-clay/30 bg-clay/5 p-3 text-xs text-ink">
-          {alerts.alerts.capacityRefusals.map((refusal) => (
+          {operatorEscalations.map((escalation) => (
+            <div key={escalation.actionKey}>
+              <span className="font-semibold">{escalation.actionKey}:</span> {escalation.remedy ?? escalation.message}
+            </div>
+          ))}
+          {alerts?.alerts.capacityRefusals.map((refusal) => (
             <div key={refusal.providerId}>
               <span className="font-semibold">{refusal.label}:</span> {refusal.reason}
             </div>
           ))}
-          {alerts.alerts.blockedDispatches.slice(0, 3).map((event) => (
+          {alerts?.alerts.blockedDispatches.slice(0, 3).map((event) => (
             <div key={event.id}>
               <span className="font-semibold">{event.projectSlug ?? "dispatch"}:</span>{" "}
               {event.blockerFields.length > 0 ? event.blockerFields.join(", ") : "refused"}

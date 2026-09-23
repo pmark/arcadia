@@ -143,7 +143,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   if (!preview.ready || !preview.actionId || !preview.selection || !preview.packet) {
-    throw validationError("The previewed Action is not ready to launch.", { prerequisites: preview.prerequisites, conflict: true });
+    throw validationError("The previewed Action is not ready to launch.", {
+      prerequisites: preview.prerequisites,
+      conflict: true,
+      // Lets a caller (the managed-production tick) distinguish a refusal whose
+      // remedy needs an operator or agent action from one time alone resolves,
+      // without re-deriving packet lifecycle state itself.
+      packetLifecycleKind: preview.packetLifecycle?.kind ?? null,
+      packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null
+    });
   }
 
   const dispatch = resolveDispatch(repoRoot, input.projectSlug);

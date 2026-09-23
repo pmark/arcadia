@@ -86,6 +86,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureDecisionDeferralReceiptsTable(db);
   ensureProductionPolicyTables(db);
   ensureSchedulingTables(db);
+  ensureProductionOperatorEscalationsTable(db);
   applyCapabilityMigrations(db);
 }
 
@@ -1225,6 +1226,28 @@ function ensureDefectSignalTables(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_defect_signals_project ON defect_signals(project_id);
+  `);
+}
+
+/**
+ * Unlike the other managed-production tick tables (which are only ever read
+ * back through the same writable connection that created them), this one is
+ * also read through `arcadia production status`'s read-only connection --
+ * which never runs migrations, so the table must already exist by the time
+ * any read-only open is possible. It does: `applyInitialSchema` runs on every
+ * writable open, and the very first one is always `initWorkspace` itself,
+ * before a read-only open of that workspace's database file could succeed.
+ */
+function ensureProductionOperatorEscalationsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS production_operator_escalations (
+      action_key TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      message TEXT NOT NULL,
+      remedy TEXT,
+      first_detected_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    );
   `);
 }
 
