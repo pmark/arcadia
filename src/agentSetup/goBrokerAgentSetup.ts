@@ -6,6 +6,7 @@ import {
   readFileSync,
   readlinkSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -19,6 +20,8 @@ import { SESSION_AGENTS } from "../sessions/index.js";
 const MANAGED_SKILL_MARKER = "<!-- ARCADIA_MANAGED_SKILL -->";
 const MANAGED_AGENT_ASK_SKILL_MARKER = "<!-- ARCADIA_MANAGED_AGENT_ASK_SKILL -->";
 const CODEX_PROFILE_SUFFIX = ".config.toml";
+const CODEX_MANAGED_PROFILE_COMMENT =
+  "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.";
 
 export interface ProviderExecutables {
   codex: string;
@@ -76,7 +79,25 @@ export interface AgentSetupStatus {
     claudeSandbox: boolean;
     claudeBypassDisabled: boolean;
     claudeWorktreeDirectories: boolean;
+    codexWorkspaceTrust: boolean;
   };
+  workspaceTrust: WorkspaceTrustStatus;
+}
+
+/**
+ * Codex asks "do you trust this folder?" the first time it opens a repository,
+ * and resolves a linked worktree to its main checkout before looking the answer
+ * up. Recording trust at each configured Project's repository root therefore
+ * covers every prepared worktree of that Project without trusting the shared
+ * worktree roots themselves.
+ */
+export interface WorkspaceTrustStatus {
+  /** Project repositories that must carry a trusted entry. */
+  required: string[];
+  /** Required repositories whose trusted entry is absent. */
+  missing: string[];
+  /** Configured repository paths Arcadia will never trust, with the reason. */
+  refused: Array<{ repository: string; reason: string }>;
 }
 
 export interface ConfigureAgentSetupOptions {
@@ -84,6 +105,8 @@ export interface ConfigureAgentSetupOptions {
   executables: BrokerExecutables;
   skillTemplate: string;
   agentAskSkillTemplate: string;
+  /** Repository roots of the configured Arcadia Projects; the only paths trust may name. */
+  projectRepositories?: string[];
   now?: Date;
 }
 
@@ -154,7 +177,7 @@ export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): Co
   const agentAskSkill = renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   validateGoBrokerAgentSetupInputs(options);
 
-  updateCodexConfigs(paths, changed, backups, timestamp);
+  updateCodexConfigs(paths, planWorkspaceTrust(options.projectRepositories ?? [], options.home).trusted, changed, backups, timestamp);
   updateCodexRules(paths, options.executables, changed, backups, timestamp);
   updateManagedSkill(paths.codexSkill, skill, MANAGED_SKILL_MARKER, changed, backups, timestamp);
   updateManagedSkill(paths.codexAgentAskSkill, agentAskSkill, MANAGED_AGENT_ASK_SKILL_MARKER, changed, backups, timestamp);
@@ -195,6 +218,12 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
   const allow = claude?.permissions?.allow ?? [];
   const additionalDirectories = claude?.permissions?.additionalDirectories ?? [];
   const expectedDirectories = expectedCodexWorktreeRoots(options.home);
+  const trustPlan = planWorkspaceTrust(options.projectRepositories ?? [], options.home);
+  const workspaceTrust: WorkspaceTrustStatus = {
+    required: trustPlan.trusted,
+    missing: trustPlan.trusted.filter((repository) => codexTrustLevel(codexConfig, repository) !== "trusted"),
+    refused: trustPlan.refused
+  };
   const checks = {
     preservationLauncher: brokerAgents().every((agent) => existsSync(options.executables.preserve[agent])),
     brokerExecutables: Object.values(options.executables).every((providers) =>
@@ -227,12 +256,14 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     ),
     claudeSandbox: claude?.sandbox?.enabled === true && claude?.sandbox?.failIfUnavailable === true,
     claudeBypassDisabled: claude?.permissions?.disableBypassPermissionsMode === "disable",
-    claudeWorktreeDirectories: expectedDirectories.every((directory) => additionalDirectories.includes(directory))
+    claudeWorktreeDirectories: expectedDirectories.every((directory) => additionalDirectories.includes(directory)),
+    codexWorkspaceTrust: workspaceTrust.missing.length === 0
   };
   const issues = [
     ...Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name),
+    ...workspaceTrust.missing.map((repository) => `codexWorkspaceTrust missing: ${repository}`)
   ];
-  return { ready: issues.length === 0, issues, paths, checks };
+  return { ready: issues.length === 0, issues, paths, checks, workspaceTrust };
 }
 
 export function removeArcadiaGoRules(content: string): string {
@@ -250,13 +281,109 @@ export function removeArcadiaGoRules(content: string): string {
   return output.replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * Decide which configured Project repositories may be trusted. Only an existing
+ * Git repository root qualifies, and never the home directory, a shared
+ * worktree root, or any directory that contains one of those or another
+ * configured Project — trusting such a parent would silently trust everything
+ * beneath it.
+ */
+export function planWorkspaceTrust(
+  repositories: string[],
+  home: string
+): { trusted: string[]; refused: Array<{ repository: string; reason: string }> } {
+  const resolvedHome = canonicalPath(home);
+  const worktreeRoots = expectedCodexWorktreeRoots(home).map(canonicalPath);
+  const candidates = [...new Set(repositories.filter((repository) => path.isAbsolute(repository)).map(canonicalPath))];
+  const trusted: string[] = [];
+  const refused: Array<{ repository: string; reason: string }> = [];
+  for (const repository of [...new Set(repositories.filter((repository) => !path.isAbsolute(repository)))]) {
+    refused.push({ repository, reason: "not an absolute path" });
+  }
+  for (const repository of candidates) {
+    const reason =
+      isSameOrAncestor(repository, resolvedHome)
+        ? "is the home directory or one of its parents"
+        : worktreeRoots.some((root) => isSameOrAncestor(repository, root) || isSameOrAncestor(root, repository))
+          ? "is, contains, or lies inside a shared agent worktree root"
+          : candidates.some((other) => other !== repository && isSameOrAncestor(repository, other))
+            ? "is a parent directory of another configured Project repository"
+            : !existsSync(path.join(repository, ".git"))
+              ? "is not a Git repository root"
+              : null;
+    if (reason) refused.push({ repository, reason });
+    else trusted.push(repository);
+  }
+  return { trusted: trusted.sort(), refused };
+}
+
+function isSameOrAncestor(ancestor: string, candidate: string): boolean {
+  const relative = path.relative(ancestor, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function canonicalPath(candidate: string): string {
+  const resolved = path.resolve(candidate);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function codexProjectHeader(repository: string): RegExp {
+  return new RegExp(`^\\s*\\[projects\\.(?:${escapeRegExp(JSON.stringify(repository))}|${escapeRegExp(`'${repository}'`)})\\]\\s*(?:#.*)?$`);
+}
+
+function codexTrustLevel(content: string, repository: string): string | null {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => codexProjectHeader(repository).test(line));
+  if (start < 0) return null;
+  for (let index = start + 1; index < lines.length && !/^\s*\[/.test(lines[index]); index += 1) {
+    const match = lines[index].match(/^\s*trust_level\s*=\s*["']([^"']*)["']/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Record `trust_level = "trusted"` for each repository, editing only the lines
+ * that must change: an existing trusted entry is left alone, an existing table
+ * gains or corrects its one trust line, and a missing table is inserted ahead
+ * of the managed permission profile so a later install finds it in place.
+ */
+export function setCodexWorkspaceTrust(content: string, repositories: string[]): string {
+  const lines = content.split("\n");
+  for (const repository of repositories) {
+    if (codexTrustLevel(lines.join("\n"), repository) === "trusted") continue;
+    const header = codexProjectHeader(repository);
+    const start = lines.findIndex((line) => header.test(line));
+    if (start >= 0) {
+      let end = start + 1;
+      while (end < lines.length && !/^\s*\[/.test(lines[end])) end += 1;
+      const existing = lines.slice(start + 1, end).findIndex((line) => /^\s*trust_level\s*=/.test(line));
+      if (existing >= 0) lines[start + 1 + existing] = 'trust_level = "trusted"';
+      else lines.splice(start + 1, 0, 'trust_level = "trusted"');
+      continue;
+    }
+    const managed = lines.findIndex((line) => line === CODEX_MANAGED_PROFILE_COMMENT);
+    const at = managed < 0 ? lines.length : managed;
+    lines.splice(at, 0, `[projects.${JSON.stringify(repository)}]`, 'trust_level = "trusted"', "");
+  }
+  return lines.join("\n");
+}
+
 function updateCodexConfigs(
   paths: AgentSetupPaths,
+  trustedRepositories: string[],
   changed: string[],
   backups: string[],
   timestamp: string
 ): void {
-  const updated = setCodexPermissionProfile(readOptional(paths.codexConfig), path.dirname(path.dirname(paths.codexConfig)));
+  const updated = setCodexWorkspaceTrust(
+    setCodexPermissionProfile(readOptional(paths.codexConfig), path.dirname(path.dirname(paths.codexConfig))),
+    trustedRepositories
+  );
   writeManagedFile(paths.codexConfig, updated, changed, backups, timestamp, true);
   if (existsSync(paths.codexUnattendedProfile)) {
     writeManagedFile(
@@ -397,7 +524,7 @@ function setTopLevelTomlValues(content: string, values: Record<string, string>):
 function setCodexPermissionProfile(content: string, home: string): string {
   let withoutManagedProfile = removeTomlTable(removeTopLevelTomlKeys(content, ["sandbox_mode"]), "sandbox_workspace_write")
     .split("\n")
-    .filter((line) => line !== "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.")
+    .filter((line) => line !== CODEX_MANAGED_PROFILE_COMMENT)
     .join("\n");
   for (const table of [
     "permissions.arcadia-unattended.workspace_roots",
@@ -411,7 +538,7 @@ function setCodexPermissionProfile(content: string, home: string): string {
   });
   const roots = expectedCodexWorktreeRoots(home);
   return `${withTopLevel.replace(/\n+$/, "")}\n\n${[
-    "# Managed by `arcadia go-broker install`. Select this named profile in Codex Desktop for an Arcadia-governed task.",
+    CODEX_MANAGED_PROFILE_COMMENT,
     "[permissions.arcadia-unattended]",
     'description = "Arcadia local worktrees: edit and run locally; network and credential files remain denied."',
     'extends = ":workspace"',

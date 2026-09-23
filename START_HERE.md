@@ -1000,7 +1000,13 @@ Desktop, and select it. The installer then
 updates Claude's exact permission and worktree directories, removes
 recognized legacy broad allowances, and enforces the normal sandbox and bypass
 guards. Existing unrelated settings are preserved and changed user-owned files
-receive timestamped backups. Verify installation with:
+receive timestamped backups. It also records Codex workspace trust
+(`[projects."<repo root>"] trust_level = "trusted"`) for each configured
+Arcadia Project repository that exists here, so a prepared worktree of a
+repository Codex has never opened starts without a trust prompt. It never
+trusts the home directory, a shared worktree root, or a parent directory of
+another Project; `status` lists any such configured path as `never trusted`.
+Verify installation with:
 
 ```sh
 pnpm arcadia go-broker status
@@ -1014,7 +1020,10 @@ whether the go route is serviceable: `READY` when the worker has serviced it
 recently, `BUSY` when a go-capable worker is alive but has not run the route
 within the window (retry in a few seconds; do not restart it), and `NOT READY`
 when no go-capable worker is there (start the updated worker). A fresh heartbeat
-alone is never sufficient.
+alone is never sufficient. `Workspace trust` reports how many Project
+repositories carry Codex trust; a missing one makes status `NOT READY` and is
+named in the issues as `codexWorkspaceTrust missing: <repository>`. Rerun
+`pnpm arcadia go-broker install` to add it.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one

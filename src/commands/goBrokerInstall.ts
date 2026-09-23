@@ -79,6 +79,26 @@ export interface GoBrokerInstallOptions {
   home?: string;
   /** Test-only repository override. */
   repository?: string;
+  /** Test-only override for the configured Project repositories trust is granted to. */
+  projectRepositories?: string[];
+}
+
+/**
+ * The repository roots of every configured Arcadia Project — the only paths
+ * workspace trust may name. An unresolvable workspace yields none, so install
+ * and status never invent a trust target.
+ */
+function readConfiguredProjectRepositories(repository: string): string[] {
+  try {
+    const workspace = requireResolvedWorkspace({ cwd: repository });
+    return withReadOnlyDatabase(workspace, (db) =>
+      listProjects(db)
+        .map((project) => getProjectMetadata(db, project.id)?.repo_path)
+        .filter((repoPath): repoPath is string => typeof repoPath === "string" && repoPath.length > 0)
+    );
+  } catch {
+    return [];
+  }
 }
 
 export function permissionSnippets(
@@ -122,6 +142,7 @@ export function runGoBrokerInstallCommand(
   const skillTemplate = readSkillTemplate(repository);
   const agentAskSkillTemplate = readAgentAskSkillTemplate(repository);
 
+  const projectRepositories = options.projectRepositories ?? readConfiguredProjectRepositories(repository);
   validateGoBrokerAgentSetupInputs({ home: installHome, executables, skillTemplate, agentAskSkillTemplate });
 
   mkdirSync(releasesRoot, { recursive: true, mode: 0o755 });
@@ -187,7 +208,8 @@ export function runGoBrokerInstallCommand(
     home: installHome,
     executables,
     skillTemplate,
-    agentAskSkillTemplate
+    agentAskSkillTemplate,
+    projectRepositories
   });
   const installedBroker = inspectInstalledBroker(executables);
   if (installedBroker.issues.length > 0) {
@@ -261,7 +283,8 @@ export function runGoBrokerStatusCommand(
     home: installHome,
     executables,
     skillTemplate: readSkillTemplate(repository),
-    agentAskSkillTemplate: readAgentAskSkillTemplate(repository)
+    agentAskSkillTemplate: readAgentAskSkillTemplate(repository),
+    projectRepositories: options.projectRepositories ?? readConfiguredProjectRepositories(repository)
   });
   let preservationTransport: GoBrokerStatusData["preservationTransport"];
   let agentGoTransport: GoBrokerStatusData["agentGoTransport"];
@@ -297,6 +320,7 @@ export function runGoBrokerStatusCommand(
       brokerIssues: broker.issues,
       agentSetupIssues: agentSetup.issues,
       checks: agentSetup.checks,
+      workspaceTrust: agentSetup.workspaceTrust,
       preservationTransport,
       agentGoTransport,
       preservationChecks
@@ -351,6 +375,10 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
     `Revision: ${data.revision ?? "not installed"}`,
     `Release: ${data.releaseDirectory ?? "not installed"}`,
     ...(data.brokerIssues.length > 0 ? ["Broker issues:", ...data.brokerIssues.map((issue) => `- ${issue}`)] : []),
+    `Workspace trust: ${data.agentSetup.workspaceTrust.required.length - data.agentSetup.workspaceTrust.missing.length}/${data.agentSetup.workspaceTrust.required.length} Project repositories trusted`,
+    ...data.agentSetup.workspaceTrust.refused.map(
+      ({ repository, reason }) => `- never trusted: ${repository} (${reason})`
+    ),
     ...(data.agentSetup.issues.length > 0
       ? ["Agent configuration issues:", ...data.agentSetup.issues.map((issue) => `- ${issue}`)]
       : [])
