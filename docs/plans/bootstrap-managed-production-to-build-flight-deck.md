@@ -1624,7 +1624,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
 questions: []
 decisions: []
-current_action: prove-managed-production-fault-matrix
+current_action: settle-commit-survives-gitignored-asks
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
