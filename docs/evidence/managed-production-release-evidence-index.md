@@ -6,10 +6,12 @@ pass/fail/unproven, revision, artifact, and reproduction procedure. This is that
 index. **Missing live evidence stays `unproven`; any `fail` or `unproven` row
 blocks unattended Flight Deck handoff.**
 
-Revision: every `pass` below was observed at commit `3cd8586d` (tested
-code; later commits on its branch change only documentation), on base
-`764411b8`, on 2026-09-22. A `pass` is invalidated by any later change to the
-code it covers — rerun its reproduction on the release revision.
+Revision: every `pass` below was re-observed at commit `2332be48` on base
+`2332be48`, on 2026-09-23. The prior observation (`3cd8586d` on base `764411b8`,
+2026-09-22) was invalidated by #527 and #540, which changed the covered policy
+and claim-store code, so the matrix and every cited pass-evidence test were
+rerun here. A `pass` is invalidated by any later change to the code it covers —
+rerun its reproduction on the release revision.
 
 Status: **not releasable.** Stage 1 is partly proven. Stages 2–4 and 6 are
 unproven, because each one needs a live run or an operator action.
@@ -40,10 +42,21 @@ directory. Passing runs write `summary-<scenario>.json`.
 | Priority and authority | **pass** (store layer) | 100 / 0 (257 fenced) | `priority-authority` scenario | Covered: a rescope or reorder during in-flight work fences stale admissions by epoch, and nothing is admitted outside scope or on an unpermitted provider. Not covered: a changed packet or base, or an unaccepted dependency (the session-launch preview tests prove these one case at a time). |
 | Runtime | **unproven** | — | `tests/runtime-pinning.test.ts` (worker restarts only on crash) | Candidate-build, controller-upgrade-failure, and schema-incompatibility injection are not built. |
 
+The three unproven Stage 1 rows (completion/pointer, process health, runtime)
+and the missing-artifact quality gate below are owned by
+`prove-fault-matrix-remaining-boundaries`, which depends on this Action and on
+`detect-hung-managed-production-sessions`. The false-agent-completion quality
+gate is also unproven and currently has no owning Action: its assignment is a
+governance change to another Action's settled acceptance criteria, not a
+hand-edit here. Until an Action closes it, its `unproven` status below is what
+keeps it blocking unattended handoff.
+
 ### The harness rejects real defects (negative cases)
 
 Each guard below was disabled in turn in `src/production/policy.ts`, the matrix
-was rerun, and the guard was restored:
+was rerun, and the guard was restored. Re-verified at `2332be48` on 2026-09-23:
+each row failed at the same named seed recorded here, and the equivalent-mutant
+row still passed the whole matrix.
 
 | Injected defect | Caught by |
 | --- | --- |

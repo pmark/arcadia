@@ -411,6 +411,7 @@ import {
   renderWorkListSuccess,
   renderWorkPlanSuccess,
   renderWorkRunSuccess,
+  renderWorkSeedZeroPromptRehearsalPacketsSuccess,
   renderWorkUpdateSuccess,
   runWorkAddSubtaskCommand,
   runWorkArchiveCommand,
@@ -419,6 +420,7 @@ import {
   runWorkListCommand,
   runWorkPlanCommand,
   runWorkRunCommand,
+  runWorkSeedZeroPromptRehearsalPacketsCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
 import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
@@ -2780,6 +2782,21 @@ export function buildProgram(): Command {
       .option("--agent-profile <name>", "Coding agent profile for the planning packet")
   ).action((workId: string, options: { workspace: string; agentProfile?: string; json?: boolean }) =>
     runCliAction("work.plan", options, () => runWorkPlanCommand({ ...options, workId }), renderWorkPlanSuccess)
+  );
+  addJsonOption(
+    work
+      .command("seed-zero-prompt-rehearsal-packets")
+      .description(
+        "Give the Zero Prompt Rehearsal fixture Project's two Actions a real build packet each, with no Codex planning pass"
+      )
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.seed-zero-prompt-rehearsal-packets",
+      options,
+      () => runWorkSeedZeroPromptRehearsalPacketsCommand(options),
+      renderWorkSeedZeroPromptRehearsalPacketsSuccess
+    )
   );
   addJsonOption(
     work

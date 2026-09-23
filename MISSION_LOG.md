@@ -586,6 +586,20 @@ updated: 2026-09-23
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refresh-pointer-action-against-current-base-2026-09-23).
 
+## 2026-09-23 — Completed arcadia/prove-managed-production-fault-matrix
+
+- **Did:** Completed Action arcadia/prove-managed-production-fault-matrix from accepted evidence (Candidate d6aae22e64c43693cc923c035a4b7a21bc9f86a4).
+- **Result:** Every declared acceptance criterion was accepted as met: "The admission/launch, Off, capacity, and priority/authority race scenarios from the contract-20 boundary table each run at least 100 reproducible seeded interleavings against the real policy and claim store with zero invariant violations, retaining the failing seed and timeline for any violation."; "The harness is shown to reject injected defects: disabling each guard it covers in turn makes the matrix fail with a named seed, and any guard it cannot catch is recorded as such."; "A single release evidence index maps every contract-20 invariant and quality gate to pass/fail/unproven, revision, artifact, and reproduction procedure, with missing live evidence left unproven.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-managed-production-fault-matrix-2026-09-23).
+
+## 2026-09-23 — Completed arcadia/give-zero-prompt-fixture-actions-a-build-packet
+
+- **Did:** Completed Action arcadia/give-zero-prompt-fixture-actions-a-build-packet from accepted evidence (Candidate d4b054ad89e6669273bb7ce0b952c9f12df0d342).
+- **Result:** Every declared acceptance criterion was accepted as met: "The Zero Prompt Rehearsal fixture Project's Actions carry a real build packet, so `arcadia session preview-launch` resolves them instead of reporting `planning_required`."; "The guarded session-launch path can launch the fixture's Action B with no manual packet step, while the existing manual runbook path remains available and unchanged."; "A deterministic test resolves the fixture's Action through the guarded launch path and asserts a launchable packet rather than `planning_required`."; "`pnpm test` and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-give-zero-prompt-fixture-actions-a-build-packet-2026-09-23-v2).
+
 ## 2026-09-23 — Completed arcadia/bind-preservation-checks-to-host-owned-code
 
 - **Did:** Completed Action arcadia/bind-preservation-checks-to-host-owned-code from accepted evidence (Candidate e1a64a6fa7651dfba6ad75adde5d97e40037dcd3).

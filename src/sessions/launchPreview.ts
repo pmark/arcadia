@@ -293,7 +293,7 @@ function launchAdapterRefusals(adapters: ProviderAdapterRegistry): Record<string
   return refusals;
 }
 
-function findPromotionDecisionOrProblem(
+export function findPromotionDecisionOrProblem(
   db: Database.Database,
   expected: {
     projectId: string;

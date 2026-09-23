@@ -747,6 +747,10 @@ export interface ReadySetResolution {
   planPath: string | null;
   planTokenImpact: PlanDoc["tokenImpact"] | null;
   planTokenBudget: string | null;
+  /** From the plan's `recommended_model`. Null when the plan does not declare one. */
+  planRecommendedModel: string | null;
+  /** From the plan's `recommended_reasoning_effort`. Null when not declared. */
+  planRecommendedReasoningEffort: string | null;
   /** Populated only when the active plan itself could not be resolved at
    *  all — the same refusal `resolveDispatch` would report for the pointer,
    *  not a second explanation of it. */
@@ -810,6 +814,8 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
       planPath: null,
       planTokenImpact: null,
       planTokenBudget: null,
+      planRecommendedModel: null,
+      planRecommendedReasoningEffort: null,
       blockers,
       ready: [],
       currentAction: null,
@@ -896,6 +902,8 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
     planPath,
     planTokenImpact: plan.tokenImpact,
     planTokenBudget: plan.tokenBudget,
+    planRecommendedModel: plan.recommendedModel,
+    planRecommendedReasoningEffort: plan.recommendedReasoningEffort,
     blockers: [],
     ready,
     currentAction: currentActionId,
