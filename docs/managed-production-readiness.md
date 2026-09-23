@@ -10,15 +10,32 @@ reading of `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-fligh
 disagree with this file, they are right and this file is stale. "Refreshing
 this document" at the bottom says how to re-derive it in about a minute.
 
-Last derived: **2026-09-23**, re-derived while completing
+Last derived: **2026-09-23 (evening)**, while running a strategy session on
+multi-repository concurrency and correcting drift the prior same-day
+derivation below had already accumulated by the time this one started:
+`make-go-total-across-plans`, `detect-hung-managed-production-sessions`, and
+`prove-fault-matrix-remaining-boundaries` had all completed (see
+`MISSION_LOG.md`) but this document still showed them open — **Gate 4 is now
+closed**, and Gate 5 has one fewer open item than the prior text below states.
+This derivation also found, live, that the single production lane had been
+silently retry-looping on its pointer Action for over an hour
+(`register-agent-workspace-trust`, `planning_required`, no packet prepared —
+Issue #576) with no operator-visible signal, and filed
+`escalate-nonrecoverable-launch-refusals` to stop that class of stall from
+being invisible. See "Concurrency: how many Sessions run at once" below for
+the scope decision this session produced (Decision 0066) on when
+same-repository parallel Sessions are worth building.
+
+Earlier same-day derivation: **2026-09-23**, re-derived while completing
 `prove-managed-production-fault-matrix`. Contract 20's Stage 1 was re-proven at
 `2332be48` — admission/launch, Off, capacity, and priority/authority at 100 seeds
 each, zero violations, the harness mutation-verified against four injected
 defects plus one recorded equivalent mutant — and
 `docs/evidence/managed-production-release-evidence-index.md` was refreshed to
 that revision. The live criteria the Action could never satisfy in an agent
-session are now their own Actions: `prove-fault-matrix-remaining-boundaries`
-(completion/pointer, process-health, runtime, and the missing-artifact gate) and
+session were split into their own Actions: `prove-fault-matrix-remaining-boundaries`
+(completion/pointer, process-health, runtime, and the missing-artifact gate —
+**now done**) and
 `run-managed-production-live-soak` (contract-20 stages 2-4, under operator-granted
 scope). Previous derivation: **2026-09-22**, while completing
 `apply-answered-decision-consequences` (PR #515, `arcadia decision reverse`). An
@@ -41,10 +58,11 @@ document has to account for, not just describe).
 
 ## Executive summary
 
-**The board half is done, Gate 2 is closed and Gate 3's critical path is closed,
-and the worker can no longer hang un-owned. The unattended claim now rests on the
-proof (Gate 5) and on Go keeping going across Plans (Gate 4), not on any missing
-mechanism.**
+**The board half is done, Gates 2 and 4 are closed, Gate 3's critical path is
+closed, and the worker can no longer hang un-owned. The unattended claim now
+rests entirely on the proof (Gate 5) — and every remaining step on that proof's
+critical path is an operator step, not a coding-agent Action. There is no
+freely-dispatchable code session left on the critical path right now.**
 
 **Gate 3's critical path is now closed.** `preserve-on-exit-and-integrate`
 made the worker
@@ -54,8 +72,10 @@ branch onto the governed base so the next dependent Action is admitted in the
 same tick; `bind-candidate-revision-in-action-settle` fixed the candidate
 revision `action settle` compares against; and `apply-answered-decision-consequences`
 applies — and now reverses — an answered Decision's consequence in one governed
-transition. What remains before the unattended claim is the *proof* (Gate 5) and
-Go's cross-Plan continuation (Gate 4), not the mechanism.
+transition. **Gate 4 is now also closed**: `make-go-total-across-plans` and
+`detect-hung-managed-production-sessions` are both `done` (this document
+previously showed them open — corrected this derivation). What remains before
+the unattended claim is the *proof* (Gate 5) alone.
 
 GitHub Projects is the live surface (Gate 1, unchanged since 2026-09-20).
 **Gate 2 fully closed** on 2026-09-22 (`verify-worker-recovery-before-success`,
@@ -101,13 +121,19 @@ is also not proven. Two separate things happened to it this session:
    fixture's PR #2 (in `pmark/arcadia-zero-prompt-rehearsal`) is also still
    open/unmerged.
 
-**Distance: 7 filed Actions — 6 open plus the 1 deferred proof — out of the
-Plan's 20 unfinished Actions, plus 2 operator steps.** Of the 7 filed Actions:
-**2 are ordinary code sessions**, ready today with no blocking dependency, and
-**5 are proof or hardening runs** (4 open, 1 deferred) that cost provider
-capacity rather than code. The other 13 unfinished Actions are real work, but
-the unattended claim does not depend on them; "What is *not* on the critical
-path" below names them.
+**Distance: 5 filed Actions — 4 open plus the 1 deferred proof — out of the
+Plan's 25 unfinished Actions, plus 2 operator steps.** All 5 filed Actions are
+**proof or hardening runs** that cost provider capacity, not code — after this
+derivation's correction, `make-go-total-across-plans`,
+`detect-hung-managed-production-sessions`, and
+`prove-fault-matrix-remaining-boundaries` moved from "open" to "done," which
+removes what used to be the two ordinary code sessions this section named as
+ready today. **Nothing on the critical path is a freely-dispatchable coding
+session right now** — every remaining filed Action is blocked on the deferred
+proof (directly or transitively), and the deferred proof's own trigger
+requires the operator to run it personally. The other 20 unfinished Actions
+are real work, but the unattended claim does not depend on them; "What is
+*not* on the critical path" below names them.
 
 Everything here counts individual Action ids, never grouped work items.
 
@@ -165,17 +191,20 @@ open.
 | ✅ | `apply-answered-decision-consequences` | **Done (PR #515).** An answered Decision's consequence is applied in one governed transition, and its deferral is reversed in one (`arcadia decision reverse`) — a parked Action now has a first-class revival. |
 | ⬜ | `auto-settle-pending-completions-before-dispatch` | Not blocking; off the critical path (see below). |
 
-### Gate 4 — It keeps going without help ⬜ **open — 2 Actions on the critical path, both now dependency-clear**
+### Gate 4 — It keeps going without help ✅ **closed, corrected this derivation**
+
+Both critical-path Actions are `done` in the Plan document; this table
+previously showed them open.
 
 | | Action | Why it matters |
 | --- | --- | --- |
-| ⬜ | `make-go-total-across-plans` | Its dependency (`isolate-agent-asks-from-production-handoff`) is `done`; ready. When the active Plan finishes, Go stops instead of activating the next Plan. |
-| ⬜ | `detect-hung-managed-production-sessions` | Its dependency (`feed-and-supervise-managed-production`) is `done`; ready. The worker notices a dead tmux, not a live tmux making no progress. **This covers a hung agent Session, not a hung worker daemon — the hung-worker gap it used to be confused with is now closed by `self-heal-hung-worker-heartbeat`.** |
+| ✅ | `make-go-total-across-plans` | **Done.** When the active Plan finishes, Go activates the Plan whose earliest eligible Action is highest in the explicit queue instead of stopping. |
+| ✅ | `detect-hung-managed-production-sessions` | **Done.** The worker now notices a live tmux making no progress, not only a dead one. **This covers a hung agent Session, not a hung worker daemon — that gap is closed separately by `self-heal-hung-worker-heartbeat`.** |
 | ⬜ | `divide-instead-of-stall` | Not blocking; off the critical path. |
 | ⬜ | `triage-decisions-before-opening` | Not blocking; off the critical path. |
 | ⬜ | `cut-managed-production-tick-cost` | Not blocking; off the critical path. |
 
-### Gate 5 — Proof ⬜ **open — 5 Actions, all on the critical path, provider capacity required**
+### Gate 5 — Proof ⬜ **open — 4 Actions, all on the critical path, provider capacity required, and now 100% operator-gated**
 
 Nothing here is code. These are live runs that either happen or do not.
 
@@ -185,8 +214,8 @@ Nothing here is code. These are live runs that either happen or do not.
 | 🟡 | `prove-two-action-unattended-production` | `status: deferred`. **This is where the unattended claim is actually earned.** Blocks three other Actions while deferred (see "The one knot worth naming"). |
 | ⬜ | `prove-multi-provider-production-recovery` | Continuous production across providers and capacity exhaustion. |
 | ✅ | `prove-managed-production-fault-matrix` | The contract-20 fault-injection matrix before any unattended handoff. **Done.** Stage 1 is proven for 4 of 7 boundaries (admission/launch, Off, capacity, priority/authority: 100 seeds each, zero violations, harness mutation-verified against four injected defects and one recorded equivalent mutant), re-proven at `2332be48` on 2026-09-23. The release evidence index is at `docs/evidence/managed-production-release-evidence-index.md`. The live criteria the Action could never meet in an agent session were divided out by the settled Agent Ask `divide-prove-managed-production-fault-matrix-2026-09-22` into the two rows below. |
-| ⬜ | `prove-fault-matrix-remaining-boundaries` | Completion/pointer, process-health, and runtime boundaries, plus the missing-artifact quality gate (the false-agent-completion gate is still unassigned). Depends on this Action and on `detect-hung-managed-production-sessions`. |
-| ⬜ | `run-managed-production-live-soak` | Contract-20 live stages 2-4 under operator-granted scope and capacity authority. Depends on `prove-fault-matrix-remaining-boundaries`, `prove-two-action-unattended-production`, and `prove-multi-provider-production-recovery`. |
+| ✅ | `prove-fault-matrix-remaining-boundaries` | **Done** (per `MISSION_LOG.md`; this table previously showed it open). Completion/pointer, process-health, and runtime boundaries, plus the missing-artifact quality gate, are proven. |
+| ⬜ | `run-managed-production-live-soak` | Contract-20 live stages 2-4 under operator-granted scope and capacity authority. Its `prove-fault-matrix-remaining-boundaries` dependency is now clear; still blocked on `prove-two-action-unattended-production` and `prove-multi-provider-production-recovery`. |
 | ⬜ | `harden-zero-prompt-production-loop` | Only after the happy path runs clean twice. |
 
 ### Gate 6 — The operator surface ⬜ **open — unchanged since 2026-09-20**
@@ -282,31 +311,37 @@ unattended production on the board.
    an unattended claim; Action A already proven live, finish the loop
 7. **Operator:** un-defer `prove-two-action-unattended-production`
 8. `prove-two-action-unattended-production` — the unattended claim is earned
-   here
-9. `make-go-total-across-plans` — ready now (dependency cleared)
-10. `detect-hung-managed-production-sessions` — ready now (dependency cleared)
-11. `prove-multi-provider-production-recovery`
+   here; its own runbook restricts the rehearsal to the operator's terminal
+9. ✅ `make-go-total-across-plans` — **done** (corrected this derivation)
+10. ✅ `detect-hung-managed-production-sessions` — **done** (corrected this
+    derivation)
+11. `prove-multi-provider-production-recovery` — blocked on entry 8
 12. ✅ `prove-managed-production-fault-matrix` — **done** (Stage 1 re-proven at
-    `2332be48`; the live stages are entries 13-14)
-13. `prove-fault-matrix-remaining-boundaries` — completion/pointer,
-    process-health, and runtime boundaries, plus the missing-artifact gate
+    `2332be48`)
+13. ✅ `prove-fault-matrix-remaining-boundaries` — **done** (corrected this
+    derivation; completion/pointer, process-health, runtime, and the
+    missing-artifact gate are proven)
 14. `run-managed-production-live-soak` — contract-20 live stages 2-4, under
-    operator-granted scope and capacity authority
-15. `harden-zero-prompt-production-loop`
+    operator-granted scope and capacity authority; blocked on entries 8 and 11
+15. `harden-zero-prompt-production-loop` — blocked on entry 6
 
-**Fifteen numbered entries: 13 filed Action ids and 2 operator steps — 13
-Action-shaped entries in total. Five are done; eight remain.**
+**Fifteen numbered entries: 13 filed Action ids and 2 operator steps. Eight
+Actions are done; five remain, and every one of the five is blocked, directly
+or transitively, on an operator step.**
 
-- **Code sessions, ready today with no blocking dependency (2):** entries 9
-  and 10. They are the fastest place to spend a session right now (entries 1-4
-  are already done).
-- **Needs filing first: none.** The worker-hang Action this section used to
-  list as unfiled is now filed and done.
-- **Proof and hardening runs (6):** entries 6, 8, 11, 13, 14, 15 (5 open, 1
-  deferred). These cost provider capacity, not code, and several are
-  operator-terminal by design.
+- **Code sessions, ready today with no blocking dependency: none.** This
+  section previously named entries 9 and 10 as the fastest place to spend a
+  session; both are now done, and nothing has replaced them. Every remaining
+  filed Action funnels through entry 7 (un-defer) and entry 8 itself, which by
+  design only the operator can run.
+- **Needs filing first: none.**
+- **Proof and hardening runs (5):** entries 6, 8, 11, 14, 15 (4 open, 1
+  deferred). These cost provider capacity, not code, and are operator-terminal
+  by design or by dependency.
 - **Yours (2):** entries 5 (or delegate it as a filed Action) and 7. Minutes
-  each, once their preconditions are actually true.
+  each, once their preconditions are actually true. **These two operator
+  minutes are the entire remaining critical path's bottleneck** — nothing a
+  coding-agent session can pick up moves this further until they happen.
 
 ### What is *not* on the critical path
 
@@ -318,12 +353,17 @@ Real work, none of it required before the unattended claim holds:
 - `expose-bootstrap-production-controls`, `surface-terminal-operator-approvals-in-runs`,
   `freeze-production-runtime-and-handoff-flight-deck` — Gate 6, the operator
   surface.
-- `register-agent-workspace-trust` — open, no dependencies, not on the path.
+- `register-agent-workspace-trust` — open, and currently stalled on a missing
+  build packet (`planning_required`); see "Concurrency" below. Not on the
+  unattended-claim path either way.
+- `escalate-nonrecoverable-launch-refusals` — filed this derivation (Issue
+  #576). Improves legibility of any future stall like the one above; does not
+  gate the unattended claim itself.
 - The remaining open Actions in the Plan that are not about production at all:
-  `build-autonomous-defect-loop`, `build-agent-agnostic-learning-loop`,
   `detect-duplicate-ids-and-dangling-refs`,
   `combine-advance-monitor-next-into-one-brief`,
-  `reference-constitution-without-duplicating-it`, and others.
+  `defect-bounded-triage-loop`, and others. (`build-autonomous-defect-loop`,
+  previously listed here, is now `done`.)
 
 ### The one knot worth naming
 
@@ -337,6 +377,71 @@ runbook restricts the rehearsal to the operator's terminal, which is why
 dispatching it to a coding agent was the defect Decision 0064 fixed this
 session for the *related* Action, `prove-zero-prompt-production-loop` — the
 two are easy to conflate and are not the same Action.
+
+---
+
+## Concurrency: how many Sessions run at once
+
+Added 2026-09-23, from a strategy session evaluating cross-repository and
+same-repository parallelism. **Short answer: one Session per repository,
+deliberately, and that is not the bottleneck today** — see "The critical
+path, in order" above, where every remaining Action is blocked on an operator
+step, not on throughput.
+
+**What exists today.** The repository lease
+(`idx_agent_sessions_repository_lease` in the workspace database) admits at
+most one `prepared`/`running` Session per `repository_path`, structurally,
+independent of the standing policy's `maxConcurrentSessions` (currently 2).
+Two Sessions at once is possible today only across two different
+repositories, and the standing policy's Project scope currently covers
+`arcadia` and `zero-prompt-rehearsal`. `agent_sessions` has exactly one row,
+ever: `session_e7748a398de14978b4` (zero-prompt-rehearsal's Action B,
+2026-09-23, `claude-code-cli`, prepared 16:08:37, completed 18:17:39 — 2h9m
+for one Action, landing via `accepted_completion` after five separate
+operator touches per the rehearsal's own record: permission re-grant,
+workspace-trust prompt, `/login`, manual completion settlement because the
+Project had no validation checks — Issue #572 — and the operator's own
+merge).
+
+**Why cross-repository parallelism (raising the Project scope or the
+concurrency limit) is not recommended yet, even though it is nearly free to
+turn on.** The single lane that exists has never landed a zero-touch Session,
+and was found silently stalled for over an hour during this same evaluation
+(`register-agent-workspace-trust`, Issue #576) with no operator-visible
+signal. Widening scope before the one lane is legible multiplies exposure to
+the same class of invisible stall, not just to real work.
+
+**Why same-repository concurrent Sessions (a secondary queue lane, or a
+ready-set scheduler dispatching several Actions from one Plan at once) is not
+recommended yet.** The primitives a second lane would have to share are
+currently reported racy: `serialize-decision-deferral-pointer-write` (#505,
+the pointer read-modify-write has no lock or compare-and-set),
+`arcadia action settle` printing the wrong `Next` under concurrent settlement
+(#507), and a Session claim expiring after 24h while its candidate is still
+unmerged (#549). All three are filed and queued — ready, not yet started, at
+positions 19-20 in the arcadia lane and tracked separately for #549. Building
+a second consumer of these primitives now means racing to ship on top of code
+already scheduled to change out from under it. The Plan already encodes this
+exact reasoning for *provider* concurrency:
+`prove-multi-provider-production-recovery` explicitly defers its dual-provider
+concurrent soak proof "until single-provider single-repository production ...
+has run cleanly in real operator use." **Decision 0066** (filed this session,
+open) extends that same logic, explicitly, to session/repository concurrency,
+naming the trigger: same-repository parallelism becomes worth building once
+`prove-two-action-unattended-production` has run cleanly in real operator use
+and the #505/#507/#549-class fixes have landed — at that point the shared
+primitives are no longer known-buggy and a second lane is cheap to build
+safely.
+
+**What this means for "continuous production":** given the operator's own
+scope for this evaluation — Arcadia only, best-effort rather than strict
+24/7, rare hiccups acceptable if caught within a day — the highest-leverage
+path to more continuous production right now is not concurrency architecture.
+It is: (1) the two operator minutes on the critical path above, (2) landing
+the already-queued packet-prep, sign-in, and token-passing Actions ahead of
+the pointer, and (3) letting the already-queued concurrency-safety fixes
+(#505, #507, #549-class) land in their existing queue order before any new
+concurrency surface is built on top of them.
 
 ---
 
@@ -358,16 +463,16 @@ trusting further out than a session or two.
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 84 |
-| Done | 60 (`prove-managed-production-fault-matrix` completed since the last scoreboard) |
-| Open | 23 |
-| Deferred | 1 |
-| Unfinished (open + deferred) | 24 |
-| **On the critical path (filed)** | **8** (7 open + 1 deferred) |
+| Actions in the active Plan | 89 (precisely counted this derivation by parsing each `- id:`/`status:` pair, not by a whole-file `status:` grep — the naive grep overcounts because acceptance-criteria text quotes status values) |
+| Done | 64 (+4 since the last scoreboard: `prove-managed-production-fault-matrix`, `make-go-total-across-plans`, `detect-hung-managed-production-sessions`, `prove-fault-matrix-remaining-boundaries` — the last three were already true and this document had not caught up) |
+| Open | 24 (includes `escalate-nonrecoverable-launch-refusals`, filed this derivation) |
+| Deferred | 1 (`prove-two-action-unattended-production`) |
+| Unfinished (open + deferred) | 25 |
+| **On the critical path (filed)** | **5** (4 open + 1 deferred) — down from 8, now that entries 9/10/13 are done |
 | **On the critical path (not yet filed)** | **0** |
-| **Operator steps on the critical path** | **2** |
-| Unfinished but off the critical path | 16 (24 unfinished − 8 filed on the path) |
-| Open Decisions repo-wide | 2 (0041, 0052) — unrelated to production readiness: 0041 is about reactivating a guided-understanding session; 0052 is about `isolate-agent-asks-from-production-handoff`'s acceptance. Decision 0064 (production-dispatch related) is already answered. |
+| **Operator steps on the critical path** | **2** — and now the only thing standing between here and further filed-Action progress; see "The critical path, in order" |
+| Unfinished but off the critical path | 20 (25 unfinished − 5 filed on the path) |
+| Open Decisions repo-wide | 3 (0041, 0052, 0066) — 0041 and 0052 are unrelated to production readiness (a guided-understanding session; `isolate-agent-asks-from-production-handoff`'s acceptance). **Decision 0066** (new) is production-readiness-relevant: when to widen beyond one Session per repository. Decision 0064 (production-dispatch related) is already answered. |
 
 ---
 
@@ -383,7 +488,15 @@ mise exec -- pnpm arcadia review
 grep -l "^status: open" docs/decisions/*.md
 mise exec -- pnpm arcadia session preview-launch   # what the current pointer is actually blocked on
 tail -80 MISSION_LOG.md                            # recent completions and real-run evidence, not projection
+scripts/logs.sh worker                             # or grep the LOG_DIR it names directly for a non-blocking read
+gh issue list --label bug --state open              # cross-check against what this document calls "fixed"
 ```
+
+**Do not trust a global `grep -c '^ *status:' file | wc -l` style count for the
+Plan's Action totals** — this derivation found it overcounts, because several
+Actions' own acceptance-criteria text quotes a literal `status: blocked` or
+similar as descriptive prose, not as a real field. Pair each `- id:` with the
+`status:` line that immediately follows it instead.
 
 An Action's truth is its `status:` in the Plan document. A gate's truth is
 whether every Action under it is `done`. If you find this file claiming
