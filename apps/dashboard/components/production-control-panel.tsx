@@ -129,7 +129,12 @@ export function ProductionControlPanel({
         </PanelStat>
 
         <PanelStat label="Alerts">
-          {alerts || core ? (
+          {alertsError ? (
+            // Alerts specifically failed: capacityRefusals/blockedDispatches
+            // are unknown, so a zero operatorEscalations count from `core`
+            // alone is not "None" -- it would misreport an outage as calm.
+            <span className="text-sm text-clay">Unavailable</span>
+          ) : alerts || core ? (
             alertCount === 0 ? (
               <span className="text-sm text-muted">None</span>
             ) : (
@@ -138,8 +143,6 @@ export function ProductionControlPanel({
                 {alertCount}
               </span>
             )
-          ) : alertsError ? (
-            <span className="text-sm text-clay">Unavailable</span>
           ) : (
             <Skeleton className="h-4 w-10" />
           )}

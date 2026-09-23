@@ -1233,10 +1233,15 @@ function ensureDefectSignalTables(db: Database.Database): void {
  * Unlike the other managed-production tick tables (which are only ever read
  * back through the same writable connection that created them), this one is
  * also read through `arcadia production status`'s read-only connection --
- * which never runs migrations, so the table must already exist by the time
- * any read-only open is possible. It does: `applyInitialSchema` runs on every
- * writable open, and the very first one is always `initWorkspace` itself,
- * before a read-only open of that workspace's database file could succeed.
+ * which never runs migrations. For a workspace whose database is created
+ * after this table shipped, `applyInitialSchema` running on every writable
+ * open (starting with `initWorkspace` itself) guarantees it already exists by
+ * the time any read-only open is possible. For a workspace whose database
+ * predates it, the table may still be briefly absent until that workspace's
+ * next writable open; `listOperatorEscalations` in `production/tick.ts`
+ * treats "no such table" the same as a successful, empty query for exactly
+ * that reason -- an unmigrated database and a migrated-but-empty one mean the
+ * same thing to a reader (no escalation has been recorded).
  */
 function ensureProductionOperatorEscalationsTable(db: Database.Database): void {
   db.exec(`

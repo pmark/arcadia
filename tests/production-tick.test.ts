@@ -272,6 +272,50 @@ describe("runManagedProductionTick", () => {
     expect(new Date(escalations[0]!.lastSeenAt).getTime()).toBe(fixture.now.getTime() + 120_000);
   });
 
+  it("prunes an escalation left over from an Action that is no longer current", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    // Simulate a stale row: some earlier Action was escalated and then
+    // stopped being current by a route this tick never observes directly
+    // (e.g. marked done through a `complete` Agent Ask rather than through
+    // this tick's own launch success). Nothing in the fixture ever makes
+    // "test-project/stale-old-action" current, so the only way this row can
+    // disappear is the pruning this test exists to prove.
+    withDatabase(fixture.workspace, (db) =>
+      db
+        .prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/stale-old-action', 'planning_required', 'stale', 'stale remedy', ?, ?)`
+        )
+        .run(fixture.now.toISOString(), fixture.now.toISOString())
+    );
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(0);
+  });
+
+  it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
+    const fixture = preparedFixture();
+    withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_operator_escalations"));
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toEqual([]);
+  });
+
   it("never previews or refuses a launch for a Project outside the active policy scope, while still reconciling its live Session", () => {
     const fixture = preparedFixture({ secondAction: true });
     const tmux = new FakeTmux();

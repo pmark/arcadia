@@ -155,6 +155,24 @@ function clearOperatorEscalation(db: Database.Database, actionKey: string): void
   db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(actionKey);
 }
 
+/**
+ * Drop any escalation left over from a *different* Action in this Project.
+ * `recordOperatorEscalation`/`clearOperatorEscalation` only ever touch the
+ * actionKey the current tick is looking at, so an Action that stops being
+ * current by some other route -- the pointer advances, or it is marked done
+ * through a `complete` Agent Ask rather than through this tick's own launch
+ * success -- would otherwise leave a stale row that `listOperatorEscalations`
+ * keeps reporting forever. Called with the Project's live actionKey (or
+ * `null` when nothing is currently dispatchable), so it always reconciles
+ * against the one actionKey this tick knows to be current.
+ */
+function pruneStaleOperatorEscalations(db: Database.Database, projectSlug: string, currentActionKey: string | null): void {
+  db.prepare("DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ?").run(
+    `${projectSlug}/%`,
+    currentActionKey ?? ""
+  );
+}
+
 export interface OperatorEscalation {
   actionKey: string;
   kind: string;
@@ -165,24 +183,24 @@ export interface OperatorEscalation {
 }
 
 /**
- * Currently unresolved non-self-resolving launch refusals, oldest first.
+ * Every currently unresolved non-self-resolving launch refusal, oldest first.
+ * Unlike `listRecentBaseBranchAdvances` this is not a historical log to page
+ * through -- rows are deleted on resolution and pruned when stale (see
+ * `pruneStaleOperatorEscalations`), so the live set is always small, and a
+ * page limit would only silently hide escalations past an arbitrary cutoff.
  *
  * Deliberately does not call `ensureProductionTickTables`: this is read
  * through `arcadia production status`'s read-only connection, which cannot
  * run a `CREATE TABLE` migration. `production_operator_escalations` lives in
  * `db/schema.ts` instead of here for exactly that reason -- it is applied on
  * every writable open, so it already exists by the time any read-only open
- * is possible.
+ * is possible against a workspace created *after* this table shipped. A
+ * workspace whose database predates it has no writable open to have run that
+ * migration yet either, so "no such table" here means the same thing a
+ * successful, empty query would: no escalation has been recorded.
  */
-export function listOperatorEscalations(db: Database.Database, limit = 10): OperatorEscalation[] {
-  const rows = db
-    .prepare(
-      `SELECT action_key, kind, message, remedy, first_detected_at, last_seen_at
-         FROM production_operator_escalations
-        ORDER BY first_detected_at ASC
-        LIMIT ?`
-    )
-    .all(Math.max(1, Math.trunc(limit))) as Array<{
+export function listOperatorEscalations(db: Database.Database): OperatorEscalation[] {
+  let rows: Array<{
     action_key: string;
     kind: string;
     message: string;
@@ -190,6 +208,18 @@ export function listOperatorEscalations(db: Database.Database, limit = 10): Oper
     first_detected_at: string;
     last_seen_at: string;
   }>;
+  try {
+    rows = db
+      .prepare(
+        `SELECT action_key, kind, message, remedy, first_detected_at, last_seen_at
+           FROM production_operator_escalations
+          ORDER BY first_detected_at ASC`
+      )
+      .all() as typeof rows;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("no such table")) return [];
+    throw error;
+  }
   return rows.map((row) => ({
     actionKey: row.action_key,
     kind: row.kind,
@@ -431,10 +461,12 @@ function attemptProjectLaunch(
     transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux });
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
+    pruneStaleOperatorEscalations(db, input.projectSlug, null);
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }
 
   const actionKey = `${input.projectSlug}/${transition.dispatch.context.action.id}`;
+  pruneStaleOperatorEscalations(db, input.projectSlug, actionKey);
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
     return {
