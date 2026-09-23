@@ -1,0 +1,35 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-guard-go-fallback-against-claimed-actions-2026-09-23",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/guard-go-fallback-against-claimed-actions",
+  "candidate_revision": "884f7c34105c5633baaa6d9ac8abd89cfe16f76d",
+  "desired_result": "Close guard-go-fallback-against-claimed-actions: the fallback-dispatch claim guard it asks for was already merged to main in PR #541 (fix(go): stop handing the same Action to two sessions, closing #526 and #538), before this session's worktree was prepared. Verified every acceptance criterion is met by that merged fix rather than duplicating the work.",
+  "evidence": [
+    {
+      "criterion": "Every fallback candidate `arcadia go` considers is checked for an existing live worktree/Action claim in a loop before dispatch, not only the pointer Action.",
+      "status": "met"
+    },
+    {
+      "criterion": "A fallback candidate already claimed by another live worktree is skipped and the walk continues to the next dependency-ready unclaimed Action; when none remains, `go` refuses with a named reason and a remedy.",
+      "status": "met"
+    },
+    {
+      "criterion": "The final `resolveProjectTransition` dispatch is bound to the same reserved fallback Action as `dispatch` and `queueFallback`; a regression assertion proves `transition.dispatch.context.action.id` equals `dispatch.context.action.id` and `queueFallback.actionId`.",
+      "status": "met"
+    },
+    {
+      "criterion": "A deterministic test runs two concurrent `go` invocations against the same pointer and asserts they either land on two different ready Actions or one refuses, never two sessions on one Action.",
+      "status": "met"
+    },
+    {
+      "criterion": "A regression test reproduces the observed two-PR case (two prepared worktrees for one Action) and proves the second dispatch is refused.",
+      "status": "met"
+    },
+    {
+      "criterion": "`pnpm test` and the core, Discord and Dashboard builds pass.",
+      "status": "met"
+    }
+  ]
+}

@@ -1531,7 +1531,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/505", "src/dispatch/decisionDeferral.ts", "src/ask/settlement.ts"]
   - id: guard-go-fallback-against-claimed-actions
     title: Make `arcadia go`'s fallback dispatch run the same live-worktree and Action-claim predicate as the primary path before handing any Action to a session.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make `arcadia go`'s fallback dispatch run the same live-worktree and Action-claim predicate as the primary path before handing any Action to a session.
@@ -1624,7 +1624,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
 questions: []
 decisions: []
-current_action: prove-managed-production-fault-matrix
+current_action: settle-commit-survives-gitignored-asks
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
