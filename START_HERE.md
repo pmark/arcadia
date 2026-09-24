@@ -792,23 +792,27 @@ because it is next on screen.
 An unattended worker has no interactive terminal for `claude auth login`, so
 claude-code-cli Sessions need a different sign-in source: a token file the
 worker reads at launch and passes into that one Session's environment as
-`CLAUDE_CODE_OAUTH_TOKEN`. Nothing else — not `codex-cli`, not `opencode-cli`,
-not the worker process itself — ever sees that value.
+`CLAUDE_CODE_OAUTH_TOKEN`, via a shell that reads the file itself at exec
+time. The guarantee is that the value never appears as a literal command-line
+argument to any process (so it is never visible in `ps` or a shell history) and
+is never injected anywhere but that one claude-code-cli Session — not
+`codex-cli`, not `opencode-cli`.
 
 One-time setup, run at your own terminal (never paste the token into a chat
-with an agent):
+with an agent, and never type it as a literal command-line argument, which a
+history-enabled shell would save to disk):
 
 ```sh
 claude setup-token
 ```
 
-`setup-token` only prints the token; it does not save it anywhere. Write it
-yourself to the workspace's documented path with owner-only permissions:
+`setup-token` only prints the token; it does not save it anywhere. Pipe its
+output straight into the paired operator script below, which writes it to the
+workspace's documented path with owner-only permissions without the token
+ever appearing on a command line:
 
 ```sh
-umask 077
-printf '%s' 'paste-the-printed-token-here' > "$WORKSPACE/config/claude-code-oauth-token"
-chmod 600 "$WORKSPACE/config/claude-code-oauth-token"
+claude setup-token | artifacts/generated/operator-scripts/verify-claude-code-token.sh run
 ```
 
 The worker refuses to use this file, with a named remedy, if it is readable by
@@ -822,13 +826,11 @@ shelling out to `claude auth status`.
 same way; the next Session launch reads the new value. There is nothing to
 restart — the file is read fresh at each launch, never cached.
 
-The `/runs` dashboard's **Verify Claude Code token** action (paired script:
-`artifacts/generated/operator-scripts/verify-claude-code-token.sh`) checks the
-file's permissions and confirms the sign-in preflight reports signed in,
-without ever printing or handling the token value itself. Piping the token to
-it on stdin from your own terminal (`echo "$TOKEN" | ...script... run`) also
-performs the write, still without an agent ever seeing the value; run from the
-dashboard with no stdin attached, it verifies only.
+The same script also backs the `/runs` dashboard's **Verify Claude Code
+token** button: clicked from the dashboard (no stdin attached) it only
+verifies the file and reports the sign-in preflight's verdict, without ever
+printing or handling the token value itself — use it any time to confirm the
+current state without touching a terminal.
 
 ### Preserve on exit, and integrate only under a separate grant
 

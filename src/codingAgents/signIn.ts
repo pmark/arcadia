@@ -25,9 +25,13 @@ const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
  * `workspace`, when given, lets the claude-code-cli check short-circuit to a
  * confirmed sign-in from the documented workspace token file instead of
  * shelling out -- see `readClaudeCodeTokenFile`. A refused file (wrong
- * permissions, empty, a symlink escaping the config directory) throws rather
- * than falling back silently, so a misconfigured file is never mistaken for
- * "no file present."
+ * permissions, empty, a symlink escaping the config directory) reports a
+ * confirmed "not signed in" with the refusal as its remedy, rather than
+ * falling back silently to another sign-in source: a misconfigured file is
+ * never mistaken for "no file present." It is reported as a *sign-in*
+ * blocker, not thrown, so it flows through the same `provider_not_signed_in`
+ * conflict path every other sign-out does -- managed production retries it
+ * for free instead of spending the Action's repair budget on it.
  */
 export function checkProviderSignIn(provider: string, workspace?: string): ProviderSignInStatus | null {
   if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace);
@@ -59,9 +63,10 @@ function checkClaudeCodeSignIn(workspace?: string): ProviderSignInStatus | null 
     const paths = getWorkspacePaths(workspace);
     const tokenFile = readClaudeCodeTokenFile(paths.claudeCodeTokenFile, paths.config);
     if (tokenFile.status === "refused") {
-      throw new Error(
-        `The Claude Code token file at ${paths.claudeCodeTokenFile} ${tokenFile.reason}. ${tokenFile.remedy}`
-      );
+      return {
+        signedIn: false,
+        remedy: `The Claude Code token file at ${paths.claudeCodeTokenFile} ${tokenFile.reason}. ${tokenFile.remedy}`
+      };
     }
     if (tokenFile.status === "ok") {
       return { signedIn: true, remedy };
