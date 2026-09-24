@@ -1817,6 +1817,96 @@ actions:
     depends_on: [renumber-duplicate-decision-files]
     decisions: []
     references: []
+  - id: release-committed-admissions-on-session-end
+    title: Release a committed production admission when its Session reaches a terminal outcome, so finished Sessions stop counting against maxConcurrentSessions.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Release a committed production admission when its Session reaches a terminal outcome, so finished Sessions stop counting against maxConcurrentSessions.
+    expected_artifact: Evidence satisfying Agent Ask release-committed-admissions-on-session-end
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-live-production-blockers-2026-09-24
+    acceptance_criteria:
+      - When a Session backed by a committed production admission is reconciled to any terminal outcome (accepted completion, incomplete-resumable exit, failure, or operator stop), its admission is released through the existing releaseAdmission writer in the same transaction as the reconciliation.
+      - countLiveAdmissions no longer counts a committed admission whose Session is terminal; already-leaked committed admissions on an existing workspace stop counting without a manual database edit.
+      - "A deterministic test reproduces Issue #610: with maxConcurrentSessions 1, one Session launches, completes, and a second Action is then admitted on the next tick instead of being refused concurrency_limit."
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #610."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/610", "src/production/policy.ts", "src/sessions/reconciliation.ts"]
+  - id: name-failing-preservation-check-and-bound-retries
+    title: Make a preservation refusal name the check that failed, and stop a Session from retrying an identical refusal forever.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make a preservation refusal name the check that failed, and stop a Session from retrying an identical refusal forever.
+    expected_artifact: Evidence satisfying Agent Ask name-failing-preservation-check-and-bound-retries
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-live-production-blockers-2026-09-24
+    acceptance_criteria:
+      - The 'Declared preservation validation failed or was skipped.' refusal returned by the preserve broker carries non-empty details naming each failing or skipped check, its command, and its exit status or skip reason.
+      - The brief delivered to a managed Session instructs it to stop after a bounded number of identical preservation refusals and exit incomplete with the refusal recorded, rather than investigating host source outside its worktree.
+      - A deterministic test covers a failing check (details name it) and a skipped check (details name the skip reason).
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR refs Issue #611."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/611", "src/sessions/preservationValidation.ts"]
+  - id: withhold-worker-lifecycle-from-sessions
+    title: Stop a dispatched coding-agent Session from stopping, starting, or restarting the shared host worker.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stop a dispatched coding-agent Session from stopping, starting, or restarting the shared host worker.
+    expected_artifact: Evidence satisfying Agent Ask withhold-worker-lifecycle-from-sessions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-live-production-blockers-2026-09-24
+    acceptance_criteria:
+      - arcadia worker stop, start, restart and install refuse, with a named reason, when invoked from inside a managed coding-agent Session's process environment or prepared worktree, the same way the go host-controller executable is already withheld from agent allowlists.
+      - The operator's own terminal and the launchd agent can still run every worker command unchanged.
+      - A deterministic test proves the refusal from a Session environment and the unchanged operator path.
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #611 together with name-failing-preservation-check-and-bound-retries or refs it if that Action has not merged."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/611", "src/commands/worker.ts"]
+  - id: preserve-candidates-across-base-advance
+    title: Let a candidate be preserved after the base branch advanced during its Session, and bind preservation to the Session's own dispatched Action rather than the current pointer.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let a candidate be preserved after the base branch advanced during its Session, and bind preservation to the Session's own dispatched Action rather than the current pointer.
+    expected_artifact: Evidence satisfying Agent Ask preserve-candidates-across-base-advance
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-live-production-blockers-2026-09-24
+    acceptance_criteria:
+      - Manual and protected preservation accept a candidate whose base branch advanced after preparation when the candidate still merges cleanly onto the new base, and refuse with a message naming the old base, the new base and the recovery when it does not.
+      - Preservation compares the candidate's Action definition against the Session's own dispatched Action, not resolveDispatch's pointer Action, so a non-pointer Session can be preserved.
+      - Deterministic tests cover a base that advanced cleanly (preserved), a conflicting advance (named refusal), and a non-pointer Action (preserved).
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #539."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/539", "src/sessions/manualPreservation.ts"]
+  - id: refuse-packets-without-validation-commands
+    title: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
+    expected_artifact: Evidence satisfying Agent Ask refuse-packets-without-validation-commands
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-live-production-blockers-2026-09-24
+    acceptance_criteria:
+      - Build-packet preparation refuses, naming the remedy arcadia project metadata <project> --validation-command <command>, when the Project's validation_commands list is empty.
+      - buildLaunchPreview reports the same condition as a named prerequisite, and the managed-production tick escalates it once through production_operator_escalations instead of launching.
+      - A deterministic test covers the empty-list refusal and an unchanged launch for a Project with declared commands.
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #572."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/572", "src/sessions/reconciliation.ts"]
 questions: []
 decisions: []
 current_action: surface-terminal-operator-approvals-in-runs
