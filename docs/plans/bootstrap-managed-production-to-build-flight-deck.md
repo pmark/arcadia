@@ -1781,6 +1781,42 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: renumber-duplicate-decision-files
+    title: Renumber the later-arriving file in each duplicate id pair to the next free numeric id, keeping the earlier-created file at its original id, per Decision 0067.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Renumber the later-arriving file in each duplicate id pair to the next free numeric id, keeping the earlier-created file at its original id, per Decision 0067.
+    expected_artifact: Evidence satisfying Agent Ask renumber-duplicate-decision-files
+    clarification: clarified
+    confidence: high
+    source: Agent Ask renumber-duplicate-decision-ids-and-repoint-r195-2026-09-25
+    acceptance_criteria:
+      - docs/decisions/0004-remaining-protocol-increment.md is renamed to the next free numeric id at implementation time, keeping docs/decisions/0004-docs-sync-write-back.md at id 0004.
+      - docs/decisions/0005-recheck-readiness-hybrid.md is renamed to the next free numeric id at implementation time, keeping docs/decisions/0005-plan-milestone-span.md at id 0005.
+      - Each renamed file's frontmatter id field is updated to match its new filename, and the file records a docs-sync-visible migration note pointing back to its original id so the rename is traceable in history.
+      - Every inbound reference to a renamed file's old id or its old id+slug pair (Mission Log entries, other Decisions' decision frontmatter links, other documents' prose or cross-references) is found by repository-wide search and updated to the new id.
+      - arcadia docs sync reports zero duplicate-id issues for these two pairs afterward, and pnpm test and the core, Discord, and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: repoint-r195-to-fresh-decision
+    title: Re-point review item R195 (project martianrover, id review_f533ac102d1d47479d), whose doc_ref and source_input dangling-reference a document never committed under id 0053, to a freshly reserved Arcadia Decision restating its original question, per Decision 0067.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Re-point review item R195 (project martianrover, id review_f533ac102d1d47479d), whose doc_ref and source_input dangling-reference a document never committed under id 0053, to a freshly reserved Arcadia Decision restating its original question, per Decision 0067.
+    expected_artifact: Evidence satisfying Agent Ask repoint-r195-to-fresh-decision
+    clarification: clarified
+    confidence: high
+    source: Agent Ask renumber-duplicate-decision-ids-and-repoint-r195-2026-09-25
+    acceptance_criteria:
+      - A new Decision document is created in docs/decisions/ at the next free numeric id, restating R195's original question (recovered from R195's decision_needed and source_input in the martianrover project's workspace database) as its own question.
+      - R195's doc_ref and source_input in the martianrover project's workspace database are updated to reference the new Decision's ref instead of the dead 0053 path, using whatever mechanism the implementing session determines is the correct, audited way to update a review item across a project boundary -- if no such mechanism exists yet, that gap is reported back as a concrete blocker rather than hand-edited directly in the database.
+      - arcadia docs sync run against the martianrover project no longer reports R195's doc_ref as dangling.
+    depends_on: [renumber-duplicate-decision-files]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: surface-terminal-operator-approvals-in-runs
