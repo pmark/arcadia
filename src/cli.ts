@@ -192,8 +192,10 @@ import { assertPreparedDispatchAdmission } from "./sessions/dispatchAdmission.js
 import { resolveReadyWorkspace } from "./cli/workspace.js";
 import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import {
+  renderGoBrokerEnsureSuccess,
   renderGoBrokerInstallSuccess,
   renderGoBrokerStatusSuccess,
+  runGoBrokerEnsureCommand,
   runGoBrokerInstallCommand,
   runGoBrokerStatusCommand
 } from "./commands/goBrokerInstall.js";
@@ -3602,6 +3604,20 @@ export function buildProgram(): Command {
       options,
       () => runGoBrokerStatusCommand(),
       renderGoBrokerStatusSuccess
+    )
+  );
+  addJsonOption(
+    goBroker
+      .command("ensure")
+      .description(
+        "Install the broker only if it is missing, stale, or failing its readiness check; a cheap no-op otherwise"
+      )
+  ).action((options: { json?: boolean }) =>
+    runCliAction(
+      "go-broker.ensure",
+      options,
+      () => runGoBrokerEnsureCommand(),
+      renderGoBrokerEnsureSuccess
     )
   );
 

@@ -48,4 +48,23 @@ fi
 
 # That script takes <action> <repo>; Rebuster's takes them the other way round.
 # Normalizing the argument order is the whole point of this adapter existing.
-exec "$IMPL" "$ACTION" "$REPO"
+if [[ "$ACTION" != "restart" ]]; then
+  exec "$IMPL" "$ACTION" "$REPO"
+fi
+
+"$IMPL" "$ACTION" "$REPO"
+
+# A restarted worker only starts reading correctly again the moment it is
+# restarted; the fixed go-broker executables a coding agent's `arcadia go`
+# talks to are a separate, compiled artifact that `go-broker install` alone
+# refreshes, and nothing else does it automatically. Piggyback on this
+# restart rather than adding a second trigger (a git hook, a timer): a
+# restart already means "runtime code changed, services are catching up",
+# which is exactly when the broker can also be behind. `go-broker ensure` is
+# a cheap no-op when the installed broker already matches HEAD, so this costs
+# nothing on the common restart that has nothing to do with the broker.
+# Failure here must never fail the restart the operator actually asked for.
+ENSURE_LOG="$HOME/.local/share/arcadia/go-broker/ensure.log"
+mkdir -p "$(dirname "$ENSURE_LOG")"
+(cd "$REPO" && pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1 \
+  || echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
