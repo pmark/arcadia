@@ -1218,22 +1218,18 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/411", "src/commands/worker.ts", "src/sessions/preservationTransport.ts", "src/commands/goBrokerInstall.ts"]
   - id: surface-terminal-operator-approvals-in-runs
     title: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, and the exact canonical settlement effect.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, exact canonical settlement effect, and a bounded operator-script control when Arcadia can derive a scriptable step.
+    next_action: Add the /runs approval queue's listing, recommended-option details, and canonical settlement wiring for pending Agent Asks and open Decisions.
     expected_artifact: Evidence satisfying Agent Ask surface-terminal-operator-approvals-in-runs
     clarification: clarified
     confidence: high
-    source: Agent Ask add-runs-operator-script-controls-v3-2026-09-19
+    source: Agent Ask split-surface-terminal-operator-approvals-in-runs-2026-09-24-v3
     acceptance_criteria:
       - /runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.
       - Each queue item offers one minimal recommended action plus an expandable details view that states evidence, cost, consequence, alternatives, and what the canonical settlement will change.
       - Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt.
-      - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
-      - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
-      - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
-      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
     depends_on: []
     decisions: []
     references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "scripts/services.sh", "src/commands/worker.ts", "artifacts/generated/operator-scripts"]
@@ -1925,6 +1921,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/617", "https://github.com/pmark/arcadia/issues/485", "src/commands/worker.ts"]
+  - id: generate-operator-scripts-for-runs-approvals
+    title: Extend the /runs approval queue to derive bounded operator scripts for scriptable approval steps, expose full descriptor detail, and cover the remaining acceptance criteria with tests.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Extend the /runs approval queue to derive bounded operator scripts for scriptable approval steps, expose full descriptor detail, and cover the remaining acceptance criteria with tests.
+    expected_artifact: Evidence satisfying Agent Ask generate-operator-scripts-for-runs-approvals
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-surface-terminal-operator-approvals-in-runs-2026-09-24-v3
+    acceptance_criteria:
+      - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
+      - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
+      - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
+      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
+    depends_on: [surface-terminal-operator-approvals-in-runs]
+    decisions: []
+    references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
 questions: []
 decisions: []
 current_action: release-committed-admissions-on-session-end
