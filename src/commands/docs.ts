@@ -18,6 +18,8 @@ export interface DocsSyncCommandData {
   projects: ProjectSyncResult[];
   totals: Record<DocChange["action"], number>;
   errorCount: number;
+  /** Named validation issues across every project. See {@link ProjectSyncResult}. */
+  issueCount: number;
 }
 
 /**
@@ -60,22 +62,24 @@ export function runDocsSyncCommand(options: DocsSyncOptions): CommandSuccess<Doc
     skipped: 0
   };
   let errorCount = 0;
+  let issueCount = 0;
   for (const result of results) {
     for (const change of result.changes) {
       totals[change.action] += 1;
     }
     errorCount += result.errors.length;
+    issueCount += result.issues.length;
   }
 
   return createSuccess({
     command: "docs.sync",
     workspace: workspacePath,
-    data: { applied: Boolean(options.apply), projects: results, totals, errorCount }
+    data: { applied: Boolean(options.apply), projects: results, totals, errorCount, issueCount }
   });
 }
 
 export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandData>): string[] {
-  const { applied, projects, totals, errorCount } = response.data;
+  const { applied, projects, totals, errorCount, issueCount } = response.data;
   const lines: string[] = [];
 
   const scanned = projects.filter((project) => project.repoRoot);
@@ -118,6 +122,11 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
       lines.push(`  · ignored, belongs to another Project: ${foreign}`);
     }
 
+    for (const issue of project.issues) {
+      const location = issue.relativePath ? `${issue.relativePath}: ` : "";
+      lines.push(`  ? [${issue.kind}] ${location}${issue.message}`);
+    }
+
     lines.push("");
   }
 
@@ -128,6 +137,10 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
 
   if (errorCount > 0) {
     lines.push(`${errorCount} validation error${errorCount === 1 ? "" : "s"} — those files were not ingested.`);
+  }
+
+  if (issueCount > 0) {
+    lines.push(`${issueCount} validation issue${issueCount === 1 ? "" : "s"} — reported for review; ingestion was not blocked.`);
   }
 
   if (!applied && (totals.create > 0 || totals.update > 0)) {

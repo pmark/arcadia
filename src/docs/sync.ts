@@ -10,6 +10,7 @@ import {
   getProjectMetadata,
   getReviewItemByDocRef,
   getWorkItemByDocRef,
+  listReviewItems,
   listWorkItemDependencies,
   replaceDocumentWorkItemDependencies,
   setMilestoneDocRef,
@@ -94,6 +95,23 @@ export interface DocChange {
   reason?: string;
 }
 
+/**
+ * A cross-document or cross-corpus condition worth an operator's attention
+ * that does not, on its own, block ingestion: a Decision numeric id already
+ * claimed by an existing Decision (before this document is registered, that
+ * refusal lands in `errors` instead — see the duplicate-id check below), or
+ * an open review item whose backing document no longer produces the ref it
+ * was raised from. Distinct from `errors`: every current caller of `errors`
+ * (`rejected.length`, too) already treats a non-empty array as a hard block,
+ * and neither condition here should stop a project's otherwise-well-formed
+ * documents from ingesting normally.
+ */
+export interface DocValidationIssue {
+  kind: "duplicate_decision_id" | "dangling_review_item";
+  relativePath: string | null;
+  message: string;
+}
+
 export interface ProjectSyncResult {
   projectId: string;
   projectSlug: string;
@@ -103,6 +121,8 @@ export interface ProjectSyncResult {
   rejected: string[];
   /** Docs found whose `project:` slug points somewhere else. */
   foreign: string[];
+  /** Named validation issues that do not block ingestion. See {@link DocValidationIssue}. */
+  issues: DocValidationIssue[];
 }
 
 /**
@@ -130,7 +150,8 @@ export function syncProjectDocs(
     changes: [],
     errors: [],
     rejected: [],
-    foreign: []
+    foreign: [],
+    issues: []
   };
 
   if (!repoRoot) {
@@ -210,6 +231,50 @@ export function syncProjectDocs(
     }
     claimed.set(ref, decision.relativePath);
   }
+
+  // A Decision's numeric `id` (from its own `id:` frontmatter or its
+  // filename prefix) is a second handle nothing above checks -- the ref
+  // collision loop above only catches two documents claiming the same
+  // *slug*, and three real files in this repository already claim `0004`
+  // under three different slugs (Issue #268). Historical duplicates are not
+  // renumbered by this Action -- that migration is an operator Decision, not
+  // a docs-sync side effect -- so a document already registered (its own ref
+  // already has a review item) keeps syncing/updating exactly as before and
+  // is only reported, never blocked. A document new to this corpus that
+  // collides with an id already in use is refused: it is reported the same
+  // way, and additionally never gets a review item created for it, so a new
+  // duplicate id can no longer be written.
+  const decisionsById = new Map<string, DecisionDoc[]>();
+  for (const decision of decisions) {
+    const group = decisionsById.get(decision.id) ?? [];
+    group.push(decision);
+    decisionsById.set(decision.id, group);
+  }
+  const blockedByDuplicateId = new Set<string>();
+  for (const [id, group] of decisionsById) {
+    if (group.length < 2) continue;
+    for (const doc of group) {
+      const others = group.filter((candidate) => candidate !== doc).map((candidate) => candidate.relativePath);
+      const alreadyRegistered = getReviewItemByDocRef(db, decisionDocRef(doc.slug)) !== null;
+      result.issues.push({
+        kind: "duplicate_decision_id",
+        relativePath: doc.relativePath,
+        message: `Decision id "${id}" is also used by ${others.join(", ")}; Decision ids must be unique. ` +
+          (alreadyRegistered
+            ? "Already registered; continuing to sync. Renumbering historical duplicates is a separate operator Decision."
+            : "Refusing to register this new document under a duplicate id.")
+      });
+      if (!alreadyRegistered) {
+        blockedByDuplicateId.add(doc.relativePath);
+        result.errors.push({
+          relativePath: doc.relativePath,
+          field: "id",
+          message: `Decision id "${id}" already belongs to ${others.join(", ")}; refusing to create a new duplicate.`
+        });
+      }
+    }
+  }
+
   // Two entries sharing a whole heading is the one collision a Log can produce
   // on its own. Reported once per contested heading rather than once per
   // repetition, so a file that repeats a heading five times says so once.
@@ -238,6 +303,38 @@ export function syncProjectDocs(
     }
   }
 
+  // Every ref a document in this corpus could currently back a review item
+  // with -- `claimed` already covers plans, actions, and decisions (and log
+  // entries, which never back a review item; their presence here is
+  // harmless), so only plan-level questions and proposals need adding.
+  const knownDocRefs = new Set<string>(claimed.keys());
+  for (const plan of plans) {
+    for (const question of plan.questions) {
+      knownDocRefs.add(planQuestionDocRef(plan.slug, question.id));
+    }
+  }
+  for (const proposal of proposals) {
+    knownDocRefs.add(proposalDocRef(proposal.slug));
+  }
+
+  // An open review item whose `doc_ref` no longer matches anything in this
+  // corpus was raised from a document that has since been renamed, deleted,
+  // or had its id reused by an unrelated document (Issue #267 -- R195 names
+  // `docs/decisions/0053-...decide-whether...md`, but id 0053 now belongs to
+  // a different Decision under a different slug). This never blocks ingestion:
+  // the dangling item is stale, already-recorded state, not a file this run
+  // is trying to write, and letting it fail a whole project's sync would put
+  // one forgotten review item ahead of every well-formed document in it.
+  for (const item of listReviewItems(db, "open")) {
+    if (item.project_id !== project.id || !item.doc_ref) continue;
+    if (knownDocRefs.has(item.doc_ref)) continue;
+    result.issues.push({
+      kind: "dangling_review_item",
+      relativePath: null,
+      message: `Review item ${item.slug ?? item.id} (doc_ref "${item.doc_ref}") no longer matches a document in this corpus; its source was "${item.source_input}".`
+    });
+  }
+
   // Shared across every document in one run so a milestone named by both
   // PROJECT.md and a plan is created once, not twice.
   const plannedMilestones = new Map<string, string | null>();
@@ -256,7 +353,7 @@ export function syncProjectDocs(
   }
 
   for (const decision of decisions) {
-    if (conflicting.has(decisionDocRef(decision.slug))) {
+    if (conflicting.has(decisionDocRef(decision.slug)) || blockedByDuplicateId.has(decision.relativePath)) {
       continue;
     }
     result.changes.push(syncDecision(db, project, decision, options.apply));
