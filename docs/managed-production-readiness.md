@@ -34,8 +34,9 @@ the worker began launching real Sessions under the standing policy:
 
 Those two runs produced the real blocker list. **Seven defects now stand
 between the worker and an unattended two-Action run. Each is a code fix, each
-is an agent-dispatchable Action, and all seven are at the front of the queue in
-this order:**
+is an agent-dispatchable Action. All seven lead the queue in this relative order.
+`gate-dispatch-on-blocking-operator-items` sits second in the global queue, so
+`arcadia go` reaches it before blocker 2 (see "What this derivation changed"):**
 
 | # | Action | Defect | What the live run showed |
 | --- | --- | --- | --- |
@@ -43,7 +44,7 @@ this order:**
 | 2 | `preserve-candidates-across-base-advance` | #539 | Preservation refuses whenever the base branch advances during the Session. That is routine, because the base moved four times during 09-23's Session. It also compares against the pointer's Action, not the Session's own. |
 | 3 | `name-failing-preservation-check-and-bound-retries` | #611 | The refusal reads `details: {}`. The Session looped on it with no limit, then read host source outside its worktree and stalled on a sandbox prompt. |
 | 4 | `withhold-worker-lifecycle-from-sessions` | #611 | That same Session ran `arcadia worker stop && arcadia worker start` on the shared daemon. |
-| 5 | `stop-killing-busy-workers` | #617 (new) | The hung-worker self-heal fired **five times in 24h**, three of them at 15–26s, which is a busy worker rather than a hung one. The trigger this document set, "reopen on a second `Recovered hung worker:` line", has fired. |
+| 5 | `stop-killing-busy-workers` | #617 (new) | The hung-worker self-heal fired **five times in 24h**, three of them at only 15–26s stale. These may be false kills of a busy worker; no trace yet ties them to the work in flight. The trigger this document set, "reopen on a second `Recovered hung worker:` line", has fired. |
 | 6 | `honor-policy-providers-at-launch` | #559 | Provider selection ignores the policy's `scope.providers`, so every tick is refused with `provider_not_permitted` and nothing surfaces. |
 | 7 | `refuse-packets-without-validation-commands` | #572 | A Project with no validation commands launches a Session that can never be preserved or auto-completed. 09-23's Action B had to be settled by hand. |
 
@@ -216,9 +217,10 @@ This document deferred the root cause with the trigger "reopen when a second
 2026-09-23T19:51:02Z  17s  SIGTERM
 ```
 
-The marginal ones confirm the exposure this document already named. A worker
-inside one long synchronous step cannot re-stamp its heartbeat, so the 15s
-window treats it as hung and kills it. That can happen mid-tick while it holds
+The marginal ones fit the exposure this document already named, but no
+worker or Session trace yet confirms it for these events. A worker inside one
+long synchronous step cannot re-stamp its heartbeat, so the 15s window may
+treat it as hung and kill it. That can happen mid-tick while it holds
 admissions. The 170s and 292s stalls may be real hangs. Both are owned by
 `stop-killing-busy-workers` (Issue #617, entry 5).
 
@@ -244,7 +246,7 @@ admissions. The 170s and 292s stalls may be real hangs. Both are owned by
 | Done | 77 |
 | Open | 25 (6 filed by this derivation; 2 more from concurrent settlements, 1 closed) |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
-| **On the critical path, code** | **7**, all ready, at queue front, pointer on the first |
+| **On the critical path, code** | **7**, all ready, pointer on the first. They lead the queue in relative order; `gate-dispatch-on-blocking-operator-items` is interleaved at global position 2 |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal) |
 | **On the critical path, proof** | **1** (`prove-two-action-unattended-production`) |
 | Unfinished, off the critical path | 18 (includes the two post-claim proofs) |
