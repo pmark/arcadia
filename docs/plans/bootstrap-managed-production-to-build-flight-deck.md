@@ -655,16 +655,15 @@ actions:
     references: []
   - id: divide-instead-of-stall
     title: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: A session that cannot finish its Action ends by completing the finishable slice and queueing the remainder as new Actions in the same PR, so the pointer always advances.
+    next_action: Add a split Agent Ask intent so a session that can only finish part of an Action narrows it to the finished slice instead of stalling.
     expected_artifact: Evidence satisfying Agent Ask divide-instead-of-stall
     clarification: clarified
     confidence: high
-    source: Agent Ask one-session-completes-one-action-2026-09-13
+    source: Agent Ask split-divide-instead-of-stall-2026-09-24
     acceptance_criteria:
-      - arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
       - A split settlement marks the finished slice done and places remainder Actions immediately after it in the queue.
     depends_on: [merge-completes-the-action]
     decisions: []
@@ -1767,9 +1766,24 @@ actions:
     depends_on: [page-runs-this-push-list]
     decisions: []
     references: []
+  - id: go-refuses-stale-session-without-question-or-blocker
+    title: arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
+    expected_artifact: Evidence satisfying Agent Ask go-refuses-stale-session-without-question-or-blocker
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-divide-instead-of-stall-2026-09-24
+    acceptance_criteria:
+      - arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
-current_action: divide-instead-of-stall
+current_action: go-refuses-stale-session-without-question-or-blocker
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
