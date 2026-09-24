@@ -3,7 +3,7 @@
 Indexed answers to things agents here keep re-deriving. **Grep before you dig:**
 
 ```sh
-grep -n -i -A8 "keys:.*<word>" docs/notes-to-self.md
+grep -n -i -B2 -A25 "keys:.*<word>" docs/notes-to-self.md
 ```
 
 Every entry has a `keys:` line of the words you would search for, so one grep
@@ -45,8 +45,10 @@ schema) and throwaway test ones under `/tmp`.
 
 keys: ask, capture, capture_, back burner, lost, shelved, dashboard ask, trace
 
-Expires when #591 closes (a command for this). Until then, rows share only the
-raw text, so join on it:
+Expires when #591 closes (a command for this). Until then, the downstream rows
+carry neither the capture id nor its request id; only the raw text links them.
+Identical text submitted twice is ambiguous, so also match `created_at` to within
+a second of the capture's `captured_at`:
 
 ```sql
 SELECT original_text FROM ask_capture_envelopes WHERE id = 'capture_…';
@@ -61,10 +63,12 @@ properly with an Agent Ask and then `arcadia back-burner archive <bb_id>`.
 
 keys: classify, classification, idea, hedge, could, maybe, back burner, intake
 
-`classifyDeterministically` in `src/intake/index.ts`. A hedge word
-(`could|maybe|might|idea|consider|worth|…`) *anywhere* in the text makes it an
-`Idea` → Back Burner, even when the request opens with an imperative. Expires
-when #589 closes.
+`classifyDeterministically` in `src/intake/index.ts`. When no earlier branch
+matches (a resolved `CreateWork`-style intent, a bug report, a question, and so
+on), a hedge word (`could|maybe|might|idea|consider|worth|…`) *anywhere* in the
+text makes it an `Idea` → Back Burner. A plain imperative such as "Improve X"
+resolves to no intent, so one incidental "could" shelves it. Expires when #589
+closes.
 
 ## Show the ordered queue
 
