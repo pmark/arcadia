@@ -673,6 +673,19 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(settled?.status).toBe("committed");
   });
 
+  it("releases a committed admission when the spawn fails after commitment, instead of leaking it (Issue #610)", () => {
+    const fixture = preparedFixture();
+    const failing = new FakeTmux();
+    failing.failLaunch = true;
+    activatePolicy(fixture);
+
+    expectArcadiaError(() => doStandingLaunch(fixture, failing), "could not start");
+
+    const admissions = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db));
+    expect(admissions).toHaveLength(1);
+    expect(admissions[0].status).toBe("released");
+  });
+
   it("launches an opencode Session under a policy scoped to opencode-cli, then holds the lease guard", () => {
     const fixture = preparedFixture({
       provider: "opencode-cli",
