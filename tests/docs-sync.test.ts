@@ -1473,6 +1473,112 @@ updated: 2026-07-26
     const result = runDocsSyncCommand({ workspace, apply: true });
     expect(result.data.projects[0].issues.filter((issue) => issue.kind === "dangling_review_item")).toEqual([]);
   });
+
+  it("does not let a registered Decision from a different Project satisfy this Project's already-registered check", () => {
+    const repoA = scratch();
+    writeDoc(
+      repoA,
+      "docs/decisions/0001-shared-slug.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: shared-slug", "project: project-a",
+        "status: open", "question: Project A's own question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    const workspace = path.join(scratch(), "ws");
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      const projectA = upsertProject(db, {
+        name: "Project A", mission: "m", status: "active", currentMilestone: "Initial", nextAction: "Start", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: projectA.id, repoPath: repoA });
+    });
+    // Registers project-a's "shared-slug" Decision -- decisionDocRef is
+    // slug-only ("decision/shared-slug"), so a *different* Project's Decision
+    // that happens to reuse the same slug must not be able to piggyback on it.
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const repoB = scratch();
+    writeDoc(
+      repoB,
+      "docs/decisions/0099-first.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0099"', "slug: shared-slug", "project: project-b",
+        "status: open", "question: Project B first question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    writeDoc(
+      repoB,
+      "docs/decisions/0099-second.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0099"', "slug: second-decision-b", "project: project-b",
+        "status: open", "question: Project B second question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    withDatabase(workspace, (db) => {
+      const projectB = upsertProject(db, {
+        name: "Project B", mission: "m", status: "active", currentMilestone: "Initial", nextAction: "Start", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: projectB.id, repoPath: repoB });
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    const projectBResult = result.data.projects.find((project) => project.projectSlug === "project-b")!;
+
+    // Both of Project B's id-0099 documents are brand new to Project B and
+    // must both be refused -- the "shared-slug" one must not be treated as
+    // already registered merely because Project A already owns that slug.
+    expect(projectBResult.errors.filter((error) => error.field === "id")).toHaveLength(2);
+  });
+
+  it("does not resolve an already-open plan question against a Decision refused for a duplicate id", () => {
+    const repo = scratch();
+    // First sync: the question has no `decision:` yet, so it is raised and
+    // stays open, exactly like any other unanswered plan question.
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    expect(
+      withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan?question=rollout"))?.status
+    ).toBe("open");
+
+    // Second sync: the plan now names decision 0009 for that question, and
+    // two Decisions collide on id 0009 -- the first is `approved` with an
+    // answer, so if it wrongly resolved the already-open question, that
+    // would be directly observable as the question closing with its answer.
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    gap_type: missing-decision\ndecisions: []", '    gap_type: missing-decision\n    decision: "0009"\ndecisions: []')
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-first.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0009"', "slug: first-decision", "project: demo",
+        "status: approved", "question: First question?", "answer: Resolved by the refused first Decision.",
+        "decided: 2026-07-26", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-second.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0009"', "slug: second-decision", "project: demo",
+        "status: open", "question: Second question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    runDocsSyncCommand({ workspace, apply: true });
+
+    // Neither duplicate-id Decision was actually registered...
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/first-decision"))).toBeNull();
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+
+    // ...so the already-open question must not have been silently closed by
+    // the refused first Decision's "approved" answer.
+    const question = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan?question=rollout"));
+    expect(question?.status).toBe("open");
+    expect(question?.decision_note).toBeNull();
+  });
 });
 
 describe("portfolio view", () => {

@@ -255,7 +255,11 @@ export function syncProjectDocs(
     if (group.length < 2) continue;
     for (const doc of group) {
       const others = group.filter((candidate) => candidate !== doc).map((candidate) => candidate.relativePath);
-      const alreadyRegistered = getReviewItemByDocRef(db, decisionDocRef(doc.slug)) !== null;
+      // `doc_ref` is not unique across the whole workspace database, only
+      // within a project's own slugs -- a match belonging to a *different*
+      // project must not count as this document already being registered.
+      const existingReview = getReviewItemByDocRef(db, decisionDocRef(doc.slug));
+      const alreadyRegistered = existingReview !== null && existingReview.project_id === project.id;
       result.issues.push({
         kind: "duplicate_decision_id",
         relativePath: doc.relativePath,
@@ -343,12 +347,19 @@ export function syncProjectDocs(
     result.changes.push(...syncProject(db, project, projectDoc, options.apply, plannedMilestones));
   }
 
+  // A plan question naming a refused or conflicting Decision (by its id or
+  // slug, in `syncPlanQuestion`) must not resolve against one that was never
+  // actually registered -- only pass Decisions this pass will itself sync.
+  const eligibleDecisions = decisions.filter(
+    (decision) => !conflicting.has(decisionDocRef(decision.slug)) && !blockedByDuplicateId.has(decision.relativePath)
+  );
+
   for (const plan of plans) {
     if (conflicting.has(planDocRef(plan.slug))) {
       continue;
     }
     result.changes.push(
-      ...syncPlan(db, project, plan, decisions, conflicting, options.apply, plannedMilestones)
+      ...syncPlan(db, project, plan, eligibleDecisions, conflicting, options.apply, plannedMilestones)
     );
   }
 

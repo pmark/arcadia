@@ -140,7 +140,7 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
   }
 
   if (issueCount > 0) {
-    lines.push(`${issueCount} validation issue${issueCount === 1 ? "" : "s"} — reported for review; ingestion was not blocked.`);
+    lines.push(`${issueCount} validation issue${issueCount === 1 ? "" : "s"} — reported for review; an issue alone never blocks a document (a document also listed above under validation errors was still refused).`);
   }
 
   if (!applied && (totals.create > 0 || totals.update > 0)) {
