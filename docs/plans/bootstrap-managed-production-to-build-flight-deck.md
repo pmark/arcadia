@@ -819,7 +819,7 @@ actions:
     references: []
   - id: cut-managed-production-tick-cost
     title: The managed-production tick stops repeating per-Project whole-tree document discovery, YAML parsing and spawnSync every iteration, and the living-songbook tick failure is not re-observed every tick.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The managed-production tick stops repeating per-Project whole-tree document discovery, YAML parsing and spawnSync every iteration, and the living-songbook tick failure is not re-observed every tick.
@@ -1783,7 +1783,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: cut-managed-production-tick-cost
+current_action: detect-duplicate-ids-and-dangling-refs
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
