@@ -989,7 +989,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/280", "src/sessions/index.ts", "src/qa/prReview.ts", "src/codingAgents/providerAdapters.ts", "src/codingAgents/agentIdentity.ts"]
   - id: detect-duplicate-ids-and-dangling-refs
     title: docs sync refuses a duplicate Decision id and reports a dangling review-item docRef as a named validation issue, and the duplicate-id migration is recorded as a Decision before any historical renumbering.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: docs sync refuses a duplicate Decision id and reports a dangling review-item docRef as a named validation issue, and the duplicate-id migration is recorded as a Decision before any historical renumbering.
@@ -1783,7 +1783,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: detect-duplicate-ids-and-dangling-refs
+current_action: surface-terminal-operator-approvals-in-runs
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
