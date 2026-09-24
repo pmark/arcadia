@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-23
+updated: 2026-09-24
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1676,7 +1676,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/568"]
   - id: pass-managed-claude-token-into-sessions
     title: The worker reads the operator token from the workspace config file at launch and passes it only into the claude-code-cli Session environment as CLAUDE_CODE_OAUTH_TOKEN.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: The worker reads the operator token from the workspace config file at launch and passes it only into the claude-code-cli Session environment as CLAUDE_CODE_OAUTH_TOKEN.
@@ -1734,7 +1734,7 @@ actions:
     references: ["src/codex/packets.ts", "src/sessions/packetLifecycle.ts", "src/production/tick.ts", "docs/planning-process.md", "https://github.com/pmark/arcadia/issues/584"]
 questions: []
 decisions: []
-current_action: pass-managed-claude-token-into-sessions
+current_action: divide-instead-of-stall
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
