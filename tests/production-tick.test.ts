@@ -17,6 +17,7 @@ import {
   upsertProjectMetadata,
   updateReviewItemStatus
 } from "../src/db/repositories.js";
+import { buildAgentQueue } from "../src/dispatch/queue.js";
 import * as discoverModule from "../src/docs/discover.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
@@ -1053,6 +1054,31 @@ describe("runManagedProductionTick", () => {
     const withTwoActions = countDiscoverDocsCalls(true);
     expect(withOneAction).toBeGreaterThan(0);
     expect(withTwoActions).toBe(withOneAction);
+  });
+
+  it("buildAgentQueue reads the repository tree a fixed number of times per Project, not once per Action", () => {
+    const fixture = preparedFixture({ secondAction: true });
+    // Make second-action depend on the still-open define-contract, so
+    // inspectProject's second (dependency-blocked) loop -- the one this fix
+    // also touched -- is exercised, not only the ready-Action loop.
+    const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+    const plan = readFileSync(planPath, "utf8").replace(
+      '      - The second thing exists.\n    decisions: ["0001"]',
+      '      - The second thing exists.\n    decisions: ["0001"]\n    depends_on: ["define-contract"]'
+    );
+    writeFileSync(planPath, plan);
+
+    const spy = vi.spyOn(discoverModule, "discoverDocs");
+    const queue = withDatabase(fixture.workspace, (db) => buildAgentQueue(db, { now: fixture.now }));
+    const calls = spy.mock.calls.length;
+    spy.mockRestore();
+
+    expect(queue.ready.map((entry) => entry.actionId)).toEqual(["define-contract"]);
+    expect(queue.attention.some((entry) => entry.actionId === "second-action")).toBe(true);
+    // Fixed per-Project cost (resolveDispatch, resolveReadySet, and
+    // inspectProject's own read), not one re-walk per ready or blocked
+    // Action -- before this fix it grew with each.
+    expect(calls).toBe(3);
   });
 
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {

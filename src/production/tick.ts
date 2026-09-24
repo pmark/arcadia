@@ -794,7 +794,11 @@ function shouldAttemptBaseBranchObservation(
   if (!row) return true;
   if (row.repository_path !== input.repoRoot) return true;
   const elapsed = input.now.getTime() - Date.parse(row.last_attempted_at);
-  return !Number.isFinite(elapsed) || elapsed >= BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS;
+  // A negative elapsed time (a backward clock correction) is treated as due,
+  // not withheld until the clock catches back up to the stale timestamp plus
+  // the full interval -- otherwise a substantial correction could delay
+  // noticing a repaired repository for hours.
+  return !Number.isFinite(elapsed) || elapsed < 0 || elapsed >= BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS;
 }
 
 /**
