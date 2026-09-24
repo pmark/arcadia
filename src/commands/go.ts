@@ -464,6 +464,45 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       throw validationError("Arcadia go cannot name the next agent worktree without a resolved Action.");
     }
 
+    // A session that produced no commits over the base (`commitsToIntegrate`
+    // is proven current above) yet still ends on the exact same Action it
+    // started on -- not done, no operator question recorded (`clarification:
+    // question_open`), no external blocker recorded (`responsibility:
+    // blocked`) -- is the stall AGENTS.md's "Before you stop" contract
+    // forbids: it neither finished nor narrowed the work, nor left a legible
+    // reason it could not. Matched by the branch's own embedded action id
+    // (`prepareAgentWorktree`'s `<agent>/<slugified-action-id>-<timestamp>`
+    // naming), not merely "some Action is still dispatchable": a *different*
+    // Action finishing this one via another worktree (Issue #511) also
+    // leaves `commitsToIntegrate` at zero on this branch and must not be
+    // refused here -- `freshPointer` already re-resolved to that different
+    // Action by this point, so the prefix will not match. A branch not shaped
+    // like a prepared candidate (a hand-crafted or legacy branch) cannot be
+    // matched against an assigned Action at all, so it is exempt rather than
+    // guessed at.
+    if (commitsToIntegrate === 0) {
+      const safeAction = actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
+      if (sourceBranch.startsWith(`${options.agent}/${safeAction}-`)) {
+        throw validationError(
+          "Arcadia go will not end a session that leaves the current Action unchanged: no commits, no recorded operator question, and no recorded external blocker.",
+          {
+            projectSlug,
+            actionId,
+            sourceBranch,
+            baseBranch,
+            gitReconciliationAlreadyApplied: integration === "fast-forward" || integration === "already-integrated",
+            sourceWorktreeRemoved,
+            sourceBranchDeleted,
+            remedy:
+              "Before ending this session: do the work (or the finishable slice of it, via a `complete` or `split` Agent " +
+              "Ask), record the operator question that is blocking it (set the Action's clarification to question_open " +
+              "with a question), or record the external blocker that is blocking it (set the Action's responsibility to " +
+              "blocked)."
+          }
+        );
+      }
+    }
+
     const planModel = dispatch.context?.planRecommendedModel ?? null;
     if (!options.model && !planModel) {
       throw validationError(
