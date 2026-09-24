@@ -22,7 +22,13 @@ describe("docs/notes-to-self.md", () => {
   });
 
   it("references only repository paths that still exist", () => {
-    const paths = [...doc.matchAll(/`((?:src|apps|docs|tests|scripts)\/[\w./[\]-]+)`/g)].map((match) => match[1]);
+    // Any backticked token shaped like a repo-relative path (contains a slash, or
+    // is a root-level Markdown file). Absolute, home, flag, and placeholder
+    // tokens (`<…>`, `…`) are not repository paths and are skipped.
+    const paths = [...doc.matchAll(/`([^`\s]+)`/g)]
+      .map((match) => match[1])
+      .filter((token) => /^[\w.[\]-]+(?:\/[\w.[\]-]+)+\/?$|^[\w-]+\.md$/.test(token))
+      .filter((token) => !/^[~/-]/.test(token));
     expect(paths.length).toBeGreaterThan(0);
     for (const reference of paths) {
       expect(existsSync(path.join(root, reference)), reference).toBe(true);
