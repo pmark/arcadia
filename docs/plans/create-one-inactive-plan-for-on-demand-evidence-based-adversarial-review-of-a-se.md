@@ -4,7 +4,7 @@ type: plan
 slug: create-one-inactive-plan-for-on-demand-evidence-based-adversarial-review-of-a-se
 project: arcadia
 status: draft
-milestone: Create one inactive plan for on-demand, evidence-based adversarial review of a selected PR, Action, Artifact, or plan.
+milestone: Every Arcadia coding-agent handoff gets an independent pre-PR code review from a fresh OpenCode session, falling back to the next configured provider, with findings fixed or declined within three rounds and a receipt pinned to the reviewed commit, while CodeRabbit remains the merge gate.
 token_impact: medium
 token_budget: Deterministic management; one bounded coding-agent implementation pass after activation.
 updated: 2026-09-05
