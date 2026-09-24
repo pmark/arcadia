@@ -2,8 +2,8 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
-import { resolveActionReadiness, type DispatchBlocker } from "../docs/dispatch.js";
-import { discoverDocs } from "../docs/discover.js";
+import { actionReadinessFrom, type DispatchBlocker } from "../docs/dispatch.js";
+import { discoverDocs, type DiscoveryResult } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { Project } from "../domain/types.js";
 import { arrangeActionOrder, loadActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
@@ -180,7 +180,7 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
     const key = actionKeyOf(project.slug, action.id);
     const row = schedulingRows.get(key) ?? null;
     const schedulingClass = row?.schedulingClass ?? "planned";
-    const { status, reason } = deriveStatus(repositoryRoot, project.slug, action, schedulingClass, runningActionIds, record.pausedReason);
+    const { status, reason } = deriveStatus(discovered, project.slug, action, schedulingClass, runningActionIds, record.pausedReason);
     return {
       key,
       projectSlug: project.slug,
@@ -214,7 +214,7 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
 }
 
 function deriveStatus(
-  repositoryRoot: string,
+  discovered: DiscoveryResult,
   projectSlug: string,
   action: PlanActionDoc,
   schedulingClass: SchedulingClass,
@@ -233,7 +233,11 @@ function deriveStatus(
   if (action.responsibility === "requires_review") return { status: "needs_operator", reason: "The Action requires operator review." };
   if (action.responsibility === "blocked" || action.status === "blocked") return { status: "blocked", reason: "The Action is externally blocked." };
   if (action.clarification === "question_open") return { status: "needs_operator", reason: action.question ?? "The Action has an open clarification question." };
-  const readiness = resolveActionReadiness(repositoryRoot, projectSlug, action.id);
+  // Answer from the repository read `buildProjectSchedule` already took, not a
+  // fresh `discoverDocs`: called once per still-open Action here, a per-Action
+  // re-scan would re-walk and re-parse every document in the repository once
+  // per unfinished Action (the same cost `resolveReadySet` avoids the same way).
+  const readiness = actionReadinessFrom(discovered, projectSlug, action.id);
   if (readiness.operatorQuestion) return { status: "needs_operator", reason: readiness.operatorQuestion };
   // An approved `defer` Decision parks its Action at read time, before the
   // consequence is written into the Plan, so it arrives only as a readiness

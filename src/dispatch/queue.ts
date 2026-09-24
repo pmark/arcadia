@@ -9,7 +9,7 @@ import {
   listExecutionRuns,
   listProjects
 } from "../db/repositories.js";
-import { isDispatchable, resolveActionReadiness, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
+import { actionReadinessFrom, isDispatchable, resolveReadySet, type DispatchBlocker } from "../docs/dispatch.js";
 import { discoverDocs } from "../docs/discover.js";
 import type { PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import type { ExecutionRunSummary, Project } from "../domain/types.js";
@@ -417,7 +417,7 @@ function inspectProject(
       for (const action of plan.actions) {
         if (action.status === "done" || action.status === "blocked" || action.status === "deferred") continue;
         if (action.id === activeSessionActionId) continue;
-        const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
+        const readiness = actionReadinessFrom(discovered, project.slug, action.id);
         const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
         if (readiness.blockers.length > 0 || readiness.operatorQuestion !== null || !authorized) continue;
         const pointerAuthorized = dispatch.context?.action.id === action.id && isDispatchable(dispatch);
@@ -458,7 +458,7 @@ function inspectProject(
       for (const action of plan.actions) {
         if (action.status === "done") continue;
         if (readyIds.has(action.id) || action.id === activeSessionActionId) continue;
-        const readiness = resolveActionReadiness(resolvedRoot, project.slug, action.id);
+        const readiness = actionReadinessFrom(discovered, project.slug, action.id);
         const responsibilityReason = action.responsibility === "requires_review"
           ? "Action requires operator review and remains ordered but ineligible."
           : action.responsibility === "blocked"
