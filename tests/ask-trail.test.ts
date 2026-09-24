@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runAskCommand } from "../src/commands/ask.js";
 import { renderAskTrailSuccess, runAskTrailCommand } from "../src/commands/askTrail.js";
 import { runBackBurnerPromoteCommand } from "../src/commands/backBurner.js";
+import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
 import { backfillAskTraceLinks } from "../src/db/schema.js";
@@ -68,6 +69,32 @@ describe("arcadia ask-trail", () => {
     expect(trail.asks[0].outcomes).toContainEqual(
       expect.objectContaining({ kind: "decision", id: asked.data.reviewItemId })
     );
+  });
+
+  it("follows an approved Decision to the Action its resulting Ask created", () => {
+    const { workspace } = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Add a deterministic fixture for Arcadia." });
+    const reviewItemId = asked.data.reviewItemId ?? "";
+    expect(reviewItemId).toMatch(/^review_/);
+
+    const approved = runReviewApproveCommand({ workspace, id: reviewItemId, execute: false });
+    const resultingWorkItemId = approved.data.approval?.workItem?.id;
+    expect(resultingWorkItemId).toBeTruthy();
+
+    const trail = runAskTrailCommand({ workspace, id: asked.data.captureEnvelope.id }).data;
+    expect(trail.asks[0].outcomes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "decision", id: reviewItemId }),
+      expect.objectContaining({ kind: "action", id: resultingWorkItemId })
+    ]));
+  });
+
+  it("says an unlinked capture may predate tracing, not that nothing happened", () => {
+    const { workspace } = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Maybe an unlinked idea could matter someday." });
+    withDatabase(workspace, (db) => db.prepare("UPDATE ask_requests SET capture_id = NULL").run());
+    const trail = runAskTrailCommand({ workspace, id: asked.data.captureEnvelope.id });
+    expect(trail.data.asks).toEqual([]);
+    expect(renderAskTrailSuccess(trail).join("\n")).toContain("predates Ask tracing");
   });
 
   it("refuses an id that matches nothing, naming the ids it accepts", () => {

@@ -113,12 +113,23 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
   if (ask.plan_id) outcomes.push({ kind: "plan", id: ask.plan_id, status: null, summary: null, projectName: null });
 
   const decisions = db.prepare(`
-    SELECT review.id, review.status, review.decision_needed, project.name AS project_name
-    FROM review_items review LEFT JOIN projects project ON project.id = review.project_id
+    SELECT review.id, review.status, review.decision_needed, project.name AS project_name,
+      resulting.work_item_id AS resulting_work_item_id
+    FROM review_items review
+    LEFT JOIN projects project ON project.id = review.project_id
+    LEFT JOIN ask_requests resulting ON resulting.id = review.resulting_ask_request_id
     WHERE review.ask_request_id = ? ORDER BY review.created_at
-  `).all(ask.id) as Array<{ id: string; status: string; decision_needed: string | null; project_name: string | null }>;
+  `).all(ask.id) as Array<{
+    id: string;
+    status: string;
+    decision_needed: string | null;
+    project_name: string | null;
+    resulting_work_item_id: string | null;
+  }>;
   for (const decision of decisions) {
     outcomes.push({ kind: "decision", id: decision.id, status: decision.status, summary: decision.decision_needed, projectName: decision.project_name });
+    // Approving the Decision runs a new Ask; follow it to the Action it created.
+    if (decision.resulting_work_item_id) outcomes.push(...actionOutcome(db, decision.resulting_work_item_id));
   }
 
   const shelved = db.prepare(`
@@ -179,7 +190,7 @@ export function renderAskTrailSuccess(response: CommandSuccess<AskTrailData>): s
     lines.push("Capture: not linked (recorded before Ask tracing)");
   }
   if (asks.length === 0) {
-    lines.push("Outcome: none — the capture was recorded but no Ask was processed from it.");
+    lines.push("Outcome: no linked Ask — none was processed, or it predates Ask tracing and could not be matched unambiguously.");
   }
   for (const ask of asks) {
     lines.push(
