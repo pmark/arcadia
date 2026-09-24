@@ -762,7 +762,7 @@ actions:
     references: []
   - id: combine-advance-monitor-next-into-one-brief
     title: One broker call from a prepared worktree returns the combined result of today's separate advance reconciliation, work-monitor preflight, and next dispatch-brief resolution, and arcadia-go.SKILL.md issues that one call instead of three.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: One broker call from a prepared worktree returns the combined result of today's separate advance reconciliation, work-monitor preflight, and next dispatch-brief resolution, and arcadia-go.SKILL.md issues that one call instead of three.
@@ -1783,7 +1783,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: combine-advance-monitor-next-into-one-brief
+current_action: cut-managed-production-tick-cost
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
