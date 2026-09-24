@@ -1768,7 +1768,7 @@ actions:
     references: []
   - id: go-refuses-stale-session-without-question-or-blocker
     title: arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: arcadia go refuses to end a session with the current Action unchanged unless it records an operator question or external blocker.
@@ -1783,7 +1783,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: go-refuses-stale-session-without-question-or-blocker
+current_action: combine-advance-monitor-next-into-one-brief
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
