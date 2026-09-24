@@ -1,0 +1,36 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-detect-duplicate-ids-and-dangling-refs-2026-09-24b",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/detect-duplicate-ids-and-dangling-refs",
+  "candidate_revision": "d45ac13a1426ea2150b8ec51836bc210b1611dee",
+  "desired_result": "Mark detect-duplicate-ids-and-dangling-refs done: docs sync now refuses a new duplicate Decision id and reports a dangling review-item docRef, and the historical migration is recorded as an open Decision instead of applied unilaterally.",
+  "evidence": [
+    {
+      "criterion": "arcadia docs sync refuses to create a Decision whose numeric id already exists in docs/decisions/ and reports the collision as a named validation issue, so a new duplicate 0004/0005 can no longer be written (fixes Issue #268).",
+      "status": "met",
+      "note": "src/docs/sync.ts: syncProjectDocs groups every discovered Decision by its numeric id; a group with more than one member always produces a duplicate_decision_id entry on the new ProjectSyncResult.issues field. A document not already registered (getReviewItemByDocRef(db, decisionDocRef(slug)) returns null) is additionally refused: it is added to result.errors and skipped in the syncDecision loop, so no review item is ever created for it. tests/docs-sync.test.ts covers both a brand-new collision (refused, no review item created, error field id) and the case where both colliding documents are simultaneously new (both refused). Validated against a scratch copy of the live production workspace database plus this repository's real docs/decisions/ tree: the two live 0004/0005 pairs, already registered from prior syncs, are reported as issues with zero errors and zero regressions to the other 483 unchanged documents."
+    },
+    {
+      "criterion": "arcadia docs sync detects and reports as a named validation issue any open review item whose sourceInput or docRef points at a document that does not exist on disk, reproducing R195's dangling reference to a non-existent 0053 document (fixes Issue #267).",
+      "status": "met",
+      "note": "src/docs/sync.ts: syncProjectDocs builds knownDocRefs from every ref this project's discovered plans, actions, plan-level questions, Decisions, and proposals could currently back (reusing the existing slug-collision map plus proposal/question refs). Every open review item with a non-null doc_ref (item.doc_ref) not in knownDocRefs produces a dangling_review_item issue, naming the review item's slug/id, its doc_ref, and its original sourceInput -- never added to errors, so a stale review item never blocks ingestion of well-formed documents. tests/docs-sync.test.ts reproduces R195 exactly (its real sourceInput/doc_ref format) and confirms it is reported without blocking, and a separate test confirms a review item with a null doc_ref (free-text sourceInput, e.g. a QA sign-off) is never flagged. The live-database validation run above confirms R195 itself (review_f533ac102d1d47479d, doc_ref decision/decide-whether-arcadia-should-now-scope-the-separately-approved-action-that-docs) is detected as dangling against the real corpus, where id 0053 is now permanently owned by an unrelated Decision."
+    },
+    {
+      "criterion": "Historical duplicate Decision ids are not renumbered by this Action: the migration choice (renumber the later duplicates versus make the slug the canonical handle) is recorded as an open Decision before any renumbering is applied, and R195's disposition (re-point or reject) is decided there.",
+      "status": "met",
+      "note": "No renumbering was applied by this Action; docs/decisions/0004-*.md and 0005-*.md are untouched. Agent Ask decide-duplicate-decision-id-migration-2026-09-24 (intent: decision, gate_question: reasonable_disagreement) was drafted, previewed, and settled (accepted), creating open Decision 0067 (docs/decisions/0067-answer-how-arcadia-should-migrate-its-existing-duplicate-decision-numeric-ids.md). It offers two options -- renumber the later duplicates to free ids (recommended), or make the slug the canonical handle and relax the check to report-only -- each option's consequence explicitly naming R195's disposition (re-pointed to a newly reserved id under the first option, re-pointed to an operator-named document or rejected as obsolete under the second). Agent text did not answer it; the operator's approval is what settles it."
+    },
+    {
+      "criterion": "Deterministic tests cover the duplicate-id refusal and the dangling-reference detection, including a clean corpus that stays accepted; existing docs sync ingestion of well-formed documents is unchanged; pnpm test and the core, Discord, and Dashboard builds pass.",
+      "status": "met",
+      "note": "tests/docs-sync.test.ts adds 6 new deterministic tests under the existing \"docs sync\" describe block: a clean corpus stays accepted (issues: []); a brand-new duplicate id is refused (both when it collides with an already-registered document and when both colliding documents are simultaneously new); an already-registered historical duplicate keeps syncing/updating and is reported but never blocked; a dangling review item (R195's exact shape) is reported without blocking; a review item with a null doc_ref is never flagged. Full tests/docs-sync.test.ts: 59/59 pass. Broader touched-area suites (docs-sync, living-system-sync, production-tick, dispatch, dispatch-admission, scheduling): 149/149 pass. Full pnpm test: 2171/2183 passed on the contended first run (12 failures across 4 unrelated CLI-subprocess/fault-matrix suites, all timeout-shaped under parallel load); every one of those 4 files passes cleanly in isolation (cli-response-workspaces.test.ts and discord-bot.test.ts together: 38/38 pass; production-fault-matrix-completion.test.ts alone: 1/1 pass, 201s). pnpm build (lint + tsc + discord-bot build) and pnpm --filter arcadia-dashboard build (next build, 26 routes): both clean."
+    },
+    {
+      "criterion": "The Action closes GitHub Issues #267 and #268 when it merges.",
+      "status": "met",
+      "note": "The implementation commit (c0680454) and the pull request body both carry 'Closes #267' and 'Closes #268', so GitHub closes both Issues automatically on merge to main."
+    }
+  ]
+}

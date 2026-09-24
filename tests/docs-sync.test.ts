@@ -7,6 +7,7 @@ import { runPortfolioCommand } from "../src/commands/portfolio.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   createMissionLog,
+  createReviewItem,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
   getReviewItemByDocRef,
@@ -17,6 +18,7 @@ import {
   listRecentMissionLogs,
   listReviewItems,
   listWorkItemDependencies,
+  setReviewItemDocRef,
   updateWorkItem,
   upsertProject,
   upsertProjectMetadata
@@ -1310,6 +1312,289 @@ updated: 2026-07-26
 
     const result = runDocsSyncCommand({ workspace });
     expect(result.data.projects[0].changes[0].reason).toContain("No repo_path");
+  });
+
+  function decisionDoc(id: string, slug: string, question: string, updated = "2026-07-26"): string {
+    return [
+      "---",
+      "arcadia: v1",
+      "type: decision",
+      `id: "${id}"`,
+      `slug: ${slug}`,
+      "project: demo",
+      "status: open",
+      `question: ${question}`,
+      `updated: ${updated}`,
+      "---",
+      ""
+    ].join("\n");
+  }
+
+  it("stays clean with no duplicate ids and no dangling refs", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.issueCount).toBe(0);
+    expect(result.data.projects[0].issues).toEqual([]);
+  });
+
+  it("treats an unpadded numeric id as the same id as its 4-digit-padded form", () => {
+    const repo = scratch();
+    // "9" and "0009" are the same id once normalized the way `decision
+    // approve` already does (Number.padStart(4, "0")); a naive string
+    // comparison of the two would miss this collision entirely.
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    writeDoc(repo, "docs/decisions/0009-second.md", decisionDoc("9", "second-decision", "A second, unrelated question."));
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const project = result.data.projects[0];
+    expect(project.issues.filter((issue) => issue.kind === "duplicate_decision_id")).toHaveLength(2);
+    expect(project.errors.some((error) => error.field === "id" && error.relativePath === "docs/decisions/0009-second.md")).toBe(true);
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+  });
+
+  it("refuses a new Decision whose numeric id already belongs to an existing Decision, reporting it as an issue", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    const workspace = workspaceWithProject(repo);
+    // The first Decision is registered by an ordinary sync, the same as any
+    // other document -- this is what "already known" means below.
+    runDocsSyncCommand({ workspace, apply: true });
+
+    writeDoc(repo, "docs/decisions/0009-second.md", decisionDoc("0009", "second-decision", "A second, unrelated question."));
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const project = result.data.projects[0];
+    expect(project.errors.some((error) => error.field === "id" && error.message.includes('"0009"'))).toBe(true);
+    expect(project.issues.some((issue) => issue.kind === "duplicate_decision_id" && issue.relativePath === "docs/decisions/0009-second.md")).toBe(true);
+    // Refused, not created: the second document never got a review item.
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+    // The first Decision, already registered, is untouched by the refusal.
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/rollout-order"))).not.toBeNull();
+  });
+
+  it("on first sight, refuses both sides of a brand-new duplicate id with no operator-unsafe guess at a winner", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/decisions/0009-first.md", decisionDoc("0009", "first-decision", "First question?"));
+    writeDoc(repo, "docs/decisions/0009-second.md", decisionDoc("0009", "second-decision", "Second question?"));
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    // Neither document is "already known" yet, so both are reported and
+    // refused -- there is no safe way to guess which of two simultaneously
+    // new colliding documents should win.
+    expect(result.data.projects[0].issues.filter((issue) => issue.kind === "duplicate_decision_id")).toHaveLength(2);
+    expect(result.data.projects[0].errors.filter((error) => error.field === "id")).toHaveLength(2);
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/first-decision"))).toBeNull();
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+  });
+
+  it("keeps syncing an already-registered historical duplicate id, reporting but never blocking it", () => {
+    const repo = scratch();
+    // Reproduces Issue #268's historical-duplicate shape (three real files
+    // already claim 0004 in this repository): both documents claim id 0009,
+    // and -- unlike a brand-new collision -- both are already registered, the
+    // way documents synced before this check existed would be.
+    writeDoc(repo, "docs/decisions/0009-first.md", decisionDoc("0009", "first-decision", "First question?", NEWER_THAN_NOW));
+    writeDoc(repo, "docs/decisions/0009-second.md", decisionDoc("0009", "second-decision", "Second question?", NEWER_THAN_NOW));
+    const workspace = workspaceWithProject(repo);
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      for (const slug of ["first-decision", "second-decision"]) {
+        const created = createReviewItem(db, {
+          projectId: project.id,
+          decisionNeeded: "placeholder",
+          sourceInput: `docs/decisions/0009-${slug === "first-decision" ? "first" : "second"}.md (${slug})`,
+          proposedAction: "placeholder",
+          resolvedIntent: "ArcadiaCodexPlanningActionClarification",
+          confidenceLabel: "medium",
+          confidence: 0,
+          missingFields: []
+        });
+        setReviewItemDocRef(db, created.id, `decision/${slug}`);
+      }
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const project = result.data.projects[0];
+    // Reported for visibility, but neither document is refused: renumbering
+    // historical duplicates is a separate operator Decision, not something
+    // this sync enforces retroactively.
+    expect(project.issues.filter((issue) => issue.kind === "duplicate_decision_id")).toHaveLength(2);
+    expect(project.errors.filter((error) => error.field === "id")).toEqual([]);
+    expect(project.changes.some((change) => change.entity === "decision" && change.relativePath === "docs/decisions/0009-first.md" && change.action !== "skipped")).toBe(true);
+    expect(project.changes.some((change) => change.entity === "decision" && change.relativePath === "docs/decisions/0009-second.md" && change.action !== "skipped")).toBe(true);
+  });
+
+  it("reports an open review item whose backing document no longer matches any document in the corpus, without blocking the sync", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    // Reproduce R195: an open review item whose doc_ref names a Decision slug
+    // that no longer exists on disk (renamed, or its id reused elsewhere).
+    const danglingRef = "decision/decide-whether-arcadia-should-now-scope-the-separately-approved-action-that-docs";
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      const created = createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: "Decide whether Arcadia should now scope the separately-approved Action.",
+        sourceInput:
+          "docs/decisions/0053-decide-whether-arcadia-should-now-scope-the-separately-approved-action-that-docs.md (decide-whether-arcadia-should-now-scope-the-separately-approved-action-that-docs)",
+        proposedAction: "Resolve decision 0053: decide-whether-arcadia-should-now-scope-the-separately-approved-action-that-docs.",
+        resolvedIntent: "ArcadiaCodexPlanningActionClarification",
+        confidenceLabel: "medium",
+        confidence: 0,
+        missingFields: []
+      });
+      setReviewItemDocRef(db, created.id, danglingRef);
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const project = result.data.projects[0];
+    expect(project.errors).toEqual([]);
+    expect(project.rejected).toEqual([]);
+    expect(project.issues.some((issue) => issue.kind === "dangling_review_item" && issue.message.includes(danglingRef))).toBe(true);
+    // The well-formed rollout-order Decision still syncs normally.
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/rollout-order"))).not.toBeNull();
+  });
+
+  it("never flags a review item with no backing document (a null doc_ref)", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: "Accept proof",
+        sourceInput: "Proof",
+        proposedAction: "Review proof",
+        resolvedIntent: "CandidateQaSignoff",
+        confidenceLabel: "high",
+        confidence: 1
+      });
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    expect(result.data.projects[0].issues.filter((issue) => issue.kind === "dangling_review_item")).toEqual([]);
+  });
+
+  it("does not let a registered Decision from a different Project satisfy this Project's already-registered check", () => {
+    const repoA = scratch();
+    writeDoc(
+      repoA,
+      "docs/decisions/0001-shared-slug.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: shared-slug", "project: project-a",
+        "status: open", "question: Project A's own question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    const workspace = path.join(scratch(), "ws");
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      const projectA = upsertProject(db, {
+        name: "Project A", mission: "m", status: "active", currentMilestone: "Initial", nextAction: "Start", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: projectA.id, repoPath: repoA });
+    });
+    // Registers project-a's "shared-slug" Decision -- decisionDocRef is
+    // slug-only ("decision/shared-slug"), so a *different* Project's Decision
+    // that happens to reuse the same slug must not be able to piggyback on it.
+    runDocsSyncCommand({ workspace, apply: true });
+
+    const repoB = scratch();
+    writeDoc(
+      repoB,
+      "docs/decisions/0099-first.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0099"', "slug: shared-slug", "project: project-b",
+        "status: open", "question: Project B first question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    writeDoc(
+      repoB,
+      "docs/decisions/0099-second.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0099"', "slug: second-decision-b", "project: project-b",
+        "status: open", "question: Project B second question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    withDatabase(workspace, (db) => {
+      const projectB = upsertProject(db, {
+        name: "Project B", mission: "m", status: "active", currentMilestone: "Initial", nextAction: "Start", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: projectB.id, repoPath: repoB });
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+    const projectBResult = result.data.projects.find((project) => project.projectSlug === "project-b")!;
+
+    // Both of Project B's id-0099 documents are brand new to Project B and
+    // must both be refused -- the "shared-slug" one must not be treated as
+    // already registered merely because Project A already owns that slug.
+    expect(projectBResult.errors.filter((error) => error.field === "id")).toHaveLength(2);
+  });
+
+  it("does not resolve an already-open plan question against a Decision refused for a duplicate id", () => {
+    const repo = scratch();
+    // First sync: the question has no `decision:` yet, so it is raised and
+    // stays open, exactly like any other unanswered plan question.
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+    expect(
+      withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan?question=rollout"))?.status
+    ).toBe("open");
+
+    // Second sync: the plan now names decision 0009 for that question, and
+    // two Decisions collide on id 0009 -- the first is `approved` with an
+    // answer, so if it wrongly resolved the already-open question, that
+    // would be directly observable as the question closing with its answer.
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace("    gap_type: missing-decision\ndecisions: []", '    gap_type: missing-decision\n    decision: "0009"\ndecisions: []')
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-first.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0009"', "slug: first-decision", "project: demo",
+        "status: approved", "question: First question?", "answer: Resolved by the refused first Decision.",
+        "decided: 2026-07-26", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    writeDoc(
+      repo,
+      "docs/decisions/0009-second.md",
+      [
+        "---", "arcadia: v1", "type: decision", 'id: "0009"', "slug: second-decision", "project: demo",
+        "status: open", "question: Second question?", "updated: 2026-07-26", "---", ""
+      ].join("\n")
+    );
+    runDocsSyncCommand({ workspace, apply: true });
+
+    // Neither duplicate-id Decision was actually registered...
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/first-decision"))).toBeNull();
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+
+    // ...so the already-open question must not have been silently closed by
+    // the refused first Decision's "approved" answer.
+    const question = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "plan/sample-plan?question=rollout"));
+    expect(question?.status).toBe("open");
+    expect(question?.decision_note).toBeNull();
   });
 });
 

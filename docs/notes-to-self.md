@@ -99,6 +99,14 @@ git push origin main   # settlement commits locally and never pushes
 required. A draft-Plan or log Ask places nothing in the queue and can settle
 inside the worktree, so it ships with that PR.
 
+`complete` and `decision` (and other non-queue-placing) intents settle inside
+your own **candidate worktree** instead — no `--top/--before/--after`, no
+main-checkout requirement — but still need both `--proposal <request_id>` and
+`--request-id <settle-id>` (two different ids) plus `--disposition accepted`
+just to get the preview/fingerprint; expect `USAGE_ERROR: required option
+'--proposal'` or `'--request-id'` or `'--disposition'` in some order if you
+guess the flag set instead of passing all three from the start.
+
 ## `agent-ask draft` printed "Failed to auto-discover N files"
 
 keys: auto-discover, already used with different content, draft noise
@@ -107,14 +115,24 @@ Ignore it when the listed files are old, already-settled Asks: it is a false
 positive. Look only at the lines above it (`Agent Ask drafted`,
 `Previewed: fingerprint`). Expires when #592 closes.
 
-## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings"
+## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED
 
-keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code
+keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, pnpm arcadia next, dispatch brief
 
-Arcadia CLI calls, `gh`, and `git push` need to run outside the Bash sandbox. The
-sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so a
-file written in one mode is missing in the other. Write and read scratch files
-in the same mode.
+`gh` and `git push` always need to run outside the Bash sandbox. Most
+`pnpm arcadia` calls do too, but **stay sandboxed by default and bypass only on
+an actual failure**, per the sandbox's own reactive-only policy — never
+pre-disable it for a whole worktree or session, since that also runs whatever
+`src/cli.ts` and its command modules do with host access. Recognize the
+symptom instead of guessing: a read-only-looking noun like `arcadia next` or
+`arcadia work monitor` still opens the workspace SQLite db read-write (WAL
+journal) and fails `Error [SQLITE_WORKSPACE_WRITE_DENIED]: ... attempt to
+write a readonly database` inside the sandbox — that specific error is the
+signal to retry the *same single command* with `dangerouslyDisableSandbox:
+true`, not a reason to disable it ahead of time. The
+sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so
+a file written in one mode is missing in the other — write and read scratch
+files in the same mode.
 
 ## Lint or tests fail in an agent worktree but not in CI
 
