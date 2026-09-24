@@ -24,11 +24,27 @@ describe("readClaudeCodeTokenFile", () => {
     expect(readClaudeCodeTokenFile(tokenFile, configDir)).toEqual({ status: "absent" });
   });
 
-  it("reads a valid 0600 token file, trimmed of trailing whitespace", () => {
+  it("reads a valid 0600 token file, stripped of trailing newlines only", () => {
     const { configDir, tokenFile } = setup();
-    writeFileSync(tokenFile, "sk-ant-oat-example\n");
+    writeFileSync(tokenFile, "sk-ant-oat-example\n\n");
     chmodSync(tokenFile, 0o600);
     expect(readClaudeCodeTokenFile(tokenFile, configDir)).toEqual({ status: "ok", token: "sk-ant-oat-example" });
+  });
+
+  it("refuses a token file with a trailing carriage return, which the launch shell would not strip", () => {
+    const { configDir, tokenFile } = setup();
+    writeFileSync(tokenFile, "sk-ant-oat-example\r\n");
+    chmodSync(tokenFile, 0o600);
+    const result = readClaudeCodeTokenFile(tokenFile, configDir);
+    expect(result.status).toBe("refused");
+    expect((result as { reason: string }).reason).toContain("whitespace");
+  });
+
+  it("refuses a token file with leading whitespace", () => {
+    const { configDir, tokenFile } = setup();
+    writeFileSync(tokenFile, "  sk-ant-oat-example");
+    chmodSync(tokenFile, 0o600);
+    expect(readClaudeCodeTokenFile(tokenFile, configDir).status).toBe("refused");
   });
 
   it("refuses a file readable by group", () => {

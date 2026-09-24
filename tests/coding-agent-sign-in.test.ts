@@ -116,17 +116,19 @@ describe("checkProviderSignIn", () => {
       expect(execFileSyncMock).toHaveBeenCalled();
     });
 
-    it("throws with a named remedy for a token file readable by group or others, without probing the claude executable", () => {
+    it("reports signed out with a named remedy for a token file readable by group or others, without probing the claude executable, without throwing", () => {
       const workspace = workspaceWithTokenFile("sk-ant-oat-example", 0o640);
-      expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace))).toThrow(
-        /group or others/
-      );
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      expect(result).toMatchObject({ signedIn: false });
+      expect(result?.remedy).toContain("group or others");
       expect(execFileSyncMock).not.toHaveBeenCalled();
     });
 
-    it("throws with a named remedy for an empty token file", () => {
+    it("reports signed out with a named remedy for an empty token file, without throwing", () => {
       const workspace = workspaceWithTokenFile("");
-      expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace))).toThrow(/empty/);
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      expect(result).toMatchObject({ signedIn: false });
+      expect(result?.remedy).toContain("empty");
     });
   });
 });

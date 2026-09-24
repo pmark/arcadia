@@ -92,15 +92,29 @@ export function readClaudeCodeTokenFile(filePath: string, configDir: string): Cl
     }
     const buffer = Buffer.alloc(stat.size);
     readSync(fd, buffer, 0, stat.size, 0);
-    const token = buffer.toString("utf8").trim();
-    if (!token) {
+    // The launch wrapper reads this same file with `$(cat file)`, and POSIX
+    // command substitution strips *only* trailing newlines -- never a
+    // trailing \r, leading/internal whitespace, or blank lines. Validating
+    // against a fully `.trim()`-ed value would accept a file the shell then
+    // injects uncleaned (e.g. a trailing \r from a Windows-edited paste),
+    // producing a token that passes preflight but fails at the provider.
+    // Matching that exact stripping rule here keeps the two in lockstep.
+    const withoutTrailingNewlines = buffer.toString("utf8").replace(/\n+$/, "");
+    if (withoutTrailingNewlines.length === 0) {
       return {
         status: "refused",
         reason: "is empty",
         remedy: `Run "claude setup-token", write the printed token to ${filePath}, then "chmod 600 ${filePath}".`
       };
     }
-    return { status: "ok", token };
+    if (/\s/.test(withoutTrailingNewlines)) {
+      return {
+        status: "refused",
+        reason: "contains whitespace other than trailing newlines, which the launch shell would not strip",
+        remedy: `Ensure ${filePath} contains only the token printed by "claude setup-token" -- no leading/trailing spaces, carriage returns, or blank lines.`
+      };
+    }
+    return { status: "ok", token: withoutTrailingNewlines };
   } finally {
     closeSync(fd);
   }
