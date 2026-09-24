@@ -288,6 +288,18 @@ describe("arcadia ask command", () => {
     expect(bulleted.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
     expect(bulleted.data.backBurnerItemId).toBeNull();
 
+    // A Project named outright (`--project`, the dashboard picker) is a target
+    // even when the text never mentions it.
+    const explicit = runAskCommand({ workspace, project: "Arcadia", request: "Improve loading time" });
+    expect(explicit.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(explicit.data.backBurnerItemId).toBeNull();
+
+    // "Review …" is imperative too, so a later hedge word does not make it an Idea.
+    const review = runAskCommand({ workspace, request: "Review the Rebuster candidate flow. It could be clearer." });
+    expect(review.data.intake.resolvedIntent).toBe("CaptureThought");
+    expect(review.data.intake.classification).toBe("IncubatingThought");
+    expect(review.data.backBurnerItemId).toBeNull();
+
     // A genuinely exploratory thought still goes to the Back Burner.
     const idea = runAskCommand({ workspace, request: "Maybe creator partnerships could help someday." });
     expect(idea.data.intake.classification).toBe("Idea");

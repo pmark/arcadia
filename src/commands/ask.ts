@@ -183,11 +183,12 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   validatePhase3Registries(registries);
   const approvedFromReview = Boolean(options.approvedReviewItemId);
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
-  const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
+  const { intake, workspaceContext, hasExplicitProject } = withDatabase(workspacePath, (db) => {
     const workspaceContext = buildIntakeContext(db);
     return {
       intake: resolveIntake(request, workspaceContext),
-      workspaceContext
+      workspaceContext,
+      hasExplicitProject: Boolean(resolveProjectReference(db, options.project))
     };
   });
   const registryResolved = resolveIntent(request, registries);
@@ -207,7 +208,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspaceContext,
       approvedFromReview,
       reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
-      reviewResponseHasResponse: parsedReviewResponse.hasResponse
+      reviewResponseHasResponse: parsedReviewResponse.hasResponse,
+      hasExplicitProject
     }),
     approvedFromReview
   );
@@ -218,7 +220,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     workspaceContext,
     approvedFromReview,
     reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
-    reviewResponseHasResponse: parsedReviewResponse.hasResponse
+    reviewResponseHasResponse: parsedReviewResponse.hasResponse,
+    hasExplicitProject
   });
   const stewardship: GoalStewardshipResult = options.captureAsIdea
     ? {

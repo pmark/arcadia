@@ -1436,7 +1436,7 @@ function missingProjectFields(project: { reference: IntakeResolvedReference | nu
   return [];
 }
 
-const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert)\b/;
+const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert|review|test|document|design|verify|audit)\b/;
 
 // An imperative request names work to do even when no template recognizes it.
 // Any line counts — the opening sentence or a bullet — because operators often

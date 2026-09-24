@@ -52,6 +52,9 @@ export interface StewardIntentInput {
   approvedFromReview?: boolean;
   reviewResponseHasReference?: boolean;
   reviewResponseHasResponse?: boolean;
+  // The caller named a Project outright (e.g. `--project`), so the request has a
+  // target even when intake could not find one in the text.
+  hasExplicitProject?: boolean;
 }
 
 export function stewardIntent(input: StewardIntentInput): GoalStewardshipResult {
@@ -124,7 +127,7 @@ function intentTypeForInput(
       // An imperative request for a known Project is work to plan, not an idea
       // to shelve; without a Project it still needs clarifying first.
       if (!isImperativeRequest(input.rawInput)) return "Back Burner Idea";
-      return input.intake.project ? "Planning Request" : "Project Work";
+      return hasTargetProject(input) ? "Planning Request" : "Project Work";
   }
 }
 
@@ -147,7 +150,7 @@ function executionPathForInput(
   }
 
   if (intentType === "Planning Request" || intentType === "Research Request") {
-    return input.intake.project || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
+    return hasTargetProject(input) || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
   }
 
   if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(input)) {
@@ -324,8 +327,12 @@ function requiresProjectForPlan(normalized: string): boolean {
   return /\b(?:for|in|on)\s+(?:the\s+)?project\b/.test(normalized) || /\b(?:implement|build|fix|ship|release)\b/.test(normalized);
 }
 
+function hasTargetProject(input: StewardIntentInput): boolean {
+  return Boolean(input.intake.project || input.hasExplicitProject);
+}
+
 function commandShapedMissingTarget(input: StewardIntentInput): boolean {
-  return !input.intake.project && isImperativeRequest(input.rawInput);
+  return !hasTargetProject(input) && isImperativeRequest(input.rawInput);
 }
 
 function normalize(value: string): string {
