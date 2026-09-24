@@ -43,17 +43,18 @@ The `go` launcher is host-only because it mutates shared Git metadata. The
 `arcadia-go` skill invokes only fixed, no-argument prepared-worktree brokers:
 
 ```sh
-~/.local/bin/arcadia-advance-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-advance-broker-claude
-~/.local/bin/arcadia-work-monitor-broker-codex
-# Claude Code uses: ~/.local/bin/arcadia-work-monitor-broker-claude
+~/.local/bin/arcadia-brief-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-brief-broker-claude
 ```
 
 The host runs the matching `go` executable with no arguments from the completed
-worktree; no `--apply` or `--agent` flag belongs in the agent skill. In the prepared
-worktree it uses the fixed `advance` and read-only `work-monitor` launchers,
-then proceeds with ordinary local read-only discovery without asking for
-approval. The launchers reject every public argument. Re-run the installer
+worktree; no `--apply` or `--agent` flag belongs in the agent skill. In the
+prepared worktree it uses the fixed `brief` launcher — one process invocation
+that runs the advance reconciliation, the read-only work-monitor preflight,
+and the next dispatch-brief resolution together — then proceeds with ordinary
+local read-only discovery without asking for approval. The standalone
+`advance` and `work-monitor` launchers remain installed for manual use outside
+this flow. The launchers reject every public argument. Re-run the installer
 only after reviewing a new Arcadia commit.
 
 ## Daily Arcadia Workspace Startup
