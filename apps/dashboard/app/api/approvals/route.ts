@@ -86,8 +86,10 @@ interface ApprovalActionRequest {
   kind?: unknown;
   id?: unknown;
   project?: unknown;
-  /** The option label chosen; defaults to the recommended option when omitted. */
+  /** Required for kind "decision": the option label to answer with; defaults to the recommended option when omitted. */
   option?: unknown;
+  /** Required for kind "agent_ask": the terminal disposition to settle with. An Agent Ask's own `options` (when it has any) describe something other than accept/reject and never drive this. */
+  disposition?: unknown;
 }
 
 export async function POST(request: Request) {
@@ -104,19 +106,26 @@ export async function POST(request: Request) {
   const id = typeof body.id === "string" ? body.id.trim() : "";
   const project = typeof body.project === "string" ? body.project.trim() : "";
   const option = typeof body.option === "string" ? body.option.trim() : undefined;
+  const disposition = body.disposition === "accepted" || body.disposition === "rejected" ? body.disposition : undefined;
   if (!kind || !id || !project) {
     return NextResponse.json({ error: "kind, id, and project are required." }, { status: 400 });
   }
 
   try {
     if (kind === "agent_ask") {
+      if (option) {
+        return NextResponse.json({ error: "An Agent Ask settles by disposition (accepted/rejected), not by option." }, { status: 400 });
+      }
+      if (!disposition) {
+        return NextResponse.json({ error: "disposition must be \"accepted\" or \"rejected\"." }, { status: 400 });
+      }
       const response = await settlePendingAgentAsk({
         proposalId: id,
         requestId: `dashboard-approve-${id}-${Date.now()}`,
-        disposition: "accepted"
+        disposition
       });
       return NextResponse.json({
-        message: `Applied. ${response.data.receipt.effects.join(" ")}`.trim(),
+        message: disposition === "accepted" ? `Applied. ${response.data.receipt.effects.join(" ")}`.trim() : "Rejected.",
         receipt: response.data.receipt
       });
     }

@@ -23,10 +23,26 @@ interface Approval {
   createdAt: string;
 }
 
+interface Choice {
+  /** The action button's own label, shown while pending. */
+  label: string;
+  /** For kind "agent_ask": the settlement disposition to send. */
+  disposition?: "accepted" | "rejected";
+  /** For kind "decision": the option label to answer with. */
+  option?: string;
+}
+
 // Not a hook value: guards a single ApprovalQueue instance's poll against an
 // earlier response overwriting a later one, the same pattern the Operator
 // actions section already uses for the same reason.
 let approvalRefreshSequence = 0;
+
+function cardKey(approval: Approval): string {
+  // Decision ids are per-repository sequences ("0001", "0002", …), so two
+  // Projects can share one — include the Project to keep cards and pending
+  // state distinct across them.
+  return `${approval.kind}:${approval.project}:${approval.id}`;
+}
 
 export function ApprovalQueue() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -63,8 +79,8 @@ export function ApprovalQueue() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const act = useCallback(async (approval: Approval, option: ApprovalOption) => {
-    const key = `${approval.kind}:${approval.id}:${option.label}`;
+  const act = useCallback(async (approval: Approval, choice: Choice) => {
+    const key = `${cardKey(approval)}:${choice.label}`;
     setPendingId(key);
     setMessage(null);
     setError(null);
@@ -76,7 +92,8 @@ export function ApprovalQueue() {
           kind: approval.kind,
           id: approval.id,
           project: approval.project,
-          option: option.label
+          disposition: choice.disposition,
+          option: choice.option
         })
       });
       const body = (await response.json()) as { message?: string; error?: string };
@@ -104,9 +121,16 @@ export function ApprovalQueue() {
       ) : (
         <div className="grid min-w-0 gap-3 md:grid-cols-2">
           {approvals.map((approval) => {
-            const key = `${approval.kind}:${approval.id}`;
+            const key = cardKey(approval);
             const options = approval.options ?? [];
-            const recommended = options.find((option) => option.recommended) ?? options[0] ?? null;
+            // Decision options are real settlement alternatives (answering
+            // with a different label changes the outcome); an Agent Ask's
+            // options describe something else entirely (e.g. a `plan`
+            // intent's activation choices) and never drive its disposition,
+            // so only Decisions get an option-driven Approve control.
+            const recommendedOption = approval.kind === "decision"
+              ? options.find((option) => option.recommended) ?? options[0] ?? null
+              : null;
             const expanded = expandedId === key;
             return (
               <article key={key} className="rounded-md border border-line bg-panel p-4 shadow-soft">
@@ -118,25 +142,52 @@ export function ApprovalQueue() {
                     <h3 className="mt-1 font-semibold">{approval.title}</h3>
                   </div>
                 </div>
-                {recommended ? (
-                  <p className="mt-2 text-sm text-muted">
-                    Recommended: <strong className="text-ink">{recommended.label}</strong> — {recommended.consequence}
-                  </p>
+                {approval.kind === "decision" ? (
+                  recommendedOption ? (
+                    <p className="mt-2 text-sm text-muted">
+                      Recommended: <strong className="text-ink">{recommendedOption.label}</strong> — {recommendedOption.consequence}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted">No option was offered; open the source document to answer.</p>
+                  )
                 ) : (
-                  <p className="mt-2 text-sm text-muted">No option was offered; open the source document to answer.</p>
+                  <p className="mt-2 text-sm text-muted">Recommended: accept, unless the details below change your mind.</p>
                 )}
                 <div className="mt-3 flex items-center gap-3">
-                  {recommended ? (
-                    <button
-                      type="button"
-                      disabled={pendingId !== null}
-                      onClick={() => void act(approval, recommended)}
-                      className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {pendingId === `${key}:${recommended.label}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                      Approve
-                    </button>
-                  ) : null}
+                  {approval.kind === "decision" ? (
+                    recommendedOption ? (
+                      <button
+                        type="button"
+                        disabled={pendingId !== null}
+                        onClick={() => void act(approval, { label: recommendedOption.label, option: recommendedOption.label })}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {pendingId === `${key}:${recommendedOption.label}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                        Approve
+                      </button>
+                    ) : null
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={pendingId !== null}
+                        onClick={() => void act(approval, { label: "Accept", disposition: "accepted" })}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {pendingId === `${key}:Accept` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pendingId !== null}
+                        onClick={() => void act(approval, { label: "Reject", disposition: "rejected" })}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-semibold text-ink transition hover:bg-panel disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {pendingId === `${key}:Reject` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                        Reject
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     aria-expanded={expanded}
@@ -159,16 +210,16 @@ export function ApprovalQueue() {
                         </ul>
                       </div>
                     ) : null}
-                    {options.length > 1 ? (
+                    {approval.kind === "decision" && options.length > 1 ? (
                       <div>
                         <p className="font-semibold text-ink">Alternatives</p>
                         <ul className="ml-4 list-disc">
-                          {options.filter((option) => option !== recommended).map((option) => (
+                          {options.filter((option) => option !== recommendedOption).map((option) => (
                             <li key={option.label}>
                               <button
                                 type="button"
                                 disabled={pendingId !== null}
-                                onClick={() => void act(approval, option)}
+                                onClick={() => void act(approval, { label: option.label, option: option.label })}
                                 className="font-medium text-steel hover:underline disabled:cursor-wait disabled:opacity-60"
                               >
                                 {option.label}
@@ -176,6 +227,14 @@ export function ApprovalQueue() {
                               {" — "}{option.consequence}
                             </li>
                           ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {approval.kind === "agent_ask" && options.length > 0 ? (
+                      <div>
+                        <p className="font-semibold text-ink">Named options (informational — accept/reject decide this Ask, not these)</p>
+                        <ul className="ml-4 list-disc">
+                          {options.map((option) => <li key={option.label}>{option.label}{option.recommended ? " (recommended)" : ""} — {option.consequence}</li>)}
                         </ul>
                       </div>
                     ) : null}

@@ -36,4 +36,21 @@ describe("POST /api/approvals", () => {
     const response = await POST(request({ kind: "review", id: "a", project: "demo" }));
     expect(response.status).toBe(400);
   });
+
+  it("refuses an Agent Ask settlement with no disposition", async () => {
+    const response = await POST(request({ kind: "agent_ask", id: "proposal-1", project: "demo" }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("disposition") });
+  });
+
+  it("refuses an Agent Ask settlement with an invalid disposition", async () => {
+    const response = await POST(request({ kind: "agent_ask", id: "proposal-1", project: "demo", disposition: "maybe" }));
+    expect(response.status).toBe(400);
+  });
+
+  it("refuses an Agent Ask settlement that names an option — an Agent Ask settles by disposition, not by option", async () => {
+    const response = await POST(request({ kind: "agent_ask", id: "proposal-1", project: "demo", disposition: "accepted", option: "Some label" }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("disposition") });
+  });
 });
