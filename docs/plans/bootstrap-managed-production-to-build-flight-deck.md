@@ -1840,7 +1840,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask name-failing-preservation-check-and-bound-retries
     clarification: clarified
     confidence: high
-    source: Agent Ask harden-live-blocker-acceptance-2026-09-24
+    source: Agent Ask restore-blocker-references-2026-09-24
     acceptance_criteria:
       - The 'Declared preservation validation failed or was skipped.' refusal returned by the preserve broker carries non-empty details naming each failing or skipped check, its command, and its exit status or skip reason.
       - The preserve broker or Session controller, not only the Session brief, enforces a bounded number of identical preservation refusals per Session; when the limit is reached it records the refusal and the Session is reconciled as an incomplete exit.
@@ -1848,7 +1848,7 @@ actions:
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR refs Issue #611."
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/611", "src/sessions/preservationValidation.ts"]
   - id: withhold-worker-lifecycle-from-sessions
     title: Stop a dispatched coding-agent Session from stopping, starting, or restarting the shared host worker.
     status: open
@@ -1858,7 +1858,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask withhold-worker-lifecycle-from-sessions
     clarification: clarified
     confidence: high
-    source: Agent Ask harden-live-blocker-acceptance-2026-09-24
+    source: Agent Ask restore-blocker-references-2026-09-24
     acceptance_criteria:
       - arcadia worker stop, start, restart and install refuse, with a named reason, when the caller descends from a managed coding-agent Session, determined by a non-forgeable host-side check (such as the Session's recorded process tree or tmux server) rather than caller environment variables or working directory.
       - The operator's own terminal and the launchd agent can still run every worker command unchanged.
@@ -1866,7 +1866,7 @@ actions:
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #611 together with name-failing-preservation-check-and-bound-retries or refs it if that Action has not merged."
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/611", "src/commands/worker.ts"]
   - id: preserve-candidates-across-base-advance
     title: Let a candidate be preserved after the base branch advanced during its Session, and bind preservation to the Session's own dispatched Action rather than the current pointer.
     status: open
