@@ -92,7 +92,10 @@ work has happened — running it right after `go` is a guaranteed
    `pr` once its pull request is open and in the CodeRabbit loop, `waiting`
    when it stops at a picker or operator question, `blocked` on a recorded
    external blocker, and `done` once the Action is complete or its PR merged.
-   Skip this silently where no such tool exists.
+   The map names only the Action this brief resolved: when the session moves
+   on to a different Action, rerun the `brief` launcher and retitle from its
+   fresh `data.sessionTitles` instead of reusing the old map. Skip this
+   silently where no such tool exists.
 3. Inspect the selected Action and its local implementation boundaries using
    ordinary read-only commands (`git status`, `rg`, and targeted file reads)
    without asking for approval. Read-only discovery is already authorized by a
