@@ -24,7 +24,6 @@ import {
   createWorkItemWithOptionalArtifact,
   createProjectWithInitialWork,
   getActiveMilestoneForProject,
-  getBackBurnerItem,
   getReviewItem,
   listCodexTasks,
   listApprovalGatesForWorkItem,
