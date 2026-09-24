@@ -10,7 +10,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { syncProjectDocs } from "../docs/sync.js";
-import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
+import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
 import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
@@ -822,6 +822,206 @@ export function settleAgentAsk(db: Database.Database, input: {
             : nextResolution.kind === "planComplete" ? "Plan complete; every Action is done." : nextResolution.note
         });
         fileMutations.push({ path: completionLogPath, before: completionLogBefore, after: appendCompletion(completionLogBefore), reappend: appendCompletion });
+        completionActionId = actionId;
+        completionPlanSlug = targetPlan.slug;
+        break;
+      }
+      case "split": {
+        requireNoQueueOptions(input);
+        if (!targetRef) throw validationError("Agent Ask split requires target_ref naming the Action to narrow.");
+        const scoped = splitPlanScopedActionRef(targetRef);
+        const targetPlan = scoped
+          ? discovered.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug
+            && doc.slug === resolveManagedTargetRef(scoped.planRef, "plan", project.slug))
+          : plan;
+        if (!targetPlan) throw validationError("Agent Ask split names a Plan that was not found in this Project.", { targetRef });
+        const completingActivePlan = targetPlan.slug === plan.slug;
+        const targetPlanPath = path.join(repoRoot, targetPlan.relativePath);
+        const planBefore = readFileSync(targetPlanPath, "utf8");
+        const projectBefore = readFileSync(projectPath, "utf8");
+        const actionId = resolveManagedTargetRef(scoped?.actionRef ?? targetRef, "action", project.slug);
+        const action = targetPlan.actions.find((candidate) => candidate.id === actionId);
+        if (!action) throw validationError("Agent Ask split target Action was not found.", { targetRef });
+        const plansHoldingActionId = discovered.docs.filter((doc): doc is PlanDoc =>
+          doc.type === "plan" && doc.project === project.slug && doc.actions.some((candidate) => candidate.id === actionId));
+        if (plansHoldingActionId.length !== 1) {
+          throw validationError("Agent Ask split target Action id is not unique across this Project's Plans.", {
+            actionId, plans: plansHoldingActionId.map((doc) => doc.slug)
+          });
+        }
+        if (action.status === "done") throw validationError("Action is already done.", { actionId });
+        if (action.responsibility !== "agent" && action.responsibility !== "autonomous") {
+          throw validationError("Only an agent or autonomous Action can be split through this routine.", {
+            actionId, responsibility: action.responsibility
+          });
+        }
+        // A claimed worktree may only split the Action it was dispatched to,
+        // the same fence `complete` applies (Issue #538's reasoning holds here
+        // too: completion does not release the claim).
+        if (settlingClaim && settlingClaim.actionId !== actionId) {
+          throw validationError(
+            "This worktree's Action claim does not name the Action this settlement splits.",
+            {
+              claimedActionId: settlingClaim.actionId,
+              splittingActionId: actionId,
+              worktreePath: repoRoot,
+              remedy: `Settle ${settlingClaim.actionId}'s split from this worktree, or split ${actionId} from the worktree that claims it.`
+            }
+          );
+        }
+        const head = git(repoRoot, ["rev-parse", "HEAD"]).trim();
+        const candidateRevision = proposal.normalized.candidateRevision!;
+        if (head !== candidateRevision && !head.startsWith(candidateRevision)) {
+          throw validationError(
+            `Split Candidate revision ${candidateRevision} does not match ${repoRoot}'s current HEAD ${head}.`,
+            { expectedHead: head, receivedRevision: candidateRevision, repoRoot }
+          );
+        }
+        const declared = action.acceptanceCriteria;
+        if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind a split to.", { actionId });
+        const narrowed = proposal.normalized.acceptance;
+        // The finished slice must be a real, order-preserving subset of what
+        // the Action already declared -- never reworded, reordered, or padded
+        // with criteria it never declared. A full match leaves nothing to
+        // split off; that is `complete`, not `split`.
+        const declaredIndexOf = new Map(declared.map((criterion, index) => [criterion, index]));
+        let cursor = -1;
+        for (const criterion of narrowed) {
+          const index = declaredIndexOf.get(criterion);
+          if (index === undefined) {
+            throw validationError("Split acceptance must be drawn verbatim from the Action's declared acceptance criteria.", { actionId, criterion, declared });
+          }
+          if (index <= cursor) {
+            throw validationError("Split acceptance must preserve the declared criteria's order with no repeats.", { actionId, criterion, declared });
+          }
+          cursor = index;
+        }
+        if (narrowed.length >= declared.length) {
+          throw validationError("Split acceptance must be a strict subset of the declared criteria; a full match is a complete, not a split.", { actionId, declared, narrowed });
+        }
+        const evidence = proposal.normalized.evidence;
+        if (evidence.length !== narrowed.length || evidence.some((entry, index) => entry.criterion !== narrowed[index])) {
+          throw validationError("Split evidence must cover every narrowed acceptance criterion, verbatim and in order.", {
+            narrowed, provided: evidence.map((entry) => entry.criterion)
+          });
+        }
+        const unmet = evidence.filter((entry) => entry.status !== "met");
+        if (unmet.length > 0) {
+          throw validationError("Split refused: not every narrowed acceptance criterion is met.", {
+            unmet: unmet.map((entry) => ({ criterion: entry.criterion, status: entry.status, note: entry.note }))
+          });
+        }
+        const readiness = resolveActionReadiness(repoRoot, project.slug, actionId);
+        const unresolvedDecisions = readiness.requiredDecisions.filter((decision) => !decision.resolved);
+        if (unresolvedDecisions.length > 0) {
+          throw validationError("Split refused: Action has unresolved required review Decisions.", {
+            unresolvedDecisions: unresolvedDecisions.map((decision) => decision.id)
+          });
+        }
+        // Every criterion the finished slice does not cover must reappear,
+        // verbatim, in some remainder Action -- so a split can narrow an
+        // Action's scope but never quietly drop part of what the operator
+        // asked for (Truth: "Uncertainty stays visible").
+        const remainder = declared.filter((criterion) => !narrowed.includes(criterion));
+        const proposedActions = proposal.normalized.actions;
+        const coveredRemainder = new Set(proposedActions.flatMap((remainderAction) => remainderAction.acceptance));
+        const uncovered = remainder.filter((criterion) => !coveredRemainder.has(criterion));
+        if (uncovered.length > 0) {
+          throw validationError("Split refused: every criterion left off the finished slice must reappear verbatim in a remainder Action.", {
+            actionId, uncovered
+          });
+        }
+        if (proposedActions.some((remainderAction) => remainderAction.acceptance.length === 0)) {
+          throw validationError("Every remainder Action requires at least one observable acceptance criterion.");
+        }
+        // Placing the remainder in the queue needs it on the base branch, the
+        // same constraint `action` intent's queue placement enforces; the
+        // generic `arrangeQueue` guard below refuses this from a candidate
+        // worktree before anything is written.
+        requirePlanPositioned(queue, project.slug, targetPlan.slug, "queuing its remainder Actions");
+        const takenIds = new Set(targetPlan.actions.map((candidate) => candidate.id));
+        const remainderIds = proposedActions.map((remainderAction) => (remainderAction.id
+          ? claimExplicitActionId(takenIds, remainderAction.id)
+          : allocateUniqueActionId(takenIds, deriveActionId(remainderAction.desiredResult))));
+        const availableIds = new Set([...takenIds, ...remainderIds]);
+        const normalizedRemainder = proposedActions.map((remainderAction, index) => {
+          const dependencies = normalizeDependencies(remainderAction.dependencies, project.slug);
+          const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
+          if (unknownDependencies.length > 0) {
+            throw validationError("Agent Ask names dependencies outside the active Plan or proposed remainder bundle.", {
+              action: remainderIds[index], dependencies: unknownDependencies
+            });
+          }
+          return { ...remainderAction, id: remainderIds[index], dependencies };
+        });
+        dependencyOrderedActionIds(normalizedRemainder.map((remainderAction) => ({ id: remainderAction.id, dependencies: remainderAction.dependencies })));
+
+        const remainderActionKeys = remainderIds.map((id) => `${project.slug}/${id}`);
+        const targetActionKey = `${project.slug}/${actionId}`;
+        queueAfter = insertQueueKeys(queueAfter, remainderActionKeys, "after", targetActionKey)
+          // The narrowed Action is done once this settlement applies, so it
+          // drops out of the active order the same way `complete` lets it drop
+          // out by never touching the queue at all; arranging with it still
+          // present would ask the order table to place a done Action.
+          .filter((key) => key !== targetActionKey);
+        arrangeQueue = true;
+        queueActionKeys = remainderActionKeys;
+        queueActionKey = remainderActionKeys[0]!;
+        actionIdsToValidate.push(...remainderIds);
+
+        // Resolve the next pointer exactly as `complete` does (Decision 0048's
+        // total resolver), as though the narrowed slice were already done and
+        // its remainder Actions already existed in the Plan.
+        const syntheticBundle: QueueableActionBundle = {
+          actions: [
+            ...targetPlan.actions,
+            ...normalizedRemainder.map((remainderAction) => ({
+              id: remainderAction.id, status: "open" as const, dependsOn: remainderAction.dependencies,
+              decisions: [], clarification: "clarified" as const, responsibility: action.responsibility
+            }))
+          ]
+        };
+        const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
+        const nextResolution = selectNextAfterCompletion(syntheticBundle, actionId, decisionDocsForPlan, queueAfter, project.slug);
+        const updated = today();
+        const narrowedTitle = proposal.normalized.desiredResult;
+        const planTransform = (current: string): string => {
+          let next = amendAction(current, actionId, narrowedTitle, narrowed, action.dependsOn, action.references, proposal.normalized.requestId);
+          next = markActionDone(next, actionId);
+          for (const remainderAction of normalizedRemainder) {
+            next = appendPlanAction(next, {
+              id: remainderAction.id, title: remainderAction.desiredResult, responsibility: action.responsibility,
+              acceptance: remainderAction.acceptance, dependencies: remainderAction.dependencies, references: remainderAction.references,
+              source: `Agent Ask ${proposal.normalized.requestId}`
+            });
+          }
+          return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
+        };
+        const projectTransform = (current: string): string => setTopLevelFields(current, { current_action: nextResolution.actionId, updated });
+
+        effects.push(`Narrowed Action ${targetActionKey} to ${narrowed.length} of ${declared.length} declared criteria and marked it done with accepted evidence.`);
+        effects.push(`Created ${remainderIds.length} remainder Action${remainderIds.length === 1 ? "" : "s"} for the unfinished criteria: ${remainderActionKeys.join(", ")}.`);
+        effects.push(`Queued the remainder immediately after ${targetActionKey}, starting at position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+        effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
+
+        if (completingActivePlan) {
+          fileMutations.push(
+            { path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" },
+            { path: projectPath, before: projectBefore, after: projectTransform(projectBefore), retransform: projectTransform, pair: "project" }
+          );
+        } else {
+          fileMutations.push({ path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform });
+          effects.push(`Left Project pointer ${project.slug}/${projectDoc.currentAction ?? "none"} and the active Plan ${plan.slug} untouched; ${targetPlan.slug} is not the active Plan.`);
+        }
+
+        const splitLog = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
+        const splitLogPath = path.join(repoRoot, splitLog?.relativePath ?? "MISSION_LOG.md");
+        const splitLogBefore = existsSync(splitLogPath) ? readFileSync(splitLogPath, "utf8") : null;
+        const appendSplit = (current: string | null): string => appendCompletionLog(current, project.slug, {
+          actionId, candidateRevision: head, evidence, requestId: proposal.normalized.requestId,
+          note: `Split: narrowed to the finished slice and queued ${remainderActionKeys.join(", ")} immediately after. ${nextResolution.note}`
+        });
+        fileMutations.push({ path: splitLogPath, before: splitLogBefore, after: appendSplit(splitLogBefore), reappend: appendSplit });
         completionActionId = actionId;
         completionPlanSlug = targetPlan.slug;
         break;
@@ -1783,8 +1983,18 @@ interface NextAfterCompletion {
  * the pointer still moves to the nearest Action so dispatch can report
  * exactly what it needs, rather than leaving a done Action as current_action.
  */
+/**
+ * The slice of a Plan's Action bundle the pointer resolver actually reads.
+ * `complete` passes a real `PlanDoc`; `split` passes a synthetic bundle that
+ * also carries its not-yet-written remainder Actions, so the resolver can
+ * consider them eligible without a disk read mid-mutation.
+ */
+interface QueueableActionBundle {
+  actions: Array<Pick<PlanActionDoc, "id" | "status" | "dependsOn" | "decisions" | "clarification" | "responsibility">>;
+}
+
 function selectNextAfterCompletion(
-  plan: PlanDoc,
+  plan: QueueableActionBundle,
   completedActionId: string,
   decisionDocs: DecisionDoc[],
   queueOrderKeys: string[],
@@ -1839,7 +2049,7 @@ function selectNextAfterCompletion(
  * governs an Action only when it carries `action:`, and only the option the
  * operator actually recorded (`answer:`) counts.
  */
-function deferredActionIdsFromDecisions(plan: PlanDoc, decisionDocs: DecisionDoc[]): Set<string> {
+function deferredActionIdsFromDecisions(plan: { actions: Array<Pick<PlanActionDoc, "id">> }, decisionDocs: DecisionDoc[]): Set<string> {
   const deferred = new Set<string>();
   for (const action of plan.actions) {
     if (deferringDecisionFor(action.id, decisionDocs)) deferred.add(action.id);
