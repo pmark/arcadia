@@ -156,6 +156,7 @@ import {
   runDogfoodReviewShowCommand,
   runDogfoodStatusCommand
 } from "./commands/dogfood.js";
+import { renderIdentityResolveSuccess, runIdentityResolveCommand } from "./commands/identity.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import {
@@ -3670,6 +3671,33 @@ export function buildProgram(): Command {
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("identity")
+      .command("resolve")
+      .description(
+        "The semantic Git identity one coding agent commits under, for a session Arcadia did not launch itself " +
+          "(an interactive terminal, Claude Code, Codex, or anything outside `arcadia session launch`)"
+      )
+      .requiredOption("--agent <agent>", "codex, claude, or opencode")
+      .option("--tier <tier>", "light, standard, or heavy -- resolves the identity directly")
+      .option("--model <model>", "A concrete model, resolved to a tier via the tier registry (needs --effort as fallback)")
+      .option("--effort <effort>", "Reasoning effort, used when --model does not resolve to a known tier")
+  ).action((options: { agent: string; tier?: string; model?: string; effort?: string; json?: boolean }) =>
+    runCliAction(
+      "identity resolve",
+      options,
+      () =>
+        runIdentityResolveCommand({
+          agent: options.agent,
+          tier: options.tier ?? null,
+          model: options.model ?? null,
+          effort: options.effort ?? null
+        }),
+      renderIdentityResolveSuccess
+    )
   );
 
   addJsonOption(

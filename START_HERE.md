@@ -1189,6 +1189,15 @@ global Git configuration — and a model whose tier cannot be resolved refuses
 the launch rather than committing under your name. The same environment
 propagates to commits Arcadia itself makes from inside the Session.
 
+The same identities cover an interactive agent session too — a terminal, a
+Claude Code or Codex desktop session, anything not started through
+`arcadia session launch`. Nothing sets its environment automatically, so the
+agent resolves its own identity with `arcadia identity resolve --agent
+<codex|claude|opencode> --tier <light|standard|heavy>` and prefixes the
+printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=… GIT_COMMITTER_NAME=…
+GIT_COMMITTER_EMAIL=…` onto each `git commit` itself, rather than committing
+as you. See AGENTS.md's "Agent Git identity" section.
+
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;
 the launch request itself must be same-origin, and the server resolves the

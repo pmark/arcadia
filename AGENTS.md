@@ -842,6 +842,41 @@ effort, and the boundary each tier is for. Spend in ascending order per the
 Constitution's Economy section; this document is the reference that check
 resolves against instead of being re-decided per Action.
 
+## Agent Git Identity
+
+Every commit an agent makes in this repository — from a Session Arcadia
+launched, or from an interactive terminal, Claude Code, Codex, opencode, or
+any other agent runtime working here directly — is authored under a
+**semantic agent Git identity**, never the operator's own. `git log` should
+name the platform and how heavy a model did the work, not who was at the
+keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
+name per platform, surname per model tier: light/standard/heavy);
+`START_HERE.md` explains it for operators.
+
+A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
+`GIT_COMMITTER_*` are set on that one process tree before the agent ever
+runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so it needs no
+action from the agent. An interactive session has no such environment set
+for it, so it must resolve its own identity and apply it on every commit:
+
+```sh
+arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>
+```
+
+then prefix the printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=…
+GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git commit` itself (never
+rewrite global or repository `git config`, which would misattribute the
+operator's own commits too, and never use `git -c user.*` — Git resolves
+`author.*`/`committer.*` config and any already-exported `GIT_AUTHOR_*` ahead
+of `user.*`, so a `-c user.*` override can silently lose to a stale identity
+from an earlier launch or session). Pick the tier from whichever model is
+actually doing the work for this turn — it can change mid-session (a model
+switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
+the tier from earlier in the session still holds. An identity the command
+refuses (an unrecognized platform or tier) means the commit must not
+proceed under the operator's identity either — fix the `--agent`/`--tier`
+first.
+
 ## Operator Guide
 
 `START_HERE.md` is the canonical brief guide for normal Arcadia use. Any change to a user-facing flow, CLI command named there, dashboard address, or managed service behavior must update that file in the same change.
