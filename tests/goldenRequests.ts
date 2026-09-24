@@ -114,13 +114,15 @@ export const goldenRequestExamples: GoldenRequestExample[] = [
     expectedBackBurner: true
   },
   {
-    name: "vague improvement thought",
+    // Was "vague improvement thought" → Back Burner. An imperative request for a
+    // known Project is work to plan, never an idea to shelve (#589).
+    name: "improvement request for a known project",
     input: "Improve the Rebuster candidate review flow.",
     expectedClassification: "IncubatingThought",
     expectedIntent: "CaptureThought",
     expectedProject: "Rebuster",
-    expectedRoutingOutcome: "captured",
-    expectedBackBurner: true
+    expectedRoutingOutcome: "requires_review",
+    expectedBackBurner: false
   },
   {
     name: "question remains non-execution",

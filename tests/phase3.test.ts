@@ -24,7 +24,6 @@ import {
   createWorkItemWithOptionalArtifact,
   createProjectWithInitialWork,
   getActiveMilestoneForProject,
-  getBackBurnerItem,
   getReviewItem,
   listCodexTasks,
   listApprovalGatesForWorkItem,
@@ -257,28 +256,64 @@ describe("arcadia ask command", () => {
     });
   });
 
-  it("preserves low-confidence input in the Back Burner instead of invoking Codex", () => {
+  it("never shelves an imperative request, even one with an incidental hedge word (#589)", () => {
     const workspace = initializedWorkspace();
-
-    const result = runAskCommand({
-      workspace,
-      request: "Improve the Rebuster candidate review flow."
+    const arcadia = withDatabase(workspace, (db) => {
+      const created = createProjectWithInitialWork(db, {
+        name: "Arcadia",
+        mission: "Maintain momentum across creative projects.",
+        goal: "Make ask the universal ingress router.",
+        status: "active",
+        currentMilestone: "Universal ask router",
+        nextAction: "Implement shared ask routing.",
+        workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: created.project.id, aliases: ["Arcadia"], repoPath: workspace });
+      return created.project;
     });
 
-    expect(result.data.resolvedIntent.matched).toBe(false);
-    expect(result.data.resolvedIntent.intentId).toBe("CaptureThought");
-    expect(result.data.result.status).toBe("captured");
-    expect(result.data.reviewItemId).toBeNull();
-    expect(result.data.backBurnerItemId).toMatch(/^bb_/);
-    expect(result.data.workItem).toBeNull();
-    expect(result.data.plan).toBeNull();
-    expect(result.data.codexInvocations).toHaveLength(0);
+    // The exact dashboard Ask from capture_20e52d3f-15bc-4d17-8769-0e576b653126.
+    const request = "Improve UX of Arcadia Runs page in the web dashboard UI .\n\n* Improve loading time for \"this push\" section. Actually, making it an infinitely scrolling list of past and future actions would be useful and could be very efficient with efficient paging.\n* Add tabs for segregating concerns";
+    const result = runAskCommand({ workspace, request });
 
-    const review = runReviewRequiredCommand({ workspace });
-    expect(review.data.items).toEqual([]);
-    const item = withDatabase(workspace, (db) => getBackBurnerItem(db, result.data.backBurnerItemId ?? ""));
-    expect(item?.original_input).toBe("Improve the Rebuster candidate review flow.");
-    expect(item?.status).toBe("incubating");
+    expect(result.data.intake.classification).not.toBe("Idea");
+    expect(result.data.stewardship.intentType).toBe("Planning Request");
+    expect(result.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(result.data.stewardship.relatedProject?.id).toBe(arcadia.id);
+    expect(result.data.backBurnerItemId).toBeNull();
+    // The postcondition: planned work on Arcadia with a planning packet, not a shelf.
+    expect(result.data.workItem?.project_id).toBe(arcadia.id);
+    expect(result.data.plan?.steps[0].skill_name).toBe("codex_planning");
+    expect(result.data.codexInvocations[0]?.purpose).toBe("planning");
+
+    // Context first, requests as bullets, no Project named: clarify, never shelve.
+    const bulleted = runAskCommand({ workspace, request: "The review flow is slow.\n- Add paging to the candidate list" });
+    expect(bulleted.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
+    expect(bulleted.data.backBurnerItemId).toBeNull();
+
+    // A Project named outright (`--project`, the dashboard picker) is a target
+    // even when the text never mentions it.
+    const explicit = runAskCommand({ workspace, project: "Arcadia", request: "Improve loading time" });
+    expect(explicit.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(explicit.data.backBurnerItemId).toBeNull();
+
+    // A verb-shaped noun followed by a modal is a statement, not a command.
+    const nounLed = runAskCommand({ workspace, project: "Arcadia", request: "Design could be improved" });
+    expect(nounLed.data.intake.classification).toBe("Idea");
+    expect(nounLed.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
+
+    // "Review …" is imperative too, so a later hedge word does not make it an Idea.
+    const review = runAskCommand({ workspace, request: "Review the Rebuster candidate flow. It could be clearer." });
+    expect(review.data.intake.resolvedIntent).toBe("CaptureThought");
+    expect(review.data.intake.classification).toBe("IncubatingThought");
+    expect(review.data.backBurnerItemId).toBeNull();
+
+    // A genuinely exploratory thought still goes to the Back Burner.
+    const idea = runAskCommand({ workspace, request: "Maybe creator partnerships could help someday." });
+    expect(idea.data.intake.classification).toBe("Idea");
+    expect(idea.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
+    expect(idea.data.backBurnerItemId).toMatch(/^bb_/);
+    expect(idea.data.codexInvocations).toHaveLength(0);
   });
 
   it("stewards direct project work, planning, vague ideas, clarification, and goal refinement", () => {
@@ -1038,11 +1073,11 @@ describe("arcadia ask command", () => {
         request: "Improve the Rebuster candidate review flow.",
         intent: "CaptureThought",
         assert: () => {
+          // An imperative request is work, not an idea to shelve (#589).
           const result = runAskCommand({ workspace, request: "Improve the Rebuster candidate review flow." });
-          expect(result.data.result.status).toBe("captured");
+          expect(result.data.result.status).toBe("requires_review");
           expect(result.data.intake.resolvedIntent).toBe("CaptureThought");
-          expect(result.data.reviewItemId).toBeNull();
-          expect(result.data.backBurnerItemId).toMatch(/^bb_/);
+          expect(result.data.backBurnerItemId).toBeNull();
           expect(result.data.codexInvocations).toHaveLength(0);
         }
       },

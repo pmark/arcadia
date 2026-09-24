@@ -112,6 +112,16 @@ describe("Ask rules", () => {
     expect(result.data.ask).toBeNull();
   });
 
+  it("plans an imperative payload for the rule's Project even when the text names none (#589)", () => {
+    const fixture = initializedRuleWorkspace();
+    const result = runAskCommand({ workspace: fixture.workspace, request: "songbook Improve practice loading time" });
+
+    expect(result.data.stewardship.relatedProject?.id).toBe(fixture.songbookId);
+    expect(result.data.stewardship.recommendedExecutionPath).toBe("Plan First");
+    expect(result.data.workItem?.project_id).toBe(fixture.songbookId);
+    expect(result.data.backBurnerItemId).toBeNull();
+  });
+
   it("keeps an explicit Arcadia destination ahead of the matched rule and mentioned Project", () => {
     const fixture = initializedRuleWorkspace();
     const request = "songbook Plan Living Songbook repertoire cleanup.";

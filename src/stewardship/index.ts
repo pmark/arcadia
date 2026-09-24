@@ -1,4 +1,4 @@
-import type { IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
+import { isImperativeRequest, type IntakeResult, type IntakeWorkspaceContext } from "../intake/index.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
 
 export const STEWARDSHIP_INTENT_TYPES = [
@@ -52,12 +52,16 @@ export interface StewardIntentInput {
   approvedFromReview?: boolean;
   reviewResponseHasReference?: boolean;
   reviewResponseHasResponse?: boolean;
+  // The Project the caller selected — an explicit `--project`, else an Ask
+  // rule's destination. It outranks one found in the text, as routing does,
+  // and gives the request a target even when the text names none.
+  selectedProject?: StewardshipRelatedProject | null;
 }
 
 export function stewardIntent(input: StewardIntentInput): GoalStewardshipResult {
   const raw = input.rawInput.trim();
   const normalized = normalize(raw);
-  const relatedProject = relatedProjectFromIntake(input.intake);
+  const relatedProject = input.selectedProject ?? relatedProjectFromIntake(input.intake);
   const relatedGoal = relatedGoalForProject(relatedProject?.id ?? null, input.workspaceContext);
   const intentType = intentTypeForInput(input, normalized);
   const planningRecommended = planningRecommendedForInput(input, normalized, intentType);
@@ -121,7 +125,10 @@ function intentTypeForInput(
     case "ReviewRequired":
       return "Status Request";
     case "CaptureThought":
-      return commandShapedMissingTarget(normalized, input.intake) ? "Project Work" : "Back Burner Idea";
+      // An imperative request for a known Project is work to plan, not an idea
+      // to shelve; without a Project it still needs clarifying first.
+      if (!isImperativeRequest(input.rawInput)) return "Back Burner Idea";
+      return hasTargetProject(input) ? "Planning Request" : "Project Work";
   }
 }
 
@@ -144,15 +151,15 @@ function executionPathForInput(
   }
 
   if (intentType === "Planning Request" || intentType === "Research Request") {
-    return input.intake.project || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
+    return hasTargetProject(input) || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
   }
 
-  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(normalized, input.intake)) {
+  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(input)) {
     return "Clarify First";
   }
 
   if (input.intake.action.kind === "capture_thought") {
-    return commandShapedMissingTarget(normalized, input.intake) ? "Clarify First" : "Back Burner";
+    return commandShapedMissingTarget(input) ? "Clarify First" : "Back Burner";
   }
 
   if (input.intake.missingFields.length > 0) {
@@ -321,12 +328,12 @@ function requiresProjectForPlan(normalized: string): boolean {
   return /\b(?:for|in|on)\s+(?:the\s+)?project\b/.test(normalized) || /\b(?:implement|build|fix|ship|release)\b/.test(normalized);
 }
 
-function commandShapedMissingTarget(normalized: string, intake: IntakeResult): boolean {
-  if (intake.project) {
-    return false;
-  }
+function hasTargetProject(input: StewardIntentInput): boolean {
+  return Boolean(input.selectedProject || input.intake.project);
+}
 
-  return /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work)\b/.test(normalized);
+function commandShapedMissingTarget(input: StewardIntentInput): boolean {
+  return !hasTargetProject(input) && isImperativeRequest(input.rawInput);
 }
 
 function normalize(value: string): string {

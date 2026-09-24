@@ -72,17 +72,6 @@ SELECT id, classification, confidence, reason, status, project_id FROM back_burn
 Rescue a shelved one with `arcadia back-burner promote <bb_id>`, or plan it
 properly with an Agent Ask and then `arcadia back-burner archive <bb_id>`.
 
-## Why did the Ask classifier shelve a real request?
-
-keys: classify, classification, idea, hedge, could, maybe, back burner, intake
-
-`classifyDeterministically` in `src/intake/index.ts`. When no earlier branch
-matches (a resolved `CreateWork`-style intent, a bug report, a question, and so
-on), a hedge word (`could|maybe|might|idea|consider|worth|…`) *anywhere* in the
-text makes it an `Idea` → Back Burner. A plain imperative such as "Improve X"
-resolves to no intent, so one incidental "could" shelves it. Expires when #589
-closes.
-
 ## Show the ordered queue
 
 keys: queue, order, position, revision, advance queue, next
