@@ -1815,7 +1815,7 @@ actions:
     references: []
   - id: release-committed-admissions-on-session-end
     title: Release a committed production admission when its Session reaches a terminal outcome, so finished Sessions stop counting against maxConcurrentSessions.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Release a committed production admission when its Session reaches a terminal outcome, so finished Sessions stop counting against maxConcurrentSessions.
@@ -1961,7 +1961,7 @@ actions:
     references: ["apps/dashboard/app/api/approvals/route.ts", "src/commands/agentAsk.ts", "src/commands/decision.ts", "src/docs/dispatch.ts", "src/commands/go.ts", "src/commands/advance.ts", "apps/discord-bot"]
 questions: []
 decisions: []
-current_action: release-committed-admissions-on-session-end
+current_action: gate-dispatch-on-blocking-operator-items
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

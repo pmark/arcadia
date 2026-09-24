@@ -1,0 +1,32 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-release-committed-admissions-on-session-end-2026-09-24",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/release-committed-admissions-on-session-end",
+  "desired_result": "Mark release-committed-admissions-on-session-end done: a Session's committed production admission is now released when it reaches a terminal outcome, so completed Sessions stop occupying a maxConcurrentSessions slot.",
+  "candidate_revision": "74e339b3b8986d9278af4f088a9134e71af45d7c",
+  "evidence": [
+    {
+      "criterion": "When a Session backed by a committed production admission is reconciled to any terminal outcome (accepted completion, incomplete-resumable exit, failure, or operator stop), its admission is released through the existing releaseAdmission writer in the same transaction as the reconciliation.",
+      "status": "met",
+      "note": "src/sessions/reconciliation.ts's reconcileSessionExit calls releaseAdmission(db, session.admission_request_id, ...) inside its own write transaction the moment a prepared/running Session transitions to a terminal status, for every outcome (accepted_completion, successful_exit, incomplete_resumable, failed_execution, missing_evidence, needs_input all map through terminalStatusFor to a terminal agent_sessions.status). src/sessions/launch.ts records admission_request_id on the session row when its admission commits."
+    },
+    {
+      "criterion": "countLiveAdmissions no longer counts a committed admission whose Session is terminal; already-leaked committed admissions on an existing workspace stop counting without a manual database edit.",
+      "status": "met",
+      "note": "src/production/policy.ts's countLiveAdmissions now excludes a 'committed' row whose linked Session (via agent_sessions.admission_request_id) is terminal, and falls back to an action_key match (guarded so a currently live Session's own slot is never miscounted as vacated) for admissions committed before that column existed -- both are pure read-time SQL, so an existing workspace's already-leaked committed rows stop counting the moment this code runs, with no backfill or manual database edit."
+    },
+    {
+      "criterion": "A deterministic test reproduces Issue #610: with maxConcurrentSessions 1, one Session launches, completes, and a second Action is then admitted on the next tick instead of being refused concurrency_limit.",
+      "status": "met",
+      "note": "tests/session-reconciliation.test.ts, describe('reconcileSessionExit releases a committed production admission (Issue #610)') launches one Session under a maxConcurrentSessions:1 standing policy, reconciles its exit, asserts the admission flips to released and countLiveAdmissions reports 0, then asserts a fresh issueAdmission call is admitted (code is not concurrency_limit)."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #610.",
+      "status": "met",
+      "note": "pnpm test (2092 passed, 0 failed outside sandbox-only network/subprocess artifacts unrelated to this change), pnpm build (lint + tsc + discord-bot build), and pnpm --filter arcadia-dashboard build all pass on candidate 74e339b3b8986d9278af4f088a9134e71af45d7c. The PR body includes 'Closes #610'."
+    }
+  ],
+  "requested_authority": "apply_if_approved"
+}
