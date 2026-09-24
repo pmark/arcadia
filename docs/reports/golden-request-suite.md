@@ -16,11 +16,11 @@ Execution requests that must not route to Back Burner:
 - `Fix MIDI Opener loop desynchronization`
 - `Create a new Rebuster experiment`
 - `Write release notes for MIDI Opener 5.5`
+- `Improve the Rebuster candidate review flow.` (moved from Back Burner protection by #589: an imperative request for a known Project is planned, not shelved, even when a hedge word such as "could" appears later in the text)
 
 Back Burner protection examples:
 
 - `Pinterest might help Rebuster.`
-- `Improve the Rebuster candidate review flow.`
 - `Should Rebuster try Pinterest?`
 - `Arcadia review noise is too high.`
 

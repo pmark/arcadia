@@ -1,4 +1,4 @@
-import type { IntakeResult, IntakeWorkspaceContext } from "../intake/index.js";
+import { isImperativeRequest, type IntakeResult, type IntakeWorkspaceContext } from "../intake/index.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
 
 export const STEWARDSHIP_INTENT_TYPES = [
@@ -121,7 +121,10 @@ function intentTypeForInput(
     case "ReviewRequired":
       return "Status Request";
     case "CaptureThought":
-      return commandShapedMissingTarget(normalized, input.intake) ? "Project Work" : "Back Burner Idea";
+      // An imperative request for a known Project is work to plan, not an idea
+      // to shelve; without a Project it still needs clarifying first.
+      if (!isImperativeRequest(input.rawInput)) return "Back Burner Idea";
+      return input.intake.project ? "Planning Request" : "Project Work";
   }
 }
 
@@ -147,12 +150,12 @@ function executionPathForInput(
     return input.intake.project || !requiresProjectForPlan(normalized) ? "Plan First" : "Clarify First";
   }
 
-  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(normalized, input.intake)) {
+  if (input.intake.missingFields.length > 0 && commandShapedMissingTarget(input)) {
     return "Clarify First";
   }
 
   if (input.intake.action.kind === "capture_thought") {
-    return commandShapedMissingTarget(normalized, input.intake) ? "Clarify First" : "Back Burner";
+    return commandShapedMissingTarget(input) ? "Clarify First" : "Back Burner";
   }
 
   if (input.intake.missingFields.length > 0) {
@@ -321,12 +324,8 @@ function requiresProjectForPlan(normalized: string): boolean {
   return /\b(?:for|in|on)\s+(?:the\s+)?project\b/.test(normalized) || /\b(?:implement|build|fix|ship|release)\b/.test(normalized);
 }
 
-function commandShapedMissingTarget(normalized: string, intake: IntakeResult): boolean {
-  if (intake.project) {
-    return false;
-  }
-
-  return /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work)\b/.test(normalized);
+function commandShapedMissingTarget(input: StewardIntentInput): boolean {
+  return !input.intake.project && isImperativeRequest(input.rawInput);
 }
 
 function normalize(value: string): string {
