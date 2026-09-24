@@ -1485,6 +1485,7 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
     output_kind: required(input.outputKind, "Output kind"),
     stewardship_json: nullable(input.stewardshipJson),
     work_item_id: input.workItemId ?? null,
+    capture_id: input.captureId ?? null,
     plan_id: input.planId ?? null,
     prompt_packet_path: nullable(input.promptPacketPath),
     status: validateAskRequestStatus(input.status),
@@ -1495,9 +1496,10 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
   db.prepare(
     `INSERT INTO ask_requests (
       id, raw_request, resolved_intent, registry_version, output_kind, stewardship_json, work_item_id,
-      plan_id, prompt_packet_path, status, created_at, updated_at
+      capture_id, plan_id, prompt_packet_path, status, created_at, updated_at
     ) VALUES (
       @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @stewardship_json, @work_item_id,
+      @capture_id,
       @plan_id, @prompt_packet_path, @status, @created_at, @updated_at
     )`
   ).run(askRequest);
@@ -1775,7 +1777,8 @@ export function createBackBurnerItem(
     ...surface,
     project_id: input.projectId ?? null,
     source_ref: nullable(input.sourceRef),
-    facet_tags_json: JSON.stringify(facetTags)
+    facet_tags_json: JSON.stringify(facetTags),
+    ask_request_id: input.askRequestId ?? null
   };
 
   db.prepare(
@@ -1783,12 +1786,12 @@ export function createBackBurnerItem(
       id, original_input, ingress_source, classification, confidence, reason, status,
       suggested_next_step, created_at, updated_at, promoted_at, promoted_work_item_id,
       surface_kind, surface_date, surface_dependency_work_item_id, surface_dependency_status,
-      surface_predicate, project_id, source_ref, facet_tags_json
+      surface_predicate, project_id, source_ref, facet_tags_json, ask_request_id
     ) VALUES (
       @id, @original_input, @ingress_source, @classification, @confidence, @reason, @status,
       @suggested_next_step, @created_at, @updated_at, @promoted_at, @promoted_work_item_id,
       @surface_kind, @surface_date, @surface_dependency_work_item_id, @surface_dependency_status,
-      @surface_predicate, @project_id, @source_ref, @facet_tags_json
+      @surface_predicate, @project_id, @source_ref, @facet_tags_json, @ask_request_id
     )`
   ).run(item);
 

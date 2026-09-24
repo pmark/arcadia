@@ -56,21 +56,16 @@ schema) and throwaway test ones under `/tmp`.
 
 ## What happened to an Ask? (capture id → outcome)
 
-keys: ask, capture, capture_, back burner, lost, shelved, dashboard ask, trace
+keys: ask, capture, capture_, back burner, lost, shelved, dashboard ask, trace, trail
 
-Expires when #591 closes (a command for this). Until then, the downstream rows
-carry neither the capture id nor its request id; only the raw text links them.
-Identical text submitted twice is ambiguous, so also match `created_at` to within
-a second of the capture's `captured_at`:
-
-```sql
-SELECT original_text FROM ask_capture_envelopes WHERE id = 'capture_…';
-SELECT id, resolved_intent, output_kind, stewardship_json FROM ask_requests WHERE raw_request = '<text>';
-SELECT id, classification, confidence, reason, status, project_id FROM back_burner_items WHERE original_input = '<text>';
+```sh
+pnpm -s arcadia ask-trail <capture_…|request id|ask_…> [--json]
 ```
 
-Rescue a shelved one with `arcadia back-burner promote <bb_id>`, or plan it
-properly with an Agent Ask and then `arcadia back-burner archive <bb_id>`.
+It prints the classification and reason, the routed Project, and every
+Action, Decision, or Back Burner item the Ask produced. Rescue a shelved item
+with `arcadia back-burner promote <bb_id>`, or plan it with an Agent Ask and
+then `arcadia back-burner archive <bb_id>`.
 
 ## Show the ordered queue
 

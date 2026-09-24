@@ -1306,6 +1306,13 @@ items only: Arcadia never dispatches or promotes them automatically. Use
 `pnpm arcadia back-burner promote <id>` when you explicitly decide an item
 should become an Action.
 
+To find out what any Ask became, pass the `capture_…` id from its receipt (or
+its request id, or an `ask_…` id) to `pnpm arcadia ask-trail <id>`. It prints
+the capture, how the Ask was classified and why, the Project it routed to, and
+every Action, Decision, or Back Burner item it produced, including the Action a
+shelved item was later promoted to. It only reads. Asks recorded before this
+command existed are linked when their text and time match exactly one capture.
+
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
 

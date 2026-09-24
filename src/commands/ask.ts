@@ -289,6 +289,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: "ReviewResponse",
         registryVersion: registries.intents.version,
@@ -352,6 +353,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       spec: proposalSpec
     });
     const ask = withDatabase(workspacePath, (db) => createAskRequest(db, {
+      captureId: captureEnvelope.id,
       rawRequest: options.request,
       resolvedIntent: intake.resolvedIntent,
       registryVersion: registries.intents.version,
@@ -398,6 +400,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const status = runStatusCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -442,6 +445,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     const review = runReviewRequiredCommand({ workspace: workspacePath });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -492,6 +496,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -553,6 +558,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       const project = applyProjectAttributeUpdate(db, action);
 
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -589,6 +595,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       }
 
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -630,6 +637,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   if ((intake.confidenceLabel === "high" || approvedFromReview) && intake.action.kind === "list_projects") {
     const { ask, projects } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -675,6 +683,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         throw projectNotFound(projectId);
       }
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -683,6 +692,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         status: "planned"
       });
       const backBurnerItem = createBackBurnerItem(db, {
+        askRequestId: ask.id,
         originalInput: intake.rawInput,
         ingressSource: options.sourceIngress ?? "cli.ask",
         classification: intake.classification,
@@ -737,6 +747,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
   ) {
     const { ask, reviewItem } = withDatabase(workspacePath, (db) => {
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -850,6 +861,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         nextAction: missingRepositoryPathMessage
       });
       const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
         registryVersion: registries.intents.version,
@@ -959,6 +971,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
     }
 
     const ask = createAskRequest(db, {
+      captureId: captureEnvelope.id,
       rawRequest: options.request,
       resolvedIntent: resolved.intentId,
       registryVersion: registries.intents.version,
