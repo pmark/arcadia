@@ -65,6 +65,8 @@ fi
 # nothing on the common restart that has nothing to do with the broker.
 # Failure here must never fail the restart the operator actually asked for.
 ENSURE_LOG="$HOME/.local/share/arcadia/go-broker/ensure.log"
-mkdir -p "$(dirname "$ENSURE_LOG")"
-(cd "$REPO" && pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1 \
-  || echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
+if ! mkdir -p "$(dirname "$ENSURE_LOG")" 2>&1; then
+  echo "warning: could not create $(dirname "$ENSURE_LOG"); skipping go-broker ensure" >&2
+elif ! (cd "$REPO" && pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1; then
+  echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
+fi
