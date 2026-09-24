@@ -45,7 +45,7 @@ export function planAcronym(planSlug: string): string {
   const words = planSlug.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   const significant = words.filter((word) => !ACRONYM_STOPWORDS.has(word));
   const source = significant.length > 0 ? significant : words;
-  if (source.length === 0) return "?";
+  if (source.length === 0) return "";
   if (source.length === 1) return source[0].slice(0, 3).toUpperCase();
   return source.map((word) => word[0]).join("").slice(0, MAX_ACRONYM_LENGTH).toUpperCase();
 }
@@ -59,11 +59,15 @@ export interface SessionTitleInput {
   action: string | null;
 }
 
-/** `🔨🔵 BMPB fix-the-thing` — kind, state, Plan acronym, Action id. */
+/**
+ * `🔨🔵 BMPB fix-the-thing` — kind, state, Plan acronym, Action id. With no
+ * Plan the acronym is omitted rather than filled with a placeholder, so those
+ * characters go to the part that tells sessions apart.
+ */
 export function formatSessionTitle(input: SessionTitleInput): string {
   const glyphs = `${SESSION_TITLE_KIND_GLYPHS[input.kind]}${SESSION_TITLE_STATE_GLYPHS[input.state]}`;
-  const acronym = input.plan ? planAcronym(input.plan) : "?";
-  return `${glyphs} ${acronym} ${input.action ?? input.kind}`;
+  const scope = [input.plan ? planAcronym(input.plan) : "", input.action ?? input.kind].filter(Boolean).join(" ");
+  return `${glyphs} ${scope}`;
 }
 
 /** Every state's title for one session, so an agent retitles by lookup rather than recomposing. */

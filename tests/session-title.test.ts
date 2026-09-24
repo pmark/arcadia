@@ -35,7 +35,11 @@ describe("session titles", () => {
     });
   });
 
+  it("omits the acronym when no Plan resolved", () => {
+    expect(formatSessionTitle({ kind: "build", state: "pr", plan: null, action: "scannable-session-titles" })).toBe("🔨🟣 scannable-session-titles");
+  });
+
   it("falls back to the session kind when no Plan or Action resolved", () => {
-    expect(formatSessionTitle({ kind: "repair", state: "waiting", plan: null, action: null })).toBe("🩹🟠 ? repair");
+    expect(formatSessionTitle({ kind: "repair", state: "waiting", plan: null, action: null })).toBe("🩹🟠 repair");
   });
 });

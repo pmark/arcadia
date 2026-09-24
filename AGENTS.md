@@ -75,7 +75,8 @@ like "Arcadia Go". The arcadia-go brief broker returns every state's title in
   the operator (a picker or question), 🔴 externally blocked, 🟢 done or merged;
 - **PLAN** — the first letter of each word of the `active_plan` slug, skipping
   `a an and at by for in of on or the to with`, uppercased and capped at four
-  (a one-word slug keeps its first three letters); `?` when none resolved.
+  (a one-word slug keeps its first three letters); omit it, with its space,
+  when the session has no Plan — never fill it with a placeholder.
 
 Retitle whenever the state changes and whenever the session moves on to a
 different Action. Skip this silently in a coding-agent runtime with no such
