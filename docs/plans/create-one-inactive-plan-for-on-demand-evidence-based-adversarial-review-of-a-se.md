@@ -90,12 +90,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask request-pre-pr-code-review
     clarification: clarified
     confidence: high
-    source: Agent Ask independent-review-packet-identity-2026-09-24
+    source: Agent Ask independent-review-rubric-digest-2026-09-24
     acceptance_criteria:
       - arcadia qa code-review --json returns done, fix with findings, or cap after three fix rounds on the same branch, using the verdict fields arcadia pr code-review returns.
-      - Re-running reuses the persisted receipt only when head SHA, base SHA, and rubric id all match the current packet; any difference runs a new review.
-      - The receipt records head and base SHAs, rubric id, reviewer provider, model and session, and every finding.
-      - A deterministic test drives all three verdicts end to end with a stubbed reviewer, and a test proves a moved base at an unchanged head does not reuse the receipt.
+      - Re-running reuses the persisted receipt only when head SHA, base SHA, rubric id, and rubric content digest all match the current packet; any difference runs a new review.
+      - The receipt records head and base SHAs, rubric id and content digest, reviewer provider, model and session, and every finding.
+      - A deterministic test drives all three verdicts end to end with a stubbed reviewer, and tests prove that neither a moved base at an unchanged head nor an edited rubric under an unchanged id reuses the receipt.
     depends_on: [review-packet-for-local-commits, select-review-provider-with-fallback]
     decisions: []
     references: ["src/stewardship/codeRabbitReview.ts", "src/commands/prCodeReview.ts", "src/commands/qa.ts"]
