@@ -244,11 +244,17 @@ export function syncProjectDocs(
   // collides with an id already in use is refused: it is reported the same
   // way, and additionally never gets a review item created for it, so a new
   // duplicate id can no longer be written.
+  // Grouped by the same canonical 4-digit-padded form `decision approve` and
+  // `operatorTasks` already normalize a bare numeric id to (e.g. "4" and
+  // "0004" are the same id) -- comparing raw `doc.id` strings would silently
+  // miss that collision. The original, unpadded id is still what gets shown
+  // in messages below; only the grouping key is normalized.
   const decisionsById = new Map<string, DecisionDoc[]>();
   for (const decision of decisions) {
-    const group = decisionsById.get(decision.id) ?? [];
+    const normalizedId = /^\d+$/.test(decision.id) ? decision.id.padStart(4, "0") : decision.id;
+    const group = decisionsById.get(normalizedId) ?? [];
     group.push(decision);
-    decisionsById.set(decision.id, group);
+    decisionsById.set(normalizedId, group);
   }
   const blockedByDuplicateId = new Set<string>();
   for (const [id, group] of decisionsById) {

@@ -1341,6 +1341,23 @@ updated: 2026-07-26
     expect(result.data.projects[0].issues).toEqual([]);
   });
 
+  it("treats an unpadded numeric id as the same id as its 4-digit-padded form", () => {
+    const repo = scratch();
+    // "9" and "0009" are the same id once normalized the way `decision
+    // approve` already does (Number.padStart(4, "0")); a naive string
+    // comparison of the two would miss this collision entirely.
+    writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
+    writeDoc(repo, "docs/decisions/0009-second.md", decisionDoc("9", "second-decision", "A second, unrelated question."));
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    const project = result.data.projects[0];
+    expect(project.issues.filter((issue) => issue.kind === "duplicate_decision_id")).toHaveLength(2);
+    expect(project.errors.some((error) => error.field === "id" && error.relativePath === "docs/decisions/0009-second.md")).toBe(true);
+    expect(withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second-decision"))).toBeNull();
+  });
+
   it("refuses a new Decision whose numeric id already belongs to an existing Decision, reporting it as an issue", () => {
     const repo = scratch();
     writeDoc(repo, "docs/decisions/0009-rollout.md", decisionDoc("0009", "rollout-order", "Cut over per-tenant or all at once?"));
