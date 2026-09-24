@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { readClaudeCodeTokenFile } from "./claudeCodeToken.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 
 export interface ProviderSignInStatus {
   signedIn: boolean;
@@ -19,9 +21,16 @@ const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
  * executable is missing, times out, or returns something unparsable): that is
  * a broken worker environment, not a confirmed sign-out, and must be reported
  * and repaired rather than retried for free forever under the sign-in remedy.
+ *
+ * `workspace`, when given, lets the claude-code-cli check short-circuit to a
+ * confirmed sign-in from the documented workspace token file instead of
+ * shelling out -- see `readClaudeCodeTokenFile`. A refused file (wrong
+ * permissions, empty, a symlink escaping the config directory) throws rather
+ * than falling back silently, so a misconfigured file is never mistaken for
+ * "no file present."
  */
-export function checkProviderSignIn(provider: string): ProviderSignInStatus | null {
-  if (provider === "claude-code-cli") return checkClaudeCodeSignIn();
+export function checkProviderSignIn(provider: string, workspace?: string): ProviderSignInStatus | null {
+  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace);
   return null;
 }
 
@@ -38,13 +47,27 @@ export function checkProviderSignIn(provider: string): ProviderSignInStatus | nu
  * read from `stdout` whether or not the process exited zero; only when no
  * verdict can be read at all is this treated as a probe failure.
  */
-function checkClaudeCodeSignIn(): ProviderSignInStatus | null {
+function checkClaudeCodeSignIn(workspace?: string): ProviderSignInStatus | null {
   // Tests must not depend on this host's real Claude Code sign-in state.
   // A test that specifically exercises the preflight injects an explicit
   // `providerSignIn` override instead of relying on this default.
   if (process.env.VITEST) return null;
 
-  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and set its printed token as CLAUDE_CODE_OAUTH_TOKEN in the worker\'s launch environment (setup-token only prints the token; it does not save it), then retry.';
+  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
+
+  if (workspace) {
+    const paths = getWorkspacePaths(workspace);
+    const tokenFile = readClaudeCodeTokenFile(paths.claudeCodeTokenFile, paths.config);
+    if (tokenFile.status === "refused") {
+      throw new Error(
+        `The Claude Code token file at ${paths.claudeCodeTokenFile} ${tokenFile.reason}. ${tokenFile.remedy}`
+      );
+    }
+    if (tokenFile.status === "ok") {
+      return { signedIn: true, remedy };
+    }
+    // "absent": no documented token file, fall through to the CLI probe below.
+  }
 
   try {
     const raw = execFileSync("claude", ["auth", "status", "--json"], {

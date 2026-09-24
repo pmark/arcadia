@@ -1,3 +1,6 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const execFileSyncMock = vi.fn();
@@ -6,6 +9,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { checkProviderSignIn } from "../src/codingAgents/signIn.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 /**
  * `checkProviderSignIn`'s claude-code-cli probe is a no-op under `VITEST`
@@ -74,5 +78,55 @@ describe("checkProviderSignIn", () => {
   it("throws, rather than reporting a confirmed sign-out, on unparsable probe output", () => {
     execFileSyncMock.mockReturnValue("not json");
     expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli"))).toThrow(/could not parse/);
+  });
+
+  describe("with a workspace token file", () => {
+    let root: string | undefined;
+
+    afterEach(() => {
+      if (root) rmSync(root, { recursive: true, force: true });
+      root = undefined;
+    });
+
+    function workspaceWithTokenFile(token: string, mode = 0o600): string {
+      root = mkdtempSync(path.join(tmpdir(), "arcadia-sign-in-token-"));
+      const workspace = path.join(root, "workspace");
+      mkdirSync(getWorkspacePaths(workspace).config, { recursive: true });
+      const tokenFile = getWorkspacePaths(workspace).claudeCodeTokenFile;
+      writeFileSync(tokenFile, token);
+      chmodSync(tokenFile, mode);
+      return workspace;
+    }
+
+    it("treats a valid token file as signed in without probing the claude executable", () => {
+      const workspace = workspaceWithTokenFile("sk-ant-oat-example");
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      expect(result).toMatchObject({ signedIn: true });
+      expect(execFileSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the claude auth status probe when no token file exists", () => {
+      root = mkdtempSync(path.join(tmpdir(), "arcadia-sign-in-token-"));
+      const workspace = path.join(root, "workspace");
+      mkdirSync(getWorkspacePaths(workspace).config, { recursive: true });
+      execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
+
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace));
+      expect(result).toMatchObject({ signedIn: true });
+      expect(execFileSyncMock).toHaveBeenCalled();
+    });
+
+    it("throws with a named remedy for a token file readable by group or others, without probing the claude executable", () => {
+      const workspace = workspaceWithTokenFile("sk-ant-oat-example", 0o640);
+      expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace))).toThrow(
+        /group or others/
+      );
+      expect(execFileSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("throws with a named remedy for an empty token file", () => {
+      const workspace = workspaceWithTokenFile("");
+      expect(() => withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", workspace))).toThrow(/empty/);
+    });
   });
 });

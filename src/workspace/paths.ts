@@ -20,6 +20,7 @@ export interface WorkspacePaths {
   codingAgentProfiles: string;
   providerAdapters: string;
   askRules: string;
+  claudeCodeTokenFile: string;
 }
 
 export function resolveWorkspacePath(workspace: string): string {
@@ -48,7 +49,8 @@ export function getWorkspacePaths(workspace: string): WorkspacePaths {
     templateRegistry: path.join(root, "config", "template-registry.json"),
     codingAgentProfiles: path.join(root, "config", "coding-agent-profiles.json"),
     providerAdapters: path.join(root, "config", "provider-adapters.json"),
-    askRules: path.join(root, "config", "ask-rules.json")
+    askRules: path.join(root, "config", "ask-rules.json"),
+    claudeCodeTokenFile: path.join(root, "config", "claude-code-oauth-token")
   };
 }
 

@@ -47,7 +47,7 @@ export interface ManagedProductionTickOptions {
   /** Test-only override for where a newly launched agent worktree is created. */
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
-  providerSignIn?: (provider: string) => ProviderSignInStatus | null;
+  providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
   /**
    * Re-stamp the preservation transport heartbeat between per-Project steps.
    * The tick blocks the event loop for minutes, so the worker's own 5s timer

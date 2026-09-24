@@ -740,7 +740,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           now: options.now ?? new Date(),
           tmux: options.tmux
         }));
-        session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath)));
+        session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath), workspacePath));
       } catch (error) {
         // Session preparation failed outright after the claim had committed.
         // Release it here, fenced on the generation this call made, rather than

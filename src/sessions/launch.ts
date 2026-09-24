@@ -57,7 +57,7 @@ export interface GuardedLaunchInput {
   /** Test-only override for the standing-policy provider capacity observation. */
   capacityObservation?: ProviderCapacityObservation;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
-  providerSignIn?: (provider: string) => ProviderSignInStatus | null;
+  providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
   /**
    * Called the moment sign-in is confirmed -- not merely attempted -- so a
    * caller tracking a durable "signed out" blocker (the managed-production
@@ -137,7 +137,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
+    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed), preview, admission: null };
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -186,7 +186,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // reserves a concurrency slot and before any worktree or lease is created:
   // a signed-out provider must take no admission and no lease, so the next
   // tick can retry it for free once sign-in is restored.
-  checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider), onProviderSignInConfirmed);
+  checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
 
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
@@ -308,7 +308,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn, onProviderSignInConfirmed), preview, admission: null };
+      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed), preview, admission: null };
     }
     throw error;
   }
@@ -343,7 +343,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   try {
-    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry), preview, admission };
+    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry, input.workspace), preview, admission };
   } catch (error) {
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a
@@ -373,14 +373,15 @@ function resumeOrReturn(
   session: AgentSession,
   tmux: TmuxAdapter,
   registry: ModelTierRegistry | undefined,
-  providerSignIn: (provider: string) => ProviderSignInStatus | null,
+  providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
+  workspace: string,
   onProviderSignInConfirmed?: (provider: string) => void
 ): AgentSession {
   if (session.status === "running" || tmux.hasSession(session.tmux_session_name)) {
     return getSession(db, session.id) ?? session;
   }
-  checkSignInOrRefuse(session.provider, providerSignIn(session.provider), onProviderSignInConfirmed);
-  return launchPreparedSession(db, session, tmux, registry);
+  checkSignInOrRefuse(session.provider, providerSignIn(session.provider, workspace), onProviderSignInConfirmed);
+  return launchPreparedSession(db, session, tmux, registry, workspace);
 }
 
 function checkSignInOrRefuse(
