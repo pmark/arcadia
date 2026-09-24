@@ -183,6 +183,54 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).not.toBeNull();
   });
 
+  it("settles a drafted complete Ask for the pointer instead of launching a Session, when its evidence already covers the Action", () => {
+    const fixture = preparedFixture({ secondAction: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    // A previous session did the work and drafted its completion, but ended
+    // (or was interrupted) before running the final settle -- exactly the gap
+    // this Action closes. The draft's candidate_revision is the repository's
+    // initial commit; the artifact and draft themselves land in a later
+    // commit, so by the time the tick runs, HEAD has moved past it purely
+    // because that later commit landed, not because anything diverged.
+    const initialHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    mkdirSync(path.join(fixture.repo, "docs"), { recursive: true });
+    writeFileSync(path.join(fixture.repo, "docs", "contract.md"), "# Contract\n\nDefined by define-contract.\n");
+    mkdirSync(path.join(fixture.repo, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(fixture.repo, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), [
+      "agent_ask: v1", "request_id: complete-define-contract", "project: test-project", "intent: complete",
+      "target_ref: action/define-contract", "desired_result: Accept the completion evidence for define-contract",
+      "rationale: The contract file was produced and every criterion is met.",
+      `candidate_revision: ${initialHead}`,
+      "evidence:", '  - criterion: "The contract exists."', "    status: met", "    note: docs/contract.md was produced.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n"));
+    git(fixture.repo, ["add", "."]);
+    git(fixture.repo, ["commit", "-m", "Produce the contract and draft its completion"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    const project = result.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.launch?.outcome).toBe("auto_settled");
+    expect(project.launch?.actionKey).toBe("test-project/define-contract");
+    // No coding-agent process was spawned, and no repository lease was taken
+    // for one -- the whole point of settling instead of dispatching.
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+    expect(execFileSync("git", ["show", "HEAD:PROJECT.md"], { cwd: fixture.repo, encoding: "utf8" })).toContain("current_action: second-action");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: fixture.repo, encoding: "utf8" })).toBe("");
+  });
+
   it("logs a refused launch with its code so an operator tailing worker.log can see why nothing starts", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

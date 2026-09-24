@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
+import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
@@ -71,6 +72,7 @@ export interface BaseBranchAdvanceObservation {
 export type ManagedProductionLaunchOutcome =
   | "launched"
   | "reused"
+  | "auto_settled"
   | "refused"
   | "failed"
   | "repair_budget_exhausted"
@@ -587,6 +589,28 @@ function attemptProjectLaunch(
 
   const actionKey = `${input.projectSlug}/${transition.dispatch.context.action.id}`;
   pruneStaleOperatorEscalations(db, input.projectSlug, actionKey);
+
+  // A drafted `complete` Agent Ask already covering this Action's evidence
+  // means a previous session finished the work and either ended, or was
+  // interrupted, before running the final settle step. Settling it here is
+  // deterministic and costs no coding-agent process; launching a fresh
+  // Session for already-done work would cost a full tick's capacity for
+  // nothing. Any reason it is not clean (no such draft, incomplete evidence,
+  // a genuinely divergent candidate_revision, an unresolved review Decision)
+  // falls through to the ordinary launch attempt below untouched.
+  const autoSettle = attemptAutoSettlePendingCompletion(db, {
+    repoRoot: input.repoRoot,
+    projectSlug: input.projectSlug,
+    activePlanSlug: transition.dispatch.context.activePlan,
+    action: transition.dispatch.context.action
+  });
+  if (autoSettle.settled) {
+    resetRepairAttempts(db, actionKey);
+    clearOperatorEscalation(db, actionKey);
+    input.log(`Auto-settled ${actionKey} from a drafted complete Ask (${autoSettle.askPath}); no Session launched.`);
+    return { attempted: false, outcome: "auto_settled", reason: `Settled from a drafted complete Ask. Next: ${autoSettle.nextActionKey ?? "none"}.`, actionKey };
+  }
+
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
     return {

@@ -9,6 +9,8 @@ import { buildAgentQueue, type AgentQueue, type AgentQueueEntry } from "../dispa
 import { arrangeActionOrder, moveActionOrder, undoActionOrder, type ActionOrderReceipt } from "../dispatch/order.js";
 import { transitionActionPointer, type PointerTransitionReceipt } from "../dispatch/pointer.js";
 import { discoverDocs } from "../docs/discover.js";
+import { resolveDispatch } from "../docs/dispatch.js";
+import { attemptAutoSettlePendingCompletion, type AutoSettlePendingCompletionResult } from "../ask/autoSettleBeforeDispatch.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import {
   getActiveWorktreeReservation,
@@ -215,8 +217,14 @@ export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<Launc
 
 export interface SessionLaunchCommandData {
   reused: boolean;
-  session: ReturnType<typeof sessionView>;
+  /** Null only when `autoSettled` is present: a drafted completion satisfied
+   * the Action before any Session was launched. */
+  session: ReturnType<typeof sessionView> | null;
   admission: GuardedLaunchResult["admission"];
+  /** Present when a drafted complete Agent Ask already covering the pointer
+   * Action was settled instead of launching a Session. See
+   * `attemptAutoSettlePendingCompletion`. */
+  autoSettled?: AutoSettlePendingCompletionResult;
 }
 
 /**
@@ -243,8 +251,28 @@ export function runSessionLaunchCommand(options: {
   const registries = loadPhase3Registries(workspacePath);
   validatePhase3Registries(registries);
   if (!registries.providerAdapters) throw new Error("Arcadia session launch requires a configured provider-adapters registry.");
-  const result: GuardedLaunchResult = withDatabase(workspacePath, (db) =>
-    launchGuardedHostSession({
+
+  const data: SessionLaunchCommandData = withDatabase(workspacePath, (db) => {
+    // Before starting a coding-agent process, check whether the pointer this
+    // request would launch already has a drafted `complete` Ask that fully
+    // covers it -- a previous session that finished the work but ended (or
+    // was interrupted) before settling. A dispatch resolution with no context
+    // (an unresolvable pointer, a Decision, a Plan boundary) has nothing to
+    // check here; `launchGuardedHostSession` below reports that refusal with
+    // its own, unaffected field-level detail.
+    const dispatch = resolveDispatch(repoRoot, project.slug);
+    if (dispatch.context) {
+      const autoSettle = attemptAutoSettlePendingCompletion(db, {
+        repoRoot,
+        projectSlug: project.slug,
+        activePlanSlug: dispatch.context.activePlan,
+        action: dispatch.context.action
+      });
+      if (autoSettle.settled) {
+        return { reused: false, session: null, admission: null, autoSettled: autoSettle };
+      }
+    }
+    const result: GuardedLaunchResult = launchGuardedHostSession({
       db,
       workspace: workspacePath,
       repoRoot,
@@ -254,24 +282,31 @@ export function runSessionLaunchCommand(options: {
       standingPolicy: options.standingPolicy,
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
-    })
-  );
-  return createSuccess({
-    command: "session.launch",
-    workspace: workspacePath,
-    data: { reused: result.reused, session: sessionView(result.session), admission: result.admission }
+    });
+    return { reused: result.reused, session: sessionView(result.session), admission: result.admission };
   });
+
+  return createSuccess({ command: "session.launch", workspace: workspacePath, data });
 }
 
 export function renderSessionLaunchSuccess(response: CommandSuccess<SessionLaunchCommandData>): string[] {
   const data = response.data;
+  if (data.autoSettled) {
+    return [
+      "Settled from a drafted complete Agent Ask; no Session was launched.",
+      `Ask: ${data.autoSettled.askPath ?? "(unknown)"}`,
+      `Receipt: ${data.autoSettled.receiptId ?? "(unknown)"}`,
+      `Next: ${data.autoSettled.nextActionKey ?? "none"}`
+    ];
+  }
+  const session = data.session!;
   return [
     data.reused ? "Reused an already-durable Session for this exact request." : "Session launched.",
-    `Session: ${data.session.id}`,
-    `Status: ${data.session.observedStatus}`,
-    `Project: ${data.session.project_slug} · ${data.session.plan_slug}#${data.session.action_id}`,
-    `Worktree: ${data.session.worktree_path}`,
-    `Reattach: ${data.session.reattachCommand}`,
+    `Session: ${session.id}`,
+    `Status: ${session.observedStatus}`,
+    `Project: ${session.project_slug} · ${session.plan_slug}#${session.action_id}`,
+    `Worktree: ${session.worktree_path}`,
+    `Reattach: ${session.reattachCommand}`,
     ...(data.admission
       ? [`Admission: ${data.admission.id} · epoch ${data.admission.epoch} · ${data.admission.status}`]
       : [])
