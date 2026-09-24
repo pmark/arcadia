@@ -1939,6 +1939,26 @@ actions:
     depends_on: [surface-terminal-operator-approvals-in-runs]
     decisions: []
     references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
+  - id: gate-dispatch-on-blocking-operator-items
+    title: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
+    expected_artifact: Evidence satisfying Agent Ask gate-dispatch-on-blocking-operator-items
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-blocking-vs-alert-operator-gate-2026-09-24
+    acceptance_criteria:
+      - One shared function classifies every pending operator-only item (unsettled Agent Ask proposals, open Decisions) as blocking or alert, reusing the exact data surface-terminal-operator-approvals-in-runs already built rather than re-deriving it.
+      - "An item is blocking when it names, or its Decision's action: field names, an Action the current dispatch resolution would otherwise select, or when it is the reason no Action in the current queue segment is eligible; every other pending item is an alert."
+      - When one or more blocking items exist, arcadia go/advance/next refuses to hand off a dispatch brief for agent work and instead prints each blocking item's title, recommended option and consequence, and the exact command to settle it — matching the existing per-Action blocker/operatorQuestion contract, not a second one.
+      - When only alert items exist, dispatch proceeds normally and the resolution additionally lists each alert's title and one-line consequence, newest first, capped at a small fixed count with a count of any remainder.
+      - This one gate is shared by the CLI (go, advance, next), the dashboard's equivalent status calls, and the Discord bot's dispatch-brief posting — none of them re-implements its own copy.
+      - "Regression tests cover: a blocking item suppresses dispatch and is named exactly; an alert-only state dispatches normally with the alert list attached; zero pending items adds neither section; an item blocking one Project does not suppress dispatch for an unrelated Project."
+    depends_on: []
+    decisions: []
+    references: ["apps/dashboard/app/api/approvals/route.ts", "src/commands/agentAsk.ts", "src/commands/decision.ts", "src/docs/dispatch.ts", "src/commands/go.ts", "src/commands/advance.ts", "apps/discord-bot"]
 questions: []
 decisions: []
 current_action: release-committed-admissions-on-session-end
