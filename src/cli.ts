@@ -19,6 +19,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { renderAskTrailSuccess, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderAgentAskContractSuccess,
@@ -747,6 +748,16 @@ export function buildProgram(): Command {
     }),
     renderAskSuccess
   ));
+
+  addJsonOption(
+    program
+      .command("ask-trail")
+      .description("Show what an Ask became: its capture, classification, Project, and every resulting Action, Decision, or Back Burner item")
+      .argument("<id>", "capture_… id from the Ask receipt, its request id, or an ask_… id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction("ask-trail", options, () => runAskTrailCommand({ ...options, id }), renderAskTrailSuccess)
+  );
 
   const askRule = program.command("ask-rule").description("Inspect deterministic Ask routing rules");
 

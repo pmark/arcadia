@@ -51,6 +51,8 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentAskSettlementTable(db);
   ensureActionQueueOrderTables(db);
   ensureRequiresReviewCompatibility(db);
+  // After the requires_review rebuild, which recreates ask_requests and drops its indexes.
+  ensureAskTraceColumns(db);
   ensureOperatorAgnosticSchema(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
@@ -198,6 +200,78 @@ function ensureAgentAskSettlementTable(db: Database.Database): void {
   );
   CREATE INDEX IF NOT EXISTS idx_agent_ask_settlements_notification
     ON agent_ask_settlements(notification_status, created_at);`);
+}
+
+/**
+ * Links an Ask's outcome back to its capture so `arcadia ask-trail` can answer
+ * "what happened to this Ask?" (#591). Rows written before these columns existed
+ * are backfilled once, when a column is first added.
+ */
+function ensureAskTraceColumns(db: Database.Database): void {
+  const askColumns = new Set(
+    (db.prepare("PRAGMA table_info(ask_requests)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const backBurnerColumns = new Set(
+    (db.prepare("PRAGMA table_info(back_burner_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  let added = false;
+  if (!askColumns.has("capture_id")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN capture_id TEXT REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL").run();
+    added = true;
+  }
+  if (!backBurnerColumns.has("ask_request_id")) {
+    db.prepare("ALTER TABLE back_burner_items ADD COLUMN ask_request_id TEXT REFERENCES ask_requests(id) ON DELETE SET NULL").run();
+    added = true;
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ask_requests_capture_id ON ask_requests(capture_id);
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_ask_request_id ON back_burner_items(ask_request_id);
+  `);
+  if (added) backfillAskTraceLinks(db);
+}
+
+/**
+ * Pairs unlinked Asks with their capture, and unlinked Back Burner items with
+ * their Ask, by identical text recorded within five seconds. A row that could
+ * pair with more than one partner is left unlinked rather than guessed.
+ */
+export function backfillAskTraceLinks(db: Database.Database): void {
+  db.exec(`
+    WITH candidates AS (
+      SELECT ask.id AS ask_id, capture.id AS capture_id
+      FROM ask_requests ask
+      JOIN ask_capture_envelopes capture
+        ON capture.original_text = ask.raw_request
+       AND abs(julianday(capture.captured_at) - julianday(ask.created_at)) * 86400 < 5
+      WHERE ask.capture_id IS NULL
+    ),
+    unique_pairs AS (
+      SELECT ask_id, capture_id FROM candidates
+      WHERE ask_id IN (SELECT ask_id FROM candidates GROUP BY ask_id HAVING count(*) = 1)
+        AND capture_id IN (SELECT capture_id FROM candidates GROUP BY capture_id HAVING count(*) = 1)
+    )
+    UPDATE ask_requests
+    SET capture_id = (SELECT capture_id FROM unique_pairs WHERE unique_pairs.ask_id = ask_requests.id)
+    WHERE id IN (SELECT ask_id FROM unique_pairs);
+
+    WITH candidates AS (
+      SELECT item.id AS item_id, ask.id AS ask_id
+      FROM back_burner_items item
+      JOIN ask_requests ask
+        ON ask.output_kind = 'back_burner'
+       AND ask.raw_request = item.original_input
+       AND abs(julianday(ask.created_at) - julianday(item.created_at)) * 86400 < 5
+      WHERE item.ask_request_id IS NULL
+    ),
+    unique_pairs AS (
+      SELECT item_id, ask_id FROM candidates
+      WHERE item_id IN (SELECT item_id FROM candidates GROUP BY item_id HAVING count(*) = 1)
+        AND ask_id IN (SELECT ask_id FROM candidates GROUP BY ask_id HAVING count(*) = 1)
+    )
+    UPDATE back_burner_items
+    SET ask_request_id = (SELECT ask_id FROM unique_pairs WHERE unique_pairs.item_id = back_burner_items.id)
+    WHERE id IN (SELECT item_id FROM unique_pairs);
+  `);
 }
 
 function ensureAskCaptureEnvelopeTables(db: Database.Database): void {

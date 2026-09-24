@@ -237,6 +237,7 @@ export interface AskRequest {
   output_kind: string;
   stewardship_json: string | null;
   work_item_id: string | null;
+  capture_id: string | null;
   plan_id: string | null;
   prompt_packet_path: string | null;
   status: AskRequestStatus;
@@ -339,6 +340,7 @@ export interface BackBurnerItem {
   project_id: string | null;
   source_ref: string | null;
   facet_tags_json: string | null;
+  ask_request_id: string | null;
 }
 
 export interface ApprovalGate {
@@ -712,6 +714,8 @@ export interface CreateArtifactInput {
 
 export interface CreateAskRequestInput {
   id?: string;
+  /** The capture envelope this Ask came from, so its outcome stays traceable. */
+  captureId?: string | null;
   rawRequest: string;
   resolvedIntent: string;
   registryVersion: number;
@@ -751,6 +755,8 @@ export interface CreateReviewFeedbackInput {
 }
 
 export interface CreateBackBurnerItemInput {
+  /** The Ask request that shelved this item, when it came from an Ask. */
+  askRequestId?: string | null;
   originalInput: string;
   ingressSource: string;
   classification: IntakeClassification;
