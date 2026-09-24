@@ -258,6 +258,34 @@ describe("protected Arcadia go broker", () => {
       expect(nextRunner).not.toHaveBeenCalled();
     });
 
+    it("tags a plain (non-ArcadiaError) stage failure with its stage instead of losing the tag", () => {
+      const advanceRunner = vi.fn(() => {
+        throw new Error("Arcadia advance requires one managed Project document.");
+      });
+      const workMonitorRunner = vi.fn().mockReturnValue(workMonitorResponse);
+      const nextRunner = vi.fn().mockReturnValue(nextResponse);
+
+      try {
+        runGoBroker(
+          { source: "/tmp/prepared", agent: "claude", operation: "brief" },
+          vi.fn() as never,
+          advanceRunner,
+          workMonitorRunner as never,
+          () => "/tmp/arcadia-workspace",
+          nextRunner as never,
+          vi.fn().mockReturnValue("arcadia") as never
+        );
+        expect.unreachable("expected runGoBroker to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ArcadiaError);
+        // The same normalization a plain Error would get at the standalone
+        // command's own CLI entrypoint, with the stage tag added.
+        expect((error as ArcadiaError).details).toMatchObject({ stage: "advance" });
+      }
+      expect(workMonitorRunner).not.toHaveBeenCalled();
+      expect(nextRunner).not.toHaveBeenCalled();
+    });
+
     it("stops before calling next when the project slug cannot be resolved, tagged as the next stage", () => {
       const advanceRunner = vi.fn().mockReturnValue(advanceResponse);
       const workMonitorRunner = vi.fn().mockReturnValue(workMonitorResponse);

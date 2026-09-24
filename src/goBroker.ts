@@ -1,5 +1,5 @@
 import path from "node:path";
-import { ArcadiaError, validationError } from "./cli/errors.js";
+import { ArcadiaError, normalizeError, validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
@@ -67,15 +67,21 @@ function resolveProjectSlugFromRepository(source: string): string {
   return project.slug;
 }
 
-/** Attach which of the combined stages failed, without altering the underlying error. */
+/**
+ * Attach which of the combined stages failed, without altering the underlying
+ * error's code, message, exit code, or details. `normalizeError` first turns
+ * any non-`ArcadiaError` throw (a plain `Error`, a SQLite failure, ...) into
+ * the same structured shape the standalone command's own CLI entrypoint would
+ * have produced for it, so a stage's failure is never less specific here than
+ * running that stage alone would have been -- only the added `stage` field is
+ * new.
+ */
 function runBriefStage<T>(stage: "advance" | "work-monitor" | "next", run: () => T): T {
   try {
     return run();
   } catch (error) {
-    if (error instanceof ArcadiaError) {
-      throw new ArcadiaError(error.code, error.message, error.exitCode, { ...error.details, stage });
-    }
-    throw error;
+    const normalized = normalizeError(error);
+    throw new ArcadiaError(normalized.code, normalized.message, normalized.exitCode, { ...normalized.details, stage });
   }
 }
 
