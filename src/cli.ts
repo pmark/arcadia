@@ -26,12 +26,14 @@ import {
   renderAgentAskDraftSuccess,
   renderAgentAskNotificationSentSuccess,
   renderAgentAskNotificationsSuccess,
+  renderAgentAskPendingSuccess,
   renderAgentAskPreviewSuccess,
   renderAgentAskSettleSuccess,
   runAgentAskContractCommand,
   runAgentAskDraftCommand,
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
+  runAgentAskPendingCommand,
   runAgentAskPreviewCommand,
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
@@ -370,10 +372,12 @@ import {
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
   renderDecisionApproveSuccess,
+  renderDecisionListSuccess,
   renderDecisionNewSuccess,
   renderDecisionReverseSuccess,
   renderDecisionValidateSuccess,
   runDecisionApproveCommand,
+  runDecisionListCommand,
   runDecisionNewCommand,
   runDecisionReverseCommand,
   runDecisionValidateCommand
@@ -818,6 +822,12 @@ export function buildProgram(): Command {
     .description("Print the Agent Ask v1 schema, intents, and authority boundary")
   ).action((options: { json?: boolean }) =>
     runCliAction("agent-ask.contract", options, () => runAgentAskContractCommand(), renderAgentAskContractSuccess)
+  );
+  addJsonOption(agentAsk.command("pending")
+    .description("List Agent Ask proposals awaiting the operator's terminal disposition")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("agent-ask.pending", options, () => runAgentAskPendingCommand({ workspace: options.workspace }), renderAgentAskPendingSuccess)
   );
   addJsonOption(agentAsk.command("notifications")
     .description("List durable Agent Ask settlement pings pending Discord delivery")
@@ -1941,6 +1951,21 @@ export function buildProgram(): Command {
       options,
       () => runDecisionValidateCommand({ workspace: options.workspace, project: options.project, id }),
       renderDecisionValidateSuccess
+    )
+  );
+  addJsonOption(
+    decision
+      .command("list")
+      .description("List Decisions at a given status (default open) across one or every configured Project")
+      .option("--project <project>", "Limit to one Project id or slug")
+      .option("--status <status>", "open, approved, rejected, or deferred", "open")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project?: string; status?: string; json?: boolean }) =>
+    runCliAction(
+      "decision.list",
+      options,
+      () => runDecisionListCommand({ workspace: options.workspace, project: options.project, status: options.status as never }),
+      renderDecisionListSuccess
     )
   );
 

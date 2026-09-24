@@ -2,6 +2,7 @@
 
 import { CheckCircle2, CircleAlert, Loader2, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { ApprovalQueue } from "../../components/approval-queue";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
 import { ProductionControlPanel } from "../../components/production-control-panel";
@@ -116,6 +117,7 @@ export default function RunsPage() {
         void control.refresh();
       }}
     >
+      <ApprovalQueue />
       <ProductionControlPanel
         core={control.core}
         queue={control.queue}
