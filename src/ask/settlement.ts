@@ -939,7 +939,14 @@ export function settleAgentAsk(db: Database.Database, input: {
         // generic `arrangeQueue` guard below refuses this from a candidate
         // worktree before anything is written.
         requirePlanPositioned(queue, project.slug, targetPlan.slug, "queuing its remainder Actions");
-        const takenIds = new Set(targetPlan.actions.map((candidate) => candidate.id));
+        // The queue key is `${project.slug}/${id}` with no Plan segment, so an
+        // id must be unique across every Plan in the Project, not only the
+        // target Plan -- otherwise a remainder id could collide with another
+        // Plan's Action and queue selection or readiness lookup could resolve
+        // the wrong one.
+        const takenIds = new Set(discovered.docs
+          .filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug)
+          .flatMap((doc) => doc.actions.map((candidate) => candidate.id)));
         const remainderIds = proposedActions.map((remainderAction) => (remainderAction.id
           ? claimExplicitActionId(takenIds, remainderAction.id)
           : allocateUniqueActionId(takenIds, deriveActionId(remainderAction.desiredResult))));

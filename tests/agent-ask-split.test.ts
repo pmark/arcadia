@@ -124,9 +124,21 @@ describe("Agent Ask split", () => {
       workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-invented", disposition: "accepted"
     })).toThrow(/drawn verbatim from the Action's declared acceptance criteria/);
   });
+
+  it("refuses a remainder id already used by another Plan in the Project, not only the target Plan", () => {
+    // The queue key is `${project.slug}/${id}` with no Plan segment, so a
+    // remainder id must be unique across every Plan, not only the one being
+    // split -- otherwise it could collide with another Plan's Action and
+    // queue selection or readiness lookup could resolve the wrong one.
+    const { workspace, head } = fixture({ withCollidingIdInOtherPlan: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: splitAsk("split-collision", head) });
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-collision", disposition: "accepted"
+    })).toThrow(/already used/);
+  });
 });
 
-function fixture(options: { queueOrder?: string[] } = {}): { workspace: string; repo: string; head: string } {
+function fixture(options: { queueOrder?: string[]; withCollidingIdInOtherPlan?: boolean } = {}): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-split-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -155,6 +167,18 @@ function fixture(options: { queueOrder?: string[] } = {}): { workspace: string; 
     "    acceptance_criteria:", "      - Second proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
     "questions: []", "---", "", "# Demo plan", ""
   ].join("\n"), "utf8");
+  if (options.withCollidingIdInOtherPlan) {
+    writeFileSync(path.join(repo, "docs/plans/side-plan.md"), [
+      "---", "arcadia: v1", "type: plan", "slug: side-plan", "project: demo", "status: draft",
+      "milestone: Side work", "token_impact: medium",
+      "token_budget: Deterministic split with one accepted evidence pass.", "updated: 2026-09-01", "actions:",
+      "  - id: first-remainder", "    title: An unrelated Action in another Plan", "    status: open",
+      "    responsibility: agent", "    effort: session", "    next_action: Finish this unrelated Action.",
+      "    expected_artifact: Side proof", "    clarification: clarified", "    confidence: high",
+      "    acceptance_criteria:", "      - Side proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
+      "questions: []", "---", "", "# Side plan", ""
+    ].join("\n"), "utf8");
+  }
   execFileSync("git", ["init", "-q"], { cwd: repo });
   execFileSync("git", ["config", "user.email", "ask-test@example.invalid"], { cwd: repo });
   execFileSync("git", ["config", "user.name", "Ask Test"], { cwd: repo });
