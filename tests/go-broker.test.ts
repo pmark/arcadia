@@ -223,7 +223,14 @@ describe("protected Arcadia go broker", () => {
         advance: advanceResponse.data,
         workMonitor: workMonitorResponse.data,
         next: nextResponse.data,
-        dispatchBrief: "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work."
+        dispatchBrief: "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work.",
+        sessionTitles: {
+          working: "🩹🔵 repair",
+          pr: "🩹🟣 repair",
+          waiting: "🩹🟠 repair",
+          blocked: "🩹🔴 repair",
+          done: "🩹🟢 repair"
+        }
       });
     });
 

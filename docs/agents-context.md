@@ -22,12 +22,25 @@ resolve `active_plan` and `current_action` from `PROJECT.md`; never select
 work from an unordered backlog.
 
 When your environment lets you name or title the current session or
-conversation, set it to the resolved scope — `<active_plan>: <current_action>`
-(e.g. `way-delivery: stop-dumping-rationale-into-recommendation`) — instead of
-a generic label like "Arcadia Go" or "Continue session". Retitle it again if
-the session moves on to a different Action before it ends. Skip this silently
-in a coding-agent runtime with no such naming capability; it is a convenience
-for the operator scanning a session list, not a governed artifact.
+conversation, title it so it stays distinguishable when a session list cuts it
+to its first ~20 characters: `<kind><state> <PLAN> <current_action>` (e.g.
+`🔨🔵 WD stop-dumping-rationale-into-recommendation`), never a generic label
+like "Arcadia Go". The arcadia-go brief broker returns every state's title in
+`data.sessionTitles`; use those verbatim. Composing one by hand:
+
+- **kind** — 🔨 build an Action, 🔍 review or critique, 🧭 plan, 🩹 repair
+  control documents;
+- **state** — 🔵 working, 🟣 PR open and in its CodeRabbit loop, 🟠 waiting on
+  the operator (a picker or question), 🔴 externally blocked, 🟢 done or merged;
+- **PLAN** — the first letter of each word of the `active_plan` slug, skipping
+  `a an and at by for in of on or the to with`, uppercased and capped at four
+  (a one-word slug keeps its first three letters); omit it, with its space,
+  when the session has no Plan — never fill it with a placeholder.
+
+Retitle whenever the state changes and whenever the session moves on to a
+different Action. Skip this silently in a coding-agent runtime with no such
+naming capability; it is a convenience for the operator scanning a session
+list, not a governed artifact.
 
 Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a

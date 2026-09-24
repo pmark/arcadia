@@ -84,12 +84,18 @@ work has happened — running it right after `go` is a guaranteed
    "dispatch brief confirmed" does not satisfy this step — the literal brief
    text must appear in a message the operator sees.
 
-   That brief names the resolved `active_plan` and `current_action`. If the
-   environment exposes a session-title tool (Claude Code Remote's
-   `set_session_title`), call it now with `<active_plan>: <current_action>`
-   so the session is identifiable in a session list instead of carrying a
-   generic default like "Arcadia Go". Skip this silently where no such tool
-   exists.
+   If the environment exposes a session-title tool (Claude Code Remote's
+   `set_session_title`), call it now with `data.sessionTitles.working` — for
+   example `🔨🔵 BMPB stop-dumping-rationale` — so the session is
+   distinguishable even when a session list shows only its first ~20
+   characters. Retitle from the same map as the session's state changes:
+   `pr` once its pull request is open and in the CodeRabbit loop, `waiting`
+   when it stops at a picker or operator question, `blocked` on a recorded
+   external blocker, and `done` once the Action is complete or its PR merged.
+   The map names only the Action this brief resolved: when the session moves
+   on to a different Action, rerun the `brief` launcher and retitle from its
+   fresh `data.sessionTitles` instead of reusing the old map. Skip this
+   silently where no such tool exists.
 3. Inspect the selected Action and its local implementation boundaries using
    ordinary read-only commands (`git status`, `rg`, and targeted file reads)
    without asking for approval. Read-only discovery is already authorized by a

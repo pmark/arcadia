@@ -28,8 +28,9 @@ constraints arrive with the objective rather than depending on this file.
   independent tool calls in one batch.
 - AGENTS.md's session-naming rule applies here through the
   `set_session_title` tool (Claude Code Remote's session-title MCP call):
-  call it with the resolved `active_plan: current_action` instead of
-  leaving the default "Arcadia Go" title.
+  call it with the brief broker's `data.sessionTitles.working` instead of
+  leaving the default "Arcadia Go" title, and again with the matching
+  `sessionTitles` entry whenever the session's state changes.
 - AGENTS.md's agent Git identity rule (below) applies to this session too.
   Claude Code's own default attribution — a plain `Co-Authored-By: Claude
   <model> <version>` trailer with the commit authored as the operator — is

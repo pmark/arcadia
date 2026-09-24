@@ -20,6 +20,7 @@ import { packetSha256 } from "../execution/planningAuthorization.js";
 import { createId } from "../utils/id.js";
 import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
+import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 
 export type ProjectTransitionKind =
@@ -466,7 +467,7 @@ export function prepareSession(input: {
     // Keep the immutable Arcadia receipt as the correlation identity instead of
     // fabricating a Codex id that `codex resume` could not actually resume.
     const providerSessionId = input.agent === "claude" ? randomUUID() : id;
-    const displayName = `${context.projectName}: ${context.action.title}`.slice(0, 120);
+    const displayName = formatSessionTitle({ kind: "build", state: "working", plan: context.activePlan, action: context.action.id }).slice(0, 120);
     const timestamp = input.now.toISOString();
     const row = {
       id, project_id: project.id, project_slug: context.projectSlug, repository_path: canonicalPath(input.repoRoot),

@@ -8,6 +8,7 @@ import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/w
 import { discoverDocs } from "./docs/discover.js";
 import { existingDirectory } from "./git/worktrees.js";
 import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
+import { sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
 
 /** The protected broker carries the same agent union the Session registry does. */
@@ -50,6 +51,11 @@ export interface BriefCommandData {
   next: NextCommandData;
   /** The exact lines `pnpm arcadia next` would render, joined for a single paste. */
   dispatchBrief: string;
+  /**
+   * The session title for each state this session can be in, so the agent
+   * retitles by lookup as it moves from working to PR to waiting or done.
+   */
+  sessionTitles: Record<SessionTitleState, string>;
 }
 
 /**
@@ -160,7 +166,12 @@ export function runGoBroker(
         advance: advance.data,
         workMonitor: workMonitor.data,
         next: next.data,
-        dispatchBrief: renderNextSuccess(next).join("\n")
+        dispatchBrief: renderNextSuccess(next).join("\n"),
+        sessionTitles: sessionTitlesByState({
+          kind: next.data.dispatchable ? "build" : "repair",
+          plan: next.data.context?.activePlan ?? null,
+          action: next.data.context?.action.id ?? null
+        })
       },
       artifacts: [],
       warnings: []
