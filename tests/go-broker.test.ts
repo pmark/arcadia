@@ -48,6 +48,10 @@ describe("protected Arcadia go broker", () => {
     expect(parseGoBrokerArguments(["codex", "preserve"], "/tmp/finished").operation).toBe("preserve");
   });
 
+  it("accepts brief as a fixed launcher operation", () => {
+    expect(parseGoBrokerArguments(["codex", "brief"], "/tmp/finished").operation).toBe("brief");
+  });
+
   it("routes the actual sandboxed launcher through preservation transport", async () => {
     const response = { ok: true, command: "preserve", data: { receipt: { commit: "candidate" } } };
     const requestCandidatePreservation = vi.fn().mockResolvedValue(response);
@@ -176,6 +180,111 @@ describe("protected Arcadia go broker", () => {
     expect(result.command).toBe("work-monitor-broker");
   });
 
+  describe("the combined brief operation", () => {
+    const advanceResponse = { ok: true as const, command: "advance", data: { transition: null, session: null }, artifacts: [], warnings: [] };
+    const workMonitorResponse = { ok: true as const, command: "work.monitor", data: { snapshot: {}, attentionLines: [] }, artifacts: [], warnings: [] };
+    const nextResponse = {
+      ok: true as const,
+      command: "next",
+      data: {
+        context: null,
+        blockers: [],
+        operatorQuestion: null,
+        dispatchable: false,
+        projectId: "proj_1",
+        repoRoot: "/tmp/prepared"
+      },
+      artifacts: [],
+      warnings: []
+    };
+
+    it("runs advance, work-monitor, and next once each and returns their combined data plus the rendered brief", () => {
+      const advanceRunner = vi.fn().mockReturnValue(advanceResponse);
+      const workMonitorRunner = vi.fn().mockReturnValue(workMonitorResponse);
+      const nextRunner = vi.fn().mockReturnValue(nextResponse);
+      const resolveProjectSlug = vi.fn().mockReturnValue("arcadia");
+
+      const result = runGoBroker(
+        { source: "/tmp/prepared", agent: "claude", operation: "brief" },
+        vi.fn() as never,
+        advanceRunner as never,
+        workMonitorRunner as never,
+        () => "/tmp/arcadia-workspace",
+        nextRunner as never,
+        resolveProjectSlug as never
+      );
+
+      expect(advanceRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", repo: "/tmp/prepared" });
+      expect(workMonitorRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", includePullRequests: false, repositoryPath: "/tmp/prepared" });
+      expect(resolveProjectSlug).toHaveBeenCalledExactlyOnceWith("/tmp/prepared");
+      expect(nextRunner).toHaveBeenCalledExactlyOnceWith({ workspace: "/tmp/arcadia-workspace", project: "arcadia" });
+      expect(result.command).toBe("brief-broker");
+      expect(result.data).toEqual({
+        advance: advanceResponse.data,
+        workMonitor: workMonitorResponse.data,
+        next: nextResponse.data,
+        dispatchBrief: "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work."
+      });
+    });
+
+    it.each([
+      ["advance", (advanceRunner: () => void, _workMonitorRunner: () => void, _nextRunner: () => void) => advanceRunner],
+      ["work-monitor", (_advanceRunner: () => void, workMonitorRunner: () => void, _nextRunner: () => void) => workMonitorRunner]
+    ] as const)("stops after a refused %s stage and tags the failure with its stage", (stage, pickFailing) => {
+      const advanceRunner = vi.fn().mockReturnValue(advanceResponse);
+      const workMonitorRunner = vi.fn().mockReturnValue(workMonitorResponse);
+      const nextRunner = vi.fn().mockReturnValue(nextResponse);
+      const failing = pickFailing(advanceRunner, workMonitorRunner, nextRunner);
+      failing.mockImplementation(() => {
+        throw new ArcadiaError("VALIDATION_ERROR", `${stage} refused`, 2, { detail: "original" });
+      });
+
+      try {
+        runGoBroker(
+          { source: "/tmp/prepared", agent: "claude", operation: "brief" },
+          vi.fn() as never,
+          advanceRunner as never,
+          workMonitorRunner as never,
+          () => "/tmp/arcadia-workspace",
+          nextRunner as never,
+          vi.fn().mockReturnValue("arcadia") as never
+        );
+        expect.unreachable("expected runGoBroker to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ArcadiaError);
+        expect((error as ArcadiaError).message).toBe(`${stage} refused`);
+        expect((error as ArcadiaError).details).toEqual({ detail: "original", stage });
+      }
+      expect(nextRunner).not.toHaveBeenCalled();
+    });
+
+    it("stops before calling next when the project slug cannot be resolved, tagged as the next stage", () => {
+      const advanceRunner = vi.fn().mockReturnValue(advanceResponse);
+      const workMonitorRunner = vi.fn().mockReturnValue(workMonitorResponse);
+      const nextRunner = vi.fn().mockReturnValue(nextResponse);
+      const resolveProjectSlug = vi.fn(() => {
+        throw new ArcadiaError("VALIDATION_ERROR", "Arcadia brief requires one managed Project document.", 2, { repository: "/tmp/prepared" });
+      });
+
+      try {
+        runGoBroker(
+          { source: "/tmp/prepared", agent: "claude", operation: "brief" },
+          vi.fn() as never,
+          advanceRunner as never,
+          workMonitorRunner as never,
+          () => "/tmp/arcadia-workspace",
+          nextRunner as never,
+          resolveProjectSlug
+        );
+        expect.unreachable("expected runGoBroker to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ArcadiaError);
+        expect((error as ArcadiaError).details).toEqual({ repository: "/tmp/prepared", stage: "next" });
+      }
+      expect(nextRunner).not.toHaveBeenCalled();
+    });
+  });
+
   it("allows fixed request and prepared-worktree brokers", () => {
     const bin = "/Users/operator/.local/bin";
     const executables = {
@@ -198,11 +307,16 @@ describe("protected Arcadia go broker", () => {
         codex: `${bin}/arcadia-work-monitor-broker-codex`,
         claude: `${bin}/arcadia-work-monitor-broker-claude`,
         opencode: `${bin}/arcadia-work-monitor-broker-opencode`
+      },
+      brief: {
+        codex: `${bin}/arcadia-brief-broker-codex`,
+        claude: `${bin}/arcadia-brief-broker-claude`,
+        opencode: `${bin}/arcadia-brief-broker-opencode`
       }
     };
-    // Every fixed request launcher is request-only, so each of the three is
-    // granted to Codex rules and the Claude allowlist alike.
-    const launchers = ["go", "advance", "preserve", "work-monitor"].map(
+    // Every fixed request launcher is request-only, so each is granted to
+    // Codex rules and the Claude allowlist alike.
+    const launchers = ["go", "advance", "preserve", "work-monitor", "brief"].map(
       (operation) => `${bin}/arcadia-${operation}-broker`
     );
     expect(permissionSnippets(executables)).toEqual({
@@ -227,6 +341,11 @@ describe("protected Arcadia go broker", () => {
     // The fixed agent and operation are the only argument the launcher carries.
     expect(opencode.split("\n")[1]).toContain("/release/arcadia-go-broker.js");
     expect(claude).toContain('claude go "$@"');
+  });
+
+  it("renders the brief launcher the same way as every other operation", () => {
+    const claude = renderGoBrokerLauncher("/release/arcadia-go-broker.js", "claude", "brief");
+    expect(claude).toContain('claude brief "$@"');
   });
 
   it("stages the database schema needed when the broker runs outside Arcadia", () => {

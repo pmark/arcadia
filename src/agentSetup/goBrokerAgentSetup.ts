@@ -35,6 +35,7 @@ export interface BrokerExecutables {
   preserve: ProviderExecutables;
   advance: ProviderExecutables;
   workMonitor: ProviderExecutables;
+  brief: ProviderExecutables;
 }
 
 /** The providers the protected broker installs launchers for, in registry order. */
@@ -145,7 +146,8 @@ export function renderManagedSkill(template: string, executables: BrokerExecutab
     ["go", "GO_BROKER"],
     ["preserve", "PRESERVE_BROKER"],
     ["advance", "ADVANCE_BROKER"],
-    ["workMonitor", "WORK_MONITOR_BROKER"]
+    ["workMonitor", "WORK_MONITOR_BROKER"],
+    ["brief", "BRIEF_BROKER"]
   ];
   const placeholders = operations.flatMap(([, suffix]) =>
     brokerAgents().map((agent) => `${agentPlaceholder(agent)}${suffix}__`)
@@ -250,7 +252,7 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     ),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&
-      (!/arcadia-(?:go|preserve|advance|work-monitor)-broker-/.test(entry) ||
+      (!/arcadia-(?:go|preserve|advance|work-monitor|brief)-broker-/.test(entry) ||
         agentCallableExecutables(options.executables).some((providers) =>
           brokerAgents().some((agent) => entry === `Bash(${providers[agent]})`)
         ))
@@ -455,7 +457,7 @@ function updateClaudeSettings(
   const settings = readClaudeSettings(file, true) ?? {};
   const permissions = settings.permissions ?? {};
   const allow = (permissions.allow ?? []).filter(
-    (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|preserve|advance|work-monitor)-broker-/.test(entry)
+    (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|preserve|advance|work-monitor|brief)-broker-/.test(entry)
   );
   for (const providers of agentCallableExecutables(options.executables)) {
     for (const agent of brokerAgents()) allow.push(`Bash(${providers[agent]})`);
@@ -511,7 +513,7 @@ function managedCodexRule(executables: BrokerExecutables): string {
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.go, executables.advance, executables.preserve, executables.workMonitor];
+  return [executables.go, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
 }
 
 function setTopLevelTomlValues(content: string, values: Record<string, string>): string {
@@ -666,7 +668,7 @@ function findLegacyCodexRules(directory: string, managedFile: string): string[] 
 function isArcadiaGoPrefixRule(rule: string): boolean {
   const pattern = rule.match(/pattern\s*=\s*\[([\s\S]*?)\]/)?.[1] ?? "";
   return (
-    new RegExp(`arcadia-(?:go|preserve|advance|work-monitor)-broker-(?:${brokerAgents().join("|")})`).test(pattern) ||
+    new RegExp(`arcadia-(?:go|preserve|advance|work-monitor|brief)-broker-(?:${brokerAgents().join("|")})`).test(pattern) ||
     /"[^"]*arcadia"\s*,\s*"go"/.test(pattern)
   );
 }

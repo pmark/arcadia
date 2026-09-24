@@ -123,7 +123,7 @@ export function permissionSnippets(
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.go, executables.advance, executables.preserve, executables.workMonitor];
+  return [executables.go, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
 }
 
 export function runGoBrokerInstallCommand(
@@ -142,7 +142,8 @@ export function runGoBrokerInstallCommand(
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
     preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
-    workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker")
+    workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker"),
+    brief: providerExecutables(binDirectory, "arcadia-brief-broker")
   };
   const skillTemplate = readSkillTemplate(repository);
   const agentAskSkillTemplate = readAgentAskSkillTemplate(repository);
@@ -175,7 +176,8 @@ export function runGoBrokerInstallCommand(
         ["go", "arcadia-go-broker"],
         ["preserve", "arcadia-preserve-broker"],
         ["advance", "arcadia-advance-broker"],
-        ["work-monitor", "arcadia-work-monitor-broker"]
+        ["work-monitor", "arcadia-work-monitor-broker"],
+        ["brief", "arcadia-brief-broker"]
       ] as const) {
         for (const agent of BROKER_AGENTS) {
           const launcher = path.join(stagedRelease, `${launcherBase}-${agent}`);
@@ -253,6 +255,7 @@ export function renderGoBrokerInstallSuccess(response: CommandSuccess<GoBrokerIn
     `Codex preserve executable: ${response.data.executables.preserve.codex}`,
     `Codex advance executable: ${response.data.executables.advance.codex}`,
     `Codex work-monitor executable: ${response.data.executables.workMonitor.codex}`,
+    `Codex brief executable: ${response.data.executables.brief.codex}`,
     `Manifest: ${response.data.manifest}`,
     `Agent configuration: ${response.data.agentSetup.status.ready ? "ready" : "incomplete"}`,
     `Disposable host probe: ${response.data.hostProbe.checked.join(", ")}`,
@@ -279,7 +282,8 @@ export function runGoBrokerStatusCommand(
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
     preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
-    workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker")
+    workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker"),
+    brief: providerExecutables(binDirectory, "arcadia-brief-broker")
   };
   const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
   const repository = realpathSync(requestedRepository);
@@ -415,7 +419,7 @@ function validateExistingRelease(releaseDirectory: string, revision: string): vo
   assertReleaseDependencies(path.join(releaseDirectory, "node_modules"));
   const manifestPath = path.join(releaseDirectory, "broker-manifest.json");
   const schemaPath = path.join(releaseDirectory, "dist", "database", "schema.sql");
-  const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker"].flatMap((launcherBase) =>
+  const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker", "arcadia-brief-broker"].flatMap((launcherBase) =>
     BROKER_AGENTS.map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
   );
   if (!existsSync(manifestPath) || !existsSync(schemaPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
@@ -612,10 +616,11 @@ function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
     case "preserve": return "arcadia-preserve-broker";
     case "advance": return "arcadia-advance-broker";
     case "workMonitor": return "arcadia-work-monitor-broker";
+    case "brief": return "arcadia-brief-broker";
   }
 }
 
 /** The exact no-argument launcher, also exercised by the disposable boundary proof. */
-export function renderGoBrokerLauncher(entrypoint: string, agent: GoBrokerAgent, operation: "go" | "preserve" | "advance" | "work-monitor"): string {
+export function renderGoBrokerLauncher(entrypoint: string, agent: GoBrokerAgent, operation: "go" | "preserve" | "advance" | "work-monitor" | "brief"): string {
   return `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(entrypoint)} ${agent} ${operation} "$@"\n`;
 }

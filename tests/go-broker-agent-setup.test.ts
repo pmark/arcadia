@@ -95,6 +95,7 @@ describe("go broker agent setup", () => {
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.go.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.advance.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.workMonitor.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.brief.codex);
     expect(readFileSync(paths.codexAgentAskSkill, "utf8")).toContain("Do not ask the operator for permission");
     expect(lstatSync(paths.claudeSkill).isSymbolicLink()).toBe(true);
     expect(path.resolve(path.dirname(paths.claudeSkill), readlinkSync(paths.claudeSkill))).toBe(paths.codexSkillDirectory);
@@ -105,7 +106,8 @@ describe("go broker agent setup", () => {
       fixture.executables.go,
       fixture.executables.advance,
       fixture.executables.preserve,
-      fixture.executables.workMonitor
+      fixture.executables.workMonitor,
+      fixture.executables.brief
     ].flatMap((providers) => [
       `Bash(${providers.codex})`,
       `Bash(${providers.claude})`,
@@ -378,10 +380,13 @@ describe("go broker agent setup", () => {
     expect(rules).toContain(fixture.executables.preserve.codex);
     expect(rules).toContain(fixture.executables.advance.codex);
     expect(rules).toContain(fixture.executables.workMonitor.codex);
+    expect(rules).toContain(fixture.executables.brief.codex);
     // opencode's launcher set is granted through the same rule and allowlist.
     expect(rules).toContain(fixture.executables.go.opencode);
     expect(rules).toContain(fixture.executables.workMonitor.opencode);
+    expect(rules).toContain(fixture.executables.brief.opencode);
     expect(claude.permissions.allow).toContain(`Bash(${fixture.executables.go.opencode})`);
+    expect(claude.permissions.allow).toContain(`Bash(${fixture.executables.brief.claude})`);
   });
 
   it("reports a stale broad Claude go-controller permission as unsafe", () => {
@@ -655,7 +660,8 @@ function createFixture(withExecutables = true) {
     preserve: mockAgentExecutables("arcadia-preserve-broker"),
     go: mockAgentExecutables("arcadia-go-broker"),
     advance: mockAgentExecutables("arcadia-advance-broker"),
-    workMonitor: mockAgentExecutables("arcadia-work-monitor-broker")
+    workMonitor: mockAgentExecutables("arcadia-work-monitor-broker"),
+    brief: mockAgentExecutables("arcadia-brief-broker")
   };
   if (withExecutables) {
     for (const providers of Object.values(executables)) {

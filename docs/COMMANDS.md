@@ -1594,7 +1594,9 @@ Installation is refused unless Arcadia is at a clean, committed repository
 root. The command builds the CLI, copies the resolved local dependency tree into a self-contained runtime at
 `~/.local/share/arcadia/go-broker/releases/<git-sha>/`, atomically updates
 provider-specific launchers under `~/.local/bin/` for `go`, prepared-worktree
-`advance`, and read-only `work monitor`, installs the shared managed skill, and
+`advance`, read-only `work monitor`, and the combined read-only `brief` (which
+runs `advance`, `work monitor`, and the next dispatch-brief resolution
+together), installs the shared managed skill, and
 converges both providers' permission and sandbox configuration. It
 preserves unrelated settings, removes recognized legacy broad Arcadia-go
 allowances, and backs up changed user-owned files. It makes no registry request:
@@ -1623,15 +1625,24 @@ exposes only this contract:
 ~/.local/bin/arcadia-preserve-broker-codex
 # Claude Code uses: ~/.local/bin/arcadia-preserve-broker-claude
 # opencode uses: ~/.local/bin/arcadia-preserve-broker-opencode
+~/.local/bin/arcadia-brief-broker-codex
+# Claude Code uses: ~/.local/bin/arcadia-brief-broker-claude
+# opencode uses: ~/.local/bin/arcadia-brief-broker-opencode
 ```
 
 Run the matching `go` executable with no arguments from the completed worktree.
 The worker runs `runGoCommand` in a child process, first in preview mode and
 then with identical fixed inputs plus apply. The shared skill waits for the
 host worker's protected response while the worker continues heartbeat and Run
-admission ticks. In the prepared worktree, the skill calls its
-fixed `advance`, `preserve`, and read-only `work-monitor` launchers, then
-performs ordinary local read-only inspection without an approval question.
+admission ticks. In the prepared worktree, the skill calls its fixed
+`preserve` and combined read-only `brief` launchers — `brief` runs the
+`advance` reconciliation, the read-only `work-monitor` preflight, and the next
+dispatch-brief resolution in one process invocation, returning the exact
+rendered brief text the operator must see — then performs ordinary local
+read-only inspection without an approval question. The standalone `advance`
+and `work-monitor` launchers remain installed and independently callable for
+manual troubleshooting or other automation; the skill's own workflow calls
+only `brief`.
 Apply repeats all validation, so a race or state change fails closed. Every
 public argument is refused. No launcher can request
 `--launch`, choose a model or effort, override the workspace, or redirect the
