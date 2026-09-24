@@ -10,21 +10,34 @@ Every entry has a `keys:` line of the words you would search for, so one grep
 lands on the answer instead of a codebase sweep. `docs/AGENT_ORIENTATION.md`
 explains *how the system is built*; this file answers *how do I do X right now*.
 
-## The rules
+## How the cache works
 
-1. **Look first.** Before searching for a path, command, flag, id, or database,
-   grep this file.
-2. **Pay it forward.** If something took more than two failed tool calls to
-   learn and the answer is stable, add an entry in the same change. Five lines
-   max: the exact command, what it prints, and one gotcha.
-3. **Fix on contact.** If an entry is wrong, correct it in the change that
-   found out. A stale note costs more than having no note.
-4. **Workarounds expire.** An entry that works around a defect names its Issue
-   (`expires: when #NNN closes`). The PR that closes that Issue deletes the
-   entry. Friction should end up fixed in code, not written up in notes.
-5. **Graduates to `arcadia learn`.** When the `build-agent-agnostic-learning-loop`
-   Action lands, these entries migrate into lesson records and this file
-   becomes that command's seed. Until then, plain grep is the index.
+This file is a **hot cache**, not an archive. It holds only friction that is
+still live. Git history is the backing store, so an evicted entry is never lost.
+
+| Cache idea | Here |
+| --- | --- |
+| Key | The `keys:` line. Grep it. |
+| Capacity | **At most 25 entries.** `tests/notes-to-self.test.ts` enforces this. |
+| Validation | Every backticked repo path in an entry must still exist, and the same test fails when one moves. |
+| Expiry | `Expires when #NNN closes` marks a workaround. The PR that closes #NNN deletes the entry. |
+| Write-back | The best eviction fixes the friction at its source: a clearer error, a `--help` line, a command that prints the answer. Then delete the entry. |
+| Eviction | At capacity, remove an expired or written-back entry first. Next, remove the one whose friction you have not hit in the longest time. |
+
+**Rules:**
+1. **Look first.** Before searching for a path, command, flag, id, or database, grep this file.
+2. **Pay it forward.** If something took more than two failed tool calls to learn, add an entry in the same change. Keep it to five lines or fewer: the exact command, what it prints, and one gotcha.
+3. **Fix on contact.** If an entry is wrong, correct it in the change that found out.
+4. **Prefer write-back to write-in.** If fixing the friction takes less effort than writing its entry, fix it instead.
+
+**When this outgrows a file.** Move to the indexed lesson store that the
+`build-agent-agnostic-learning-loop` Action builds (`arcadia learn`) when any
+of these first happens:
+- the cap is hit and no entry is evictable, because all of the friction is still live;
+- a second repository needs its own notes and agents must search across them;
+- the same friction is rediscovered while its entry exists, which shows grep-on-demand
+  isn't reaching agents and answers have to be put in the dispatch brief instead; or
+- that Action lands anyway.
 
 ---
 
