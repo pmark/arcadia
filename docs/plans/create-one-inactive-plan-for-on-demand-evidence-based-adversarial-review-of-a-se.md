@@ -6,7 +6,7 @@ project: arcadia
 status: draft
 milestone: Every Arcadia coding-agent handoff gets an independent pre-PR code review from a fresh OpenCode session, falling back to the next configured provider, with findings fixed or declined within three rounds and a receipt pinned to the reviewed commit, while CodeRabbit remains the merge gate.
 token_impact: medium
-token_budget: Deterministic management plus six bounded coding-agent sessions after activation; each review run is one bounded reviewer call, reused per head commit.
+token_budget: Deterministic management plus six bounded coding-agent sessions after activation; each review run is one bounded reviewer call, reused only while its review packet (head, base, rubric) is unchanged.
 updated: 2026-09-24
 actions:
   - id: define-independent-review-contract
