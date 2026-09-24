@@ -1909,7 +1909,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/572", "src/sessions/reconciliation.ts"]
 questions: []
 decisions: []
-current_action: surface-terminal-operator-approvals-in-runs
+current_action: release-committed-admissions-on-session-end
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---
