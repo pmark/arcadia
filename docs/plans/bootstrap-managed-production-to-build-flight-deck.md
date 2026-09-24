@@ -1907,6 +1907,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/572", "src/sessions/reconciliation.ts"]
+  - id: stop-killing-busy-workers
+    title: Recover only a genuinely hung worker, never one that is merely busy inside a long synchronous step.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Recover only a genuinely hung worker, never one that is merely busy inside a long synchronous step.
+    expected_artifact: Evidence satisfying Agent Ask stop-killing-busy-workers
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-busy-worker-false-kill-2026-09-24
+    acceptance_criteria:
+      - Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal no single synchronous tick step can starve, or by a recovery threshold separate from and longer than the 15s preservation-freshness window; a worker merely busy inside one long step is not signalled.
+      - A deterministic test holds the worker inside a synchronous step longer than 15s and proves start neither signals nor replaces it, while a worker that stops progressing entirely is still recovered.
+      - "The 170s and 292s stalls recorded in Issue #617 are investigated and their cause recorded in the PR, or recorded as not reproducible with the evidence gathered."
+      - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/617", "https://github.com/pmark/arcadia/issues/485", "src/commands/worker.ts"]
 questions: []
 decisions: []
 current_action: release-committed-admissions-on-session-end
