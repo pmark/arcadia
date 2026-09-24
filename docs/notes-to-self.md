@@ -119,13 +119,17 @@ positive. Look only at the lines above it (`Agent Ask drafted`,
 
 keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, pnpm arcadia next, dispatch brief
 
-**Every** `pnpm arcadia` call, `gh`, and `git push` need to run outside the Bash
-sandbox — including a read-only-looking noun like `arcadia next` or
-`arcadia work monitor`, which still opens the workspace SQLite db read-write
-(WAL journal) and fails `Error [SQLITE_WORKSPACE_WRITE_DENIED]: ... attempt to
-write a readonly database` inside the sandbox. Don't spend a call finding this
-out per command: default every `pnpm arcadia`/`gh`/`git push` call in an
-arcadia-go worktree to `dangerouslyDisableSandbox: true` from the start. The
+`gh` and `git push` always need to run outside the Bash sandbox. Most
+`pnpm arcadia` calls do too, but **stay sandboxed by default and bypass only on
+an actual failure**, per the sandbox's own reactive-only policy — never
+pre-disable it for a whole worktree or session, since that also runs whatever
+`src/cli.ts` and its command modules do with host access. Recognize the
+symptom instead of guessing: a read-only-looking noun like `arcadia next` or
+`arcadia work monitor` still opens the workspace SQLite db read-write (WAL
+journal) and fails `Error [SQLITE_WORKSPACE_WRITE_DENIED]: ... attempt to
+write a readonly database` inside the sandbox — that specific error is the
+signal to retry the *same single command* with `dangerouslyDisableSandbox:
+true`, not a reason to disable it ahead of time. The
 sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so
 a file written in one mode is missing in the other — write and read scratch
 files in the same mode.
