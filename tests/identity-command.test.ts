@@ -8,6 +8,7 @@ describe("arcadia identity resolve", () => {
     expect(response.data).toEqual({
       agent: "claude",
       tier: "standard",
+      role: "builder",
       name: "Claudia Mason",
       email: "claudia.mason@agents.arcadia.local",
       gitEnv: {
@@ -15,8 +16,21 @@ describe("arcadia identity resolve", () => {
         GIT_AUTHOR_EMAIL: "claudia.mason@agents.arcadia.local",
         GIT_COMMITTER_NAME: "Claudia Mason",
         GIT_COMMITTER_EMAIL: "claudia.mason@agents.arcadia.local"
-      }
+      },
+      signature: "Claudia Mason <claudia.mason@agents.arcadia.local>"
     });
+  });
+
+  it("resolves the critic role to a titled identity distinct from the builder", () => {
+    const response = runIdentityResolveCommand({ agent: "claude", tier: "standard", role: "critic" });
+    expect(response.data.name).toBe("Critic Claudia Mason");
+    expect(response.data.email).toBe("critic.claudia.mason@agents.arcadia.local");
+    expect(response.data.gitEnv.GIT_AUTHOR_NAME).toBe("Critic Claudia Mason");
+    expect(response.data.signature).toBe("Critic Claudia Mason <critic.claudia.mason@agents.arcadia.local>");
+  });
+
+  it("refuses an unknown role", () => {
+    expect(() => runIdentityResolveCommand({ agent: "claude", tier: "standard", role: "saboteur" })).toThrow(ArcadiaError);
   });
 
   it("resolves an identity from a bundled model when no --tier is given", () => {
@@ -47,5 +61,6 @@ describe("arcadia identity resolve", () => {
     );
     // No dangling placeholder token: this is a real command Git will run as-is.
     expect(lines[1].endsWith("...")).toBe(false);
+    expect(lines[2]).toBe("Comment signature: — Claudia Mason <claudia.mason@agents.arcadia.local>");
   });
 });

@@ -3678,14 +3678,15 @@ export function buildProgram(): Command {
       .command("identity")
       .command("resolve")
       .description(
-        "The semantic Git identity one coding agent commits under, for a session Arcadia did not launch itself " +
-          "(an interactive terminal, Claude Code, Codex, or anything outside `arcadia session launch`)"
+        "The semantic identity one coding agent commits or posts comments under, for a session Arcadia did not " +
+          "launch itself (an interactive terminal, Claude Code, Codex, or anything outside `arcadia session launch`)"
       )
       .requiredOption("--agent <agent>", "codex, claude, or opencode")
       .option("--tier <tier>", "light, standard, or heavy -- resolves the identity directly")
       .option("--model <model>", "A concrete model, resolved to a tier via the tier registry (needs --effort as fallback)")
       .option("--effort <effort>", "Reasoning effort, used when --model does not resolve to a known tier")
-  ).action((options: { agent: string; tier?: string; model?: string; effort?: string; json?: boolean }) =>
+      .option("--role <role>", "builder (default) or critic -- critic is for adversarial feedback: a code review finding or a plan critique/refinement", "builder")
+  ).action((options: { agent: string; tier?: string; model?: string; effort?: string; role?: string; json?: boolean }) =>
     runCliAction(
       "identity resolve",
       options,
@@ -3694,7 +3695,8 @@ export function buildProgram(): Command {
           agent: options.agent,
           tier: options.tier ?? null,
           model: options.model ?? null,
-          effort: options.effort ?? null
+          effort: options.effort ?? null,
+          role: options.role ?? null
         }),
       renderIdentityResolveSuccess
     )

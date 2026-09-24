@@ -853,29 +853,49 @@ keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
 name per platform, surname per model tier: light/standard/heavy);
 `START_HERE.md` explains it for operators.
 
+The identity also carries a **role**: `builder` (the default, silent in the
+name) for ordinary work, or `critic` — printed as a `Critic` title prefixed
+onto the name, e.g. `Critic Claudia Mason` — when the agent is providing
+adversarial feedback instead: a code review finding, or a plan
+critique/refinement. One role covers both; the distinction that matters for
+the name is builder vs. critic, not which artifact the critique lands on. Use
+the critic identity to commit a critique artifact the agent writes itself (a
+plan-refinement document, a Decision capturing the critique) and to sign a
+posted comment (a GitHub PR review reply) — never to author a fix to the work
+under critique, which stays a builder commit regardless of who raised the
+finding.
+
 A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` are set on that one process tree before the agent ever
 runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so it needs no
-action from the agent. An interactive session has no such environment set
-for it, so it must resolve its own identity and apply it on every commit:
+action from the agent. That launch path always binds the `builder` role;
+there is no launched "critique Session" yet, so a launched agent producing
+a code review or a plan critique still resolves its own `critic` identity by
+hand, the same way an interactive session does for everything. An
+interactive session has no `GIT_AUTHOR_*`/`GIT_COMMITTER_*` set for it at
+all, so it must resolve its own identity and apply it on every commit or
+posted comment:
 
 ```sh
-arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>
+arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy> [--role builder|critic]
 ```
 
-then prefix the printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=…
-GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git commit` itself (never
-rewrite global or repository `git config`, which would misattribute the
-operator's own commits too, and never use `git -c user.*` — Git resolves
-`author.*`/`committer.*` config and any already-exported `GIT_AUTHOR_*` ahead
-of `user.*`, so a `-c user.*` override can silently lose to a stale identity
-from an earlier launch or session). Pick the tier from whichever model is
+`--role` defaults to `builder`, so plain builder work needs nothing beyond
+`--agent`/`--tier`. To commit or comment, prefix the printed `GIT_AUTHOR_NAME=…
+GIT_AUTHOR_EMAIL=… GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git
+commit` itself (never rewrite global or repository `git config`, which would
+misattribute the operator's own commits too, and never use `git -c user.*` —
+Git resolves `author.*`/`committer.*` config and any already-exported
+`GIT_AUTHOR_*` ahead of `user.*`, so a `-c user.*` override can silently lose
+to a stale identity from an earlier launch or session), or close a posted
+GitHub PR comment with the printed `signature` (`<name> <<email>>`) the same
+way a commit trailer signs a commit. Pick the tier from whichever model is
 actually doing the work for this turn — it can change mid-session (a model
 switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
 the tier from earlier in the session still holds. An identity the command
-refuses (an unrecognized platform or tier) means the commit must not
-proceed under the operator's identity either — fix the `--agent`/`--tier`
-first.
+refuses (an unrecognized platform, tier, or role) means the commit or comment
+must not proceed under the operator's identity either — fix the
+`--agent`/`--tier`/`--role` first.
 
 ## Operator Guide
 

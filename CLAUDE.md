@@ -48,7 +48,12 @@ constraints arrive with the objective rather than depending on this file.
   the commit body and PR description with the
   attribution lines this session's own system reminder specifies — that
   trailer and the commit author are two different things, and this rule only
-  changes the author.
+  changes the author. Add `--role critic` when this session is posting
+  adversarial feedback rather than building — a code review finding or a plan
+  critique/refinement — and sign the posted comment (a GitHub PR review
+  reply) with the resolved `signature`; leave `--role` off (it defaults to
+  `builder`) for ordinary commits, including a commit that fixes a finding
+  someone else raised.
 - This repository pins Node 22.23.1 in `mise.toml`; Corepack activates pnpm
   11.7.0 from `package.json`.
   `better-sqlite3` fails to load when dependencies were built under another
