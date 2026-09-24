@@ -190,6 +190,104 @@ export async function settleActionComplete(input: {
   return runArcadiaCliJson<ActionSettlementResponse>(args, { timeoutMs: 120_000 });
 }
 
+export interface AgentAskPendingOption {
+  label: string;
+  consequence: string;
+  recommended: boolean;
+}
+
+export interface AgentAskPendingItem {
+  proposalId: string;
+  requestId: string;
+  project: string;
+  intent: string;
+  desiredResult: string;
+  rationale: string | null;
+  requestedAuthority: string;
+  gateQuestion: string | null;
+  options: AgentAskPendingOption[];
+  requiredDecisions: string[];
+  effects: string[];
+  createdAt: string;
+}
+
+/** A plain decode of every proposal's stored record — no settlement preview per item, so this stays cheap at any backlog size. */
+export async function loadPendingAgentAsks(): Promise<ArcadiaJsonSuccess<{ pending: AgentAskPendingItem[] }>> {
+  return runArcadiaCliJson<{ pending: AgentAskPendingItem[] }>(["agent-ask", "pending"]);
+}
+
+export interface AgentAskSettleResponse {
+  receipt: {
+    id: string;
+    applied: boolean;
+    disposition: "accepted" | "rejected";
+    effects: string[];
+    previewFingerprint: string;
+  };
+}
+
+/**
+ * Apply one Agent Ask proposal's terminal disposition. Resolves a fresh
+ * preview fingerprint for this one proposal immediately beforehand — the
+ * two-phase `settle` flow `docs/proposals`/AGENTS.md describes — so the
+ * operator's approval always applies against current Project state without
+ * the dashboard ever having to carry a fingerprint between GET and POST.
+ */
+export async function settlePendingAgentAsk(input: {
+  proposalId: string;
+  requestId: string;
+  disposition: "accepted" | "rejected";
+}): Promise<ArcadiaJsonSuccess<AgentAskSettleResponse>> {
+  const base = ["agent-ask", "settle", "--proposal", input.proposalId, "--request-id", input.requestId, "--disposition", input.disposition];
+  const preview = await runArcadiaCliJson<AgentAskSettleResponse>(base, { timeoutMs: 60_000 });
+  return runArcadiaCliJson<AgentAskSettleResponse>(
+    [...base, "--preview", preview.data.receipt.previewFingerprint, "--apply"],
+    { timeoutMs: 120_000 }
+  );
+}
+
+export interface OpenDecisionOption {
+  label: string;
+  consequence: string;
+  recommended: boolean;
+}
+
+export interface OpenDecisionItem {
+  id: string;
+  slug: string;
+  projectId: string;
+  projectSlug: string;
+  question: string;
+  status: string;
+  gateQuestion: string | null;
+  recommendation: string | null;
+  options: OpenDecisionOption[];
+  relativePath: string;
+  updated: string;
+}
+
+export async function loadOpenDecisions(): Promise<ArcadiaJsonSuccess<{ decisions: OpenDecisionItem[] }>> {
+  return runArcadiaCliJson<{ decisions: OpenDecisionItem[] }>(["decision", "list", "--status", "open"]);
+}
+
+export interface DecisionApproveResponse {
+  relativePath: string;
+  applied: boolean;
+}
+
+/** Answer a Decision with one of its offered option labels, using the canonical writer `decision approve` shares with the CLI. */
+export async function approveDecision(input: {
+  projectSlug: string;
+  decisionId: string;
+  answer: string;
+}): Promise<ArcadiaJsonSuccess<DecisionApproveResponse>> {
+  return runArcadiaCliJson<DecisionApproveResponse>([
+    "decision", "approve", input.decisionId,
+    "--project", input.projectSlug,
+    "--answer", input.answer
+  ], { timeoutMs: 60_000 });
+}
+
 export interface OutstandingPullRequestsResponse {
   snapshot: DashboardOutstandingPullRequests;
 }

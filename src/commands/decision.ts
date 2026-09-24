@@ -4,9 +4,10 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
-import { getProject, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
+import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
 import type { ClarificationConfidence, GapType } from "../domain/constants.js";
+import { discoverDocs } from "../docs/discover.js";
 import { yamlScalar } from "../docs/frontmatter.js";
 import { parseDoc } from "../docs/parse.js";
 import {
@@ -475,6 +476,85 @@ export function runDecisionValidateCommand(
     workspace: workspacePath,
     data: { relativePath, valid: errors.length === 0, errors }
   });
+}
+
+export interface DecisionListOptions {
+  workspace: string;
+  /** Limit to one Project id or slug; every Project with a configured repo_path otherwise. */
+  project?: string;
+  /** Defaults to "open" — the terminal-approval surface's whole reason for asking. */
+  status?: DecisionDocStatus;
+}
+
+export interface DecisionListItem {
+  id: string;
+  slug: string;
+  projectId: string;
+  projectSlug: string;
+  question: string;
+  status: DecisionDocStatus;
+  gateQuestion: string | null;
+  recommendation: string | null;
+  options: DecisionOptionDoc[];
+  relativePath: string;
+  updated: string;
+}
+
+/**
+ * Every Decision at `status` (default `open`) across every Project with a
+ * configured repository — the Decision half of the `/runs` approval queue
+ * (surface-terminal-operator-approvals-in-runs). A cheap, deterministic
+ * filesystem walk per Project; no model call, no Project write.
+ */
+export function runDecisionListCommand(options: DecisionListOptions): CommandSuccess<{ decisions: DecisionListItem[] }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const status = options.status ?? "open";
+  if (!(DECISION_DOC_STATUSES as readonly string[]).includes(status)) {
+    throw validationError(`status must be one of: ${DECISION_DOC_STATUSES.join(", ")}`, { status });
+  }
+  const decisions = withReadOnlyDatabase(workspacePath, (db) => {
+    const projects = options.project
+      ? [getProject(db, options.project) ?? getProjectBySlug(db, options.project)].filter((p): p is NonNullable<typeof p> => p !== null)
+      : listProjects(db);
+    if (options.project && projects.length === 0) {
+      throw validationError("No Project matches this id or slug.", { project: options.project });
+    }
+    const items: DecisionListItem[] = [];
+    for (const project of projects) {
+      const repoPath = getProjectMetadata(db, project.id)?.repo_path?.trim();
+      if (!repoPath) continue;
+      const { docs } = discoverDocs(path.resolve(repoPath));
+      for (const doc of docs) {
+        if (doc.type !== "decision") continue;
+        const decision = doc;
+        if (decision.status !== status) continue;
+        items.push({
+          id: decision.id,
+          slug: decision.slug,
+          projectId: project.id,
+          projectSlug: project.slug,
+          question: decision.question,
+          status: decision.status,
+          gateQuestion: decision.gateQuestion,
+          recommendation: decision.recommendation,
+          options: decision.options,
+          relativePath: decision.relativePath,
+          updated: decision.updated
+        });
+      }
+    }
+    return items.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  });
+  return createSuccess({ command: "decision.list", workspace: workspacePath, data: { decisions } });
+}
+
+export function renderDecisionListSuccess(response: CommandSuccess<{ decisions: DecisionListItem[] }>): string[] {
+  if (response.data.decisions.length === 0) return ["No matching Decisions."];
+  return response.data.decisions.flatMap((decision) => [
+    `${decision.id} (${decision.projectSlug}): ${decision.question}`,
+    ...(decision.recommendation ? [`  Recommendation: ${decision.recommendation}`] : []),
+    ...decision.options.map((option) => `  Option: ${option.label}${option.recommended ? " (recommended)" : ""} — ${option.consequence}`)
+  ]);
 }
 
 function failOnValidationErrors(errors: DocValidationError[], stage: "generated" | "updated"): void {
