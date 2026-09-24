@@ -1436,9 +1436,11 @@ function missingProjectFields(project: { reference: IntakeResolvedReference | nu
   return [];
 }
 
-const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert|review|test|document|design|verify|audit)\b/;
+const IMPERATIVE_REQUEST = /^(?:please\s+)?(?:add|build|implement|prepare|fix|create|write|ship|update|change|set|plan|research|investigate|publish|keep|continue|work|improve|enhance|refactor|redesign|rework|optimi[sz]e|speed up|simplify|clean up|polish|remove|replace|rename|move|split|support|allow|enable|make|let|show|hide|display|migrate|convert|review|test|document|design|verify|audit)\b(?!\s+(?:could|would|should|might|may|can|is|are|was|were|has|have|needs?|seems?|feels?)\b)/;
 
 // An imperative request names work to do even when no template recognizes it.
+// A verb-shaped word followed by a modal or linking verb is a noun-led
+// statement ("Design could be improved"), not a command.
 // Any line counts — the opening sentence or a bullet — because operators often
 // lead with context and list the actual requests underneath.
 export function isImperativeRequest(rawInput: string): boolean {

@@ -52,15 +52,16 @@ export interface StewardIntentInput {
   approvedFromReview?: boolean;
   reviewResponseHasReference?: boolean;
   reviewResponseHasResponse?: boolean;
-  // The caller named a Project outright (e.g. `--project`), so the request has a
-  // target even when intake could not find one in the text.
-  hasExplicitProject?: boolean;
+  // The Project the caller selected — an explicit `--project`, else an Ask
+  // rule's destination. It outranks one found in the text, as routing does,
+  // and gives the request a target even when the text names none.
+  selectedProject?: StewardshipRelatedProject | null;
 }
 
 export function stewardIntent(input: StewardIntentInput): GoalStewardshipResult {
   const raw = input.rawInput.trim();
   const normalized = normalize(raw);
-  const relatedProject = relatedProjectFromIntake(input.intake);
+  const relatedProject = input.selectedProject ?? relatedProjectFromIntake(input.intake);
   const relatedGoal = relatedGoalForProject(relatedProject?.id ?? null, input.workspaceContext);
   const intentType = intentTypeForInput(input, normalized);
   const planningRecommended = planningRecommendedForInput(input, normalized, intentType);
@@ -328,7 +329,7 @@ function requiresProjectForPlan(normalized: string): boolean {
 }
 
 function hasTargetProject(input: StewardIntentInput): boolean {
-  return Boolean(input.intake.project || input.hasExplicitProject);
+  return Boolean(input.selectedProject || input.intake.project);
 }
 
 function commandShapedMissingTarget(input: StewardIntentInput): boolean {

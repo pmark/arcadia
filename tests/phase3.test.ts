@@ -269,7 +269,7 @@ describe("arcadia ask command", () => {
         nextAction: "Implement shared ask routing.",
         workClassification: "agent"
       });
-      upsertProjectMetadata(db, { projectId: created.project.id, aliases: ["Arcadia"] });
+      upsertProjectMetadata(db, { projectId: created.project.id, aliases: ["Arcadia"], repoPath: workspace });
       return created.project;
     });
 
@@ -282,6 +282,10 @@ describe("arcadia ask command", () => {
     expect(result.data.stewardship.recommendedExecutionPath).toBe("Plan First");
     expect(result.data.stewardship.relatedProject?.id).toBe(arcadia.id);
     expect(result.data.backBurnerItemId).toBeNull();
+    // The postcondition: planned work on Arcadia with a planning packet, not a shelf.
+    expect(result.data.workItem?.project_id).toBe(arcadia.id);
+    expect(result.data.plan?.steps[0].skill_name).toBe("codex_planning");
+    expect(result.data.codexInvocations[0]?.purpose).toBe("planning");
 
     // Context first, requests as bullets, no Project named: clarify, never shelve.
     const bulleted = runAskCommand({ workspace, request: "The review flow is slow.\n- Add paging to the candidate list" });
@@ -293,6 +297,11 @@ describe("arcadia ask command", () => {
     const explicit = runAskCommand({ workspace, project: "Arcadia", request: "Improve loading time" });
     expect(explicit.data.stewardship.recommendedExecutionPath).toBe("Plan First");
     expect(explicit.data.backBurnerItemId).toBeNull();
+
+    // A verb-shaped noun followed by a modal is a statement, not a command.
+    const nounLed = runAskCommand({ workspace, project: "Arcadia", request: "Design could be improved" });
+    expect(nounLed.data.intake.classification).toBe("Idea");
+    expect(nounLed.data.stewardship.recommendedExecutionPath).toBe("Back Burner");
 
     // "Review …" is imperative too, so a later hedge word does not make it an Idea.
     const review = runAskCommand({ workspace, request: "Review the Rebuster candidate flow. It could be clearer." });
