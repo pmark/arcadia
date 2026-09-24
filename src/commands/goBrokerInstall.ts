@@ -357,6 +357,76 @@ export function runGoBrokerStatusCommand(
   });
 }
 
+export interface GoBrokerEnsureData {
+  action: "skipped" | "installed";
+  revision: string;
+  reason: string;
+  install?: GoBrokerInstallData;
+}
+
+/**
+ * The cheap entry point for keeping the protected broker current without
+ * paying `install`'s full cost — a `tsc` compile plus a dashboard build and a
+ * vitest run via `runWorktreeRuntimeProbe` — on every call. `status` already
+ * does everything needed to answer "is the installed broker ready and does it
+ * match HEAD" for free (`inspectInstalledBroker` and `inspectGoBrokerAgentSetup`
+ * only stat files and read one JSON manifest), so this defers to it and only
+ * falls through to a real `install` when that check says no.
+ *
+ * Meant to be safe to call unconditionally after every local restart — e.g.
+ * from `scripts/services.sh restart` — so the broker a coding agent's fixed
+ * launchers talk to never silently lags the revision those launchers were
+ * dispatched against, without turning every restart into a multi-second build.
+ */
+export function runGoBrokerEnsureCommand(
+  options: GoBrokerInstallOptions = {},
+  statusRunner: (options: GoBrokerInstallOptions) => CommandSuccess<GoBrokerStatusData> = runGoBrokerStatusCommand,
+  installRunner: (options: GoBrokerInstallOptions) => CommandSuccess<GoBrokerInstallData> = runGoBrokerInstallCommand
+): CommandSuccess<GoBrokerEnsureData> {
+  const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
+  const repository = realpathSync(requestedRepository);
+  const revision = git(repository, ["rev-parse", "HEAD"]).trim();
+  let alreadyReady = false;
+  try {
+    const status = statusRunner(options);
+    alreadyReady = status.data.ready && status.data.revision === revision;
+  } catch {
+    // Not ready (missing executable, failed trust, stale manifest, ...) --
+    // fall through to a real install rather than treating the thrown
+    // VALIDATION_ERROR as this command's own failure.
+  }
+  if (alreadyReady) {
+    return createSuccess({
+      command: "go-broker.ensure",
+      data: {
+        action: "skipped",
+        revision,
+        reason: "Installed broker already matches the current revision and passed its readiness check."
+      }
+    });
+  }
+  const install = installRunner(options);
+  return createSuccess({
+    command: "go-broker.ensure",
+    data: {
+      action: "installed",
+      revision,
+      reason: "Installed broker was missing, stale, or failed its readiness check.",
+      install: install.data
+    }
+  });
+}
+
+export function renderGoBrokerEnsureSuccess(response: CommandSuccess<GoBrokerEnsureData>): string[] {
+  if (response.data.action === "skipped") {
+    return [`Broker already current at revision ${response.data.revision}: ${response.data.reason}`];
+  }
+  return [
+    `Broker was stale or not ready: ${response.data.reason}`,
+    ...(response.data.install ? renderGoBrokerInstallSuccess({ ...response, data: response.data.install }) : [])
+  ];
+}
+
 /** Name a declared check the preservation sandbox cannot run, so status reports
  * the dependency remedy instead of only the generic missing-commands blocker. */
 function readPreservationChecksStatus(workspace: string, repository: string): PreservationChecksStatus | null {
