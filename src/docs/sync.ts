@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import {
   createMilestoneForProject,
@@ -10,6 +12,7 @@ import {
   getProjectMetadata,
   getReviewItemByDocRef,
   getWorkItemByDocRef,
+  listReviewItems,
   listWorkItemDependencies,
   replaceDocumentWorkItemDependencies,
   setMilestoneDocRef,
@@ -209,6 +212,42 @@ export function syncProjectDocs(
       });
     }
     claimed.set(ref, decision.relativePath);
+  }
+  // A ref collision above catches two files sharing a slug; it says nothing
+  // about two files sharing a numeric id under different slugs, which is
+  // exactly how docs/decisions/0004-*.md and 0005-*.md ended up duplicated
+  // (Issue #268). `arcadia decision approve 0004` is ambiguous when this
+  // happens, so refuse to ingest whichever file claims an id second.
+  const claimedIds = new Map<string, string>();
+  for (const decision of decisions) {
+    const existingById = claimedIds.get(decision.id);
+    if (existingById && existingById !== decision.relativePath) {
+      conflicting.add(decisionDocRef(decision.slug));
+      result.errors.push({
+        relativePath: decision.relativePath,
+        field: "id",
+        message: `Decision id "${decision.id}" is also claimed by ${existingById}.`
+      });
+    }
+    claimedIds.set(decision.id, decision.relativePath);
+  }
+  // A review item's `source_input`/`doc_ref` records the document it was
+  // raised from. If that document has since vanished — most often because an
+  // id collision let a later document silently take over the slug — the item
+  // can never be reconciled against its source again (Issue #267).
+  for (const item of listReviewItems(db, "all")) {
+    if (item.project_id !== project.id || !item.doc_ref) {
+      continue;
+    }
+    const referencedPath = /^(.*) \([^)]+\)$/.exec(item.source_input)?.[1];
+    if (!referencedPath || existsSync(path.join(repoRoot, referencedPath))) {
+      continue;
+    }
+    result.errors.push({
+      relativePath: referencedPath,
+      field: "docRef",
+      message: `Review item ${item.slug ?? item.id} (doc_ref "${item.doc_ref}") references "${referencedPath}", which does not exist on disk.`
+    });
   }
   // Two entries sharing a whole heading is the one collision a Log can produce
   // on its own. Reported once per contested heading rather than once per

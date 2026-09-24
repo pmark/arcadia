@@ -7,6 +7,7 @@ import { runPortfolioCommand } from "../src/commands/portfolio.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
   createMissionLog,
+  createReviewItem,
   createWorkItemWithOptionalArtifact,
   getWorkItem,
   getReviewItemByDocRef,
@@ -17,6 +18,7 @@ import {
   listRecentMissionLogs,
   listReviewItems,
   listWorkItemDependencies,
+  setReviewItemDocRef,
   updateWorkItem,
   upsertProject,
   upsertProjectMetadata
@@ -915,6 +917,98 @@ describe("docs sync", () => {
 
     expect(result.data.errorCount).toBeGreaterThan(0);
     expect(result.data.projects[0].errors.some((error) => error.message.includes("also claimed by"))).toBe(true);
+  });
+
+  it("refuses two Decision documents that claim the same numeric id", () => {
+    const repo = scratch();
+    const decision = (slug: string) =>
+      [
+        "---",
+        "arcadia: v1",
+        "type: decision",
+        'id: "0004"',
+        `slug: ${slug}`,
+        "project: demo",
+        "status: open",
+        "question: Which way should this go?",
+        "updated: 2026-07-26",
+        "---",
+        ""
+      ].join("\n");
+    writeDoc(repo, "docs/decisions/0004-first.md", decision("first"));
+    writeDoc(repo, "docs/decisions/0004-second.md", decision("second"));
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.errorCount).toBeGreaterThan(0);
+    expect(
+      result.data.projects[0].errors.some(
+        (error) => error.field === "id" && error.message.includes('Decision id "0004" is also claimed by')
+      )
+    ).toBe(true);
+    // The doc that lost the id collision must not become a review item.
+    const created = withDatabase(workspace, (db) => getReviewItemByDocRef(db, "decision/second"));
+    expect(created).toBeNull();
+  });
+
+  it("keeps a clean Decision corpus free of duplicate-id errors", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/decisions/0009-rollout.md",
+      [
+        "---",
+        "arcadia: v1",
+        "type: decision",
+        'id: "0009"',
+        "slug: rollout-order",
+        "project: demo",
+        "status: open",
+        "question: Do we cut over per-tenant or all at once?",
+        "updated: 2026-07-26",
+        "---",
+        ""
+      ].join("\n")
+    );
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.errorCount).toBe(0);
+    expect(result.data.projects[0].errors).toHaveLength(0);
+  });
+
+  it("reports a review item whose doc_ref points at a document that no longer exists on disk", () => {
+    const repo = scratch();
+    const workspace = workspaceWithProject(repo);
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      const item = createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: "Some question raised from a Decision that has since been removed.",
+        recommendation: null,
+        sourceInput: "docs/decisions/0053-gone.md (gone)",
+        proposedAction: "Resolve decision 0053: gone.",
+        resolvedIntent: "ActionClarification",
+        confidenceLabel: "medium",
+        confidence: 0,
+        missingFields: []
+      });
+      setReviewItemDocRef(db, item.id, "decision/gone");
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.errorCount).toBeGreaterThan(0);
+    expect(
+      result.data.projects[0].errors.some(
+        (error) =>
+          error.field === "docRef" &&
+          error.relativePath === "docs/decisions/0053-gone.md" &&
+          error.message.includes("does not exist on disk")
+      )
+    ).toBe(true);
   });
 
   it("turns a plan-level question into a Decision, and does not reopen a decided one", () => {
