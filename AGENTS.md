@@ -70,6 +70,37 @@ the session moves on to a different Action before it ends. Skip this silently
 in a coding-agent runtime with no such naming capability; it is a convenience
 for the operator scanning a session list, not a governed artifact.
 
+### Agent Git identity
+
+Every commit an agent makes in this repository — from a Session Arcadia
+launched, or from an interactive terminal, Claude Code, Codex, opencode, or
+any other agent runtime working here directly — is authored under a
+**semantic agent Git identity**, never the operator's own. `git log` should
+name the platform and how heavy a model did the work, not who was at the
+keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
+name per platform, surname per model tier: light/standard/heavy); `START_HERE.md`
+explains it for operators.
+
+A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
+`GIT_COMMITTER_*` are set on that one process tree before the agent ever
+runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so it needs no
+action from the agent. An interactive session has no such environment set
+for it, so it must resolve its own identity and apply it on every commit:
+
+```sh
+arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>
+```
+
+then pass the printed `-c user.name=… -c user.email=…` to `git commit`
+(never rewrite global or repository `git config`, which would misattribute
+the operator's own commits too). Pick the tier from whichever model is
+actually doing the work for this turn — it can change mid-session (a model
+switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
+the tier from earlier in the session still holds. An identity the command
+refuses (an unrecognized platform or tier) means the commit must not
+proceed under the operator's identity either — fix the `--agent`/`--tier`
+first.
+
 Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a
 bug in the name as much as in the code.

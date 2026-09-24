@@ -30,6 +30,18 @@ constraints arrive with the objective rather than depending on this file.
   `set_session_title` tool (Claude Code Remote's session-title MCP call):
   call it with the resolved `active_plan: current_action` instead of
   leaving the default "Arcadia Go" title.
+- AGENTS.md's agent Git identity rule (below) applies to this session too.
+  Claude Code's own default attribution — a plain `Co-Authored-By: Claude
+  <model> <version>` trailer with the commit authored as the operator — is
+  superseded here: resolve `arcadia identity resolve --agent claude --tier
+  <light|standard|heavy>` (light for Haiku, standard for Sonnet, heavy for
+  Opus — whatever this session's active model is, including after `/fast` or
+  a mid-session model switch) and pass its `-c user.name=… -c user.email=…`
+  on every `git commit`, so `git log` names the agent and tier instead of the
+  operator. Still close the commit body and PR description with the
+  attribution lines this session's own system reminder specifies — that
+  trailer and the commit author are two different things, and this rule only
+  changes the author.
 - This repository pins Node 22.23.1 in `mise.toml`; Corepack activates pnpm
   11.7.0 from `package.json`.
   `better-sqlite3` fails to load when dependencies were built under another
