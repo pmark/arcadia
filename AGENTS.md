@@ -806,6 +806,11 @@ regenerates this file's copy.
 
 ## Orientation
 
+Before searching for a path, command, flag, id, or database, grep
+[`docs/notes-to-self.md`](docs/notes-to-self.md): indexed answers to what
+agents here keep re-deriving. Anything that cost you more than two failed
+tool calls to learn goes there in the same change (its rules say how).
+
 Before working on the database, the Intelligence service, or the Discord bot, read:
 
 `docs/AGENT_ORIENTATION.md`
