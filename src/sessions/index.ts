@@ -8,7 +8,9 @@ import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
 import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
+import { readClaudeCodeTokenFile } from "../codingAgents/claudeCodeToken.js";
 import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
@@ -554,7 +556,14 @@ export function launchPreparedSession(
    * The workspace's model-tier registry, so a workspace override binding still
    * resolves to the right agent identity. Bundled defaults when omitted.
    */
-  registry?: ModelTierRegistry
+  registry?: ModelTierRegistry,
+  /**
+   * The Arcadia workspace this Session's launch was requested from, so a
+   * claude-code-cli launch can read the operator's documented token file.
+   * Omitted callers get the pre-existing untouched behavior (no token file
+   * lookup, no injected `CLAUDE_CODE_OAUTH_TOKEN`).
+   */
+  workspace?: string
 ): AgentSession {
   let observedRevision: string;
   try {
@@ -580,7 +589,7 @@ export function launchPreparedSession(
   }
   let launch: { command: string; args: string[] };
   try {
-    launch = buildSessionLaunch(session, registry);
+    launch = buildSessionLaunch(session, registry, workspace);
   } catch (error) {
     // An unresolvable agent identity is a launch refusal, not a silent fall
     // back to the operator's Git identity: mark the prepared Session failed so
@@ -879,7 +888,7 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
  * never has to choose an identity and the operator's global Git configuration
  * is never touched.
  */
-function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry): { command: string; args: string[] } {
+function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
   const agent = sessionAgentForProvider(session.provider);
   if (!agent) {
     throw validationError(`No agent Git identity can be resolved for provider "${session.provider}".`, {
@@ -892,11 +901,11 @@ function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry)
     effort: session.effort,
     registry
   });
-  const inner = buildProviderLaunch(session, agent);
+  const inner = buildProviderLaunch(session, agent, workspace);
   return { command: "env", args: [...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
 }
 
-function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { command: string; args: string[] } {
+function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspace?: string): { command: string; args: string[] } {
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,
     projectSlug: session.project_slug,
@@ -929,5 +938,41 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent): { comm
   const args = ["--model", session.model];
   if (session.effort) args.push("--effort", claudeReasoningEffort(session.effort));
   args.push("--session-id", session.provider_session_id, "--name", session.display_name, prompt);
-  return { command: "claude", args };
+  const inner = { command: "claude", args };
+  if (session.provider !== "claude-code-cli" || !workspace) return inner;
+  return withClaudeCodeToken(inner, workspace);
+}
+
+/**
+ * Injects the operator's `CLAUDE_CODE_OAUTH_TOKEN` into the claude-code-cli
+ * Session process only -- never into `codex-cli` or `opencode-cli`, and never
+ * as a literal value on this command's own argv, where it would sit in `ps`
+ * output for as long as the process runs.
+ *
+ * The existing agent-identity vars above are passed as literal `KEY=value`
+ * arguments to `env` (`agentIdentityEnvironmentArgs`), which is fine for a
+ * non-secret Git identity but is exactly the pattern a secret must avoid.
+ * Instead this wraps the launch in `sh -c`, where the shell reads the token
+ * file itself at exec time (`CLAUDE_CODE_OAUTH_TOKEN="$(cat '<file>')" exec
+ * ...`): only the token *file's path* ever appears in the command line: the
+ * token value itself is read into the environment inside the shell, never
+ * passed as an argument to any process.
+ */
+function withClaudeCodeToken(inner: { command: string; args: string[] }, workspace: string): { command: string; args: string[] } {
+  const paths = getWorkspacePaths(workspace);
+  const tokenFile = readClaudeCodeTokenFile(paths.claudeCodeTokenFile, paths.config);
+  if (tokenFile.status === "absent") return inner;
+  if (tokenFile.status === "refused") {
+    throw validationError(
+      `The Claude Code token file at ${paths.claudeCodeTokenFile} ${tokenFile.reason}. ${tokenFile.remedy}`,
+      { provider: "claude-code-cli" }
+    );
+  }
+  const script = `CLAUDE_CODE_OAUTH_TOKEN="$(cat ${shellQuote(paths.claudeCodeTokenFile)})" exec ${shellQuote(inner.command)} ${inner.args.map(shellQuote).join(" ")}`;
+  return { command: "sh", args: ["-c", script] };
+}
+
+/** POSIX single-quote escaping: safe for any byte a shell word can contain. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

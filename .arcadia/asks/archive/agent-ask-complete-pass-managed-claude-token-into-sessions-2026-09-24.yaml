@@ -1,0 +1,17 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-pass-managed-claude-token-into-sessions-2026-09-24",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/pass-managed-claude-token-into-sessions",
+  "candidate_revision": "4bf98372aa8dffe93255f75d32776f3eac7dd7d9",
+  "desired_result": "Mark pass-managed-claude-token-into-sessions complete.",
+  "evidence": [
+    { "criterion": "At claude-code-cli Session launch the worker reads the token from one documented file under the workspace config directory and passes it only into that Session process environment as CLAUDE_CODE_OAUTH_TOKEN; no other child process receives it.", "status": "met" },
+    { "criterion": "The worker refuses to use the file, with a named remedy, when it is readable by group or others, is empty, or is a symlink out of the workspace config directory.", "status": "met" },
+    { "criterion": "The token value never appears in logs, receipts, events, command lines visible to ps, packets, or error messages.", "status": "met" },
+    { "criterion": "The sign-in preflight from preflight-provider-signin-before-launch treats a valid token file as signed in for claude-code-cli.", "status": "met" },
+    { "criterion": "START_HERE documents the one-time operator setup (claude setup-token, then writing the file with 0600 permissions) and rotation, and a /runs operator button performs the write-and-verify step without the agent ever handling the value.", "status": "met" },
+    { "criterion": "Regression tests cover token pass-through, each refused file state, and absence of the value from logs and the tmux command line.", "status": "met" }
+  ]
+}

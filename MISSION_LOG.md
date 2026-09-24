@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # Mission Log: Arcadia
@@ -655,3 +655,10 @@ updated: 2026-09-23
 - **Result:** Every declared acceptance criterion was accepted as met: "Reproduces the observed failure: an Action reaching the front of the dispatch pointer with no packet does not require a human or a separately-dispatched agent session to run `arcadia work plan` by hand before it can launch."; "When completing the Action needs no Decision-gated planning run, its packet is prepared deterministically through the existing packets.ts template system -- no new or inconsistent prompt scheme is introduced."; "When the Action genuinely needs a real, Decision-gated planning run (CodexPlanningRunApproval), that run is requested automatically, and the existing approval gate is preserved -- this Action never bypasses it."; "A currently-open production_operator_escalations row for this exact Action (see src/production/tick.ts, PR #579) clears once the packet is prepared or the planning run is requested, through the tick's normal resolution path -- not a special case."; "A deterministic test reproduces both branches: the no-Decision-needed case resolves automatically within a bounded number of ticks; the Decision-gated case requests the planning run and stops there, never bypassing approval."; "pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-auto-resolve-planning-required-2026-09-23).
+
+## 2026-09-24 — Completed arcadia/pass-managed-claude-token-into-sessions
+
+- **Did:** Completed Action arcadia/pass-managed-claude-token-into-sessions from accepted evidence (Candidate 4bf98372aa8dffe93255f75d32776f3eac7dd7d9).
+- **Result:** Every declared acceptance criterion was accepted as met: "At claude-code-cli Session launch the worker reads the token from one documented file under the workspace config directory and passes it only into that Session process environment as CLAUDE_CODE_OAUTH_TOKEN; no other child process receives it."; "The worker refuses to use the file, with a named remedy, when it is readable by group or others, is empty, or is a symlink out of the workspace config directory."; "The token value never appears in logs, receipts, events, command lines visible to ps, packets, or error messages."; "The sign-in preflight from preflight-provider-signin-before-launch treats a valid token file as signed in for claude-code-cli."; "START_HERE documents the one-time operator setup (claude setup-token, then writing the file with 0600 permissions) and rotation, and a /runs operator button performs the write-and-verify step without the agent ever handling the value."; "Regression tests cover token pass-through, each refused file state, and absence of the value from logs and the tmux command line.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-pass-managed-claude-token-into-sessions-2026-09-24).

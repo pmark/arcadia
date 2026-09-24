@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,6 +32,7 @@ import { getRepositoryLease, prepareSession, sessionView, type TmuxAdapter } fro
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 const roots: string[] = [];
 
@@ -565,7 +566,91 @@ describe("launchGuardedHostSession", () => {
       )
     ).toThrow(/must carry either/);
   });
+
+  it("injects CLAUDE_CODE_OAUTH_TOKEN into a claude-code-cli launch from the workspace token file, never as a literal value on the command line", () => {
+    const fixture = preparedFixture();
+    writeTokenFile(fixture.workspace, "sk-ant-oat-secret-value");
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+
+    doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(tmux.launches).toHaveLength(1);
+    const launch = tmux.launches[0];
+    // The GIT_AUTHOR_*/GIT_COMMITTER_* identity vars are still literal `env`
+    // arguments (they are not secret); everything after them is now wrapped
+    // in a shell that reads the token file itself rather than a literal
+    // "claude" argv, so the token value is never a process argument anywhere.
+    expect(launch.command).toBe("env");
+    expect(launch.args[4]).toBe("sh");
+    expect(launch.args[5]).toBe("-c");
+    const script = launch.args[6];
+    expect(script).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
+    expect(script).toContain("cat");
+    expect(script).toContain(getWorkspacePaths(fixture.workspace).claudeCodeTokenFile);
+    expect(script).toContain("exec 'claude'");
+    for (const arg of launch.args) {
+      expect(arg).not.toContain("sk-ant-oat-secret-value");
+    }
+  });
+
+  it("never injects the token for a codex-cli or opencode-cli launch, even when the workspace token file exists", () => {
+    for (const [provider, model, profileName, command] of [
+      ["codex-cli", "gpt-5.6-terra", "codex_build", "codex"],
+      ["opencode-cli", "opencode-go/deepseek-v4.1-flash", "opencode_build", "opencode"]
+    ] as const) {
+      const fixture = preparedFixture({ provider, model, profileName, command });
+      writeTokenFile(fixture.workspace, "sk-ant-oat-secret-value");
+      const tmux = new FakeTmux();
+      const preview = preview1(fixture);
+
+      doLaunch(fixture, tmux, preview.previewFingerprint);
+      expect(tmux.launches[0].command).toBe("env");
+      expect(tmux.launches[0].args).not.toContain("sh");
+      for (const arg of tmux.launches[0].args) {
+        expect(arg).not.toContain("CLAUDE_CODE_OAUTH_TOKEN");
+        expect(arg).not.toContain("sk-ant-oat-secret-value");
+      }
+    }
+  });
+
+  it("launches a claude-code-cli Session unchanged when no workspace token file exists", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+
+    doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(tmux.launches[0].command).toBe("env");
+    expect(tmux.launches[0].args).not.toContain("sh");
+    expect(tmux.launches[0].args[4]).toBe("claude");
+    expect(tmux.launches[0].args).toContain("--session-id");
+  });
+
+  it("refuses to launch a claude-code-cli Session when the workspace token file fails its permission check", () => {
+    const fixture = preparedFixture();
+    const tokenFile = getWorkspacePaths(fixture.workspace).claudeCodeTokenFile;
+    writeFileSync(tokenFile, "sk-ant-oat-secret-value");
+    chmodSync(tokenFile, 0o644);
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+
+    let caught: unknown;
+    try {
+      doLaunch(fixture, tmux, preview.previewFingerprint);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ArcadiaError);
+    expect((caught as ArcadiaError).message).toContain("group or others");
+    expect((caught as ArcadiaError).message).toContain("chmod 600");
+    expect(tmux.launches).toHaveLength(0);
+  });
 });
+
+function writeTokenFile(workspace: string, token: string): void {
+  const tokenFile = getWorkspacePaths(workspace).claudeCodeTokenFile;
+  writeFileSync(tokenFile, token);
+  chmodSync(tokenFile, 0o600);
+}
 
 describe("launchGuardedHostSession under a standing managed-production policy grant", () => {
   it("launches with no operator-approved fingerprint, committing an epoch-bound admission receipt", () => {

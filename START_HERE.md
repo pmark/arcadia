@@ -787,6 +787,49 @@ deleting, spending, credentials, production access, and messaging each still
 need their own Decision, and a Plan that is not listed is never activated just
 because it is next on screen.
 
+### Sign in claude-code-cli for an unattended worker
+
+An unattended worker has no interactive terminal for `claude auth login`, so
+claude-code-cli Sessions need a different sign-in source: a token file the
+worker reads at launch and passes into that one Session's environment as
+`CLAUDE_CODE_OAUTH_TOKEN`. Nothing else — not `codex-cli`, not `opencode-cli`,
+not the worker process itself — ever sees that value.
+
+One-time setup, run at your own terminal (never paste the token into a chat
+with an agent):
+
+```sh
+claude setup-token
+```
+
+`setup-token` only prints the token; it does not save it anywhere. Write it
+yourself to the workspace's documented path with owner-only permissions:
+
+```sh
+umask 077
+printf '%s' 'paste-the-printed-token-here' > "$WORKSPACE/config/claude-code-oauth-token"
+chmod 600 "$WORKSPACE/config/claude-code-oauth-token"
+```
+
+The worker refuses to use this file, with a named remedy, if it is readable by
+group or others, is empty, or is a symlink pointing outside the workspace's
+`config/` directory — a misconfigured file is reported, never silently
+ignored. The sign-in preflight (`pnpm arcadia production status` and every
+launch path) treats a valid file as signed in for claude-code-cli without
+shelling out to `claude auth status`.
+
+**Rotation**: run `claude setup-token` again and overwrite the same file the
+same way; the next Session launch reads the new value. There is nothing to
+restart — the file is read fresh at each launch, never cached.
+
+The `/runs` dashboard's **Verify Claude Code token** action (paired script:
+`artifacts/generated/operator-scripts/verify-claude-code-token.sh`) checks the
+file's permissions and confirms the sign-in preflight reports signed in,
+without ever printing or handling the token value itself. Piping the token to
+it on stdin from your own terminal (`echo "$TOKEN" | ...script... run`) also
+performs the write, still without an agent ever seeing the value; run from the
+dashboard with no stdin attached, it verifies only.
+
 ### Preserve on exit, and integrate only under a separate grant
 
 When a managed-production Session reaches a terminal state, the worker now
