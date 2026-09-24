@@ -340,6 +340,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       });
     }
     admission = committed.receipt;
+    // Link the Session to the exact admission its launch committed against, so
+    // `reconcileSessionExit` can release this specific slot through
+    // `releaseAdmission` once the Session reaches a terminal outcome, instead
+    // of leaving it committed until its TTL-less "committed" state leaks
+    // forever (Issue #610).
+    input.db.prepare("UPDATE agent_sessions SET admission_request_id = ? WHERE id = ?").run(admission.requestId, prepared.id);
   }
 
   try {

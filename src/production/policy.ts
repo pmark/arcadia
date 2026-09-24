@@ -829,13 +829,48 @@ export function listAdmissions(
  * Off/reactivate cycle does not end the work it was already running. So
  * committed work counts across every epoch; only unredeemed reservations are
  * scoped to the current one, because Off fences the rest.
+ *
+ * A "committed" admission whose Session has already reached a terminal
+ * outcome is a vacated slot regardless of whether `releaseAdmission` actually
+ * ran (`reconcileSessionExit` is the normal writer, but a crash or an older
+ * database can leave the row stuck at `committed` — see Issue #610). Two
+ * checks exclude it, from most to least precise:
+ *
+ *  - exact: `agent_sessions.admission_request_id` names this Session's own
+ *    committed admission, and that Session is terminal.
+ *  - legacy: the admission predates that column (still NULL on every Session
+ *    sharing its `action_key`), so fall back to the action itself -- but only
+ *    when *no* Session for that exact action_key is currently prepared or
+ *    running. That guard is load-bearing: it is what stops this fallback from
+ *    ever mistaking a live concurrent Session's own admission for a vacated
+ *    one merely because an older, unrelated attempt at the same Action once
+ *    finished.
  */
 export function countLiveAdmissions(db: Database.Database, epoch: number, at: string): number {
   const row = db
     .prepare(
-      `SELECT COUNT(*) AS live FROM production_admissions
-        WHERE status = 'committed'
-           OR (status = 'issued' AND epoch = ? AND expires_at > ?)`
+      `SELECT COUNT(*) AS live FROM production_admissions pa
+        WHERE (
+          pa.status = 'committed'
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_sessions s
+             WHERE s.admission_request_id = pa.request_id
+               AND s.status IN ('completed', 'failed', 'needs_input')
+          )
+          AND NOT (
+            NOT EXISTS (
+              SELECT 1 FROM agent_sessions s2
+               WHERE (s2.project_slug || '/' || s2.action_id) = pa.action_key
+                 AND s2.status IN ('prepared', 'running')
+            )
+            AND EXISTS (
+              SELECT 1 FROM agent_sessions s3
+               WHERE (s3.project_slug || '/' || s3.action_id) = pa.action_key
+                 AND s3.status IN ('completed', 'failed', 'needs_input')
+            )
+          )
+        )
+        OR (pa.status = 'issued' AND pa.epoch = ? AND pa.expires_at > ?)`
     )
     .get(epoch, at) as { live: number };
   return row.live;

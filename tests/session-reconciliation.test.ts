@@ -3,14 +3,19 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
+import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
+import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { createCodexInvocation, createReviewExecutionRun, createReviewItem, getWorkItemByDocRef, updateExecutionRunStatus, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
-import { activateProduction, fingerprintProductionScope, normalizeProductionScope, type ProductionScope } from "../src/production/policy.js";
+import type { CodingAgentProfile } from "../src/intent/registries.js";
+import { activateProduction, countLiveAdmissions, fingerprintProductionScope, issueAdmission, normalizeProductionScope, readProductionPolicy, type ProductionScope } from "../src/production/policy.js";
 import { getSession, prepareSession, resolveProjectTransition, type TmuxAdapter } from "../src/sessions/index.js";
+import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { attemptAutomaticCompletion, getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -239,6 +244,96 @@ describe("reconcileSessionExit", () => {
     expect(session?.status).not.toBe("prepared");
     expect(session?.status).not.toBe("running");
     expect(receipt).not.toBeNull();
+  });
+});
+
+describe("reconcileSessionExit releases a committed production admission (Issue #610)", () => {
+  const admissionScope: ProductionScope = normalizeProductionScope({
+    intent: "Prove a completed Session's admission is released, not leaked.",
+    projects: ["test-project"],
+    plans: ["test-project/copy-proof"],
+    actions: ["test-project/define-contract"],
+    providers: ["claude-code-cli"],
+    maxConcurrentSessions: 1,
+    mechanicalTransitions: []
+  });
+
+  function admissionProfiles(): CodingAgentProfile[] {
+    return [{
+      name: "claude_build", provider: "claude-code-cli", package: "@anthropic-ai/claude-code",
+      command: "claude", purpose: "build", sandbox: "workspace-write", args: []
+    }];
+  }
+
+  function admissionCapacity(): ProviderCapacityObservation {
+    const decision: CapacityAdmissionDecision = {
+      providerId: "claude-code-cli", admitted: true, code: null, reason: "included allowance", unattendedProof: true,
+      retryAfter: null, refreshRequired: false,
+      receipt: {
+        version: 1, providerId: "claude-code-cli", providerLabel: "claude-code-cli", profiles: [], accountScope: "test",
+        source: "codex_app_server", evidence: "simulated", unattended: true, observedAt: "2026-08-30T12:00:00.000Z",
+        observedAgeMs: 0, expiresAt: null, confidence: "observed", freshness: "fresh", usagePolicy: "included",
+        usagePolicyReason: "test fixture", windows: [{ label: "5h", usedPercentage: 10, remainingPercentage: 90, resetsAt: null }],
+        nextResetAt: null, unsupported: [], availability: "available", telemetry: "test fixture"
+      }
+    };
+    return { generatedAt: "2026-08-30T12:34:56.000Z", providers: [decision] };
+  }
+
+  it("with maxConcurrentSessions 1: one Session launches, completes, and a second admission is granted on the next tick instead of refused concurrency_limit", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-610", scope: admissionScope,
+        scopeFingerprint: fingerprintProductionScope(admissionScope), grantedBy: "operator"
+      })
+    );
+
+    const launched = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project",
+        requestId: "610-launch-1", standingPolicy: true, profiles: admissionProfiles(), adapters: defaultAdapters as ProviderAdapterRegistry,
+        now: fixture.now, tmux, agentWorktreeRoot: path.join(fixture.root, "610-launch-1"),
+        capacityObservation: admissionCapacity()
+      })
+    );
+    expect(launched.admission?.status).toBe("committed");
+    const sessionId = launched.session.id;
+    const linked = withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, sessionId));
+    expect(linked?.admission_request_id).toBe(launched.admission?.requestId);
+
+    // The Session's process has exited with nothing to show for it -- a
+    // "missing evidence" terminal outcome, exactly like any other clean-but-
+    // unaccepted exit. What matters for Issue #610 is only that reconciliation
+    // moves the Session off `prepared`/`running`, which is what should free
+    // its admission regardless of which terminal outcome it lands on.
+    tmux.live = false;
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "610-reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(result.receipt.outcome).toBe("missing_evidence");
+
+    const releasedAdmission = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT status FROM production_admissions WHERE request_id = ?").get(launched.admission!.requestId)
+    ) as { status: string } | undefined;
+    expect(releasedAdmission?.status).toBe("released");
+
+    // Before the fix, this admission stayed "committed" forever, so
+    // countLiveAdmissions kept reporting 1 live slot under a policy of 1 --
+    // permanently refusing every further launch with concurrency_limit.
+    const policyState = withReadOnlyDatabase(fixture.workspace, (db) => readProductionPolicy(db));
+    const live = withReadOnlyDatabase(fixture.workspace, (db) => countLiveAdmissions(db, policyState.epoch, fixture.now.toISOString()));
+    expect(live).toBe(0);
+
+    const nextAdmission = withDatabase(fixture.workspace, (db) =>
+      issueAdmission(db, {
+        requestId: "610-launch-2:admission", actionKey: "test-project/define-contract", projectSlug: "test-project",
+        planSlug: "copy-proof", provider: "claude-code-cli", capacity: admissionCapacity().providers[0], now: fixture.now
+      })
+    );
+    expect(nextAdmission.admitted).toBe(true);
+    expect(nextAdmission.code).not.toBe("concurrency_limit");
   });
 });
 

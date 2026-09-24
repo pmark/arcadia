@@ -6,7 +6,7 @@ import { isRequiresReviewValue } from "../domain/constants.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
-import { readProductionPolicySafely, type ProductionPolicyRecord } from "../production/policy.js";
+import { readProductionPolicySafely, releaseAdmission, type ProductionPolicyRecord } from "../production/policy.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { settleAgentAsk, type AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
@@ -475,6 +475,14 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     if (session.status === "prepared" || session.status === "running") {
       db.prepare("UPDATE agent_sessions SET status = ?, ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE id = ?")
         .run(terminal, now, now, session.id);
+      // Give the standing-policy admission slot back the moment this Session
+      // reaches a terminal outcome, in the same transaction as the status
+      // transition -- otherwise a committed admission with nothing left to run
+      // stays "committed" until its host process is restarted, permanently
+      // occupying a concurrency slot (Issue #610).
+      if (session.admission_request_id) {
+        releaseAdmission(db, session.admission_request_id, new Date(now));
+      }
     }
     db.prepare(`INSERT INTO session_exit_receipts
       (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, created_at, updated_at)

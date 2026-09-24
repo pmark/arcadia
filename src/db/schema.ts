@@ -80,6 +80,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
   ensureAgentSessionStallColumns(db);
+  ensureAgentSessionAdmissionColumn(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
@@ -367,6 +368,24 @@ function ensureAgentSessionStallColumns(db: Database.Database): void {
     if (!columns.has(name)) {
       db.prepare(`ALTER TABLE agent_sessions ADD COLUMN ${name} TEXT`).run();
     }
+  }
+}
+
+/**
+ * The forward link a Session's committed production admission is recorded
+ * under (see `launchGuardedHostSession` in `src/sessions/launch.ts`), so that
+ * `reconcileSessionExit` can release that exact admission through the
+ * existing `releaseAdmission` writer once the Session reaches a terminal
+ * outcome, and `countLiveAdmissions` can stop counting it even if release was
+ * ever skipped. Nullable: a Session launched without a standing-policy
+ * admission, or one prepared before this column existed, simply has none.
+ */
+function ensureAgentSessionAdmissionColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("admission_request_id")) {
+    db.prepare(`ALTER TABLE agent_sessions ADD COLUMN admission_request_id TEXT`).run();
   }
 }
 
