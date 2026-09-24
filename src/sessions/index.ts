@@ -17,6 +17,7 @@ import { isDispatchable, resolveDispatch, type DispatchResolution } from "../doc
 import { resolvePlanActivation, type PlanActivationResolution } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
+import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
@@ -617,7 +618,18 @@ export function launchPreparedSession(
 
 export function failPreparedSession(db: Database.Database, id: string): void {
   const ended = new Date().toISOString();
-  db.prepare("UPDATE agent_sessions SET status = 'failed', ended_at = ?, updated_at = ? WHERE id = ?").run(ended, ended, id);
+  writeTransaction(db, () => {
+    db.prepare("UPDATE agent_sessions SET status = 'failed', ended_at = ?, updated_at = ? WHERE id = ?").run(ended, ended, id);
+    // A launch that fails after its admission committed (a worktree revision
+    // check, an unresolvable agent identity, or a tmux spawn failure) never
+    // reaches `reconcileSessionExit` -- this is the only writer that ever
+    // marks it terminal, so it must release the same admission itself,
+    // exactly as reconciliation does, or the slot leaks just like Issue #610.
+    const session = getSession(db, id);
+    if (session?.admission_request_id) {
+      releaseAdmission(db, session.admission_request_id, new Date(ended));
+    }
+  });
 }
 
 export function getSession(db: Database.Database, id: string): AgentSession | null {
