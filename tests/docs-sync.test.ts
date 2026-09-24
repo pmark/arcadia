@@ -19,6 +19,7 @@ import {
   listReviewItems,
   listWorkItemDependencies,
   setReviewItemDocRef,
+  updateReviewItemFromDoc,
   updateWorkItem,
   upsertProject,
   upsertProjectMetadata
@@ -1009,6 +1010,70 @@ describe("docs sync", () => {
           error.message.includes("does not exist on disk")
       )
     ).toBe(true);
+  });
+
+  it("reports a hash-suffixed (Action clarification) review item whose plan no longer exists on disk", () => {
+    const repo = scratch();
+    const workspace = workspaceWithProject(repo);
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      const item = createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: "Clarify a next action that no longer has a plan.",
+        recommendation: null,
+        sourceInput: "docs/plans/gone-plan.md#some-action",
+        proposedAction: "Clarify some-action.",
+        resolvedIntent: "ActionClarification",
+        confidenceLabel: "medium",
+        confidence: 0,
+        missingFields: []
+      });
+      setReviewItemDocRef(db, item.id, "plan/gone-plan#some-action");
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(result.data.errorCount).toBeGreaterThan(0);
+    expect(
+      result.data.projects[0].errors.some(
+        (error) => error.field === "docRef" && error.relativePath === "docs/plans/gone-plan.md"
+      )
+    ).toBe(true);
+  });
+
+  it("does not flag a resolved review item whose source document is gone", () => {
+    const repo = scratch();
+    const workspace = workspaceWithProject(repo);
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      const item = createReviewItem(db, {
+        projectId: project.id,
+        decisionNeeded: "Some already-resolved question.",
+        recommendation: null,
+        sourceInput: "docs/decisions/0090-archived.md (archived)",
+        proposedAction: "Resolve decision 0090: archived.",
+        resolvedIntent: "ActionClarification",
+        confidenceLabel: "medium",
+        confidence: 0,
+        missingFields: []
+      });
+      setReviewItemDocRef(db, item.id, "decision/archived");
+      updateReviewItemFromDoc(db, item.id, {
+        decisionNeeded: item.decision_needed,
+        recommendation: null,
+        status: "approved",
+        decisionNote: "Resolved elsewhere.",
+        decidedAt: NEWER_THAN_NOW,
+        confidenceLabel: "medium",
+        missingFields: []
+      });
+    });
+
+    const result = runDocsSyncCommand({ workspace, apply: true });
+
+    expect(
+      result.data.projects[0].errors.some((error) => error.relativePath === "docs/decisions/0090-archived.md")
+    ).toBe(false);
   });
 
   it("turns a plan-level question into a Decision, and does not reopen a decided one", () => {

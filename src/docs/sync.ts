@@ -234,12 +234,18 @@ export function syncProjectDocs(
   // A review item's `source_input`/`doc_ref` records the document it was
   // raised from. If that document has since vanished — most often because an
   // id collision let a later document silently take over the slug — the item
-  // can never be reconciled against its source again (Issue #267).
-  for (const item of listReviewItems(db, "all")) {
+  // can never be reconciled against its source again (Issue #267). Only open
+  // items are in scope: an approved/rejected/deferred item is already
+  // resolved, and its source may legitimately be archived or removed after
+  // the fact without that being a defect worth reporting on every sync.
+  for (const item of listReviewItems(db, "open")) {
     if (item.project_id !== project.id || !item.doc_ref) {
       continue;
     }
-    const referencedPath = /^(.*) \([^)]+\)$/.exec(item.source_input)?.[1];
+    // Every doc-backed shape leads with the document's relative path, then
+    // either " (<slug>)" (decisions, proposals, plan questions) or "#<action
+    // id>" (Action clarifications) — strip whichever trails it.
+    const referencedPath = /^(.*?)(?:\s\([^)]*\)|#\S+)$/.exec(item.source_input)?.[1];
     if (!referencedPath || existsSync(path.join(repoRoot, referencedPath))) {
       continue;
     }
