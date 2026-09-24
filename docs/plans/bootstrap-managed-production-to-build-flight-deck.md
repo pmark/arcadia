@@ -1916,10 +1916,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask stop-killing-busy-workers
     clarification: clarified
     confidence: high
-    source: Agent Ask harden-live-blocker-acceptance-2026-09-24
+    source: Agent Ask cover-busy-worker-stop-2026-09-24
     acceptance_criteria:
       - Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal that no synchronous tick step can starve (for example a beat from a separate thread or process), not by lengthening the heartbeat threshold alone.
-      - A deterministic test holds the worker inside a synchronous step for longer than 26s and proves start neither signals nor replaces it, while a worker that stops progressing entirely is still recovered.
+      - A deterministic test holds the worker inside a synchronous step for longer than 26s and proves start neither signals nor replaces it, and that stop sends only its ordinary SIGTERM and reports the worker mid-tick without escalating to SIGKILL; a worker that stops progressing entirely is still recovered by both.
       - "The 170s and 292s stalls recorded in Issue #617 are investigated and their cause recorded in the PR, or recorded as not reproducible with the evidence gathered."
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617."
     depends_on: []
