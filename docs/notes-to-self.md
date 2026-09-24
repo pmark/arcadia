@@ -121,6 +121,23 @@ sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so 
 file written in one mode is missing in the other. Write and read scratch files
 in the same mode.
 
+## Lint or tests fail in an agent worktree but not in CI
+
+keys: lint, worktree, bridge, node_modules, discord.js, no-unnecessary-type-assertion, error type, vitest
+
+Bridge dependencies with the script, never with a hand-made symlink:
+
+```sh
+node scripts/bridge-worktree-deps.mjs   # links root and every app's node_modules
+```
+
+A root-only `ln -s …/node_modules` leaves the `apps/dashboard` and
+`apps/discord-bot` dependencies unresolved. Then `pnpm lint` reports false
+errors ("`Message` is an error type", "assertion is unnecessary") and those
+app tests fail to load, even in files you changed. The script skips a tree
+whose target already exists, so rerunning it is safe. CI does a clean install
+and is the source of truth.
+
 ## Where is the Runs page / "This push" section?
 
 keys: runs, this push, next push, dashboard, production control panel
