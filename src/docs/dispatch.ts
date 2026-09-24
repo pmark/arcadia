@@ -575,7 +575,7 @@ export function resolveActionReadiness(
  * and re-parse every document in the repository per Action. Reading documents
  * is the expensive half; this is the pure half.
  */
-function actionReadinessFrom(
+export function actionReadinessFrom(
   discovered: DiscoveryResult,
   projectSlug: string,
   actionId: string

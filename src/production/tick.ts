@@ -119,9 +119,31 @@ export function ensureProductionTickTables(db: Database.Database): void {
       observed_sha TEXT NOT NULL,
       observed_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS production_base_branch_observation_failures (
+      project_slug TEXT PRIMARY KEY,
+      repository_path TEXT NOT NULL,
+      message TEXT NOT NULL,
+      first_failed_at TEXT NOT NULL,
+      last_attempted_at TEXT NOT NULL
+    );
   `);
   ensureProductionLaunchBlockersTable(db);
 }
+
+/**
+ * How long a repeatedly failing base-branch observation goes unretried.
+ *
+ * `detectBaseBranchAdvance` shells out to `git` and, for a structurally broken
+ * repository (a bad configured path, a corrupt checkout, no commits), throws
+ * the same way every tick. Retrying and re-logging that on every ~2s producer
+ * tick (Issue: the `living-songbook` project logged it roughly every ~70-85s,
+ * one line per tick) spends a subprocess spawn and a log line on a fact that
+ * is already known. Mirrors `DEFAULT_BOARD_POLL_INTERVAL_MS`'s reasoning
+ * (scheduler.ts): Arcadia never needs to poll to learn about its own changes,
+ * only to notice a drag a human might have fixed, which is worth checking for
+ * periodically rather than never again.
+ */
+export const BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS = 10 * 60 * 1000;
 
 /**
  * A `arcadia production status` read runs on a read-only connection and
@@ -410,11 +432,15 @@ export function runManagedProductionTick(
     const repoRoot = path.resolve(configuredPath);
 
     let baseBranchAdvance: BaseBranchAdvanceObservation | null = null;
-    if (projectInActiveScope(db, project.slug)) {
+    if (projectInActiveScope(db, project.slug) && shouldAttemptBaseBranchObservation(db, { projectSlug: project.slug, repoRoot, now })) {
       try {
         baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
+        clearBaseBranchObservationFailure(db, project.slug);
       } catch (error) {
-        log(`Base branch observation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (recordBaseBranchObservationFailure(db, { projectSlug: project.slug, repoRoot, message, now })) {
+          log(`Base branch observation failed for ${project.slug}: ${message}`);
+        }
         baseBranchAdvance = null;
       }
     }
@@ -746,6 +772,64 @@ function resetRepairAttempts(db: Database.Database, actionKey: string): void {
 export function resetProductionRepairBudget(db: Database.Database, actionKey: string): void {
   ensureProductionTickTables(db);
   resetRepairAttempts(db, actionKey);
+}
+
+/**
+ * Whether this tick should attempt `detectBaseBranchAdvance` at all.
+ *
+ * Always true with no recorded failure. Once one is recorded, true only when
+ * the repository path changed since that failure (an operator plausibly fixed
+ * the input) or the retry interval has elapsed (a periodic recheck, in case
+ * something about the repository's own git state changed without the
+ * configured path itself changing) -- otherwise the identical, already-known
+ * failure would cost a subprocess spawn for nothing.
+ */
+function shouldAttemptBaseBranchObservation(
+  db: Database.Database,
+  input: { projectSlug: string; repoRoot: string; now: Date }
+): boolean {
+  const row = db
+    .prepare("SELECT repository_path, last_attempted_at FROM production_base_branch_observation_failures WHERE project_slug = ?")
+    .get(input.projectSlug) as { repository_path: string; last_attempted_at: string } | undefined;
+  if (!row) return true;
+  if (row.repository_path !== input.repoRoot) return true;
+  const elapsed = input.now.getTime() - Date.parse(row.last_attempted_at);
+  return !Number.isFinite(elapsed) || elapsed >= BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS;
+}
+
+/**
+ * Record (or refresh) a base-branch observation failure. Returns true only
+ * when this is a new failure episode -- no prior record, a different
+ * repository path, or a different message -- so the caller logs the named
+ * `Base branch observation failed for ...` line once per episode instead of
+ * once per tick.
+ */
+function recordBaseBranchObservationFailure(
+  db: Database.Database,
+  input: { projectSlug: string; repoRoot: string; message: string; now: Date }
+): boolean {
+  const at = input.now.toISOString();
+  const existing = db
+    .prepare("SELECT repository_path, message FROM production_base_branch_observation_failures WHERE project_slug = ?")
+    .get(input.projectSlug) as { repository_path: string; message: string } | undefined;
+  const isNewEpisode = !existing || existing.repository_path !== input.repoRoot || existing.message !== input.message;
+  db.prepare(
+    `INSERT INTO production_base_branch_observation_failures (project_slug, repository_path, message, first_failed_at, last_attempted_at)
+       VALUES (@project_slug, @repository_path, @message, @at, @at)
+     ON CONFLICT(project_slug) DO UPDATE SET
+       repository_path = @repository_path,
+       message = @message,
+       first_failed_at = CASE WHEN production_base_branch_observation_failures.repository_path = @repository_path
+                                AND production_base_branch_observation_failures.message = @message
+                           THEN production_base_branch_observation_failures.first_failed_at ELSE @at END,
+       last_attempted_at = @at`
+  ).run({ project_slug: input.projectSlug, repository_path: input.repoRoot, message: input.message, at });
+  return isNewEpisode;
+}
+
+/** Clear a recorded base-branch observation failure once an attempt succeeds. */
+function clearBaseBranchObservationFailure(db: Database.Database, projectSlug: string): void {
+  db.prepare("DELETE FROM production_base_branch_observation_failures WHERE project_slug = ?").run(projectSlug);
 }
 
 function detectBaseBranchAdvance(

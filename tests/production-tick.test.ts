@@ -17,6 +17,7 @@ import {
   upsertProjectMetadata,
   updateReviewItemStatus
 } from "../src/db/repositories.js";
+import * as discoverModule from "../src/docs/discover.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
@@ -32,7 +33,8 @@ import {
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
-  listOperatorEscalations
+  listOperatorEscalations,
+  BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
 } from "../src/production/tick.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -941,6 +943,116 @@ describe("runManagedProductionTick", () => {
     }).join("\n");
     expect(rendered).toContain(previousSha.slice(0, 12));
     expect(rendered).toContain(newSha.slice(0, 12));
+  });
+
+  it("logs a repeatedly failing base-branch observation once, not every tick, and retries only after the backoff or an input change", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const log = vi.fn();
+    const failureLines = () =>
+      log.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("Base branch observation failed for test-project"));
+
+    // Break `resolveBaseBranch` deterministically: rename the local branch
+    // away from main/master with no origin/HEAD configured, so every future
+    // `detectBaseBranchAdvance` call for this Project throws the same error
+    // until the repository's git state changes.
+    git(fixture.repo, ["branch", "-m", "renamed-away"]);
+
+    const first = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(first.projects[0]?.baseBranchAdvance).toBeNull();
+    expect(failureLines()).toHaveLength(1);
+    expect(failureLines()[0]).toContain("could not determine the local base branch");
+
+    const failureRow = () =>
+      withReadOnlyDatabase(fixture.workspace, (db) =>
+        db
+          .prepare("SELECT repository_path, message, first_failed_at, last_attempted_at FROM production_base_branch_observation_failures WHERE project_slug = 'test-project'")
+          .get()
+      ) as { repository_path: string; message: string; first_failed_at: string; last_attempted_at: string } | undefined;
+    const recordedAfterFirst = failureRow();
+    expect(recordedAfterFirst?.message).toContain("could not determine the local base branch");
+
+    // Two more ticks over the same unresolved failure, well inside the
+    // backoff window, must not re-log it -- before this fix, the named line
+    // repeated on every ~2s producer tick (observed as "Base branch
+    // observation failed for living-songbook" roughly every ~70-85s).
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000), log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(failureLines()).toHaveLength(1);
+    // Not re-attempted either: the failure record's own timestamp is untouched.
+    expect(failureRow()?.last_attempted_at).toBe(recordedAfterFirst?.last_attempted_at);
+
+    // Once the backoff interval elapses, the tick retries (spends a fresh git
+    // spawn) even though nothing about the repository changed -- but an
+    // identical outcome is still not re-logged.
+    const afterBackoff = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS + 1_000),
+        log,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(afterBackoff.projects[0]?.baseBranchAdvance).toBeNull();
+    expect(failureLines()).toHaveLength(1);
+    expect(failureRow()?.last_attempted_at).not.toBe(recordedAfterFirst?.last_attempted_at);
+
+    // Fixing the repository's git state and letting the next backoff-gated
+    // attempt run (comfortably past the previous attempt's own backoff
+    // window) recovers, and the failure record clears rather than lingering
+    // as a stale row.
+    git(fixture.repo, ["branch", "-m", "main"]);
+    const recovered = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 2 * BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS + 5_000),
+        log,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(recovered.projects[0]?.baseBranchAdvance?.changed).toBe(false);
+    expect(failureRow()).toBeUndefined();
+  });
+
+  it("does not re-walk and re-parse the repository tree once per open Action: discoverDocs call count is independent of the Plan's Action count", () => {
+    const countDiscoverDocsCalls = (secondAction: boolean) => {
+      const fixture = preparedFixture({ secondAction });
+      const tmux = new FakeTmux();
+      activatePolicy(fixture);
+      const spy = vi.spyOn(discoverModule, "discoverDocs");
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles,
+          adapters,
+          tmux,
+          now: fixture.now,
+          capacityObservation: fixtureCapacityObservation(),
+          agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+      const calls = spy.mock.calls.length;
+      spy.mockRestore();
+      return calls;
+    };
+
+    // Before this fix, `buildProjectSchedule` re-discovered (walked and
+    // YAML-parsed) the whole repository tree once per still-open Action via
+    // `resolveActionReadiness`, so the call count scaled with the Plan's
+    // Action count. It must now be a small constant per Project per tick.
+    const withOneAction = countDiscoverDocsCalls(false);
+    const withTwoActions = countDiscoverDocsCalls(true);
+    expect(withOneAction).toBeGreaterThan(0);
+    expect(withTwoActions).toBe(withOneAction);
   });
 
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {
