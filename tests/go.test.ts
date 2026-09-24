@@ -467,6 +467,46 @@ describe("arcadia go — refuses a stale session on an unchanged Action", () => 
       db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get())).toEqual({ n: 0 });
   });
 
+  it("still refuses a stale, unchanged Action on a cross-agent handoff (the branch's own agent, not the next session's)", () => {
+    const fixture = createFixture(
+      "claude/define-contract-20260805T123456000Z",
+      planDocument
+    );
+
+    // The next session is handed to a different agent than the one the
+    // stale branch was originally prepared for -- must not let a mismatched
+    // `options.agent` slip the refusal.
+    expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.feature,
+        apply: true,
+        agent: "codex",
+        workspace: fixture.workspace
+      }),
+      "leaves the current Action unchanged"
+    );
+  });
+
+  it("does not refuse a zero-commit branch whose slug merely prefixes a different Action's slug", () => {
+    // "define-contract-extra" is not "define-contract": a prefix match would
+    // wrongly conflate them, but an exact slug comparison must not.
+    const fixture = createFixture(
+      "claude/define-contract-extra-20260805T123456000Z",
+      planDocument
+    );
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace
+    });
+
+    expect(result.data.nextWorktree?.branch).toContain("define-contract");
+  });
+
   it("does not refuse when the same session's branch made progress commits, even though its Action is still open", () => {
     const fixture = createFixture("claude/define-contract-20260805T123456000Z", planDocument);
     commitFeature(fixture.feature, "proof.txt", "proof\n");

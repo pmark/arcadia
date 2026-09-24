@@ -472,17 +472,23 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     // forbids: it neither finished nor narrowed the work, nor left a legible
     // reason it could not. Matched by the branch's own embedded action id
     // (`prepareAgentWorktree`'s `<agent>/<slugified-action-id>-<timestamp>`
-    // naming), not merely "some Action is still dispatchable": a *different*
-    // Action finishing this one via another worktree (Issue #511) also
-    // leaves `commitsToIntegrate` at zero on this branch and must not be
-    // refused here -- `freshPointer` already re-resolved to that different
-    // Action by this point, so the prefix will not match. A branch not shaped
-    // like a prepared candidate (a hand-crafted or legacy branch) cannot be
-    // matched against an assigned Action at all, so it is exempt rather than
-    // guessed at.
+    // naming), never by `options.agent` -- the *next* session's agent, which
+    // a cross-agent handoff (a claude candidate handed to codex) can leave
+    // different from the branch's own -- and never by a slug prefix, which
+    // would also match an unrelated Action whose slug this one prefixes
+    // (`define-contract` matching `define-contract-extra`). Not merely "some
+    // Action is still dispatchable" either: a *different* Action finishing
+    // this one via another worktree (Issue #511) also leaves
+    // `commitsToIntegrate` at zero on this branch and must not be refused
+    // here -- `freshPointer` already re-resolved to that different Action by
+    // this point, so its slug will not equal the branch's own. A branch not
+    // shaped like a prepared candidate (a hand-crafted or legacy branch)
+    // cannot be matched against an assigned Action at all, so it is exempt
+    // rather than guessed at.
     if (commitsToIntegrate === 0) {
+      const branchMatch = /^(codex|claude|opencode)\/(.+)-\d{8}T\d{9}Z$/.exec(sourceBranch);
       const safeAction = actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
-      if (sourceBranch.startsWith(`${options.agent}/${safeAction}-`)) {
+      if (branchMatch && branchMatch[2] === safeAction) {
         throw validationError(
           "Arcadia go will not end a session that leaves the current Action unchanged: no commits, no recorded operator question, and no recorded external blocker.",
           {
