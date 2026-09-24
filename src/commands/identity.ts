@@ -3,6 +3,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
   agentIdentityEnvironment,
+  agentIdentitySignature,
   resolveAgentIdentity,
   resolveSessionAgentIdentity,
   type AgentGitIdentity
@@ -14,16 +15,20 @@ export interface IdentityResolveOptions {
   tier?: string | null;
   model?: string | null;
   effort?: string | null;
+  /** builder (default) or critic -- see agentIdentity.ts's AgentRole. */
+  role?: string | null;
 }
 
 export interface IdentityResolveData extends AgentGitIdentity {
   /** GIT_AUTHOR_ and GIT_COMMITTER_ variables to prefix onto one `git` invocation. */
   gitEnv: Record<string, string>;
+  /** `<name> <<email>>`, to sign a posted GitHub PR comment with this identity. */
+  signature: string;
 }
 
 /**
- * `arcadia identity resolve` — the semantic Git identity one agent commits
- * under, for a session Arcadia did not launch itself.
+ * `arcadia identity resolve` — the semantic identity one agent commits or
+ * posts comments under, for a session Arcadia did not launch itself.
  *
  * A launched Session gets `GIT_AUTHOR_*`/`GIT_COMMITTER_*` set on its own
  * process tree by `buildSessionLaunch` (see `src/sessions/index.ts`), so it
@@ -34,6 +39,16 @@ export interface IdentityResolveData extends AgentGitIdentity {
  * identity. This command is that lookup, so an interactive agent can prefix
  * its own `git commit` with the same identity every launched Session would
  * have used, instead of committing as the operator.
+ *
+ * `--role` picks the capacity: `builder` (the default) for ordinary work, or
+ * `critic` when the agent is providing adversarial feedback -- a code review
+ * finding or a plan critique/refinement -- rather than building. Use the
+ * critic identity to commit a critique artifact the agent writes itself (a
+ * plan-refinement document, a Decision capturing the critique) and to sign a
+ * posted comment (a GitHub PR review reply) with the printed `signature` --
+ * never to author a fix to the work under critique, which stays a builder
+ * commit regardless of who raised the finding. See AGENTS.md's "Agent Git
+ * Identity" section.
  *
  * The prefix is `GIT_AUTHOR_*`/`GIT_COMMITTER_*` environment variables, not
  * `git -c user.*`: Git resolves `author.*`/`committer.*` config (if the
@@ -47,17 +62,19 @@ export interface IdentityResolveData extends AgentGitIdentity {
  * Git configuration itself.
  */
 export function runIdentityResolveCommand(options: IdentityResolveOptions): CommandSuccess<IdentityResolveData> {
+  const role = options.role ?? "builder";
   const identity = options.tier
-    ? resolveAgentIdentity(options.agent, options.tier)
+    ? resolveAgentIdentity(options.agent, options.tier, role)
     : resolveSessionAgentIdentity({
         agent: requireTierAgent(options.agent),
         model: requireModel(options.model),
-        effort: options.effort ?? null
+        effort: options.effort ?? null,
+        role
       });
 
   return createSuccess({
     command: "identity resolve",
-    data: { ...identity, gitEnv: agentIdentityEnvironment(identity) }
+    data: { ...identity, gitEnv: agentIdentityEnvironment(identity), signature: agentIdentitySignature(identity) }
   });
 }
 
@@ -80,9 +97,9 @@ function requireModel(model: string | null | undefined): string {
 }
 
 export function renderIdentityResolveSuccess(response: CommandSuccess<IdentityResolveData>): string[] {
-  const { name, email, gitEnv } = response.data;
+  const { name, email, gitEnv, signature } = response.data;
   const prefix = Object.entries(gitEnv)
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join(" ");
-  return [`${name} <${email}>`, `${prefix} git commit`];
+  return [`${name} <${email}>`, `${prefix} git commit`, `Comment signature: — ${signature}`];
 }

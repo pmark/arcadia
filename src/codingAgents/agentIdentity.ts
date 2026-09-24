@@ -14,16 +14,40 @@ import {
  *
  * Git history is the one record every session leaves whether or not anyone
  * files a receipt, so the name on the commit should say which platform did the
- * work and how heavy a model it was, without ever being the operator's own
- * identity. Platform is the given name, tier the surname, and the email is a
- * matching local address that never leaves this machine.
+ * work, how heavy a model it was, and — when it wasn't building — what kind of
+ * judgment it was exercising, without ever being the operator's own identity.
+ * Platform is the given name, tier the surname, an optional role is a title
+ * prefixed onto that (silent for the default `builder` role), and the email is
+ * a matching local address that never leaves this machine.
  */
 export interface AgentGitIdentity {
   agent: TierAgent;
   tier: ModelTier;
+  role: AgentRole;
   name: string;
   email: string;
 }
+
+/**
+ * The capacity an agent commits or comments under. `builder` (the default,
+ * silent in the name) is doing the work; `critic` is judging someone else's —
+ * a code review finding, or a plan critique/refinement — so it never leaves
+ * that adversarial capacity looking like ordinary build output. One role
+ * covers both critique surfaces: the distinction that matters for the name is
+ * builder vs. critic, not which artifact the critique lands on.
+ */
+export const AGENT_ROLES = ["builder", "critic"] as const;
+export type AgentRole = (typeof AGENT_ROLES)[number];
+
+export function isAgentRole(value: string): value is AgentRole {
+  return (AGENT_ROLES as readonly string[]).includes(value);
+}
+
+/** The title prefixed onto the platform+tier name for a non-default role. */
+const ROLE_TITLES: Record<AgentRole, string | null> = {
+  builder: null,
+  critic: "Critic"
+};
 
 /** The domain every agent address uses. Local-only by construction. */
 export const AGENT_GIT_EMAIL_DOMAIN = "agents.arcadia.local";
@@ -58,33 +82,42 @@ const EFFORT_TIERS: Record<string, ModelTier> = {
   max: "heavy"
 };
 
-export function agentIdentityName(agent: TierAgent, tier: ModelTier): string {
-  return `${AGENT_GIVEN_NAMES[agent]} ${TIER_SURNAMES[tier]}`;
+export function agentIdentityName(agent: TierAgent, tier: ModelTier, role: AgentRole = "builder"): string {
+  const base = `${AGENT_GIVEN_NAMES[agent]} ${TIER_SURNAMES[tier]}`;
+  const title = ROLE_TITLES[role];
+  return title ? `${title} ${base}` : base;
 }
 
 export function agentIdentityEmail(name: string): string {
   return `${name.trim().toLowerCase().replace(/\s+/g, ".")}@${AGENT_GIT_EMAIL_DOMAIN}`;
 }
 
+/** `<name> <<email>>`, ready to sign a posted comment the way a commit trailer signs a commit. */
+export function agentIdentitySignature(identity: AgentGitIdentity): string {
+  return `${identity.name} <${identity.email}>`;
+}
+
 /**
- * Resolve one identity, refusing any platform/tier pair the table does not
- * define. Refusing is the point: the alternative is a commit silently falling
- * back to the operator's configured Git identity, which is the defect this
- * module exists to remove.
+ * Resolve one identity, refusing any platform/tier/role combination the table
+ * does not define. Refusing is the point: the alternative is a commit or
+ * comment silently falling back to the operator's own identity, which is the
+ * defect this module exists to remove.
  */
-export function resolveAgentIdentity(agent: string, tier: string): AgentGitIdentity {
-  if (!(TIER_AGENTS as readonly string[]).includes(agent) || !isModelTier(tier)) {
-    throw validationError(`No agent Git identity is defined for platform "${agent}" at the "${tier}" tier.`, {
+export function resolveAgentIdentity(agent: string, tier: string, role: string = "builder"): AgentGitIdentity {
+  if (!(TIER_AGENTS as readonly string[]).includes(agent) || !isModelTier(tier) || !isAgentRole(role)) {
+    throw validationError(`No agent Git identity is defined for platform "${agent}" at the "${tier}" tier in the "${role}" role.`, {
       agent,
       tier,
+      role,
       knownAgents: [...TIER_AGENTS],
       knownTiers: [...MODEL_TIERS],
+      knownRoles: [...AGENT_ROLES],
       remedy:
-        "Use a supported coding platform and model tier. Arcadia will not fall back to the operator's Git identity."
+        "Use a supported coding platform, model tier, and role. Arcadia will not fall back to the operator's Git identity."
     });
   }
-  const name = agentIdentityName(agent as TierAgent, tier);
-  return { agent: agent as TierAgent, tier, name, email: agentIdentityEmail(name) };
+  const name = agentIdentityName(agent as TierAgent, tier, role);
+  return { agent: agent as TierAgent, tier, role, name, email: agentIdentityEmail(name) };
 }
 
 /**
@@ -141,6 +174,7 @@ export interface SessionAgentIdentityInput {
   agent: TierAgent;
   model: string;
   effort?: string | null;
+  role?: string | null;
   registry?: ModelTierRegistry;
 }
 
@@ -166,5 +200,5 @@ export function resolveSessionAgentIdentity(input: SessionAgentIdentityInput): A
       }
     );
   }
-  return resolveAgentIdentity(input.agent, tier);
+  return resolveAgentIdentity(input.agent, tier, input.role ?? "builder");
 }

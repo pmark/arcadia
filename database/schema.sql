@@ -200,12 +200,14 @@ CREATE TABLE IF NOT EXISTS ask_requests (
   stewardship_json TEXT,
   work_item_id TEXT,
   plan_id TEXT,
+  capture_id TEXT,
   prompt_packet_path TEXT,
   status TEXT NOT NULL CHECK (status IN ('planned', 'requires_review', 'failed')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
-  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL
+  FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS ask_capture_envelopes (

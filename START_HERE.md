@@ -1236,7 +1236,14 @@ agent resolves its own identity with `arcadia identity resolve --agent
 <codex|claude|opencode> --tier <light|standard|heavy>` and prefixes the
 printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=… GIT_COMMITTER_NAME=…
 GIT_COMMITTER_EMAIL=…` onto each `git commit` itself, rather than committing
-as you. See AGENTS.md's "Agent Git identity" section.
+as you.
+
+The identity also carries a role: plain `builder` work (the default) needs no
+extra flag, but an agent providing adversarial feedback — a code review
+finding, or a plan critique/refinement — adds `--role critic`, which prefixes
+a `Critic` title onto the name (e.g. `Critic Claudia Mason`) and signs the
+posted comment with the resolved `signature` instead of the builder identity.
+See AGENTS.md's "Agent Git Identity" section.
 
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;
@@ -1305,6 +1312,13 @@ See conditions that have fired with
 items only: Arcadia never dispatches or promotes them automatically. Use
 `pnpm arcadia back-burner promote <id>` when you explicitly decide an item
 should become an Action.
+
+To find out what any Ask became, pass the `capture_…` id from its receipt (or
+its request id, or an `ask_…` id) to `pnpm arcadia ask-trail <id>`. It prints
+the capture, how the Ask was classified and why, the Project it routed to, and
+every Action, Decision, or Back Burner item it produced, including the Action a
+shelved item was later promoted to. It only reads. Asks recorded before this
+command existed are linked when their text and time match exactly one capture.
 
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).

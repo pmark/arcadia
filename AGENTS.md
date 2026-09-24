@@ -298,6 +298,7 @@ required everywhere.
 | `proposal` | Preserves evidence only — no executable Action | No |
 | `project_update` | `target_ref: outcome` or `milestone` updates that field; any other `target_ref`, or none, is refused at preview | No |
 | `complete` | With `target_ref` naming an Action (`action/<action-id>` for the active Plan's Action, or `plan/<plan-slug>#<action-id>` for that Action in any Plan, active or not), `candidate_revision` (the Candidate's git sha) and `evidence` (one `met`/`failed`/`skipped` entry per declared acceptance criterion, verbatim and in order): marks the Action done and resolves the next governed Action, question, blocker, or completed Plan. A non-active-Plan completion writes only that Plan's document, leaving `PROJECT.md` and the active Plan's `current_action`/queue untouched. Refuses any criterion not `met`, an unresolved required review Decision, a stale `candidate_revision`, or an ambiguous Action id across Plans. An apply without `--operator` still applies, recorded with `deterministic_proof` authority instead of `operator_acceptance` | No |
+| `split` | A session that can only finish part of its Action's declared acceptance criteria narrows it to the finished slice instead of stalling. With `target_ref` naming the Action, `candidate_revision`, `acceptance` (a strict, order-preserving, verbatim subset of the Action's declared criteria — the finished slice), `evidence` for exactly that subset, and `actions` (one or more new remainder Actions whose combined `acceptance` covers every criterion the finished slice left off, verbatim): narrows the Action to `acceptance`, marks it done, and creates the remainder Actions positioned immediately after it in the queue. Refuses a narrowed list equal to the full declared criteria (that is `complete`, not `split`), any criterion not drawn verbatim from the declared list, or any dropped criterion that does not reappear in a remainder Action. Places Actions in the queue, so — like `action` — it needs the base branch; settle it from the Project's main checkout | No |
 
 `requested_authority` is `propose` or `apply_if_approved`, and neither lets an
 agent apply anything by itself.
@@ -876,29 +877,49 @@ keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
 name per platform, surname per model tier: light/standard/heavy);
 `START_HERE.md` explains it for operators.
 
+The identity also carries a **role**: `builder` (the default, silent in the
+name) for ordinary work, or `critic` — printed as a `Critic` title prefixed
+onto the name, e.g. `Critic Claudia Mason` — when the agent is providing
+adversarial feedback instead: a code review finding, or a plan
+critique/refinement. One role covers both; the distinction that matters for
+the name is builder vs. critic, not which artifact the critique lands on. Use
+the critic identity to commit a critique artifact the agent writes itself (a
+plan-refinement document, a Decision capturing the critique) and to sign a
+posted comment (a GitHub PR review reply) — never to author a fix to the work
+under critique, which stays a builder commit regardless of who raised the
+finding.
+
 A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` are set on that one process tree before the agent ever
 runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so it needs no
-action from the agent. An interactive session has no such environment set
-for it, so it must resolve its own identity and apply it on every commit:
+action from the agent. That launch path always binds the `builder` role;
+there is no launched "critique Session" yet, so a launched agent producing
+a code review or a plan critique still resolves its own `critic` identity by
+hand, the same way an interactive session does for everything. An
+interactive session has no `GIT_AUTHOR_*`/`GIT_COMMITTER_*` set for it at
+all, so it must resolve its own identity and apply it on every commit or
+posted comment:
 
 ```sh
-arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>
+arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy> [--role builder|critic]
 ```
 
-then prefix the printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=…
-GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git commit` itself (never
-rewrite global or repository `git config`, which would misattribute the
-operator's own commits too, and never use `git -c user.*` — Git resolves
-`author.*`/`committer.*` config and any already-exported `GIT_AUTHOR_*` ahead
-of `user.*`, so a `-c user.*` override can silently lose to a stale identity
-from an earlier launch or session). Pick the tier from whichever model is
+`--role` defaults to `builder`, so plain builder work needs nothing beyond
+`--agent`/`--tier`. To commit or comment, prefix the printed `GIT_AUTHOR_NAME=…
+GIT_AUTHOR_EMAIL=… GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git
+commit` itself (never rewrite global or repository `git config`, which would
+misattribute the operator's own commits too, and never use `git -c user.*` —
+Git resolves `author.*`/`committer.*` config and any already-exported
+`GIT_AUTHOR_*` ahead of `user.*`, so a `-c user.*` override can silently lose
+to a stale identity from an earlier launch or session), or close a posted
+GitHub PR comment with the printed `signature` (`<name> <<email>>`) the same
+way a commit trailer signs a commit. Pick the tier from whichever model is
 actually doing the work for this turn — it can change mid-session (a model
 switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
 the tier from earlier in the session still holds. An identity the command
-refuses (an unrecognized platform or tier) means the commit must not
-proceed under the operator's identity either — fix the `--agent`/`--tier`
-first.
+refuses (an unrecognized platform, tier, or role) means the commit or comment
+must not proceed under the operator's identity either — fix the
+`--agent`/`--tier`/`--role` first.
 
 ## Operator Guide
 

@@ -669,3 +669,10 @@ updated: 2026-09-24
 - **Result:** The operator asked whether the Ask capture utility could start this planning. It could not: after #595 an imperative Ask becomes a Planning Request with a packet, but nothing runs the Outcome Alignment Interview, and route-execution-shaped-asks-to-planning is queued after managed production. Lessons for that routing: (1) the planning-process template's intent outcome and milestone Asks would overwrite the Project Outcome and Milestone, so a Plan-scoped Outcome belongs on the Plan; (2) a Plan amendment cannot set Milestone and Actions in one Ask, so Phase 2 needs two Asks; (3) the interview found existing machinery (src/qa/prReview.ts, an inactive draft Plan, and a Private Practice Now proposal) that a capture-only path would have missed.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-24 — Completed arcadia/divide-instead-of-stall
+
+- **Did:** Completed Action arcadia/divide-instead-of-stall from accepted evidence (Candidate de3ef94988bc98ad69e5fde04468ddd1fcc9b013).
+- **Result:** Every declared acceptance criterion was accepted as met: "A split settlement marks the finished slice done and places remainder Actions immediately after it in the queue.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/go-refuses-stale-session-without-question-or-blocker immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-divide-instead-of-stall-2026-09-24).

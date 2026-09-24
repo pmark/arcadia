@@ -7,6 +7,7 @@ import {
   agentIdentityEnvironment,
   agentIdentityEnvironmentArgs,
   agentIdentityName,
+  agentIdentitySignature,
   resolveAgentIdentity,
   resolveSessionAgentIdentity,
   tierForAgentModel,
@@ -39,6 +40,7 @@ describe("agent Git identity table", () => {
         expect(resolveAgentIdentity(agent, tier)).toEqual({
           agent,
           tier,
+          role: "builder",
           name: expected[agent][tier][0],
           email: expected[agent][tier][1]
         });
@@ -85,6 +87,39 @@ describe("agent Git identity table", () => {
     expect(env("GIT_COMMITTER_NAME")).toBe("Owen Mason");
     expect(env("GIT_AUTHOR_EMAIL")).toBe("owen.mason@agents.arcadia.local");
     expect(env("GIT_COMMITTER_EMAIL")).toBe("owen.mason@agents.arcadia.local");
+  });
+});
+
+describe("agent Git identity role", () => {
+  it("prefixes a Critic title onto the platform+tier name, leaving builder silent", () => {
+    expect(resolveAgentIdentity("claude", "standard", "critic")).toEqual({
+      agent: "claude",
+      tier: "standard",
+      role: "critic",
+      name: "Critic Claudia Mason",
+      email: "critic.claudia.mason@agents.arcadia.local"
+    });
+    expect(agentIdentityName("codex", "heavy", "builder")).toBe("Cody Atlas");
+    expect(agentIdentityName("codex", "heavy", "critic")).toBe("Critic Cody Atlas");
+  });
+
+  it("defaults to the builder role when none is given", () => {
+    expect(resolveAgentIdentity("opencode", "light")).toMatchObject({ role: "builder", name: "Owen Swift" });
+  });
+
+  it("refuses an unknown role instead of falling back to builder", () => {
+    expect(() => resolveAgentIdentity("claude", "standard", "saboteur")).toThrow(ArcadiaError);
+  });
+
+  it("signs a posted comment with the resolved identity", () => {
+    const identity = resolveAgentIdentity("claude", "heavy", "critic");
+    expect(agentIdentitySignature(identity)).toBe("Critic Claudia Atlas <critic.claudia.atlas@agents.arcadia.local>");
+  });
+
+  it("passes role through session identity resolution", () => {
+    expect(
+      resolveSessionAgentIdentity({ agent: "claude", model: "sonnet", effort: null, role: "critic" })
+    ).toMatchObject({ tier: "standard", role: "critic", name: "Critic Claudia Mason" });
   });
 });
 
