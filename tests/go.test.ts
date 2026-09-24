@@ -441,6 +441,114 @@ describe("arcadia go", () => {
   });
 });
 
+describe("arcadia go — refuses a stale session on an unchanged Action", () => {
+  it("refuses to prepare the next worktree when the outgoing session made no commits and its Action is still open", () => {
+    const fixture = createFixture(
+      "claude/define-contract-20260805T123456000Z",
+      planDocument
+    );
+
+    const failure = expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.feature,
+        apply: true,
+        agent: "claude",
+        workspace: fixture.workspace
+      }),
+      "leaves the current Action unchanged"
+    );
+
+    expect(failure.details).toMatchObject({ actionId: "define-contract" });
+    // The zero-commit branch was already provably safe to retire -- that
+    // cleanup still ran; only the next worktree was refused.
+    expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/claude/define-contract-20260805T123456000Z"])).toThrow();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get())).toEqual({ n: 0 });
+  });
+
+  it("still refuses a stale, unchanged Action on a cross-agent handoff (the branch's own agent, not the next session's)", () => {
+    const fixture = createFixture(
+      "claude/define-contract-20260805T123456000Z",
+      planDocument
+    );
+
+    // The next session is handed to a different agent than the one the
+    // stale branch was originally prepared for -- must not let a mismatched
+    // `options.agent` slip the refusal.
+    expectValidation(
+      () => runGoCommand({
+        repo: fixture.main,
+        source: fixture.feature,
+        apply: true,
+        agent: "codex",
+        workspace: fixture.workspace
+      }),
+      "leaves the current Action unchanged"
+    );
+  });
+
+  it("does not refuse a zero-commit branch whose slug merely prefixes a different Action's slug", () => {
+    // "define-contract-extra" is not "define-contract": a prefix match would
+    // wrongly conflate them, but an exact slug comparison must not.
+    const fixture = createFixture(
+      "claude/define-contract-extra-20260805T123456000Z",
+      planDocument
+    );
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace
+    });
+
+    expect(result.data.nextWorktree?.branch).toContain("define-contract");
+  });
+
+  it("does not refuse when the same session's branch made progress commits, even though its Action is still open", () => {
+    const fixture = createFixture("claude/define-contract-20260805T123456000Z", planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace
+    });
+
+    expect(result.data.nextWorktree?.branch).toContain("define-contract");
+  });
+
+  it("does not refuse a zero-commit branch whose Action was already completed by a different session", () => {
+    const fixture = createFixtureWithRemote("claude/define-contract-20260805T123456000Z");
+    settleNextAction(fixture.remote);
+    git(fixture.main, ["switch", "-c", "claude/unrelated-parking"]);
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      workspace: fixture.workspace
+    });
+
+    expect(result.data.dispatch.context?.action.id).toBe("dispatch-next");
+    expect(result.data.nextWorktree).not.toBeNull();
+  });
+
+  it("does not refuse a bare 'what's next' call where the source is already the base branch", () => {
+    const fixture = createFixture("claude/no-op", planDocument);
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.main, apply: true, agent: "claude", workspace: fixture.workspace });
+
+    expect(result.data.integration).toBe("not-needed");
+    expect(result.data.dispatch.context?.action.id).toBe("define-contract");
+  });
+});
+
 describe("arcadia go — refuses to orphan an uncommitted candidate", () => {
   it("reports the exact path of a manually-prepared candidate holding uncommitted changes instead of preparing a second worktree for the same Action", () => {
     const fixture = createFixture("claude/manual-first", planDocument);
