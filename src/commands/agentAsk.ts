@@ -10,9 +10,10 @@ import { invocationRoot } from "../cli/invocation.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   listPendingAgentAskNotifications,
+  listUnsettledAgentAskProposals,
   markAgentAskNotificationSent,
   settleAgentAsk,
   type AgentAskDisposition,
@@ -247,6 +248,67 @@ export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSet
     `Preview fingerprint: ${receipt.previewFingerprint}`,
     `Receipt: ${receipt.id}`
   ];
+}
+
+export interface AgentAskPendingItem {
+  proposalId: string;
+  requestId: string;
+  project: string;
+  intent: string;
+  desiredResult: string;
+  rationale: string | null;
+  requestedAuthority: string;
+  gateQuestion: string | null;
+  options: { label: string; consequence: string; recommended: boolean }[];
+  requiredDecisions: string[];
+  /** The effects proposed at preview/draft time, as stored — cheap to list, no fresh settlement computed. */
+  effects: string[];
+  createdAt: string;
+}
+
+/**
+ * Every Agent Ask proposal awaiting the operator's terminal disposition —
+ * the read side of the `/runs` approval queue
+ * (surface-terminal-operator-approvals-in-runs). A plain decode of each
+ * unsettled proposal's stored record: no settlement preview, no git or queue
+ * work, so listing stays cheap regardless of how many proposals have
+ * accumulated. `agent-ask settle` (without `--apply`) recomputes a fresh
+ * preview for exactly one proposal at approval time instead.
+ */
+export function runAgentAskPendingCommand(options: { workspace: string }): CommandSuccess<{ pending: AgentAskPendingItem[] }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const pending = withReadOnlyDatabase(workspacePath, (db) =>
+    listUnsettledAgentAskProposals(db).map((row): AgentAskPendingItem => {
+      const { proposal } = row;
+      // A stored `proposal_json` can predate a schema field this reader now
+      // expects (Truth: checked-in schema evolves, an old persisted blob does
+      // not) — default defensively rather than let `undefined` reach the
+      // dashboard, which read every field as always present.
+      return {
+        proposalId: row.id,
+        requestId: row.requestId,
+        project: proposal.normalized.project,
+        intent: proposal.normalized.intent,
+        desiredResult: proposal.normalized.desiredResult,
+        rationale: proposal.normalized.rationale ?? null,
+        requestedAuthority: proposal.normalized.requestedAuthority,
+        gateQuestion: proposal.normalized.gateQuestion ?? null,
+        options: proposal.normalized.options ?? [],
+        requiredDecisions: proposal.requiredDecisions ?? [],
+        effects: (proposal.effects ?? []).map((effect) => `${effect.operation} ${effect.targetKind}${effect.targetRef ? ` ${effect.targetRef}` : ""}`),
+        createdAt: row.createdAt
+      };
+    })
+  );
+  return createSuccess({ command: "agent-ask.pending", workspace: workspacePath, data: { pending } });
+}
+
+export function renderAgentAskPendingSuccess(response: CommandSuccess<{ pending: AgentAskPendingItem[] }>): string[] {
+  if (response.data.pending.length === 0) return ["No Agent Ask proposals are awaiting settlement."];
+  return response.data.pending.flatMap((item) => [
+    `${item.requestId} (${item.project}, ${item.intent}): ${item.desiredResult}`,
+    ...item.effects.map((effect) => `  Proposed effect: ${effect}`)
+  ]);
 }
 
 export function runAgentAskNotificationsCommand(options: { workspace: string }): CommandSuccess<{ notifications: PendingAgentAskNotification[] }> {

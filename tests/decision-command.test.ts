@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   runDecisionApproveCommand,
+  runDecisionListCommand,
   runDecisionNewCommand,
   runDecisionValidateCommand
 } from "../src/commands/decision.js";
@@ -312,5 +313,81 @@ describe("decision commands in a candidate worktree", () => {
       process.chdir(previous);
       git(repoRoot, ["worktree", "remove", "--force", candidate]);
     }
+  });
+});
+
+describe("decision list", () => {
+  it("lists only open Decisions, excluding an approved one", () => {
+    const { workspace, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({
+      workspace,
+      project: projectSlug,
+      slug: "open-one",
+      question: "Ship it?",
+      recommendation: "Ship it.",
+      options: [{ label: "Ship", consequence: "Goes live.", recommended: true }, { label: "Wait", consequence: "Stays dark." }]
+    });
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "will-be-approved", question: "Already settled?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0002", answer: "Yes." });
+
+    const result = runDecisionListCommand({ workspace });
+
+    expect(result.data.decisions).toHaveLength(1);
+    expect(result.data.decisions[0]).toMatchObject({
+      id: "0001",
+      projectSlug,
+      question: "Ship it?",
+      recommendation: "Ship it.",
+      options: [
+        { label: "Ship", consequence: "Goes live.", recommended: true, effect: null },
+        { label: "Wait", consequence: "Stays dark.", recommended: false, effect: null }
+      ]
+    });
+  });
+
+  it("returns nothing for a Project with no configured repo_path", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-decision-list-"));
+    temporary.push(root);
+    const workspace = path.join(root, "ws");
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      upsertProject(db, {
+        name: "Unconfigured",
+        mission: "Has no repo_path.",
+        status: "active",
+        currentMilestone: "Initial",
+        nextAction: "Start",
+        workClassification: "agent"
+      });
+    });
+
+    const result = runDecisionListCommand({ workspace });
+
+    expect(result.data.decisions).toEqual([]);
+  });
+
+  it("scopes to one Project when --project is given", () => {
+    const first = workspaceWithProject();
+    // A second Project sharing the same workspace database, with its own repo.
+    const secondRepo = path.join(scratch(), "repo-two");
+    mkdirSync(secondRepo, { recursive: true });
+    withDatabase(first.workspace, (db) => {
+      const project = upsertProject(db, {
+        name: "Second",
+        mission: "Also has Decisions.",
+        status: "active",
+        currentMilestone: "Initial",
+        nextAction: "Start",
+        workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: secondRepo });
+    });
+    runDecisionNewCommand({ workspace: first.workspace, project: first.projectSlug, slug: "in-first", question: "First project's question?" });
+    runDecisionNewCommand({ workspace: first.workspace, project: "second", slug: "in-second", question: "Second project's question?" });
+
+    const result = runDecisionListCommand({ workspace: first.workspace, project: first.projectSlug });
+
+    expect(result.data.decisions).toHaveLength(1);
+    expect(result.data.decisions[0].question).toBe("First project's question?");
   });
 });

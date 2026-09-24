@@ -1218,22 +1218,18 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/411", "src/commands/worker.ts", "src/sessions/preservationTransport.ts", "src/commands/goBrokerInstall.ts"]
   - id: surface-terminal-operator-approvals-in-runs
     title: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, and the exact canonical settlement effect.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Add a /runs approval queue that presents only terminal operator-only approvals, each with its essential recommended option and a details expansion containing evidence, costs, consequences, alternatives, exact canonical settlement effect, and a bounded operator-script control when Arcadia can derive a scriptable step.
+    next_action: Add the /runs approval queue's listing, recommended-option details, and canonical settlement wiring for pending Agent Asks and open Decisions.
     expected_artifact: Evidence satisfying Agent Ask surface-terminal-operator-approvals-in-runs
     clarification: clarified
     confidence: high
-    source: Agent Ask add-runs-operator-script-controls-v3-2026-09-19
+    source: Agent Ask split-surface-terminal-operator-approvals-in-runs-2026-09-24-v3
     acceptance_criteria:
       - /runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.
       - Each queue item offers one minimal recommended action plus an expandable details view that states evidence, cost, consequence, alternatives, and what the canonical settlement will change.
       - Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt.
-      - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
-      - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
-      - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
-      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
     depends_on: []
     decisions: []
     references: ["apps/dashboard/app/runs", "apps/dashboard/components", "src/agentAsk", "src/dashboard/snapshot.ts", "src/commands/agentAsk.ts", "docs/plans/mission-control-view/17-managed-production-contract.md", "scripts/services.sh", "src/commands/worker.ts", "artifacts/generated/operator-scripts"]
@@ -1924,7 +1920,45 @@ actions:
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617."
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/617", "https://github.com/pmark/arcadia/issues/485", "src/commands/worker.ts"]
+  - id: generate-operator-scripts-for-runs-approvals
+    title: Extend the /runs approval queue to derive bounded operator scripts for scriptable approval steps, expose full descriptor detail, and cover the remaining acceptance criteria with tests.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Extend the /runs approval queue to derive bounded operator scripts for scriptable approval steps, expose full descriptor detail, and cover the remaining acceptance criteria with tests.
+    expected_artifact: Evidence satisfying Agent Ask generate-operator-scripts-for-runs-approvals
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-surface-terminal-operator-approvals-in-runs-2026-09-24-v3
+    acceptance_criteria:
+      - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
+      - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
+      - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
+      - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
+    depends_on: [surface-terminal-operator-approvals-in-runs]
+    decisions: []
+    references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
+  - id: gate-dispatch-on-blocking-operator-items
+    title: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
+    expected_artifact: Evidence satisfying Agent Ask gate-dispatch-on-blocking-operator-items
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-blocking-vs-alert-operator-gate-2026-09-24
+    acceptance_criteria:
+      - One shared function classifies every pending operator-only item (unsettled Agent Ask proposals, open Decisions) as blocking or alert, reusing the exact data surface-terminal-operator-approvals-in-runs already built rather than re-deriving it.
+      - "An item is blocking when it names, or its Decision's action: field names, an Action the current dispatch resolution would otherwise select, or when it is the reason no Action in the current queue segment is eligible; every other pending item is an alert."
+      - When one or more blocking items exist, arcadia go/advance/next refuses to hand off a dispatch brief for agent work and instead prints each blocking item's title, recommended option and consequence, and the exact command to settle it — matching the existing per-Action blocker/operatorQuestion contract, not a second one.
+      - When only alert items exist, dispatch proceeds normally and the resolution additionally lists each alert's title and one-line consequence, newest first, capped at a small fixed count with a count of any remainder.
+      - This one gate is shared by the CLI (go, advance, next), the dashboard's equivalent status calls, and the Discord bot's dispatch-brief posting — none of them re-implements its own copy.
+      - "Regression tests cover: a blocking item suppresses dispatch and is named exactly; an alert-only state dispatches normally with the alert list attached; zero pending items adds neither section; an item blocking one Project does not suppress dispatch for an unrelated Project."
+    depends_on: []
+    decisions: []
+    references: ["apps/dashboard/app/api/approvals/route.ts", "src/commands/agentAsk.ts", "src/commands/decision.ts", "src/docs/dispatch.ts", "src/commands/go.ts", "src/commands/advance.ts", "apps/discord-bot"]
 questions: []
 decisions: []
 current_action: release-committed-admissions-on-session-end

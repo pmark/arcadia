@@ -1545,6 +1545,34 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
     });
 }
 
+export interface UnsettledAgentAskProposal { id: string; requestId: string; proposal: AgentAskProposal; createdAt: string; }
+
+/**
+ * Every Agent Ask proposal previewed or drafted but never settled — the
+ * terminal-approval surface `/runs` reads (surface-terminal-operator-approvals-in-runs).
+ * A row here means a coding agent stopped short of `settle --apply`, which is
+ * exactly the situation `apply_if_approved` authority or a genuinely stuck
+ * intent produces; ordinary auto-settled Asks never appear, since a
+ * settlement row exists for them the moment `settleAgentAsk` applies.
+ */
+export function listUnsettledAgentAskProposals(db: Database.Database): UnsettledAgentAskProposal[] {
+  return db.prepare(`SELECT p.id, p.request_id, p.proposal_json, p.created_at
+      FROM agent_ask_proposals p
+      LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id
+      WHERE s.id IS NULL
+      ORDER BY p.created_at ASC, p.id ASC`)
+    .all()
+    .map((row) => {
+      const value = row as { id: string; request_id: string; proposal_json: string; created_at: string };
+      return {
+        id: value.id,
+        requestId: value.request_id,
+        proposal: JSON.parse(value.proposal_json) as AgentAskProposal,
+        createdAt: value.created_at
+      };
+    });
+}
+
 export function markAgentAskNotificationSent(db: Database.Database, settlementId: string, messageId: string): void {
   const result = db.prepare(`UPDATE agent_ask_settlements
     SET notification_status = 'sent', discord_message_id = ?, notified_at = ?

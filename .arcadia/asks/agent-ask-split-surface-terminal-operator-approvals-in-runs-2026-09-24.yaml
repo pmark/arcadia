@@ -1,0 +1,50 @@
+{
+  "agent_ask": "v1",
+  "request_id": "split-surface-terminal-operator-approvals-in-runs-2026-09-24",
+  "project": "arcadia",
+  "intent": "split",
+  "target_ref": "action/surface-terminal-operator-approvals-in-runs",
+  "candidate_revision": "6d9f9f10f6241bb488759d24b25ab0cc9ca6fd88",
+  "desired_result": "Add the /runs approval queue's listing, recommended-option details, and canonical settlement wiring for pending Agent Asks and open Decisions.",
+  "acceptance": [
+    "/runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.",
+    "Each queue item offers one minimal recommended action plus an expandable details view that states evidence, costs, consequences, alternatives, and the exact canonical settlement effect.",
+    "Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt."
+  ],
+  "evidence": [
+    {
+      "criterion": "/runs lists every pending Agent Ask and other terminal operator-only approval that blocks managed production, while excluding mechanics agents may safely perform.",
+      "status": "met",
+      "note": "New /api/approvals GET combines `agent-ask pending` (every unsettled Agent Ask proposal) and `decision list --status open` (every open Decision across configured Projects) into one queue; existing review/codex-packet/blocked-work attention items, which agents may act on directly, are not included."
+    },
+    {
+      "criterion": "Each queue item offers one minimal recommended action plus an expandable details view that states evidence, costs, consequences, alternatives, and the exact canonical settlement effect.",
+      "status": "met",
+      "note": "ApprovalQueue renders the recommended option's label/consequence plus an Approve button; Details expands rationale, gate question, cost (both settlement paths are deterministic CLI writes, never a model call), evidence (the proposal's stored effects), and every non-recommended option as a clickable alternative."
+    },
+    {
+      "criterion": "Choosing an option invokes the existing fingerprinted canonical settlement path, preserves approval boundaries, and records one durable receipt.",
+      "status": "met",
+      "note": "Approving an Agent Ask runs the two-phase `agent-ask settle` (preview then apply against the fresh fingerprint) via the dashboard's existing CLI-shellout boundary; approving a Decision runs `decision approve` after re-confirming it is still open. Neither path grants new authority; both already exist and already write one durable record (agent_ask_settlements row / the Decision file's own frontmatter)."
+    }
+  ],
+  "actions": [
+    {
+      "id": "generate-operator-scripts-for-runs-approvals",
+      "desired_result": "Extend the /runs approval queue to derive bounded operator scripts for scriptable approval steps, expose full descriptor detail, and cover the remaining acceptance criteria with tests.",
+      "acceptance": [
+        "For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.",
+        "A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.",
+        "The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.",
+        "Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution."
+      ],
+      "dependencies": ["surface-terminal-operator-approvals-in-runs"],
+      "references": [
+        "apps/dashboard/app/api/approvals",
+        "apps/dashboard/components/approval-queue.tsx",
+        "apps/dashboard/app/api/operator-script",
+        "artifacts/generated/operator-scripts"
+      ]
+    }
+  ]
+}
