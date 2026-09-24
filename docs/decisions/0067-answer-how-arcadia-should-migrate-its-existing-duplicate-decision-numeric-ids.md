@@ -4,7 +4,7 @@ type: decision
 id: "0067"
 slug: answer-how-arcadia-should-migrate-its-existing-duplicate-decision-numeric-ids
 project: arcadia
-status: open
+status: approved
 question: Answer how Arcadia should migrate its existing duplicate Decision numeric ids and resolve review item R195's now-dangling reference, so docs sync's new duplicate-id and dangling-reference checks (Issue 268 and Issue 267) have somewhere to point once historical cleanup is authorized.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-24
+answer: Renumber the later duplicates to free ids
+decided: 2026-09-24
 ---
 
 # Decision 0067: Answer how Arcadia should migrate its existing duplicate Decision numeric ids and resolve review item R195's now-dangling reference, so docs sync's new duplicate-id and dangling-reference checks (Issue 268 and Issue 267) have somewhere to point once historical cleanup is authorized.
