@@ -606,6 +606,7 @@ function attemptProjectLaunch(
   });
   if (autoSettle.settled) {
     resetRepairAttempts(db, actionKey);
+    clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
     input.log(`Auto-settled ${actionKey} from a drafted complete Ask (${autoSettle.askPath}); no Session launched.`);
     return { attempted: false, outcome: "auto_settled", reason: `Settled from a drafted complete Ask. Next: ${autoSettle.nextActionKey ?? "none"}.`, actionKey };

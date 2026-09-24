@@ -40,19 +40,27 @@ interface DraftedCompleteAsk {
   normalized: NormalizedAgentAsk;
 }
 
-function findDraftedCompleteAsk(
+/**
+ * Every `.arcadia/asks/` draft targeting this Action, in filename order --
+ * not just the first one found. More than one can legitimately exist (a
+ * stale draft left behind by an earlier, abandoned attempt alongside a
+ * later, correct one), and the first match is not necessarily the one whose
+ * evidence and revision are actually eligible to settle.
+ */
+function findMatchingCompleteAskDrafts(
   repoRoot: string,
   projectSlug: string,
   activePlanSlug: string,
   actionId: string
-): DraftedCompleteAsk | null {
+): DraftedCompleteAsk[] {
   const dir = path.join(repoRoot, AGENT_ASK_ASKS_DIR);
-  if (!existsSync(dir)) return null;
+  if (!existsSync(dir)) return [];
   const targetRefs = new Set([`action/${actionId}`, `plan/${activePlanSlug}#${actionId}`]);
   const files = readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
     .map((entry) => path.join(dir, entry.name))
     .sort();
+  const matches: DraftedCompleteAsk[] = [];
   for (const filePath of files) {
     let content: string;
     let normalized: NormalizedAgentAsk;
@@ -67,9 +75,9 @@ function findDraftedCompleteAsk(
     if (normalized.intent !== "complete") continue;
     if (!normalized.targetRef || !targetRefs.has(normalized.targetRef)) continue;
     if (normalized.project !== "unknown" && normalized.project !== projectSlug) continue;
-    return { path: filePath, content, normalized };
+    matches.push({ path: filePath, content, normalized });
   }
-  return null;
+  return matches;
 }
 
 function evidenceCoversCriteriaVerbatim(evidence: NormalizedAgentAsk["evidence"], declared: string[]): boolean {
@@ -120,9 +128,27 @@ export function attemptAutoSettlePendingCompletion(
   db: Database.Database,
   input: AutoSettlePendingCompletionInput
 ): AutoSettlePendingCompletionResult {
-  const draft = findDraftedCompleteAsk(input.repoRoot, input.projectSlug, input.activePlanSlug, input.action.id);
-  if (!draft) return { settled: false, reason: AUTO_SETTLE_NO_DRAFT };
+  const candidates = findMatchingCompleteAskDrafts(input.repoRoot, input.projectSlug, input.activePlanSlug, input.action.id);
+  if (candidates.length === 0) return { settled: false, reason: AUTO_SETTLE_NO_DRAFT };
 
+  // Try every matching draft in order rather than stopping at the first: an
+  // earlier, abandoned attempt can leave a draft with incomplete evidence or
+  // a genuinely divergent revision sitting alongside a later, correct one.
+  // Only report the first candidate's ineligibility if none of them settle.
+  let lastResult: AutoSettlePendingCompletionResult = { settled: false, reason: AUTO_SETTLE_NO_DRAFT };
+  for (const draft of candidates) {
+    const attempt = attemptSettleOneDraft(db, input, draft);
+    if (attempt.settled) return attempt;
+    lastResult = attempt;
+  }
+  return lastResult;
+}
+
+function attemptSettleOneDraft(
+  db: Database.Database,
+  input: AutoSettlePendingCompletionInput,
+  draft: DraftedCompleteAsk
+): AutoSettlePendingCompletionResult {
   if (!evidenceCoversCriteriaVerbatim(draft.normalized.evidence, input.action.acceptanceCriteria)) {
     return { settled: false, reason: AUTO_SETTLE_EVIDENCE_INCOMPLETE, askPath: draft.path };
   }

@@ -15,6 +15,7 @@ import { loadPhase3Registries, validatePhase3Registries } from "../intent/regist
 import {
   getActiveWorktreeReservation,
   getLatestSession,
+  getRepositoryLease,
   getSession,
   resolveProjectTransition,
   sessionView,
@@ -259,9 +260,14 @@ export function runSessionLaunchCommand(options: {
     // was interrupted) before settling. A dispatch resolution with no context
     // (an unresolvable pointer, a Decision, a Plan boundary) has nothing to
     // check here; `launchGuardedHostSession` below reports that refusal with
-    // its own, unaffected field-level detail.
+    // its own, unaffected field-level detail. A repository that already holds
+    // a live lease is skipped too: `settleAgentAsk`'s claim fence only checks
+    // a claim held by *this* checkout, so settling from here while a different
+    // worktree's Session still owns the lease could advance the pointer out
+    // from under it -- fall through so `launchGuardedHostSession`'s own reuse
+    // or conflict handling applies instead.
     const dispatch = resolveDispatch(repoRoot, project.slug);
-    if (dispatch.context) {
+    if (dispatch.context && !getRepositoryLease(db, repoRoot)) {
       const autoSettle = attemptAutoSettlePendingCompletion(db, {
         repoRoot,
         projectSlug: project.slug,

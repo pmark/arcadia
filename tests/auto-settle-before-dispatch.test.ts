@@ -60,6 +60,22 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(stillDrafted).toEqual([]);
   });
 
+  it("skips an ineligible draft targeting the same Action and settles a later eligible one", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, extraIneligibleDraft: true });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED, nextActionKey: "demo/second" });
+    expect(result.askPath).toContain("agent-ask-complete-first.yaml");
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({ currentAction: "second" });
+    // The ineligible draft is untouched -- only the eligible one is archived.
+    expect(execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" }))
+      .toContain("agent-ask-complete-aaa-ineligible-first.yaml");
+  });
+
   it("is idempotent: calling it again once the Action is already done finds no drafted Ask left to settle", () => {
     const { repo, workspace } = fixture({ draftAsk: true });
     withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, { repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION }));
@@ -130,6 +146,10 @@ function fixture(options: {
   wrongCriterion?: boolean;
   divergentCandidateRevision?: boolean;
   withOpenDecision?: boolean;
+  /** Also write a second, alphabetically-earlier draft targeting the same
+   * Action with evidence that cannot settle, to prove it is skipped rather
+   * than stopping the scan. */
+  extraIneligibleDraft?: boolean;
 }): { repo: string; workspace: string; draftHead: string; currentHead: string; divergentSha?: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-auto-settle-"));
   roots.push(root);
@@ -170,13 +190,23 @@ function fixture(options: {
 
   if (options.draftAsk) {
     const candidateRevision = options.divergentCandidateRevision ? divergentSha! : draftHead;
+    const added = [".arcadia/asks/agent-ask-complete-first.yaml"];
     writeFileSync(
       path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml"),
       completeAsk("complete-first", options.wrongCriterion ? "A different criterion entirely." : "First proof exists.", candidateRevision),
       "utf8"
     );
-    execFileSync("git", ["add", ".arcadia/asks/agent-ask-complete-first.yaml"], { cwd: repo });
-    execFileSync("git", ["commit", "-qm", "Draft complete Ask for first"], { cwd: repo });
+    if (options.extraIneligibleDraft) {
+      // Sorts before the eligible draft above, so the scan meets it first.
+      added.push(".arcadia/asks/agent-ask-complete-aaa-ineligible-first.yaml");
+      writeFileSync(
+        path.join(repo, ".arcadia/asks/agent-ask-complete-aaa-ineligible-first.yaml"),
+        completeAsk("complete-aaa-ineligible-first", "A different criterion entirely.", candidateRevision),
+        "utf8"
+      );
+    }
+    execFileSync("git", ["add", ...added], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Draft complete Ask(s) for first"], { cwd: repo });
   }
 
   // A commit that lands after the draft -- the ordinary reason
