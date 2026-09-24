@@ -79,6 +79,12 @@ Governance writes landed on `main` before this document was changed:
   `release-committed-admissions-on-session-end` (`54bc4b6c`, receipt
   `qpointer_50204854…`). The superseded pointer Action is still queued, just
   after the blockers.
+- **One later placement is not this derivation's.** A concurrent session
+  settled `add-blocking-vs-alert-operator-gate-2026-09-24` afterwards and
+  queued `gate-dispatch-on-blocking-operator-items` second, between blockers 1
+  and 2. It is not a production blocker. It was left where it was placed
+  rather than overridden; moving it behind entry 7 is one
+  `arcadia advance queue reorder`.
 - **Took `prove-zero-prompt-production-loop` off the critical path.** It is
   *not* a dependency of `prove-two-action-unattended-production`, whose
   `depends_on` names only `feed-and-supervise-managed-production` and
@@ -99,7 +105,7 @@ Governance writes landed on `main` before this document was changed:
 | 3 — A finished Session lands with no operator | 🔴 **reopened by live evidence.** Its Actions are done, but #539, #611, #572 and #610 each broke landing in a real run. Blockers 1–4 and 7 above close it again. |
 | 4 — It keeps going without help | 🔴 **reopened by live evidence.** #617 (busy workers killed) and #559 (silent per-tick refusal). Blockers 5–6 close it again. |
 | 5 — Proof | ⬜ open. `prove-two-action-unattended-production` (deferred; revives after blockers 1–7), then `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` (both blocked on it). |
-| 6 — The operator surface | ⬜ open, off the critical path. `surface-terminal-operator-approvals-in-runs` (ready, queued after the blockers), `expose-bootstrap-production-controls` and `freeze-production-runtime-and-handoff-flight-deck` (both blocked on the proof). |
+| 6 — The operator surface | ⬜ open, off the critical path. `surface-terminal-operator-approvals-in-runs` is done (split; PR #616). Its remainder `generate-operator-scripts-for-runs-approvals` is queued after the blockers. `expose-bootstrap-production-controls` and `freeze-production-runtime-and-handoff-flight-deck` are blocked on the proof. |
 
 A gate is closed when the live system does what the gate says, not when its
 Actions are marked done. Gates 3 and 4 were marked closed on Action status
@@ -170,7 +176,8 @@ seven sequential sessions.
 - `treat-blocked-status-as-undispatchable` (#494) and
   `serialize-decision-deferral-pointer-write` (#505). They are queued right
   behind the blockers as cheap hardening and do not gate the proof.
-- Gate 6: `surface-terminal-operator-approvals-in-runs`,
+- `gate-dispatch-on-blocking-operator-items` (queued second, see above).
+- Gate 6: `generate-operator-scripts-for-runs-approvals`,
   `expose-bootstrap-production-controls`,
   `freeze-production-runtime-and-handoff-flight-deck`.
 - `settle-commit-survives-gitignored-asks` (#512). Arcadia does not gitignore
@@ -233,14 +240,14 @@ admissions. The 170s and 292s stalls may be real hangs. Both are owned by
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 101 (each `- id:` paired with the `status:` line that follows it) |
-| Done | 76 |
-| Open | 24 (18 before this derivation, plus 6 filed) |
+| Actions in the active Plan | 103 (each `- id:` paired with the `status:` line that follows it) |
+| Done | 77 |
+| Open | 25 (6 filed by this derivation; 2 more from concurrent settlements, 1 closed) |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
 | **On the critical path, code** | **7**, all ready, at queue front, pointer on the first |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal) |
 | **On the critical path, proof** | **1** (`prove-two-action-unattended-production`) |
-| Unfinished, off the critical path | 17 (includes the two post-claim proofs) |
+| Unfinished, off the critical path | 18 (includes the two post-claim proofs) |
 
 ---
 
