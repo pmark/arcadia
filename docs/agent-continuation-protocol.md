@@ -110,6 +110,22 @@ the PR merges — against an already-moved-on main branch, in a session that
 did none of the work — costs a full extra round trip for evidence that was
 already knowable before the PR opened.
 
+**If a session ends after drafting its completion but before settling it**
+(a crash, an exhausted context window, a killed process), nothing is lost and
+no manual repair is required. Before dispatching a *new* coding-agent Session
+for that same Action, the host-side go/advance path — both the managed
+production worker and an operator's manual `arcadia session launch` — checks
+for exactly this: a drafted `complete` Ask in `.arcadia/asks/` whose evidence
+already verbatim-covers every declared criterion. When one is found, it is
+settled right there, deterministically and with no coding-agent process,
+instead of launching a redundant Session to redo paperwork that was already
+finished. A `candidate_revision` that only went stale because later commits
+landed on top of it is refreshed to current `HEAD` first, but only when that
+stale revision is still an ancestor of `HEAD`; anything else — incomplete
+evidence, a genuinely divergent revision, an unresolved required review
+Decision — falls through to an ordinary dispatch untouched. This is a safety
+net for the case above, not a substitute for settling before pushing.
+
 ### When a milestone completes
 
 A merged pull request, a ratified Decision, or a plan reaching its stated

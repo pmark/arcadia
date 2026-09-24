@@ -1,0 +1,37 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-auto-settle-pending-completions-before-dispatch-2026-09-24-v2",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/auto-settle-pending-completions-before-dispatch",
+  "candidate_revision": "d6a18ded2859ea42457c909d6444b09e226e121e",
+  "desired_result": "Mark auto-settle-pending-completions-before-dispatch complete.",
+  "evidence": [
+    {
+      "criterion": "Given a repository whose current pointer Action already has a drafted complete Ask in .arcadia/asks/, and whose evidence criteria match the Action's declared acceptance criteria verbatim, and whose candidate_revision differs from HEAD only because later commits landed after the draft, go/advance settles it deterministically and re-resolves the pointer without launching any coding-agent process.",
+      "status": "met",
+      "note": "attemptAutoSettlePendingCompletion (src/ask/autoSettleBeforeDispatch.ts) refreshes candidate_revision to HEAD when the draft's revision is an ancestor of HEAD, then settles via previewAgentAskRequest/settleAgentAsk; proven by tests/auto-settle-before-dispatch.test.ts's first test and tests/production-tick.test.ts's new integration test."
+    },
+    {
+      "criterion": "The same path refuses to auto-settle (and falls through to normal dispatch) when the preview reports any conflict, any required Decision, or evidence that does not verbatim-cover every declared acceptance criterion.",
+      "status": "met",
+      "note": "Proven by tests/auto-settle-before-dispatch.test.ts's evidence-incomplete, divergent-revision, and unresolved-Decision fallthrough tests."
+    },
+    {
+      "criterion": "A repository with no drafted complete Ask for the current pointer, or no locally resolvable Arcadia workspace, dispatches exactly as it does today with no behavior change.",
+      "status": "met",
+      "note": "Proven by the no-draft fallthrough test; both call sites (src/production/tick.ts, src/commands/advance.ts) only invoke the check once a workspace/db is already resolved, so an unresolvable workspace never reaches this code -- identical to today's behavior."
+    },
+    {
+      "criterion": "A test proves the auto-settle path end-to-end against a fixture repo: stale candidate_revision, clean re-preview, settled commit, pointer advanced -- and a second test proves the fallthrough when evidence is incomplete or a conflict exists.",
+      "status": "met",
+      "note": "tests/auto-settle-before-dispatch.test.ts has 6 tests: end-to-end settle, idempotency, no-draft, incomplete-evidence, divergent-revision, and unresolved-Decision fallthrough."
+    },
+    {
+      "criterion": "docs/agent-continuation-protocol.md and AGENTS.md's 'One session completes one Action' section are updated to describe when a session's settlement instead happens automatically before that session is ever launched.",
+      "status": "met",
+      "note": "Both updated; AGENTS.md's managed region was regenerated from docs/agents-context.md via `pnpm arcadia project setup-context --repo .` to stay byte-identical per tests/arcadia-way-propagation.test.ts."
+    }
+  ],
+  "requested_authority": "apply_if_approved"
+}

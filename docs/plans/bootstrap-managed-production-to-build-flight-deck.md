@@ -686,7 +686,7 @@ actions:
     references: []
   - id: auto-settle-pending-completions-before-dispatch
     title: Before dispatching a coding-agent Session for an Action, the host-side go/advance path detects a drafted complete Agent Ask for the current pointer whose declared acceptance criteria are all covered verbatim, refreshes a stale candidate_revision against current HEAD when the Action's own commit is already on the branch, previews it, and settles it deterministically with no LLM session -- only falling through to a normal agent dispatch when settlement isn't clean or doesn't apply.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Before dispatching a coding-agent Session for an Action, the host-side go/advance path detects a drafted complete Agent Ask for the current pointer whose declared acceptance criteria are all covered verbatim, refreshes a stale candidate_revision against current HEAD when the Action's own commit is already on the branch, previews it, and settles it deterministically with no LLM session -- only falling through to a normal agent dispatch when settlement isn't clean or doesn't apply.

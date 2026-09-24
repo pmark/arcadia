@@ -456,6 +456,24 @@ the session, and have a later session file a `complete` Ask against the merged
 main branch — cost an extra session and an extra round trip for no reason: the
 same evidence was knowable before the PR ever opened.
 
+Settling before pushing is still the rule to follow deliberately, not a step
+to skip because a safety net exists. That said, a session can still end (a
+crash, an exhausted context window, a killed process) after drafting its
+completion but before running `settle --apply`. Before either the managed
+production worker or an operator's manual `arcadia session launch` dispatches
+a *new* coding-agent Session for an Action, it first checks the target
+repository for exactly this: a drafted `complete` Ask already sitting in
+`.arcadia/asks/` whose evidence verbatim-covers every criterion the Action
+still declares. When one exists, that settlement runs there and then —
+deterministically, with no coding-agent process and no LLM call — and the
+would-be Session is never started. A `candidate_revision` that has merely
+gone stale because later commits landed on top of it (a CodeRabbit-loop fix,
+a governance reconciliation) is refreshed to current `HEAD` first, but only
+when that stale revision is still an ancestor of `HEAD`; anything else —
+missing or incomplete evidence, a genuinely divergent revision, an unresolved
+required review Decision — falls through to an ordinary dispatch untouched.
+See `attemptAutoSettlePendingCompletion` in `src/ask/autoSettleBeforeDispatch.ts`.
+
 ## Asking for a capability the Way does not have
 
 Arcadia will not have every capability you need. When it does not, **file a
