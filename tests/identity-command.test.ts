@@ -10,7 +10,12 @@ describe("arcadia identity resolve", () => {
       tier: "standard",
       name: "Claudia Mason",
       email: "claudia.mason@agents.arcadia.local",
-      gitConfigArgs: ["-c", "user.name=Claudia Mason", "-c", "user.email=claudia.mason@agents.arcadia.local"]
+      gitEnv: {
+        GIT_AUTHOR_NAME: "Claudia Mason",
+        GIT_AUTHOR_EMAIL: "claudia.mason@agents.arcadia.local",
+        GIT_COMMITTER_NAME: "Claudia Mason",
+        GIT_COMMITTER_EMAIL: "claudia.mason@agents.arcadia.local"
+      }
     });
   });
 
@@ -32,10 +37,15 @@ describe("arcadia identity resolve", () => {
     expect(() => runIdentityResolveCommand({ agent: "claude" })).toThrow(ArcadiaError);
   });
 
-  it("renders a copy-pasteable git -c invocation", () => {
+  it("renders a fully executable, copy-pasteable env-prefixed git commit", () => {
     const response = runIdentityResolveCommand({ agent: "claude", tier: "standard" });
     const lines = renderIdentityResolveSuccess(response);
     expect(lines[0]).toBe("Claudia Mason <claudia.mason@agents.arcadia.local>");
-    expect(lines[1]).toBe('git -c user.name="Claudia Mason" -c user.email="claudia.mason@agents.arcadia.local" commit ...');
+    expect(lines[1]).toBe(
+      'GIT_AUTHOR_NAME="Claudia Mason" GIT_AUTHOR_EMAIL="claudia.mason@agents.arcadia.local" ' +
+        'GIT_COMMITTER_NAME="Claudia Mason" GIT_COMMITTER_EMAIL="claudia.mason@agents.arcadia.local" git commit'
+    );
+    // No dangling placeholder token: this is a real command Git will run as-is.
+    expect(lines[1].endsWith("...")).toBe(false);
   });
 });

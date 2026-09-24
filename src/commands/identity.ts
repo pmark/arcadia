@@ -2,6 +2,7 @@ import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
+  agentIdentityEnvironment,
   resolveAgentIdentity,
   resolveSessionAgentIdentity,
   type AgentGitIdentity
@@ -16,7 +17,8 @@ export interface IdentityResolveOptions {
 }
 
 export interface IdentityResolveData extends AgentGitIdentity {
-  gitConfigArgs: string[];
+  /** GIT_AUTHOR_ and GIT_COMMITTER_ variables to prefix onto one `git` invocation. */
+  gitEnv: Record<string, string>;
 }
 
 /**
@@ -30,8 +32,16 @@ export interface IdentityResolveData extends AgentGitIdentity {
  * anything else outside the launcher — has no such environment, so its
  * commits fall back to whatever `git config` says: the operator's own
  * identity. This command is that lookup, so an interactive agent can prefix
- * its own `git commit`/`git -c` invocations with the same name every
- * launched Session would have used, instead of committing as the operator.
+ * its own `git commit` with the same identity every launched Session would
+ * have used, instead of committing as the operator.
+ *
+ * The prefix is `GIT_AUTHOR_*`/`GIT_COMMITTER_*` environment variables, not
+ * `git -c user.*`: Git resolves `author.*`/`committer.*` config (if the
+ * repository sets those more specific keys) and any already-exported
+ * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` — e.g. left over from an Arcadia launch
+ * whose tier no longer matches a since-switched model — ahead of `user.*`,
+ * so a `-c user.*` override can silently lose. Re-exporting the same four
+ * environment variables on the commit itself outranks all of that.
  *
  * A noun: it reads the tier registry and prints an identity. It never writes
  * Git configuration itself.
@@ -45,14 +55,9 @@ export function runIdentityResolveCommand(options: IdentityResolveOptions): Comm
         effort: options.effort ?? null
       });
 
-  const gitConfigArgs = [`user.name=${identity.name}`, `user.email=${identity.email}`].flatMap((entry) => [
-    "-c",
-    entry
-  ]);
-
   return createSuccess({
     command: "identity resolve",
-    data: { ...identity, gitConfigArgs }
+    data: { ...identity, gitEnv: agentIdentityEnvironment(identity) }
   });
 }
 
@@ -75,6 +80,9 @@ function requireModel(model: string | null | undefined): string {
 }
 
 export function renderIdentityResolveSuccess(response: CommandSuccess<IdentityResolveData>): string[] {
-  const { name, email } = response.data;
-  return [`${name} <${email}>`, `git -c user.name=${JSON.stringify(name)} -c user.email=${JSON.stringify(email)} commit ...`];
+  const { name, email, gitEnv } = response.data;
+  const prefix = Object.entries(gitEnv)
+    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+    .join(" ");
+  return [`${name} <${email}>`, `${prefix} git commit`];
 }

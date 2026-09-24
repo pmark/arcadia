@@ -91,9 +91,13 @@ for it, so it must resolve its own identity and apply it on every commit:
 arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>
 ```
 
-then pass the printed `-c user.name=… -c user.email=…` to `git commit`
-(never rewrite global or repository `git config`, which would misattribute
-the operator's own commits too). Pick the tier from whichever model is
+then prefix the printed `GIT_AUTHOR_NAME=… GIT_AUTHOR_EMAIL=…
+GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto `git commit` itself (never
+rewrite global or repository `git config`, which would misattribute the
+operator's own commits too, and never use `git -c user.*` — Git resolves
+`author.*`/`committer.*` config and any already-exported `GIT_AUTHOR_*` ahead
+of `user.*`, so a `-c user.*` override can silently lose to a stale identity
+from an earlier launch or session). Pick the tier from whichever model is
 actually doing the work for this turn — it can change mid-session (a model
 switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
 the tier from earlier in the session still holds. An identity the command

@@ -36,9 +36,16 @@ constraints arrive with the objective rather than depending on this file.
   superseded here: resolve `arcadia identity resolve --agent claude --tier
   <light|standard|heavy>` (light for Haiku, standard for Sonnet, heavy for
   Opus — whatever this session's active model is, including after `/fast` or
-  a mid-session model switch) and pass its `-c user.name=… -c user.email=…`
-  on every `git commit`, so `git log` names the agent and tier instead of the
-  operator. Still close the commit body and PR description with the
+  a mid-session model switch) and prefix its printed `GIT_AUTHOR_NAME=…
+  GIT_AUTHOR_EMAIL=… GIT_COMMITTER_NAME=… GIT_COMMITTER_EMAIL=…` onto every
+  `git commit`, so `git log` names the agent and tier instead of the
+  operator. Use those four environment variables, not `git -c user.*` — Git
+  resolves `author.*`/`committer.*` config and any already-exported
+  `GIT_AUTHOR_*`/`GIT_COMMITTER_*` (for instance, left over from an Arcadia
+  launch whose tier no longer matches a since-switched model) ahead of
+  `user.*`, so a `-c user.*` override can silently lose; re-exporting the
+  same four variables on the commit itself outranks all of that. Still close
+  the commit body and PR description with the
   attribution lines this session's own system reminder specifies — that
   trailer and the commit author are two different things, and this rule only
   changes the author.
