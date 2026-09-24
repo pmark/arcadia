@@ -1732,6 +1732,41 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/codex/packets.ts", "src/sessions/packetLifecycle.ts", "src/production/tick.ts", "docs/planning-process.md", "https://github.com/pmark/arcadia/issues/584"]
+  - id: page-runs-this-push-list
+    title: Replace the Runs page This push section with an infinitely scrolling list of past and future Actions, fetched in pages instead of all at once.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Replace the Runs page This push section with an infinitely scrolling list of past and future Actions, fetched in pages instead of all at once.
+    expected_artifact: Evidence satisfying Agent Ask page-runs-this-push-list
+    clarification: clarified
+    confidence: high
+    source: Agent Ask runs-page-ux-2026-09-23
+    acceptance_criteria:
+      - The This push section renders its first page without waiting for the full queue and history to load.
+      - Scrolling to the end of the list fetches and appends the next page of past or future Actions, with no duplicates or gaps.
+      - The list API accepts a page cursor and limit and is covered by tests for first, middle, and last pages.
+      - The section still shows its loading, empty, and error states.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: tab-runs-page-concerns
+    title: Split the Runs page into tabs so each concern (This push, Active now, Recent history, Operator actions) is viewed on its own.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Split the Runs page into tabs so each concern (This push, Active now, Recent history, Operator actions) is viewed on its own.
+    expected_artifact: Evidence satisfying Agent Ask tab-runs-page-concerns
+    clarification: clarified
+    confidence: high
+    source: Agent Ask runs-page-ux-2026-09-23
+    acceptance_criteria:
+      - The Runs page shows one tab per concern and only the selected tab content is rendered.
+      - The selected tab is reflected in the URL so a reload or shared link opens the same tab.
+      - Tabs are keyboard accessible and usable at phone width.
+    depends_on: [page-runs-this-push-list]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 current_action: divide-instead-of-stall
