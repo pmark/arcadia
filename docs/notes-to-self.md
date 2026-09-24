@@ -121,6 +121,16 @@ sandboxed shell also has a **different `$TMPDIR`** from the unsandboxed one, so 
 file written in one mode is missing in the other. Write and read scratch files
 in the same mode.
 
+## Lint or tests fail in an agent worktree but not in CI
+
+keys: lint, worktree, discord.js, no-unnecessary-type-assertion, error type, vitest, node_modules
+
+A worktree bridges only the root `node_modules`, so `apps/dashboard` and
+`apps/discord-bot` dependencies don't resolve there. `pnpm lint` then reports
+about 5 false errors in those apps ("`Message` is an error type", "assertion is
+unnecessary"), and their test files fail to load. Trust errors only in files
+you changed. CI is the source of truth for the rest.
+
 ## Where is the Runs page / "This push" section?
 
 keys: runs, this push, next push, dashboard, production control panel
