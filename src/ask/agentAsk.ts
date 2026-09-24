@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 
-export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete"] as const;
+export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete", "split"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
 export type AgentAskAuthority = "propose" | "apply_if_approved";
 export const AGENT_ASK_AUTHORITIES = ["propose", "apply_if_approved"] as const;
@@ -88,8 +88,8 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (intent === "plan" && !targetRef && actions.length === 0) {
     throw validationError("A new Plan Agent Ask requires at least one governed Action.");
   }
-  if (actions.length > 0 && !(["action", "plan"] as string[]).includes(intent)) {
-    throw validationError("Agent Ask actions are only supported for action or plan intent.");
+  if (actions.length > 0 && !(["action", "plan", "split"] as string[]).includes(intent)) {
+    throw validationError("Agent Ask actions are only supported for action, plan, or split intent.");
   }
   if (actions.length > 0 && targetRef && intent === "action") {
     throw validationError("A multi-Action Agent Ask cannot also amend one Action target_ref.");
@@ -104,22 +104,35 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (intent === "complete" && actions.length > 0) {
     throw validationError("A complete Agent Ask does not create or amend other Actions.");
   }
-  const candidateRevision = optionalText(data.candidate_revision);
-  if (candidateRevision !== null && intent !== "complete") {
-    throw validationError("Agent Ask candidate_revision is only supported for complete intent.");
+  if (intent === "split" && !targetRef) {
+    throw validationError("A split Agent Ask requires target_ref naming the Action to narrow.");
   }
-  if (intent === "complete" && !candidateRevision) {
-    throw validationError("A complete Agent Ask requires candidate_revision.");
+  if (intent === "split" && actions.length === 0) {
+    throw validationError("A split Agent Ask requires at least one remainder Action for the unfinished work.");
+  }
+  if (intent === "split" && actions.some((action) => action.targetRef !== null)) {
+    throw validationError("A split Agent Ask's remainder Actions must be new; none may carry target_ref.");
+  }
+  const candidateRevision = optionalText(data.candidate_revision);
+  if (candidateRevision !== null && !(["complete", "split"] as string[]).includes(intent)) {
+    throw validationError("Agent Ask candidate_revision is only supported for complete or split intent.");
+  }
+  if ((intent === "complete" || intent === "split") && !candidateRevision) {
+    throw validationError(`A ${intent} Agent Ask requires candidate_revision.`);
   }
   if (candidateRevision !== null && !CANDIDATE_REVISION_PATTERN.test(candidateRevision)) {
     throw validationError("Agent Ask candidate_revision must be a git commit sha.", { candidateRevision });
   }
   const evidence = evidenceList(data.evidence);
-  if (evidence.length > 0 && intent !== "complete") {
-    throw validationError("Agent Ask evidence is only supported for complete intent.");
+  if (evidence.length > 0 && !(["complete", "split"] as string[]).includes(intent)) {
+    throw validationError("Agent Ask evidence is only supported for complete or split intent.");
   }
-  if (intent === "complete" && evidence.length === 0) {
-    throw validationError("A complete Agent Ask requires at least one evidence entry.");
+  if ((intent === "complete" || intent === "split") && evidence.length === 0) {
+    throw validationError(`A ${intent} Agent Ask requires at least one evidence entry.`);
+  }
+  const acceptance = stringList(data.acceptance, "acceptance");
+  if (intent === "split" && acceptance.length === 0) {
+    throw validationError("A split Agent Ask requires acceptance naming the narrowed criteria the finished slice actually met.");
   }
   const gateQuestion = optionalText(data.gate_question);
   if (gateQuestion !== null && intent !== "decision") {
@@ -128,7 +141,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance: stringList(data.acceptance, "acceptance"), dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
@@ -172,7 +185,7 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects:
   return { effects, requiredDecisions };
 }
 export function stableProposalId(fingerprint: string): string { return `agentask_${fingerprint.slice(0, 18)}`; }
-export function requiresManagedDocumentTransition(intent: AgentAskIntent): boolean { return ["outcome", "milestone", "plan", "decision", "action", "log", "project_update", "complete"].includes(intent); }
+export function requiresManagedDocumentTransition(intent: AgentAskIntent): boolean { return ["outcome", "milestone", "plan", "decision", "action", "log", "project_update", "complete", "split"].includes(intent); }
 function requiredText(value: unknown, message: string): string { if (typeof value !== "string" || !value.trim()) throw validationError(message); return value.trim(); }
 function optionalText(value: unknown): string | null { if (value === undefined || value === null) return null; if (typeof value !== "string") throw validationError("Agent Ask text fields must be strings."); return value.trim() || null; }
 function stringList(value: unknown, field: string): string[] { if (value === undefined || value === null) return []; if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) throw validationError(`Agent Ask ${field} must be a list of non-empty strings.`); return value.map((item) => (item as string).trim()); }

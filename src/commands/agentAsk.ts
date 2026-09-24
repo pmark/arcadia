@@ -293,6 +293,8 @@ export interface AgentAskContractData {
   completeExample: Record<string, unknown>;
   /** target_ref forms complete accepts: the active Plan's Action, and any Plan's, by slug. */
   completeTargetRefForms: string[];
+  /** A worked `split` Ask: narrow an Action to its finished slice, complete that slice, and queue the rest right after it. */
+  splitExample: Record<string, unknown>;
 }
 
 /**
@@ -336,7 +338,22 @@ export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractDat
       completeTargetRefForms: [
         "action/<action-id> — the active Plan's Action (the common case).",
         "plan/<plan-slug>#<action-id> — that Action in the named Plan, active or not. Writes only that Plan's document; PROJECT.md, the active Plan's current_action, and the queue are untouched unless <plan-slug> is itself the active Plan."
-      ]
+      ],
+      splitExample: {
+        agent_ask: "v1",
+        request_id: "split-<action-id>-<yyyy-mm-dd>",
+        project: "<project-slug>",
+        intent: "split",
+        target_ref: "action/<action-id>",
+        candidate_revision: "<git rev-parse HEAD, after the final commit>",
+        acceptance: ["<the one or more declared criteria this session actually finished, verbatim and in order>"],
+        evidence: [{ criterion: "<same criterion, verbatim>", status: "met" }],
+        desired_result: "<a title naming only the finished slice>",
+        actions: [{
+          desired_result: "<a title for the remaining work>",
+          acceptance: ["<every declared criterion left off <action-id>'s narrowed acceptance, verbatim, split across one or more remainder Actions>"]
+        }]
+      }
     }
   });
 }
@@ -357,6 +374,8 @@ export function renderAgentAskContractSuccess(response: CommandSuccess<AgentAskC
     "Complete Ask (one evidence entry per declared acceptance criterion, each verbatim and in order; settle only from your own worktree):",
     `  ${JSON.stringify(d.completeExample)}`,
     "Complete target_ref forms:",
-    ...d.completeTargetRefForms.map((line) => `  - ${line}`)
+    ...d.completeTargetRefForms.map((line) => `  - ${line}`),
+    "Split Ask (narrow an Action to its finished slice, complete that slice, and queue the unfinished criteria as remainder Actions immediately after it; needs the base branch, so settle it from the Project's main checkout):",
+    `  ${JSON.stringify(d.splitExample)}`
   ];
 }
