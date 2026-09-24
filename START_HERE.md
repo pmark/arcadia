@@ -800,16 +800,11 @@ is never injected anywhere but that one claude-code-cli Session — not
 
 One-time setup, run at your own terminal (never paste the token into a chat
 with an agent, and never type it as a literal command-line argument, which a
-history-enabled shell would save to disk):
-
-```sh
-claude setup-token
-```
-
-`setup-token` only prints the token; it does not save it anywhere. Pipe its
-output straight into the paired operator script below, which writes it to the
-workspace's documented path with owner-only permissions without the token
-ever appearing on a command line:
+history-enabled shell would save to disk). `setup-token` only prints the
+token; it does not save it anywhere, so pipe its output straight into the
+paired operator script, which writes it to the workspace's documented path
+with owner-only permissions without the token ever appearing on a command
+line:
 
 ```sh
 claude setup-token | artifacts/generated/operator-scripts/verify-claude-code-token.sh run
