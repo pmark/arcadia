@@ -71,9 +71,11 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(result.askPath).toContain("agent-ask-complete-first.yaml");
     const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
     expect(plan).toMatchObject({ currentAction: "second" });
-    // The ineligible draft is untouched -- only the eligible one is archived.
-    expect(execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" }))
-      .toContain("agent-ask-complete-aaa-ineligible-first.yaml");
+    // The ineligible draft is untouched at its original path -- only the
+    // eligible one is archived. A substring check on the whole tree would
+    // still pass against an archived copy, so assert the exact tracked path.
+    const tracked = execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" }).split("\n");
+    expect(tracked).toContain(".arcadia/asks/agent-ask-complete-aaa-ineligible-first.yaml");
   });
 
   it("is idempotent: calling it again once the Action is already done finds no drafted Ask left to settle", () => {
