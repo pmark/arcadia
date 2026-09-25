@@ -1887,7 +1887,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/539", "src/sessions/manualPreservation.ts"]
   - id: refuse-packets-without-validation-commands
     title: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
@@ -2052,7 +2052,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: refuse-packets-without-validation-commands
+current_action: fix-decision-approve-missing-commit
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
