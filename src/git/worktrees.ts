@@ -155,6 +155,22 @@ export function refExists(cwd: string, ref: string): boolean {
   return tryGit(cwd, ["show-ref", "--verify", ref]) !== null;
 }
 
+/**
+ * Whether `branch` would still merge onto `newBase` without a textual
+ * conflict, without touching either ref or the working tree.
+ *
+ * Used to decide whether a candidate is still preservable after its base
+ * branch advanced during its session: a base that only moved forward, and
+ * that the candidate still applies to cleanly, is not the stale-history case
+ * preservation exists to refuse.
+ */
+export function mergesCleanly(cwd: string, branch: string, newBase: string): boolean {
+  return spawnSync("git", ["merge-tree", "--write-tree", "--name-only", branch, newBase], {
+    cwd,
+    stdio: ["ignore", "ignore", "ignore"]
+  }).status === 0;
+}
+
 export function hasUpstream(cwd: string, branch: string): boolean {
   return tryGit(cwd, ["rev-parse", "--verify", `${branch}@{upstream}`]) !== null;
 }

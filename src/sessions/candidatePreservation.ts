@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { git, isAncestor, isPatchEquivalent, listWorktrees, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
@@ -350,12 +350,13 @@ export function preserveCandidate(
     throw validationError("The base branch could not be resolved on the host controller.", { baseBranch: request.baseBranch });
   }
   if (baseHead !== request.baseRevision) {
-    throw validationError("The base branch history changed since this candidate was launched.", {
-      baseBranch: request.baseBranch,
-      expected: request.baseRevision,
-      observed: baseHead,
-      remedy: "Reconcile the candidate onto the current base in a fresh worktree before preserving."
-    });
+    const candidateHead = tryGit(candidateWorktreePath, ["rev-parse", "HEAD"]);
+    if (!candidateHead || !mergesCleanly(repositoryPath, candidateHead, baseHead)) {
+      throw validationError(
+        `The base branch ${request.baseBranch} advanced from ${request.baseRevision} to ${baseHead} and the candidate no longer merges cleanly with it; reconcile the candidate onto the current base in a fresh worktree before preserving.`,
+        { baseBranch: request.baseBranch, oldBase: request.baseRevision, newBase: baseHead }
+      );
+    }
   }
 
   const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);

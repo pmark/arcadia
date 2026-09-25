@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -179,6 +180,49 @@ describe("manual Go preservation binding", () => {
     const f = fixture(); const binding = bind(f);
     fixtureGit(f.candidate, ["switch", "-c", "codex/other"]);
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).toThrow(/Git binding changed/));
+  });
+  const commitCandidateWork = (f: ReturnType<typeof fixture>) => {
+    fixtureGit(f.candidate, ["add", "-A"]);
+    fixtureGit(f.candidate, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "candidate progress"]);
+  };
+  const commitOnBase = (f: ReturnType<typeof fixture>, file: string, content: string, message: string) => {
+    writeFileSync(path.join(f.repo, file), content);
+    fixtureGit(f.repo, ["add", file]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", message]);
+    return fixtureGit(f.repo, ["rev-parse", "HEAD"]);
+  };
+  it("accepts a binding whose base branch advanced cleanly", () => {
+    const f = fixture(); const binding = bind(f);
+    commitCandidateWork(f);
+    commitOnBase(f, "unrelated.txt", "new\n", "advance base cleanly");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
+  it("refuses a base advance that no longer merges cleanly, naming both revisions", () => {
+    const f = fixture(); const binding = bind(f);
+    commitCandidateWork(f);
+    const newBase = commitOnBase(f, "marker.txt", "stale\n", "conflicting base change");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*no longer merges cleanly`)));
+  });
+  it("preserves a binding for an Action that is no longer the current pointer", () => {
+    const f = fixture(); const binding = bind(f);
+    const rewriteFrontmatter = (relativePath: string, mutate: (fm: any) => void) => {
+      const file = path.join(f.repo, relativePath);
+      const fm = YAML.parse(readFileSync(file, "utf8").slice(4, -4));
+      mutate(fm);
+      writeFileSync(file, `---\n${YAML.stringify(fm)}---\n`);
+    };
+    rewriteFrontmatter("docs/plans/proof.md", fm => {
+      fm.actions.push({
+        id: "second-action", title: "Second action", status: "open", responsibility: "agent",
+        effort: "session", clarification: "clarified", next_action: "Do the second thing.",
+        expected_artifact: "second.txt", acceptance_criteria: ["Second thing done."],
+        depends_on: [], decisions: [], references: []
+      });
+      fm.current_action = "second-action";
+    });
+    rewriteFrontmatter("PROJECT.md", fm => { fm.current_action = "second-action"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
   });
   it("reports missing checks as configuration, not another planning approval", () => {
     const f = fixture();

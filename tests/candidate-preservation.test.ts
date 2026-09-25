@@ -263,11 +263,29 @@ describe("candidate preservation (refusals)", () => {
     ).toThrow(/unexpected branch|different branch/);
   });
 
-  it("refuses when base history changed since launch", () => {
+  it("refuses when the base branch advanced and no longer merges cleanly with the candidate", () => {
     const fixture = makeFixture();
-    expect(() =>
-      withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, { baseRevision: "deadbeef".repeat(5) })))
-    ).toThrow(/base branch history changed/);
+    g(fixture.candidate, ["add", "-A"]);
+    g(fixture.candidate, ["commit", "-m", "candidate progress"]);
+    writeFileSync(path.join(fixture.repo, "README.md"), "base\nmodified upstream\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main"]);
+    const newBase = g(fixture.repo, ["rev-parse", "main"]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*no longer merges cleanly`)
+    );
+  });
+
+  it("accepts a candidate whose base branch advanced cleanly", () => {
+    const fixture = makeFixture();
+    g(fixture.candidate, ["add", "-A"]);
+    g(fixture.candidate, ["commit", "-m", "candidate progress"]);
+    writeFileSync(path.join(fixture.repo, "unrelated.txt"), "new upstream file\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main cleanly"]);
+    const receipt = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(receipt.preservationState).toBe("LOCAL ONLY");
+    expect(receipt.baseRevision).toBe(fixture.baseRevision);
   });
 
   it("refuses when there is no active reservation", () => {
