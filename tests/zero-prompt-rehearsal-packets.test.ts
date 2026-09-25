@@ -124,7 +124,7 @@ function preparedFixture(options?: { currentAction?: string; actionADone?: boole
       goal: "Prove the zero-prompt production loop.",
       status: "active"
     });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: ["node -e \"process.exit(0)\""] });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) {
       throw new Error(`fixture docs did not sync: ${JSON.stringify(sync.errors)} ${JSON.stringify(sync.rejected)}`);

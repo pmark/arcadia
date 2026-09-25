@@ -141,7 +141,12 @@ function workspaceWithArcadia(): { workspace: string; projectId: string } {
       nextAction: "Trace every Ask.",
       workClassification: "agent"
     });
-    upsertProjectMetadata(db, { projectId: created.project.id, aliases: ["Arcadia"], repoPath: workspace });
+    upsertProjectMetadata(db, {
+      projectId: created.project.id,
+      aliases: ["Arcadia"],
+      repoPath: workspace,
+      validationCommands: ["node -e \"process.exit(0)\""]
+    });
     return created.project.id;
   });
   return { workspace, projectId };

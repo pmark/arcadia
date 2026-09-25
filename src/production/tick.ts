@@ -8,13 +8,14 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
+import { decodeStringArray } from "../projects/setup.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -707,6 +708,32 @@ function attemptProjectLaunch(
     };
   }
 
+  // A `no_validation_commands` escalation is never self-resolving on its
+  // own, but the condition it names can change between ticks (an operator
+  // running `arcadia project metadata --validation-command`), so re-read the
+  // Project's own metadata -- a single cheap query -- rather than either
+  // silencing the check forever or repeating the full `launchGuardedHostSession`
+  // preview (git plumbing, doc discovery, provider selection) on every tick
+  // only to rediscover the identical refusal. Still empty: skip without
+  // attempting a launch, preserving the existing escalation untouched. No
+  // longer empty: fall through to the ordinary launch attempt below, which
+  // clears it on success exactly as any other resolved escalation does.
+  const existingEscalation = db
+    .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
+    .get(actionKey) as { kind: string } | undefined;
+  if (existingEscalation?.kind === "no_validation_commands") {
+    const project = getProjectBySlug(db, input.projectSlug);
+    const metadata = project ? getProjectMetadata(db, project.id) : null;
+    if (decodeStringArray(metadata?.validation_commands).length === 0) {
+      return {
+        attempted: false,
+        outcome: "skipped",
+        reason: `Awaiting operator: ${input.projectSlug} still declares no validation commands.`,
+        actionKey
+      };
+    }
+  }
+
   const requestId = `worker-tick-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`;
   try {
     const result = launchGuardedHostSession({
@@ -779,26 +806,49 @@ function attemptProjectLaunch(
         input.log(refusalLine);
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
-      const resolvedLifecycleKind = packetLifecycleKind === "planning_required"
-        ? attemptAutomaticPlanningResolution(
-            db,
-            { workspace: input.workspace, profiles: input.options.profiles },
-            transition,
-            actionKey,
-            input.log
-          ) ?? packetLifecycleKind
-        : packetLifecycleKind;
-      if (resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)) {
-        const remedy = typeof error.details?.packetLifecycleRemedy === "string" ? error.details.packetLifecycleRemedy : null;
+      // A missing validation command is never self-resolving, and automatic
+      // planning resolution would only rediscover that the same way
+      // (`createCodexPacket` now refuses build-packet preparation on the
+      // identical condition) -- so this takes precedence over attempting it,
+      // rather than wasting a tick's `arcadia work plan` attempt on a
+      // refusal that is already fully diagnosed.
+      const resolvedLifecycleKind = rawCode === "no_validation_commands"
+        ? null
+        : packetLifecycleKind === "planning_required"
+          ? attemptAutomaticPlanningResolution(
+              db,
+              { workspace: input.workspace, profiles: input.options.profiles },
+              transition,
+              actionKey,
+              input.log
+            ) ?? packetLifecycleKind
+          : packetLifecycleKind;
+      // A Project with no declared validation commands is never
+      // self-resolving either -- unlike a `planning_required` packet, which
+      // this same tick can prepare, nothing but an operator editing Project
+      // metadata clears it, so it escalates the same way rather than
+      // retrying the same refusal forever (the fate `planning_required` was
+      // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
+      const escalationKind = rawCode === "no_validation_commands"
+        ? rawCode
+        : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
+          ? resolvedLifecycleKind
+          : null;
+      if (escalationKind) {
+        const remedy = rawCode === "no_validation_commands"
+          ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
+          : typeof error.details?.packetLifecycleRemedy === "string"
+            ? error.details.packetLifecycleRemedy
+            : null;
         const newlyDetected = recordOperatorEscalation(db, {
           actionKey,
-          kind: resolvedLifecycleKind,
+          kind: escalationKind,
           message: error.message,
           remedy,
           now: input.now
         });
         if (newlyDetected) {
-          input.log(`Escalated ${actionKey} to the operator (${resolvedLifecycleKind}): ${remedy ?? error.message}`);
+          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${remedy ?? error.message}`);
         }
       } else {
         clearOperatorEscalation(db, actionKey);

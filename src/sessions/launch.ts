@@ -137,6 +137,23 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
+    // An already-running Session (or one alive in tmux) is always handed
+    // back unchanged -- see the comment above. A merely *prepared* lease
+    // (never started, or crashed before it ever reached tmux) is not yet
+    // running anything, so it is still subject to the same no-validation-
+    // commands refusal an ordinary fresh launch would hit below: without
+    // this check, `resumeOrReturn` would call `launchPreparedSession` and
+    // start a brand-new process for an Action whose Project now declares no
+    // validation commands, bypassing the refusal entirely because
+    // `matchesPreview` checks only the project, Action, and packet hash.
+    const isAlreadyRunning = existingLease.status === "running" || tmux.hasSession(existingLease.tmux_session_name);
+    if (!isAlreadyRunning && preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))) {
+      throw validationError("The previewed Action is not ready to launch.", {
+        prerequisites: preview.prerequisites,
+        conflict: true,
+        code: "no_validation_commands"
+      });
+    }
     return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed), preview, admission: null };
   }
 
@@ -167,7 +184,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
       // caller need not distinguish "caught at preview" from "caught at
       // admission" -- both are the identical policy-provider mismatch.
-      code: preview.prerequisites.some((entry) => entry.startsWith("provider not permitted")) ? "provider_not_permitted" : null
+      code: preview.prerequisites.some((entry) => entry.startsWith("provider not permitted"))
+        ? "provider_not_permitted"
+        // Never self-resolving: nothing but an operator editing the
+        // Project's metadata clears this, so the managed-production tick
+        // must escalate rather than silently retry it forever.
+        : preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))
+          ? "no_validation_commands"
+          : null
     });
   }
 

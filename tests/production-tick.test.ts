@@ -12,6 +12,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
   createReviewItem,
+  getProjectBySlug,
   getWorkItemByDocRef,
   upsertProject,
   upsertProjectMetadata,
@@ -553,6 +554,83 @@ describe("runManagedProductionTick", () => {
       })
     );
     expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
+  it("escalates to the operator instead of launching, once, when the Project declares no validation commands", () => {
+    // A Project with no validation commands can never have its Session
+    // preserved or auto-completed (see preservationValidation.ts and
+    // packets.ts), so this refusal is never self-resolving -- unlike
+    // `planning_required`, this tick must not keep attempting the same
+    // refused launch on every subsequent tick either.
+    const fixture = preparedFixture({ noValidationCommands: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+
+    const firstResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(firstResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Escalated test-project\/define-contract to the operator \(no_validation_commands\)/));
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "no_validation_commands" });
+    expect(escalations[0].remedy).toMatch(/arcadia project metadata .* --validation-command/);
+
+    // A second tick, with the escalation already recorded and the Project
+    // still declaring no validation commands, skips the launch attempt
+    // entirely (a single cheap metadata re-read) rather than repeating the
+    // full preview only to rediscover the identical refusal.
+    const secondResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+
+    // Once the operator declares a validation command, the very next tick
+    // resolves and launches -- proving the re-read is live, not cached.
+    withDatabase(fixture.workspace, (db) => {
+      const project = getProjectBySlug(db, "test-project")!;
+      upsertProjectMetadata(db, {
+        projectId: project.id,
+        repoPath: fixture.repo,
+        validationCommands: ["node -e \"process.exit(0)\""]
+      });
+    });
+    const thirdResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 120_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(thirdResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
     expect(tmux.launches).toHaveLength(1);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
@@ -1399,7 +1477,7 @@ function completeActionInWorktree(worktreePath: string, actionId: string): void 
   git(worktreePath, ["commit", "-m", `complete ${actionId}`]);
 }
 
-function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean; buildAction?: boolean } = {}) {
+function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean; buildAction?: boolean; noValidationCommands?: boolean } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -1482,7 +1560,11 @@ function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean
 
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove the continuous worker tick.", goal: "Prove the continuous worker tick.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, {
+      projectId: project.id,
+      repoPath: repo,
+      validationCommands: options.noValidationCommands ? [] : ["node -e \"process.exit(0)\""]
+    });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     if (!options.skipPacket) preparePacket(db, "define-contract", project.id);

@@ -3,9 +3,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
+import { codexValidationCommandsRequiredMessage, decodeStringArray } from "../projects/setup.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import {
@@ -108,6 +109,21 @@ export function buildLaunchPreview(input: {
     if (!project || !workItem || workItem.project_id !== project.id) {
       prerequisites.push("stale pointer: the workspace is stale relative to the authoritative Action; run arcadia docs sync --apply.");
     } else {
+      // A build Session with no configured validation commands can never be
+      // preserved or auto-completed, so refuse the launch outright rather
+      // than let a packet prepared before this Project declared (or lost)
+      // its validation commands still reach a Session. This is independent
+      // of packet state: `createCodexPacket` already refuses to create a new
+      // packet under this condition, but an already-immutable packet from
+      // before that guard, or from before the Project's commands were
+      // cleared, must be caught here too.
+      const projectMetadata = getProjectMetadata(input.db, project.id);
+      if (decodeStringArray(projectMetadata?.validation_commands).length === 0) {
+        prerequisites.push(
+          `no validation commands: ${codexValidationCommandsRequiredMessage(project.id)}`
+        );
+      }
+
       packetLifecycle = resolvePacketLifecycle(input.db, workItem);
       const launchRefusals = launchAdapterRefusals(input.adapters);
 

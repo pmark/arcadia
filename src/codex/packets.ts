@@ -31,7 +31,7 @@ import {
 } from "../stewardship/critic.js";
 import type { GoalStewardshipResult } from "../stewardship/index.js";
 import { renderCodexContextGuidance } from "../projects/contextSetup.js";
-import { CODEX_REPO_PATH_REQUIRED_MESSAGE } from "../projects/setup.js";
+import { CODEX_REPO_PATH_REQUIRED_MESSAGE, codexValidationCommandsRequiredMessage } from "../projects/setup.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { getWorkspacePaths, toWorkspaceRelativePath } from "../workspace/paths.js";
@@ -84,6 +84,10 @@ export function createCodexPacket(input: {
   if (input.projectContext && !input.projectContext.metadata?.repo_path) {
     throw new Error(CODEX_REPO_PATH_REQUIRED_MESSAGE);
   }
+  const validationCommands = decodeStringArray(input.projectContext?.metadata?.validation_commands);
+  if (input.projectContext && input.agentProfile.purpose === "build" && validationCommands.length === 0) {
+    throw new Error(codexValidationCommandsRequiredMessage(input.projectContext.project.id));
+  }
 
   const invocationId = createId("codexInvocation");
   const packetDir = path.join(input.workspace, "prompts", "codex", invocationId);
@@ -103,7 +107,6 @@ export function createCodexPacket(input: {
   ).displayCommand;
   const promptText = renderPrompt(input);
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
-  const validationCommands = decodeStringArray(input.projectContext?.metadata?.validation_commands);
   const critique = createStewardshipCritic("deterministic_critic").critique({
     targetKind: input.agentProfile.purpose === "build" ? "codex_build_packet" : "codex_planning_packet",
     originalInput: input.request,
