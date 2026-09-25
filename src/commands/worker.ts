@@ -35,6 +35,7 @@ import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
+import { MANAGED_SESSION_TMUX_PREFIX } from "../sessions/index.js";
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -79,10 +80,117 @@ export interface WorkerOptions {
  * Keeping those two effects injectable lets the refusal and readiness contract
  * be covered without depending on a live macOS service.
  */
-export interface WorkerInstallDependencies {
+export interface WorkerInstallDependencies extends ProcessAncestryDependencies {
   execFileSync?: typeof execFileSync;
   waitForRoutes?: typeof waitForWorkerRoutes;
   now?: () => number;
+}
+
+/**
+ * Overridable so a deterministic test can prove the Session-descendant
+ * refusal below without a real tmux server: fabricate a process tree and a
+ * pane roster instead of shelling out to `ps`/`tmux`.
+ */
+export interface ProcessAncestryDependencies {
+  /** Every process the host can see, as {pid, ppid} pairs. */
+  listProcesses?: () => Array<{ pid: number; ppid: number }>;
+  /** Every live tmux pane's leader PID and the name of the session that owns
+   * it, across the whole tmux server. Empty when tmux is not installed or not
+   * running -- which is also the correct answer for the operator's own
+   * terminal and for launchd, neither of which runs under tmux at all. */
+  listTmuxPanes?: () => Array<{ pid: number; sessionName: string }>;
+}
+
+function defaultListProcesses(): Array<{ pid: number; ppid: number }> {
+  try {
+    const output = execFileSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" });
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const [pid, ppid] = line.split(/\s+/).map(Number);
+        return { pid, ppid };
+      })
+      .filter((entry) => Number.isInteger(entry.pid) && Number.isInteger(entry.ppid));
+  } catch {
+    return [];
+  }
+}
+
+function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {
+  try {
+    const output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8" });
+    return output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const spaceIndex = line.indexOf(" ");
+        return { pid: Number(line.slice(0, spaceIndex)), sessionName: line.slice(spaceIndex + 1) };
+      })
+      .filter((entry) => Number.isInteger(entry.pid));
+  } catch {
+    // No tmux server, or tmux is not installed on this host: definitely not
+    // inside a managed Session, since every managed Session launches through
+    // `tmux new-session` (see `launchPreparedSession`).
+    return [];
+  }
+}
+
+/**
+ * The name of the managed-Session tmux session `pid` is running inside, or
+ * null when it is not.
+ *
+ * This walks the host's real process tree instead of trusting an environment
+ * variable or the current working directory -- both of which a Session
+ * process can clear or change without ever leaving tmux, exactly the forgery
+ * this check exists to resist (Issue #611). A managed Session always launches
+ * through `tmux new-session`, so its pane leader PID is a genuine ancestor of
+ * every process the Session ever spawns, no matter what that process does to
+ * its own environment or directory.
+ */
+export function findEnclosingManagedSessionTmuxName(
+  pid: number = process.pid,
+  dependencies: ProcessAncestryDependencies = {}
+): string | null {
+  const panes = (dependencies.listTmuxPanes ?? defaultListTmuxPanes)();
+  const managedPanePids = new Map(
+    panes
+      .filter((pane) => pane.sessionName.startsWith(MANAGED_SESSION_TMUX_PREFIX))
+      .map((pane) => [pane.pid, pane.sessionName] as const)
+  );
+  if (managedPanePids.size === 0) return null;
+
+  const ppidByPid = new Map((dependencies.listProcesses ?? defaultListProcesses)().map((entry) => [entry.pid, entry.ppid]));
+  let current = pid;
+  for (let hops = 0; hops < 200; hops += 1) {
+    const matched = managedPanePids.get(current);
+    if (matched) return matched;
+    const parent = ppidByPid.get(current);
+    if (parent === undefined || parent === current || parent <= 1) return null;
+    current = parent;
+  }
+  return null;
+}
+
+/**
+ * Refuse a worker lifecycle mutation when the calling process descends from a
+ * managed coding-agent Session, so a dispatched Session can never stop,
+ * start, or reinstall the shared host worker it is itself running under. The
+ * operator's own terminal and the launchd agent are never a tmux descendant
+ * of an Arcadia-managed Session, so this is a no-op for both.
+ */
+function refuseIfManagedSession(operation: string, dependencies: ProcessAncestryDependencies): void {
+  const sessionName = findEnclosingManagedSessionTmuxName(process.pid, dependencies);
+  if (sessionName === null) return;
+  throw validationError(
+    `Refusing to ${operation} the shared host worker: this process is running inside managed coding-agent Session tmux session "${sessionName}".`,
+    {
+      tmuxSessionName: sessionName,
+      remedy: "Run this from the operator's own terminal, or let launchd manage the worker. A dispatched Session must not control the lifecycle of the worker it runs under."
+    }
+  );
 }
 
 function arcadiaDir(workspacePath: string): string {
@@ -405,7 +513,7 @@ function namedWorkspace(commandLine: string): string | null {
  * a real one, and shorten the signal graces. The same shape as
  * `WorkerInstallDependencies`: production always uses the defaults.
  */
-export interface WorkerRecoveryDependencies {
+export interface WorkerRecoveryDependencies extends ProcessAncestryDependencies {
   identify?: (pid: number) => string | null;
   signal?: (pid: number, signal: NodeJS.Signals) => void;
   sleep?: (ms: number) => void;
@@ -575,6 +683,7 @@ function clearRecordForPid(workspacePath: string, pid: number): void {
 }
 
 export function runWorkerStartCommand(options: WorkerOptions, dependencies: WorkerRecoveryDependencies = {}): never {
+  refuseIfManagedSession("start", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const dir = arcadiaDir(workspacePath);
   mkdirSync(dir, { recursive: true });
@@ -916,6 +1025,7 @@ export function runWorkerStatusCommand(options: WorkerOptions): void {
  * ordinary SIGTERM and is reported as not yet exited rather than killed.
  */
 export function runWorkerStopCommand(options: WorkerOptions, dependencies: WorkerRecoveryDependencies = {}): void {
+  refuseIfManagedSession("stop", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const record = readWorkerRecord(workspacePath);
   const pid = record?.pid ?? readLegacyPid(workspacePath);
@@ -1049,6 +1159,7 @@ export function waitForWorkerRoutes(workspacePath: string, timeoutMs: number, no
 }
 
 export function runWorkerInstallCommand(options: WorkerOptions, dependencies: WorkerInstallDependencies = {}): void {
+  refuseIfManagedSession("install", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repositoryRoot = path.resolve(import.meta.dirname, "../..");
   const home = process.env["HOME"] ?? "/tmp";
