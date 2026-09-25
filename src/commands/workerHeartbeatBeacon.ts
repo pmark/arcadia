@@ -39,15 +39,24 @@ function isAlive(pid: number): boolean {
 
 /** True when no ownership record exists yet, or the existing one still names
  * this beacon's own identity -- false once a replacement worker has written
- * its own identity, meaning this (now-orphaned) beacon must not clobber it. */
+ * its own identity, meaning this (now-orphaned) beacon must not clobber it.
+ * A record that exists but cannot be read or parsed is treated the same as
+ * one naming someone else: this beacon cannot confirm ownership, so it must
+ * not write. Only a genuinely absent file (ENOENT) counts as "nothing to
+ * conflict with yet." */
 function ownsRecord(workspacePath: string, identity: Identity): boolean {
   const target = path.join(workspacePath, ".arcadia", "worker.pid");
+  let raw: string;
   try {
-    const raw = readFileSync(target, "utf8");
+    raw = readFileSync(target, "utf8");
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  try {
     const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown };
     return value.pid === identity.pid && value.owner === identity.owner;
   } catch {
-    return true;
+    return false;
   }
 }
 
