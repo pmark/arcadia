@@ -2031,6 +2031,23 @@ actions:
     depends_on: [settle-squash-merged-completion-drafts, prove-two-action-unattended-production]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/production/tick.ts", "src/commands/advance.ts", "src/commands/go.ts", "docs/agents-context.md", "START_HERE.md"]
+  - id: fix-decision-approve-missing-commit
+    title: "arcadia decision approve commits its plain-answer Decision file write locally (write + git add + local commit, no push), matching the deferral path in src/dispatch/decisionDeferral.ts and the agent-ask settle --apply contract, instead of leaving it uncommitted per src/commands/decision.ts:337-340."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "arcadia decision approve commits its plain-answer Decision file write locally (write + git add + local commit, no push), matching the deferral path in src/dispatch/decisionDeferral.ts and the agent-ask settle --apply contract, instead of leaving it uncommitted per src/commands/decision.ts:337-340."
+    expected_artifact: Evidence satisfying Agent Ask fix-decision-approve-missing-commit
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-decision-approve-missing-commit-2026-09-25
+    acceptance_criteria:
+      - Answering a Decision with a plain (non-defer) effect via arcadia decision approve leaves the repository clean (no uncommitted changes) immediately after the command returns, with the Decision file change committed locally and not pushed.
+      - A test covers a plain-answer decision approve and asserts the working tree is clean after the command runs.
+      - "The pull request that lands this fix includes Closes #645 in its body."
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
