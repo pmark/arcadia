@@ -152,16 +152,22 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace, deps: { hooks: { beforeStage() { writeFileSync(path.join(f.candidate, "marker.txt"), "altered\n"); } } } })).toThrow(/differs from the validated/);
     expect(fixtureGit(f.candidate, ["rev-parse", "HEAD"])).toBe(f.base);
   });
-  it("bounds a Session's identical preservation refusals and reconciles it as a non-resumable incomplete exit", () => {
+  it("bounds a Session's identical preservation refusals from the CLI without reconciling a Session that may still be live", () => {
     const f = fixture("exit 1");
     for (let attempt = 1; attempt < MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt++) {
       expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace }))
         .toThrow("Declared preservation validation failed or was skipped.");
     }
     // The identical-refusal budget is now exhausted: the next attempt gets a
-    // distinct refusal naming the limit, and the Session is reconciled as an
-    // incomplete, non-resumable exit rather than staying prepared/running for
-    // another tick to resume into the same failure.
+    // distinct refusal naming the limit. This CLI call can run from inside a
+    // still-live Session (it is exactly what a live agent invokes to preserve
+    // its own candidate), so it must refuse without touching the Session's
+    // own lease or status -- reconciling a `running` Session out from under
+    // its own live worker would let a competing launch treat the repository
+    // as unleased. Only the managed-production tick, which independently
+    // confirms the worker's tmux session is actually dead before it ever
+    // calls preservation, may reconcile the Session as an incomplete exit
+    // (proven in tests/preserve-on-exit-and-integrate.test.ts).
     let limitError: unknown;
     try {
       runPreserveCommand({ source: f.candidate, workspace: f.workspace });
@@ -173,13 +179,11 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     });
     withDatabase(f.workspace, db => {
       const session = db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(f.lease.id) as { status: string };
-      expect(["prepared", "running"]).not.toContain(session.status);
-      const receipt = db.prepare("SELECT outcome, lease_handoff FROM session_exit_receipts WHERE session_id = ?").get(f.lease.id) as {
-        outcome: string;
-        lease_handoff: number;
-      };
-      expect(receipt.outcome).toBe("incomplete_resumable");
-      expect(receipt.lease_handoff).toBe(0);
+      expect(["prepared", "running"]).toContain(session.status);
+      const receipt = db.prepare("SELECT COUNT(*) AS n FROM session_exit_receipts WHERE session_id = ?").get(f.lease.id) as { n: number };
+      expect(receipt.n).toBe(0);
+      const budget = db.prepare("SELECT attempts FROM preservation_refusal_attempts WHERE subject_id = ?").get(f.lease.id) as { attempts: number };
+      expect(budget.attempts).toBe(MAX_IDENTICAL_PRESERVATION_REFUSALS);
     });
   });
   it("resets the identical-refusal budget when the refusal reason changes", () => {

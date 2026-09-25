@@ -15,7 +15,6 @@ import { preservationAuthority, validateBoundCandidate, validatePreservationCand
 import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
-import { reconcileSessionExit } from "../sessions/reconciliation.js";
 import {
   preserveCandidate,
   systemPreservationRemote,
@@ -112,21 +111,19 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
                   : "the Active policy does not include remote preservation"
           };
 
-    const validation = guardPreservationRefusal(
-      db,
-      lease.id,
-      options.now ?? new Date(),
-      () => validatePreservationCandidate(db, options.workspace, lease),
-      // The identical-refusal budget is exhausted: a new Session for this
-      // Action would only reproduce the same failure, so reconcile this one
-      // as an incomplete exit now rather than leaving it prepared/running to
-      // be resumed again next tick. `reconcileSessionExit` is idempotent by
-      // session id, so a concurrent or repeated call here never double-writes.
-      (attempts) => reconcileSessionExit({
-        db, sessionId: lease.id, requestId: `preserve-refusal-limit-${lease.id}`, repoRoot: controlWorktree,
-        suppressLeaseHandoff: { reason: `An identical preservation refusal repeated ${attempts} times; not offered for automatic resumption.` }
-      })
-    );
+    // This CLI call can run while the Session's own agent process is still
+    // alive (it is exactly what a live agent invokes to preserve its own
+    // candidate), so exhausting the budget here must never reconcile the
+    // Session itself -- that would terminate a `running` lease out from
+    // under a worker that has not actually died, letting a competing launch
+    // treat the repository as unleased. Only record the refusal (shared with
+    // the tick's own budget, keyed on the same Session id) and refuse; the
+    // managed-production tick reconciles the Session as a non-resumable
+    // incomplete exit itself, only once it has independently confirmed the
+    // worker's tmux session is actually dead (see `preserveSessionCandidate`
+    // in sessionHandoff.ts).
+    const validation = guardPreservationRefusal(db, lease.id, options.now ?? new Date(), () =>
+      validatePreservationCandidate(db, options.workspace, lease));
     const current = preservationAuthority(db, options.workspace, lease);
     if (JSON.stringify(current) !== JSON.stringify(validation.binding) || JSON.stringify(policy) !== JSON.stringify(current.policy)) {
       throw validationError("Preservation authority changed after validation.");
