@@ -193,7 +193,7 @@ actions:
     references: [START_HERE.md, src/ask/agentAsk.ts, src/ask/settlement.ts, tests/agent-ask-settlement.test.ts, docs/evidence/agent-ask-plan-management-dogfood-2026-09-01.md]
   - id: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
     title: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a natural-language Agent Ask propose the concrete canonical effect when the repository already contains the facts that identify it, instead of always falling back to a generic interpretation Decision.
@@ -230,6 +230,7 @@ actions:
     decisions: []
     references: [docs/decisions/0041-prioritize-the-preserved-ask-tail.md, docs/decisions/0042-how-should-arcadia-structure-this-request-reactivate-the-arcadia-ask-active-sess.md, docs/plans/decision-queue-reconciliation.md, src/ask/agentAsk.ts, src/ask/settlement.ts, src/commands/review.ts]
 decisions: ["0039", "0040", "0041"]
+current_action: reconcile-open-operator-questions-against-answers-the-checked-in-documents-alrea
 ---
 
 # Agent Ask and execution queue
