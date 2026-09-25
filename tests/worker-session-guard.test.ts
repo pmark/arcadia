@@ -15,6 +15,7 @@ const temporary: string[] = [];
 const fixtures: ChildProcess[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   for (const child of fixtures.splice(0)) {
     try { child.kill("SIGKILL"); } catch { /* already gone */ }
@@ -105,12 +106,15 @@ describe("findEnclosingManagedSessionTmuxName", () => {
     const child = await bareChildProcess(root);
     const sessionName = "arcadia-realproof-do-thing-20260101t000000z";
 
-    // Only the pane roster is fabricated (no real tmux server needed); process
-    // ancestry comes from the real host `ps`, proving the match survives a
-    // genuinely empty environment and a genuinely changed working directory --
+    // The fake pane leader is *this test process* (process.pid), not the
+    // checked process -- the child's real ppid, read via the real `ps`
+    // (listProcesses is left at its default), is process.pid. This actually
+    // walks a genuine parent link rather than matching the checked pid
+    // against itself, proving the match survives a genuinely empty
+    // environment and a genuinely changed working directory on the child --
     // neither of which this check ever consults.
     expect(findEnclosingManagedSessionTmuxName(child.pid, {
-      listTmuxPanes: () => [{ pid: child.pid, sessionName }]
+      listTmuxPanes: () => [{ pid: process.pid, sessionName }]
     })).toBe(sessionName);
   });
 });
@@ -141,6 +145,14 @@ describe("worker lifecycle commands refuse a managed-Session caller", () => {
       .toThrow(/Refusing to install the shared host worker.*arcadia-demo-withhold-20260101t000000z/);
   });
 
+  it("fails closed when a managed pane is live but the host process table cannot be read", () => {
+    const root = workspace();
+    expect(() => runWorkerStopCommand({ workspace: root }, {
+      listTmuxPanes: () => [{ pid: 4242, sessionName: "arcadia-demo-withhold-20260101t000000z" }],
+      listProcesses: () => []
+    })).toThrow(/ancestry could not be verified because the host process table could not be read/);
+  });
+
   it("leaves the operator's own terminal path unaffected: `worker stop` behaves normally with no managed pane in scope", () => {
     const root = workspace();
     const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, outsideSession));
@@ -149,6 +161,12 @@ describe("worker lifecycle commands refuse a managed-Session caller", () => {
 
   it("leaves the launchd/operator install path unaffected: `worker install` proceeds with no managed pane in scope", () => {
     const root = workspace();
+    // Unlike the refusal test above, this one reaches the real plist-writing
+    // path in runWorkerInstallCommand, which writes to
+    // `$HOME/Library/LaunchAgents`. Stub HOME to the temp workspace so this
+    // never touches the developer's actual launchd plist (Issue #560 is the
+    // same footgun in the pre-existing worker-tick.test.ts suite).
+    vi.stubEnv("HOME", root);
     const load = vi.fn();
     runWorkerInstallCommand({ workspace: root }, {
       ...outsideSession,

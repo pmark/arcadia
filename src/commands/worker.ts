@@ -120,7 +120,15 @@ function defaultListProcesses(): Array<{ pid: number; ppid: number }> {
 
 function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {
   try {
-    const output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8" });
+    // `TMUX`/`TMUX_TMPDIR` pick which tmux server socket this query talks to.
+    // Inheriting them from the caller would let a Session redirect the query
+    // at a nonexistent socket -- tmux then fails, the catch below returns `[]`,
+    // and the guard reads that as "not inside a Session". Stripping them keeps
+    // this query pinned to the one real default socket every managed Session
+    // actually launches on, regardless of what the caller's own environment
+    // claims.
+    const { TMUX: _tmux, TMUX_TMPDIR: _tmuxTmpdir, ...env } = process.env;
+    const output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8", env });
     return output
       .split("\n")
       .map((line) => line.trim())
@@ -149,6 +157,15 @@ function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {
  * through `tmux new-session`, so its pane leader PID is a genuine ancestor of
  * every process the Session ever spawns, no matter what that process does to
  * its own environment or directory.
+ *
+ * Known limitation: this is an ancestry check, not a credential. A process
+ * that deliberately detaches from its pane (double-forking or re-parenting
+ * itself to init before invoking a worker command) can still escape it. That
+ * is a materially harder, deliberate evasion than the incidental env-clearing
+ * or `cd`ing Issue #611 is about, and closing it would need an operator-only
+ * credential rather than a process-tree fact -- a larger change than this
+ * Action's scope. Treat this guard as resisting incidental misuse, not a
+ * fully adversarial one.
  */
 export function findEnclosingManagedSessionTmuxName(
   pid: number = process.pid,
@@ -182,7 +199,26 @@ export function findEnclosingManagedSessionTmuxName(
  * of an Arcadia-managed Session, so this is a no-op for both.
  */
 function refuseIfManagedSession(operation: string, dependencies: ProcessAncestryDependencies): void {
-  const sessionName = findEnclosingManagedSessionTmuxName(process.pid, dependencies);
+  const listTmuxPanes = dependencies.listTmuxPanes ?? defaultListTmuxPanes;
+  const panes = listTmuxPanes();
+  const hasManagedPane = panes.some((pane) => pane.sessionName.startsWith(MANAGED_SESSION_TMUX_PREFIX));
+  if (!hasManagedPane) return;
+
+  const listProcesses = dependencies.listProcesses ?? defaultListProcesses;
+  const processes = listProcesses();
+  if (processes.length === 0) {
+    // A managed Session's pane is live, but the host process table came back
+    // empty -- `ps` failed, is missing, or is being shadowed. A real host
+    // always sees at least itself, so this is never the honest "not inside a
+    // Session" answer; refuse rather than let an unreadable process table
+    // silently stand in for "safe".
+    throw validationError(
+      `Refusing to ${operation} the shared host worker: a managed coding-agent Session's tmux pane is live and this process's ancestry could not be verified because the host process table could not be read.`,
+      { remedy: "Run this from the operator's own terminal, or let launchd manage the worker, where the host process table is normally readable." }
+    );
+  }
+
+  const sessionName = findEnclosingManagedSessionTmuxName(process.pid, { listTmuxPanes: () => panes, listProcesses: () => processes });
   if (sessionName === null) return;
   throw validationError(
     `Refusing to ${operation} the shared host worker: this process is running inside managed coding-agent Session tmux session "${sessionName}".`,
