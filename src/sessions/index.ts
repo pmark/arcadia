@@ -206,6 +206,16 @@ export interface TmuxAdapter {
   capturePane?(name: string): string | null;
 }
 
+/**
+ * Every managed Session's tmux session name starts with this. It is the one
+ * host-visible fact a Session cannot forge away by clearing its environment
+ * or changing directory: `arcadia worker` uses it (via a live tmux pane
+ * ancestry check, not this constant's presence in an env var) to refuse when
+ * the caller descends from a dispatched Session rather than the operator's
+ * own terminal or launchd.
+ */
+export const MANAGED_SESSION_TMUX_PREFIX = "arcadia-";
+
 export const systemTmux: TmuxAdapter = {
   available() {
     try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
@@ -499,7 +509,7 @@ export function prepareSession(input: {
     input.testHooks?.afterChecksBeforeInsert?.();
     const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
     const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
-    const tmuxName = `arcadia-${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
+    const tmuxName = `${MANAGED_SESSION_TMUX_PREFIX}${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
     if (tmux.hasSession(tmuxName)) throw validationError("The tmux Session name already exists.", { tmuxSessionName: tmuxName });
     const id = createId("session");
     // Claude lets Arcadia supply a native session id. Codex creates its native
