@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # Mission Log: Arcadia
@@ -725,3 +725,10 @@ updated: 2026-09-24
 - **Result:** Every declared acceptance criterion was accepted as met: "When a Session backed by a committed production admission is reconciled to any terminal outcome (accepted completion, incomplete-resumable exit, failure, or operator stop), its admission is released through the existing releaseAdmission writer in the same transaction as the reconciliation."; "countLiveAdmissions no longer counts a committed admission whose Session is terminal; already-leaked committed admissions on an existing workspace stop counting without a manual database edit."; "A deterministic test reproduces Issue #610: with maxConcurrentSessions 1, one Session launches, completes, and a second Action is then admitted on the next tick instead of being refused concurrency_limit."; "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #610.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-release-committed-admissions-on-session-end-2026-09-24).
+
+## 2026-09-25 — Completed arcadia/gate-dispatch-on-blocking-operator-items
+
+- **Did:** Completed Action arcadia/gate-dispatch-on-blocking-operator-items from accepted evidence (Candidate ab893d28fc9e13cf2278381ae414f3dfaa755c2b).
+- **Result:** Every declared acceptance criterion was accepted as met: "One shared function classifies every pending operator-only item (unsettled Agent Ask proposals, open Decisions) as blocking or alert, reusing the exact data surface-terminal-operator-approvals-in-runs already built rather than re-deriving it."; "An item is blocking when it names, or its Decision's action: field names, an Action the current dispatch resolution would otherwise select, or when it is the reason no Action in the current queue segment is eligible; every other pending item is an alert."; "When one or more blocking items exist, arcadia go/advance/next refuses to hand off a dispatch brief for agent work and instead prints each blocking item's title, recommended option and consequence, and the exact command to settle it — matching the existing per-Action blocker/operatorQuestion contract, not a second one."; "When only alert items exist, dispatch proceeds normally and the resolution additionally lists each alert's title and one-line consequence, newest first, capped at a small fixed count with a count of any remainder."; "This one gate is shared by the CLI (go, advance, next), the dashboard's equivalent status calls, and the Discord bot's dispatch-brief posting — none of them re-implements its own copy."; "Regression tests cover: a blocking item suppresses dispatch and is named exactly; an alert-only state dispatches normally with the alert list attached; zero pending items adds neither section; an item blocking one Project does not suppress dispatch for an unrelated Project.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-gate-dispatch-on-blocking-operator-items-2026-09-24-v2).

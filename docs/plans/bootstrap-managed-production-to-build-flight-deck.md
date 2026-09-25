@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-24
+updated: 2026-09-25
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -1941,7 +1941,7 @@ actions:
     references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
   - id: gate-dispatch-on-blocking-operator-items
     title: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: arcadia go/advance/next stops for a pending operator item that blocks the eligible Action(s) it would otherwise dispatch, and otherwise appends a brief, non-blocking alert listing everything else pending.
@@ -1961,7 +1961,7 @@ actions:
     references: ["apps/dashboard/app/api/approvals/route.ts", "src/commands/agentAsk.ts", "src/commands/decision.ts", "src/docs/dispatch.ts", "src/commands/go.ts", "src/commands/advance.ts", "apps/discord-bot"]
 questions: []
 decisions: []
-current_action: gate-dispatch-on-blocking-operator-items
+current_action: preserve-candidates-across-base-advance
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
 ---

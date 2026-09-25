@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Bootstrap managed production to run unattended from the GitHub board
 active_plan: bootstrap-managed-production-to-build-flight-deck
-current_action: gate-dispatch-on-blocking-operator-items
-updated: 2026-09-24
+current_action: preserve-candidates-across-base-advance
+updated: 2026-09-25
 ---
 
 # Arcadia
