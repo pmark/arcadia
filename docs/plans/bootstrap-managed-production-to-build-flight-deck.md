@@ -1473,14 +1473,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask add-segment-queue-arrange
     clarification: clarified
     confidence: high
-    source: Agent Ask add-segment-queue-arrange-2026-09-22
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - One `arcadia advance queue` invocation places an ordered list of existing approved keys at the top, or before or after an anchor, with preview, --apply, --request-id idempotency, and --revision optimistic concurrency; every key not listed keeps its relative order, and the whole move commits atomically as one queue revision.
       - The command refuses, before writing, an order that puts an Action ahead of a dependency, naming the offending key and dependency.
       - "`agent-ask settle` with --top, --before, or --after inserts newly created Actions without changing the relative order of the active Plan's existing positioned rows, placing each new Action immediately after its latest dependency when no anchor is given."
       - Deterministic tests cover the segment move, the dependency refusal, idempotent replay, a stale-revision refusal, and a settle insertion that leaves existing Plan order unchanged.
       - START_HERE.md or docs/COMMANDS.md documents the command with one example.
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["src/ask/settlement.ts", "src/commands/advance.ts", "docs/COMMANDS.md"]
   - id: settle-commit-survives-gitignored-asks
@@ -1492,14 +1492,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask settle-commit-survives-gitignored-asks
     clarification: clarified
     confidence: high
-    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - The archived Ask path is never added to the managed-document commit when `git check-ignore` reports it ignored, and the managed documents still commit regardless of the archived file's ignore status.
       - When the Project tracks `.arcadia/asks/`, the archived Ask is still staged and committed alongside the managed documents.
       - A deterministic test settles an Ask in a repository whose `.gitignore` excludes `.arcadia/asks/` and asserts the managed documents are committed with a clean working tree.
       - A second test covers the tracked case and asserts the archived file is committed.
       - "`pnpm test` and the core, Discord and Dashboard builds pass."
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/512", "src/ask/settlement.ts"]
   - id: serialize-decision-deferral-pointer-write
@@ -1511,13 +1511,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask serialize-decision-deferral-pointer-write
     clarification: clarified
     confidence: high
-    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - "`applyDecisionDeferral` reads PROJECT.md and the active Plan, applies its transforms, and writes the pair inside the same `writeTransaction` (BEGIN IMMEDIATE) the settlement path uses, re-reading the base under the lock."
       - A compare-and-set failure, where the base changed since the Plan was resolved, refuses or retries against fresh state instead of overwriting the concurrent pointer move; the two documents never end up pointing at different `current_action` values.
       - A regression test races a deferral apply against a concurrent settlement or pointer move and asserts one final `current_action` in both documents and no silently lost move.
       - Existing deferral, reversal and `--dry-run` behavior is unchanged; `pnpm test` and the core, Discord and Dashboard builds pass.
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/505", "src/dispatch/decisionDeferral.ts", "src/ask/settlement.ts"]
   - id: guard-go-fallback-against-claimed-actions
@@ -1603,14 +1603,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask treat-blocked-status-as-undispatchable
     clarification: clarified
     confidence: high
-    source: Agent Ask triage-highest-priority-bugs-2026-09-23-v2
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - "`resolveDispatch`/`isDispatchable` treats an Action with `status: blocked` as not dispatchable and pushes a named blocker, consistent with `resolveReadySet` and `buildProjectSchedule`."
       - "`arcadia next` no longer prints the coding-agent authorization for a blocked Action and `arcadia go` cannot prepare a worktree for it."
       - "`docs/managed-documents.md` states how `status: blocked` relates to `responsibility: blocked` and to dispatch readiness."
       - "A regression test reproduces the fixture (`status: blocked`, `responsibility: agent`) and asserts not dispatchable, while an unblocked Action stays dispatchable."
       - "`pnpm test` and the core, Discord and Dashboard builds pass."
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
   - id: honor-policy-providers-at-launch
@@ -1640,7 +1640,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask defect-bounded-triage-loop
     clarification: clarified
     confidence: high
-    source: Agent Ask split-defect-loop-remainder-2026-09-23
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - The existing persistent worker periodically admits defect triage under one explicit token and attempt budget, performs deterministic reproduction and deduplication before any model call, and reuses fresh included-capacity receipts when available; unknown capacity, purchased credits, and reset redemption never count as free.
       - "Each triage run leaves a durable disposition and evidence: close noise, enrich or link a duplicate, preserve a waiting item with a concrete trigger, promote a formal governed Action into the explicit queue, or perform a validated low-risk reversible repair within standing authority."
@@ -1648,7 +1648,7 @@ actions:
       - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
       - Deterministic tests cover periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
       - The operator-facing QA plan includes the worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
-    depends_on: [build-autonomous-defect-loop]
+    depends_on: [build-autonomous-defect-loop, prove-two-action-unattended-production]
     decisions: []
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
   - id: preflight-provider-signin-before-launch
@@ -1736,13 +1736,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask page-runs-this-push-list
     clarification: clarified
     confidence: high
-    source: Agent Ask runs-page-ux-2026-09-23
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - The This push section renders its first page without waiting for the full queue and history to load.
       - Scrolling to the end of the list fetches and appends the next page of past or future Actions, with no duplicates or gaps.
       - The list API accepts a page cursor and limit and is covered by tests for first, middle, and last pages.
       - The section still shows its loading, empty, and error states.
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: []
   - id: tab-runs-page-concerns
@@ -1786,14 +1786,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask renumber-duplicate-decision-files
     clarification: clarified
     confidence: high
-    source: Agent Ask renumber-duplicate-decision-ids-and-repoint-r195-2026-09-25
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - docs/decisions/0004-remaining-protocol-increment.md is renamed to the next free numeric id at implementation time, keeping docs/decisions/0004-docs-sync-write-back.md at id 0004.
       - docs/decisions/0005-recheck-readiness-hybrid.md is renamed to the next free numeric id at implementation time, keeping docs/decisions/0005-plan-milestone-span.md at id 0005.
       - Each renamed file's frontmatter id field is updated to match its new filename, and the file records a docs-sync-visible migration note pointing back to its original id so the rename is traceable in history.
       - Every inbound reference to a renamed file's old id or its old id+slug pair (Mission Log entries, other Decisions' decision frontmatter links, other documents' prose or cross-references) is found by repository-wide search and updated to the new id.
       - arcadia docs sync reports zero duplicate-id issues for these two pairs afterward, and pnpm test and the core, Discord, and Dashboard builds pass.
-    depends_on: []
+    depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: []
   - id: repoint-r195-to-fresh-decision
@@ -1930,13 +1930,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask generate-operator-scripts-for-runs-approvals
     clarification: clarified
     confidence: high
-    source: Agent Ask split-surface-terminal-operator-approvals-in-runs-2026-09-24-v3
+    source: Agent Ask gate-dispatch-to-production-critical-path-2026-09-25
     acceptance_criteria:
       - For every bounded scriptable operator step Arcadia derives, it writes a short-lived script and an arcadia-operator-script-v1 descriptor only beneath artifacts/generated/operator-scripts/; /runs displays the descriptor's problem, desired effect, exact CLI invocation, checksum, prerequisites, authority boundary, success next step, and failure next step.
       - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
       - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
       - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
-    depends_on: [surface-terminal-operator-approvals-in-runs]
+    depends_on: [surface-terminal-operator-approvals-in-runs, prove-two-action-unattended-production]
     decisions: []
     references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
   - id: gate-dispatch-on-blocking-operator-items
