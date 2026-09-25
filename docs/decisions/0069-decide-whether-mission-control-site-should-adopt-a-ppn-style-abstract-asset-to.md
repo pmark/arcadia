@@ -28,6 +28,8 @@ decided: 2026-09-25
 
 # Decision 0069: Decide whether mission-control-site should adopt a PPN-style abstract asset-to-placement rubric/mapping system, plus a generated-imagery and video pipeline (motion graphics, short- and long-form video), given that the site's own PRD currently forbids exactly this shape of system.
 
+**Relocated.** This Decision was filed under `project: arcadia` because mission-control-site had no Arcadia Project of its own yet at filing time. It has since been onboarded as its own Project, and this Decision is entirely about that site's own PRD -- so the live copy now lives there: `docs/decisions/0001-decide-whether-mission-control-site-should-adopt-a-ppn-style-abstract-asset-to.md` in the `mission-control-site` repository, unchanged in content, question, recommendation, and answer. This file stays as a reserved pointer; id `0069` is not reused, per the renumbering precedent in Decision 0067.
+
 ## Options
 
 - **Keep mission-control-site minimal per its current PRD** (recommended): No rubric system and no generated-imagery/video pipeline on this site. Images are hand-placed one at a time as real, working features ship, exactly as SS21 requires today; the already-working Arcadia ingress pipeline remains available for getting any single asset from disk into a repo when wanted.
