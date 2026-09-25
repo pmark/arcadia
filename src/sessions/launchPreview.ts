@@ -25,6 +25,7 @@ export { LAUNCH_ADAPTER_SUPPORT };
 import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
+import { readProductionPolicySafely } from "../production/policy.js";
 import { resolveProjectTransition, type TmuxAdapter } from "./index.js";
 import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
 
@@ -228,6 +229,35 @@ export function buildLaunchPreview(input: {
             }
           }
         }
+      }
+    }
+  }
+
+  // The selected or packet-bound provider must still be permitted by the
+  // active standing production policy, for exactly the Project/Plan/Action
+  // that policy actually authorizes -- mirroring `issueAdmission`'s own
+  // in-scope test (policy.ts), so this never flags a mismatch for a Project
+  // the policy does not govern. A packet's provider is immutable once bound,
+  // so a mismatch here is a named prerequisite, not a silent per-tick
+  // admission refusal: `issueAdmission` would otherwise be the first place
+  // this ever surfaces, deep inside the launch attempt.
+  if (selection && context) {
+    const policyRead = readProductionPolicySafely(input.db);
+    if (policyRead.status === "ok" && policyRead.policy.desiredState === "active" && policyRead.policy.scope) {
+      const scope = policyRead.policy.scope;
+      const planKey = `${input.projectSlug}/${context.activePlan}`;
+      const inScope =
+        scope.projects.includes(input.projectSlug) &&
+        scope.plans.includes(planKey) &&
+        (scope.actions.length === 0 || scope.actions.includes(`${input.projectSlug}/${context.action.id}`));
+      if (inScope && !scope.providers.includes(selection.provider)) {
+        const remedy = packet
+          ? "prepare a new build packet bound to a permitted provider"
+          : "re-grant the standing policy to permit this provider, or select a different, already-permitted provider";
+        prerequisites.push(
+          `provider not permitted: "${selection.provider}" is not among the active production policy's permitted providers ` +
+            `(${scope.providers.length > 0 ? scope.providers.join(", ") : "none"}); ${remedy}.`
+        );
       }
     }
   }

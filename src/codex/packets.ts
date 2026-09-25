@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
+import { validationError } from "../cli/errors.js";
 import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
 import type { ProjectContext, WorkItemSummary } from "../domain/types.js";
@@ -13,6 +14,7 @@ import type {
 } from "../codingAgents/providerAdapters.js";
 import {
   detectHardProviderEvidence,
+  ExecutionProfileUnsatisfiedError,
   selectDefaultCodingAgentConfiguration,
   selectProviderWithHardEvidenceSubstitution
 } from "../codingAgents/providerAdapters.js";
@@ -289,6 +291,107 @@ export function selectAgentProfileForWorkItem(input: {
     executionRequirement: parsed.resolved,
     substitution: admitted.substitution
   };
+}
+
+/**
+ * The first of `candidateNames` (in order) that `selectAgentProfileForWorkItem`
+ * actually accepts as `requestedName` for this work item and purpose, probing
+ * with no side effects -- selection alone, never packet creation. A policy's
+ * permitted providers (`selectPolicyPermittedProfileNames`, production/policy.js)
+ * are not guaranteed to satisfy a specific work item's execution requirement,
+ * and `requestedName` is a strict filter with no fallback of its own
+ * (CodeRabbit, PR #646, fix round 2): binding packet preparation to the first
+ * permitted name regardless of compliance would throw
+ * `ExecutionProfileUnsatisfiedError` even when a later permitted name is
+ * compliant. Returns null when every candidate is unsatisfied, so the caller
+ * falls back to its own default exactly as if no policy had steered it.
+ *
+ * A work item with no `execution_requirement_json` takes
+ * `selectAgentProfileForWorkItem`'s other branch, which calls the simpler
+ * `selectAgentProfile` and throws a plain `Error` -- never
+ * `ExecutionProfileUnsatisfiedError` -- for exactly this candidate's own
+ * unavailability or missing adapter binding (CodeRabbit, PR #646, fix round
+ * 3): our own `candidateNames` always name a real profile of this purpose, so
+ * that branch's other throws ("not found"/"wrong purpose") cannot occur here,
+ * and every error it can throw is per-candidate. Continue past it the same as
+ * `ExecutionProfileUnsatisfiedError`. A work item WITH `execution_requirement_json`
+ * can also throw a plain `Error` for invalid requirement JSON or shape -- a
+ * property of the work item itself, identical for every candidate -- which
+ * still propagates immediately rather than being swallowed as unavailability.
+ */
+export function selectCompliantPolicyPermittedProfileName(input: {
+  profiles: CodingAgentProfile[];
+  adapters?: ProviderAdapterRegistry;
+  workItem: WorkItemSummary;
+  purpose: CodexInvocationPurpose;
+  candidateNames: string[];
+}): string | null {
+  const candidateLocalErrorsAreExpected = !input.workItem.execution_requirement_json || !input.adapters;
+  for (const name of input.candidateNames) {
+    try {
+      selectAgentProfileForWorkItem({
+        profiles: input.profiles,
+        adapters: input.adapters,
+        workItem: input.workItem,
+        purpose: input.purpose,
+        requestedName: name
+      });
+      return name;
+    } catch (error) {
+      if (!(error instanceof ExecutionProfileUnsatisfiedError) && !candidateLocalErrorsAreExpected) {
+        throw error;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * `selectCompliantPolicyPermittedProfileName`, but refuses instead of
+ * silently falling back to the registry default when an in-scope policy
+ * governs this identity and none of its permitted providers is compliant.
+ * `permittedCandidateNames` empty means no policy governs this identity at
+ * all -- an ordinary caller falling back to its own default is correct there,
+ * exactly as if no policy had steered it. `permittedCandidateNames` non-empty
+ * but no compliant candidate found means the policy DOES govern this
+ * identity and none of what it permits can do this specific work: binding
+ * packet preparation to the registry default anyway would silently create an
+ * immutable packet bound to a provider the policy never permitted, which
+ * `buildLaunchPreview` would only catch as a launch refusal much later
+ * (CodeRabbit, PR #646, fix round 3) -- exactly the failure mode Issue #559
+ * exists to prevent. Returns `undefined` (registry default) only in the
+ * former case; throws a named `VALIDATION_ERROR` in the latter.
+ */
+export function selectPolicyPermittedProfileNameOrRefuse(input: {
+  profiles: CodingAgentProfile[];
+  adapters?: ProviderAdapterRegistry;
+  workItem: WorkItemSummary;
+  purpose: CodexInvocationPurpose;
+  permittedCandidateNames: string[];
+}): string | undefined {
+  if (input.permittedCandidateNames.length === 0) {
+    return undefined;
+  }
+  const compliant = selectCompliantPolicyPermittedProfileName({
+    profiles: input.profiles,
+    adapters: input.adapters,
+    workItem: input.workItem,
+    purpose: input.purpose,
+    candidateNames: input.permittedCandidateNames
+  });
+  if (compliant) {
+    return compliant;
+  }
+  throw validationError(
+    `The active production policy permits ${input.purpose} providers ` +
+      `${input.permittedCandidateNames.join(", ")} for this Action, but none satisfies its execution requirement. ` +
+      "Re-grant the standing policy to permit a compliant provider, or adjust the Action's execution requirement.",
+    {
+      actionId: input.workItem.id,
+      purpose: input.purpose,
+      permittedProfiles: input.permittedCandidateNames
+    }
+  );
 }
 
 export function selectAgentProfile(

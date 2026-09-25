@@ -3,7 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
+import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { validationError } from "../cli/errors.js";
 import {
   createExecutionPlan,
@@ -26,6 +26,7 @@ import { persistCodexPacketRecords } from "../execution/planningPreparation.js";
 import { packetSha256, parseDecisionContext } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
+import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName, selectPolicyPermittedProfileNames } from "../production/policy.js";
 import {
   extractPlanningPromotionFields,
   validatePlanningArtifact,
@@ -163,7 +164,13 @@ export function prepareProjectIdeaPromotion(
 
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
-  const buildProfile = registries.codingAgents.defaults?.build;
+  // Prefer a profile the active standing production policy actually permits
+  // over the registry's deterministic default: once bound, a packet's
+  // provider cannot be changed except by preparing a new one, so a policy
+  // mismatch here would otherwise surface only as a silent per-tick admission
+  // refusal once this Action reaches launch (see `buildLaunchPreview`).
+  const buildProfile = selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, planningAction))
+    ?? registries.codingAgents.defaults?.build;
   if (!buildProfile || !registries.codingAgents.profiles.some((profile) => profile.name === buildProfile && profile.purpose === "build")) {
     throw validationError("Project-idea promotion requires one configured default build profile.", {
       configuredDefault: buildProfile ?? null
@@ -360,12 +367,39 @@ export function persistProjectIdeaPromotion(
 
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
+  // `prepared.buildProfile` was chosen before `promotedAction` existed and
+  // possibly before the standing policy's permitted providers last changed,
+  // so neither its execution-requirement compliance nor its current policy
+  // permission is guaranteed. When no policy governs this now-real identity,
+  // use it exactly as recorded (unchanged from before this fallback existed).
+  // When a policy DOES govern it, recheck it against the CURRENT permitted
+  // set first -- a still-permitted recorded choice is tried first, but a
+  // since-forbidden one is dropped rather than bound to the promoted Action's
+  // immutable packet (CodeRabbit, PR #646, fix round 3) -- then fall back
+  // through the policy's other permitted providers for compliance. If the
+  // policy governs this identity and none of what it currently permits is
+  // compliant, refuse rather than silently falling back to a nonpermitted
+  // registry default (CodeRabbit, PR #646, fix round 3): that would create
+  // exactly the mismatch Issue #559 exists to prevent, only discovered later
+  // as a launch refusal.
+  const permittedNow = selectPolicyPermittedProfileNames(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, promotedAction));
+  const requestedName = permittedNow.length === 0
+    ? prepared.buildProfile
+    : selectPolicyPermittedProfileNameOrRefuse({
+        profiles: registries.codingAgents.profiles,
+        adapters: registries.providerAdapters,
+        workItem: promotedAction,
+        purpose: "build",
+        permittedCandidateNames: permittedNow.includes(prepared.buildProfile)
+          ? [prepared.buildProfile, ...permittedNow.filter((name) => name !== prepared.buildProfile)]
+          : permittedNow
+      });
   const selection = selectAgentProfileForWorkItem({
     profiles: registries.codingAgents.profiles,
     adapters: registries.providerAdapters,
     workItem: promotedAction,
     purpose: "build",
-    requestedName: prepared.buildProfile,
+    requestedName,
     defaults: registries.codingAgents.defaults
   });
   const buildPlan = createExecutionPlan(db, {

@@ -3,6 +3,10 @@ import type Database from "better-sqlite3";
 import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
+import type { CodingAgentProfile } from "../intent/registries.js";
+import { getProjectContext } from "../db/repositories.js";
+import { parseActionDocRef } from "../docs/types.js";
+import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 
@@ -401,6 +405,117 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
       observedAt
     };
   }
+}
+
+/** The Project/Plan/Action a caller wants checked against an active policy's scope. */
+export interface PolicyScopeIdentity {
+  projectSlug: string;
+  /** `<project-slug>/<plan-slug>` */
+  planKey: string;
+  /** `<project-slug>/<action-id>`, when this preparation is for one known Action. */
+  actionKey?: string | null;
+}
+
+/**
+ * `identity`'s own project/plan/action against `scope`, mirroring
+ * `buildLaunchPreview`'s in-scope test (launchPreview.ts) so a policy grant
+ * for one Project/Plan never reaches into unrelated work: an empty
+ * `scope.actions` permits every Action in the selected Project and Plan.
+ */
+function isWithinPolicyScope(scope: ProductionScope, identity: PolicyScopeIdentity): boolean {
+  return (
+    scope.projects.includes(identity.projectSlug) &&
+    scope.plans.includes(identity.planKey) &&
+    (scope.actions.length === 0 || (identity.actionKey != null && scope.actions.includes(identity.actionKey)))
+  );
+}
+
+/**
+ * The Project/Plan/Action identity of a work item with a managed `plan/<slug>#<id>`
+ * document reference, for `selectPolicyPermittedProfileName`'s scope check. Returns
+ * null when the work item has no resolvable managed document reference or Project --
+ * an ad hoc or cross-repository work item a standing policy was never written about.
+ */
+export function resolveWorkItemPolicyIdentity(db: Database.Database, workItem: WorkItem): PolicyScopeIdentity | null {
+  if (!workItem.doc_ref || !workItem.project_id) {
+    return null;
+  }
+  const parsedRef = parseActionDocRef(workItem.doc_ref);
+  if (!parsedRef) {
+    return null;
+  }
+  const projectSlug = getProjectContext(db, workItem.project_id)?.project.slug;
+  if (!projectSlug) {
+    return null;
+  }
+  return {
+    projectSlug,
+    planKey: `${projectSlug}/${parsedRef.planSlug}`,
+    actionKey: `${projectSlug}/${parsedRef.actionId}`
+  };
+}
+
+/**
+ * The build/planning profile a fresh packet should bind to, so packet
+ * preparation never hands a deterministic registry default to an immutable
+ * packet the standing policy's own scope will then refuse forever
+ * (CodeRabbit, PR #586): once bound, a packet's provider cannot be changed
+ * except by preparing a new one, so getting this right happens before
+ * preparation, not after. Returns null -- meaning "use the default" -- when
+ * no policy is Active, the Active policy has no provider scope, `identity` is
+ * absent, `identity` falls outside the active policy's own Project/Plan/Action
+ * scope (CodeRabbit, PR #646: a policy grant for one Project must never steer
+ * an unrelated Project's preparation), or no available profile of this
+ * purpose satisfies the permitted providers; a caller preparing a packet
+ * still throws its own clear error in that last case, or (see
+ * `buildLaunchPreview`) a mismatch is reported as a named launch prerequisite
+ * once the packet exists, rather than silently binding an unpermitted
+ * provider. Shared by every build-packet preparation path -- `work plan`,
+ * `ask`, and planning promotion -- so each prefers a policy-permitted
+ * provider whenever the caller did not request one explicitly and can name
+ * the identity being prepared for.
+ */
+export function selectPolicyPermittedProfileName(
+  db: Database.Database,
+  profiles: CodingAgentProfile[],
+  purpose: "build" | "planning",
+  identity?: PolicyScopeIdentity | null
+): string | null {
+  return selectPolicyPermittedProfileNames(db, profiles, purpose, identity)[0] ?? null;
+}
+
+/**
+ * Every profile name `selectPolicyPermittedProfileName` would consider, in
+ * `profiles` order, instead of only the first: the first policy-permitted
+ * profile is not guaranteed to satisfy a specific work item's execution
+ * requirement (capability, tools, context scope, locality, effort, sandbox),
+ * and `selectAgentProfileForWorkItem`'s `requestedName` is a strict filter
+ * with no fallback -- passing an incompliant single name throws
+ * `ExecutionProfileUnsatisfiedError` instead of trying the next permitted
+ * provider (CodeRabbit, PR #646, fix round 2). Callers that can check
+ * compliance (`selectCompliantPolicyPermittedProfileName` in
+ * `src/codex/packets.ts`) should try these in order; callers that cannot
+ * (`production/tick.ts`'s automatic planning resolution, already guarded by
+ * its own catch) may keep using the singular form above.
+ */
+export function selectPolicyPermittedProfileNames(
+  db: Database.Database,
+  profiles: CodingAgentProfile[],
+  purpose: "build" | "planning",
+  identity?: PolicyScopeIdentity | null
+): string[] {
+  if (!identity) {
+    return [];
+  }
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
+    return [];
+  }
+  const scope = policyRead.policy.scope;
+  if (!isWithinPolicyScope(scope, identity)) {
+    return [];
+  }
+  return profiles.filter((profile) => profile.purpose === purpose && scope.providers.includes(profile.provider)).map((profile) => profile.name);
 }
 
 export interface ActivateProductionInput {

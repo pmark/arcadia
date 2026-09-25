@@ -262,11 +262,17 @@ describe("runManagedProductionTick", () => {
 
     expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
     expect(tmux.launches).toHaveLength(0);
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]: provider not permitted:/)
+    );
 
     // A transient conflict (capacity/Off/stale-preview/lease) is an expected
     // wait state: no durable escalation is ever recorded for it, tick after
-    // tick, exactly as before this capability existed.
+    // tick, exactly as before this capability existed. But an *identical*
+    // refusal line is not re-logged on every tick (Issue #559): the durable
+    // row in `production_launch_refusal_log`, not a fresh log line each tick,
+    // is the fact worth keeping -- otherwise a broken repository logs the
+    // same sentence once per ~2s producer tick forever.
     const secondTickLog = vi.fn();
     withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
@@ -279,8 +285,35 @@ describe("runManagedProductionTick", () => {
         agentWorktreeRoot: fixture.agentWorktreeRoot
       })
     );
-    expect(secondTickLog).toHaveBeenCalledWith(expect.stringMatching(/Launch refused for test-project\/define-contract \[provider_not_permitted\]/));
+    expect(secondTickLog).not.toHaveBeenCalledWith(expect.stringMatching(/Launch refused/));
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+
+    // Once the policy is fixed to permit the packet's bound provider again,
+    // the launch succeeds and the refusal-dedup row is cleared -- so a later
+    // regression of the same kind is reported fresh, not silently swallowed
+    // forever by a stale row.
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-fixed-provider",
+        scope: productionScope,
+        scopeFingerprint: fingerprintProductionScope(productionScope),
+        grantedBy: "operator"
+      })
+    );
+    const thirdTickLog = vi.fn();
+    const thirdResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 120_000),
+        log: thirdTickLog,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(thirdResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(thirdTickLog).not.toHaveBeenCalledWith(expect.stringMatching(/Launch refused/));
   });
 
   it("automatically requests a Decision-gated planning run instead of silently stalling on planning_required (Issue #584), and never escalates it to the operator", () => {

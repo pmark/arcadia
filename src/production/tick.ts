@@ -14,7 +14,7 @@ import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -126,8 +126,78 @@ export function ensureProductionTickTables(db: Database.Database): void {
       first_failed_at TEXT NOT NULL,
       last_attempted_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS production_launch_refusal_log (
+      action_key TEXT PRIMARY KEY,
+      dedupe_key TEXT NOT NULL,
+      message TEXT NOT NULL,
+      first_at TEXT NOT NULL,
+      last_at TEXT NOT NULL
+    );
   `);
   ensureProductionLaunchBlockersTable(db);
+  ensureProductionLaunchRefusalDedupeKeyColumn(db);
+}
+
+/**
+ * A workspace whose `production_launch_refusal_log` table predates
+ * `dedupe_key` (CodeRabbit, PR #646, fix round 2) keeps that table's exact
+ * shape under `CREATE TABLE IF NOT EXISTS`, so the first launch refusal after
+ * upgrade would fail at `SELECT dedupe_key` with no such column. Backfill
+ * existing rows from their own `message` -- an exact-match dedupe identical to
+ * this table's pre-migration behavior -- so recordLaunchRefusalIfNew's first
+ * post-migration write for each Action logs once, as a fresh episode, exactly
+ * as an upgrade should.
+ */
+function ensureProductionLaunchRefusalDedupeKeyColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(production_launch_refusal_log)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("dedupe_key")) {
+    db.prepare("ALTER TABLE production_launch_refusal_log ADD COLUMN dedupe_key TEXT").run();
+    db.prepare("UPDATE production_launch_refusal_log SET dedupe_key = message WHERE dedupe_key IS NULL").run();
+  }
+}
+
+/**
+ * Record (or refresh) an expected-wait-state launch refusal (capacity/Off/
+ * stale-preview/lease/policy conflicts) and report whether it is a new
+ * episode. Logging the identical refusal line on every ~2s producer tick was
+ * Issue-shaped noise the same way base-branch observation failures were
+ * (`recordBaseBranchObservationFailure`, above) -- the durable row, not a
+ * fresh log line each tick, is the fact worth keeping.
+ *
+ * `dedupeKey` -- not the full `message` -- decides whether this is the same
+ * episode continuing: an `admission_expired` refusal's message embeds a fresh
+ * expiry timestamp on every tick (`Admission expired at <ISO>; ...`), so
+ * comparing full messages logged that identical wait state on every tick
+ * (CodeRabbit, PR #646). The caller supplies a stable identity -- typically
+ * the conflict code plus normalized prerequisites -- while `message` remains
+ * the full, current detail persisted and logged. Returns true whenever
+ * `dedupeKey` changed (including the first time this actionKey is seen), so
+ * the caller logs exactly once per distinct refusal episode.
+ */
+function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, dedupeKey: string, message: string, now: Date): boolean {
+  const at = now.toISOString();
+  const existing = db.prepare("SELECT dedupe_key FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as
+    | { dedupe_key: string }
+    | undefined;
+  const isNewEpisode = !existing || existing.dedupe_key !== dedupeKey;
+  db.prepare(
+    `INSERT INTO production_launch_refusal_log (action_key, dedupe_key, message, first_at, last_at)
+       VALUES (@action_key, @dedupe_key, @message, @at, @at)
+     ON CONFLICT(action_key) DO UPDATE SET
+       dedupe_key = @dedupe_key,
+       message = @message,
+       first_at = CASE WHEN production_launch_refusal_log.dedupe_key = @dedupe_key
+                    THEN production_launch_refusal_log.first_at ELSE @at END,
+       last_at = @at`
+  ).run({ action_key: actionKey, dedupe_key: dedupeKey, message, at });
+  return isNewEpisode;
+}
+
+/** Clear a recorded launch refusal once this Action's launch stops being refused. */
+function clearLaunchRefusal(db: Database.Database, actionKey: string): void {
+  db.prepare("DELETE FROM production_launch_refusal_log WHERE action_key = ?").run(actionKey);
 }
 
 /**
@@ -175,32 +245,6 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
 const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required"]);
 
 /**
- * The build/planning profile a fresh packet should bind to, so automatic
- * preparation never hands `runWorkPlanCommand`'s deterministic default to an
- * immutable packet the standing policy's own scope will then refuse forever
- * (CodeRabbit, PR #586): once bound, a packet's provider cannot be changed
- * except by preparing a new one, so getting this right happens before
- * preparation, not after. Returns null -- meaning "use the default" -- when
- * no policy is Active, the Active policy has no provider scope, or no
- * available profile of this purpose satisfies that scope; `runWorkPlanCommand`
- * still throws its own clear error in that last case, same as before this
- * selection existed, rather than silently binding an unpermitted provider.
- */
-function selectPolicyPermittedProfileName(
-  db: Database.Database,
-  profiles: CodingAgentProfile[],
-  purpose: "build" | "planning"
-): string | null {
-  const policyRead = readProductionPolicySafely(db);
-  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
-    return null;
-  }
-  const permittedProviders = policyRead.policy.scope.providers;
-  const candidate = profiles.find((profile) => profile.purpose === purpose && permittedProviders.includes(profile.provider));
-  return candidate?.name ?? null;
-}
-
-/**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
  * automatically through the exact same `arcadia work plan` machinery a human
  * or agent would otherwise have to notice and run by hand (Issue #584):
@@ -244,7 +288,9 @@ function attemptAutomaticPlanningResolution(
     : steps.length === 1 && steps[0]?.executorType === "codex_planning"
       ? "planning"
       : null;
-  const requestedProfile = predictedPurpose ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose) ?? undefined : undefined;
+  const requestedProfile = predictedPurpose
+    ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
+    : undefined;
   try {
     const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
     if (prepared.data.buildInvocation) {
@@ -646,6 +692,7 @@ function attemptProjectLaunch(
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
+    clearLaunchRefusal(db, actionKey);
     input.log(`Auto-settled ${actionKey} from a drafted complete Ask (${autoSettle.askPath}); no Session launched.`);
     return { attempted: false, outcome: "auto_settled", reason: `Settled from a drafted complete Ask. Next: ${autoSettle.nextActionKey ?? "none"}.`, actionKey };
   }
@@ -685,6 +732,7 @@ function attemptProjectLaunch(
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
+    clearLaunchRefusal(db, actionKey);
     input.log(`${result.reused ? "Reused" : "Launched"} Session ${result.session.id} for ${actionKey} under the standing production policy.`);
     return {
       attempted: true,
@@ -710,7 +758,26 @@ function attemptProjectLaunch(
         clearLaunchBlocker(db, input.projectSlug);
       }
       const code = rawCode ? ` [${rawCode}]` : "";
-      input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
+      // `preview.prerequisites` (buildLaunchPreview) names exactly what is
+      // unready -- e.g. a policy-permitted-provider mismatch -- while
+      // `error.message` alone is the generic "The previewed Action is not
+      // ready to launch." Prefer the named list; fall back to the message
+      // for conflict codes that carry no prerequisites array (capacity, Off,
+      // stale preview, lease).
+      const prerequisites = Array.isArray(error.details?.prerequisites)
+        ? (error.details.prerequisites as unknown[]).filter((entry): entry is string => typeof entry === "string")
+        : null;
+      const detail = prerequisites && prerequisites.length > 0 ? prerequisites.join("; ") : error.message;
+      const refusalLine = `Launch refused for ${actionKey}${code}: ${detail}`;
+      // The dedup identity is the conflict code plus its named prerequisites
+      // (stable across ticks); with no prerequisites array, the code alone
+      // stands in for the whole conflict -- excluding `error.message`, whose
+      // `admission_expired` text embeds a fresh expiry timestamp every tick
+      // and would otherwise never match its own prior episode.
+      const dedupeKey = prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
+      if (recordLaunchRefusalIfNew(db, actionKey, dedupeKey, refusalLine, input.now)) {
+        input.log(refusalLine);
+      }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
       const resolvedLifecycleKind = packetLifecycleKind === "planning_required"
         ? attemptAutomaticPlanningResolution(
