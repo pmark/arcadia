@@ -1851,7 +1851,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/611", "src/sessions/preservationValidation.ts"]
   - id: withhold-worker-lifecycle-from-sessions
     title: Stop a dispatched coding-agent Session from stopping, starting, or restarting the shared host worker.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Stop a dispatched coding-agent Session from stopping, starting, or restarting the shared host worker.
