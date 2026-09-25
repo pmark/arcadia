@@ -1,0 +1,27 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-stop-killing-busy-workers-2026-09-25",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/stop-killing-busy-workers",
+  "candidate_revision": "77d7e778bf07b3f086d63e12a7c6f79b824152d8",
+  "desired_result": "Mark stop-killing-busy-workers done: the worker heartbeat beacon fix merged in pmark/arcadia#627, closing Issue #617.",
+  "evidence": [
+    {
+      "criterion": "Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal that no synchronous tick step can starve (for example a beat from a separate thread or process), not by lengthening the heartbeat threshold alone.",
+      "status": "met"
+    },
+    {
+      "criterion": "A deterministic test holds the worker inside a synchronous step for longer than 26s and proves start neither signals nor replaces it, and that stop sends only its ordinary SIGTERM and reports the worker mid-tick without escalating to SIGKILL; a worker that stops progressing entirely is still recovered by both.",
+      "status": "met"
+    },
+    {
+      "criterion": "The 170s and 292s stalls recorded in Issue #617 are investigated and their cause recorded in the PR, or recorded as not reproducible with the evidence gathered.",
+      "status": "met"
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617.",
+      "status": "met"
+    }
+  ]
+}
