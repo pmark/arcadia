@@ -38,6 +38,8 @@ This document does four things:
 | [0051](../decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md) | **Candidate continuation**: at most one live execution per candidate worktree. Later Sessions for the same Action reuse the candidate once the earlier one is proven terminal. |
 | [0066](../decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md) | **Same-repository concurrent Sessions are deferred.** The trigger has three parts: `prove-two-action-unattended-production` lands cleanly in real use, the fixes for #505, #507 and #549 are done, and then a secondary lane for low-blast-radius Actions becomes cheap. A ready-set multi-Session scheduler was explicitly rejected for now. |
 | [0054](../decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md) | **Priority lives in the queue.** The explicit ordered queue is the only record of Plan and Action priority. |
+| [0058](../decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md) | **Bounded candidate integration.** Under a named, expiring grant, a finished and validated candidate may be merged into the base branch with no per-Action operator merge. |
+| [0070](../decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md) | **Completions settle after merge, serially, on `main`, and the host pushes them.** A PR carries only its drafted `complete` Ask. The host settles merged completions in merge order. Governance files leave every PR, so parallel PRs stop conflicting on `PROJECT.md`, the Plan and `MISSION_LOG.md`. Its build (`settle-squash-merged-completion-drafts`, `sweep-merged-completions-before-dispatch`) is held behind the proof. |
 | [0057](../decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md) / [0061](../decisions/0061-retarget-decision-0057-s-reactivation-trigger-so-prove-two-action-unattended.md) | Defer the two-Action proof that 0066 depends on. It revives on any configured provider with capacity, once the managed-production defects are fixed. |
 
 ### Proposals and plans
@@ -226,20 +228,24 @@ agents".
 ### What pipelining needs from settlement
 
 Two unmerged candidates in one repository must merge cleanly in either order.
-Once settlement stops writing `current_action`, three shared writes remain:
+**Decision 0070 already provides this.** A PR carries only its drafted
+`complete` Ask, which lives at a unique path. The host settles merged
+completions serially on `main`, in merge order. No PR rewrites `PROJECT.md`,
+the Plan or `MISSION_LOG.md`, so candidates conflict only where their code
+does, and `touches:` scoping is what prevents that.
 
-1. **The Action's own block in the Plan document** (`status`, evidence). Two
-   different Actions touch different lines, so these merge cleanly.
-2. **The Plan's `updated:` frontmatter line.** This conflicts every time. It
-   should be dropped from completion writes, because git already records the
-   date.
-3. **The `MISSION_LOG.md` append.** Both branches append at the end of the file,
-   which conflicts. Give it a `.gitattributes` `merge=union` driver: log entries
-   are append-only and independent, which is exactly what union merge is for.
+0070 also fits ready-set admission directly:
 
-A deterministic test proves the property. It settles two completions on two
-branches from one base and merges them in both orders. There must be no
-conflict, and both Actions must end up done.
+- **The host settler is the single serial writer.** Recomputing the
+  `current_action` projection is one more thing it does after settling. The
+  pointer then has exactly one writer and no race.
+- **"Done" appears on `main` only after merge**, which is exactly the
+  landed-dependency rule above.
+
+So pipelining depends on 0070's two held Actions,
+`settle-squash-merged-completion-drafts` and
+`sweep-merged-completions-before-dispatch`, rather than on any new settlement
+work.
 
 ### Unchanged boundaries
 
@@ -267,9 +273,9 @@ conflict, and both Actions must end up done.
 | --- | --- | --- | --- |
 | 1 | **Wait reasons and a fake-executor soak.** Add `production status --explain` with one reason per in-scope Action. Add a deterministic `fixture` coding-agent provider that sleeps, edits one file and exits, so reviewers can push limits at zero token cost and watch each one engage. | None. It is read-only plus a test provider. | S–M |
 | 2 | **Unknown dependencies block.** Resolve cross-Plan ids, or refuse with `dependency_unresolved`. | None. It is a correctness fix. | S |
-| 3 | **Ready-set admission across repositories.** The tick admits from the portfolio ready set in canonical order, one live Session per repository. Settlement stops choosing the next Action and stops writing `current_action`. The scheduler becomes the pointer's only writer, as a projection. | **The reopened Decision 0023** | M |
+| 3 | **Ready-set admission across repositories.** The tick admits from the portfolio ready set in canonical order, one live Session per repository. Settlement stops choosing the next Action. The host settler from Decision 0070 becomes `current_action`'s only writer, as a projection. | **The reopened Decision 0023** | M |
 | 4 | **Provider-account slots and review headroom.** Add per-account slot limits in the issue phase and a per-repository limit on unmerged candidates. Release the admission on every failure path. | None | S–M |
-| 5 | **Pipelining.** An independent Action whose `touches:` do not overlap may start in a repository whose previous candidate is unmerged, up to the review limit. This requires the merge-in-either-order test above. | Step 3's Decision, and the test is green | M |
+| 5 | **Pipelining.** An independent Action whose `touches:` do not overlap may start in a repository whose previous candidate is unmerged, up to the review limit. | Step 3's Decision, and Decision 0070's two held Actions are built | M |
 | 6 | **Raise the defaults.** Activation previews the host slots, provider slots, allowance or ceiling, and review limit it would grant, and the throughput they imply. Raising any of them stays an explicit operator choice. | Step 1's soak is green and step 4 is active | S |
 | 7 | **Two live Sessions in one repository.** | Decision 0066's trigger, then a new Decision | L |
 | 8 | **Multi-installation ownership records.** | Decision 0022's trigger | M |
