@@ -51,7 +51,7 @@ Actions two days ago. All three remaining blockers landed:
 | # | Action | Defect | Why it blocks |
 | --- | --- | --- | --- |
 | 1 | `fix-decision-approve-missing-commit` ← **pointer** | #645 | `arcadia decision approve` leaves an uncommitted Decision file write, an ungated governance bug filed 2026-09-25 that sits ahead of the operator step in queue order. |
-| 2 | **Operator:** reverse Decision 0057's deferral and start the rehearsal | — | The three original code blockers are done; nothing else blocks entry 4 below except this ungated fix landing first. |
+| 2 | **Operator:** reverse Decision 0057's deferral and start the rehearsal | — | The three original code blockers are done; nothing else blocks entry 5 below except this ungated fix landing first. |
 
 After the ungated fix lands, Decision 0057/0061's revival trigger is met ("the
 operator begins the live rehearsal on whichever configured provider has capacity
@@ -126,8 +126,8 @@ another Plan.
 | --- | --- |
 | 1 — The board is the surface | ✅ closed 2026-09-20 |
 | 2 — Work reaches an agent with no operator | ✅ closed 2026-09-22 |
-| 3 — A finished Session lands with no operator | ✅ **#610, #539, #611 all fixed and closed.** |
-| 4 — It keeps going without help | ✅ **#617 and #559 both fixed and closed.** |
+| 3 — A finished Session lands with no operator | 🟡 **#610, #539, #611 all fixed and closed; provisional until the proof run passes through this gate.** |
+| 4 — It keeps going without help | 🟡 **#617 and #559 both fixed and closed; provisional until the proof run passes through this gate.** |
 | 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred and revives once the ungated `fix-decision-approve-missing-commit` lands and the operator reverses Decision 0057. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
 | 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
 
@@ -156,7 +156,7 @@ Then, for continuous production rather than the claim itself:
 
 Entry 4 is an ordinary `claude-sonnet-5` session at high effort.
 
-### Rehearsal hazards to know before entry 4
+### Rehearsal hazards to know before entry 5
 
 - **#608:** while the standing policy is Off, the worker fast-forwards every
   DB-active Project's checkout to `origin/main` on each tick. A `git reset --hard`
