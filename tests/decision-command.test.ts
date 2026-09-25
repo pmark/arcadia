@@ -233,6 +233,18 @@ describe("decision approve", () => {
     expect(status.trim()).toBe("");
   });
 
+  it("refuses even a no-op answer on a detached HEAD, since that commit would be unreachable from any branch", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "detached-no-op", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    execFileSync("git", ["checkout", "--detach", "HEAD"], { cwd: repoRoot });
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" })
+    ).toThrow(/detached HEAD/);
+  });
+
   it("commits a retry when the file already matches but a prior commit did not land", () => {
     const { workspace, repoRoot, projectSlug } = workspaceWithProject();
     runDecisionNewCommand({ workspace, project: projectSlug, slug: "retry-after-uncommitted-write", question: "Ready?" });

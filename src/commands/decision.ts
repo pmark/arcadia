@@ -335,6 +335,18 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
       });
     }
 
+    // A detached HEAD would accept a commit and lose it the moment HEAD
+    // moves. Check this before the no-op short-circuit below, too: a
+    // same-day retry whose content already matches could otherwise report
+    // success for a commit that exists only on a detached, unreferenced
+    // HEAD — invisible to any branch and eligible for garbage collection.
+    if (tryGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+      throw validationError(
+        "The Project repository is on a detached HEAD, so the Decision answer commit would be unreachable from any branch.",
+        { repoRoot, decisionId: prepared.decisionId }
+      );
+    }
+
     // A same-day retry recomputes byte-identical content, since `decided`/
     // `updated` both stamp today's date. That alone doesn't prove the answer
     // is actually committed, though: a prior attempt may have written this
@@ -347,14 +359,6 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
         workspace: workspacePath,
         data: { relativePath, absolutePath, applied: true, consequence: null, receiptId: null }
       });
-    }
-
-    // A detached HEAD would accept the commit and lose it the moment HEAD moves.
-    if (tryGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
-      throw validationError(
-        "The Project repository is on a detached HEAD, so the Decision answer commit would be unreachable from any branch.",
-        { repoRoot, decisionId: prepared.decisionId }
-      );
     }
 
     // A plain Decision answer commits its own file locally, matching the
