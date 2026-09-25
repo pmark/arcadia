@@ -11,6 +11,7 @@ import {
 } from "../ask/rules.js";
 import { captureAskEnvelope, type AskCaptureEnvelope, type CaptureAttachmentInput } from "../ask/captureEnvelope.js";
 import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
+import { selectPolicyPermittedProfileName } from "../production/policy.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -941,7 +942,11 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         adapters: registries.providerAdapters,
         workItem: initial.workItem,
         purpose: resolved.codexPurpose,
-        requestedName: options.agentProfile,
+        requestedName: options.agentProfile
+          ?? withDatabase(workspacePath, (db) =>
+            selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, resolved.codexPurpose as "build" | "planning")
+          )
+          ?? undefined,
         defaults: registries.codingAgents.defaults
       })
     : null;

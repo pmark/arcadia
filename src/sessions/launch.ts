@@ -163,7 +163,11 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // remedy needs an operator or agent action from one time alone resolves,
       // without re-deriving packet lifecycle state itself.
       packetLifecycleKind: preview.packetLifecycle?.kind ?? null,
-      packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null
+      packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null,
+      // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
+      // caller need not distinguish "caught at preview" from "caught at
+      // admission" -- both are the identical policy-provider mismatch.
+      code: preview.prerequisites.some((entry) => entry.startsWith("provider not permitted")) ? "provider_not_permitted" : null
     });
   }
 

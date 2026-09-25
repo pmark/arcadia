@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
+import type { CodingAgentProfile } from "../intent/registries.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 
@@ -401,6 +402,36 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
       observedAt
     };
   }
+}
+
+/**
+ * The build/planning profile a fresh packet should bind to, so packet
+ * preparation never hands a deterministic registry default to an immutable
+ * packet the standing policy's own scope will then refuse forever
+ * (CodeRabbit, PR #586): once bound, a packet's provider cannot be changed
+ * except by preparing a new one, so getting this right happens before
+ * preparation, not after. Returns null -- meaning "use the default" -- when
+ * no policy is Active, the Active policy has no provider scope, or no
+ * available profile of this purpose satisfies that scope; a caller preparing
+ * a packet still throws its own clear error in that last case, or (see
+ * `buildLaunchPreview`) a mismatch is reported as a named launch prerequisite
+ * once the packet exists, rather than silently binding an unpermitted
+ * provider. Shared by every build-packet preparation path -- `work plan`,
+ * `ask`, and planning promotion -- so each prefers a policy-permitted
+ * provider whenever the caller did not request one explicitly.
+ */
+export function selectPolicyPermittedProfileName(
+  db: Database.Database,
+  profiles: CodingAgentProfile[],
+  purpose: "build" | "planning"
+): string | null {
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
+    return null;
+  }
+  const permittedProviders = policyRead.policy.scope.providers;
+  const candidate = profiles.find((profile) => profile.purpose === purpose && permittedProviders.includes(profile.provider));
+  return candidate?.name ?? null;
 }
 
 export interface ActivateProductionInput {

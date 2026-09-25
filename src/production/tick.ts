@@ -14,7 +14,7 @@ import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, selectPolicyPermittedProfileName } from "./policy.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -126,8 +126,47 @@ export function ensureProductionTickTables(db: Database.Database): void {
       first_failed_at TEXT NOT NULL,
       last_attempted_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS production_launch_refusal_log (
+      action_key TEXT PRIMARY KEY,
+      message TEXT NOT NULL,
+      first_at TEXT NOT NULL,
+      last_at TEXT NOT NULL
+    );
   `);
   ensureProductionLaunchBlockersTable(db);
+}
+
+/**
+ * Record (or refresh) an expected-wait-state launch refusal (capacity/Off/
+ * stale-preview/lease/policy conflicts) and report whether its exact message
+ * is new. Logging the identical refusal line on every ~2s producer tick was
+ * Issue-shaped noise the same way base-branch observation failures were
+ * (`recordBaseBranchObservationFailure`, above) -- the durable row, not a
+ * fresh log line each tick, is the fact worth keeping. Returns true whenever
+ * the message changed (including the first time this actionKey is seen), so
+ * the caller logs exactly once per distinct refusal episode.
+ */
+function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, message: string, now: Date): boolean {
+  const at = now.toISOString();
+  const existing = db.prepare("SELECT message FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as
+    | { message: string }
+    | undefined;
+  const isNewEpisode = !existing || existing.message !== message;
+  db.prepare(
+    `INSERT INTO production_launch_refusal_log (action_key, message, first_at, last_at)
+       VALUES (@action_key, @message, @at, @at)
+     ON CONFLICT(action_key) DO UPDATE SET
+       message = @message,
+       first_at = CASE WHEN production_launch_refusal_log.message = @message
+                    THEN production_launch_refusal_log.first_at ELSE @at END,
+       last_at = @at`
+  ).run({ action_key: actionKey, message, at });
+  return isNewEpisode;
+}
+
+/** Clear a recorded launch refusal once this Action's launch stops being refused. */
+function clearLaunchRefusal(db: Database.Database, actionKey: string): void {
+  db.prepare("DELETE FROM production_launch_refusal_log WHERE action_key = ?").run(actionKey);
 }
 
 /**
@@ -173,32 +212,6 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
  * never gets anyone's attention.
  */
 const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required"]);
-
-/**
- * The build/planning profile a fresh packet should bind to, so automatic
- * preparation never hands `runWorkPlanCommand`'s deterministic default to an
- * immutable packet the standing policy's own scope will then refuse forever
- * (CodeRabbit, PR #586): once bound, a packet's provider cannot be changed
- * except by preparing a new one, so getting this right happens before
- * preparation, not after. Returns null -- meaning "use the default" -- when
- * no policy is Active, the Active policy has no provider scope, or no
- * available profile of this purpose satisfies that scope; `runWorkPlanCommand`
- * still throws its own clear error in that last case, same as before this
- * selection existed, rather than silently binding an unpermitted provider.
- */
-function selectPolicyPermittedProfileName(
-  db: Database.Database,
-  profiles: CodingAgentProfile[],
-  purpose: "build" | "planning"
-): string | null {
-  const policyRead = readProductionPolicySafely(db);
-  if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
-    return null;
-  }
-  const permittedProviders = policyRead.policy.scope.providers;
-  const candidate = profiles.find((profile) => profile.purpose === purpose && permittedProviders.includes(profile.provider));
-  return candidate?.name ?? null;
-}
 
 /**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
@@ -646,6 +659,7 @@ function attemptProjectLaunch(
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
+    clearLaunchRefusal(db, actionKey);
     input.log(`Auto-settled ${actionKey} from a drafted complete Ask (${autoSettle.askPath}); no Session launched.`);
     return { attempted: false, outcome: "auto_settled", reason: `Settled from a drafted complete Ask. Next: ${autoSettle.nextActionKey ?? "none"}.`, actionKey };
   }
@@ -685,6 +699,7 @@ function attemptProjectLaunch(
     resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
+    clearLaunchRefusal(db, actionKey);
     input.log(`${result.reused ? "Reused" : "Launched"} Session ${result.session.id} for ${actionKey} under the standing production policy.`);
     return {
       attempted: true,
@@ -710,7 +725,20 @@ function attemptProjectLaunch(
         clearLaunchBlocker(db, input.projectSlug);
       }
       const code = rawCode ? ` [${rawCode}]` : "";
-      input.log(`Launch refused for ${actionKey}${code}: ${error.message}`);
+      // `preview.prerequisites` (buildLaunchPreview) names exactly what is
+      // unready -- e.g. a policy-permitted-provider mismatch -- while
+      // `error.message` alone is the generic "The previewed Action is not
+      // ready to launch." Prefer the named list; fall back to the message
+      // for conflict codes that carry no prerequisites array (capacity, Off,
+      // stale preview, lease).
+      const prerequisites = Array.isArray(error.details?.prerequisites)
+        ? (error.details.prerequisites as unknown[]).filter((entry): entry is string => typeof entry === "string")
+        : null;
+      const detail = prerequisites && prerequisites.length > 0 ? prerequisites.join("; ") : error.message;
+      const refusalLine = `Launch refused for ${actionKey}${code}: ${detail}`;
+      if (recordLaunchRefusalIfNew(db, actionKey, refusalLine, input.now)) {
+        input.log(refusalLine);
+      }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
       const resolvedLifecycleKind = packetLifecycleKind === "planning_required"
         ? attemptAutomaticPlanningResolution(

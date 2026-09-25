@@ -17,6 +17,7 @@ import {
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
@@ -100,6 +101,82 @@ describe("buildLaunchPreview", () => {
     expect(preview.packetLifecycle?.kind).toBe("planning_required");
     expect(preview.prerequisites.some((entry) => entry.startsWith("planning required"))).toBe(true);
     expect(preview.prerequisites[0]).toContain("arcadia work plan");
+  });
+
+  it("reports a named prerequisite when the packet-bound provider is not permitted by the active production policy", () => {
+    const fixture = preparedFixture(); // default packet provider is "claude-code-cli"
+    withDatabase(fixture.workspace, (db) => {
+      const scope = normalizeProductionScope({
+        intent: "Prove policy-provider enforcement at launch preview.",
+        projects: ["test-project"],
+        plans: ["test-project/copy-proof"],
+        actions: [],
+        providers: ["codex-cli"],
+        maxConcurrentSessions: 1,
+        mechanicalTransitions: []
+      });
+      activateProduction(db, {
+        requestId: "policy-mismatch-1",
+        scope,
+        scopeFingerprint: fingerprintProductionScope(scope),
+        grantedBy: "operator"
+      });
+    });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-policy-mismatch",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+
+    expect(preview.ready).toBe(false);
+    const entry = preview.prerequisites.find((candidate) => candidate.startsWith("provider not permitted"));
+    expect(entry).toBeTruthy();
+    expect(entry).toContain("claude-code-cli");
+    expect(entry).toContain("codex-cli");
+    expect(entry).toContain("prepare a new build packet");
+  });
+
+  it("does not flag a provider mismatch for a packet outside the active policy's scope", () => {
+    const fixture = preparedFixture(); // default packet provider is "claude-code-cli"
+    withDatabase(fixture.workspace, (db) => {
+      const scope = normalizeProductionScope({
+        intent: "Prove out-of-scope Projects are never flagged for provider mismatch.",
+        projects: ["some-other-project"],
+        plans: ["some-other-project/queue-plan"],
+        actions: [],
+        providers: ["codex-cli"],
+        maxConcurrentSessions: 1,
+        mechanicalTransitions: []
+      });
+      activateProduction(db, {
+        requestId: "policy-out-of-scope-1",
+        scope,
+        scopeFingerprint: fingerprintProductionScope(scope),
+        grantedBy: "operator"
+      });
+    });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-out-of-scope",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+
+    expect(preview.ready).toBe(true);
+    expect(preview.prerequisites.some((candidate) => candidate.startsWith("provider not permitted"))).toBe(false);
   });
 
   it("keeps a planning Decision distinct from build authority", () => {
