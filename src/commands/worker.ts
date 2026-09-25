@@ -97,6 +97,11 @@ const REPEATED_FAILURE_LOG_INTERVAL = 30;
  */
 const BEACON_RESTART_BACKOFF_MS = 500;
 const BEACON_RESTART_LIMIT = 5;
+/** A replacement beacon that stays up this long counts as recovered, so the
+ * restart count resets — otherwise old, unrelated failures from earlier in a
+ * long-running worker's life would eventually exhaust the limit and disable
+ * the beacon permanently even though each replacement was actually healthy. */
+const BEACON_HEALTH_RESET_MS = 5 * 60_000;
 
 export interface WorkerOptions {
   workspace: string;
@@ -894,7 +899,11 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
   let ownershipLost = false;
   const superviseBeacon = (candidate: HeartbeatBeacon) => {
     beacon = candidate;
+    const healthTimer = setTimeout(() => {
+      beaconRestarts = 0;
+    }, BEACON_HEALTH_RESET_MS);
     beacon.onUnexpectedExit((detail) => {
+      clearTimeout(healthTimer);
       if (ownershipLost) return;
       beaconRestarts += 1;
       if (beaconRestarts > BEACON_RESTART_LIMIT) {

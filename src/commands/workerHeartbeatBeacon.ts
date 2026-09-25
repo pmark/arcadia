@@ -55,7 +55,15 @@ const identity = JSON.parse(identityJson) as Identity;
 const parentPid = Number(parentPidRaw);
 const intervalMs = Number(intervalRaw);
 
-try { writeHeartbeat(workspacePath, identity); } catch {}
+// Gated on the parent's liveness even for this first write: if this process
+// was slow to start, its parent may already be dead and replaced, and an
+// unconditional write here would clobber the replacement's just-established
+// identity with this stale one.
+if (isAlive(parentPid)) {
+  try { writeHeartbeat(workspacePath, identity); } catch {}
+} else {
+  process.exit(0);
+}
 
 const timer = setInterval(() => {
   if (!isAlive(parentPid)) {
