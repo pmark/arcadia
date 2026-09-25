@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0069"
+slug: decide-whether-mission-control-site-should-adopt-a-ppn-style-abstract-asset-to
+project: arcadia
+status: open
+question: Decide whether mission-control-site should adopt a PPN-style abstract asset-to-placement rubric/mapping system, plus a generated-imagery and video pipeline (motion graphics, short- and long-form video), given that the site's own PRD currently forbids exactly this shape of system.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Keep mission-control-site minimal per its current PRD
+options:
+  - label: Keep mission-control-site minimal per its current PRD
+    consequence: No rubric system and no generated-imagery/video pipeline on this site. Images are hand-placed one at a time as real, working features ship, exactly as SS21 requires today; the already-working Arcadia ingress pipeline remains available for getting any single asset from disk into a repo when wanted.
+    recommended: true
+  - label: Amend the PRD to permit a bounded imagery system
+    consequence: Requires ratifying a PRD change before any asset tooling is built here (not just a code change), and reopens the six-page/no-CMS scope decision that SS8 and SS21 already settled.
+    recommended: false
+  - label: Build a portfolio-level asset library now, modeled on PPN's, outside any single site
+    consequence: New standalone shared infrastructure under the arcadia project (or a new project) rather than mission-control-site; a materially larger effort with its own governance, decoupled from this site's PRD entirely.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-09-25
+---
+
+# Decision 0069: Decide whether mission-control-site should adopt a PPN-style abstract asset-to-placement rubric/mapping system, plus a generated-imagery and video pipeline (motion graphics, short- and long-form video), given that the site's own PRD currently forbids exactly this shape of system.
+
+## Options
+
+- **Keep mission-control-site minimal per its current PRD** (recommended): No rubric system and no generated-imagery/video pipeline on this site. Images are hand-placed one at a time as real, working features ship, exactly as SS21 requires today; the already-working Arcadia ingress pipeline remains available for getting any single asset from disk into a repo when wanted.
+- **Amend the PRD to permit a bounded imagery system**: Requires ratifying a PRD change before any asset tooling is built here (not just a code change), and reopens the six-page/no-CMS scope decision that SS8 and SS21 already settled.
+- **Build a portfolio-level asset library now, modeled on PPN's, outside any single site**: New standalone shared infrastructure under the arcadia project (or a new project) rather than mission-control-site; a materially larger effort with its own governance, decoupled from this site's PRD entirely.
+
+## Rationale
+
+docs/prd/martianrover-arcadia-mission-control-site.md SS21 Non-Goals #5 ('A CMS or content publishing platform. Six static pages in the repo.'), #10 ('Polishing speculative product features before demand exists. No screenshots or demos of things that do not work, at all, ever.'), and #12 ('A design system, brand guidelines, or illustration commission.') were written deliberately for this exact six-page, market-learning-first site. A rubric-calibrated asset-to-placement mapping system and a generated-video pipeline are both the shape of thing those non-goals name. Private Practice Now's own asset-library work (docs/asset-library.md, ADR 0013) is instructive precedent against building this now, not for it: ADR 0013 explicitly deferred PPN's own generation pipeline at a far larger scale (dozens of clients, hundreds of images) because volume didn't justify it and because generated imagery raises a truthfulness risk for anything presented as a real screenshot -- both reasons apply at least as strongly to a single six-page site with zero real product screenshots planned beyond genuinely-working features. Separately, Arcadia's existing ingress pipeline (src/commands/ingress.ts) already classifies and routes image/video/audio files dropped into ~/Library/Mobile Documents/.../ArcadiaIngress/<source>/In/ -- the 'use Arcadia Ingress to manage assets' request is already satisfied by existing capability and needs no new building; Rebuster itself has no Ingress-specific code and appears in ingress-findings.md only as a past routing destination, not as a pattern to replicate.
+
+Proposed by Agent Ask mc-site-asset-pipeline-scope-2026-09-25.
