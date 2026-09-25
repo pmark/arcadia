@@ -1840,11 +1840,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask name-failing-preservation-check-and-bound-retries
     clarification: clarified
     confidence: high
-    source: Agent Ask file-live-production-blockers-2026-09-24
+    source: Agent Ask restore-blocker-references-2026-09-24
     acceptance_criteria:
       - The 'Declared preservation validation failed or was skipped.' refusal returned by the preserve broker carries non-empty details naming each failing or skipped check, its command, and its exit status or skip reason.
-      - The brief delivered to a managed Session instructs it to stop after a bounded number of identical preservation refusals and exit incomplete with the refusal recorded, rather than investigating host source outside its worktree.
-      - A deterministic test covers a failing check (details name it) and a skipped check (details name the skip reason).
+      - The preserve broker or Session controller, not only the Session brief, enforces a bounded number of identical preservation refusals per Session; when the limit is reached it records the refusal and the Session is reconciled as an incomplete exit.
+      - Deterministic tests cover a failing check (details name it), a skipped check (details name the skip reason), and a Session that reaches the identical-refusal limit and is recorded incomplete.
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR refs Issue #611."
     depends_on: []
     decisions: []
@@ -1858,11 +1858,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask withhold-worker-lifecycle-from-sessions
     clarification: clarified
     confidence: high
-    source: Agent Ask file-live-production-blockers-2026-09-24
+    source: Agent Ask restore-blocker-references-2026-09-24
     acceptance_criteria:
-      - arcadia worker stop, start, restart and install refuse, with a named reason, when invoked from inside a managed coding-agent Session's process environment or prepared worktree, the same way the go host-controller executable is already withheld from agent allowlists.
+      - arcadia worker stop, start, restart and install refuse, with a named reason, when the caller descends from a managed coding-agent Session, determined by a non-forgeable host-side check (such as the Session's recorded process tree or tmux server) rather than caller environment variables or working directory.
       - The operator's own terminal and the launchd agent can still run every worker command unchanged.
-      - A deterministic test proves the refusal from a Session environment and the unchanged operator path.
+      - A deterministic test proves the refusal from a Session process even after it clears its environment and changes directory to the host workspace, and proves the unchanged operator and launchd paths.
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #611 together with name-failing-preservation-check-and-bound-retries or refs it if that Action has not merged."
     depends_on: []
     decisions: []
@@ -1912,10 +1912,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask stop-killing-busy-workers
     clarification: clarified
     confidence: high
-    source: Agent Ask file-busy-worker-false-kill-2026-09-24
+    source: Agent Ask cover-busy-worker-stop-2026-09-24
     acceptance_criteria:
-      - Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal no single synchronous tick step can starve, or by a recovery threshold separate from and longer than the 15s preservation-freshness window; a worker merely busy inside one long step is not signalled.
-      - A deterministic test holds the worker inside a synchronous step longer than 15s and proves start neither signals nor replaces it, while a worker that stops progressing entirely is still recovered.
+      - Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal that no synchronous tick step can starve (for example a beat from a separate thread or process), not by lengthening the heartbeat threshold alone.
+      - A deterministic test holds the worker inside a synchronous step for longer than 26s and proves start neither signals nor replaces it, and that stop sends only its ordinary SIGTERM and reports the worker mid-tick without escalating to SIGKILL; a worker that stops progressing entirely is still recovered by both.
       - "The 170s and 292s stalls recorded in Issue #617 are investigated and their cause recorded in the PR, or recorded as not reproducible with the evidence gathered."
       - "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617."
     depends_on: []
