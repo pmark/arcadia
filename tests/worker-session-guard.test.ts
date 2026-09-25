@@ -153,6 +153,13 @@ describe("worker lifecycle commands refuse a managed-Session caller", () => {
     })).toThrow(/ancestry could not be verified because the host process table could not be read/);
   });
 
+  it("fails closed when the tmux pane query itself fails unexpectedly, rather than treating a broken query as safe", () => {
+    const root = workspace();
+    expect(() => runWorkerStopCommand({ workspace: root }, {
+      listTmuxPanes: () => { throw new Error("simulated socket permission error"); }
+    })).toThrow(/tmux pane query failed unexpectedly \(simulated socket permission error\)/);
+  });
+
   it("leaves the operator's own terminal path unaffected: `worker stop` behaves normally with no managed pane in scope", () => {
     const root = workspace();
     const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, outsideSession));

@@ -118,32 +118,48 @@ function defaultListProcesses(): Array<{ pid: number; ppid: number }> {
   }
 }
 
+/** True only for tmux's own stable "no server running on <socket>" message --
+ * the one failure that genuinely proves no tmux server exists at all, and
+ * therefore no managed Session can be live. */
+function isNoTmuxServerError(error: unknown): boolean {
+  const stderr = (error as { stderr?: unknown } | null | undefined)?.stderr;
+  return typeof stderr === "string" && /no server running on/.test(stderr);
+}
+
 function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {
+  // `TMUX`/`TMUX_TMPDIR` pick which tmux server socket this query talks to.
+  // Inheriting them from the caller would let a Session redirect the query at
+  // a nonexistent socket -- tmux then fails the same way a genuine "no
+  // server" would, and the guard would have no way to tell the difference.
+  // Stripping them keeps this query pinned to the one real default socket
+  // every managed Session actually launches on, regardless of what the
+  // caller's own environment claims.
+  const { TMUX: _tmux, TMUX_TMPDIR: _tmuxTmpdir, ...env } = process.env;
+  let output: string;
   try {
-    // `TMUX`/`TMUX_TMPDIR` pick which tmux server socket this query talks to.
-    // Inheriting them from the caller would let a Session redirect the query
-    // at a nonexistent socket -- tmux then fails, the catch below returns `[]`,
-    // and the guard reads that as "not inside a Session". Stripping them keeps
-    // this query pinned to the one real default socket every managed Session
-    // actually launches on, regardless of what the caller's own environment
-    // claims.
-    const { TMUX: _tmux, TMUX_TMPDIR: _tmuxTmpdir, ...env } = process.env;
-    const output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8", env });
-    return output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line) => {
-        const spaceIndex = line.indexOf(" ");
-        return { pid: Number(line.slice(0, spaceIndex)), sessionName: line.slice(spaceIndex + 1) };
-      })
-      .filter((entry) => Number.isInteger(entry.pid));
-  } catch {
-    // No tmux server, or tmux is not installed on this host: definitely not
-    // inside a managed Session, since every managed Session launches through
-    // `tmux new-session` (see `launchPreparedSession`).
-    return [];
+    output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8", env });
+  } catch (error) {
+    if (isNoTmuxServerError(error)) {
+      // The expected, benign case: no tmux server at all, e.g. the operator's
+      // own plain terminal. Every managed Session launches through tmux, so
+      // no server genuinely means no Session can be live.
+      return [];
+    }
+    // Any other failure -- a missing tmux executable, a corrupted or
+    // unreadable socket, a permissions error -- is not proof that no managed
+    // Session is live. Propagate it so the caller fails closed instead of
+    // silently reading a broken query as "safe" (CWE-427).
+    throw error;
   }
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const spaceIndex = line.indexOf(" ");
+      return { pid: Number(line.slice(0, spaceIndex)), sessionName: line.slice(spaceIndex + 1) };
+    })
+    .filter((entry) => Number.isInteger(entry.pid));
 }
 
 /**
@@ -200,7 +216,18 @@ export function findEnclosingManagedSessionTmuxName(
  */
 function refuseIfManagedSession(operation: string, dependencies: ProcessAncestryDependencies): void {
   const listTmuxPanes = dependencies.listTmuxPanes ?? defaultListTmuxPanes;
-  const panes = listTmuxPanes();
+  let panes: Array<{ pid: number; sessionName: string }>;
+  try {
+    panes = listTmuxPanes();
+  } catch (error) {
+    // The pane query failed for a reason other than "no tmux server exists"
+    // (see `defaultListTmuxPanes`) -- unverifiable, so fail closed rather than
+    // proceed as if no managed Session could be live.
+    throw validationError(
+      `Refusing to ${operation} the shared host worker: this process's Session ancestry could not be verified because the tmux pane query failed unexpectedly (${error instanceof Error ? error.message : String(error)}).`,
+      { remedy: "Run this from the operator's own terminal, or let launchd manage the worker, where the tmux pane query is normally reliable." }
+    );
+  }
   const hasManagedPane = panes.some((pane) => pane.sessionName.startsWith(MANAGED_SESSION_TMUX_PREFIX));
   if (!hasManagedPane) return;
 
