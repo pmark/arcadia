@@ -746,3 +746,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "Hung-worker recovery in arcadia worker start and stop is driven by a liveness signal that no synchronous tick step can starve (for example a beat from a separate thread or process), not by lengthening the heartbeat threshold alone."; "A deterministic test holds the worker inside a synchronous step for longer than 26s and proves start neither signals nor replaces it, and that stop sends only its ordinary SIGTERM and reports the worker mid-tick without escalating to SIGKILL; a worker that stops progressing entirely is still recovered by both."; "The 170s and 292s stalls recorded in Issue #617 are investigated and their cause recorded in the PR, or recorded as not reproducible with the evidence gathered."; "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #617.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-stop-killing-busy-workers-2026-09-25).
+
+## 2026-09-25 — Agent Ask activate-mc-site-tooling-plan-2026-09-25
+
+- **Did:** Activated give-the-mission-control-site-repository-currently-ungoverned-no-agents-md at onboard-mission-control-site-tooling.
+- **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator picked 'Activate the draft Plan' from the prior handoff picker. No Action content changes; this Ask exists only to carry the settle-time --activate flag against the already-created draft Plan.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

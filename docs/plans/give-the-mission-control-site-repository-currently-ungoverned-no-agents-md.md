@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: give-the-mission-control-site-repository-currently-ungoverned-no-agents-md
 project: arcadia
-status: draft
+status: active
 milestone: "Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -45,6 +45,8 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: onboard-mission-control-site-tooling
+recommended_model: light
 ---
 
 # Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior.

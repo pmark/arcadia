@@ -1,0 +1,10 @@
+{
+  "agent_ask": "v1",
+  "request_id": "activate-mc-site-tooling-plan-2026-09-25",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/give-the-mission-control-site-repository-currently-ungoverned-no-agents-md",
+  "requested_authority": "propose",
+  "desired_result": "Activate the mission-control-site tooling/image draft Plan so onboard-mission-control-site-tooling becomes the current Action and dispatches next.",
+  "rationale": "The operator picked 'Activate the draft Plan' from the prior handoff picker. No Action content changes; this Ask exists only to carry the settle-time --activate flag against the already-created draft Plan."
+}
