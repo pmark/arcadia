@@ -156,21 +156,27 @@ say what you tried.
    while the acceptance criteria are still just text, before anyone
    implements the opposite of what's intended.
 
-10. **Does the sixth acceptance criterion actually address the operator's
-    concern, or just the letter of it?** The operator's worry was about
-    debugging difficulty when concurrent sessions can hit a latent race
-    together. The gate stops *production* from running concurrently. But
-    does anything stop a *test suite* or *local dev harness* from exercising
-    `maxConcurrentSessions > 1` before the proof, in a way that could mask or
-    misrepresent bugs that only manifest under real worker/DB/tmux
-    conditions? Is "the proof passed" actually load-bearing evidence of
-    concurrency safety, or does the proof only exercise two *sequential*
-    dependent Actions in one candidate (re-read
-    `prove-two-action-unattended-production`'s acceptance criteria in the
-    Plan — does it test concurrency at all, or only sequencing across
-    Sessions)? If the proof doesn't actually exercise concurrent admission,
-    gating on it may be a well-intentioned criterion that doesn't test what
-    it's supposed to guard.
+10. **[UPDATE 2026-09-25T23:50Z — this specific gap was found and closed;
+    verify the fix, don't just re-find the original problem.]** This item
+    originally asked whether `prove-two-action-unattended-production`
+    actually exercises concurrency. It does not — it dispatches two
+    *dependent* Actions sequentially in *one* repository, and its one
+    "concurrent" line proves the opposite property (a second concurrent
+    execution against the same candidate is refused). That finding is now
+    recorded in `docs/managed-production-readiness.md`'s "Concurrency"
+    section. The sixth acceptance criterion on
+    `admit-ready-set-across-repositories` was widened
+    (`widen-concurrency-gate-to-cite-both-proofs-2026-09-25`, `751f90d6`) to
+    also require a new Action, `prove-concurrent-ready-set-admission`
+    (`add-concurrent-ready-set-admission-proof-2026-09-25-v3`, `bb9b457e`),
+    which is written to actually launch two independent Actions in two
+    different repositories from one tick. **Your job on this item is now to
+    attack the new Action's acceptance criteria the same way**: does it
+    actually prove the property it claims to, does its own "no repetition
+    of the other completion order" escape hatch let it pass without really
+    testing the race, and does anything stop a test suite or local harness
+    from exercising `maxConcurrentSessions > 1` before *either* proof passes,
+    in a way that could mask a real concurrency bug?
 
 11. **Anything not on this list.** The list above is a starting point, not a
     checklist to satisfy. If you find a sharper failure mode by reading the
