@@ -735,6 +735,48 @@ in `CONSTITUTION.md`. Findings outside the PR's scope get a GitHub Issue per
 `reviews.request_changes_workflow: true`; without it CodeRabbit never
 approves, and the loop can only report that nothing is left unresolved.
 
+## CI failures are fixed immediately
+
+A red CI check on a pull request you opened or pushed to is **your work, not a
+report.** This applies in every session: `arcadia go` or any other, whether
+Arcadia launched you or not, under every coding-agent provider, in every
+Project. Fix it now, in the same session. The only exception is a blocker you
+cannot remove, and then the operator must be told on the default notification
+channel.
+
+1. **Watch the checks after every push.** Wait until the head's required
+   checks finish, with `gh pr checks <pr> --watch --required` or the host's
+   equivalent, bounded by the time the repository's CI takes. CodeRabbit
+   returning `done` does not end the handoff. A pending check means you are
+   not finished, and a red check means you are not done.
+2. **Red check: repair it now.** Read the failing job's log
+   (`gh run view <run> --log-failed`), reproduce it locally, and fix the root
+   cause. Validate, commit, push, and go back to step 1. Base-branch drift that
+   breaks the build is part of the work: merge the base in, never rebase, and
+   repair. Never weaken or skip a test, force a check, or edit CI configuration
+   to turn a check green.
+3. **A suspected flake gets one rerun** (`gh run rerun <run> --failed`). A flake
+   that passes on rerun is still a defect. File or update a `bug` Issue per
+   "Log defects with GitHub Issues", then continue.
+4. **Stop only at a real blocker.** That means the fix needs authority you do
+   not have (credentials, a secret, spend, an approval gate), a required
+   external service is down, the failure is on the base branch and not
+   introduced by this PR, or three repair attempts on the same failure have
+   not cleared it. Then:
+   - comment on the PR: the failing check, the evidence, what you tried, and
+     the exact operator step that would unblock it;
+   - **notify the operator on the default notification channel.** Draft and
+     settle an Agent Ask, `intent: log`, with `request_id`
+     `ci-blocked-<project>-pr<number>-<yyyy-mm-dd>` and a `desired_result`
+     naming the failing check, its cause, and the operator step. Arcadia posts
+     every settled Agent Ask to the configured channel (Discord by default).
+     Where no workspace can settle it, commit the drafted Ask and say plainly
+     in the handoff that the notification has **not** been sent;
+   - end the session at that blocker, per "Before you stop".
+
+This rule never widens authority. It pushes only to the PR's own branch, and a
+red check is never a reason to cross an approval gate in `CONSTITUTION.md`.
+
 ## Merge on green
 
 The operator has authorized this standing merge: **when CodeRabbit has approved
@@ -751,7 +793,7 @@ attention and protects nothing.
   the merged change is runtime code, and confirm they came back.
 - **Anything less is not authorized.** A red or pending check, an unapproved
   head, a conflict, or a bypass of branch protection means repair per
-  "Automatic production conflict recovery" or report the blocker; never merge
+  "CI failures are fixed immediately" or report the blocker; never merge
   around it, weaken a test, or force a check.
 - **Not every PR is in scope.** Do not merge a PR that opens or carries an
   important Decision, or that changes what agents are authorized to do: the
