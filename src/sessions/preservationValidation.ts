@@ -95,7 +95,18 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
     });
     const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, checkDefinition, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
     writeFileSync(evidenceRef, JSON.stringify(evidence, null, 2), { mode: 0o600 });
-    if (results.some(r => r.exitStatus !== 0 || r.error || r.signal)) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef });
+    // "Skipped" means the check never produced its own exit status -- it
+    // errored before running (e.g. ENOENT) or was terminated by a signal
+    // (e.g. the 120s timeout's SIGKILL) -- as distinct from "failed", which
+    // ran to completion and returned nonzero. Both name the offending
+    // command so a caller (and a bounded retry budget keyed on this shape)
+    // can tell an unrelated new failure from the same one repeating.
+    const checks = results
+      .filter(r => r.exitStatus !== 0 || r.error || r.signal)
+      .map(r => r.error || r.signal
+        ? { command: r.command, status: "skipped" as const, skipReason: r.error ?? `terminated by signal ${r.signal}` }
+        : { command: r.command, status: "failed" as const, exitStatus: r.exitStatus });
+    if (checks.length) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef, checks });
     assertBinding();
     if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, checkDefinition, binding };

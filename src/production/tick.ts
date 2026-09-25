@@ -458,7 +458,19 @@ export function runManagedProductionTick(
         // only under Decision 0058's separately recorded grant. Absent a valid
         // grant this stops after preservation and reports the operator merge.
         const preservation = preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
-        const result = reconcileSessionExit({ db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot });
+        // A preservation refusal that has now repeated identically past the
+        // budget must not be classified as resumable: the next tick would
+        // otherwise launch a fresh Session for the same Action, reproduce the
+        // same failure, and repeat forever. `suppressLeaseHandoff` keeps the
+        // receipt's outcome exactly what the evidence says (still
+        // `incomplete_resumable` when the candidate has real changes) while
+        // stopping it from being offered to `prepareSession`'s resumption path.
+        const result = reconcileSessionExit({
+          db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot,
+          suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
+            ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
+            : undefined
+        });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
         // agent's work on the base branch while the pointer still names the same

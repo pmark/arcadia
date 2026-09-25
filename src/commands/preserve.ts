@@ -12,8 +12,10 @@ import {
 import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint } from "../sessions/manualPreservation.js";
 import { resolveDispatch } from "../docs/dispatch.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
+import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
+import { reconcileSessionExit } from "../sessions/reconciliation.js";
 import {
   preserveCandidate,
   systemPreservationRemote,
@@ -63,9 +65,15 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       if (!projectSlug) throw validationError("Manual preservation cannot resolve its Project.");
       const binding = bindManualPreservation(db, { repository: controlWorktree, worktree: source, baseBranch, projectSlug });
       const assertBinding = () => assertManualPreservationBinding(db, binding);
-      const validation = validateBoundCandidate(options.workspace, {
-        id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
-      }, binding, assertBinding);
+      // No managed Session exists for a manual handoff (Decision: `arcadia go`'s
+      // manual path never creates an agent_sessions row), so an exhausted
+      // budget here has nothing to reconcile -- the augmented refusal message
+      // is the whole remedy: stop retrying and get the operator or a fresh
+      // repair attempt.
+      const validation = guardPreservationRefusal(db, binding.reservationId, options.now ?? new Date(), () =>
+        validateBoundCandidate(options.workspace, {
+          id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
+        }, binding, assertBinding));
       return preserveCandidate(db, {
         requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
         candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
@@ -104,7 +112,21 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
                   : "the Active policy does not include remote preservation"
           };
 
-    const validation = validatePreservationCandidate(db, options.workspace, lease);
+    const validation = guardPreservationRefusal(
+      db,
+      lease.id,
+      options.now ?? new Date(),
+      () => validatePreservationCandidate(db, options.workspace, lease),
+      // The identical-refusal budget is exhausted: a new Session for this
+      // Action would only reproduce the same failure, so reconcile this one
+      // as an incomplete exit now rather than leaving it prepared/running to
+      // be resumed again next tick. `reconcileSessionExit` is idempotent by
+      // session id, so a concurrent or repeated call here never double-writes.
+      (attempts) => reconcileSessionExit({
+        db, sessionId: lease.id, requestId: `preserve-refusal-limit-${lease.id}`, repoRoot: controlWorktree,
+        suppressLeaseHandoff: { reason: `An identical preservation refusal repeated ${attempts} times; not offered for automatic resumption.` }
+      })
+    );
     const current = preservationAuthority(db, options.workspace, lease);
     if (JSON.stringify(current) !== JSON.stringify(validation.binding) || JSON.stringify(policy) !== JSON.stringify(current.policy)) {
       throw validationError("Preservation authority changed after validation.");

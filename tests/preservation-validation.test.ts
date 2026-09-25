@@ -7,6 +7,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/sessions/preservationCheckBinding.js";
+import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
 const fixtures: ReturnType<typeof preservationFixture>[] = [];
@@ -111,6 +112,28 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     const writes = fixture("printf forged > marker.txt");
     expect(() => runPreserveCommand({ source: writes.candidate, workspace: writes.workspace })).toThrow(/validation failed/);
   });
+  it("names the failing check, its command and exit status in the refusal's details", () => {
+    const f = fixture("exit 1");
+    withDatabase(f.workspace, db => {
+      let error: unknown;
+      try { validatePreservationCandidate(db, f.workspace, f.lease); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({
+        message: "Declared preservation validation failed or was skipped.",
+        details: { checks: [{ command: "exit 1", status: "failed", exitStatus: 1 }] }
+      });
+    });
+  });
+  it("names a skipped check's command and its skip reason (a killing signal) in the refusal's details", () => {
+    const f = fixture("kill -KILL $$");
+    withDatabase(f.workspace, db => {
+      let error: unknown;
+      try { validatePreservationCandidate(db, f.workspace, f.lease); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({
+        message: "Declared preservation validation failed or was skipped.",
+        details: { checks: [{ command: "kill -KILL $$", status: "skipped", skipReason: "terminated by signal SIGKILL" }] }
+      });
+    });
+  });
   it("refuses worktree mutation during validation even though the immutable snapshot passes", () => {
     const f = fixture("sleep 1; node check.mjs");
     const mutator = spawn(process.execPath, ["-e", "setTimeout(()=>require('fs').writeFileSync(process.argv[1],'altered\\n'),400)", path.join(f.candidate, "marker.txt")], { stdio: "ignore" });
@@ -128,5 +151,54 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     const f = fixture();
     expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace, deps: { hooks: { beforeStage() { writeFileSync(path.join(f.candidate, "marker.txt"), "altered\n"); } } } })).toThrow(/differs from the validated/);
     expect(fixtureGit(f.candidate, ["rev-parse", "HEAD"])).toBe(f.base);
+  });
+  it("bounds a Session's identical preservation refusals and reconciles it as a non-resumable incomplete exit", () => {
+    const f = fixture("exit 1");
+    for (let attempt = 1; attempt < MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt++) {
+      expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace }))
+        .toThrow("Declared preservation validation failed or was skipped.");
+    }
+    // The identical-refusal budget is now exhausted: the next attempt gets a
+    // distinct refusal naming the limit, and the Session is reconciled as an
+    // incomplete, non-resumable exit rather than staying prepared/running for
+    // another tick to resume into the same failure.
+    let limitError: unknown;
+    try {
+      runPreserveCommand({ source: f.candidate, workspace: f.workspace });
+    } catch (caught) {
+      limitError = caught;
+    }
+    expect(limitError).toMatchObject({
+      message: expect.stringContaining(`identical reason ${MAX_IDENTICAL_PRESERVATION_REFUSALS} times in a row`)
+    });
+    withDatabase(f.workspace, db => {
+      const session = db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(f.lease.id) as { status: string };
+      expect(["prepared", "running"]).not.toContain(session.status);
+      const receipt = db.prepare("SELECT outcome, lease_handoff FROM session_exit_receipts WHERE session_id = ?").get(f.lease.id) as {
+        outcome: string;
+        lease_handoff: number;
+      };
+      expect(receipt.outcome).toBe("incomplete_resumable");
+      expect(receipt.lease_handoff).toBe(0);
+    });
+  });
+  it("resets the identical-refusal budget when the refusal reason changes", () => {
+    const f = fixture(); // default command: "node check.mjs", which fails until marker.txt reads "ready\n"
+    writeFileSync(path.join(f.candidate, "marker.txt"), "not ready\n");
+    expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(
+      "Declared preservation validation failed or was skipped."
+    );
+    // A candidate that neuters its own declared check is refused for a
+    // completely different reason, before any command even runs -- a sign
+    // this is a new problem, not the same one repeating -- so it must not
+    // inherit the prior attempt's count.
+    writeFileSync(path.join(f.candidate, "check.mjs"), "process.exit(0);\n");
+    expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(/cannot rewrite the check/);
+    withDatabase(f.workspace, db => {
+      const row = db.prepare("SELECT attempts, fingerprint FROM preservation_refusal_attempts WHERE subject_id = ?").get(f.lease.id) as
+        | { attempts: number; fingerprint: string }
+        | undefined;
+      expect(row?.attempts).toBe(1);
+    });
   });
 });
