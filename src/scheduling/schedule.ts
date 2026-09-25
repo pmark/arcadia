@@ -190,7 +190,7 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
       status,
       reason,
       position: order.positions.get(key) ?? null,
-      dependsOn: action.dependsOn.map((dependency) => actionKeyOf(project.slug, dependency)),
+      dependsOn: action.dependsOn,
       current: base.currentAction === action.id,
       discoveredByActionKey: row?.discoveredByActionKey ?? null,
       discoveryDepth: row?.discoveryDepth ?? 0,
@@ -204,7 +204,7 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
   // Deferred Actions leave the queue entirely. Anything depending on one stays
   // blocked through `resolveActionReadiness`, which treats an unfinished
   // dependency as unmet whether it is deferred or merely not started.
-  base.queue = canonicalOrder(orderCandidates(base.actions.filter((action) => action.status !== "deferred")));
+  base.queue = canonicalOrder(orderCandidates(base.actions.filter((action) => action.status !== "deferred"), base.planSlug));
   base.backlog = base.actions.filter((action) => action.status === "deferred").map((action) => action.key);
   const byKey = new Map(base.actions.map((action) => [action.key, action]));
   base.next = record.pausedReason
@@ -251,9 +251,11 @@ function deriveStatus(
   return { status: "ready", reason: "Every dependency is met and the Action is eligible to run." };
 }
 
-export function orderCandidates(actions: ScheduledAction[]): OrderCandidate[] {
+export function orderCandidates(actions: ScheduledAction[], planSlug: string | null): OrderCandidate[] {
   return actions.map((action) => ({
     key: action.key,
+    plan: planSlug ?? action.projectSlug,
+    actionId: action.actionId,
     schedulingClass: action.schedulingClass,
     position: action.position,
     dependsOn: action.dependsOn,

@@ -69,7 +69,7 @@ Checked against source on 2026-09-25:
 - **Action claims are live on both launch paths.** Claims live in `agent_worktree_reservations` with `claim_generation`. `launchGuardedHostSession` and `arcadia go` both use them, and settlement checks the generation fence (`src/ask/settlement.ts:1210`).
 - **Settlement already uses compare-and-set for `PROJECT.md`**, through `writePointerPairWithCompareAndSet`. The open part of #505 is the pointer write in `applyDecisionDeferral`.
 - **Every completion also picks the next Action.** `settleAgentAsk` calls `selectNextAfterCompletion` (`src/ask/settlement.ts:2086`), writes the result into `current_action` and appends to `MISSION_LOG.md`. That write is why the scheduler has to hold the pointer while a candidate is unmerged (`docs/production-scheduling.md`). The next Session cannot start until that candidate's pointer rewrite lands.
-- **An unknown dependency counts as satisfied.** `canonicalOrder` (`src/scheduling/order.ts:64`) releases an Action whose `depends_on` names an id it does not know. This is harmless when work runs one Action at a time. It is a hole when work runs in parallel.
+- **Fixed: an unknown dependency no longer counts as satisfied.** `canonicalOrder` (`src/scheduling/order.ts`) now resolves a `depends_on` id against its own Plan first, then as a cross-Plan `plan/<slug>#<action-id>` reference; an id that resolves to nothing known is never treated as satisfied, so it holds the candidate back instead of releasing it. Each `canonicalOrder` caller today still passes only one Plan's candidates, so a cross-Plan reference resolves once ready-set admission gathers candidates across Plans — until then it is conservatively unresolved rather than silently permitted.
 - **Provider capacity is a gate, not a budget.** `evaluateCapacityAdmission` refuses `capacity_exhausted` and waits for reset. Nothing counts how many Sessions one provider account is running.
 - **Nothing that launches uses `resolveBatch`.** Lanes exist only on the board projection.
 - **Storage is one SQLite workspace database** in WAL mode, with `busy_timeout=15000` and `BEGIN IMMEDIATE` writes. That is plenty for tens of writers.
@@ -154,11 +154,14 @@ The ready set is only as safe as its dependency edges. The rules are:
    the base branch only when its PR merges. A dependent Action therefore always
    starts from a base that contains the code it depends on. This is already how
    `canonicalOrder` behaves, and it must stay that way.
-2. **An unknown dependency blocks.** `order.ts:64` currently releases an Action
-   whose dependency id is not in the current Plan. Ready-set admission needs the
-   opposite: resolve the id across Plans by `plan/<slug>#<action>`, or refuse
-   with a `dependency_unresolved` wait reason. This must ship before any
-   pipelining.
+2. **An unknown dependency blocks.** `canonicalOrder` (`src/scheduling/order.ts`)
+   resolves a `depends_on` id against its own Plan first, then as a cross-Plan
+   `plan/<slug>#<action-id>` reference; an id that resolves to nothing known is
+   never treated as satisfied, so the candidate is held back rather than
+   released. Shipped ahead of pipelining. What remains is wiring: every
+   `canonicalOrder` caller today still gathers candidates from one Plan, so a
+   cross-Plan reference cannot resolve to `done` until ready-set admission
+   gathers candidates across Plans.
 3. **Missing edges are contained by lanes, not trusted away.** One-at-a-time
    execution hides a missing `depends_on`, because everything runs in
    declaration order. Parallel admission exposes it. Two defaults contain the

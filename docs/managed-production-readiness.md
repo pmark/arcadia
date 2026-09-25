@@ -11,11 +11,25 @@ from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck
 are right and this file is stale. "Refreshing this document" at the bottom says
 how to re-derive it.
 
-Last derived: **2026-09-25** (updated same day, twice more — see the two
+Last derived: **2026-09-25** (updated same day, three times more — see the
 notes below). This derivation also restored the dispatch guarantee
 that `arcadia go` works only on the critical path (see "What this derivation
 changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
 root, and its gates are the critical path below.
+
+**Update at 2026-09-25T23:24Z:** table entry 1, `resolve-cross-plan-dependency-ids`,
+is code-complete and validated (`pnpm test` scoped to the scheduling suites,
+core build, Discord bot build, and the dashboard build all pass; full
+`pnpm test` still shows its pre-existing sandbox-only failures — local-port
+`EPERM` and CLI-subprocess stderr noise — unrelated to this change).
+`canonicalOrder` (`src/scheduling/order.ts`) now resolves a `depends_on` id
+against its own Plan first, then as a cross-Plan `plan/<slug>#<action-id>`
+reference, and never treats an unresolved id as satisfied. Completion
+settles in this Action's own candidate before it pushes, per the Plan's
+`complete` intent convention; this note does not re-run the full command
+suite above (production status/capacity, worker log, Decision/Issue sweeps),
+so table entry 2, `admit-ready-set-across-repositories`, should be confirmed
+still gated on nothing else before it is next dispatched.
 
 **Update at 2026-09-25T22:07Z:** all three code blockers below have landed
 and settled (`name-failing-preservation-check-and-bound-retries`,

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { applyOperatorOrder, canonicalOrder, minimalMoves, type OrderCandidate } from "../src/scheduling/order.js";
 
 function candidate(key: string, overrides: Partial<OrderCandidate> = {}): OrderCandidate {
-  return { key, schedulingClass: "planned", position: null, dependsOn: [], done: false, index: 0, ...overrides };
+  const slash = key.indexOf("/");
+  const plan = slash < 0 ? key : key.slice(0, slash);
+  const actionId = slash < 0 ? key : key.slice(slash + 1);
+  return { key, plan, actionId, schedulingClass: "planned", position: null, dependsOn: [], done: false, index: 0, ...overrides };
 }
 
 describe("canonicalOrder", () => {
@@ -18,22 +21,64 @@ describe("canonicalOrder", () => {
     expect(order).toEqual(["p/i", "p/k", "p/x", "p/a", "p/b", "p/c"]);
   });
 
-  it("holds an Action behind its unfinished dependencies whatever its position or tier", () => {
+  it("holds an Action behind its unfinished same-Plan dependencies whatever its position or tier", () => {
     const order = canonicalOrder([
       candidate("p/a", { position: 1 }),
-      candidate("p/b", { position: 0, dependsOn: ["p/a"] }),
-      candidate("p/fix", { schedulingClass: "blocker", position: 2, dependsOn: ["p/b"] })
+      candidate("p/b", { position: 0, dependsOn: ["a"] }),
+      candidate("p/fix", { schedulingClass: "blocker", position: 2, dependsOn: ["b"] })
     ]);
     expect(order).toEqual(["p/a", "p/b", "p/fix"]);
   });
 
-  it("ignores done dependencies, unknown dependencies, done Actions and follow-ups", () => {
+  it("ignores done same-Plan dependencies, done Actions and follow-ups", () => {
     const order = canonicalOrder([
       candidate("p/done", { done: true, position: 0 }),
-      candidate("p/a", { position: 1, dependsOn: ["p/done", "p/elsewhere"] }),
+      candidate("p/a", { position: 1, dependsOn: ["done"] }),
       candidate("p/later", { schedulingClass: "follow_up", position: 0 })
     ]);
     expect(order).toEqual(["p/a"]);
+  });
+
+  it("resolves a cross-Plan dependency by plan/<slug>#<action-id> and releases it once it is done", () => {
+    const order = canonicalOrder([
+      candidate("other/setup", { plan: "other", actionId: "setup", done: true, position: 0 }),
+      candidate("p/a", { position: 0, dependsOn: ["plan/other#setup"] })
+    ]);
+    expect(order).toEqual(["p/a"]);
+  });
+
+  it("holds a candidate back behind a cross-Plan dependency that is not yet done", () => {
+    const order = canonicalOrder([
+      candidate("other/setup", { plan: "other", actionId: "setup", done: false, position: 0 }),
+      candidate("p/a", { position: 0, dependsOn: ["plan/other#setup"] })
+    ]);
+    expect(order).toEqual(["other/setup", "p/a"]);
+  });
+
+  it("never treats an id that resolves to no known Action as satisfied (dependency_unresolved)", () => {
+    const order = canonicalOrder([
+      candidate("p/a", { position: 0 }),
+      candidate("p/b", { position: 1, dependsOn: ["nowhere"] }),
+      candidate("p/c", { position: 2, dependsOn: ["plan/ghost#nowhere"] })
+    ]);
+    // p/a has no dependency and runs first; p/b and p/c can never resolve
+    // their dependency, so they are pushed behind everything that could
+    // proceed, in preference order between themselves.
+    expect(order).toEqual(["p/a", "p/b", "p/c"]);
+  });
+
+  it("releases a candidate once its previously unresolved dependency lands, across ticks", () => {
+    const tickOne = canonicalOrder([candidate("p/a", { position: 0 }), candidate("p/b", { position: 1, dependsOn: ["plan/other#setup"] })]);
+    expect(tickOne).toEqual(["p/a", "p/b"]);
+
+    const tickTwo = canonicalOrder([
+      candidate("other/setup", { plan: "other", actionId: "setup", done: true, position: 0 }),
+      candidate("p/a", { position: 0 }),
+      candidate("p/b", { position: 1, dependsOn: ["plan/other#setup"] })
+    ]);
+    // "other/setup" is done, so it never appears in the output (done Actions
+    // are never queued), and its dependent is released once it resolves.
+    expect(tickTwo).toEqual(["p/a", "p/b"]);
   });
 });
 
@@ -62,7 +107,7 @@ describe("applyOperatorOrder", () => {
   });
 
   it("refuses a dependent dragged above its dependency and says why", () => {
-    const candidates = [candidate("p/a", { position: 0, index: 0 }), candidate("p/b", { position: 1, index: 1, dependsOn: ["p/a"] })];
+    const candidates = [candidate("p/a", { position: 0, index: 0 }), candidate("p/b", { position: 1, index: 1, dependsOn: ["a"] })];
     const result = applyOperatorOrder(candidates, ["p/b", "p/a"]);
     expect(result.canonical).toEqual(["p/a", "p/b"]);
     expect(result.changed).toBe(false);
