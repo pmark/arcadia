@@ -134,7 +134,11 @@ function pushOne(input: {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
     });
-    if (preview.status === 0 && pushPorcelainFlag(preview.stdout, refspec) === "=") {
+    if (preview.status !== 0) {
+      const stderr = (preview.stderr || "").trim().split("\n").filter(Boolean).pop() ?? "git push --dry-run failed with no output";
+      return { kind, branch, path, ahead, outcome: "failed", detail: stderr };
+    }
+    if (pushPorcelainFlag(preview.stdout, refspec) === "=") {
       return null; // the selected remote already has exactly this tip
     }
     return {
@@ -219,16 +223,30 @@ function upstreamMatches(repoRoot: string, branch: string, remote: string): bool
 }
 
 /**
- * The per-ref status character from `git push --porcelain` output for a given
- * refspec — `=` for "already up to date", and several other single characters
- * (space for fast-forward, `*` for a new ref, `+` for forced, `!` for
- * rejected) for everything that actually changed or needs to. The line format
- * is `<flag><TAB><from>:<to><TAB><summary>`, so the flag is the line's first
- * character, not a trimmed token — a fast-forward's flag is a literal space.
+ * The per-ref status for a given refspec from `git push --porcelain` output —
+ * `"="` only when *every* line reporting on this refspec says "already up to
+ * date". A remote with more than one configured push URL (mirrors, a
+ * multi-destination push) emits one status line per destination; picking just
+ * the first would report the whole push as a no-op even when a later
+ * destination still needed the update — git itself still updates every
+ * destination regardless, so this only affects what gets reported, not what
+ * gets pushed, but it must not be allowed to hide a real destination that was
+ * behind. Returns `undefined`, never `"="`, when no line matches at all: an
+ * empty result is not evidence of being current, only of finding nothing.
+ *
+ * The line format is `<flag><TAB><from>:<to><TAB><summary>`, so the flag is
+ * each line's first character, not a trimmed token — a fast-forward's flag is
+ * a literal space.
  */
 function pushPorcelainFlag(stdout: string, refspec: string): string | undefined {
-  const line = stdout.split("\n").find((candidate) => candidate.includes(refspec));
-  return line?.charAt(0);
+  const lines = stdout.split("\n").filter((candidate) => candidate.includes(refspec));
+  if (lines.length === 0) return undefined;
+  // Not just "the first line's flag" when destinations disagree: with two
+  // destinations reported as ["=", "*"], `lines[0]` is itself "=" — returning
+  // it here would reproduce the exact bug this rewrite exists to fix. Any
+  // non-"=" line means at least one destination needs the push.
+  const notYetCurrent = lines.find((line) => line.charAt(0) !== "=");
+  return notYetCurrent ? notYetCurrent.charAt(0) : "=";
 }
 
 export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedCommandData>): string[] {
@@ -242,7 +260,13 @@ export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedC
 
   lines.push(applied ? `Pushed (${items.length}):` : `Would push (${items.length}) — re-run with --apply to actually push:`);
   for (const item of items) {
-    const mark = !applied ? "-" : item.outcome === "pushed" ? "✓" : item.outcome === "pushed-untracked" ? "≈ untracked" : "✗ failed";
+    // Outcome-driven, not applied-driven: a preview can itself fail (the dry
+    // run couldn't reach the remote), and that must not be marked the same as
+    // an ordinary unpushed candidate.
+    const mark =
+      item.outcome === "pushed" ? "✓" :
+      item.outcome === "pushed-untracked" ? "≈ untracked" :
+      item.outcome === "failed" ? "✗ failed" : "-";
     const location = item.kind === "worktree" ? `${item.path} [${item.branch}]` : `branch ${item.branch}`;
     lines.push(`  ${mark} ${location}`);
     lines.push(`      ${item.detail}`);
@@ -251,10 +275,14 @@ export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedC
   const failed = items.filter((item) => item.outcome === "failed");
   const untracked = items.filter((item) => item.outcome === "pushed-untracked");
   lines.push("");
-  if (!applied) {
+  if (failed.length > 0) {
+    lines.push(
+      applied
+        ? `${failed.length} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`
+        : `${failed.length} of ${items.length} could not even be checked against the remote — see the reason above; nothing was changed.`
+    );
+  } else if (!applied) {
     lines.push("Nothing was changed. Re-run with --apply to push the branches listed above.");
-  } else if (failed.length > 0) {
-    lines.push(`${failed.length} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`);
   } else if (untracked.length > 0) {
     lines.push(`Every branch's commits are safe on the remote, but ${untracked.length} of ${items.length} could not record local upstream tracking — see the fix-up command above for each.`);
   } else {

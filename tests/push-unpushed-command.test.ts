@@ -193,6 +193,49 @@ describe("arcadia push-unpushed", () => {
       .toBe(run(clone, ["rev-parse", "claude/pushurl-diverges"]).trim());
   });
 
+  it("requires every configured push destination to be current before treating a branch as backed up", () => {
+    // Regression for a CodeRabbit finding on PR #626: `pushPorcelainFlag` only
+    // looked at the first status line from `git push --porcelain`. A remote
+    // with two configured push URLs, where the first already has the tip and
+    // the second doesn't, must still be found and pushed to the second.
+    const { origin, clone } = baseRepo();
+    const secondDestination = bareOrigin();
+    run(clone, ["remote", "set-url", "--push", "origin", origin]);
+    run(clone, ["remote", "set-url", "--add", "--push", "origin", secondDestination]);
+
+    commitOn(clone, "claude/multi-push-url", "feature.txt");
+    // Publish directly to the first destination only, bypassing the
+    // multi-push config so the second destination is left behind.
+    run(clone, ["push", "-q", origin, "refs/heads/claude/multi-push-url:refs/heads/claude/multi-push-url"]);
+
+    const result = data(runPushUnpushedCommand({ repo: clone, apply: true }));
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ branch: "claude/multi-push-url", outcome: "pushed" });
+    expect(run(secondDestination, ["rev-parse", "claude/multi-push-url"]).trim())
+      .toBe(run(clone, ["rev-parse", "claude/multi-push-url"]).trim());
+  });
+
+  it("reports a failed preview instead of a false would-push when the dry run itself cannot reach the remote", () => {
+    // Regression for a CodeRabbit finding on PR #626: pushOne's preview path
+    // ignored a nonzero exit from `git push --dry-run` and always reported
+    // would-push, hiding a genuine "could not even check" failure.
+    const { clone } = baseRepo();
+    commitOn(clone, "claude/dry-run-fails", "feature.txt");
+
+    const bin = fakeGitFailingDryRunPush();
+    process.env.PATH = `${bin}:${originalPath ?? ""}`;
+    try {
+      const result = data(runPushUnpushedCommand({ repo: clone }));
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]).toMatchObject({ branch: "claude/dry-run-fails", outcome: "failed" });
+      expect(result.items[0].detail).toContain("simulated network failure");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("respects --remote: a branch already on origin is still found and pushed for a different selected remote", () => {
     // Regression for a CodeRabbit finding on PR #626: filtering used tidy's
     // `pushed` field, which is true whenever *any* upstream is configured,
@@ -313,6 +356,36 @@ function fakeGitBlockingUpstreamTracking(): string {
       'elif [ "$1" = "branch" ] && [ "$2" = "--set-upstream-to" ]; then',
       "  echo 'error: could not lock config file .git/config: Operation not permitted' >&2",
       "  exit 1",
+      "else",
+      "  exec \"$REAL_GIT\" \"$@\"",
+      "fi",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+  chmodSync(script, 0o755);
+  return bin;
+}
+
+/**
+ * A `git` shim that behaves exactly like real git except a `push --dry-run`
+ * call, which it fails outright — simulating a remote that cannot be reached
+ * during the preview check itself (network down, auth failure), as opposed
+ * to a push that succeeds but reports something other than "up to date".
+ */
+function fakeGitFailingDryRunPush(): string {
+  const bin = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-push-fake-git-dryrun-")));
+  temporary.push(bin);
+  const realGit = execFileSync("command", ["-v", "git"], { encoding: "utf8", shell: "/bin/sh" }).trim();
+  const script = path.join(bin, "git");
+  writeFileSync(
+    script,
+    [
+      "#!/bin/sh",
+      `REAL_GIT="${realGit}"`,
+      'if [ "$1" = "push" ] && printf "%s\\n" "$@" | grep -q -- "--dry-run"; then',
+      "  echo 'fatal: unable to access remote: simulated network failure' >&2",
+      "  exit 128",
       "else",
       "  exec \"$REAL_GIT\" \"$@\"",
       "fi",
