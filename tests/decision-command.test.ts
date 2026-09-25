@@ -31,6 +31,12 @@ function workspaceWithProject(): { workspace: string; repoRoot: string; projectS
   const root = scratch();
   const repoRoot = path.join(root, "repo");
   mkdirSync(repoRoot, { recursive: true });
+  execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repoRoot });
+  execFileSync("git", ["config", "user.email", "decision-test@example.invalid"], { cwd: repoRoot });
+  execFileSync("git", ["config", "user.name", "Decision Test"], { cwd: repoRoot });
+  writeFileSync(path.join(repoRoot, "README.md"), "repo\n");
+  execFileSync("git", ["add", "README.md"], { cwd: repoRoot });
+  execFileSync("git", ["commit", "-qm", "initial"], { cwd: repoRoot });
   const workspace = path.join(root, "ws");
   initWorkspace(workspace);
   withDatabase(workspace, (db) => {
@@ -190,6 +196,97 @@ describe("decision approve", () => {
     expect(validated.data.valid).toBe(true);
   });
 
+  it("commits a plain-answer approve locally, leaving the working tree clean (Issue #645)", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "commits-locally", question: "Ready?" });
+
+    const approved = runDecisionApproveCommand({
+      workspace,
+      project: projectSlug,
+      id: "0001",
+      answer: "Yes, proceed."
+    });
+
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(status.trim()).toBe("");
+    expect(approved.data.receiptId).toMatch(/^decisionanswer_[a-z0-9]+$/);
+
+    const log = execFileSync("git", ["log", "-1", "--format=%B"], { cwd: repoRoot, encoding: "utf8" });
+    expect(log).toContain("chore(arcadia): answer Decision 0001");
+    expect(log).toMatch(/^Written by `arcadia decision approve` \(decisionanswer_[a-z0-9]+\)\.$/m);
+
+    // Committed locally only — nothing was pushed anywhere.
+    const branch = execFileSync("git", ["branch", "--show-current"], { cwd: repoRoot, encoding: "utf8" }).trim();
+    expect(branch).toBe("main");
+  });
+
+  it("does not fail re-approving the same answer on the same day, and stays clean", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "idempotent-retry", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" })
+    ).not.toThrow();
+
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
+  it("refuses even a no-op answer on a detached HEAD, since that commit would be unreachable from any branch", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "detached-no-op", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    execFileSync("git", ["checkout", "--detach", "HEAD"], { cwd: repoRoot });
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" })
+    ).toThrow(/detached HEAD/);
+  });
+
+  it("does not report a no-op for a Decision path that is untracked but gitignored", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "ignored-untracked", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    // Untrack the already-committed Decision file, then ignore it — content on
+    // disk stays byte-identical to what a same-day retry would recompute, but
+    // `git status --porcelain` reports it clean only because it's now ignored,
+    // not because it's actually committed.
+    const relativePath = "docs/decisions/0001-ignored-untracked.md";
+    execFileSync("git", ["rm", "--cached", "-q", relativePath], { cwd: repoRoot });
+    execFileSync("git", ["commit", "-qm", "untrack for test"], { cwd: repoRoot });
+    writeFileSync(path.join(repoRoot, ".gitignore"), `${relativePath}\n`, "utf8");
+    const ignoredStatus = execFileSync("git", ["status", "--porcelain", "--", relativePath], { cwd: repoRoot, encoding: "utf8" });
+    expect(ignoredStatus.trim()).toBe("");
+
+    // The retry must not silently report success: Git refuses to stage an
+    // ignored path without `-f`, so this surfaces as a clear commit failure
+    // rather than a false no-op.
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" })
+    ).toThrow(/could not be committed/);
+  });
+
+  it("commits a retry when the file already matches but a prior commit did not land", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "retry-after-uncommitted-write", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    // Simulate a prior attempt whose write landed but whose commit did not:
+    // move the branch back one commit while leaving the working tree —
+    // already carrying the answered content — untouched.
+    execFileSync("git", ["reset", "--mixed", "HEAD~1"], { cwd: repoRoot });
+    const dirtyStatus = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(dirtyStatus.trim()).not.toBe("");
+
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
   it("resolves a decision by slug as well as by numeric id", () => {
     const { workspace, projectSlug } = workspaceWithProject();
     runDecisionNewCommand({ workspace, project: projectSlug, slug: "by-slug", question: "Q?" });
@@ -286,12 +383,6 @@ describe("decision commands in a candidate worktree", () => {
   it("answers a Decision that exists only on the candidate branch", () => {
     const { workspace, repoRoot, projectSlug } = workspaceWithProject();
     const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
-    git(repoRoot, ["init", "-q", "-b", "main"]);
-    git(repoRoot, ["config", "user.email", "decision-test@example.invalid"]);
-    git(repoRoot, ["config", "user.name", "Decision Test"]);
-    writeFileSync(path.join(repoRoot, "README.md"), "base\n");
-    git(repoRoot, ["add", "README.md"]);
-    git(repoRoot, ["commit", "-qm", "initial"]);
 
     const candidate = path.join(scratch(), "candidate");
     git(repoRoot, ["worktree", "add", "-q", "-b", "candidate/work", candidate]);

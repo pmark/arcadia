@@ -2033,7 +2033,7 @@ actions:
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/production/tick.ts", "src/commands/advance.ts", "src/commands/go.ts", "docs/agents-context.md", "START_HERE.md"]
   - id: fix-decision-approve-missing-commit
     title: "arcadia decision approve commits its plain-answer Decision file write locally (write + git add + local commit, no push), matching the deferral path in src/dispatch/decisionDeferral.ts and the agent-ask settle --apply contract, instead of leaving it uncommitted per src/commands/decision.ts:337-340."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "arcadia decision approve commits its plain-answer Decision file write locally (write + git add + local commit, no push), matching the deferral path in src/dispatch/decisionDeferral.ts and the agent-ask settle --apply contract, instead of leaving it uncommitted per src/commands/decision.ts:337-340."
@@ -2106,7 +2106,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-decision-approve-missing-commit
+current_action: resolve-cross-plan-dependency-ids
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

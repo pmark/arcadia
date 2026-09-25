@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
@@ -18,7 +19,7 @@ import {
   type DocValidationError
 } from "../docs/types.js";
 import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
-import { projectCheckoutFor } from "../git/worktrees.js";
+import { commitOnlyPaths, projectCheckoutFor, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -154,7 +155,7 @@ export interface DecisionApproveData {
   applied: boolean;
   /** What answering changed beyond the Decision file, when it deferred an Action. */
   consequence: DecisionDeferralConsequence | null;
-  /** The durable deferral receipt id, when the answer applied a deferral. */
+  /** The commit's receipt id — a deferral receipt, or a plain-answer commit token. Null on a no-op retry or a dry run. */
   receiptId: string | null;
 }
 
@@ -334,15 +335,64 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
       });
     }
 
-    // A plain Decision answer keeps its old contract: the Decision file is
-    // written and nothing is committed. Only an applied deferral lands, so its
-    // Action field change and pointer move are one recoverable commit.
+    // A detached HEAD would accept a commit and lose it the moment HEAD
+    // moves. Check this before the no-op short-circuit below, too: a
+    // same-day retry whose content already matches could otherwise report
+    // success for a commit that exists only on a detached, unreferenced
+    // HEAD — invisible to any branch and eligible for garbage collection.
+    if (tryGit(repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+      throw validationError(
+        "The Project repository is on a detached HEAD, so the Decision answer commit would be unreachable from any branch.",
+        { repoRoot, decisionId: prepared.decisionId }
+      );
+    }
+
+    // A same-day retry recomputes byte-identical content, since `decided`/
+    // `updated` both stamp today's date. That alone doesn't prove the answer
+    // is actually committed, though: a prior attempt may have written this
+    // exact content and then failed to commit it — or the path could be
+    // untracked and gitignored, which also reports as "clean" via `git
+    // status` despite never having been committed at all. Only report the
+    // no-op when the path is both tracked and clean; otherwise fall through
+    // and retry the commit instead of reporting a hollow success.
+    const isTrackedAndClean =
+      tryGit(repoRoot, ["ls-files", "--error-unmatch", "--", relativePath]) !== null &&
+      tryGit(repoRoot, ["status", "--porcelain", "--", relativePath]) === "";
+    if (updatedContent === prepared.before && isTrackedAndClean) {
+      return createSuccess({
+        command: "decision.approve",
+        workspace: workspacePath,
+        data: { relativePath, absolutePath, applied: true, consequence: null, receiptId: null }
+      });
+    }
+
+    // A plain Decision answer commits its own file locally, matching the
+    // deferral path's contract: landing a governed record locally is
+    // Arcadia's job, publishing it is the operator's (Issue #645).
     writeFileSync(absolutePath, updatedContent, "utf8");
+
+    const receiptId = `decisionanswer_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
+    const commitMessage = [
+      `chore(arcadia): answer Decision ${prepared.decisionId ?? relativePath}`,
+      "",
+      `- ${relativePath}: recorded the answer.`,
+      "",
+      `Written by \`arcadia decision approve\` (${receiptId}).`
+    ].join("\n");
+    const commitError = commitOnlyPaths(repoRoot, [relativePath], commitMessage);
+    if (commitError) {
+      throw validationError("The Decision answer was written but could not be committed.", {
+        decisionId: prepared.decisionId,
+        relativePath,
+        commitError,
+        remedy: "Fix the Git failure (for example a missing user.name/user.email) and re-run `arcadia decision approve` with the same arguments."
+      });
+    }
 
     return createSuccess({
       command: "decision.approve",
       workspace: workspacePath,
-      data: { relativePath, absolutePath, applied: true, consequence: null, receiptId: null }
+      data: { relativePath, absolutePath, applied: true, consequence: null, receiptId }
     });
   });
 }

@@ -809,3 +809,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "Build-packet preparation refuses, naming the remedy arcadia project metadata <project> --validation-command <command>, when the Project's validation_commands list is empty."; "buildLaunchPreview reports the same condition as a named prerequisite, and the managed-production tick escalates it once through production_operator_escalations instead of launching."; "A deterministic test covers the empty-list refusal and an unchanged launch for a Project with declared commands."; "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #572.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-packets-without-validation-commands-2026-09-25-v2).
+
+## 2026-09-25 — Completed arcadia/fix-decision-approve-missing-commit
+
+- **Did:** Completed Action arcadia/fix-decision-approve-missing-commit from accepted evidence (Candidate 37e3f28af1dba783856003e337fa3791b49d715e).
+- **Result:** Every declared acceptance criterion was accepted as met: "Answering a Decision with a plain (non-defer) effect via arcadia decision approve leaves the repository clean (no uncommitted changes) immediately after the command returns, with the Decision file change committed locally and not pushed."; "A test covers a plain-answer decision approve and asserts the working tree is clean after the command runs."; "The pull request that lands this fix includes Closes #645 in its body.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-decision-approve-missing-commit-2026-09-25).
