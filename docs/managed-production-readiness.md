@@ -11,17 +11,30 @@ from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck
 are right and this file is stale. "Refreshing this document" at the bottom says
 how to re-derive it.
 
-Last derived: **2026-09-25**. This derivation also restored the dispatch
-guarantee that `arcadia go` works only on the critical path (see "What this
-derivation changed"). Arcadia's own target is now `NORTH_STAR.md` at the
-repository root, and its gates are the critical path below.
+Last derived: **2026-09-25** (updated same day after the third blocker landed
+— see the note below). This derivation also restored the dispatch guarantee
+that `arcadia go` works only on the critical path (see "What this derivation
+changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
+root, and its gates are the critical path below.
+
+**Update at 2026-09-25T22:07Z:** all three code blockers below have landed
+and settled (`name-failing-preservation-check-and-bound-retries`,
+`honor-policy-providers-at-launch`, `refuse-packets-without-validation-commands`
+are all `status: done` in the Plan; Issues #611, #559, #572 are all closed).
+`current_action` is not yet the operator rehearsal step — an ungated
+governance bug-fix, `fix-decision-approve-missing-commit` (filed
+2026-09-25, not held behind the proof), sits ahead of it in the queue. The
+tables below are updated to reflect this; live signals (`production status`,
+worker log) were not fully re-walked, so treat "Live state at derivation"
+below as the older 16:45Z snapshot unless re-checked.
 
 ---
 
 ## Executive summary
 
-**Distance: 3 code Actions, then 1 operator step, then 1 proof run.** It was
-7 code Actions a day ago. Four blockers landed:
+**Distance: 0 blocking code Actions on the original list, 1 ungated
+governance fix, then 1 operator step, then 1 proof run.** It was 7 code
+Actions two days ago. All three remaining blockers landed:
 
 | Done since 2026-09-24 | Defect | Evidence |
 | --- | --- | --- |
@@ -29,16 +42,18 @@ repository root, and its gates are the critical path below.
 | `withhold-worker-lifecycle-from-sessions` | #611 (part) | PR #624 |
 | `stop-killing-busy-workers` | #617 | No `Recovered hung worker:` line since the fix. #617 closed. |
 | `preserve-candidates-across-base-advance` | #539 | PR #622. Completion settled this derivation, after re-running its preservation tests on `main`: 50 passed, 7 skipped. |
+| `name-failing-preservation-check-and-bound-retries` | #611 (rest) | Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
+| `honor-policy-providers-at-launch` | #559 | PR #646. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
+| `refuse-packets-without-validation-commands` | #572 | PR #647, closed Issue #572. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
 
 **What remains, in dispatch order:**
 
 | # | Action | Defect | Why it blocks |
 | --- | --- | --- | --- |
-| 1 | `name-failing-preservation-check-and-bound-retries` ← **pointer** | #611 | A preservation refusal reads `details: {}`, and the 09-24 Session retried it without limit. |
-| 2 | `honor-policy-providers-at-launch` | #559 | Provider selection ignores the policy's `scope.providers`. Every tick is refused `provider_not_permitted`, and nothing surfaces. |
-| 3 | `refuse-packets-without-validation-commands` | #572 | A Project with no validation commands launches a Session that can never be preserved or auto-completed. |
+| 1 | `fix-decision-approve-missing-commit` ← **pointer** | #645 | `arcadia decision approve` leaves an uncommitted Decision file write, an ungated governance bug filed 2026-09-25 that sits ahead of the operator step in queue order. |
+| 2 | **Operator:** reverse Decision 0057's deferral and start the rehearsal | — | The three original code blockers are done; nothing else blocks entry 5 below except this ungated fix landing first. |
 
-After those three land, Decision 0057/0061's revival trigger is met ("the
+After the ungated fix lands, Decision 0057/0061's revival trigger is met ("the
 operator begins the live rehearsal on whichever configured provider has capacity
 … after the further managed-production defects are fixed"). The operator
 reverses the deferral (`arcadia decision reverse`) and runs
@@ -111,9 +126,9 @@ another Plan.
 | --- | --- |
 | 1 — The board is the surface | ✅ closed 2026-09-20 |
 | 2 — Work reaches an agent with no operator | ✅ closed 2026-09-22 |
-| 3 — A finished Session lands with no operator | 🟡 **#610 and #539 fixed. #611 (preservation details) and #572 still open**, as blockers 1 and 3. |
-| 4 — It keeps going without help | 🟡 **#617 fixed. #559 still open**, as blocker 2. |
-| 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred and revives after blockers 1–3. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
+| 3 — A finished Session lands with no operator | 🟡 **#610, #539, #611 all fixed and closed; provisional until the proof run passes through this gate.** |
+| 4 — It keeps going without help | 🟡 **#617 and #559 both fixed and closed; provisional until the proof run passes through this gate.** |
+| 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred and revives once the ungated `fix-decision-approve-missing-commit` lands and the operator reverses Decision 0057. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
 | 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
 
 A gate is closed when the live system does what the gate says, not when its
@@ -125,25 +140,23 @@ proof run passes through them.
 
 ## The critical path, in order
 
-1. `name-failing-preservation-check-and-bound-retries` (#611), the **pointer**
-2. `honor-policy-providers-at-launch` (#559)
-3. `refuse-packets-without-validation-commands` (#572)
-4. **Operator:** reverse Decision 0057's deferral and start the rehearsal on a
+1. ~~`name-failing-preservation-check-and-bound-retries` (#611)~~ — done.
+2. ~~`honor-policy-providers-at-launch` (#559)~~ — done.
+3. ~~`refuse-packets-without-validation-commands` (#572)~~ — done.
+4. `fix-decision-approve-missing-commit` (#645) ← **pointer**. Ungated
+   governance bug filed 2026-09-25, ahead of the operator step in queue order.
+5. **Operator:** reverse Decision 0057's deferral and start the rehearsal on a
    provider with capacity. Read "Rehearsal hazards" first.
-5. `prove-two-action-unattended-production`, where **the unattended claim is
+6. `prove-two-action-unattended-production`, where **the unattended claim is
    earned**
 
 Then, for continuous production rather than the claim itself:
 `prove-multi-provider-production-recovery`, then
 `run-managed-production-live-soak` (operator-granted scope).
 
-Entries 1–3 are ordinary `claude-sonnet-5` sessions at high effort. Their
-Issues already hold the root cause and `file:line` pointers. They touch
-different files (`preservationValidation.ts`, packet and launch preview,
-packet preparation), so they can run in parallel worktrees if you want the
-path shorter than three sequential sessions.
+Entry 4 is an ordinary `claude-sonnet-5` session at high effort.
 
-### Rehearsal hazards to know before entry 4
+### Rehearsal hazards to know before entry 5
 
 - **#608:** while the standing policy is Off, the worker fast-forwards every
   DB-active Project's checkout to `origin/main` on each tick. A `git reset --hard`
@@ -186,8 +199,8 @@ proof and before a second lane, not before the first lane.
 | --- | --- |
 | Managed production | **Inactive · Idle** (policy revision 15, epoch 12, revoked 2026-09-24T16:15Z). No Session has launched since 2026-09-24. |
 | Worker | Running. No `Recovered hung worker:` line since 2026-09-24T21Z. |
-| Pointer | `bootstrap-managed-production-to-build-flight-deck` / `name-failing-preservation-check-and-bound-retries` |
-| Ready in the active Plan | Exactly the 3 blockers |
+| Pointer | `bootstrap-managed-production-to-build-flight-deck` / `fix-decision-approve-missing-commit` (updated 2026-09-25T22:07Z; the three original blockers are done) |
+| Ready in the active Plan | `fix-decision-approve-missing-commit`, then the operator rehearsal step |
 | Open Decisions | 0041, 0052. Neither concerns production readiness. |
 | Open escalation | `private-practice-now/calibrate-river-specialty-prompt-chain` (`planning_required`). Unrelated to the Arcadia lane. |
 
@@ -197,14 +210,14 @@ proof and before a second lane, not before the first lane.
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 104 (each `- id:` paired with the `status:` line that follows it) |
-| Done | 82 |
-| Open | 21 |
+| Actions in the active Plan | 108 (each `- id:` paired with the `status:` line that follows it) |
+| Done | 85 |
+| Open | 22 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
-| **On the critical path, code** | **3**, all ready, pointer on the first |
+| **On the critical path, code** | **1** (`fix-decision-approve-missing-commit`, ready, pointer) |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal) |
 | **On the critical path, proof** | **1** |
-| Unfinished, off the critical path | 18, all held behind the proof or operator-only |
+| Unfinished, off the critical path | 20, all held behind the proof or operator-only |
 
 ---
 

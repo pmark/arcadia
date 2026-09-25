@@ -1887,7 +1887,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/539", "src/sessions/manualPreservation.ts"]
   - id: refuse-packets-without-validation-commands
     title: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Refuse to prepare a build packet or launch a managed Session for a Project that declares no validation commands, since such a Session can never be preserved or auto-completed.
@@ -2048,11 +2048,65 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: resolve-cross-plan-dependency-ids
+    title: "Unknown depends_on ids block the Action instead of counting as satisfied, resolving cross-Plan references by plan/<slug>#<action> before falling back to a dependency_unresolved wait reason."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Unknown depends_on ids block the Action instead of counting as satisfied, resolving cross-Plan references by plan/<slug>#<action> before falling back to a dependency_unresolved wait reason."
+    expected_artifact: Evidence satisfying Agent Ask resolve-cross-plan-dependency-ids
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-ready-set-admission-and-pipelining-actions-2026-09-25
+    acceptance_criteria:
+      - "canonicalOrder (src/scheduling/order.ts) resolves a depends_on id first within the same Plan, then across Plans as plan/<slug>#<action-id>; an id that resolves to a done Action on the base branch is satisfied."
+      - A depends_on id that does not resolve to any known Action produces a dependency_unresolved wait reason instead of being treated as satisfied, and the Action does not enter the ready set.
+      - "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, and an id that never resolves; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/scheduling/order.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/production-scheduling.md"]
+  - id: admit-ready-set-across-repositories
+    title: "Replace current_action as a settlement-advanced pointer with ready-set admission: the production tick admits Actions from the portfolio's ready set in canonicalOrder across repositories, and completion settlement stops selecting the next Action."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Replace current_action as a settlement-advanced pointer with ready-set admission: the production tick admits Actions from the portfolio's ready set in canonicalOrder across repositories, and completion settlement stops selecting the next Action."
+    expected_artifact: Evidence satisfying Agent Ask admit-ready-set-across-repositories
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-ready-set-admission-and-pipelining-actions-2026-09-25
+    acceptance_criteria:
+      - The production tick (src/production/tick.ts) computes the ready set from every in-scope Plan of every active Project -- status not done/deferred/needs_operator, every depends_on landed on the base branch, no live claim -- and launches in canonicalOrder up to host and per-repository lane limits, per docs/proposals/portfolio-parallel-execution.md section 3.
+      - settleAgentAsk (src/ask/settlement.ts) stops calling selectNextAfterCompletion and stops writing current_action; a completion records its evidence and releases its claim only.
+      - current_action becomes a derived projection -- the highest-priority claimed Action, or the highest-priority ready Action if nothing is claimed -- recomputed and written only by the host settler established under Decision 0070, never by settlement, deferral, or advance.
+      - A read-only status surface reports one wait reason per in-scope Action that did not launch this tick (dependency, dependency_unresolved, claimed, host_full, needs_operator, ...), recomputed every tick and never stored as truth.
+      - "Deterministic tests cover: two ready Actions in different repositories launching in the same tick, an Action correctly excluded by a live claim, current_action reflecting the highest-priority claim with no settlement write, and the #505/#507 race scenarios each closed; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: [resolve-cross-plan-dependency-ids]
+    decisions: []
+    references: ["src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/order.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
+  - id: pipeline-independent-actions-while-pr-unmerged
+    title: "Let an independent, non-overlapping Action start in a repository whose previous candidate PR is still unmerged, up to a per-repository review limit, using declared touches: scope to prevent overlap."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Let an independent, non-overlapping Action start in a repository whose previous candidate PR is still unmerged, up to a per-repository review limit, using declared touches: scope to prevent overlap."
+    expected_artifact: Evidence satisfying Agent Ask pipeline-independent-actions-while-pr-unmerged
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-ready-set-admission-and-pipelining-actions-2026-09-25
+    acceptance_criteria:
+      - "Plan Actions may declare touches: <paths>; an Action with no declared touches: is treated as touching the whole repository and never pipelines."
+      - "Admission may start a new Action in a repository with an unmerged candidate only when the ready Action's declared touches: do not overlap the unmerged candidate's actual changed paths, and the repository's unmerged-candidate count is below the operator's configured review limit; otherwise it records scope_overlap or review_backlog as the wait reason."
+      - Pipelining is available only once admit-ready-set-across-repositories, settle-squash-merged-completion-drafts and sweep-merged-completions-before-dispatch are all built, since the host settler must already be the sole current_action writer and merged completions must settle serially on main before a second unmerged candidate in one repository is safe.
+      - "Deterministic tests cover: a non-overlapping Action pipelining while the prior PR is unmerged, an overlapping Action refused with scope_overlap, and a repository at its review limit refused with review_backlog; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: [admit-ready-set-across-repositories, settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch]
+    decisions: []
+    references: ["src/production/tick.ts", "src/ask/settlement.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: refuse-packets-without-validation-commands
+current_action: fix-decision-approve-missing-commit
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
