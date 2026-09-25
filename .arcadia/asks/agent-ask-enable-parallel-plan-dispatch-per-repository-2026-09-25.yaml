@@ -1,0 +1,24 @@
+{
+  "agent_ask": "v1",
+  "request_id": "enable-parallel-plan-dispatch-per-repository-2026-09-25",
+  "project": "arcadia",
+  "intent": "decision",
+  "gate_question": "resists_reversal",
+  "desired_result": "Decide whether and how arcadia go / arcadia session launch should allow a second live coding-agent session against the same repository at once, so an operator can activate and work an additional plan (e.g. a code-review plan) while another plan (e.g. mission-control-site) already has a live session running in this repository.",
+  "rationale": "Verified in code before filing, per the operator's condition: no existing path allows this today. getRepositoryLease() in src/sessions/index.ts is checked, repository-wide and unscoped by plan or Action, in both src/commands/go.ts (evaluateExistingCandidate, line ~1054) and the deeper src/sessions/launch.ts primitive (line ~138) that both `arcadia go` and the managed production worker share -- a live or prepared Session anywhere in the repository refuses a second worktree outright, before any plan- or Action-specific logic runs. go's own queue-walk fallback (queueWalkCandidates, go.ts:967) does already walk ready Actions across every plan in the project, not just the active one, but it only engages when the *pointer's own* Action is unclaimed-but-blocked, and it still hits the same repository-wide lease refusal first. GoCommandOptions carries no plan or project field at all, so there is also no explicit --plan targeting surface today. This directly revisits the 'at most one live execution per candidate' invariant Decision 0051 established (go.ts's evaluateExistingCandidate cites it by name), so a change here should be a Decision, not a quiet code change. Relaxing it also has to re-clear the concurrency hazards that motivated the existing single-lease design: worktree-bridged node_modules across concurrent worktrees of the same repo (CLAUDE.md's postinstall/bridge notes), and concurrent-settlement collisions on PROJECT.md/the active plan's queue that have already been observed with many parallel worktrees.",
+  "options": [
+    {
+      "label": "Keep the repository-wide single-live-session lease as-is",
+      "consequence": "Simplest and safest; no code change. Two plans in the same repository still cannot be worked concurrently by two agents -- the operator must wait for the first session to finish, or move the second plan's work to a separate repository/project to get real parallelism."
+    },
+    {
+      "label": "Add plan-targeted dispatch (a --plan/--action flag on arcadia go and arcadia session launch) gated by a new per-plan lease, leaving the existing repository-wide lease and Decision 0051's per-Action invariant untouched for the active plan's own pointer",
+      "consequence": "Narrower, additive change: an operator can explicitly point a second session at a specific non-active plan's ready Action while the active plan's pointer session keeps its existing protection unchanged. Still requires verifying worktree-bridged node_modules and settlement-collision safety under two simultaneous sessions in one repository, but doesn't reopen Decision 0051's existing guarantee.",
+      "recommended": true
+    },
+    {
+      "label": "Replace the repository-wide lease with a per-worktree/per-Action-claim lease everywhere, allowing any number of concurrent sessions the queue considers ready",
+      "consequence": "Most general fix, and the one closest to true free-form parallelism across plans and even projects sharing a repository. Largest change: touches the shared launch primitive both arcadia go and the managed production worker depend on, and needs full re-verification of every safety property Decision 0051 and the worktree-bridging notes currently rely on a single session to provide."
+    }
+  ]
+}
