@@ -171,6 +171,28 @@ describe("arcadia push-unpushed", () => {
     expect(run(origin, ["rev-parse", "claude/extended"]).trim()).toBe(run(clone, ["rev-parse", "claude/extended"]).trim());
   });
 
+  it("checks the actual configured push destination, not the fetch URL (CodeRabbit finding: pushurl divergence)", () => {
+    // Regression for a CodeRabbit finding on PR #626: `git ls-remote <remote>`
+    // resolves the remote's *fetch* URL, but `git push <remote>` resolves its
+    // configured *push* URL (`remote.<name>.pushurl`), which can differ. A
+    // branch published only to the fetch side must still be found and pushed
+    // to the real push destination.
+    const { origin, clone } = baseRepo();
+    const pushDestination = bareOrigin();
+    run(clone, ["remote", "set-url", "--push", "origin", pushDestination]);
+
+    commitOn(clone, "claude/pushurl-diverges", "feature.txt");
+    // Published directly to the fetch URL, bypassing the configured push URL.
+    run(clone, ["push", "-q", origin, "refs/heads/claude/pushurl-diverges:refs/heads/claude/pushurl-diverges"]);
+
+    const result = data(runPushUnpushedCommand({ repo: clone, apply: true }));
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ branch: "claude/pushurl-diverges", outcome: "pushed" });
+    expect(run(pushDestination, ["rev-parse", "claude/pushurl-diverges"]).trim())
+      .toBe(run(clone, ["rev-parse", "claude/pushurl-diverges"]).trim());
+  });
+
   it("respects --remote: a branch already on origin is still found and pushed for a different selected remote", () => {
     // Regression for a CodeRabbit finding on PR #626: filtering used tidy's
     // `pushed` field, which is true whenever *any* upstream is configured,

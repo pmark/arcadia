@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
-import { tryGit } from "../git/worktrees.js";
 import { runTidyCommand } from "./tidy.js";
 
 /**
@@ -65,12 +64,15 @@ export interface PushUnpushedCommandOptions {
  *
  * The one thing not taken from tidy as-is is "already pushed": tidy's own
  * `pushed` field means *some* upstream is configured, regardless of remote,
- * because tidy has no `--remote` option of its own to be precise about. This
- * command does, so it re-derives that check against the actual selected
- * remote (`pushedToRemote`) rather than trusting tidy's answer — otherwise
- * `--remote fork` would silently skip a branch whose upstream happens to be
- * `origin`, leaving it unpublished on `fork` with no indication anything was
- * skipped.
+ * because tidy has no `--remote` option of its own to be precise about, and
+ * it says nothing about whether *later* local commits ever followed that
+ * push. Neither a configured-upstream check nor a hand-rolled `ls-remote`
+ * comparison is fully trustworthy here either — `ls-remote <remote>` resolves
+ * the remote's *fetch* URL, which can differ from its configured *push* URL.
+ * `pushOne` instead asks git's own push machinery directly, via
+ * `git push --dry-run`: that is the one thing that necessarily resolves the
+ * same destination and the same ref-update rules a real push would use,
+ * whatever the remote's URL configuration turns out to be.
  */
 export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {}): CommandSuccess<PushUnpushedCommandData> {
   const remote = options.remote?.trim() || "origin";
@@ -87,13 +89,15 @@ export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {})
   const items: PushUnpushedItem[] = [];
 
   for (const entry of worktrees) {
-    if (entry.verdict !== "unmerged" || entry.branch === null || pushedToRemote(repoRoot, entry.branch, remote)) continue;
-    items.push(pushOne({ repoRoot, remote, apply, kind: "worktree", branch: entry.branch, path: entry.path, ahead: entry.ahead }));
+    if (entry.verdict !== "unmerged" || entry.branch === null) continue;
+    const item = pushOne({ repoRoot, remote, apply, kind: "worktree", branch: entry.branch, path: entry.path, ahead: entry.ahead });
+    if (item) items.push(item);
   }
 
   for (const entry of branches) {
-    if (entry.verdict !== "unmerged" || pushedToRemote(repoRoot, entry.branch, remote)) continue;
-    items.push(pushOne({ repoRoot, remote, apply, kind: "branch", branch: entry.branch, path: null, ahead: entry.ahead }));
+    if (entry.verdict !== "unmerged") continue;
+    const item = pushOne({ repoRoot, remote, apply, kind: "branch", branch: entry.branch, path: null, ahead: entry.ahead });
+    if (item) items.push(item);
   }
 
   return createSuccess({
@@ -103,29 +107,11 @@ export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {})
 }
 
 /**
- * Whether `remote` currently holds exactly the local tip of `branch` — a live
- * query, not a check of locally-configured tracking state.
- *
- * A configured upstream only proves a push happened *at some point*; it says
- * nothing about whether later local commits ever followed it there. Querying
- * the remote's actual current tip and comparing it to the local one is the
- * only way to know the branch is not still ahead of what was last published.
- *
- * Fails toward inclusion, not exclusion: a missing remote branch or a failed
- * query both return `false`, so the caller attempts the push rather than
- * silently trusting an answer it could not confirm. The push itself is
- * additive and non-forced, so a redundant attempt against a branch that
- * turns out to already be current costs nothing.
+ * Push one branch, or determine that nothing needs to happen — returning
+ * `null` in that case rather than an item, so a branch that turns out to
+ * already be current at the selected remote is left out of the report
+ * entirely, the same as it would be if tidy had never flagged it.
  */
-function pushedToRemote(repoRoot: string, branch: string, remote: string): boolean {
-  const localTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}`]);
-  if (!localTip) return false;
-  const remoteRef = tryGit(repoRoot, ["ls-remote", "--exit-code", remote, `refs/heads/${branch}`]);
-  if (!remoteRef) return false;
-  const remoteTip = remoteRef.split(/\s+/)[0];
-  return remoteTip === localTip;
-}
-
 function pushOne(input: {
   repoRoot: string;
   remote: string;
@@ -134,10 +120,23 @@ function pushOne(input: {
   branch: string;
   path: string | null;
   ahead: number;
-}): PushUnpushedItem {
+}): PushUnpushedItem | null {
   const { repoRoot, remote, apply, kind, branch, path, ahead } = input;
+  const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
 
   if (!apply) {
+    // A dry run asks git's own push machinery whether anything would actually
+    // change, which is the only way to correctly account for a configured
+    // push URL that differs from the fetch URL a hand-rolled `ls-remote`
+    // check would see. Nothing is written by `--dry-run`.
+    const preview = spawnSync("git", ["push", "--dry-run", "--porcelain", remote, refspec], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    if (preview.status === 0 && pushPorcelainFlag(preview.stdout, refspec) === "=") {
+      return null; // the selected remote already has exactly this tip
+    }
     return {
       kind, branch, path, ahead,
       outcome: "would-push",
@@ -150,7 +149,7 @@ function pushOne(input: {
   // branch regardless of which worktree — or none — currently has it checked
   // out. No `--force` anywhere in this call: a plain push can only fast-forward
   // the remote ref, so the worst case is a clean refusal, never lost history.
-  const result = spawnSync("git", ["push", "--porcelain", "-u", remote, `refs/heads/${branch}:refs/heads/${branch}`], {
+  const result = spawnSync("git", ["push", "--porcelain", "-u", remote, refspec], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
@@ -159,6 +158,10 @@ function pushOne(input: {
   if (result.status !== 0) {
     const stderr = (result.stderr || "").trim().split("\n").filter(Boolean).pop() ?? "git push failed with no output";
     return { kind, branch, path, ahead, outcome: "failed", detail: stderr };
+  }
+
+  if (pushPorcelainFlag(result.stdout, refspec) === "=") {
+    return null; // was already current at the selected remote; nothing changed
   }
 
   // `git push -u` can exit 0 while the ref lands on the remote but the local
@@ -213,6 +216,19 @@ function upstreamMatches(repoRoot: string, branch: string, remote: string): bool
     stdio: ["ignore", "pipe", "ignore"]
   });
   return result.status === 0 && result.stdout.trim() === `${remote}/${branch}`;
+}
+
+/**
+ * The per-ref status character from `git push --porcelain` output for a given
+ * refspec — `=` for "already up to date", and several other single characters
+ * (space for fast-forward, `*` for a new ref, `+` for forced, `!` for
+ * rejected) for everything that actually changed or needs to. The line format
+ * is `<flag><TAB><from>:<to><TAB><summary>`, so the flag is the line's first
+ * character, not a trimmed token — a fast-forward's flag is a literal space.
+ */
+function pushPorcelainFlag(stdout: string, refspec: string): string | undefined {
+  const line = stdout.split("\n").find((candidate) => candidate.includes(refspec));
+  return line?.charAt(0);
 }
 
 export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedCommandData>): string[] {
