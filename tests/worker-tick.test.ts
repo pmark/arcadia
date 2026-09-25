@@ -47,6 +47,14 @@ function pidfileOf(root: string): string {
   return path.join(root, ".arcadia", "worker.pid");
 }
 
+function tickMarkerOf(root: string): string {
+  return path.join(root, ".arcadia", "worker.tick-started");
+}
+
+function writeTickMarker(root: string, record: { pid: number; owner: string; at: number }): void {
+  writeFileSync(tickMarkerOf(root), JSON.stringify(record), "utf8");
+}
+
 function writeRecord(root: string, record: { pid: number; owner: string; at: number }): void {
   writeFileSync(pidfileOf(root), JSON.stringify(record), "utf8");
 }
@@ -262,7 +270,7 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       killGraceMs: 50,
       // A real beacon would fork an actual OS process; this test only cares
       // about the recovery that happens before the beacon or the tick loop.
-      startHeartbeatBeacon: () => ({ stop: () => {} })
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();
@@ -303,6 +311,58 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
     // A force-killed worker never runs its own cleanup, so stop must clear the
     // record rather than leave a pidfile naming a dead PID.
     expect(existsSync(pidfileOf(root))).toBe(false);
+  });
+
+  it("force-kills from worker stop when the tick has run past the ceiling, even with a fresh heartbeat (CodeRabbit #627)", async () => {
+    // The beacon proves the process and its event loop have not exited; it
+    // cannot prove the event loop is still progressing. A worker truly wedged
+    // forever inside one synchronous step would otherwise keep the beacon
+    // refreshing its heartbeat and never be escalated -- the false negative
+    // this ceiling closes.
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "wedged", at: Date.now() });
+    writeTickMarker(root, { pid: fixture.pid, owner: "wedged", at: Date.now() - 31 * 60_000 });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50
+    }));
+
+    expect(output).toContain("ignored SIGTERM");
+    expect(output).toContain("SIGKILL");
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+  });
+
+  it("worker start recovers a worker whose tick has run past the ceiling, even with a fresh heartbeat (CodeRabbit #627)", async () => {
+    const { root, logfile } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "wedged", at: Date.now() });
+    writeTickMarker(root, { pid: fixture.pid, owner: "wedged", at: Date.now() - 31 * 60_000 });
+
+    const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
+    dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs")} ${path.join(repoRoot, "src", "cli.ts")} worker start`,
+      defaultWorkspace: () => root,
+      terminateGraceMs: 50,
+      killGraceMs: 50,
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
+    }));
+    intervals.mockRestore();
+    timeouts.mockRestore();
+    resume.mockRestore();
+
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+    const logged = readFileSync(logfile, "utf8");
+    expect(logged).toContain(`Recovered hung worker: PID ${fixture.pid}`);
+    expect(logged).toContain("event loop itself stopped progressing");
+    const recovered = readRecord(root);
+    expect(recovered.pid).toBe(process.pid);
   });
 
   it("leaves a worker that is mid-tick alone rather than killing it", async () => {
@@ -459,6 +519,41 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     expect(readRecord(root).at).toBe(staleAt);
     beacon.stop();
   }, 15_000);
+
+  it("worker start restarts the heartbeat beacon and logs the loss when it exits unexpectedly (CodeRabbit #627)", () => {
+    const { root, logfile } = workspace();
+    let starts = 0;
+    const triggers: Array<(detail: { code: number | null; signal: NodeJS.Signals | null }) => void> = [];
+    const fakeStart = () => {
+      starts += 1;
+      return {
+        stop: () => {},
+        onUnexpectedExit: (callback: (detail: { code: number | null; signal: NodeJS.Signals | null }) => void) => {
+          triggers.push(callback);
+        }
+      };
+    };
+
+    const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
+    dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
+      defaultWorkspace: () => root,
+      startHeartbeatBeacon: fakeStart
+    }));
+    intervals.mockRestore();
+    timeouts.mockRestore();
+    resume.mockRestore();
+
+    expect(starts).toBe(1);
+    // Simulate the first beacon dying on its own, not via stop().
+    triggers[0]({ code: null, signal: "SIGKILL" });
+    expect(starts).toBe(2);
+
+    const logged = readFileSync(logfile, "utf8");
+    expect(logged).toContain("Heartbeat beacon exited unexpectedly");
+    expect(logged).toContain("restarting it (attempt 1)");
+  });
 });
 
 describe("managed production iteration liveness", () => {

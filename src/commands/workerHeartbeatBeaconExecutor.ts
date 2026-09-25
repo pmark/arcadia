@@ -1,8 +1,19 @@
 import { fork, type ChildProcess } from "node:child_process";
 import type { WorkerIdentity } from "./worker.js";
 
+export interface HeartbeatBeaconExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+}
+
 export interface HeartbeatBeacon {
   stop(): void;
+  /** Fires at most once, only if the beacon exits or errors *without* a prior
+   * `stop()` call — the caller's cue to log the loss and restart it, since a
+   * dead beacon silently reopens the false-positive-kill window this exists
+   * to close. Never fires after `stop()`. */
+  onUnexpectedExit(callback: (detail: HeartbeatBeaconExit) => void): void;
 }
 
 /** How often the beacon re-stamps the worker's own liveness record. */
@@ -41,7 +52,22 @@ export function startHeartbeatBeacon(
     }
   );
   child.unref();
+
+  let stopped = false;
+  let listener: ((detail: HeartbeatBeaconExit) => void) | null = null;
+  const notifyUnexpectedExit = (detail: HeartbeatBeaconExit) => {
+    if (stopped) return;
+    stopped = true;
+    listener?.(detail);
+  };
+  child.on("error", (error) => notifyUnexpectedExit({ code: null, signal: null, error }));
+  child.on("exit", (code, signal) => notifyUnexpectedExit({ code, signal }));
+
   return {
-    stop: () => { try { child.kill(); } catch {} }
+    stop: () => {
+      stopped = true;
+      try { child.kill(); } catch {}
+    },
+    onUnexpectedExit: (callback) => { listener = callback; }
   };
 }
