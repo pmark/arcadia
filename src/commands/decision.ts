@@ -335,10 +335,13 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
       });
     }
 
-    // A plain Decision answer is already recorded exactly this way — the
-    // repeat of a same-day retry, since `decided`/`updated` both stamp today's
-    // date. Nothing to write or commit; report the existing state as applied.
-    if (updatedContent === prepared.before) {
+    // A same-day retry recomputes byte-identical content, since `decided`/
+    // `updated` both stamp today's date. That alone doesn't prove the answer
+    // is actually committed, though: a prior attempt may have written this
+    // exact content and then failed to commit it. Only report the no-op when
+    // Git also sees the path as clean — otherwise fall through and retry the
+    // commit instead of reporting a hollow success on a dirty tree.
+    if (updatedContent === prepared.before && tryGit(repoRoot, ["status", "--porcelain", "--", relativePath]) === "") {
       return createSuccess({
         command: "decision.approve",
         workspace: workspacePath,

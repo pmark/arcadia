@@ -233,6 +233,24 @@ describe("decision approve", () => {
     expect(status.trim()).toBe("");
   });
 
+  it("commits a retry when the file already matches but a prior commit did not land", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "retry-after-uncommitted-write", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    // Simulate a prior attempt whose write landed but whose commit did not:
+    // move the branch back one commit while leaving the working tree —
+    // already carrying the answered content — untouched.
+    execFileSync("git", ["reset", "--mixed", "HEAD~1"], { cwd: repoRoot });
+    const dirtyStatus = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(dirtyStatus.trim()).not.toBe("");
+
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" });
+    expect(status.trim()).toBe("");
+  });
+
   it("resolves a decision by slug as well as by numeric id", () => {
     const { workspace, projectSlug } = workspaceWithProject();
     runDecisionNewCommand({ workspace, project: projectSlug, slug: "by-slug", question: "Q?" });
