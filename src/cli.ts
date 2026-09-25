@@ -394,6 +394,7 @@ import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
 import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
+import { renderPushUnpushedSuccess, runPushUnpushedCommand } from "./commands/pushUnpushed.js";
 import {
   renderOperatorTaskCloseSuccess,
   renderOperatorTaskDeclineSuccess,
@@ -3405,6 +3406,25 @@ export function buildProgram(): Command {
       options,
       () => runTidyCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
       renderTidySuccess
+    )
+  );
+
+  addJsonOption(
+    program
+      .command("push-unpushed")
+      .description("Push every unmerged worktree branch and standalone branch that `arcadia tidy` reports has no remote copy, so no local-only work can be lost")
+      .option("--repo <path>", "Repository to inspect", resolveInvocationPath, invocationRoot())
+      .option("--workspace <path>", "Workspace path used to resolve the same protections tidy would check", defaultWorkspace())
+      .option("--remote <name>", "Remote to push to", "origin")
+      .option("--apply", "Actually push; without it this only reports what would be pushed")
+      .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
+      .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available")
+  ).action((options: { repo?: string; workspace?: string; remote?: string; apply?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
+    runCliAction(
+      "push-unpushed",
+      options,
+      () => runPushUnpushedCommand({ ...options, noFetch: options.fetch === false, noGithub: options.github === false }),
+      renderPushUnpushedSuccess
     )
   );
 
