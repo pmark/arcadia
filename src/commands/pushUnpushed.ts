@@ -258,7 +258,14 @@ export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedC
     return lines;
   }
 
-  lines.push(applied ? `Pushed (${items.length}):` : `Would push (${items.length}) — re-run with --apply to actually push:`);
+  const failedCount = items.filter((item) => item.outcome === "failed").length;
+  const heading =
+    failedCount === 0
+      ? (applied ? `Pushed (${items.length}):` : `Would push (${items.length}) — re-run with --apply to actually push:`)
+      : (applied
+          ? `${items.length - failedCount} pushed, ${failedCount} failed:`
+          : `${items.length - failedCount} would push, ${failedCount} could not be checked:`);
+  lines.push(heading);
   for (const item of items) {
     // Outcome-driven, not applied-driven: a preview can itself fail (the dry
     // run couldn't reach the remote), and that must not be marked the same as
@@ -272,14 +279,13 @@ export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedC
     lines.push(`      ${item.detail}`);
   }
 
-  const failed = items.filter((item) => item.outcome === "failed");
   const untracked = items.filter((item) => item.outcome === "pushed-untracked");
   lines.push("");
-  if (failed.length > 0) {
+  if (failedCount > 0) {
     lines.push(
       applied
-        ? `${failed.length} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`
-        : `${failed.length} of ${items.length} could not even be checked against the remote — see the reason above; nothing was changed.`
+        ? `${failedCount} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`
+        : `${failedCount} of ${items.length} could not even be checked against the remote — see the reason above; nothing was changed.`
     );
   } else if (!applied) {
     lines.push("Nothing was changed. Re-run with --apply to push the branches listed above.");

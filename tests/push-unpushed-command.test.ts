@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runPushUnpushedCommand, type PushUnpushedCommandData } from "../src/commands/pushUnpushed.js";
+import { renderPushUnpushedSuccess, runPushUnpushedCommand, type PushUnpushedCommandData } from "../src/commands/pushUnpushed.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
@@ -226,11 +226,18 @@ describe("arcadia push-unpushed", () => {
     const bin = fakeGitFailingDryRunPush();
     process.env.PATH = `${bin}:${originalPath ?? ""}`;
     try {
-      const result = data(runPushUnpushedCommand({ repo: clone }));
+      const response = runPushUnpushedCommand({ repo: clone });
+      const result = data(response);
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]).toMatchObject({ branch: "claude/dry-run-fails", outcome: "failed" });
       expect(result.items[0].detail).toContain("simulated network failure");
+
+      // Regression for a second CodeRabbit finding: the heading must not call
+      // a failed item "would push".
+      const rendered = renderPushUnpushedSuccess(response).join("\n");
+      expect(rendered).not.toContain("Would push (1)");
+      expect(rendered).toContain("0 would push, 1 could not be checked");
     } finally {
       process.env.PATH = originalPath;
     }
