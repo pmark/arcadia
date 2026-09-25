@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
+import { upstreamRef } from "../git/worktrees.js";
 import { runTidyCommand } from "./tidy.js";
 
 /**
@@ -56,11 +57,20 @@ export interface PushUnpushedCommandOptions {
  * has no remote copy, and push each one — additively, never forced — so it
  * stops being the only copy.
  *
- * Delegates the entire "what is at risk" question to `runTidyCommand` rather
- * than re-deriving it: tidy already resolves the base branch, fetches origin,
+ * Delegates the "what is at risk" question to `runTidyCommand` rather than
+ * re-deriving it: tidy already resolves the base branch, fetches origin,
  * checks GitHub-verified merges, and screens out dirty/protected/merged
  * entries. Recomputing any of that here would risk the two commands
  * disagreeing about which branches are actually at risk.
+ *
+ * The one thing not taken from tidy as-is is "already pushed": tidy's own
+ * `pushed` field means *some* upstream is configured, regardless of remote,
+ * because tidy has no `--remote` option of its own to be precise about. This
+ * command does, so it re-derives that check against the actual selected
+ * remote (`pushedToRemote`) rather than trusting tidy's answer — otherwise
+ * `--remote fork` would silently skip a branch whose upstream happens to be
+ * `origin`, leaving it unpublished on `fork` with no indication anything was
+ * skipped.
  */
 export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {}): CommandSuccess<PushUnpushedCommandData> {
   const remote = options.remote?.trim() || "origin";
@@ -77,12 +87,12 @@ export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {})
   const items: PushUnpushedItem[] = [];
 
   for (const entry of worktrees) {
-    if (entry.verdict !== "unmerged" || entry.pushed || entry.branch === null) continue;
+    if (entry.verdict !== "unmerged" || entry.branch === null || pushedToRemote(repoRoot, entry.branch, remote)) continue;
     items.push(pushOne({ repoRoot, remote, apply, kind: "worktree", branch: entry.branch, path: entry.path, ahead: entry.ahead }));
   }
 
   for (const entry of branches) {
-    if (entry.verdict !== "unmerged" || entry.pushed) continue;
+    if (entry.verdict !== "unmerged" || pushedToRemote(repoRoot, entry.branch, remote)) continue;
     items.push(pushOne({ repoRoot, remote, apply, kind: "branch", branch: entry.branch, path: null, ahead: entry.ahead }));
   }
 
@@ -90,6 +100,11 @@ export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {})
     command: "push-unpushed",
     data: { repoRoot, remote, applied: apply, items }
   });
+}
+
+/** Whether `branch`'s configured upstream is specifically on `remote` — not just any remote. */
+function pushedToRemote(repoRoot: string, branch: string, remote: string): boolean {
+  return upstreamRef(repoRoot, branch) === `${remote}/${branch}`;
 }
 
 function pushOne(input: {

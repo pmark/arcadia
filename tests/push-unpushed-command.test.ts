@@ -148,6 +148,26 @@ describe("arcadia push-unpushed", () => {
     expect(result.items).toHaveLength(0);
   });
 
+  it("respects --remote: a branch already on origin is still found and pushed for a different selected remote", () => {
+    // Regression for a CodeRabbit finding on PR #626: filtering used tidy's
+    // `pushed` field, which is true whenever *any* upstream is configured,
+    // regardless of remote. That silently skipped branches for `--remote fork`
+    // whenever they happened to already track `origin`.
+    const { clone } = baseRepo();
+    const fork = bareOrigin();
+    run(clone, ["remote", "add", "fork", fork]);
+    commitOn(clone, "claude/multi-remote", "feature.txt");
+    run(clone, ["push", "-q", "-u", "origin", "claude/multi-remote"]);
+
+    const toOrigin = data(runPushUnpushedCommand({ repo: clone, apply: true }));
+    expect(toOrigin.items).toHaveLength(0);
+
+    const toFork = data(runPushUnpushedCommand({ repo: clone, apply: true, remote: "fork" }));
+    expect(toFork.items).toHaveLength(1);
+    expect(toFork.items[0]).toMatchObject({ branch: "claude/multi-remote", outcome: "pushed" });
+    expect(run(fork, ["rev-parse", "claude/multi-remote"]).trim()).toBe(run(clone, ["rev-parse", "claude/multi-remote"]).trim());
+  });
+
   it("never touches a worktree with uncommitted changes", () => {
     const { clone } = baseRepo();
     commitOn(clone, "claude/dirty", "feature.txt");
