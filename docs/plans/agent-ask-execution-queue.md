@@ -9,8 +9,8 @@ token_impact: xlarge
 token_budget: "Parsing, normalization, validation, queue ordering, readiness, reorder operations, and projections are deterministic and make zero model calls. Use one bounded coding-agent implementation pass per Action. Optional intent inference uses the configured local-preferred route once per novel Ask; strict agent envelopes and retries must remain zero-model and byte-stable."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-09-02
-current_action: dogfood-agent-managed-queue
+updated: 2026-09-25
+current_action: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
 actions:
   - id: define-agent-ask-management-contract
     title: Give coding agents a conventional Ask contract for Project management intent
