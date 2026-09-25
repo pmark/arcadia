@@ -2124,6 +2124,42 @@ actions:
     depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production]
     decisions: []
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/operator-demo-and-release-contract.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/production/policy.ts"]
+  - id: enforce-concurrency-gate-at-admission
+    title: Cap production concurrency at one Session on every admission until both concurrency proofs are done, with an expiring operator-granted rehearsal exception as the only way around it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Cap production concurrency at one Session on every admission until both concurrency proofs are done, with an expiring operator-granted rehearsal exception as the only way around it.
+    expected_artifact: Evidence satisfying Agent Ask enforce-concurrency-gate-at-admission
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-concurrency-gate-and-split-rewire-after-review-2026-09-25
+    acceptance_criteria:
+      - "issueAdmission (src/production/policy.ts) caps effective concurrency at 1 on every admission, whatever maxConcurrentSessions the stored scope carries, unless plan/bootstrap-managed-production-to-build-flight-deck#prove-two-action-unattended-production and plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission are both done on the base branch; a refused admission names both ids."
+      - The check runs on every admission and names both Actions by Plan-qualified id, so reopening either Action restores the cap without deactivating the policy, and a later change of active Plan neither lifts nor permanently locks the gate.
+      - production preview and activate with --concurrency greater than 1 report the effective cap and its reason while the gate is closed, instead of silently recording a limit that will not be honoured.
+      - The only way to exceed the cap before both proofs are done is an explicit, expiring rehearsal exception on the operator-granted policy scope that names prove-concurrent-ready-set-admission; it lapses at its expiry or on deactivation, and nothing else lifts the cap.
+      - "Deterministic tests cover: the cap holding for a stored scope above 1 while the gate is closed, including a scope written directly without passing through activation; the cap lifting once both Actions are done; the cap returning when one is reopened; and the rehearsal exception being honoured only before its expiry; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/production/policy.ts", "src/production/activation.ts", "src/commands/production.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
+  - id: rewire-dependents-on-split
+    title: A split no longer satisfies anything that depended on the narrowed Action until its remainder Actions are done too.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A split no longer satisfies anything that depended on the narrowed Action until its remainder Actions are done too.
+    expected_artifact: Evidence satisfying Agent Ask rewire-dependents-on-split
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-concurrency-gate-and-split-rewire-after-review-2026-09-25
+    acceptance_criteria:
+      - When a split settles (src/ask/settlement.ts), every Action whose depends_on names the split Action also gains the remainder Action ids, so no dependent becomes ready while any remainder is still open.
+      - Any readiness or gate check that requires a named Action to be done, including enforce-concurrency-gate-at-admission, also requires every remainder Action split from it to be done.
+      - "Deterministic tests cover: a dependent that stays blocked after a split until its remainder is done, and the concurrency gate staying closed when one of its proof Actions is split with an open remainder; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/ask/settlement.ts", "src/docs/dispatch.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
