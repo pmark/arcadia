@@ -2,20 +2,28 @@
 arcadia: v1
 type: proposal
 project: arcadia
-question: How should Arcadia scale managed production from one Session at a time to many concurrent coding-agent Sessions across a portfolio of Projects and Plans, without breaking the concurrency Decisions already ratified?
+question: Should Arcadia admit work from the portfolio's ready set, in operator-owned queue order, so the operator moves forward as fast as they can afford, instead of advancing one stored pointer per Project from one Session to the next?
 ---
 
 # Portfolio parallel execution
 
 New users and reviewers will want to find out how many agents Arcadia can run
-at once across a whole portfolio. This document does three things:
+at once across a whole portfolio. The answer this document gives is not "as
+many as possible". Arcadia is not a swarm manager. Its promise is that **the
+operator moves forward as fast as they can afford**: every unit of capacity
+they are willing to spend goes to the most valuable work that is ready, and
+nothing waits for a reason Arcadia could have avoided.
+
+This document does four things:
 
 1. It lists every existing record that already governs parallel work.
 2. It checks those records against the code as it stands on 2026-09-25.
-3. It proposes an architecture that scales within those records.
-
-It asks for nothing that a ratified Decision has already refused. The one
-piece that needs a new Decision is marked as such.
+3. It proposes **ready-set admission**. Work is chosen from everything that is
+   ready, in the operator's queue order. It no longer advances a stored
+   pointer from one Session to the next.
+4. It names the one Decision this needs. That is a reopening of Decision
+   0023, filed as
+   `.arcadia/asks/agent-ask-reopen-0023-ready-set-admission-2026-09-25.yaml`.
 
 ## 1. What is already written
 
@@ -29,6 +37,7 @@ piece that needs a new Decision is marked as such.
 | [0023](../decisions/0023-work-pointer-under-concurrency.md) | `current_action` stays a stored value. One dispatched agent per repository. Deriving the pointer from the ready set is rejected, because a tiebreak would replace the operator's judgment. Claims (option B) and moving the pointer into the Plan (option D) are held behind triggers. |
 | [0051](../decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md) | **Candidate continuation**: at most one live execution per candidate worktree. Later Sessions for the same Action reuse the candidate once the earlier one is proven terminal. |
 | [0066](../decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md) | **Same-repository concurrent Sessions are deferred.** The trigger has three parts: `prove-two-action-unattended-production` lands cleanly in real use, the fixes for #505, #507 and #549 are done, and then a secondary lane for low-blast-radius Actions becomes cheap. A ready-set multi-Session scheduler was explicitly rejected for now. |
+| [0054](../decisions/0054-should-plan-and-action-priority-live-only-in-the-queue.md) | **Priority lives in the queue.** The explicit ordered queue is the only record of Plan and Action priority. |
 | [0057](../decisions/0057-should-prove-two-action-unattended-production-be-deferred-until-the-next-live.md) / [0061](../decisions/0061-retarget-decision-0057-s-reactivation-trigger-so-prove-two-action-unattended.md) | Defer the two-Action proof that 0066 depends on. It revives on any configured provider with capacity, once the managed-production defects are fixed. |
 
 ### Proposals and plans
@@ -57,165 +66,222 @@ Checked against source on 2026-09-25:
 - **The repository lease is a unique partial index.** It is `agent_sessions(repository_path) WHERE status IN ('prepared','running')` (`src/db/schema.ts:337`). There is no TTL and no heartbeat. The lease holds until tmux exits and `reconcileSessionExit` runs. A silent Session is flagged as stalled after 20 minutes but keeps the lease.
 - **Action claims are live on both launch paths.** Claims live in `agent_worktree_reservations` with `claim_generation`. `launchGuardedHostSession` and `arcadia go` both use them, and settlement checks the generation fence (`src/ask/settlement.ts:1210`).
 - **Settlement already uses compare-and-set for `PROJECT.md`**, through `writePointerPairWithCompareAndSet`. The open part of #505 is the pointer write in `applyDecisionDeferral`.
+- **Every completion also picks the next Action.** `settleAgentAsk` calls `selectNextAfterCompletion` (`src/ask/settlement.ts:2086`), writes the result into `current_action` and appends to `MISSION_LOG.md`. That write is why the scheduler has to hold the pointer while a candidate is unmerged (`docs/production-scheduling.md`). The next Session cannot start until that candidate's pointer rewrite lands.
+- **An unknown dependency counts as satisfied.** `canonicalOrder` (`src/scheduling/order.ts:64`) releases an Action whose `depends_on` names an id it does not know. This is harmless when work runs one Action at a time. It is a hole when work runs in parallel.
 - **Provider capacity is a gate, not a budget.** `evaluateCapacityAdmission` refuses `capacity_exhausted` and waits for reset. Nothing counts how many Sessions one provider account is running.
 - **Nothing that launches uses `resolveBatch`.** Lanes exist only on the board projection.
 - **Storage is one SQLite workspace database** in WAL mode, with `busy_timeout=15000` and `BEGIN IMMEDIATE` writes. That is plenty for tens of writers.
 
 So the first honest answer to "how many agents can it run?" is a configuration value that nobody raises by default, and nothing explains why a waiting Action is waiting.
 
-## 3. Architecture
+## 3. Architecture: ready-set admission
 
-### Principle: admission is a matching problem over explicit resources
+### The goal is affordable speed, not maximum concurrency
 
-Parallelism is not a scheduler that hands out work. It is **admission**: one
-eligible Action is matched to one free unit of every resource it needs. All of
-those units are reserved under one fenced reservation and released together.
-Every refusal names the resource that was missing.
+The operator sets what they can afford:
 
-This is the authority/isolation/capacity triple from the operator-scale
-proposal, written out as resources:
+- host slots;
+- provider accounts, and how many Sessions each account may run;
+- whether usage stays inside included allowance or may reach an explicit
+  spend ceiling;
+- how many unmerged PRs they are willing to review.
 
-| Resource | Unit | Held by | Exists today |
-| --- | --- | --- | --- |
-| **Authority** | Production policy revision and epoch, with the Plan in scope | Admission receipt | Yes (`production_admissions`) |
-| **Host slot** | One concurrent Session on this machine | Admission | Yes, as the global `maxConcurrentSessions` |
-| **Isolation lane** | One writer per lane. A lane is a repository today and could be narrower later. | Session lease | Yes (repository lease index) |
-| **Action claim** | One live candidate per Action | Claim with generation | Yes |
-| **Provider slot** | Concurrent Sessions per provider *account*, not per model | Admission | **No** |
-| **Provider allowance** | Included capacity left in the current window | Capacity receipt | Gate only |
-| **Integration throughput** | Open, unmerged candidate PRs per Project | Derived | **No** |
+Arcadia's job is to keep all of that capacity busy on the highest-priority
+ready work, and nothing more. A portfolio with one provider account and one
+review hour a day should run one Session at a time and never idle it. A
+portfolio with three accounts across twenty client repositories should run
+three. The same mechanism covers both, and it never creates work to fill
+capacity.
 
-The last row is the one reviewers will hit first without seeing it.
+### The model
 
-### The admission loop
-
-The tick keeps its shape. What changes is that it fills free slots on purpose:
+Each tick:
 
 ```
-free = hostSlots − liveAdmissions
-for project in scheduling order:              # schedule prioritize
-  for action in canonicalOrder(project):      # existing canonicalOrder
-    if free == 0: stop
-    lane  = laneOf(action)                    # repository today
-    need  = {lane, claim(action), providerSlot(p), allowance(p), authority}
-    for p in compliantProviders(action):      # selectCompliantCodingAgent order
-      if reserveAll(need):                     # issue → prepare → commit, fenced
-        launch detached; free -= 1; next project
-    else: record wait reason (the first missing resource)
+ready  = every Action in the in-scope Plans of every active Project where
+           status is not done, deferred or needs_operator,
+           every depends_on is done on the base branch (landed),
+           and no live claim holds it
+order  = canonicalOrder over ready          # Project priority, then class,
+                                            # queue position, declaration
+for action in order:
+  if host has no free slot: stop
+  if any required resource is missing: record its wait reason; continue
+  for provider in compliantProviders(action):      # cheapest sufficient first
+    if reserve(action, provider): launch detached; break
 ```
 
-Three properties matter here:
+That is the whole scheduler. The following things disappear:
 
-1. **Priority stays total and operator-owned.** Admission walks the existing canonical order. When the top Action cannot run, Arcadia moves to other work that can, and records why the higher Action is waiting. This is contract 17's "a blocked Project must not idle every provider". It is not a new ordering heuristic, so 0023's objection to deriving the pointer does not apply.
-2. **The launch primitive keeps its two-phase shape.** `launchGuardedHostSession` (`src/sessions/launch.ts`) does not reserve everything in one transaction today, and this design does not pretend it does:
-   - **Issue.** `issueAdmission` takes the host slot in its own transaction. It checks the policy epoch and the live-admission count, and writes a receipt with a 30-second TTL.
-   - **Prepare.** A separate `writeTransaction` reserves the worktree, the Action claim and the repository lease through `beforeCreate`.
-   - **Commit.** `commitAdmission` rechecks the epoch just before the process starts.
+- **Choosing the next Action at settlement.** A completion records its evidence
+  and releases its claim, and that is all it does. The next tick recomputes the
+  ready set. `selectNextAfterCompletion` and every "wrong Next" race (#507) go
+  with it.
+- **Advancing the pointer between Sessions.** Which Action a Session is working
+  on is its **claim**, which already exists and carries a generation.
+  `current_action` becomes a derived display value: the highest-priority Action
+  that is claimed, or ready if nothing is claimed. Only the scheduler writes
+  it, as a projection. No settlement, deferral or `advance` writes it, so
+  #505-class read-modify-write races lose their subject.
+- **Holding the pointer until the PR merges.** That hold exists only because the
+  candidate branch rewrote `current_action`. Once settlement stops writing the
+  pointer, the next independent Action can start while the previous PR waits
+  for review. This is pipelining, and it is where most of the speed-up comes
+  from for someone with one repository: the agent works while the human
+  reviews.
 
-   The provider-account slot belongs in the **issue** phase, counted in the same query as the host slot and fenced by the same epoch. It must not go in `beforeCreate`. The lane and the claim stay in the **prepare** phase. Rollback is explicit:
-   - **Today**, `launch.ts` releases the Action claim by its generation on every failure path. It calls `releaseAdmission` only when the launch lost a lease race to a matching winner (`launch.ts:314`). A failed worktree preparation, or a failed `prepareSession` with no matching winner, keeps its admission until the 30-second TTL expires. Admission receipts are counted only while they are unexpired, so this is bounded, but for up to 30 seconds the slot looks taken.
-   - **Proposed**: every failure path after issue calls `releaseAdmission`, which frees the host slot and the provider slot together. This matters more once there are provider slots, because a burst of failed preparations should not starve other Projects' launches.
-   - A worker that crashes between issue and commit leaves only an uncommitted receipt. That receipt expires within its TTL and is not counted after that.
-   - A commit that finds a stale epoch refuses and releases.
+Decision 0023 rejected this option. Its reason was that ordering the ready set
+needs "an ordering heuristic standing in for the operator's judgment".
+Decision 0054 has since made the explicit queue the only record of priority,
+and `canonicalOrder` is a total order the operator controls by dragging cards.
+No heuristic is left to object to.
 
-   No step can hold a slot that another step believes is free, so the reservation behaves as atomic without needing one transaction.
-3. **Launch is detached.** Sessions run under tmux, so the tick never blocks on a coding agent. Tick length is bounded by the number of Projects, not the number of live Sessions.
+### Dependencies
 
-### Waits are first-class output
+The ready set is only as safe as its dependency edges. The rules are:
 
-Every Action in scope that did not launch this tick gets **one** wait reason:
+1. **Ready means every dependency has landed**, not merely been settled. Readiness
+   is read from the plan documents on the base branch, and a completion reaches
+   the base branch only when its PR merges. A dependent Action therefore always
+   starts from a base that contains the code it depends on. This is already how
+   `canonicalOrder` behaves, and it must stay that way.
+2. **An unknown dependency blocks.** `order.ts:64` currently releases an Action
+   whose dependency id is not in the current Plan. Ready-set admission needs the
+   opposite: resolve the id across Plans by `plan/<slug>#<action>`, or refuse
+   with a `dependency_unresolved` wait reason. This must ship before any
+   pipelining.
+3. **Missing edges are contained by lanes, not trusted away.** One-at-a-time
+   execution hides a missing `depends_on`, because everything runs in
+   declaration order. Parallel admission exposes it. Two defaults contain the
+   damage:
+   - Pipelining in one repository admits only an Action the queue places
+     *after* the unmerged one. The unmerged candidate's diff must not touch
+     paths the new Action declares in `touches:`.
+   - An Action with no `touches:` is treated as touching the whole repository,
+     so it never pipelines. Declaring scope is how a Plan opts into speed.
+4. **Cross-repository dependencies are ordinary edges.** They are enforced the
+   same way, through the landed-on-base rule in the dependency's own
+   repository.
 
-`authority · host_full · lane_busy(<session>) · claimed(<worktree>) · provider_full(<account>) · allowance(<reset>) · integration_backlog(<n PRs>) · dependency · needs_operator`
+### Resources and admission
 
-Wait reasons are derived on each tick and never stored as truth. They feed
-`production status`, Flight Deck and the board's `Arcadia push` field.
+Admission reserves one unit of every resource the Action needs:
 
-This is the answer to the stress-testing reviewer: turn the dial up, and
-Arcadia tells you exactly which resource stops it and why. It is also the
-cheapest part of this design to build, and it is useful even at a limit of one.
+| Resource | Unit | Exists today |
+| --- | --- | --- |
+| **Authority** | Production policy revision and epoch, with the Plan in scope | Yes (`production_admissions`) |
+| **Host slot** | One concurrent Session on this machine | Yes, as `maxConcurrentSessions` |
+| **Live lane** | One live Session per repository (Decision 0066) | Yes (repository lease index) |
+| **Action claim** | One live candidate per Action | Yes, with generation |
+| **Provider slot** | Concurrent Sessions per provider *account* | **No** |
+| **Allowance** | Included capacity left in the window, or the remaining explicit spend ceiling | Gate only |
+| **Review headroom** | Unmerged candidates per repository, below the operator's limit | **No** |
 
-### Portfolio shape determines the ceiling
+The reservation keeps the launch primitive's existing two-phase shape. There is
+no single transaction today, and this design does not pretend there is one:
 
-With one lane per repository, the upper bound on useful concurrency is:
+- **Issue.** `issueAdmission` takes the host slot in its own transaction. It
+  checks the policy epoch and the live-admission count, and writes a receipt
+  with a 30-second TTL. The provider-account slot belongs here, counted in the
+  same query as the host slot.
+- **Prepare.** A separate `writeTransaction` reserves the worktree, the Action
+  claim and the repository lease through `beforeCreate`.
+- **Commit.** `commitAdmission` rechecks the epoch just before the process
+  starts. A stale epoch refuses and releases.
 
-`min(hostSlots, Σ providerSlots, #repositories with a ready Action, integration headroom)`
+Rollback:
 
-On a portfolio of many repositories, like Private Practice Now's client sites,
-that is high enough without any same-repository concurrency. On one large
-monorepo it is **1**, and that case is what 0066's trigger is waiting for.
+- **Today.** `src/sessions/launch.ts` releases the Action claim by its
+  generation on every failure path. It calls `releaseAdmission` only when the
+  launch lost a lease race to a matching winner (`launch.ts:314`). Other
+  preparation failures keep their admission until the 30-second TTL expires.
+- **Proposed.** Every failure path after issue calls `releaseAdmission`. A
+  crash between issue and commit leaves only an uncommitted receipt, which
+  expires within its TTL.
 
-### Integration backpressure
+Launch stays detached under tmux, so a tick never blocks on a coding agent.
 
-Throughput is limited by review and merge, not by launches. N agents produce N
-PRs, and all of them need CodeRabbit, CI and a merge. Reviewers pushing
-concurrency will find that pile-up before any lock contention.
+### Waits are the product surface
 
-Admission should therefore stop taking new work in a Project whose
-preserved-but-unlanded candidates reach a configured limit. The limit could
-default to the Project's lane count plus one. The scheduler already holds the
-pointer while a candidate has not landed, so this generalizes an existing rule
-rather than adding one.
+Every in-scope Action that did not launch gets exactly one derived reason:
 
-### Same-repository lanes (behind Decision 0066)
+`authority · host_full · lane_busy(<session>) · claimed(<worktree>) · provider_full(<account>) · allowance(<reset or ceiling>) · review_backlog(<n PRs>) · dependency(<id>, unlanded) · dependency_unresolved(<id>) · scope_overlap(<candidate>) · needs_operator`
 
-These are not proposed for now. The design is written down so the trigger has a
-buildable target when it fires. Two concurrent candidates in one repository
-break three things. Each needs a structural fix, not a lock:
+The reason is recomputed on every tick and never stored as truth. It feeds
+`production status`, Flight Deck and the board's `Arcadia push` field. This is
+what a reviewer pushing the limit should see: which resource they would need to
+buy or free to go faster. That might be another account, a higher ceiling,
+fewer unreviewed PRs, or better `touches:` scoping.
 
-1. **Governance write conflicts at merge.** Each candidate's completion settlement rewrites `current_action` and the Plan's Action block on its branch, so the second merge conflicts. The fix is 0023's option D taken further:
-   - Completion evidence and status go into **per-Action append-only records**, one file per settlement under the Plan's directory. Two candidates never touch the same lines.
-   - `current_action` becomes the **primary lane's** pointer only.
-   - A secondary lane resolves its Action from its claim, which is what `concurrent-session-action-claims` already specifies.
-2. **Semantic code conflicts.** Only Actions that declare disjoint `touches:` path globs may share a repository. The admission rule is: a lane is free only if no live candidate's globs intersect. This is the "low-blast-radius" condition in 0066 made checkable. An Action without globs defaults to the whole repository, which gives the current behavior.
-3. **Shared worktree state.** Bridged `node_modules` and workspace-state files are shared across worktrees (see CLAUDE.md). A secondary lane needs its own install, or a read-only bridge, before it can be admitted.
+### What limits speed
 
-At that point, "lane" means repository plus path scope. The rest of the
-admission loop does not change. The pending Ask's `--plan` targeting becomes
-one way to request a secondary lane, not a separate lease type.
+`throughput ≈ min(host slots, Σ provider slots, allowance, repositories with ready work × pipeline depth, review rate)`
 
-### More than one installation
+For most operators the last term dominates. That is why review headroom is a
+resource and not an afterthought. A limit on unmerged candidates per repository
+stops Arcadia from producing PRs faster than the operator merges them. Once the
+limit is reached, Arcadia's reason is "review the PRs you have", not "buy more
+agents".
 
-Decision 0022 rules out a shared coordinator, so this design does not scale out
-by making installations talk to each other. It scales out by **partitioning**.
-Each Project is owned by exactly one installation for managed production, and
-that ownership is declared in a committed record. Two installations never admit
-work in the same repository, so no live mutual exclusion is needed.
+### What pipelining needs from settlement
 
-A stale owner is cleared by a commit, not a timeout. This is option B in its
-cheapest form, and it stays behind 0022's own trigger: two operators report lost
-work.
+Two unmerged candidates in one repository must merge cleanly in either order.
+Once settlement stops writing `current_action`, three shared writes remain:
+
+1. **The Action's own block in the Plan document** (`status`, evidence). Two
+   different Actions touch different lines, so these merge cleanly.
+2. **The Plan's `updated:` frontmatter line.** This conflicts every time. It
+   should be dropped from completion writes, because git already records the
+   date.
+3. **The `MISSION_LOG.md` append.** Both branches append at the end of the file,
+   which conflicts. Give it a `.gitattributes` `merge=union` driver: log entries
+   are append-only and independent, which is exactly what union merge is for.
+
+A deterministic test proves the property. It settles two completions on two
+branches from one base and merges them in both orders. There must be no
+conflict, and both Actions must end up done.
+
+### Unchanged boundaries
+
+- **Two live Sessions in one repository** remain deferred by Decision 0066.
+  Pipelining keeps one live Session per repository and only lets its next
+  independent Action start before the previous PR merges. When 0066's trigger
+  fires, "lane" narrows from repository to repository plus `touches:` scope, and
+  nothing else in the model changes. The pending
+  `enable-parallel-plan-dispatch-per-repository` Ask should then be settled
+  that way, not with a per-Plan lease, because two Plans can touch the same
+  files and two Actions in one Plan often do not.
+- **More than one installation** stays behind Decision 0022. Scale-out is by
+  partitioning: each Project is owned by one installation for managed
+  production, declared in a committed record, and a stale owner is cleared by a
+  commit.
+- **Candidate continuation** (Decision 0051) is unchanged. A single Action can
+  still span several Sessions in one candidate.
+- **No automatic spending.** Allowance means included capacity unless the
+  operator set an explicit ceiling. `provider-capacity-harvesting` and the
+  Constitution rule this out.
 
 ## 4. Sequence (the 20% first)
 
 | Step | What | Gated by | Size |
 | --- | --- | --- | --- |
-| 1 | **Wait reasons and a fake-executor soak.** Add `production status --explain` so every in-scope Action shows its single wait reason. Add a deterministic `fixture` coding-agent provider that sleeps, edits one file and exits, so reviewers can push `maxConcurrentSessions` to 20 across fixture repositories at zero token cost and watch every limit engage. | None. It is read-only plus a test provider. | S–M |
-| 2 | **Lease liveness.** The lease gets a heartbeat through tmux pane liveness and provider-session pointer freshness. A Session proven dead releases on the next tick instead of waiting for manual reconcile. This closes the #549 class for leases as well as claims. | Part of 0066's trigger | M |
-| 3 | **Provider-account slots.** Add `providerSlots` per account to the production scope. The limit is checked in the same transaction as the lease and claim. | None. Cross-repository only. | S |
-| 4 | **Integration backpressure.** Add a per-Project limit on unlanded candidates, enforced at admission. | None | S |
-| 5 | **Raise the default across repositories.** Activation previews the host and provider slots it would grant. Raising the limit stays an explicit operator choice in the activation receipt. | The step 1 soak is green **and** step 4's backlog limit is active. Activation refuses a limit above 1 without it. | S |
-| 6 | **Same-repository secondary lanes.** Add per-Action settlement records, `touches:` disjointness and isolated dependencies. | **Decision 0066's trigger**, then a new Decision | L |
-| 7 | **Multi-installation ownership records.** | Decision 0022's trigger | M |
+| 1 | **Wait reasons and a fake-executor soak.** Add `production status --explain` with one reason per in-scope Action. Add a deterministic `fixture` coding-agent provider that sleeps, edits one file and exits, so reviewers can push limits at zero token cost and watch each one engage. | None. It is read-only plus a test provider. | S–M |
+| 2 | **Unknown dependencies block.** Resolve cross-Plan ids, or refuse with `dependency_unresolved`. | None. It is a correctness fix. | S |
+| 3 | **Ready-set admission across repositories.** The tick admits from the portfolio ready set in canonical order, one live Session per repository. Settlement stops choosing the next Action and stops writing `current_action`. The scheduler becomes the pointer's only writer, as a projection. | **The reopened Decision 0023** | M |
+| 4 | **Provider-account slots and review headroom.** Add per-account slot limits in the issue phase and a per-repository limit on unmerged candidates. Release the admission on every failure path. | None | S–M |
+| 5 | **Pipelining.** An independent Action whose `touches:` do not overlap may start in a repository whose previous candidate is unmerged, up to the review limit. This requires the merge-in-either-order test above. | Step 3's Decision, and the test is green | M |
+| 6 | **Raise the defaults.** Activation previews the host slots, provider slots, allowance or ceiling, and review limit it would grant, and the throughput they imply. Raising any of them stays an explicit operator choice. | Step 1's soak is green and step 4 is active | S |
+| 7 | **Two live Sessions in one repository.** | Decision 0066's trigger, then a new Decision | L |
+| 8 | **Multi-installation ownership records.** | Decision 0022's trigger | M |
 
-Steps 1–5 all fit inside the Decisions already ratified:
-
-- Cross-repository concurrency was admitted in principle by 0012 and contract 17.
-- It already exists in code behind `maxConcurrentSessions`.
-- 0066 covers only same-repository concurrency.
-
-Step 6 is the only step that needs new authority.
+Steps 1, 2, 4 and 6 fit inside the Decisions already ratified. Steps 3 and 5
+need the reopened Decision 0023. Steps 7 and 8 stay behind their existing
+triggers.
 
 ### What this does not build
 
-- A distributed scheduler or a hosted coordinator. 0022 rejects both.
-- A derived pointer. 0023 rejects it.
-- Fairness weighting or aging across Projects. `production-scheduling.md` says these are not built until a need is observed, and strict priority plus lane constraints already spread work across repositories.
-- Automatic spending to fill slots. `provider-capacity-harvesting` rules that out.
-
-## 5. On the pending Ask
-
-`enable-parallel-plan-dispatch-per-repository` should stay unsettled until 0066's
-trigger fires. When it does fire, settle it using this document's step 6 as
-the recommended option: a lane is repository plus path scope, and admission is
-by claim. That is better than a per-Plan lease, because two Plans can touch the
-same files and two Actions in one Plan often do not.
+- A swarm scheduler, a distributed scheduler or a hosted coordinator.
+- Fairness weighting or aging across Projects. Strict queue order plus resource
+  limits already spreads work, and `production-scheduling.md` defers fairness
+  until a need is observed.
+- Spending to fill idle capacity.
