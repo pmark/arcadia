@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
-import { resolveActionReadiness, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
+import { resolveDispatch, isDispatchable } from "../docs/dispatch.js";
 import { git, isAncestor, mergesCleanly, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
@@ -108,22 +108,22 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
     }
     const candidateHead = git(binding.worktree, ["rev-parse", "HEAD"]).trim();
     const syntheticCommit = snapshotCandidateCommit(binding.repository, binding.worktree, candidateHead);
-    if (!syntheticCommit || !mergesCleanly(binding.repository, syntheticCommit, currentBaseRevision)) {
+    if (!mergesCleanly(binding.repository, syntheticCommit, currentBaseRevision)) {
       throw validationError(
         `Manual preservation base ${binding.baseBranch} advanced from ${binding.baseRevision} to ${currentBaseRevision} and no longer merges cleanly with the candidate; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
         { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }
       );
     }
   }
-  // Compare against the Session's own dispatched Action, found by id — not
-  // resolveDispatch's current pointer, which may have moved to a different
-  // Action since this binding was created.
-  const readiness = resolveActionReadiness(binding.repository, binding.projectSlug, binding.actionId);
-  if (!readiness.found || readiness.blockers.length > 0 || readiness.operatorQuestion) {
-    throw validationError("Manual preservation Action authority is no longer ready.", { blockers: readiness.blockers });
+  // Claim the Session's own dispatched Action by id, rather than letting
+  // resolveDispatch fall back to the current pointer, which may have moved to
+  // a different Action since this binding was created.
+  const dispatch = resolveDispatch(binding.repository, binding.projectSlug, { actionId: binding.actionId });
+  if (!isDispatchable(dispatch) || !dispatch.context) {
+    throw validationError("Manual preservation Action authority is no longer ready.", { blockers: dispatch.blockers });
   }
   if (binding.actionDefinition !== JSON.stringify({
-    plan: readiness.planSlug, action: readiness.action, decisions: readiness.requiredDecisions
+    plan: dispatch.context.activePlan, action: dispatch.context.action, decisions: dispatch.context.requiredDecisions
   })) throw validationError("Manual preservation Action authority changed.");
   const project = getProjectBySlug(db, binding.projectSlug);
   const metadata = project ? getProjectMetadata(db, project.id) : null;

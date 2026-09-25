@@ -357,8 +357,11 @@ export function preserveCandidate(
       );
     }
     const candidateHead = tryGit(candidateWorktreePath, ["rev-parse", "HEAD"]);
-    const syntheticCommit = candidateHead && snapshotCandidateCommit(repositoryPath, candidateWorktreePath, candidateHead);
-    if (!syntheticCommit || !mergesCleanly(repositoryPath, syntheticCommit, baseHead)) {
+    if (!candidateHead) {
+      throw validationError("The candidate worktree has no resolvable HEAD to check against the advanced base.", { candidateWorktreePath });
+    }
+    const syntheticCommit = snapshotCandidateCommit(repositoryPath, candidateWorktreePath, candidateHead);
+    if (!mergesCleanly(repositoryPath, syntheticCommit, baseHead)) {
       throw validationError(
         `The base branch ${request.baseBranch} advanced from ${request.baseRevision} to ${baseHead} and the candidate no longer merges cleanly with it; reconcile the candidate onto the current base in a fresh worktree before preserving.`,
         { baseBranch: request.baseBranch, oldBase: request.baseRevision, newBase: baseHead }

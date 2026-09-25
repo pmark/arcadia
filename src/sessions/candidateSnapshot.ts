@@ -63,9 +63,12 @@ export function snapshotCandidate(candidate: string): string {
  * otherwise-unreferenced commit lets that same simulation reason about the
  * content that will actually be preserved.
  */
-export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string | null {
+export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string {
   const tree = snapshotCandidate(candidate);
-  const result = spawnSync("git", ["commit-tree", tree, "-p", parent, "-m", "arcadia preservation base-advance check"], {
+  const result = spawnSync("git", [
+    "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
+    "commit-tree", tree, "-p", parent, "-m", "arcadia preservation base-advance check"
+  ], {
     cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -77,7 +80,15 @@ export function snapshotCandidateCommit(repository: string, candidate: string, p
       GIT_COMMITTER_EMAIL: "controller@arcadia.local"
     }
   });
-  return result.status === 0 ? result.stdout.trim() : null;
+  if (result.status !== 0) {
+    throw validationError("Git could not wrap the candidate's current content into a commit for a preservation base-advance check.", {
+      repository,
+      parent,
+      status: result.status,
+      cause: (result.stderr || result.error?.message || "").toString().trim()
+    });
+  }
+  return result.stdout.trim();
 }
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */
