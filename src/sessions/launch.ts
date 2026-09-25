@@ -137,24 +137,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
   if (existingLease && matchesPreview(existingLease, preview)) {
-    // An already-running Session (or one alive in tmux) is always handed
-    // back unchanged -- see the comment above. A merely *prepared* lease
-    // (never started, or crashed before it ever reached tmux) is not yet
-    // running anything, so it is still subject to the same no-validation-
-    // commands refusal an ordinary fresh launch would hit below: without
-    // this check, `resumeOrReturn` would call `launchPreparedSession` and
-    // start a brand-new process for an Action whose Project now declares no
-    // validation commands, bypassing the refusal entirely because
-    // `matchesPreview` checks only the project, Action, and packet hash.
-    const isAlreadyRunning = existingLease.status === "running" || tmux.hasSession(existingLease.tmux_session_name);
-    if (!isAlreadyRunning && preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))) {
-      throw validationError("The previewed Action is not ready to launch.", {
-        prerequisites: preview.prerequisites,
-        conflict: true,
-        code: "no_validation_commands"
-      });
-    }
-    return { reused: true, session: resumeOrReturn(input.db, existingLease, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed), preview, admission: null };
+    return {
+      reused: true,
+      session: reuseOrRefuseLease(input.db, existingLease, preview, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed),
+      preview,
+      admission: null
+    };
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -336,7 +324,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return { reused: true, session: resumeOrReturn(input.db, raced, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed), preview, admission: null };
+      return {
+        reused: true,
+        session: reuseOrRefuseLease(input.db, raced, preview, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed),
+        preview,
+        admission: null
+      };
     }
     throw error;
   }
@@ -397,21 +390,64 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
 }
 
 /**
- * A "prepared" lease whose tmux Session was never actually started (a crash
- * between insert and spawn) is resumed rather than left stuck. Resuming still
- * spawns the provider process, so it is gated on the same sign-in preflight
- * as a fresh launch; only the already-live return above it is exempt.
+ * The single liveness check both the no-validation-commands refusal and
+ * `resumeOrReturn` need. Computed once and threaded through both, rather than
+ * each calling `tmux.hasSession` independently: two independent OS-level
+ * checks left a real, if narrow, TOCTOU window (CodeRabbit review on PR
+ * #647) -- a tmux Session alive at the first check could exit before the
+ * second, so `resumeOrReturn`'s own re-check would spawn a brand-new process
+ * for an Action whose Project declares no validation commands, never having
+ * been subject to the refusal at all.
  */
-function resumeOrReturn(
+function reuseOrRefuseLease(
   db: Database.Database,
   session: AgentSession,
+  preview: LaunchPreview,
   tmux: TmuxAdapter,
   registry: ModelTierRegistry | undefined,
   providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
   workspace: string,
   onProviderSignInConfirmed?: (provider: string) => void
 ): AgentSession {
-  if (session.status === "running" || tmux.hasSession(session.tmux_session_name)) {
+  const isAlreadyRunning = session.status === "running" || tmux.hasSession(session.tmux_session_name);
+  // An already-running Session (or one alive in tmux) is always handed back
+  // unchanged. A merely *prepared* lease (never started, or crashed before it
+  // ever reached tmux) is not yet running anything, so it is still subject to
+  // the same no-validation-commands refusal an ordinary fresh launch would
+  // hit: without this check, `resumeOrReturn` below would call
+  // `launchPreparedSession` and start a brand-new process for an Action whose
+  // Project now declares no validation commands, bypassing the refusal
+  // entirely because `matchesPreview` checks only the project, Action, and
+  // packet hash.
+  if (!isAlreadyRunning && preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))) {
+    throw validationError("The previewed Action is not ready to launch.", {
+      prerequisites: preview.prerequisites,
+      conflict: true,
+      code: "no_validation_commands"
+    });
+  }
+  return resumeOrReturn(db, session, isAlreadyRunning, tmux, registry, providerSignIn, workspace, onProviderSignInConfirmed);
+}
+
+/**
+ * A "prepared" lease whose tmux Session was never actually started (a crash
+ * between insert and spawn) is resumed rather than left stuck. Resuming still
+ * spawns the provider process, so it is gated on the same sign-in preflight
+ * as a fresh launch; only the already-live return above it is exempt.
+ * `isAlreadyRunning` is the caller's own liveness check, passed in rather
+ * than recomputed here -- see `reuseOrRefuseLease`.
+ */
+function resumeOrReturn(
+  db: Database.Database,
+  session: AgentSession,
+  isAlreadyRunning: boolean,
+  tmux: TmuxAdapter,
+  registry: ModelTierRegistry | undefined,
+  providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
+  workspace: string,
+  onProviderSignInConfirmed?: (provider: string) => void
+): AgentSession {
+  if (isAlreadyRunning) {
     return getSession(db, session.id) ?? session;
   }
   checkSignInOrRefuse(session.provider, providerSignIn(session.provider, workspace), onProviderSignInConfirmed);
