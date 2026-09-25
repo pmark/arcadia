@@ -77,6 +77,10 @@ interface ResolvedTarget {
   actionId: string;
   actionTitle: string;
   repoRoot: string;
+  /** The checkout Action resolution and candidate-revision binding both use —
+   * the candidate worktree, not necessarily the Project's configured main
+   * checkout. */
+  checkout: string;
   criteria: string[];
 }
 
@@ -104,8 +108,14 @@ function resolveTarget(workspacePath: string, options: ActionSettleOptions): Res
       throw validationError("Project has no configured repository path.", { project: slug });
     }
     const repoRoot = path.resolve(metadata.repo_path);
+    // Resolve the checkout before dispatch, and read the Action from that same
+    // checkout: a candidate worktree can have its own PROJECT.md/plan pointer,
+    // and dispatch must agree with the checkout candidateRevision is bound to
+    // below, or settlement could complete the configured checkout's Action
+    // instead of the candidate's current one.
+    const checkout = projectCheckoutFor(repoRoot, invocationRoot());
 
-    const dispatch = resolveDispatch(repoRoot, slug);
+    const dispatch = resolveDispatch(checkout, slug);
     if (!dispatch.context) {
       throw validationError("The Project does not resolve a current Action to settle.", {
         project: slug,
@@ -131,6 +141,7 @@ function resolveTarget(workspacePath: string, options: ActionSettleOptions): Res
       actionId: action.id,
       actionTitle: action.title,
       repoRoot,
+      checkout,
       criteria: action.acceptanceCriteria
     };
   });
@@ -166,13 +177,13 @@ function resolveNotes(criteria: string[], options: ActionSettleOptions, candidat
 export function runActionSettleCommand(options: ActionSettleOptions): CommandSuccess<ActionSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const target = resolveTarget(workspacePath, options);
-  // Read HEAD from the same checkout settlement resolves and writes to: inside
-  // a candidate worktree that is the worktree, not the configured main
-  // checkout. Reading the main checkout's HEAD here made completing from a
-  // candidate whose branch HEAD differs from the base refuse its own revision
-  // (Issue #278). Settlement uses `invocationRoot()` for the same resolution,
-  // so both bind the identical commit.
-  const checkout = projectCheckoutFor(target.repoRoot, invocationRoot());
+  // Read HEAD from the same checkout Action resolution and settlement both
+  // used: inside a candidate worktree that is the worktree, not the
+  // configured main checkout. Reading the main checkout's HEAD here made
+  // completing from a candidate whose branch HEAD differs from the base
+  // refuse its own revision (Issue #278). Settlement uses `invocationRoot()`
+  // for the same resolution, so both bind the identical commit.
+  const checkout = target.checkout;
   const candidateRevision = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: checkout,
     encoding: "utf8"
