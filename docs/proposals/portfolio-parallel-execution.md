@@ -113,7 +113,8 @@ Three properties matter here:
    - **Commit.** `commitAdmission` rechecks the epoch just before the process starts.
 
    The provider-account slot belongs in the **issue** phase, counted in the same query as the host slot and fenced by the same epoch. It must not go in `beforeCreate`. The lane and the claim stay in the **prepare** phase. Rollback is explicit:
-   - A lost lease race or a failed preparation calls `releaseAdmission`, which frees both slots, and releases the claim by its generation. This is what the code already does at `launch.ts:300–364`.
+   - **Today**, `launch.ts` releases the Action claim by its generation on every failure path. It calls `releaseAdmission` only when the launch lost a lease race to a matching winner (`launch.ts:314`). A failed worktree preparation, or a failed `prepareSession` with no matching winner, keeps its admission until the 30-second TTL expires. Admission receipts are counted only while they are unexpired, so this is bounded, but for up to 30 seconds the slot looks taken.
+   - **Proposed**: every failure path after issue calls `releaseAdmission`, which frees the host slot and the provider slot together. This matters more once there are provider slots, because a burst of failed preparations should not starve other Projects' launches.
    - A worker that crashes between issue and commit leaves only an uncommitted receipt. That receipt expires within its TTL and is not counted after that.
    - A commit that finds a stale epoch refuses and releases.
 
