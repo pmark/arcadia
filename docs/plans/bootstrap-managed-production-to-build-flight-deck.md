@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: bootstrap-managed-production-to-build-flight-deck
 project: arcadia
-status: draft
+status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -1963,6 +1963,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
+current_action: name-failing-preservation-check-and-bound-retries
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

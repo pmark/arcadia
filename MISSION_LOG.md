@@ -767,3 +767,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "The image file is committed into the mission-control-site repository under a clearly named asset path (no third-party asset-service dependency)."; "It is referenced from an answers page with descriptive alt text and a caption naming the session-naming feature, tagged/categorized in that page's frontmatter or nearby content so its subject is discoverable."; "It renders correctly on the deployed Cloudflare staging URL.".
 - **Next:** Plan complete; activated Plan agent-ask-execution-queue from the explicit queue at arcadia/make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-place-session-naming-screenshot-2026-09-25-v2).
+
+## 2026-09-25 — Agent Ask reactivate-bootstrap-production-plan-2026-09-25
+
+- **Did:** Activated bootstrap-managed-production-to-build-flight-deck at name-failing-preservation-check-and-bound-retries.
+- **Result:** Operator-settled Plan transition. Previous Plan agent-ask-execution-queue remains draft with completion state preserved. Operator instruction 2026-09-25: arcadia go should choose only Actions on the critical path to automated production. activate-mc-site-tooling-plan-2026-09-25 returned this Plan to draft, and when that Plan finished, cross-Plan Go selected agent-ask-execution-queue, which is off the path. No Action content changes; this Ask carries the settle-time --activate flag, starting at name-failing-preservation-check-and-bound-retries.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

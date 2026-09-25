@@ -6,9 +6,9 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior."
-active_plan: agent-ask-execution-queue
-current_action: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the
+milestone: Bootstrap managed production to run unattended from the GitHub board
+active_plan: bootstrap-managed-production-to-build-flight-deck
+current_action: name-failing-preservation-check-and-bound-retries
 updated: 2026-09-25
 ---
 
