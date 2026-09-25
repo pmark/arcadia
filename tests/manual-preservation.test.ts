@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -179,6 +180,97 @@ describe("manual Go preservation binding", () => {
     const f = fixture(); const binding = bind(f);
     fixtureGit(f.candidate, ["switch", "-c", "codex/other"]);
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).toThrow(/Git binding changed/));
+  });
+  const commitCandidateWork = (f: ReturnType<typeof fixture>) => {
+    fixtureGit(f.candidate, ["add", "-A"]);
+    fixtureGit(f.candidate, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "candidate progress"]);
+  };
+  const commitOnBase = (f: ReturnType<typeof fixture>, file: string, content: string, message: string) => {
+    writeFileSync(path.join(f.repo, file), content);
+    fixtureGit(f.repo, ["add", file]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", message]);
+    return fixtureGit(f.repo, ["rev-parse", "HEAD"]);
+  };
+  it("accepts a binding whose base branch advanced cleanly", () => {
+    const f = fixture(); const binding = bind(f);
+    commitCandidateWork(f);
+    commitOnBase(f, "unrelated.txt", "new\n", "advance base cleanly");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
+  it("refuses a base advance that no longer merges cleanly, naming both revisions", () => {
+    const f = fixture(); const binding = bind(f);
+    commitCandidateWork(f);
+    const newBase = commitOnBase(f, "marker.txt", "stale\n", "conflicting base change");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*no longer merges cleanly`)));
+  });
+  it("refuses when uncommitted candidate content conflicts with an advanced base", () => {
+    // marker.txt is written but never committed by the fixture, so only a
+    // check against the actual working tree — not just committed HEAD, which
+    // is still the old base here — can catch this conflict.
+    const f = fixture(); const binding = bind(f);
+    const newBase = commitOnBase(f, "marker.txt", "stale\n", "conflicting base change");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*no longer merges cleanly`)));
+  });
+  it("refuses a base that changed without advancing forward from the recorded revision", () => {
+    const f = fixture(); const binding = bind(f);
+    fixtureGit(f.repo, ["checkout", "--orphan", "rewritten"]);
+    fixtureGit(f.repo, ["rm", "-rf", "."]);
+    writeFileSync(path.join(f.repo, "PROJECT.md"), "rewritten\n");
+    fixtureGit(f.repo, ["add", "-A"]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "rewritten history"]);
+    const newBase = fixtureGit(f.repo, ["rev-parse", "HEAD"]);
+    fixtureGit(f.repo, ["branch", "-f", "main", newBase]);
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*not a forward advance`)));
+  });
+  const rewriteFrontmatter = (f: ReturnType<typeof fixture>, relativePath: string, mutate: (fm: any) => void) => {
+    const file = path.join(f.repo, relativePath);
+    const fm = YAML.parse(readFileSync(file, "utf8").slice(4, -4));
+    mutate(fm);
+    writeFileSync(file, `---\n${YAML.stringify(fm)}---\n`);
+  };
+  it("preserves a binding for an Action that is no longer the current pointer", () => {
+    const f = fixture(); const binding = bind(f);
+    rewriteFrontmatter(f, "docs/plans/proof.md", fm => {
+      fm.actions.push({
+        id: "second-action", title: "Second action", status: "open", responsibility: "agent",
+        effort: "session", clarification: "clarified", next_action: "Do the second thing.",
+        expected_artifact: "second.txt", acceptance_criteria: ["Second thing done."],
+        depends_on: [], decisions: [], references: []
+      });
+      fm.current_action = "second-action";
+    });
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.current_action = "second-action"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
+  it("preserves a binding despite an unrelated current_action pointer disagreement", () => {
+    // PROJECT.md and the plan disagreeing about current_action is a real
+    // governance defect, but it says nothing about this binding's own
+    // Action, found by id rather than by either pointer.
+    const f = fixture(); const binding = bind(f);
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.current_action = "some-other-pointer"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
+  it("refuses re-validation once the Project is no longer active", () => {
+    const f = fixture(); const binding = bind(f);
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.status = "paused"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(/Project authority is no longer ready/));
+  });
+  it("refuses re-validation once CONSTITUTION.md is unreadable", () => {
+    const f = fixture(); const binding = bind(f);
+    const constitutionPath = path.join(f.repo, "CONSTITUTION.md");
+    writeFileSync(constitutionPath, "# Constitution\n");
+    fixtureGit(f.repo, ["add", "CONSTITUTION.md"]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "add constitution"]);
+    // Replace the file with a directory: readFileSync then fails with EISDIR,
+    // not ENOENT, which is the case readConstitution treats as a real defect.
+    rmSync(constitutionPath);
+    mkdirSync(constitutionPath);
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(/Constitution authority is no longer ready/));
   });
   it("reports missing checks as configuration, not another planning approval", () => {
     const f = fixture();

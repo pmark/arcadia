@@ -263,11 +263,77 @@ describe("candidate preservation (refusals)", () => {
     ).toThrow(/unexpected branch|different branch/);
   });
 
-  it("refuses when base history changed since launch", () => {
+  it("refuses when the base branch advanced and no longer merges cleanly with the candidate", () => {
     const fixture = makeFixture();
+    g(fixture.candidate, ["add", "-A"]);
+    g(fixture.candidate, ["commit", "-m", "candidate progress"]);
+    writeFileSync(path.join(fixture.repo, "README.md"), "base\nmodified upstream\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main"]);
+    const newBase = g(fixture.repo, ["rev-parse", "main"]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*no longer merges cleanly`)
+    );
+  });
+
+  it("accepts a candidate whose base branch advanced cleanly", () => {
+    const fixture = makeFixture();
+    g(fixture.candidate, ["add", "-A"]);
+    g(fixture.candidate, ["commit", "-m", "candidate progress"]);
+    writeFileSync(path.join(fixture.repo, "unrelated.txt"), "new upstream file\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main cleanly"]);
+    const receipt = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(receipt.preservationState).toBe("LOCAL ONLY");
+    expect(receipt.baseRevision).toBe(fixture.baseRevision);
+  });
+
+  it("refuses to commit if the candidate branch advanced past the parent its base-advance check validated", () => {
+    const fixture = makeFixture();
+    writeFileSync(path.join(fixture.repo, "unrelated.txt"), "new upstream file\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main cleanly"]);
     expect(() =>
-      withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, { baseRevision: "deadbeef".repeat(5) })))
-    ).toThrow(/base branch history changed/);
+      withDatabase(fixture.workspace, (db) =>
+        preserveCandidate(db, request(fixture), {
+          hooks: {
+            beforeCommit() {
+              // Simulate something moving the candidate branch after the
+              // merge check ran but before the real preservation commit.
+              g(fixture.candidate, ["commit", "--allow-empty", "-m", "snuck in after the merge check"]);
+            }
+          }
+        })
+      )
+    ).toThrow(/advanced past the parent its base-advance check validated/);
+  });
+
+  it("refuses when uncommitted candidate content conflicts with an advanced base", () => {
+    // The candidate's README.md edit from makeFixture's default dirty state is
+    // deliberately left uncommitted here, so only a check against the actual
+    // working tree — not just committed HEAD — can catch this conflict.
+    const fixture = makeFixture();
+    writeFileSync(path.join(fixture.repo, "README.md"), "base\nmodified upstream\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main"]);
+    const newBase = g(fixture.repo, ["rev-parse", "main"]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*no longer merges cleanly`)
+    );
+  });
+
+  it("refuses when the base branch changed without advancing forward from the recorded revision", () => {
+    const fixture = makeFixture();
+    g(fixture.repo, ["checkout", "--orphan", "rewritten"]);
+    g(fixture.repo, ["rm", "-rf", "."]);
+    writeFileSync(path.join(fixture.repo, "README.md"), "rewritten\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "rewritten history"]);
+    const newBase = g(fixture.repo, ["rev-parse", "HEAD"]);
+    g(fixture.repo, ["branch", "-f", "main", newBase]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*not a forward advance`)
+    );
   });
 
   it("refuses when there is no active reservation", () => {

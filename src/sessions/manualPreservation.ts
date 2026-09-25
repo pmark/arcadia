@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
-import { resolveDispatch, isDispatchable } from "../docs/dispatch.js";
-import { git, samePath } from "../git/worktrees.js";
+import { readConstitution, resolveActionReadiness, resolveActivePlan, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
+import { checkCapabilityRegistry } from "../docs/capabilities.js";
+import { git, isAncestor, mergesCleanly, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
+import { snapshotCandidateCommit } from "./candidateSnapshot.js";
 
 export interface ManualPreservationBinding {
   reservationId: string;
@@ -94,13 +96,56 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
   const row = db.prepare("SELECT binding_json FROM manual_preservation_bindings WHERE reservation_id = ?")
     .get(binding.reservationId) as { binding_json: string } | undefined;
   if (row?.binding_json !== JSON.stringify(binding)) throw validationError("Manual preservation binding changed.");
-  if (git(binding.repository, ["rev-parse", binding.baseBranch]).trim() !== binding.baseRevision ||
-      git(binding.worktree, ["symbolic-ref", "--short", "HEAD"]).trim() !== binding.branch) {
+  if (git(binding.worktree, ["symbolic-ref", "--short", "HEAD"]).trim() !== binding.branch) {
     throw validationError("Manual preservation Git binding changed.");
   }
-  const dispatch = resolveDispatch(binding.repository, binding.projectSlug);
-  if (!isDispatchable(dispatch) || !dispatch.context || binding.actionDefinition !== JSON.stringify({
-    plan: dispatch.context.activePlan, action: dispatch.context.action, decisions: dispatch.context.requiredDecisions
+  const currentBaseRevision = git(binding.repository, ["rev-parse", binding.baseBranch]).trim();
+  if (currentBaseRevision !== binding.baseRevision) {
+    if (!isAncestor(binding.repository, binding.baseRevision, currentBaseRevision)) {
+      throw validationError(
+        `Manual preservation base ${binding.baseBranch} changed from ${binding.baseRevision} to ${currentBaseRevision}, which is not a forward advance; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
+        { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }
+      );
+    }
+    const candidateHead = git(binding.worktree, ["rev-parse", "HEAD"]).trim();
+    const syntheticCommit = snapshotCandidateCommit(binding.repository, binding.worktree, candidateHead);
+    if (!mergesCleanly(binding.repository, syntheticCommit, currentBaseRevision)) {
+      throw validationError(
+        `Manual preservation base ${binding.baseBranch} advanced from ${binding.baseRevision} to ${currentBaseRevision} and no longer merges cleanly with the candidate; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
+        { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }
+      );
+    }
+  }
+  // Project-level authority: status, active_plan resolution. resolveActivePlan
+  // is the same Project-level half resolveDispatch itself runs first; reused
+  // directly rather than through resolveDispatch's action lookup, which (via
+  // a claimed actionId) only ever searches the active plan.
+  const { project: activeProject, blockers: projectBlockers } = resolveActivePlan(
+    binding.repository, binding.projectSlug, undefined, { ignorePointerConsistency: true }
+  );
+  if (!activeProject || projectBlockers.length > 0) {
+    throw validationError("Manual preservation Project authority is no longer ready.", { blockers: projectBlockers });
+  }
+  const constitution = readConstitution(binding.repository);
+  if (constitution.blocker) {
+    throw validationError("Manual preservation Constitution authority is no longer ready.", { blocker: constitution.blocker });
+  }
+  const capabilityBlockers = checkCapabilityRegistry(binding.repository);
+  if (capabilityBlockers.length > 0) {
+    throw validationError("Manual preservation capability registry authority is no longer ready.", { blockers: capabilityBlockers });
+  }
+  // Look up the bound Action by id across every plan in the Project — not
+  // resolveDispatch's current pointer, which may have moved to a different
+  // Action (or a claimed-actionId lookup scoped to only the active plan,
+  // if active_plan itself changed) since this binding was created. Matches
+  // the same resolveActionReadiness pattern preservationValidation.ts already
+  // uses for a managed Session's own dispatched Action.
+  const readiness = resolveActionReadiness(binding.repository, binding.projectSlug, binding.actionId);
+  if (!readiness.found || readiness.blockers.length > 0 || readiness.operatorQuestion) {
+    throw validationError("Manual preservation Action authority is no longer ready.", { blockers: readiness.blockers });
+  }
+  if (binding.actionDefinition !== JSON.stringify({
+    plan: readiness.planSlug, action: readiness.action, decisions: readiness.requiredDecisions
   })) throw validationError("Manual preservation Action authority changed.");
   const project = getProjectBySlug(db, binding.projectSlug);
   const metadata = project ? getProjectMetadata(db, project.id) : null;

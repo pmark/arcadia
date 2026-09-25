@@ -3,8 +3,8 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { git, isAncestor, isPatchEquivalent, listWorktrees, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
-import { snapshotCandidate } from "./candidateSnapshot.js";
+import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 
@@ -193,6 +193,11 @@ function commitCandidate(input: {
   fingerprint: string;
   branch: string;
   now: Date;
+  /** The parent HEAD a base-advance merge check already validated, when one ran.
+   *  A caller-injected `beforeCommit` hook runs before this, so re-resolving
+   *  HEAD here without checking it against that parent could commit on top of
+   *  a branch tip the merge check never actually saw. */
+  expectedParent: string | null;
 }): string {
   const message =
     `chore(candidate): preserve ${input.actionId} candidate for handoff\n\n` +
@@ -200,22 +205,18 @@ function commitCandidate(input: {
     `${FINGERPRINT_TRAILER}: ${input.fingerprint}\n`;
   const stamp = input.now.toISOString();
   const parent = git(input.candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
+  if (input.expectedParent && parent !== input.expectedParent) {
+    throw validationError("The candidate branch advanced past the parent its base-advance check validated; retry preservation.", {
+      expected: input.expectedParent,
+      observed: parent
+    });
+  }
   const branch = `refs/heads/${input.branch}`;
   if (git(input.candidateWorktreePath, ["symbolic-ref", "HEAD"]).trim() !== branch) throw validationError("Candidate branch changed before commit.");
-  const commit = execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "commit-tree", input.fingerprint, "-p", parent, "-m", message], {
-    cwd: input.candidateWorktreePath,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Arcadia Controller",
-      GIT_AUTHOR_EMAIL: "controller@arcadia.local",
-      GIT_COMMITTER_NAME: "Arcadia Controller",
-      GIT_COMMITTER_EMAIL: "controller@arcadia.local",
-      GIT_AUTHOR_DATE: stamp,
-      GIT_COMMITTER_DATE: stamp
-    }
-  }).trim();
+  const commit = commitTreeAt(input.candidateWorktreePath, input.fingerprint, parent, {
+    message,
+    env: { GIT_AUTHOR_DATE: stamp, GIT_COMMITTER_DATE: stamp }
+  });
   git(input.candidateWorktreePath, ["-c", "core.hooksPath=/dev/null", "update-ref", branch, commit, parent]);
   return commit;
 }
@@ -345,19 +346,12 @@ export function preserveCandidate(
     });
   }
 
-  const baseHead = tryGit(repositoryPath, ["rev-parse", request.baseBranch]);
-  if (baseHead === null) {
-    throw validationError("The base branch could not be resolved on the host controller.", { baseBranch: request.baseBranch });
-  }
-  if (baseHead !== request.baseRevision) {
-    throw validationError("The base branch history changed since this candidate was launched.", {
-      baseBranch: request.baseBranch,
-      expected: request.baseRevision,
-      observed: baseHead,
-      remedy: "Reconcile the candidate onto the current base in a fresh worktree before preserving."
-    });
-  }
-
+  // --- Authorization before any Git object-store mutation (AC6) ------------
+  // The base-advance merge check below writes real, if unreferenced, tree and
+  // commit objects (commitTreeAt, mergesCleanly's merge-tree --write-tree).
+  // Confirm the candidate is actually reserved and not conflicting with a
+  // managed Session's lease first, so a stale or unauthorized request never
+  // reaches that mutating work.
   const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
   if (!reservation) {
     throw validationError("The candidate worktree has no active reservation; refusing a stale preservation.", {
@@ -379,6 +373,38 @@ export function preserveCandidate(
       conflictingWorktree: lease.worktree_path,
       candidateWorktreePath
     });
+  }
+
+  const baseHead = tryGit(repositoryPath, ["rev-parse", request.baseBranch]);
+  if (baseHead === null) {
+    throw validationError("The base branch could not be resolved on the host controller.", { baseBranch: request.baseBranch });
+  }
+  // Set only when the base-advance merge check below actually runs, so
+  // commitCandidate can refuse if anything moved the candidate branch past
+  // the exact parent that check validated.
+  let baseAdvanceCheckedParent: string | null = null;
+  if (baseHead !== request.baseRevision) {
+    if (!isAncestor(repositoryPath, request.baseRevision, baseHead)) {
+      throw validationError(
+        `The base branch ${request.baseBranch} changed from ${request.baseRevision} to ${baseHead}, which is not a forward advance; reconcile the candidate onto the current base in a fresh worktree before preserving.`,
+        { baseBranch: request.baseBranch, oldBase: request.baseRevision, newBase: baseHead }
+      );
+    }
+    const candidateHead = tryGit(candidateWorktreePath, ["rev-parse", "HEAD"]);
+    if (!candidateHead) {
+      throw validationError("The candidate worktree has no resolvable HEAD to check against the advanced base.", { candidateWorktreePath });
+    }
+    // Reuse the already-validated fingerprint rather than taking a fresh
+    // snapshot here: a second independent snapshot could observe different
+    // on-disk content than the one `stageAndFingerprint` commits below.
+    const syntheticCommit = commitTreeAt(repositoryPath, request.validation.candidateFingerprint, candidateHead);
+    if (!mergesCleanly(repositoryPath, syntheticCommit, baseHead)) {
+      throw validationError(
+        `The base branch ${request.baseBranch} advanced from ${request.baseRevision} to ${baseHead} and the candidate no longer merges cleanly with it; reconcile the candidate onto the current base in a fresh worktree before preserving.`,
+        { baseBranch: request.baseBranch, oldBase: request.baseRevision, newBase: baseHead }
+      );
+    }
+    baseAdvanceCheckedParent = candidateHead;
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
@@ -424,7 +450,8 @@ export function preserveCandidate(
       requestId: request.requestId,
       fingerprint: candidateFingerprint,
       branch: request.branch,
-      now
+      now,
+      expectedParent: baseAdvanceCheckedParent
     });
     hooks.afterCommit?.();
   }

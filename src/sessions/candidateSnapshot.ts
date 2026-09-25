@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
@@ -50,6 +50,65 @@ export function snapshotCandidate(candidate: string): string {
     git(["update-index", "-z", "--index-info"], entries.join(""));
     return git(["write-tree"]).toString().trim();
   } finally { rmSync(scratch, { recursive: true, force: true }); }
+}
+
+/**
+ * Wrap an already-known tree into a commit rooted at `parent`, under the
+ * standing Arcadia Controller identity, without advancing any ref.
+ *
+ * Shared by every caller that needs a real commit object built from a tree
+ * that was never (or not yet) reachable from a branch: a base-advance merge
+ * simulation (`mergesCleanly` only ever sees committed history, since
+ * `git merge-tree` takes two commits) and the real preservation commit
+ * (`commitCandidate` in candidatePreservation.ts) alike.
+ */
+export function commitTreeAt(repository: string, tree: string, parent: string, options?: {
+  message?: string;
+  env?: Record<string, string>;
+}): string {
+  const message = options?.message ?? "arcadia preservation base-advance check";
+  const result = spawnSync("git", [
+    "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
+    "commit-tree", tree, "-p", parent, "-m", message
+  ], {
+    cwd: repository,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Arcadia Controller",
+      GIT_AUTHOR_EMAIL: "controller@arcadia.local",
+      GIT_COMMITTER_NAME: "Arcadia Controller",
+      GIT_COMMITTER_EMAIL: "controller@arcadia.local",
+      ...options?.env
+    }
+  });
+  if (result.status !== 0) {
+    throw validationError("Git could not wrap a candidate tree into a commit.", {
+      repository,
+      tree,
+      parent,
+      status: result.status,
+      cause: (result.stderr || result.error?.message || "").toString().trim()
+    });
+  }
+  return result.stdout.trim();
+}
+
+/**
+ * Snapshot the candidate's current on-disk content — including uncommitted
+ * changes — and wrap it into a floating commit rooted at `parent`.
+ *
+ * Used only where no already-validated fingerprint exists to reuse (manual
+ * preservation binds no separate validation step). A caller that already
+ * holds a validated `candidateFingerprint` — protected preservation does —
+ * must pass that tree to `commitTreeAt` directly instead of calling this and
+ * re-snapshotting: two independent snapshot calls can observe different
+ * on-disk content if anything touches the worktree in between, which would
+ * silently decouple the base-advance check from the tree actually preserved.
+ */
+export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string {
+  return commitTreeAt(repository, snapshotCandidate(candidate), parent);
 }
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */

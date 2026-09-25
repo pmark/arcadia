@@ -155,6 +155,36 @@ export function refExists(cwd: string, ref: string): boolean {
   return tryGit(cwd, ["show-ref", "--verify", ref]) !== null;
 }
 
+/**
+ * Whether `branch` would still merge onto `newBase` without a textual
+ * conflict, without touching either ref or the working tree.
+ *
+ * Used to decide whether a candidate is still preservable after its base
+ * branch advanced during its session: a base that only moved forward, and
+ * that the candidate still applies to cleanly, is not the stale-history case
+ * preservation exists to refuse.
+ *
+ * `git merge-tree` exits 1 specifically for a textual conflict; any other
+ * nonzero status is a real Git failure (a spawn error, an unsupported Git
+ * version, a missing merge base) and must not be reported to the caller as
+ * though the candidate itself conflicted.
+ */
+export function mergesCleanly(cwd: string, branch: string, newBase: string): boolean {
+  const result = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", branch, newBase], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw validationError("Git could not compute a merge-tree simulation for a preservation base-advance check.", {
+    branch,
+    newBase,
+    status: result.status,
+    cause: (result.stderr || result.error?.message || "").toString().trim()
+  });
+}
+
 export function hasUpstream(cwd: string, branch: string): boolean {
   return tryGit(cwd, ["rev-parse", "--verify", `${branch}@{upstream}`]) !== null;
 }

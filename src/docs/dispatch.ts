@@ -83,7 +83,7 @@ const AUTHORIZATION: Record<string, string> = {
 
 /** The Project and its active plan, resolved structurally -- before anything
  *  is asked about `current_action`. */
-interface ActivePlanResolution {
+export interface ActivePlanResolution {
   discovered: DiscoveryResult;
   project: ProjectDoc | null;
   plan: PlanDoc | null;
@@ -96,13 +96,33 @@ interface ActivePlanResolution {
  * Shared by `resolveDispatch`, which goes on to resolve one Action from the
  * result, and `resolveReadySet`, which enumerates every Action in the plan
  * instead — so both agree about what "the active plan" even is, and neither
- * silently diverges into a second implementation of this resolution.
+ * silently diverges into a second implementation of this resolution. Also
+ * exported directly for a caller that resolves an Action by id across every
+ * plan (`resolveActionReadiness`, which does not look at the active plan at
+ * all) but still needs `resolveDispatch`'s Project-level authority checks —
+ * project status, active_plan resolution — without also being limited to the
+ * active plan the way `resolveDispatch({ actionId })`'s claimed-action lookup
+ * is.
  *
  * Reads documents, never the database: the contract makes checked-in
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
+export function resolveActivePlan(
+  repoRoot: string,
+  projectSlug?: string,
+  alreadyRead?: DiscoveryResult,
+  options?: {
+    /** Skip the two current_action pointer-consistency blockers (a competing
+     *  plan-level pointer, or PROJECT.md and the active plan disagreeing).
+     *  For a caller re-validating a specific, already-identified Action by
+     *  id — never the pointer — for whom an unrelated pointer disagreement
+     *  elsewhere in the Project is not this Action's problem. Every other
+     *  blocker (project/plan not found or not active, document parse
+     *  errors) still applies. */
+    ignorePointerConsistency?: boolean;
+  }
+): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
   const discovered = alreadyRead ?? discoverDocs(repoRoot);
 
@@ -178,7 +198,7 @@ function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?:
   // Only one action may be current across the whole project. Checked only once
   // the active plan resolves: if `active_plan` itself is wrong, saying "this
   // other plan is competing" sends the operator to fix the wrong file.
-  for (const other of plans) {
+  if (!options?.ignorePointerConsistency) for (const other of plans) {
     if (other.currentAction && other.slug.toLowerCase() !== plan.slug.toLowerCase() && !project.currentAction) {
       blockers.push({
         relativePath: other.relativePath,
@@ -192,7 +212,8 @@ function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?:
   // The contract puts both pointers on the project. A plan-level pointer is
   // still honored for projects that have not adopted that, but the project's
   // wins and a disagreement is reported rather than silently resolved.
-  if (project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
+  if (!options?.ignorePointerConsistency &&
+      project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
     blockers.push({
       relativePath: plan.relativePath,
       field: "current_action",
