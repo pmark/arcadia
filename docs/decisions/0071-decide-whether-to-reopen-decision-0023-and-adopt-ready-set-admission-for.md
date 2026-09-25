@@ -4,7 +4,7 @@ type: decision
 id: "0071"
 slug: decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for
 project: arcadia
-status: open
+status: approved
 question: Decide whether to reopen Decision 0023 and adopt ready-set admission for managed production. Under ready-set admission, the worker admits Actions from the portfolio's ready set in canonicalOrder, and a completion settlement records evidence and releases its claim without choosing the next Action or writing current_action. current_action becomes a derived projection that only the scheduler writes. An independent Action may start in a repository whose previous candidate is still unmerged, up to a per-repository review limit, so the operator moves forward as fast as they can afford.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-25
+answer: Adopt ready-set admission with pipelining
+decided: 2026-09-25
 ---
 
 # Decision 0071: Decide whether to reopen Decision 0023 and adopt ready-set admission for managed production. Under ready-set admission, the worker admits Actions from the portfolio's ready set in canonicalOrder, and a completion settlement records evidence and releases its claim without choosing the next Action or writing current_action. current_action becomes a derived projection that only the scheduler writes. An independent Action may start in a repository whose previous candidate is still unmerged, up to a per-repository review limit, so the operator moves forward as fast as they can afford.
