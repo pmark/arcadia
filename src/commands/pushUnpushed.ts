@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
-import { upstreamRef } from "../git/worktrees.js";
+import { tryGit } from "../git/worktrees.js";
 import { runTidyCommand } from "./tidy.js";
 
 /**
@@ -102,9 +102,28 @@ export function runPushUnpushedCommand(options: PushUnpushedCommandOptions = {})
   });
 }
 
-/** Whether `branch`'s configured upstream is specifically on `remote` — not just any remote. */
+/**
+ * Whether `remote` currently holds exactly the local tip of `branch` — a live
+ * query, not a check of locally-configured tracking state.
+ *
+ * A configured upstream only proves a push happened *at some point*; it says
+ * nothing about whether later local commits ever followed it there. Querying
+ * the remote's actual current tip and comparing it to the local one is the
+ * only way to know the branch is not still ahead of what was last published.
+ *
+ * Fails toward inclusion, not exclusion: a missing remote branch or a failed
+ * query both return `false`, so the caller attempts the push rather than
+ * silently trusting an answer it could not confirm. The push itself is
+ * additive and non-forced, so a redundant attempt against a branch that
+ * turns out to already be current costs nothing.
+ */
 function pushedToRemote(repoRoot: string, branch: string, remote: string): boolean {
-  return upstreamRef(repoRoot, branch) === `${remote}/${branch}`;
+  const localTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}`]);
+  if (!localTip) return false;
+  const remoteRef = tryGit(repoRoot, ["ls-remote", "--exit-code", remote, `refs/heads/${branch}`]);
+  if (!remoteRef) return false;
+  const remoteTip = remoteRef.split(/\s+/)[0];
+  return remoteTip === localTip;
 }
 
 function pushOne(input: {

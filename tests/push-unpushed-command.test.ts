@@ -148,6 +148,29 @@ describe("arcadia push-unpushed", () => {
     expect(result.items).toHaveLength(0);
   });
 
+  it("finds a branch again once new commits land past its earlier push, even though upstream is still configured", () => {
+    // Regression for a CodeRabbit "major" finding on PR #626: checking only
+    // that an upstream ref is *configured* proves a push happened at some
+    // point, not that the remote holds the branch's *current* tip. New local
+    // commits after an earlier push must still be found.
+    const { origin, clone } = baseRepo();
+    commitOn(clone, "claude/extended", "feature.txt");
+    run(clone, ["push", "-q", "-u", "origin", "claude/extended"]);
+    expect(data(runPushUnpushedCommand({ repo: clone, apply: true })).items).toHaveLength(0);
+
+    run(clone, ["checkout", "-q", "claude/extended"]);
+    writeFileSync(path.join(clone, "more.txt"), "more\n", "utf8");
+    run(clone, ["add", "-A"]);
+    run(clone, ["commit", "-q", "-m", "more"]);
+    run(clone, ["checkout", "-q", "main"]);
+
+    const result = data(runPushUnpushedCommand({ repo: clone, apply: true }));
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ branch: "claude/extended", outcome: "pushed" });
+    expect(run(origin, ["rev-parse", "claude/extended"]).trim()).toBe(run(clone, ["rev-parse", "claude/extended"]).trim());
+  });
+
   it("respects --remote: a branch already on origin is still found and pushed for a different selected remote", () => {
     // Regression for a CodeRabbit finding on PR #626: filtering used tidy's
     // `pushed` field, which is true whenever *any* upstream is configured,
