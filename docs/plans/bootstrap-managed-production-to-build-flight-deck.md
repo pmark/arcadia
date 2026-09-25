@@ -1615,7 +1615,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
   - id: honor-policy-providers-at-launch
     title: Packet preparation and launch preview honor the active standing policy permitted providers, and a mismatch is a named, surfaced prerequisite rather than a silent per-tick admission refusal.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Packet preparation and launch preview honor the active standing policy permitted providers, and a mismatch is a named, surfaced prerequisite rather than a silent per-tick admission refusal.
@@ -2052,7 +2052,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: honor-policy-providers-at-launch
+current_action: refuse-packets-without-validation-commands
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
