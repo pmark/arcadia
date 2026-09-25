@@ -37,6 +37,7 @@ import { createId } from "../utils/id.js";
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
 import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
+import { startHeartbeatBeacon as defaultStartHeartbeatBeacon, type HeartbeatBeacon } from "./workerHeartbeatBeaconExecutor.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -63,6 +64,23 @@ const WORKER_KILL_GRACE_MS = 2_000;
 const WORKER_EXIT_POLL_MS = 100;
 
 /**
+ * A ceiling on a single tick iteration, independent of the heartbeat beacon.
+ *
+ * The beacon (see `workerHeartbeatBeaconExecutor.ts`) proves the worker
+ * process is alive and its event loop has not exited; a separate OS process
+ * cannot prove the *event loop itself* is still making progress. Without this
+ * ceiling, a worker truly wedged forever inside one synchronous step -- not
+ * merely busy, but never going to return -- would keep the beacon refreshing
+ * its heartbeat and would never be recovered by `start` or escalated by
+ * `stop`, which is the false negative CodeRabbit flagged on this PR.
+ *
+ * Set well above any legitimate step observed so far (Issue #617's worst was
+ * 292s) so a slow-but-finite step is never caught by it, while still bounding
+ * how long a truly hung tick can hold the workspace.
+ */
+const MAX_TICK_DURATION_MS = 30 * 60_000;
+
+/**
  * A transient tick failure should be loud; a persistent one must not become an
  * unbounded log. The first failure of a streak logs in full, then one summary
  * line every this many failures (~60s at the 2s interval), and a recovery line
@@ -70,6 +88,15 @@ const WORKER_EXIT_POLL_MS = 100;
  * a permanently unopenable workspace grew it by roughly 43k lines/day.
  */
 const REPEATED_FAILURE_LOG_INTERVAL = 30;
+
+/**
+ * Bounds how hard `runWorkerStartCommand` chases a beacon that keeps dying:
+ * a delay before each restart so a beacon that fails immediately cannot fork
+ * a fresh child in a tight loop, and a limit after which it gives up and logs
+ * a persistent failure instead of forking forever.
+ */
+const BEACON_RESTART_BACKOFF_MS = 500;
+const BEACON_RESTART_LIMIT = 5;
 
 export interface WorkerOptions {
   workspace: string;
@@ -279,7 +306,16 @@ function logPath(workspacePath: string): string {
   return path.join(arcadiaDir(workspacePath), "worker.log");
 }
 
-interface WorkerIdentity {
+/**
+ * A separate file from `worker.pid`, and deliberately never written by the
+ * beacon: the beacon proves the process and its event loop have not exited,
+ * this proves the event loop is still cycling. See `MAX_TICK_DURATION_MS`.
+ */
+function tickMarkerPath(workspacePath: string): string {
+  return path.join(arcadiaDir(workspacePath), "worker.tick-started");
+}
+
+export interface WorkerIdentity {
   pid: number;
   owner: string;
 }
@@ -329,6 +365,39 @@ function writeWorkerHeartbeat(workspacePath: string, identity: WorkerIdentity, a
  */
 function isStaleWorkerHeartbeat(record: WorkerRecord | null, now = Date.now()): boolean {
   return record !== null && now - record.at >= WORKER_HEARTBEAT_FRESHNESS_MS;
+}
+
+/** Stamped once, synchronously, at the very start of a tick iteration --
+ * before any blocking work -- and removed once that iteration ends. */
+function markTickStarted(workspacePath: string, identity: WorkerIdentity, at = Date.now()): void {
+  try { writeFileSync(tickMarkerPath(workspacePath), JSON.stringify({ ...identity, at }), "utf8"); } catch {}
+}
+
+function clearTickMarker(workspacePath: string): void {
+  try { unlinkSync(tickMarkerPath(workspacePath)); } catch {}
+}
+
+/** Only a marker written by the record's own owner counts -- a marker left by
+ * a since-replaced worker must not indict its successor. */
+function readTickStartedAt(workspacePath: string, owner: WorkerIdentity): number | null {
+  try {
+    const raw = readFileSync(tickMarkerPath(workspacePath), "utf8");
+    const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown; at?: unknown };
+    return value.pid === owner.pid && value.owner === owner.owner && typeof value.at === "number" ? value.at : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True only when a tick this worker itself started has been running longer
+ * than `MAX_TICK_DURATION_MS` -- evidence the event loop stopped progressing
+ * that the beacon's out-of-process heartbeat cannot provide (it can only
+ * prove the process and its event loop have not exited).
+ */
+function isTickOverlong(workspacePath: string, record: WorkerRecord, now = Date.now()): boolean {
+  const startedAt = readTickStartedAt(workspacePath, record);
+  return startedAt !== null && now - startedAt >= MAX_TICK_DURATION_MS;
 }
 
 /**
@@ -440,6 +509,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
       onOwnershipLost();
       return;
     }
+    markTickStarted(options.workspacePath, identity);
     try {
       try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
       const db = openDb(options.workspacePath);
@@ -467,6 +537,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
         log(options.logfile, `Worker tick error: ${message}${suffix}`);
       }
     } finally {
+      clearTickMarker(options.workspacePath);
       if (owns()) schedule(tick, POLL_INTERVAL_MS);
       else onOwnershipLost();
     }
@@ -598,6 +669,9 @@ export interface WorkerRecoveryDependencies extends ProcessAncestryDependencies 
    * `isWorkspaceWorkerCommand`. Overridable so a test can exercise the shape
    * the operator's own launch agent uses (Issue #492). */
   defaultWorkspace?: () => string | null;
+  /** Overridable so a deterministic test can supply a fake beacon instead of
+   * forking a real OS process (Issue #617); see `startHeartbeatBeacon`. */
+  startHeartbeatBeacon?: (workspacePath: string, identity: WorkerIdentity) => HeartbeatBeacon;
 }
 
 function defaultSleep(ms: number): void {
@@ -772,11 +846,15 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     process.stdout.write(`Legacy worker still running (PID ${legacyPid}); leaving it in place until restart.\n`);
     process.exit(0);
   }
-  const decision = decideWorkerStart(
-    existing,
-    isProcessAlive,
-    (dependencies.now ?? Date.now)()
-  );
+  const startNow = (dependencies.now ?? Date.now)();
+  let decision = decideWorkerStart(existing, isProcessAlive, startNow);
+  if (decision.action === "already-running" && existing && isTickOverlong(workspacePath, existing, startNow)) {
+    // The beacon has kept the heartbeat fresh, but the tick it is fresh
+    // *for* has been running far longer than any legitimate step observed —
+    // the event loop itself has stopped progressing, not merely blocked in
+    // one long step.
+    decision = { action: "recover", pid: existing.pid };
+  }
   if (decision.action === "already-running") {
     // Exit 0, not 1: a non-zero status is what launchd reads as a crash. Paired
     // with KeepAlive SuccessfulExit false below, a clean exit leaves the agent
@@ -789,10 +867,10 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     // respawn would ever reach this line on its own. Replacing it here is what
     // makes the failure self-healing rather than a human's `kill -9`.
     const termination = terminateStaleWorker(workspacePath, existing, dependencies);
-    log(
-      logfile,
-      `Recovered hung worker: PID ${existing.pid} heartbeat was ${Math.round(termination.staleMs / 1000)}s old (limit ${WORKER_HEARTBEAT_FRESHNESS_MS / 1000}s) and ended with ${termination.signal}.`
-    );
+    const reason = isStaleWorkerHeartbeat(existing, startNow)
+      ? `heartbeat was ${Math.round(termination.staleMs / 1000)}s old (limit ${WORKER_HEARTBEAT_FRESHNESS_MS / 1000}s)`
+      : `its tick has been running longer than ${MAX_TICK_DURATION_MS / 60_000}min despite a fresh heartbeat -- the event loop itself stopped progressing`;
+    log(logfile, `Recovered hung worker: PID ${existing.pid} ${reason} and ended with ${termination.signal}.`);
   }
 
   const identity = { pid: process.pid, owner: randomUUID() };
@@ -805,11 +883,44 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     if (existing) clearRecordForPid(workspacePath, existing.pid);
     throw error;
   }
+  // A genuinely separate process, not the timer below: this is what keeps the
+  // worker's own liveness record fresh while a synchronous tick step blocks
+  // the event loop for longer than the freshness window (Issue #617). A dead
+  // beacon silently reopens that same false-positive-kill window, so it is
+  // supervised and restarted rather than left to fail quietly.
+  const startBeacon = dependencies.startHeartbeatBeacon ?? defaultStartHeartbeatBeacon;
+  let beacon: HeartbeatBeacon;
+  let beaconRestarts = 0;
   let ownershipLost = false;
+  const superviseBeacon = (candidate: HeartbeatBeacon) => {
+    beacon = candidate;
+    beacon.onUnexpectedExit((detail) => {
+      if (ownershipLost) return;
+      beaconRestarts += 1;
+      if (beaconRestarts > BEACON_RESTART_LIMIT) {
+        log(
+          logfile,
+          `Heartbeat beacon failed ${beaconRestarts - 1} times in a row; giving up on restarting it. The worker's own liveness record will only be refreshed between tick steps, so a long tick step may again look hung.`
+        );
+        return;
+      }
+      log(
+        logfile,
+        `Heartbeat beacon exited unexpectedly (code ${detail.code}, signal ${detail.signal}${detail.error ? `, error: ${detail.error.message}` : ""}); restarting it in ${BEACON_RESTART_BACKOFF_MS}ms (attempt ${beaconRestarts}/${BEACON_RESTART_LIMIT}).`
+      );
+      // A delay, not an immediate retry: a beacon that fails at startup itself
+      // must not fork a fresh child in a tight loop.
+      setTimeout(() => {
+        if (!ownershipLost) superviseBeacon(startBeacon(workspacePath, identity));
+      }, BEACON_RESTART_BACKOFF_MS);
+    });
+  };
+  superviseBeacon(startBeacon(workspacePath, identity));
   const stopWhenOwnershipChanges = () => {
     if (ownershipLost) return;
     ownershipLost = true;
     clearInterval(heartbeatTimer);
+    beacon.stop();
     log(logfile, "Worker lost its ownership fence; stopping without touching the replacement worker.");
     process.exit(0);
   };
@@ -829,6 +940,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
   const cleanup = () => {
     log(logfile, "Worker stopping.");
     clearInterval(heartbeatTimer);
+    beacon.stop();
     if (ownsWorker(workspacePath, identity)) {
       try { unlinkSync(pidfilePath(workspacePath)); } catch {}
     }
@@ -1065,20 +1177,25 @@ function finalizeWorkerFailure(
 export function runWorkerStatusCommand(options: WorkerOptions): void {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const record = readWorkerRecord(workspacePath);
-  const { health, pid } = classifyWorkerHealth(
+  const classified = classifyWorkerHealth(
     record,
     record ? null : readLegacyPid(workspacePath),
     isProcessAlive
   );
+  const { pid } = classified;
+  const overlong = classified.health === "running" && record ? isTickOverlong(workspacePath, record) : false;
+  const health = overlong ? "unhealthy" : classified.health;
 
   if (health === "running") {
     process.stdout.write(`Worker: running (PID ${pid})\n`);
     return;
   }
   if (health === "unhealthy") {
-    const heartbeat = record
-      ? `its heartbeat is ${Math.max(0, Math.round((Date.now() - record.at) / 1000))}s old against a ${WORKER_HEARTBEAT_FRESHNESS_MS / 1000}s limit`
-      : "it has no ownership record";
+    const heartbeat = !record
+      ? "it has no ownership record"
+      : overlong
+        ? `its current tick has run longer than ${MAX_TICK_DURATION_MS / 60_000}min despite a fresh heartbeat`
+        : `its heartbeat is ${Math.max(0, Math.round((Date.now() - record.at) / 1000))}s old against a ${WORKER_HEARTBEAT_FRESHNESS_MS / 1000}s limit`;
     process.stdout.write(`Worker: unhealthy (PID ${pid} is alive but ${heartbeat}; arcadia worker start will replace it)\n`);
     return;
   }
@@ -1137,7 +1254,7 @@ export function runWorkerStopCommand(options: WorkerOptions, dependencies: Worke
     process.stdout.write(`Sent SIGTERM to worker (PID ${pid}); it no longer owns the workspace pidfile, so it is stopping or was already replaced. Not escalating.\n`);
     return;
   }
-  if (!isStaleWorkerHeartbeat(current, now)) {
+  if (!isStaleWorkerHeartbeat(current, now) && !isTickOverlong(workspacePath, current, now)) {
     process.stdout.write(`Sent SIGTERM to worker (PID ${pid}); it has not exited yet but refreshed its heartbeat during the grace period, so it is probably mid-tick. Run arcadia worker status before escalating.\n`);
     return;
   }

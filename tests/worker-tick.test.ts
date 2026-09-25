@@ -16,6 +16,7 @@ import {
   runWorkerStopCommand,
   terminateStaleWorker
 } from "../src/commands/worker.js";
+import { startHeartbeatBeacon } from "../src/commands/workerHeartbeatBeaconExecutor.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork } from "../src/db/repositories.js";
 import { TRANSPORT_FRESHNESS_MS, preservationTransportReady } from "../src/sessions/preservationTransport.js";
@@ -44,6 +45,14 @@ function workspace(): { root: string; logfile: string } {
 
 function pidfileOf(root: string): string {
   return path.join(root, ".arcadia", "worker.pid");
+}
+
+function tickMarkerOf(root: string): string {
+  return path.join(root, ".arcadia", "worker.tick-started");
+}
+
+function writeTickMarker(root: string, record: { pid: number; owner: string; at: number }): void {
+  writeFileSync(tickMarkerOf(root), JSON.stringify(record), "utf8");
 }
 
 function writeRecord(root: string, record: { pid: number; owner: string; at: number }): void {
@@ -258,7 +267,10 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       identify: () => `node ${path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs")} ${path.join(repoRoot, "src", "cli.ts")} worker start`,
       defaultWorkspace: () => root,
       terminateGraceMs: 50,
-      killGraceMs: 50
+      killGraceMs: 50,
+      // A real beacon would fork an actual OS process; this test only cares
+      // about the recovery that happens before the beacon or the tick loop.
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();
@@ -299,6 +311,58 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
     // A force-killed worker never runs its own cleanup, so stop must clear the
     // record rather than leave a pidfile naming a dead PID.
     expect(existsSync(pidfileOf(root))).toBe(false);
+  });
+
+  it("force-kills from worker stop when the tick has run past the ceiling, even with a fresh heartbeat (CodeRabbit #627)", async () => {
+    // The beacon proves the process and its event loop have not exited; it
+    // cannot prove the event loop is still progressing. A worker truly wedged
+    // forever inside one synchronous step would otherwise keep the beacon
+    // refreshing its heartbeat and never be escalated -- the false negative
+    // this ceiling closes.
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "wedged", at: Date.now() });
+    writeTickMarker(root, { pid: fixture.pid, owner: "wedged", at: Date.now() - 31 * 60_000 });
+
+    const output = captureStdout(() => runWorkerStopCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "src", "cli.ts")} worker start --workspace ${root}`,
+      terminateGraceMs: 50,
+      killGraceMs: 50
+    }));
+
+    expect(output).toContain("ignored SIGTERM");
+    expect(output).toContain("SIGKILL");
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+  });
+
+  it("worker start recovers a worker whose tick has run past the ceiling, even with a fresh heartbeat (CodeRabbit #627)", async () => {
+    const { root, logfile } = workspace();
+    const fixture = await stubbornProcess();
+    writeRecord(root, { pid: fixture.pid, owner: "wedged", at: Date.now() });
+    writeTickMarker(root, { pid: fixture.pid, owner: "wedged", at: Date.now() - 31 * 60_000 });
+
+    const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
+    dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
+      identify: () => `node ${path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs")} ${path.join(repoRoot, "src", "cli.ts")} worker start`,
+      defaultWorkspace: () => root,
+      terminateGraceMs: 50,
+      killGraceMs: 50,
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
+    }));
+    intervals.mockRestore();
+    timeouts.mockRestore();
+    resume.mockRestore();
+
+    await fixture.exited;
+    expect(isProcessAlive(fixture.pid)).toBe(false);
+    const logged = readFileSync(logfile, "utf8");
+    expect(logged).toContain(`Recovered hung worker: PID ${fixture.pid}`);
+    expect(logged).toContain("event loop itself stopped progressing");
+    const recovered = readRecord(root);
+    expect(recovered.pid).toBe(process.pid);
   });
 
   it("leaves a worker that is mid-tick alone rather than killing it", async () => {
@@ -371,6 +435,131 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       identify: () => commandLine,
       sleep: () => {}
     })).not.toThrow();
+  });
+});
+
+/**
+ * Polls rather than sleeping a fixed duration: forking a real OS process
+ * (running under the `tsx` ESM loader) has startup latency that varies with
+ * the host, and a fixed short sleep made these tests flaky on a slower or
+ * more loaded machine without making them any faster on a fast one.
+ */
+async function waitFor(check: () => boolean, timeoutMs: number, pollMs = 20): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (check()) return;
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for condition.");
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+describe("worker heartbeat beacon (Issue #617)", () => {
+  // A managed-production tick step can block the worker's own event loop for
+  // 170s-292s (Issue #617) — far longer than the freshness window the
+  // in-process `setInterval` (also on that same blocked event loop) needs to
+  // refresh the record before recovery reads it as hung. The beacon is a
+  // genuinely separate OS process, so it is not blocked by anything the
+  // worker's own thread does; these tests prove that independence directly,
+  // at a small interval, rather than by literally blocking a test for the
+  // length of the real freshness window. `runWorkerStopCommand`'s existing
+  // "leaves a worker that is mid-tick alone" test above already proves the
+  // consuming side: a fresh record, however it was refreshed, stops recovery.
+  it("refreshes the worker's own record on its own, independent of anything the caller does", async () => {
+    const { root } = workspace();
+    const identity = { pid: process.pid, owner: "beacon-refresh" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20 });
+    try {
+      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+      const first = readRecord(root);
+      await waitFor(() => readRecord(root).at > first.at, 5_000);
+      const second = readRecord(root);
+      expect(second.at).toBeGreaterThan(first.at);
+      expect(second.pid).toBe(process.pid);
+      expect(second.owner).toBe("beacon-refresh");
+    } finally {
+      beacon.stop();
+    }
+  }, 15_000);
+
+  it("keeps refreshing while the calling process is busy in a synchronous loop", async () => {
+    const { root } = workspace();
+    const identity = { pid: process.pid, owner: "beacon-busy" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20 });
+    try {
+      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+      const before = readRecord(root).at;
+
+      // Block this process's own event loop synchronously — no timer, no I/O
+      // callback, nothing this process owns can run here. The beacon is a
+      // different process and is unaffected.
+      const blockUntil = Date.now() + 200;
+      while (Date.now() < blockUntil) { /* busy-wait */ }
+
+      const after = readRecord(root).at;
+      expect(after).toBeGreaterThan(before);
+    } finally {
+      beacon.stop();
+    }
+  }, 15_000);
+
+  it("self-terminates once its watched parent process is gone, so a truly dead worker's record stops advancing", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    const identity = { pid: fixture.pid, owner: "beacon-orphan" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20, parentPid: fixture.pid });
+    await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+
+    fixture.kill("SIGKILL");
+    await fixture.exited;
+    // Give the beacon time to notice and exit; its own record stops moving.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const staleAt = readRecord(root).at;
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(readRecord(root).at).toBe(staleAt);
+    beacon.stop();
+  }, 15_000);
+
+  it("worker start restarts the heartbeat beacon (after a backoff) and logs the loss when it exits unexpectedly (CodeRabbit #627)", async () => {
+    const { root, logfile } = workspace();
+    let starts = 0;
+    const triggers: Array<(detail: { code: number | null; signal: NodeJS.Signals | null }) => void> = [];
+    const fakeStart = () => {
+      starts += 1;
+      return {
+        stop: () => {},
+        onUnexpectedExit: (callback: (detail: { code: number | null; signal: NodeJS.Signals | null }) => void) => {
+          triggers.push(callback);
+        }
+      };
+    };
+
+    const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    // Only fakes away the tick's own `setTimeout(tick, 0)` during the
+    // synchronous call below; restored before triggering the beacon's exit,
+    // so its restart backoff (500ms) runs for real and this test proves the
+    // delay exists rather than assuming it away.
+    const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
+    dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
+      defaultWorkspace: () => root,
+      startHeartbeatBeacon: fakeStart
+    }));
+    intervals.mockRestore();
+    timeouts.mockRestore();
+    resume.mockRestore();
+
+    expect(starts).toBe(1);
+    // Simulate the first beacon dying on its own, not via stop().
+    triggers[0]({ code: null, signal: "SIGKILL" });
+    // The restart is deliberately delayed (CodeRabbit #627: no tight fork
+    // loop on a beacon that fails immediately), so it has not happened yet.
+    expect(starts).toBe(1);
+    await waitFor(() => starts === 2, 2_000);
+
+    const logged = readFileSync(logfile, "utf8");
+    expect(logged).toContain("Heartbeat beacon exited unexpectedly");
+    expect(logged).toContain("restarting it in 500ms (attempt 1/5)");
   });
 });
 
