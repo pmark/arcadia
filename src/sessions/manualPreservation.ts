@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
-import { resolveDispatch, isDispatchable } from "../docs/dispatch.js";
+import { resolveActionReadiness, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
 import { git, isAncestor, mergesCleanly, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
@@ -115,15 +115,18 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
       );
     }
   }
-  // Claim the Session's own dispatched Action by id, rather than letting
-  // resolveDispatch fall back to the current pointer, which may have moved to
-  // a different Action since this binding was created.
-  const dispatch = resolveDispatch(binding.repository, binding.projectSlug, { actionId: binding.actionId });
-  if (!isDispatchable(dispatch) || !dispatch.context) {
-    throw validationError("Manual preservation Action authority is no longer ready.", { blockers: dispatch.blockers });
+  // Look up the bound Action by id across every plan in the Project — not
+  // resolveDispatch's current pointer, which may have moved to a different
+  // Action (or a claimed-actionId lookup scoped to only the active plan,
+  // if active_plan itself changed) since this binding was created. Matches
+  // the same resolveActionReadiness pattern preservationValidation.ts already
+  // uses for a managed Session's own dispatched Action.
+  const readiness = resolveActionReadiness(binding.repository, binding.projectSlug, binding.actionId);
+  if (!readiness.found || readiness.blockers.length > 0 || readiness.operatorQuestion) {
+    throw validationError("Manual preservation Action authority is no longer ready.", { blockers: readiness.blockers });
   }
   if (binding.actionDefinition !== JSON.stringify({
-    plan: dispatch.context.activePlan, action: dispatch.context.action, decisions: dispatch.context.requiredDecisions
+    plan: readiness.planSlug, action: readiness.action, decisions: readiness.requiredDecisions
   })) throw validationError("Manual preservation Action authority changed.");
   const project = getProjectBySlug(db, binding.projectSlug);
   const metadata = project ? getProjectMetadata(db, project.id) : null;

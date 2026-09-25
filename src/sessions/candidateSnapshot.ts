@@ -53,18 +53,15 @@ export function snapshotCandidate(candidate: string): string {
 }
 
 /**
- * Wrap the candidate's current on-disk content — including uncommitted changes
- * — into a floating commit rooted at `parent`, without advancing any ref.
+ * Wrap an already-known tree into a floating commit rooted at `parent`,
+ * without advancing any ref.
  *
  * A base-advance merge simulation (`mergesCleanly`) only ever sees committed
- * history: `git merge-tree` takes two commits. A candidate's real content can
- * include uncommitted work on top of its last commit, which a check against
- * committed `HEAD` alone would miss. Wrapping the actual snapshot as an
- * otherwise-unreferenced commit lets that same simulation reason about the
- * content that will actually be preserved.
+ * history: `git merge-tree` takes two commits. Wrapping a tree as an
+ * otherwise-unreferenced commit lets that same simulation reason about
+ * content that was never committed to a real branch.
  */
-export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string {
-  const tree = snapshotCandidate(candidate);
+export function commitTreeAt(repository: string, tree: string, parent: string): string {
   const result = spawnSync("git", [
     "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
     "commit-tree", tree, "-p", parent, "-m", "arcadia preservation base-advance check"
@@ -81,14 +78,31 @@ export function snapshotCandidateCommit(repository: string, candidate: string, p
     }
   });
   if (result.status !== 0) {
-    throw validationError("Git could not wrap the candidate's current content into a commit for a preservation base-advance check.", {
+    throw validationError("Git could not wrap a candidate tree into a commit for a preservation base-advance check.", {
       repository,
+      tree,
       parent,
       status: result.status,
       cause: (result.stderr || result.error?.message || "").toString().trim()
     });
   }
   return result.stdout.trim();
+}
+
+/**
+ * Snapshot the candidate's current on-disk content — including uncommitted
+ * changes — and wrap it into a floating commit rooted at `parent`.
+ *
+ * Used only where no already-validated fingerprint exists to reuse (manual
+ * preservation binds no separate validation step). A caller that already
+ * holds a validated `candidateFingerprint` — protected preservation does —
+ * must pass that tree to `commitTreeAt` directly instead of calling this and
+ * re-snapshotting: two independent snapshot calls can observe different
+ * on-disk content if anything touches the worktree in between, which would
+ * silently decouple the base-advance check from the tree actually preserved.
+ */
+export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string {
+  return commitTreeAt(repository, snapshotCandidate(candidate), parent);
 }
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */

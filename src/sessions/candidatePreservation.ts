@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
-import { snapshotCandidate, snapshotCandidateCommit } from "./candidateSnapshot.js";
+import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 
@@ -360,7 +360,10 @@ export function preserveCandidate(
     if (!candidateHead) {
       throw validationError("The candidate worktree has no resolvable HEAD to check against the advanced base.", { candidateWorktreePath });
     }
-    const syntheticCommit = snapshotCandidateCommit(repositoryPath, candidateWorktreePath, candidateHead);
+    // Reuse the already-validated fingerprint rather than taking a fresh
+    // snapshot here: a second independent snapshot could observe different
+    // on-disk content than the one `stageAndFingerprint` commits below.
+    const syntheticCommit = commitTreeAt(repositoryPath, request.validation.candidateFingerprint, candidateHead);
     if (!mergesCleanly(repositoryPath, syntheticCommit, baseHead)) {
       throw validationError(
         `The base branch ${request.baseBranch} advanced from ${request.baseRevision} to ${baseHead} and the candidate no longer merges cleanly with it; reconcile the candidate onto the current base in a fresh worktree before preserving.`,
