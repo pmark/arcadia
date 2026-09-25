@@ -245,6 +245,30 @@ describe("decision approve", () => {
     ).toThrow(/detached HEAD/);
   });
 
+  it("does not report a no-op for a Decision path that is untracked but gitignored", () => {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    runDecisionNewCommand({ workspace, project: projectSlug, slug: "ignored-untracked", question: "Ready?" });
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" });
+
+    // Untrack the already-committed Decision file, then ignore it — content on
+    // disk stays byte-identical to what a same-day retry would recompute, but
+    // `git status --porcelain` reports it clean only because it's now ignored,
+    // not because it's actually committed.
+    const relativePath = "docs/decisions/0001-ignored-untracked.md";
+    execFileSync("git", ["rm", "--cached", "-q", relativePath], { cwd: repoRoot });
+    execFileSync("git", ["commit", "-qm", "untrack for test"], { cwd: repoRoot });
+    writeFileSync(path.join(repoRoot, ".gitignore"), `${relativePath}\n`, "utf8");
+    const ignoredStatus = execFileSync("git", ["status", "--porcelain", "--", relativePath], { cwd: repoRoot, encoding: "utf8" });
+    expect(ignoredStatus.trim()).toBe("");
+
+    // The retry must not silently report success: Git refuses to stage an
+    // ignored path without `-f`, so this surfaces as a clear commit failure
+    // rather than a false no-op.
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", decided: "2026-08-23" })
+    ).toThrow(/could not be committed/);
+  });
+
   it("commits a retry when the file already matches but a prior commit did not land", () => {
     const { workspace, repoRoot, projectSlug } = workspaceWithProject();
     runDecisionNewCommand({ workspace, project: projectSlug, slug: "retry-after-uncommitted-write", question: "Ready?" });

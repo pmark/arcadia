@@ -350,10 +350,15 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
     // A same-day retry recomputes byte-identical content, since `decided`/
     // `updated` both stamp today's date. That alone doesn't prove the answer
     // is actually committed, though: a prior attempt may have written this
-    // exact content and then failed to commit it. Only report the no-op when
-    // Git also sees the path as clean — otherwise fall through and retry the
-    // commit instead of reporting a hollow success on a dirty tree.
-    if (updatedContent === prepared.before && tryGit(repoRoot, ["status", "--porcelain", "--", relativePath]) === "") {
+    // exact content and then failed to commit it — or the path could be
+    // untracked and gitignored, which also reports as "clean" via `git
+    // status` despite never having been committed at all. Only report the
+    // no-op when the path is both tracked and clean; otherwise fall through
+    // and retry the commit instead of reporting a hollow success.
+    const isTrackedAndClean =
+      tryGit(repoRoot, ["ls-files", "--error-unmatch", "--", relativePath]) !== null &&
+      tryGit(repoRoot, ["status", "--porcelain", "--", relativePath]) === "";
+    if (updatedContent === prepared.before && isTrackedAndClean) {
       return createSuccess({
         command: "decision.approve",
         workspace: workspacePath,
