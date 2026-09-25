@@ -753,3 +753,10 @@ updated: 2026-09-25
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. The operator picked 'Activate the draft Plan' from the prior handoff picker. No Action content changes; this Ask exists only to carry the settle-time --activate flag against the already-created draft Plan.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-25 — Completed arcadia/onboard-mission-control-site-tooling
+
+- **Did:** Completed Action arcadia/onboard-mission-control-site-tooling from accepted evidence (Candidate 66106aa751e02c461718d9f4dbd4fd501849164a).
+- **Result:** Every declared acceptance criterion was accepted as met: "The mission-control-site repository is registered as its own Project in the existing shared martianrover Arcadia workspace, with no new workspace created."; "The repository has an AGENTS.md/CLAUDE.md pair wired the same way as the arcadia repository."; "PROJECT.md and a first plan are committed in the mission-control-site repository."; "A coding-agent session opened in the mission-control-site repository can run arcadia next and receive a dispatch brief.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-onboard-mission-control-site-tooling-2026-09-25).

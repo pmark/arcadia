@@ -11,7 +11,7 @@ updated: 2026-09-25
 actions:
   - id: onboard-mission-control-site-tooling
     title: "Onboard the mission-control-site repository into Arcadia governance: run `arcadia init --profile arcadia` there, wire an AGENTS.md/CLAUDE.md pair the same way this repo does, and confirm a coding-agent session opened in that repo can resolve a dispatch brief."
-    status: open
+    status: done
     responsibility: autonomous
     effort: session
     next_action: "Onboard the mission-control-site repository into Arcadia governance without creating a new Arcadia workspace: register it as its own Project in the existing shared martianrover workspace, wire an AGENTS.md/CLAUDE.md pair the same way this repo does, seed PROJECT.md and a first plan, and confirm a coding-agent session opened in that repo can resolve a dispatch brief."
@@ -46,7 +46,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: onboard-mission-control-site-tooling
+current_action: place-session-naming-screenshot
 recommended_model: light
 ---
 

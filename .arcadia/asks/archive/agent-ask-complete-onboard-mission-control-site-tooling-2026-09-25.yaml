@@ -1,0 +1,15 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-onboard-mission-control-site-tooling-2026-09-25",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/onboard-mission-control-site-tooling",
+  "candidate_revision": "66106aa751e02c461718d9f4dbd4fd501849164a",
+  "desired_result": "Mark onboard-mission-control-site-tooling complete.",
+  "evidence": [
+    {"criterion": "The mission-control-site repository is registered as its own Project in the existing shared martianrover Arcadia workspace, with no new workspace created.", "status": "met"},
+    {"criterion": "The repository has an AGENTS.md/CLAUDE.md pair wired the same way as the arcadia repository.", "status": "met"},
+    {"criterion": "PROJECT.md and a first plan are committed in the mission-control-site repository.", "status": "met"},
+    {"criterion": "A coding-agent session opened in the mission-control-site repository can run arcadia next and receive a dispatch brief.", "status": "met"}
+  ]
+}
