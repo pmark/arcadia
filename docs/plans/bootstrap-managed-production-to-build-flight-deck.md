@@ -1978,6 +1978,25 @@ actions:
     depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["src/northStar/document.ts", "src/northStar/compute.ts", "src/northStar/path.ts", "apps/dashboard/app/now/page.tsx", "apps/dashboard/app/path/page.tsx", "NORTH_STAR.md"]
+  - id: notify-operator-on-agent-blockers
+    title: Let any agent session record an operator notification that the default channel relays with its full text.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let any agent session record an operator notification that the default channel relays with its full text.
+    expected_artifact: Evidence satisfying Agent Ask notify-operator-on-agent-blockers
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-operator-blocker-notification-2026-09-25
+    acceptance_criteria:
+      - A verb command (for example arcadia operator notify) records a durable operator notification with project, severity, title, body, and an optional PR or Action reference; it is idempotent on a caller-supplied key and makes no model call.
+      - The Discord notification poller relays each new notification once, with its title, body and reference, through the existing CLI-snapshot boundary; the dashboard /runs Alerts panel lists open notifications.
+      - It works from any Project repository and any coding-agent provider, including a managed-production Session; where no workspace resolves, the command fails with a named remedy rather than silently succeeding.
+      - docs/agents-context.md's 'CI failures are fixed immediately' step 4 is updated to use the command instead of the log-Ask interim, and AGENTS.md is regenerated.
+      - Deterministic tests cover recording, idempotent replay, Discord relay of the full text exactly once, and the no-workspace refusal; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [prove-two-action-unattended-production]
+    decisions: []
+    references: ["docs/agents-context.md", "apps/discord-bot/src/notifications/poller.ts", "src/ask/settlement.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
