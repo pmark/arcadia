@@ -1,0 +1,27 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-refuse-packets-without-validation-commands-2026-09-25",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/refuse-packets-without-validation-commands",
+  "candidate_revision": "0ca89e46ed047a79ec5f84bb6452aae5ce1c9036",
+  "desired_result": "Mark refuse-packets-without-validation-commands complete.",
+  "evidence": [
+    {
+      "criterion": "Build-packet preparation refuses, naming the remedy arcadia project metadata <project> --validation-command <command>, when the Project's validation_commands list is empty.",
+      "status": "met"
+    },
+    {
+      "criterion": "buildLaunchPreview reports the same condition as a named prerequisite, and the managed-production tick escalates it once through production_operator_escalations instead of launching.",
+      "status": "met"
+    },
+    {
+      "criterion": "A deterministic test covers the empty-list refusal and an unchanged launch for a Project with declared commands.",
+      "status": "met"
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #572.",
+      "status": "met"
+    }
+  ]
+}
