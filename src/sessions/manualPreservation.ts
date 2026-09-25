@@ -3,9 +3,10 @@ import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { resolveActionReadiness, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
-import { git, mergesCleanly, samePath } from "../git/worktrees.js";
+import { git, isAncestor, mergesCleanly, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
+import { snapshotCandidateCommit } from "./candidateSnapshot.js";
 
 export interface ManualPreservationBinding {
   reservationId: string;
@@ -99,8 +100,15 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
   }
   const currentBaseRevision = git(binding.repository, ["rev-parse", binding.baseBranch]).trim();
   if (currentBaseRevision !== binding.baseRevision) {
+    if (!isAncestor(binding.repository, binding.baseRevision, currentBaseRevision)) {
+      throw validationError(
+        `Manual preservation base ${binding.baseBranch} changed from ${binding.baseRevision} to ${currentBaseRevision}, which is not a forward advance; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
+        { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }
+      );
+    }
     const candidateHead = git(binding.worktree, ["rev-parse", "HEAD"]).trim();
-    if (!mergesCleanly(binding.repository, candidateHead, currentBaseRevision)) {
+    const syntheticCommit = snapshotCandidateCommit(binding.repository, binding.worktree, candidateHead);
+    if (!syntheticCommit || !mergesCleanly(binding.repository, syntheticCommit, currentBaseRevision)) {
       throw validationError(
         `Manual preservation base ${binding.baseBranch} advanced from ${binding.baseRevision} to ${currentBaseRevision} and no longer merges cleanly with the candidate; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
         { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }

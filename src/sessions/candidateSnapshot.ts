@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
@@ -50,6 +50,34 @@ export function snapshotCandidate(candidate: string): string {
     git(["update-index", "-z", "--index-info"], entries.join(""));
     return git(["write-tree"]).toString().trim();
   } finally { rmSync(scratch, { recursive: true, force: true }); }
+}
+
+/**
+ * Wrap the candidate's current on-disk content — including uncommitted changes
+ * — into a floating commit rooted at `parent`, without advancing any ref.
+ *
+ * A base-advance merge simulation (`mergesCleanly`) only ever sees committed
+ * history: `git merge-tree` takes two commits. A candidate's real content can
+ * include uncommitted work on top of its last commit, which a check against
+ * committed `HEAD` alone would miss. Wrapping the actual snapshot as an
+ * otherwise-unreferenced commit lets that same simulation reason about the
+ * content that will actually be preserved.
+ */
+export function snapshotCandidateCommit(repository: string, candidate: string, parent: string): string | null {
+  const tree = snapshotCandidate(candidate);
+  const result = spawnSync("git", ["commit-tree", tree, "-p", parent, "-m", "arcadia preservation base-advance check"], {
+    cwd: repository,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Arcadia Controller",
+      GIT_AUTHOR_EMAIL: "controller@arcadia.local",
+      GIT_COMMITTER_NAME: "Arcadia Controller",
+      GIT_COMMITTER_EMAIL: "controller@arcadia.local"
+    }
+  });
+  return result.status === 0 ? result.stdout.trim() : null;
 }
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */

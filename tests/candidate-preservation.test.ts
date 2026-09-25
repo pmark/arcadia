@@ -288,6 +288,34 @@ describe("candidate preservation (refusals)", () => {
     expect(receipt.baseRevision).toBe(fixture.baseRevision);
   });
 
+  it("refuses when uncommitted candidate content conflicts with an advanced base", () => {
+    // The candidate's README.md edit from makeFixture's default dirty state is
+    // deliberately left uncommitted here, so only a check against the actual
+    // working tree — not just committed HEAD — can catch this conflict.
+    const fixture = makeFixture();
+    writeFileSync(path.join(fixture.repo, "README.md"), "base\nmodified upstream\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main"]);
+    const newBase = g(fixture.repo, ["rev-parse", "main"]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*no longer merges cleanly`)
+    );
+  });
+
+  it("refuses when the base branch changed without advancing forward from the recorded revision", () => {
+    const fixture = makeFixture();
+    g(fixture.repo, ["checkout", "--orphan", "rewritten"]);
+    g(fixture.repo, ["rm", "-rf", "."]);
+    writeFileSync(path.join(fixture.repo, "README.md"), "rewritten\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "rewritten history"]);
+    const newBase = g(fixture.repo, ["rev-parse", "HEAD"]);
+    g(fixture.repo, ["branch", "-f", "main", newBase]);
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)))).toThrow(
+      new RegExp(`${fixture.baseRevision}.*${newBase}.*not a forward advance`)
+    );
+  });
+
   it("refuses when there is no active reservation", () => {
     const fixture = makeFixture();
     withDatabase(fixture.workspace, (db) =>

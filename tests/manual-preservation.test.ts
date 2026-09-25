@@ -204,6 +204,27 @@ describe("manual Go preservation binding", () => {
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
       .toThrow(new RegExp(`${f.base}.*${newBase}.*no longer merges cleanly`)));
   });
+  it("refuses when uncommitted candidate content conflicts with an advanced base", () => {
+    // marker.txt is written but never committed by the fixture, so only a
+    // check against the actual working tree — not just committed HEAD, which
+    // is still the old base here — can catch this conflict.
+    const f = fixture(); const binding = bind(f);
+    const newBase = commitOnBase(f, "marker.txt", "stale\n", "conflicting base change");
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*no longer merges cleanly`)));
+  });
+  it("refuses a base that changed without advancing forward from the recorded revision", () => {
+    const f = fixture(); const binding = bind(f);
+    fixtureGit(f.repo, ["checkout", "--orphan", "rewritten"]);
+    fixtureGit(f.repo, ["rm", "-rf", "."]);
+    writeFileSync(path.join(f.repo, "PROJECT.md"), "rewritten\n");
+    fixtureGit(f.repo, ["add", "-A"]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "rewritten history"]);
+    const newBase = fixtureGit(f.repo, ["rev-parse", "HEAD"]);
+    fixtureGit(f.repo, ["branch", "-f", "main", newBase]);
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(new RegExp(`${f.base}.*${newBase}.*not a forward advance`)));
+  });
   it("preserves a binding for an Action that is no longer the current pointer", () => {
     const f = fixture(); const binding = bind(f);
     const rewriteFrontmatter = (relativePath: string, mutate: (fm: any) => void) => {
