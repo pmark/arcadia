@@ -193,6 +193,11 @@ function commitCandidate(input: {
   fingerprint: string;
   branch: string;
   now: Date;
+  /** The parent HEAD a base-advance merge check already validated, when one ran.
+   *  A caller-injected `beforeCommit` hook runs before this, so re-resolving
+   *  HEAD here without checking it against that parent could commit on top of
+   *  a branch tip the merge check never actually saw. */
+  expectedParent: string | null;
 }): string {
   const message =
     `chore(candidate): preserve ${input.actionId} candidate for handoff\n\n` +
@@ -200,6 +205,12 @@ function commitCandidate(input: {
     `${FINGERPRINT_TRAILER}: ${input.fingerprint}\n`;
   const stamp = input.now.toISOString();
   const parent = git(input.candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
+  if (input.expectedParent && parent !== input.expectedParent) {
+    throw validationError("The candidate branch advanced past the parent its base-advance check validated; retry preservation.", {
+      expected: input.expectedParent,
+      observed: parent
+    });
+  }
   const branch = `refs/heads/${input.branch}`;
   if (git(input.candidateWorktreePath, ["symbolic-ref", "HEAD"]).trim() !== branch) throw validationError("Candidate branch changed before commit.");
   const commit = execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "commit-tree", input.fingerprint, "-p", parent, "-m", message], {
@@ -349,6 +360,10 @@ export function preserveCandidate(
   if (baseHead === null) {
     throw validationError("The base branch could not be resolved on the host controller.", { baseBranch: request.baseBranch });
   }
+  // Set only when the base-advance merge check below actually runs, so
+  // commitCandidate can refuse if anything moved the candidate branch past
+  // the exact parent that check validated.
+  let baseAdvanceCheckedParent: string | null = null;
   if (baseHead !== request.baseRevision) {
     if (!isAncestor(repositoryPath, request.baseRevision, baseHead)) {
       throw validationError(
@@ -370,6 +385,7 @@ export function preserveCandidate(
         { baseBranch: request.baseBranch, oldBase: request.baseRevision, newBase: baseHead }
       );
     }
+    baseAdvanceCheckedParent = candidateHead;
   }
 
   const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
@@ -438,7 +454,8 @@ export function preserveCandidate(
       requestId: request.requestId,
       fingerprint: candidateFingerprint,
       branch: request.branch,
-      now
+      now,
+      expectedParent: baseAdvanceCheckedParent
     });
     hooks.afterCommit?.();
   }

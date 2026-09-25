@@ -288,6 +288,26 @@ describe("candidate preservation (refusals)", () => {
     expect(receipt.baseRevision).toBe(fixture.baseRevision);
   });
 
+  it("refuses to commit if the candidate branch advanced past the parent its base-advance check validated", () => {
+    const fixture = makeFixture();
+    writeFileSync(path.join(fixture.repo, "unrelated.txt"), "new upstream file\n");
+    g(fixture.repo, ["add", "-A"]);
+    g(fixture.repo, ["commit", "-m", "advance main cleanly"]);
+    expect(() =>
+      withDatabase(fixture.workspace, (db) =>
+        preserveCandidate(db, request(fixture), {
+          hooks: {
+            beforeCommit() {
+              // Simulate something moving the candidate branch after the
+              // merge check ran but before the real preservation commit.
+              g(fixture.candidate, ["commit", "--allow-empty", "-m", "snuck in after the merge check"]);
+            }
+          }
+        })
+      )
+    ).toThrow(/advanced past the parent its base-advance check validated/);
+  });
+
   it("refuses when uncommitted candidate content conflicts with an advanced base", () => {
     // The candidate's README.md edit from makeFixture's default dirty state is
     // deliberately left uncommitted here, so only a check against the actual
