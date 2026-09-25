@@ -760,3 +760,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "The mission-control-site repository is registered as its own Project in the existing shared martianrover Arcadia workspace, with no new workspace created."; "The repository has an AGENTS.md/CLAUDE.md pair wired the same way as the arcadia repository."; "PROJECT.md and a first plan are committed in the mission-control-site repository."; "A coding-agent session opened in the mission-control-site repository can run arcadia next and receive a dispatch brief.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-onboard-mission-control-site-tooling-2026-09-25).
+
+## 2026-09-25 — Completed arcadia/place-session-naming-screenshot
+
+- **Did:** Completed Action arcadia/place-session-naming-screenshot from accepted evidence (Candidate f0f490ad0802a28d3fc7763d6a553b943dc7523e).
+- **Result:** Every declared acceptance criterion was accepted as met: "The image file is committed into the mission-control-site repository under a clearly named asset path (no third-party asset-service dependency)."; "It is referenced from an answers page with descriptive alt text and a caption naming the session-naming feature, tagged/categorized in that page's frontmatter or nearby content so its subject is discoverable."; "It renders correctly on the deployed Cloudflare staging URL.".
+- **Next:** Plan complete; activated Plan agent-ask-execution-queue from the explicit queue at arcadia/make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-place-session-naming-screenshot-2026-09-25-v2).

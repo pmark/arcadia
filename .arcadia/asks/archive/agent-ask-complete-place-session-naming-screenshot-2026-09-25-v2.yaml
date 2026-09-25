@@ -1,0 +1,14 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-place-session-naming-screenshot-2026-09-25-v2",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/place-session-naming-screenshot",
+  "candidate_revision": "f0f490ad0802a28d3fc7763d6a553b943dc7523e",
+  "desired_result": "Mark place-session-naming-screenshot complete.",
+  "evidence": [
+    {"criterion": "The image file is committed into the mission-control-site repository under a clearly named asset path (no third-party asset-service dependency).", "status": "met"},
+    {"criterion": "It is referenced from an answers page with descriptive alt text and a caption naming the session-naming feature, tagged/categorized in that page's frontmatter or nearby content so its subject is discoverable.", "status": "met"},
+    {"criterion": "It renders correctly on the deployed Cloudflare staging URL.", "status": "met"}
+  ]
+}

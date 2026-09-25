@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: give-the-mission-control-site-repository-currently-ungoverned-no-agents-md
 project: arcadia
-status: active
+status: complete
 milestone: "Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -29,7 +29,7 @@ actions:
     references: []
   - id: place-session-naming-screenshot
     title: Add the operator-supplied session-naming sidebar screenshot to mission-control-site as a committed, tagged asset embedded on the coding-agent-session-management answer page (or a better-fitting existing/new answer page if review finds one), with descriptive alt text and a caption naming the session-naming feature.
-    status: open
+    status: done
     responsibility: autonomous
     effort: session
     next_action: Add the operator-supplied session-naming sidebar screenshot to mission-control-site as a committed, tagged asset embedded on the coding-agent-session-management answer page (or a better-fitting existing/new answer page if review finds one), with descriptive alt text and a caption naming the session-naming feature.
@@ -46,7 +46,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: place-session-naming-screenshot
 recommended_model: light
 ---
 
