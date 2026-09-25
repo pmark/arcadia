@@ -1997,6 +1997,40 @@ actions:
     depends_on: [prove-two-action-unattended-production]
     decisions: []
     references: ["docs/agents-context.md", "apps/discord-bot/src/notifications/poller.ts", "src/ask/settlement.ts"]
+  - id: settle-squash-merged-completion-drafts
+    title: Let the automatic completion settlement accept a drafted complete Ask whose candidate was squash-merged into main.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let the automatic completion settlement accept a drafted complete Ask whose candidate was squash-merged into main.
+    expected_artifact: Evidence satisfying Agent Ask settle-squash-merged-completion-drafts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-settle-completions-after-merge-2026-09-25
+    acceptance_criteria:
+      - attemptAutoSettlePendingCompletion accepts a drafted complete Ask whose candidate_revision is not an ancestor of HEAD when merging that revision into HEAD changes no file (the git merge-tree --write-tree result equals HEAD's tree), and still refuses, with a named reason, a candidate whose changes are not fully contained in HEAD.
+      - Deterministic tests cover a squash-merged candidate that settles, a merge-committed candidate that settles, and a candidate with unmerged changes that is refused; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [prove-two-action-unattended-production]
+    decisions: []
+    references: ["src/ask/autoSettleBeforeDispatch.ts", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
+  - id: sweep-merged-completions-before-dispatch
+    title: Settle every merged pending completion on main, in merge order, before dispatch, and stop settling completions inside candidate branches.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Settle every merged pending completion on main, in merge order, before dispatch, and stop settling completions inside candidate branches.
+    expected_artifact: Evidence satisfying Agent Ask sweep-merged-completions-before-dispatch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-settle-completions-after-merge-2026-09-25
+    acceptance_criteria:
+      - Before selecting work, the worker tick and arcadia go settle every drafted complete Ask whose candidate is merged into main, one at a time in merge order, so current_action reflects every merged completion; an Ask whose candidate is not yet merged is left pending and untouched.
+      - The settlement commit is pushed or left LOCAL ONLY exactly as Decision 0070's answer grants, and a LOCAL ONLY result is reported in arcadia work monitor.
+      - docs/agents-context.md (regenerated into AGENTS.md) tells a session to commit its drafted complete Ask in its PR instead of running settle --apply in the candidate, and START_HERE.md describes the post-merge settlement.
+      - Deterministic tests cover two merged completions settling in merge order with the pointer on the correct next Action, and an unmerged candidate's Ask left pending; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [settle-squash-merged-completion-drafts, prove-two-action-unattended-production]
+    decisions: []
+    references: ["src/ask/autoSettleBeforeDispatch.ts", "src/production/tick.ts", "src/commands/advance.ts", "src/commands/go.ts", "docs/agents-context.md", "START_HERE.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
