@@ -83,7 +83,7 @@ const AUTHORIZATION: Record<string, string> = {
 
 /** The Project and its active plan, resolved structurally -- before anything
  *  is asked about `current_action`. */
-interface ActivePlanResolution {
+export interface ActivePlanResolution {
   discovered: DiscoveryResult;
   project: ProjectDoc | null;
   plan: PlanDoc | null;
@@ -96,13 +96,19 @@ interface ActivePlanResolution {
  * Shared by `resolveDispatch`, which goes on to resolve one Action from the
  * result, and `resolveReadySet`, which enumerates every Action in the plan
  * instead — so both agree about what "the active plan" even is, and neither
- * silently diverges into a second implementation of this resolution.
+ * silently diverges into a second implementation of this resolution. Also
+ * exported directly for a caller that resolves an Action by id across every
+ * plan (`resolveActionReadiness`, which does not look at the active plan at
+ * all) but still needs `resolveDispatch`'s Project-level authority checks —
+ * project status, active_plan resolution — without also being limited to the
+ * active plan the way `resolveDispatch({ actionId })`'s claimed-action lookup
+ * is.
  *
  * Reads documents, never the database: the contract makes checked-in
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
+export function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
   const discovered = alreadyRead ?? discoverDocs(repoRoot);
 

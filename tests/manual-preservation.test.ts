@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import YAML from "yaml";
@@ -225,15 +225,15 @@ describe("manual Go preservation binding", () => {
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
       .toThrow(new RegExp(`${f.base}.*${newBase}.*not a forward advance`)));
   });
+  const rewriteFrontmatter = (f: ReturnType<typeof fixture>, relativePath: string, mutate: (fm: any) => void) => {
+    const file = path.join(f.repo, relativePath);
+    const fm = YAML.parse(readFileSync(file, "utf8").slice(4, -4));
+    mutate(fm);
+    writeFileSync(file, `---\n${YAML.stringify(fm)}---\n`);
+  };
   it("preserves a binding for an Action that is no longer the current pointer", () => {
     const f = fixture(); const binding = bind(f);
-    const rewriteFrontmatter = (relativePath: string, mutate: (fm: any) => void) => {
-      const file = path.join(f.repo, relativePath);
-      const fm = YAML.parse(readFileSync(file, "utf8").slice(4, -4));
-      mutate(fm);
-      writeFileSync(file, `---\n${YAML.stringify(fm)}---\n`);
-    };
-    rewriteFrontmatter("docs/plans/proof.md", fm => {
+    rewriteFrontmatter(f, "docs/plans/proof.md", fm => {
       fm.actions.push({
         id: "second-action", title: "Second action", status: "open", responsibility: "agent",
         effort: "session", clarification: "clarified", next_action: "Do the second thing.",
@@ -242,8 +242,27 @@ describe("manual Go preservation binding", () => {
       });
       fm.current_action = "second-action";
     });
-    rewriteFrontmatter("PROJECT.md", fm => { fm.current_action = "second-action"; });
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.current_action = "second-action"; });
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
+  it("refuses re-validation once the Project is no longer active", () => {
+    const f = fixture(); const binding = bind(f);
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.status = "paused"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(/Project authority is no longer ready/));
+  });
+  it("refuses re-validation once CONSTITUTION.md is unreadable", () => {
+    const f = fixture(); const binding = bind(f);
+    const constitutionPath = path.join(f.repo, "CONSTITUTION.md");
+    writeFileSync(constitutionPath, "# Constitution\n");
+    fixtureGit(f.repo, ["add", "CONSTITUTION.md"]);
+    fixtureGit(f.repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "add constitution"]);
+    // Replace the file with a directory: readFileSync then fails with EISDIR,
+    // not ENOENT, which is the case readConstitution treats as a real defect.
+    rmSync(constitutionPath);
+    mkdirSync(constitutionPath);
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding))
+      .toThrow(/Constitution authority is no longer ready/));
   });
   it("reports missing checks as configuration, not another planning approval", () => {
     const f = fixture();

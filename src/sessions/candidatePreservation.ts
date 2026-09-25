@@ -213,20 +213,10 @@ function commitCandidate(input: {
   }
   const branch = `refs/heads/${input.branch}`;
   if (git(input.candidateWorktreePath, ["symbolic-ref", "HEAD"]).trim() !== branch) throw validationError("Candidate branch changed before commit.");
-  const commit = execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false", "commit-tree", input.fingerprint, "-p", parent, "-m", message], {
-    cwd: input.candidateWorktreePath,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "Arcadia Controller",
-      GIT_AUTHOR_EMAIL: "controller@arcadia.local",
-      GIT_COMMITTER_NAME: "Arcadia Controller",
-      GIT_COMMITTER_EMAIL: "controller@arcadia.local",
-      GIT_AUTHOR_DATE: stamp,
-      GIT_COMMITTER_DATE: stamp
-    }
-  }).trim();
+  const commit = commitTreeAt(input.candidateWorktreePath, input.fingerprint, parent, {
+    message,
+    env: { GIT_AUTHOR_DATE: stamp, GIT_COMMITTER_DATE: stamp }
+  });
   git(input.candidateWorktreePath, ["-c", "core.hooksPath=/dev/null", "update-ref", branch, commit, parent]);
   return commit;
 }
@@ -356,6 +346,35 @@ export function preserveCandidate(
     });
   }
 
+  // --- Authorization before any Git object-store mutation (AC6) ------------
+  // The base-advance merge check below writes real, if unreferenced, tree and
+  // commit objects (commitTreeAt, mergesCleanly's merge-tree --write-tree).
+  // Confirm the candidate is actually reserved and not conflicting with a
+  // managed Session's lease first, so a stale or unauthorized request never
+  // reaches that mutating work.
+  const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
+  if (!reservation) {
+    throw validationError("The candidate worktree has no active reservation; refusing a stale preservation.", {
+      candidateWorktreePath,
+      remedy: "Preserve within the reservation window, or re-prepare the worktree."
+    });
+  }
+  if (reservation.branch !== request.branch) {
+    throw validationError("The candidate reservation names a different branch.", {
+      reservedBranch: reservation.branch,
+      requestedBranch: request.branch
+    });
+  }
+
+  const lease = getRepositoryLease(db, repositoryPath);
+  if (lease && canonical(lease.worktree_path) !== candidateWorktreePath) {
+    throw validationError("Another Session holds this repository's lease; refusing a conflicting preservation.", {
+      conflictingSessionId: lease.id,
+      conflictingWorktree: lease.worktree_path,
+      candidateWorktreePath
+    });
+  }
+
   const baseHead = tryGit(repositoryPath, ["rev-parse", request.baseBranch]);
   if (baseHead === null) {
     throw validationError("The base branch could not be resolved on the host controller.", { baseBranch: request.baseBranch });
@@ -386,29 +405,6 @@ export function preserveCandidate(
       );
     }
     baseAdvanceCheckedParent = candidateHead;
-  }
-
-  const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
-  if (!reservation) {
-    throw validationError("The candidate worktree has no active reservation; refusing a stale preservation.", {
-      candidateWorktreePath,
-      remedy: "Preserve within the reservation window, or re-prepare the worktree."
-    });
-  }
-  if (reservation.branch !== request.branch) {
-    throw validationError("The candidate reservation names a different branch.", {
-      reservedBranch: reservation.branch,
-      requestedBranch: request.branch
-    });
-  }
-
-  const lease = getRepositoryLease(db, repositoryPath);
-  if (lease && canonical(lease.worktree_path) !== candidateWorktreePath) {
-    throw validationError("Another Session holds this repository's lease; refusing a conflicting preservation.", {
-      conflictingSessionId: lease.id,
-      conflictingWorktree: lease.worktree_path,
-      candidateWorktreePath
-    });
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------

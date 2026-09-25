@@ -53,18 +53,23 @@ export function snapshotCandidate(candidate: string): string {
 }
 
 /**
- * Wrap an already-known tree into a floating commit rooted at `parent`,
- * without advancing any ref.
+ * Wrap an already-known tree into a commit rooted at `parent`, under the
+ * standing Arcadia Controller identity, without advancing any ref.
  *
- * A base-advance merge simulation (`mergesCleanly`) only ever sees committed
- * history: `git merge-tree` takes two commits. Wrapping a tree as an
- * otherwise-unreferenced commit lets that same simulation reason about
- * content that was never committed to a real branch.
+ * Shared by every caller that needs a real commit object built from a tree
+ * that was never (or not yet) reachable from a branch: a base-advance merge
+ * simulation (`mergesCleanly` only ever sees committed history, since
+ * `git merge-tree` takes two commits) and the real preservation commit
+ * (`commitCandidate` in candidatePreservation.ts) alike.
  */
-export function commitTreeAt(repository: string, tree: string, parent: string): string {
+export function commitTreeAt(repository: string, tree: string, parent: string, options?: {
+  message?: string;
+  env?: Record<string, string>;
+}): string {
+  const message = options?.message ?? "arcadia preservation base-advance check";
   const result = spawnSync("git", [
     "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
-    "commit-tree", tree, "-p", parent, "-m", "arcadia preservation base-advance check"
+    "commit-tree", tree, "-p", parent, "-m", message
   ], {
     cwd: repository,
     encoding: "utf8",
@@ -74,11 +79,12 @@ export function commitTreeAt(repository: string, tree: string, parent: string): 
       GIT_AUTHOR_NAME: "Arcadia Controller",
       GIT_AUTHOR_EMAIL: "controller@arcadia.local",
       GIT_COMMITTER_NAME: "Arcadia Controller",
-      GIT_COMMITTER_EMAIL: "controller@arcadia.local"
+      GIT_COMMITTER_EMAIL: "controller@arcadia.local",
+      ...options?.env
     }
   });
   if (result.status !== 0) {
-    throw validationError("Git could not wrap a candidate tree into a commit for a preservation base-advance check.", {
+    throw validationError("Git could not wrap a candidate tree into a commit.", {
       repository,
       tree,
       parent,

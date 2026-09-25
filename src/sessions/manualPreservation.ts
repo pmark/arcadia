@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
-import { resolveActionReadiness, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
+import { readConstitution, resolveActionReadiness, resolveActivePlan, resolveDispatch, isDispatchable } from "../docs/dispatch.js";
+import { checkCapabilityRegistry } from "../docs/capabilities.js";
 import { git, isAncestor, mergesCleanly, samePath } from "../git/worktrees.js";
 import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
@@ -114,6 +115,22 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
         { baseBranch: binding.baseBranch, oldBase: binding.baseRevision, newBase: currentBaseRevision }
       );
     }
+  }
+  // Project-level authority: status, active_plan resolution. resolveActivePlan
+  // is the same Project-level half resolveDispatch itself runs first; reused
+  // directly rather than through resolveDispatch's action lookup, which (via
+  // a claimed actionId) only ever searches the active plan.
+  const { project: activeProject, blockers: projectBlockers } = resolveActivePlan(binding.repository, binding.projectSlug);
+  if (!activeProject || projectBlockers.length > 0) {
+    throw validationError("Manual preservation Project authority is no longer ready.", { blockers: projectBlockers });
+  }
+  const constitution = readConstitution(binding.repository);
+  if (constitution.blocker) {
+    throw validationError("Manual preservation Constitution authority is no longer ready.", { blocker: constitution.blocker });
+  }
+  const capabilityBlockers = checkCapabilityRegistry(binding.repository);
+  if (capabilityBlockers.length > 0) {
+    throw validationError("Manual preservation capability registry authority is no longer ready.", { blockers: capabilityBlockers });
   }
   // Look up the bound Action by id across every plan in the Project — not
   // resolveDispatch's current pointer, which may have moved to a different
