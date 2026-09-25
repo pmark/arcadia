@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -37,6 +37,20 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/** True when no ownership record exists yet, or the existing one still names
+ * this beacon's own identity -- false once a replacement worker has written
+ * its own identity, meaning this (now-orphaned) beacon must not clobber it. */
+function ownsRecord(workspacePath: string, identity: Identity): boolean {
+  const target = path.join(workspacePath, ".arcadia", "worker.pid");
+  try {
+    const raw = readFileSync(target, "utf8");
+    const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown };
+    return value.pid === identity.pid && value.owner === identity.owner;
+  } catch {
+    return true;
+  }
+}
+
 function writeHeartbeat(workspacePath: string, identity: Identity): void {
   const dir = path.join(workspacePath, ".arcadia");
   mkdirSync(dir, { recursive: true });
@@ -55,18 +69,25 @@ const identity = JSON.parse(identityJson) as Identity;
 const parentPid = Number(parentPidRaw);
 const intervalMs = Number(intervalRaw);
 
-// Gated on the parent's liveness even for this first write: if this process
-// was slow to start, its parent may already be dead and replaced, and an
-// unconditional write here would clobber the replacement's just-established
-// identity with this stale one.
-if (isAlive(parentPid)) {
+// Gated on the parent's liveness and the ownership record even for this
+// first write: if this process was slow to start, its parent may already be
+// dead and replaced, and an unconditional write here would clobber the
+// replacement's just-established identity with this stale one.
+if (isAlive(parentPid) && ownsRecord(workspacePath, identity)) {
   try { writeHeartbeat(workspacePath, identity); } catch {}
-} else {
+} else if (!isAlive(parentPid)) {
   process.exit(0);
 }
 
 const timer = setInterval(() => {
   if (!isAlive(parentPid)) {
+    clearInterval(timer);
+    process.exit(0);
+  }
+  if (!ownsRecord(workspacePath, identity)) {
+    // A replacement worker has already claimed the record. The parent that
+    // forked this beacon may still look alive for a moment during that
+    // handoff, but writing now would fight the replacement over ownership.
     clearInterval(timer);
     process.exit(0);
   }
