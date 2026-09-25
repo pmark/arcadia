@@ -30,17 +30,27 @@ like "Arcadia Go". The arcadia-go brief broker returns every state's title in
 
 - **kind** — 🔨 build an Action, 🔍 review or critique, 🧭 plan, 🩹 repair
   control documents;
-- **state** — 🔵 working, 🟣 PR open and in its CodeRabbit loop, 🟠 waiting on
-  the operator (a picker or question), 🔴 externally blocked, 🟢 done or merged;
+- **state** — 🔵 working, 🟣 PR open and in its CodeRabbit loop, 🟡 required
+  checks running on a merge-ready head (CodeRabbit loop finished, CI is the
+  last gate before merge), 🟠 waiting on the operator (a picker or question),
+  🔴 externally blocked, 🟢 done or merged;
 - **PLAN** — the first letter of each word of the `active_plan` slug, skipping
   `a an and at by for in of on or the to with`, uppercased and capped at four
   (a one-word slug keeps its first three letters); omit it, with its space,
   when the session has no Plan — never fill it with a placeholder.
 
-Retitle whenever the state changes and whenever the session moves on to a
-different Action. Skip this silently in a coding-agent runtime with no such
-naming capability; it is a convenience for the operator scanning a session
-list, not a governed artifact.
+Retitling on every state change is a required step, not a nicety — treat it
+the same as updating `PROJECT.md`: do it immediately when the state actually
+changes (pushing a PR, CodeRabbit clearing so checks start, stopping at a
+picker, hitting a blocker, finishing), never batched for later and never
+skipped because the change felt minor. It is cheap: reuse the `sessionTitles`
+map already returned by the current brief and call the title tool with the
+matching key, with no recomputation. The map names only the Action that
+brief resolved: when the session moves on to a different Action, rerun the
+brief launcher and retitle from its fresh `data.sessionTitles` instead of
+reusing the old map. Skip retitling only in a coding-agent runtime
+that exposes no session-naming capability at all — never skip it merely
+because the session is mid-task.
 
 Commands follow the naming rule: **nouns read state, verbs may mutate it
 within declared authority**. Trust the part of speech. A noun that writes is a

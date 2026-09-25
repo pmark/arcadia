@@ -88,14 +88,18 @@ work has happened — running it right after `go` is a guaranteed
    `set_session_title`), call it now with `data.sessionTitles.working` — for
    example `🔨🔵 BMPB stop-dumping-rationale` — so the session is
    distinguishable even when a session list shows only its first ~20
-   characters. Retitle from the same map as the session's state changes:
-   `pr` once its pull request is open and in the CodeRabbit loop, `waiting`
-   when it stops at a picker or operator question, `blocked` on a recorded
-   external blocker, and `done` once the Action is complete or its PR merged.
-   The map names only the Action this brief resolved: when the session moves
-   on to a different Action, rerun the `brief` launcher and retitle from its
-   fresh `data.sessionTitles` instead of reusing the old map. Skip this
-   silently where no such tool exists.
+   characters. Retitling is a required step on every real state change, not
+   an optional nicety — call it immediately, from the same map, each time:
+   `pr` once its pull request is open and in the CodeRabbit loop, `ci` once
+   that loop clears and required checks start running on the merge-ready
+   head, `waiting` when it stops at a picker or operator question, `blocked`
+   on a recorded external blocker, and `done` once the Action is complete or
+   its PR merged. This costs nothing extra: reuse the map already returned by
+   this brief and call the tool with the matching key. The map names only the
+   Action this brief resolved: when the session moves on to a different
+   Action, rerun the `brief` launcher and retitle from its fresh
+   `data.sessionTitles` instead of reusing the old map. Skip this silently
+   only where no such tool exists at all.
 3. Inspect the selected Action and its local implementation boundaries using
    ordinary read-only commands (`git status`, `rg`, and targeted file reads)
    without asking for approval. Read-only discovery is already authorized by a
