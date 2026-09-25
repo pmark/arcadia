@@ -16,6 +16,7 @@ import {
   runWorkerStopCommand,
   terminateStaleWorker
 } from "../src/commands/worker.js";
+import { startHeartbeatBeacon } from "../src/commands/workerHeartbeatBeaconExecutor.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork } from "../src/db/repositories.js";
 import { TRANSPORT_FRESHNESS_MS, preservationTransportReady } from "../src/sessions/preservationTransport.js";
@@ -258,7 +259,10 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       identify: () => `node ${path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs")} ${path.join(repoRoot, "src", "cli.ts")} worker start`,
       defaultWorkspace: () => root,
       terminateGraceMs: 50,
-      killGraceMs: 50
+      killGraceMs: 50,
+      // A real beacon would fork an actual OS process; this test only cares
+      // about the recovery that happens before the beacon or the tick loop.
+      startHeartbeatBeacon: () => ({ stop: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();
@@ -372,6 +376,89 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       sleep: () => {}
     })).not.toThrow();
   });
+});
+
+/**
+ * Polls rather than sleeping a fixed duration: forking a real OS process
+ * (running under the `tsx` ESM loader) has startup latency that varies with
+ * the host, and a fixed short sleep made these tests flaky on a slower or
+ * more loaded machine without making them any faster on a fast one.
+ */
+async function waitFor(check: () => boolean, timeoutMs: number, pollMs = 20): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (check()) return;
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for condition.");
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+describe("worker heartbeat beacon (Issue #617)", () => {
+  // A managed-production tick step can block the worker's own event loop for
+  // 170s-292s (Issue #617) — far longer than the freshness window the
+  // in-process `setInterval` (also on that same blocked event loop) needs to
+  // refresh the record before recovery reads it as hung. The beacon is a
+  // genuinely separate OS process, so it is not blocked by anything the
+  // worker's own thread does; these tests prove that independence directly,
+  // at a small interval, rather than by literally blocking a test for the
+  // length of the real freshness window. `runWorkerStopCommand`'s existing
+  // "leaves a worker that is mid-tick alone" test above already proves the
+  // consuming side: a fresh record, however it was refreshed, stops recovery.
+  it("refreshes the worker's own record on its own, independent of anything the caller does", async () => {
+    const { root } = workspace();
+    const identity = { pid: process.pid, owner: "beacon-refresh" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20 });
+    try {
+      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+      const first = readRecord(root);
+      await waitFor(() => readRecord(root).at > first.at, 5_000);
+      const second = readRecord(root);
+      expect(second.at).toBeGreaterThan(first.at);
+      expect(second.pid).toBe(process.pid);
+      expect(second.owner).toBe("beacon-refresh");
+    } finally {
+      beacon.stop();
+    }
+  }, 15_000);
+
+  it("keeps refreshing while the calling process is busy in a synchronous loop", async () => {
+    const { root } = workspace();
+    const identity = { pid: process.pid, owner: "beacon-busy" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20 });
+    try {
+      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+      const before = readRecord(root).at;
+
+      // Block this process's own event loop synchronously — no timer, no I/O
+      // callback, nothing this process owns can run here. The beacon is a
+      // different process and is unaffected.
+      const blockUntil = Date.now() + 200;
+      while (Date.now() < blockUntil) { /* busy-wait */ }
+
+      const after = readRecord(root).at;
+      expect(after).toBeGreaterThan(before);
+    } finally {
+      beacon.stop();
+    }
+  }, 15_000);
+
+  it("self-terminates once its watched parent process is gone, so a truly dead worker's record stops advancing", async () => {
+    const { root } = workspace();
+    const fixture = await stubbornProcess();
+    const identity = { pid: fixture.pid, owner: "beacon-orphan" };
+    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20, parentPid: fixture.pid });
+    await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+
+    fixture.kill("SIGKILL");
+    await fixture.exited;
+    // Give the beacon time to notice and exit; its own record stops moving.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const staleAt = readRecord(root).at;
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(readRecord(root).at).toBe(staleAt);
+    beacon.stop();
+  }, 15_000);
 });
 
 describe("managed production iteration liveness", () => {

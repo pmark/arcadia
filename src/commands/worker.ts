@@ -37,6 +37,7 @@ import { createId } from "../utils/id.js";
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
 import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
+import { startHeartbeatBeacon as defaultStartHeartbeatBeacon, type HeartbeatBeacon } from "./workerHeartbeatBeaconExecutor.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -279,7 +280,7 @@ function logPath(workspacePath: string): string {
   return path.join(arcadiaDir(workspacePath), "worker.log");
 }
 
-interface WorkerIdentity {
+export interface WorkerIdentity {
   pid: number;
   owner: string;
 }
@@ -598,6 +599,9 @@ export interface WorkerRecoveryDependencies extends ProcessAncestryDependencies 
    * `isWorkspaceWorkerCommand`. Overridable so a test can exercise the shape
    * the operator's own launch agent uses (Issue #492). */
   defaultWorkspace?: () => string | null;
+  /** Overridable so a deterministic test can supply a fake beacon instead of
+   * forking a real OS process (Issue #617); see `startHeartbeatBeacon`. */
+  startHeartbeatBeacon?: (workspacePath: string, identity: WorkerIdentity) => HeartbeatBeacon;
 }
 
 function defaultSleep(ms: number): void {
@@ -805,11 +809,16 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     if (existing) clearRecordForPid(workspacePath, existing.pid);
     throw error;
   }
+  // A genuinely separate process, not the timer below: this is what keeps the
+  // worker's own liveness record fresh while a synchronous tick step blocks
+  // the event loop for longer than the freshness window (Issue #617).
+  const beacon = (dependencies.startHeartbeatBeacon ?? defaultStartHeartbeatBeacon)(workspacePath, identity);
   let ownershipLost = false;
   const stopWhenOwnershipChanges = () => {
     if (ownershipLost) return;
     ownershipLost = true;
     clearInterval(heartbeatTimer);
+    beacon.stop();
     log(logfile, "Worker lost its ownership fence; stopping without touching the replacement worker.");
     process.exit(0);
   };
@@ -829,6 +838,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
   const cleanup = () => {
     log(logfile, "Worker stopping.");
     clearInterval(heartbeatTimer);
+    beacon.stop();
     if (ownsWorker(workspacePath, identity)) {
       try { unlinkSync(pidfilePath(workspacePath)); } catch {}
     }
