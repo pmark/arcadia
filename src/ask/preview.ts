@@ -1,3 +1,4 @@
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import {
@@ -12,8 +13,9 @@ import {
 } from "./agentAsk.js";
 import { captureAskEnvelope } from "./captureEnvelope.js";
 import { resolveProjectReference } from "./rules.js";
-import { discoverDocs } from "../docs/discover.js";
+import { parseDoc } from "../docs/parse.js";
 import type { DecisionDoc, PlanDoc } from "../docs/types.js";
+import { tryGit } from "../git/worktrees.js";
 
 export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null;
   /**
@@ -27,11 +29,30 @@ export interface PreviewAgentAskRequestInput { request: string; requestId?: stri
 }
 export interface PreviewAgentAskRequestResult { proposal: AgentAskProposal; replayed: boolean; }
 
-/** Build the Plan/Action/Decision identifiers a natural Ask can resolve against, for one Project's checked-in documents. */
+/**
+ * Build the Plan/Action/Decision identifiers a natural Ask can resolve
+ * against, for one Project's checked-in documents — read from git's `HEAD`
+ * tree, never the working directory. Reading the filesystem directly would
+ * let an untracked new Plan file, or an uncommitted edit that adds an
+ * Action to an already-tracked Plan, become a resolved target that nothing
+ * has actually committed yet.
+ */
 function buildTargetContext(repoRoot: string, projectSlug: string): AgentAskTargetContext {
-  const docs = discoverDocs(repoRoot).docs;
-  const plans = docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === projectSlug);
-  const decisions = docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === projectSlug);
+  const plans: PlanDoc[] = [];
+  const decisions: DecisionDoc[] = [];
+  for (const directory of ["docs/plans", "docs/decisions"]) {
+    const listing = tryGit(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD", "--", directory]);
+    if (!listing) continue;
+    for (const relativePath of listing.split("\n").map((line) => line.trim()).filter(Boolean)) {
+      if (!relativePath.endsWith(".md")) continue;
+      const content = tryGit(repoRoot, ["show", `HEAD:${relativePath}`]);
+      if (content === null) continue;
+      const { doc } = parseDoc(relativePath, path.join(repoRoot, relativePath), content);
+      if (!doc) continue;
+      if (doc.type === "plan" && doc.project === projectSlug) plans.push(doc);
+      else if (doc.type === "decision" && doc.project === projectSlug) decisions.push(doc);
+    }
+  }
   return {
     plans: plans.map((plan) => ({ slug: plan.slug })),
     actions: plans.flatMap((plan) => plan.actions.map((action) => ({ id: action.id, planSlug: plan.slug }))),

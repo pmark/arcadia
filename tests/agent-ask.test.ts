@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -229,11 +229,11 @@ describe("Natural Agent Ask target resolution", () => {
     const { workspace, repo } = naturalTargetFixture();
     const result = runAgentAskPreviewCommand({
       workspace, dir: repo, requestId: "resolve-action", project: "demo",
-      request: "The existing Action in demo-plan needs another look before it ships."
+      request: "The keep-existing-work Action in demo-plan needs another look before it ships."
     });
     expect(result.data.proposal.effects[0]?.targetKind).toBe("action");
-    expect(result.data.proposal.effects[0]?.targetRef).toBe("plan/demo-plan#existing");
-    expect(result.data.proposal.effects[0]?.fields.resolvedLabel).toBe("Action existing in Plan demo-plan");
+    expect(result.data.proposal.effects[0]?.targetRef).toBe("plan/demo-plan#keep-existing-work");
+    expect(result.data.proposal.effects[0]?.fields.resolvedLabel).toBe("Action keep-existing-work in Plan demo-plan");
   });
 
   it("resolves a plain-text request naming an existing Decision id", () => {
@@ -257,32 +257,54 @@ describe("Natural Agent Ask target resolution", () => {
     expect(result.data.proposal.refused).toEqual([]);
   });
 
+  it("does not resolve against an uncommitted Plan, or an uncommitted edit that adds an Action to a committed Plan", () => {
+    const { workspace, repo } = naturalTargetFixture();
+    // An untracked new Plan file.
+    writeFileSync(path.join(repo, "docs/plans/uncommitted-plan.md"), planDoc().replaceAll("demo-plan", "uncommitted-plan"));
+    // An uncommitted edit to the already-tracked demo-plan.md that adds a new Action.
+    const withExtraAction = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")
+      .replace("    references: []\nquestions: []", "    references: []\n  - id: uncommitted-new-action\n    title: Not yet committed\n    status: open\n    responsibility: codex\n    effort: session\n    next_action: Not yet committed.\n    expected_artifact: n/a\n    clarification: clarified\n    confidence: high\n    acceptance_criteria:\n      - n/a\n    depends_on: []\n    decisions: []\n    references: []\nquestions: []");
+    writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), withExtraAction);
+
+    const planResult = runAgentAskPreviewCommand({
+      workspace, dir: repo, requestId: "resolve-uncommitted-plan", project: "demo",
+      request: "Please reactivate the uncommitted-plan effort."
+    });
+    expect(planResult.data.proposal.effects[0]?.targetKind).toBe("interpretation");
+
+    const actionResult = runAgentAskPreviewCommand({
+      workspace, dir: repo, requestId: "resolve-uncommitted-action", project: "demo",
+      request: "The uncommitted-new-action Action needs another look before it ships."
+    });
+    expect(actionResult.data.proposal.effects[0]?.targetKind).toBe("interpretation");
+  });
+
   it("falls back to the interpretation path when the request names conflicting Plan and Action references, and names both in the receipt", () => {
     const { workspace, repo } = naturalTargetFixture();
     writeFileSync(path.join(repo, "docs/plans/other-plan.md"),
-      planDoc().replaceAll("demo-plan", "other-plan").replaceAll("  - id: existing", "  - id: other-action").replaceAll("current_action: existing", "current_action: other-action"));
+      planDoc().replaceAll("demo-plan", "other-plan").replaceAll("  - id: keep-existing-work", "  - id: other-action").replaceAll("current_action: keep-existing-work", "current_action: other-action"));
     execFileSync("git", ["add", "."], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Add conflicting Plan"], { cwd: repo });
     const result = runAgentAskPreviewCommand({
       workspace, dir: repo, requestId: "resolve-ambiguous", project: "demo",
-      request: "The existing Action does not belong to other-plan, but both are named here."
+      request: "The keep-existing-work Action does not belong to other-plan, but both are named here."
     });
     expect(result.data.proposal.effects[0]?.targetKind).toBe("interpretation");
-    expect(result.data.proposal.refused).toEqual(expect.arrayContaining(["Action existing in Plan demo-plan", "Plan other-plan"]));
+    expect(result.data.proposal.refused).toEqual(expect.arrayContaining(["Action keep-existing-work in Plan demo-plan", "Plan other-plan"]));
   });
 
   it("replays byte-stably for a resolved plan, action, decision, unresolvable, and ambiguous request", () => {
     const { workspace, repo } = naturalTargetFixture();
     writeFileSync(path.join(repo, "docs/plans/other-plan.md"),
-      planDoc().replaceAll("demo-plan", "other-plan").replaceAll("  - id: existing", "  - id: other-action").replaceAll("current_action: existing", "current_action: other-action"));
+      planDoc().replaceAll("demo-plan", "other-plan").replaceAll("  - id: keep-existing-work", "  - id: other-action").replaceAll("current_action: keep-existing-work", "current_action: other-action"));
     execFileSync("git", ["add", "."], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "Add conflicting Plan"], { cwd: repo });
     const cases: Array<{ requestId: string; request: string }> = [
       { requestId: "replay-plan", request: "Please reactivate the demo-plan effort." },
-      { requestId: "replay-action", request: "The existing Action in demo-plan needs another look." },
+      { requestId: "replay-action", request: "The keep-existing-work Action in demo-plan needs another look." },
       { requestId: "replay-decision", request: "Follow up on Decision 0001." },
       { requestId: "replay-none", request: "Something entirely unrelated to this repository." },
-      { requestId: "replay-ambiguous", request: "The existing Action does not belong to other-plan, but both are named here." }
+      { requestId: "replay-ambiguous", request: "The keep-existing-work Action does not belong to other-plan, but both are named here." }
     ];
     for (const testCase of cases) {
       const first = runAgentAskPreviewCommand({ workspace, dir: repo, requestId: testCase.requestId, project: "demo", request: testCase.request });
@@ -296,7 +318,7 @@ describe("Natural Agent Ask target resolution", () => {
 describe("resolveNaturalAgentAskTarget (unit)", () => {
   const context = {
     plans: [{ slug: "demo-plan" }],
-    actions: [{ id: "existing", planSlug: "demo-plan" }],
+    actions: [{ id: "keep-existing-work", planSlug: "demo-plan" }],
     decisions: [{ id: "0001", slug: "existing-decision" }]
   };
 
@@ -307,6 +329,17 @@ describe("resolveNaturalAgentAskTarget (unit)", () => {
 
   it("does not treat a longer numeric string as matching a shorter Decision id", () => {
     const result = resolveNaturalAgentAskTarget("See PR 10001 for details.", context);
+    expect(result.resolved).toBeNull();
+  });
+
+  it("does not match a Decision id with a letter immediately adjacent", () => {
+    const result = resolveNaturalAgentAskTarget("See file x0001 for the archived copy.", context);
+    expect(result.resolved).toBeNull();
+  });
+
+  it("never resolves a single-word Action id, since it is indistinguishable from ordinary prose", () => {
+    const wordLikeContext = { ...context, actions: [{ id: "existing", planSlug: "demo-plan" }] };
+    const result = resolveNaturalAgentAskTarget("Review the existing process before shipping.", wordLikeContext);
     expect(result.resolved).toBeNull();
   });
 });
@@ -321,7 +354,7 @@ function naturalTargetFixture(): { workspace: string; repo: string } {
   writeFileSync(path.join(repo, "PROJECT.md"), [
     "---", "arcadia: v1", "type: project", "slug: demo", "name: Demo", "status: active",
     "goal: Resolve natural Agent Asks against existing documents.", "milestone: Resolution",
-    "active_plan: demo-plan", "current_action: existing", "updated: 2026-09-01", "---", "", "# Demo", ""
+    "active_plan: demo-plan", "current_action: keep-existing-work", "updated: 2026-09-01", "---", "", "# Demo", ""
   ].join("\n"), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/decisions/0001-existing-decision.md"), [
@@ -347,9 +380,9 @@ function naturalTargetFixture(): { workspace: string; repo: string } {
 
 function planDoc(): string {
   return ["---", "arcadia: v1", "type: plan", "slug: demo-plan", "project: demo", "status: active",
-    "milestone: Resolution", "current_action: existing", "token_impact: medium",
+    "milestone: Resolution", "current_action: keep-existing-work", "token_impact: medium",
     "token_budget: Deterministic resolution with one implementation pass.", "recommended_model: gpt-5.6-sol",
-    "updated: 2026-09-01", "actions:", "  - id: existing", "    title: Keep existing work", "    status: open",
+    "updated: 2026-09-01", "actions:", "  - id: keep-existing-work", "    title: Keep existing work", "    status: open",
     "    responsibility: codex", "    effort: session", "    next_action: Keep existing work moving.",
     "    expected_artifact: Existing proof", "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - Existing proof exists.", "    depends_on: []", "    decisions: []",

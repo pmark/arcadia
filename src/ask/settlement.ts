@@ -1059,12 +1059,19 @@ export function settleAgentAsk(db: Database.Database, input: {
           // but the question names the concrete resolved target instead of
           // asking the operator to interpret the raw request from scratch.
           const scopedAction = resolvedEffect.targetKind === "action" ? splitPlanScopedActionRef(resolvedEffect.targetRef) : null;
+          const decisionDocs = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision");
+          const targetDecisionDoc = resolvedEffect.targetKind === "decision"
+            ? decisionDocs.find((doc) => doc.project === project.slug && doc.id === resolvedEffect.targetRef)
+            : undefined;
           const decisionPlanSlug = resolvedEffect.targetKind === "plan"
             ? resolveManagedTargetRef(resolvedEffect.targetRef, "plan", project.slug)
             : scopedAction
               ? resolveManagedTargetRef(scopedAction.planRef, "plan", project.slug)
-              : plan.slug;
-          addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
+              // A resolved Decision reference keeps its own Plan (it may not be
+              // the active one); an unscoped Decision falls back to the active
+              // Plan, same as the generic interpretation path always has.
+              : (targetDecisionDoc?.plan ?? plan.slug);
+          addDecisionMutation(fileMutations, decisionDocs, repoRoot,
             project.slug, decisionPlanSlug, scopedAction?.actionRef ?? null,
             `Confirm the proposed effect against ${resolvedLabel}: ${proposal.normalized.desiredResult}`,
             proposal.normalized.rationale, proposal.normalized.requestId, [], "reasonable_disagreement");

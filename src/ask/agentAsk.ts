@@ -170,19 +170,29 @@ export interface AgentAskTargetResolution { resolved: AgentAskTargetCandidate | 
  * extra context, and refuses resolution rather than guessing which one the
  * author meant. The same rule applies one level down: more than one distinct
  * Plan or more than one distinct Decision reference is ambiguous.
+ *
+ * A Plan slug or Action id only counts as a candidate when it is a
+ * multi-segment hyphenated slug (every real one in this repository is —
+ * `build-guided-understanding-session`, `reject-malformed-rows`). A
+ * single bare word is indistinguishable from ordinary prose (an Action
+ * literally id'd `existing` would match "Review the existing process"),
+ * so it never participates in resolution and the interpretation path is
+ * kept instead.
  */
 export function resolveNaturalAgentAskTarget(text: string, context: AgentAskTargetContext): AgentAskTargetResolution {
   const mentions = (identifier: string): boolean => {
     if (!identifier) return false;
     const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const boundary = /^[0-9]+$/.test(identifier) ? "[0-9]" : "[a-z0-9-]";
+    // A numeric Decision id must reject adjacent letters too, not just
+    // adjacent digits — otherwise "x0001" would match Decision 0001.
+    const boundary = /^[0-9]+$/.test(identifier) ? "[a-z0-9]" : "[a-z0-9-]";
     return new RegExp(`(?<!${boundary})${escaped}(?!${boundary})`, "i").test(text);
   };
   const actionMatches: AgentAskTargetCandidate[] = context.actions
-    .filter((action) => mentions(action.id))
+    .filter((action) => action.id.includes("-") && mentions(action.id))
     .map((action) => ({ kind: "action", targetRef: `plan/${action.planSlug}#${action.id}`, label: `Action ${action.id} in Plan ${action.planSlug}` }));
   const planMatches: AgentAskTargetCandidate[] = context.plans
-    .filter((plan) => mentions(plan.slug))
+    .filter((plan) => plan.slug.includes("-") && mentions(plan.slug))
     .map((plan) => ({ kind: "plan", targetRef: `plan/${plan.slug}`, label: `Plan ${plan.slug}` }));
   const decisionMatches: AgentAskTargetCandidate[] = context.decisions
     .filter((decision) => mentions(decision.id) || mentions(decision.slug))
@@ -190,10 +200,11 @@ export function resolveNaturalAgentAskTarget(text: string, context: AgentAskTarg
   const considered = [...actionMatches, ...planMatches, ...decisionMatches];
 
   if (actionMatches.length === 1) {
-    const action = context.actions.find((candidate) => mentions(candidate.id))!;
-    const conflictingPlans = planMatches.filter((plan) => plan.targetRef !== `plan/${action.planSlug}`);
+    const resolvedAction = actionMatches[0];
+    const actionPlanRef = resolvedAction.targetRef.slice(0, resolvedAction.targetRef.indexOf("#"));
+    const conflictingPlans = planMatches.filter((candidatePlan) => candidatePlan.targetRef !== actionPlanRef);
     if (conflictingPlans.length > 0) return { resolved: null, considered };
-    return { resolved: actionMatches[0], considered };
+    return { resolved: resolvedAction, considered };
   }
   if (actionMatches.length === 0 && planMatches.length === 1) return { resolved: planMatches[0], considered };
   if (actionMatches.length === 0 && planMatches.length === 0 && decisionMatches.length === 1) return { resolved: decisionMatches[0], considered };
