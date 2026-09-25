@@ -26,7 +26,7 @@ import { persistCodexPacketRecords } from "../execution/planningPreparation.js";
 import { packetSha256, parseDecisionContext } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
-import { selectPolicyPermittedProfileName } from "../production/policy.js";
+import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "../production/policy.js";
 import {
   extractPlanningPromotionFields,
   validatePlanningArtifact,
@@ -169,7 +169,7 @@ export function prepareProjectIdeaPromotion(
   // provider cannot be changed except by preparing a new one, so a policy
   // mismatch here would otherwise surface only as a silent per-tick admission
   // refusal once this Action reaches launch (see `buildLaunchPreview`).
-  const buildProfile = selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "build")
+  const buildProfile = selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, planningAction))
     ?? registries.codingAgents.defaults?.build;
   if (!buildProfile || !registries.codingAgents.profiles.some((profile) => profile.name === buildProfile && profile.purpose === "build")) {
     throw validationError("Project-idea promotion requires one configured default build profile.", {

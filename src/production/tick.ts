@@ -14,7 +14,7 @@ import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, selectPolicyPermittedProfileName } from "./policy.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -128,6 +128,7 @@ export function ensureProductionTickTables(db: Database.Database): void {
     );
     CREATE TABLE IF NOT EXISTS production_launch_refusal_log (
       action_key TEXT PRIMARY KEY,
+      dedupe_key TEXT NOT NULL,
       message TEXT NOT NULL,
       first_at TEXT NOT NULL,
       last_at TEXT NOT NULL
@@ -138,29 +139,38 @@ export function ensureProductionTickTables(db: Database.Database): void {
 
 /**
  * Record (or refresh) an expected-wait-state launch refusal (capacity/Off/
- * stale-preview/lease/policy conflicts) and report whether its exact message
- * is new. Logging the identical refusal line on every ~2s producer tick was
+ * stale-preview/lease/policy conflicts) and report whether it is a new
+ * episode. Logging the identical refusal line on every ~2s producer tick was
  * Issue-shaped noise the same way base-branch observation failures were
  * (`recordBaseBranchObservationFailure`, above) -- the durable row, not a
- * fresh log line each tick, is the fact worth keeping. Returns true whenever
- * the message changed (including the first time this actionKey is seen), so
+ * fresh log line each tick, is the fact worth keeping.
+ *
+ * `dedupeKey` -- not the full `message` -- decides whether this is the same
+ * episode continuing: an `admission_expired` refusal's message embeds a fresh
+ * expiry timestamp on every tick (`Admission expired at <ISO>; ...`), so
+ * comparing full messages logged that identical wait state on every tick
+ * (CodeRabbit, PR #646). The caller supplies a stable identity -- typically
+ * the conflict code plus normalized prerequisites -- while `message` remains
+ * the full, current detail persisted and logged. Returns true whenever
+ * `dedupeKey` changed (including the first time this actionKey is seen), so
  * the caller logs exactly once per distinct refusal episode.
  */
-function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, message: string, now: Date): boolean {
+function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, dedupeKey: string, message: string, now: Date): boolean {
   const at = now.toISOString();
-  const existing = db.prepare("SELECT message FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as
-    | { message: string }
+  const existing = db.prepare("SELECT dedupe_key FROM production_launch_refusal_log WHERE action_key = ?").get(actionKey) as
+    | { dedupe_key: string }
     | undefined;
-  const isNewEpisode = !existing || existing.message !== message;
+  const isNewEpisode = !existing || existing.dedupe_key !== dedupeKey;
   db.prepare(
-    `INSERT INTO production_launch_refusal_log (action_key, message, first_at, last_at)
-       VALUES (@action_key, @message, @at, @at)
+    `INSERT INTO production_launch_refusal_log (action_key, dedupe_key, message, first_at, last_at)
+       VALUES (@action_key, @dedupe_key, @message, @at, @at)
      ON CONFLICT(action_key) DO UPDATE SET
+       dedupe_key = @dedupe_key,
        message = @message,
-       first_at = CASE WHEN production_launch_refusal_log.message = @message
+       first_at = CASE WHEN production_launch_refusal_log.dedupe_key = @dedupe_key
                     THEN production_launch_refusal_log.first_at ELSE @at END,
        last_at = @at`
-  ).run({ action_key: actionKey, message, at });
+  ).run({ action_key: actionKey, dedupe_key: dedupeKey, message, at });
   return isNewEpisode;
 }
 
@@ -257,7 +267,9 @@ function attemptAutomaticPlanningResolution(
     : steps.length === 1 && steps[0]?.executorType === "codex_planning"
       ? "planning"
       : null;
-  const requestedProfile = predictedPurpose ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose) ?? undefined : undefined;
+  const requestedProfile = predictedPurpose
+    ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
+    : undefined;
   try {
     const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
     if (prepared.data.buildInvocation) {
@@ -736,7 +748,13 @@ function attemptProjectLaunch(
         : null;
       const detail = prerequisites && prerequisites.length > 0 ? prerequisites.join("; ") : error.message;
       const refusalLine = `Launch refused for ${actionKey}${code}: ${detail}`;
-      if (recordLaunchRefusalIfNew(db, actionKey, refusalLine, input.now)) {
+      // The dedup identity is the conflict code plus its named prerequisites
+      // (stable across ticks); with no prerequisites array, the code alone
+      // stands in for the whole conflict -- excluding `error.message`, whose
+      // `admission_expired` text embeds a fresh expiry timestamp every tick
+      // and would otherwise never match its own prior episode.
+      const dedupeKey = prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
+      if (recordLaunchRefusalIfNew(db, actionKey, dedupeKey, refusalLine, input.now)) {
         input.log(refusalLine);
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;

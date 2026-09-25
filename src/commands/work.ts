@@ -75,7 +75,7 @@ import { recordExecutionProfileEvent } from "../execution/profileEvents.js";
 import type { Phase3Registries } from "../intent/registries.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
-import { selectPolicyPermittedProfileName } from "../production/policy.js";
+import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "../production/policy.js";
 
 export interface WorkListCommandData {
   workItems: WorkItemSummary[];
@@ -429,7 +429,7 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         const registries = loadPhase3Registries(workspacePath);
         validatePhase3Registries(registries);
         const requestedProfile = options.agentProfile
-          ?? selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "build")
+          ?? selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, workItem))
           ?? undefined;
         const seeded = ensureBuildPacketForPlan(db, workspacePath, workItem, plan, registries, buildStep.id, requestedProfile);
         return {
@@ -465,7 +465,7 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         workItem,
         purpose: "planning",
         requestedName: options.agentProfile
-          ?? selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "planning")
+          ?? selectPolicyPermittedProfileName(db, registries.codingAgents.profiles, "planning", resolveWorkItemPolicyIdentity(db, workItem))
           ?? undefined,
         defaults: registries.codingAgents.defaults
       });
