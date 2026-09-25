@@ -2050,7 +2050,7 @@ actions:
     references: []
   - id: resolve-cross-plan-dependency-ids
     title: "Unknown depends_on ids block the Action instead of counting as satisfied, resolving cross-Plan references by plan/<slug>#<action> before falling back to a dependency_unresolved wait reason."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Unknown depends_on ids block the Action instead of counting as satisfied, resolving cross-Plan references by plan/<slug>#<action> before falling back to a dependency_unresolved wait reason."
@@ -2106,7 +2106,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: resolve-cross-plan-dependency-ids
+current_action: admit-ready-set-across-repositories
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
