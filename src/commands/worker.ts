@@ -118,12 +118,20 @@ function defaultListProcesses(): Array<{ pid: number; ppid: number }> {
   }
 }
 
-/** True only for tmux's own stable "no server running on <socket>" message --
- * the one failure that genuinely proves no tmux server exists at all, and
- * therefore no managed Session can be live. */
-function isNoTmuxServerError(error: unknown): boolean {
+/**
+ * The two stable messages tmux prints when there is simply no server to talk
+ * to -- the only failure that genuinely proves no managed Session can be
+ * live. The wording differs by platform: macOS says "no server running on
+ * <socket>"; Linux (this repo's CI runner) says "error connecting to
+ * <socket> (No such file or directory)" for the identical condition (no
+ * socket file at all). Any other message -- a permissions error, a
+ * corrupted socket, anything else -- is left unmatched so it propagates.
+ */
+const NO_TMUX_SERVER_PATTERNS = [/no server running on/, /error connecting to .* \(no such file or directory\)/i];
+
+export function isNoTmuxServerError(error: unknown): boolean {
   const stderr = (error as { stderr?: unknown } | null | undefined)?.stderr;
-  return typeof stderr === "string" && /no server running on/.test(stderr);
+  return typeof stderr === "string" && NO_TMUX_SERVER_PATTERNS.some((pattern) => pattern.test(stderr));
 }
 
 function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {

@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   findEnclosingManagedSessionTmuxName,
+  isNoTmuxServerError,
   runWorkerInstallCommand,
   runWorkerStartCommand,
   runWorkerStopCommand
@@ -58,6 +59,15 @@ async function bareChildProcess(cwd: string): Promise<{ pid: number }> {
 }
 
 describe("findEnclosingManagedSessionTmuxName", () => {
+  it("isNoTmuxServerError recognizes both platforms' \"no server\" wording and rejects everything else", () => {
+    expect(isNoTmuxServerError({ stderr: "no server running on /private/tmp/tmux-501/default\n" })).toBe(true);
+    expect(isNoTmuxServerError({ stderr: "error connecting to /tmp/tmux-1001/default (No such file or directory)\n" })).toBe(true);
+    expect(isNoTmuxServerError({ stderr: "error connecting to /tmp/tmux-1001/default (Permission denied)\n" })).toBe(false);
+    expect(isNoTmuxServerError({ stderr: "" })).toBe(false);
+    expect(isNoTmuxServerError({})).toBe(false);
+    expect(isNoTmuxServerError(new Error("spawn tmux ENOENT"))).toBe(false);
+  });
+
   it("returns null when no tmux panes exist at all", () => {
     expect(findEnclosingManagedSessionTmuxName(process.pid, { listTmuxPanes: () => [] })).toBeNull();
   });
