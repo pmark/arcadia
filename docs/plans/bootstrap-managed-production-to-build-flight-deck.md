@@ -1869,7 +1869,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/611", "src/commands/worker.ts"]
   - id: preserve-candidates-across-base-advance
     title: Let a candidate be preserved after the base branch advanced during its Session, and bind preservation to the Session's own dispatched Action rather than the current pointer.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Let a candidate be preserved after the base branch advanced during its Session, and bind preservation to the Session's own dispatched Action rather than the current pointer.

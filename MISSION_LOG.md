@@ -774,3 +774,10 @@ updated: 2026-09-25
 - **Result:** Operator-settled Plan transition. Previous Plan agent-ask-execution-queue remains draft with completion state preserved. Operator instruction 2026-09-25: arcadia go should choose only Actions on the critical path to automated production. activate-mc-site-tooling-plan-2026-09-25 returned this Plan to draft, and when that Plan finished, cross-Plan Go selected agent-ask-execution-queue, which is off the path. No Action content changes; this Ask carries the settle-time --activate flag, starting at name-failing-preservation-check-and-bound-retries.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-25 — Completed arcadia/preserve-candidates-across-base-advance
+
+- **Did:** Completed Action arcadia/preserve-candidates-across-base-advance from accepted evidence (Candidate bf99dd992b1e6120563e2e4ad6f9dec800c5c5b8).
+- **Result:** Every declared acceptance criterion was accepted as met: "Manual and protected preservation accept a candidate whose base branch advanced after preparation when the candidate still merges cleanly onto the new base, and refuse with a message naming the old base, the new base and the recovery when it does not."; "Preservation compares the candidate's Action definition against the Session's own dispatched Action, not resolveDispatch's pointer Action, so a non-pointer Session can be preserved."; "Deterministic tests cover a base that advanced cleanly (preserved), a conflicting advance (named refusal), and a non-pointer Action (preserved)."; "pnpm test and the core, Discord and Dashboard builds pass, and the PR closes Issue #539.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-preserve-candidates-across-base-advance-2026-09-25).
