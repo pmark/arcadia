@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,12 +7,14 @@ import { runPushUnpushedCommand, type PushUnpushedCommandData } from "../src/com
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
+const originalPath = process.env.PATH;
 
 afterEach(() => {
   for (const directory of temporary.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
   delete process.env.ARCADIA_WORKSPACE;
+  process.env.PATH = originalPath;
 });
 
 function run(cwd: string, args: string[]): string {
@@ -32,13 +34,15 @@ function bareOrigin(): string {
 }
 
 function cloneOf(origin: string, name: string): string {
-  const target = path.join(origin, "..", name);
+  // A uniquely-generated directory, not a literal sibling name: this machine
+  // routinely runs many concurrent agent sessions sharing one $TMPDIR, and a
+  // fixed name collides with another session's fixture of the same name.
+  const target = realpathSync(mkdtempSync(path.join(tmpdir(), `arcadia-push-${name}-`)));
+  temporary.push(target);
   execFileSync("git", ["clone", "--quiet", origin, target], { encoding: "utf8" });
-  const resolved = realpathSync(target);
-  temporary.push(resolved);
-  run(resolved, ["config", "user.email", "test@example.com"]);
-  run(resolved, ["config", "user.name", "Test"]);
-  return resolved;
+  run(target, ["config", "user.email", "test@example.com"]);
+  run(target, ["config", "user.name", "Test"]);
+  return target;
 }
 
 function commitOn(root: string, branch: string, file: string): void {
@@ -50,6 +54,8 @@ function commitOn(root: string, branch: string, file: string): void {
 }
 
 function worktreeOn(root: string, branch: string, name: string): string {
+  // `path.basename(root)` carries mkdtemp's random suffix, so this sibling
+  // path is unique even under a $TMPDIR shared with concurrent sessions.
   const target = path.join(root, "..", `${path.basename(root)}-${name}`);
   run(root, ["worktree", "add", "-q", target, branch]);
   temporary.push(target);
@@ -177,4 +183,78 @@ describe("arcadia push-unpushed", () => {
     // The remote branch that already existed is untouched by the failed push.
     expect(run(origin, ["rev-parse", "claude/collides"]).trim()).toBe(run(other, ["rev-parse", "claude/collides"]).trim());
   });
+
+  it("reports pushed-untracked, not pushed, when the ref lands but local upstream tracking cannot be written", () => {
+    // Reproduces the exact false positive found operating this repository:
+    // `git push -u` can exit 0 after successfully updating the remote ref
+    // while failing to write local upstream-tracking config (there, because
+    // agent worktrees sandbox-protect `.git/config`). Trusting the exit code
+    // alone would report "pushed" for a branch `arcadia tidy` still flags.
+    //
+    // A filesystem permission bit on `.git/config` itself does not reproduce
+    // this: git writes config via lock-then-rename, which only needs write
+    // access to the containing directory, not the target file. A fake `git`
+    // that drops `-u` from the push (so the ref still lands) and fails the
+    // explicit `branch --set-upstream-to` retry reproduces the actual
+    // observed failure shape instead.
+    const { origin, clone } = baseRepo();
+    commitOn(clone, "claude/orphan", "feature.txt");
+
+    const bin = fakeGitBlockingUpstreamTracking();
+    process.env.PATH = `${bin}:${originalPath ?? ""}`;
+    try {
+      const result = data(runPushUnpushedCommand({ repo: clone, apply: true }));
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].outcome).toBe("pushed-untracked");
+      expect(result.items[0].detail).toContain("safe on the remote");
+      expect(result.items[0].detail).toContain("--set-upstream-to");
+
+      // The safety-critical property still holds: the commit is on the remote.
+      expect(run(origin, ["rev-parse", "claude/orphan"]).trim()).toBe(run(clone, ["rev-parse", "claude/orphan"]).trim());
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
 });
+
+/**
+ * A `git` shim that behaves exactly like real git except for the two calls
+ * `pushOne` makes to establish upstream tracking: it strips `-u`/`--set-upstream`
+ * from a push (so the ref itself still lands normally) and fails an explicit
+ * `branch --set-upstream-to` outright, mirroring a sandbox that blocks writes
+ * to `.git/config` specifically rather than any push machinery.
+ */
+function fakeGitBlockingUpstreamTracking(): string {
+  const bin = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-push-fake-git-")));
+  temporary.push(bin);
+  const realGit = execFileSync("command", ["-v", "git"], { encoding: "utf8", shell: "/bin/sh" }).trim();
+  const script = path.join(bin, "git");
+  writeFileSync(
+    script,
+    [
+      "#!/bin/sh",
+      `REAL_GIT="${realGit}"`,
+      'if [ "$1" = "push" ]; then',
+      "  shift",
+      "  filtered=\"\"",
+      "  for a in \"$@\"; do",
+      "    case \"$a\" in",
+      "      -u|--set-upstream) ;;",
+      "      *) filtered=\"$filtered $a\" ;;",
+      "    esac",
+      "  done",
+      "  exec \"$REAL_GIT\" push $filtered",
+      'elif [ "$1" = "branch" ] && [ "$2" = "--set-upstream-to" ]; then',
+      "  echo 'error: could not lock config file .git/config: Operation not permitted' >&2",
+      "  exit 1",
+      "else",
+      "  exec \"$REAL_GIT\" \"$@\"",
+      "fi",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+  chmodSync(script, 0o755);
+  return bin;
+}
