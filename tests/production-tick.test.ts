@@ -12,6 +12,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
   createReviewItem,
+  getProjectBySlug,
   getWorkItemByDocRef,
   upsertProject,
   upsertProjectMetadata,
@@ -588,8 +589,10 @@ describe("runManagedProductionTick", () => {
     expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "no_validation_commands" });
     expect(escalations[0].remedy).toMatch(/arcadia project metadata .* --validation-command/);
 
-    // A second tick refuses again without duplicating the escalation or ever
-    // attempting to launch.
+    // A second tick, with the escalation already recorded and the Project
+    // still declaring no validation commands, skips the launch attempt
+    // entirely (a single cheap metadata re-read) rather than repeating the
+    // full preview only to rediscover the identical refusal.
     const secondResult = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
         profiles,
@@ -600,9 +603,36 @@ describe("runManagedProductionTick", () => {
         agentWorktreeRoot: fixture.agentWorktreeRoot
       })
     );
-    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
     expect(tmux.launches).toHaveLength(0);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+
+    // Once the operator declares a validation command, the very next tick
+    // resolves and launches -- proving the re-read is live, not cached.
+    withDatabase(fixture.workspace, (db) => {
+      const project = getProjectBySlug(db, "test-project")!;
+      upsertProjectMetadata(db, {
+        projectId: project.id,
+        repoPath: fixture.repo,
+        validationCommands: ["node -e \"process.exit(0)\""]
+      });
+    });
+    const thirdResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 120_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(thirdResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
   it("never binds an automatically prepared build packet to a provider the standing policy does not permit", () => {

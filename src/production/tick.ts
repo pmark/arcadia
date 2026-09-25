@@ -8,13 +8,14 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
+import { decodeStringArray } from "../projects/setup.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -705,6 +706,32 @@ function attemptProjectLaunch(
       reason: `Repair budget exhausted for ${actionKey} after ${attempts.attempts} failed launch attempt(s); most recent error: ${attempts.lastError ?? "unknown"}. An operator must repair and reset it.`,
       actionKey
     };
+  }
+
+  // A `no_validation_commands` escalation is never self-resolving on its
+  // own, but the condition it names can change between ticks (an operator
+  // running `arcadia project metadata --validation-command`), so re-read the
+  // Project's own metadata -- a single cheap query -- rather than either
+  // silencing the check forever or repeating the full `launchGuardedHostSession`
+  // preview (git plumbing, doc discovery, provider selection) on every tick
+  // only to rediscover the identical refusal. Still empty: skip without
+  // attempting a launch, preserving the existing escalation untouched. No
+  // longer empty: fall through to the ordinary launch attempt below, which
+  // clears it on success exactly as any other resolved escalation does.
+  const existingEscalation = db
+    .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
+    .get(actionKey) as { kind: string } | undefined;
+  if (existingEscalation?.kind === "no_validation_commands") {
+    const project = getProjectBySlug(db, input.projectSlug);
+    const metadata = project ? getProjectMetadata(db, project.id) : null;
+    if (decodeStringArray(metadata?.validation_commands).length === 0) {
+      return {
+        attempted: false,
+        outcome: "skipped",
+        reason: `Awaiting operator: ${input.projectSlug} still declares no validation commands.`,
+        actionKey
+      };
+    }
   }
 
   const requestId = `worker-tick-${actionKey.replaceAll("/", "-")}-${input.now.getTime()}`;
