@@ -216,16 +216,36 @@ export interface TmuxAdapter {
  */
 export const MANAGED_SESSION_TMUX_PREFIX = "arcadia-";
 
+/**
+ * The environment for every tmux invocation that creates or queries an
+ * Arcadia-managed session -- launch, presence check, pane capture, and the
+ * worker's Session-descendant guard in `src/commands/worker.ts` -- with
+ * `TMUX`/`TMUX_TMPDIR` removed.
+ *
+ * Those two variables pick which server socket tmux talks to. Without this,
+ * a dispatching process that happens to have them set (nested inside its own
+ * unrelated tmux session, say) would launch a managed Session on a
+ * *different* socket than the one the worker guard always queries, and the
+ * guard would see no pane there and refuse nothing. Every caller in this file
+ * and in the worker guard uses this one helper so launch and lookup can never
+ * drift onto different sockets.
+ */
+export function tmuxQueryEnv(): NodeJS.ProcessEnv {
+  const { TMUX: _tmux, TMUX_TMPDIR: _tmuxTmpdir, ...env } = process.env;
+  return env;
+}
+
 export const systemTmux: TmuxAdapter = {
   available() {
-    try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
+    try { execFileSync("tmux", ["-V"], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
   },
   hasSession(name) {
-    try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore" }); return true; } catch { return false; }
+    try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
   },
   launch(input) {
     execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, input.command, ...input.args], {
-      stdio: "ignore"
+      stdio: "ignore",
+      env: tmuxQueryEnv()
     });
   },
   capturePane(name) {
@@ -245,7 +265,8 @@ export const systemTmux: TmuxAdapter = {
     try {
       return execFileSync("tmux", ["capture-pane", "-t", `=${name}:`, "-p", "-S", "-2000"], {
         encoding: "utf8",
-        maxBuffer: 8 * 1024 * 1024
+        maxBuffer: 8 * 1024 * 1024,
+        env: tmuxQueryEnv()
       });
     } catch {
       return null;

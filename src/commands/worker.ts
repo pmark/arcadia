@@ -35,7 +35,7 @@ import { runManagedProductionTick } from "../production/tick.js";
 import { createId } from "../utils/id.js";
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
-import { MANAGED_SESSION_TMUX_PREFIX } from "../sessions/index.js";
+import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
 import { auditArcadiaLaunchAgents, duplicateWorkerWarning } from "../runtime/launchAgents.js";
 
 const POLL_INTERVAL_MS = 2_000;
@@ -95,9 +95,13 @@ export interface ProcessAncestryDependencies {
   /** Every process the host can see, as {pid, ppid} pairs. */
   listProcesses?: () => Array<{ pid: number; ppid: number }>;
   /** Every live tmux pane's leader PID and the name of the session that owns
-   * it, across the whole tmux server. Empty when tmux is not installed or not
-   * running -- which is also the correct answer for the operator's own
-   * terminal and for launchd, neither of which runs under tmux at all. */
+   * it, across the whole tmux server. Empty exactly when no tmux server is
+   * running at all -- the honest answer for the operator's own terminal and
+   * for launchd, neither of which runs under tmux, and for a host where tmux
+   * is not pinned as a project tool at all. Any other failure (an
+   * unresolvable executable when tmux *is* expected to exist, a corrupted or
+   * permission-denied socket) throws instead of returning empty, so the
+   * caller fails closed rather than reading a broken query as "safe". */
   listTmuxPanes?: () => Array<{ pid: number; sessionName: string }>;
 }
 
@@ -135,17 +139,16 @@ export function isNoTmuxServerError(error: unknown): boolean {
 }
 
 function defaultListTmuxPanes(): Array<{ pid: number; sessionName: string }> {
-  // `TMUX`/`TMUX_TMPDIR` pick which tmux server socket this query talks to.
-  // Inheriting them from the caller would let a Session redirect the query at
-  // a nonexistent socket -- tmux then fails the same way a genuine "no
-  // server" would, and the guard would have no way to tell the difference.
-  // Stripping them keeps this query pinned to the one real default socket
-  // every managed Session actually launches on, regardless of what the
-  // caller's own environment claims.
-  const { TMUX: _tmux, TMUX_TMPDIR: _tmuxTmpdir, ...env } = process.env;
+  // `tmuxQueryEnv` strips `TMUX`/`TMUX_TMPDIR`, which pick which tmux server
+  // socket a call talks to. This is the same helper `systemTmux` uses to
+  // *launch* a managed Session, so launch and this lookup can never land on
+  // different sockets -- inheriting the caller's own environment here would
+  // let a Session redirect the query at a nonexistent socket (or, absent a
+  // shared helper, let launch and lookup silently disagree on which real
+  // socket to use).
   let output: string;
   try {
-    output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8", env });
+    output = execFileSync("tmux", ["list-panes", "-a", "-F", "#{pane_pid} #{session_name}"], { encoding: "utf8", env: tmuxQueryEnv() });
   } catch (error) {
     if (isNoTmuxServerError(error)) {
       // The expected, benign case: no tmux server at all, e.g. the operator's
