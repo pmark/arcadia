@@ -22,6 +22,8 @@ import {
   type DispatchEvent,
   type DispatchJournalSummary
 } from "../docs/journal.js";
+import { operatorGateBlockers, renderOperatorAlerts, type OperatorGateItem } from "../docs/operatorGate.js";
+import { resolveOperatorGate } from "../ask/operatorGate.js";
 
 export interface NextCommandOptions {
   workspace: string;
@@ -34,6 +36,8 @@ export interface NextCommandData extends DispatchResolution {
   projectId: string;
   repoRoot: string;
   firedBackBurnerCount?: number;
+  /** Pending operator items scoped to this Project that are not blocking dispatch. */
+  operatorAlerts: OperatorGateItem[];
 }
 
 /**
@@ -56,7 +60,22 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
     };
   });
 
-  const resolution = resolveDispatch(repoRoot, project.slug);
+  const baseResolution = resolveDispatch(repoRoot, project.slug);
+  const readySet = resolveReadySet(repoRoot, project.slug);
+  const operatorGate = withDatabase(workspacePath, (db) =>
+    resolveOperatorGate({
+      db,
+      repoRoot,
+      projectSlug: project.slug,
+      selectedActionId: baseResolution.context?.action.id ?? null,
+      readySetCandidates: readySet.candidates
+    })
+  );
+
+  const resolution: DispatchResolution = {
+    ...baseResolution,
+    blockers: [...baseResolution.blockers, ...operatorGateBlockers(operatorGate.blocking)]
+  };
   const dispatchable = isDispatchable(resolution);
 
   withDatabase(workspacePath, (db) =>
@@ -80,6 +99,7 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
       dispatchable,
       projectId: project.id,
       repoRoot,
+      operatorAlerts: operatorGate.alerts,
       ...(firedBackBurnerCount > 0 ? { firedBackBurnerCount } : {})
     }
   });
@@ -173,10 +193,11 @@ export interface DispatchRenderInput {
   operatorQuestion: DispatchResolution["operatorQuestion"];
   dispatchable: boolean;
   repoRoot: string;
+  operatorAlerts?: OperatorGateItem[];
 }
 
 export function renderDispatchResolution(data: DispatchRenderInput): string[] {
-  const { context, blockers, operatorQuestion, dispatchable, repoRoot } = data;
+  const { context, blockers, operatorQuestion, dispatchable, repoRoot, operatorAlerts } = data;
 
   if (!context) {
     return [
@@ -184,7 +205,8 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
       "",
       ...renderBlockers(blockers),
       "",
-      "Repairing the control documentation is the immediate work."
+      "Repairing the control documentation is the immediate work.",
+      ...(operatorAlerts && operatorAlerts.length > 0 ? ["", ...renderOperatorAlerts(operatorAlerts)] : [])
     ];
   }
 
@@ -267,6 +289,10 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
     lines.push("Not dispatchable: repair the blockers above first.");
   } else {
     lines.push(`Not dispatchable: responsibility is "${action.responsibility}".`);
+  }
+
+  if (operatorAlerts && operatorAlerts.length > 0) {
+    lines.push("", ...renderOperatorAlerts(operatorAlerts));
   }
 
   return lines;

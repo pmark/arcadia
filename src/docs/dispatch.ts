@@ -328,6 +328,22 @@ export function resolveDispatch(
 }
 
 /**
+ * Every open Decision scoped to one Project.
+ *
+ * Reads documents, never the database, like every other reader in this file.
+ * Exists so a caller that needs a Decision's `action:` field — which
+ * `DecisionListItem` (`decision list`'s read model) does not surface — can
+ * read it directly instead of re-deriving Decision discovery.
+ */
+export function listOpenDecisions(repoRoot: string, projectSlug: string): DecisionDoc[] {
+  const discovered = discoverDocs(repoRoot);
+  return discovered.docs.filter(
+    (doc): doc is DecisionDoc =>
+      doc.type === "decision" && doc.status === "open" && doc.project.toLowerCase() === projectSlug.toLowerCase()
+  );
+}
+
+/**
  * Read `CONSTITUTION.md` from the repository root: its fingerprint, and its
  * text minus the H1 title and any leading or trailing blank lines.
  *

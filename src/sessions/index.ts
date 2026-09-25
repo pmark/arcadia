@@ -14,6 +14,8 @@ import { getWorkspacePaths } from "../workspace/paths.js";
 import { writeTransaction } from "../db/connection.js";
 import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import type { OperatorGateResolution } from "../docs/operatorGate.js";
+import { resolveOperatorGate } from "../ask/operatorGate.js";
 import { resolvePlanActivation, type PlanActivationResolution } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
@@ -51,6 +53,15 @@ export interface ProjectTransition {
    * it. Null/absent everywhere else.
    */
   activation?: PlanActivationResolution | null;
+  /**
+   * Every pending operator item (unsettled Agent Ask proposal, open Decision)
+   * scoped to this Project, classified against `dispatch`. Present whenever
+   * `input.db` was supplied — the gate needs a database read `resolveDispatch`
+   * itself never takes. A `kind: "decision"` transition caused by a blocking
+   * item names it in `reason`/`nextAction`; `blocking` and `alerts` are the
+   * full classification for a caller that wants to render more than the first.
+   */
+  operatorGate?: OperatorGateResolution;
 }
 
 export interface AgentSession {
@@ -271,7 +282,33 @@ export function resolveProjectTransition(input: {
     }
   }
   if (isDispatchable(dispatch)) {
-    return { kind: "launch", reason: "The selected Action is dispatchable.", nextAction: dispatch.context!.action.nextAction!, sessionId: null, dispatch };
+    const operatorGate = input.db
+      ? resolveOperatorGate({
+          db: input.db,
+          repoRoot: input.repoRoot,
+          projectSlug: input.projectSlug,
+          selectedActionId: dispatch.context!.action.id
+        })
+      : undefined;
+    const blocker = operatorGate?.blocking[0];
+    if (blocker) {
+      return {
+        kind: "decision",
+        reason: `${blocker.title}${blocker.consequence ? ` — ${blocker.consequence}` : ""}`,
+        nextAction: `Settle this before dispatch: ${blocker.settleCommand}`,
+        sessionId: null,
+        dispatch,
+        operatorGate
+      };
+    }
+    return {
+      kind: "launch",
+      reason: "The selected Action is dispatchable.",
+      nextAction: dispatch.context!.action.nextAction!,
+      sessionId: null,
+      dispatch,
+      operatorGate
+    };
   }
   // A lease or run makes waiting/reconciling the only move, even when the
   // pointer itself is at a Plan boundary: the earlier branch already returned

@@ -1075,10 +1075,10 @@ describe("runManagedProductionTick", () => {
 
     expect(queue.ready.map((entry) => entry.actionId)).toEqual(["define-contract"]);
     expect(queue.attention.some((entry) => entry.actionId === "second-action")).toBe(true);
-    // Fixed per-Project cost (resolveDispatch, resolveReadySet, and
-    // inspectProject's own read), not one re-walk per ready or blocked
-    // Action -- before this fix it grew with each.
-    expect(calls).toBe(3);
+    // Fixed per-Project cost (resolveDispatch, the operator gate's open-Decision
+    // read, resolveReadySet, and inspectProject's own read), not one re-walk
+    // per ready or blocked Action -- before this fix it grew with each.
+    expect(calls).toBe(4);
   });
 
   it("stops retrying an Action after its repair budget is exhausted, then resumes once the budget is reset", () => {
