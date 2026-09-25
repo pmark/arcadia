@@ -1833,7 +1833,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/610", "src/production/policy.ts", "src/sessions/reconciliation.ts"]
   - id: name-failing-preservation-check-and-bound-retries
     title: Make a preservation refusal name the check that failed, and stop a Session from retrying an identical refusal forever.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a preservation refusal name the check that failed, and stop a Session from retrying an identical refusal forever.
@@ -2001,7 +2001,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: name-failing-preservation-check-and-bound-retries
+current_action: honor-policy-providers-at-launch
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

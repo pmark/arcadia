@@ -1,0 +1,32 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-name-failing-preservation-check-and-bound-retries-2026-09-25",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/name-failing-preservation-check-and-bound-retries",
+  "candidate_revision": "587877f182a5f8b3f7c3d99237315b8618622496",
+  "desired_result": "Mark name-failing-preservation-check-and-bound-retries done: a preservation refusal now names the failing or skipped check, and a bounded identical-refusal budget reconciles a Session as a non-resumable incomplete exit instead of retrying forever.",
+  "evidence": [
+    {
+      "criterion": "The 'Declared preservation validation failed or was skipped.' refusal returned by the preserve broker carries non-empty details naming each failing or skipped check, its command, and its exit status or skip reason.",
+      "status": "met",
+      "note": "src/sessions/preservationValidation.ts's validateBoundCandidate now builds a `checks` array on the thrown error's details, one entry per failing or skipped check, each naming its `command` and either `exitStatus` (failed) or `skipReason` (skipped: errored before completing, or terminated by a signal). Proven by tests/preservation-validation.test.ts's \"names the failing check, its command and exit status in the refusal's details\" and \"names a skipped check's command and its skip reason (a killing signal) in the refusal's details\", both run against the real macOS Seatbelt sandbox (ARCADIA_PRESERVATION_HOST_TEST=1)."
+    },
+    {
+      "criterion": "The preserve broker or Session controller, not only the Session brief, enforces a bounded number of identical preservation refusals per Session; when the limit is reached it records the refusal and the Session is reconciled as an incomplete exit.",
+      "status": "met",
+      "note": "src/sessions/preservationRefusalBudget.ts's guardPreservationRefusal fingerprints each refusal (message + details minus the always-fresh evidenceRef) and records it per subject id (a Session id, or a manual binding's reservation id) in the new preservation_refusal_attempts table; a refusal repeating an identical fingerprint 3 times in a row (MAX_IDENTICAL_PRESERVATION_REFUSALS) throws a distinct limit-reached refusal. Both call paths that validate a candidate for the same Session share this one budget: src/commands/preserve.ts's runPreserveCommand (the CLI broker an agent calls directly) and src/production/sessionHandoff.ts's preserveSessionCandidate (the managed-production tick's own terminal-exit handoff). On the managed-Session path, exhausting the budget calls src/sessions/reconciliation.ts's reconcileSessionExit with a new `suppressLeaseHandoff` option: the receipt's outcome stays `incomplete_resumable` (the candidate's work is genuinely incomplete) but `lease_handoff` is forced to 0, and getResumableLeaseHandoff's query now actually filters on `lease_handoff = 1` (previously computed but never consulted), so prepareSession's resumption path no longer offers this candidate to a future Session."
+    },
+    {
+      "criterion": "Deterministic tests cover a failing check (details name it), a skipped check (details name the skip reason), and a Session that reaches the identical-refusal limit and is recorded incomplete.",
+      "status": "met",
+      "note": "tests/preservation-validation.test.ts adds four cases against the real fixture and macOS Seatbelt sandbox: \"names the failing check, its command and exit status in the refusal's details\", \"names a skipped check's command and its skip reason (a killing signal) in the refusal's details\", \"bounds a Session's identical preservation refusals and reconciles it as a non-resumable incomplete exit\" (asserts the Session's agent_sessions.status leaves prepared/running and its session_exit_receipts row has outcome incomplete_resumable with lease_handoff 0), and \"resets the identical-refusal budget when the refusal reason changes\". tests/preserve-on-exit-and-integrate.test.ts adds \"bounds a Session's identical preservation refusals across ticks and reconciles it as a non-resumable incomplete exit\", proving the same bound and reconciliation through runManagedProductionTick's own preserveSessionCandidate call path with an injected validator, independent of the CLI broker."
+    },
+    {
+      "criterion": "pnpm test and the core, Discord and Dashboard builds pass, and the PR refs Issue #611.",
+      "status": "met",
+      "note": "pnpm test: 2284 passed, 19 skipped, 0 failed (one suite flaked once from resource contention against a concurrently running build in this session and passed cleanly rerun in isolation). pnpm build (lint + tsc + Discord bot build) passed. pnpm dashboard:build passed. Pull request https://github.com/pmark/arcadia/pull/644 is open with \"Closes #611.\" in its body."
+    }
+  ],
+  "requested_authority": "apply_if_approved"
+}
