@@ -69,7 +69,7 @@ So the first honest answer to "how many agents can it run?" is a configuration v
 
 Parallelism is not a scheduler that hands out work. It is **admission**: one
 eligible Action is matched to one free unit of every resource it needs. All of
-those units are reserved in one SQLite transaction and released together.
+those units are reserved under one fenced reservation and released together.
 Every refusal names the resource that was missing.
 
 This is the authority/isolation/capacity triple from the operator-scale
@@ -99,7 +99,7 @@ for project in scheduling order:              # schedule prioritize
     lane  = laneOf(action)                    # repository today
     need  = {lane, claim(action), providerSlot(p), allowance(p), authority}
     for p in compliantProviders(action):      # selectCompliantCodingAgent order
-      if reserveAll(need) in one writeTransaction:
+      if reserveAll(need):                     # issue → prepare → commit, fenced
         launch detached; free -= 1; next project
     else: record wait reason (the first missing resource)
 ```
@@ -107,7 +107,17 @@ for project in scheduling order:              # schedule prioritize
 Three properties matter here:
 
 1. **Priority stays total and operator-owned.** Admission walks the existing canonical order. When the top Action cannot run, Arcadia moves to other work that can, and records why the higher Action is waiting. This is contract 17's "a blocked Project must not idle every provider". It is not a new ordering heuristic, so 0023's objection to deriving the pointer does not apply.
-2. **The launch primitive does not change.** `launchGuardedHostSession` already reserves the claim and the lease atomically and rolls back on failure. The loop adds provider slots to the same `beforeCreate` transaction.
+2. **The launch primitive keeps its two-phase shape.** `launchGuardedHostSession` (`src/sessions/launch.ts`) does not reserve everything in one transaction today, and this design does not pretend it does:
+   - **Issue.** `issueAdmission` takes the host slot in its own transaction. It checks the policy epoch and the live-admission count, and writes a receipt with a 30-second TTL.
+   - **Prepare.** A separate `writeTransaction` reserves the worktree, the Action claim and the repository lease through `beforeCreate`.
+   - **Commit.** `commitAdmission` rechecks the epoch just before the process starts.
+
+   The provider-account slot belongs in the **issue** phase, counted in the same query as the host slot and fenced by the same epoch. It must not go in `beforeCreate`. The lane and the claim stay in the **prepare** phase. Rollback is explicit:
+   - A lost lease race or a failed preparation calls `releaseAdmission`, which frees both slots, and releases the claim by its generation. This is what the code already does at `launch.ts:300–364`.
+   - A worker that crashes between issue and commit leaves only an uncommitted receipt. That receipt expires within its TTL and is not counted after that.
+   - A commit that finds a stale epoch refuses and releases.
+
+   No step can hold a slot that another step believes is free, so the reservation behaves as atomic without needing one transaction.
 3. **Launch is detached.** Sessions run under tmux, so the tick never blocks on a coding agent. Tick length is bounded by the number of Projects, not the number of live Sessions.
 
 ### Waits are first-class output
@@ -181,8 +191,8 @@ work.
 | 1 | **Wait reasons and a fake-executor soak.** Add `production status --explain` so every in-scope Action shows its single wait reason. Add a deterministic `fixture` coding-agent provider that sleeps, edits one file and exits, so reviewers can push `maxConcurrentSessions` to 20 across fixture repositories at zero token cost and watch every limit engage. | None. It is read-only plus a test provider. | S–M |
 | 2 | **Lease liveness.** The lease gets a heartbeat through tmux pane liveness and provider-session pointer freshness. A Session proven dead releases on the next tick instead of waiting for manual reconcile. This closes the #549 class for leases as well as claims. | Part of 0066's trigger | M |
 | 3 | **Provider-account slots.** Add `providerSlots` per account to the production scope. The limit is checked in the same transaction as the lease and claim. | None. Cross-repository only. | S |
-| 4 | **Raise the default across repositories.** Activation previews the host and provider slots it would grant. Raising the limit stays an explicit operator choice in the activation receipt. | The step 1 soak is green | S |
-| 5 | **Integration backpressure.** Add a per-Project limit on unlanded candidates. | None | S |
+| 4 | **Integration backpressure.** Add a per-Project limit on unlanded candidates, enforced at admission. | None | S |
+| 5 | **Raise the default across repositories.** Activation previews the host and provider slots it would grant. Raising the limit stays an explicit operator choice in the activation receipt. | The step 1 soak is green **and** step 4's backlog limit is active. Activation refuses a limit above 1 without it. | S |
 | 6 | **Same-repository secondary lanes.** Add per-Action settlement records, `touches:` disjointness and isolated dependencies. | **Decision 0066's trigger**, then a new Decision | L |
 | 7 | **Multi-installation ownership records.** | Decision 0022's trigger | M |
 
