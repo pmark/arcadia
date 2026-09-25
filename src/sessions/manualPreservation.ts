@@ -120,7 +120,9 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
   // is the same Project-level half resolveDispatch itself runs first; reused
   // directly rather than through resolveDispatch's action lookup, which (via
   // a claimed actionId) only ever searches the active plan.
-  const { project: activeProject, blockers: projectBlockers } = resolveActivePlan(binding.repository, binding.projectSlug);
+  const { project: activeProject, blockers: projectBlockers } = resolveActivePlan(
+    binding.repository, binding.projectSlug, undefined, { ignorePointerConsistency: true }
+  );
   if (!activeProject || projectBlockers.length > 0) {
     throw validationError("Manual preservation Project authority is no longer ready.", { blockers: projectBlockers });
   }

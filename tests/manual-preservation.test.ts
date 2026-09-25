@@ -245,6 +245,14 @@ describe("manual Go preservation binding", () => {
     rewriteFrontmatter(f, "PROJECT.md", fm => { fm.current_action = "second-action"; });
     withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
   });
+  it("preserves a binding despite an unrelated current_action pointer disagreement", () => {
+    // PROJECT.md and the plan disagreeing about current_action is a real
+    // governance defect, but it says nothing about this binding's own
+    // Action, found by id rather than by either pointer.
+    const f = fixture(); const binding = bind(f);
+    rewriteFrontmatter(f, "PROJECT.md", fm => { fm.current_action = "some-other-pointer"; });
+    withDatabase(f.workspace, db => expect(() => assertManualPreservationBinding(db, binding)).not.toThrow());
+  });
   it("refuses re-validation once the Project is no longer active", () => {
     const f = fixture(); const binding = bind(f);
     rewriteFrontmatter(f, "PROJECT.md", fm => { fm.status = "paused"; });

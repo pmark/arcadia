@@ -108,7 +108,21 @@ export interface ActivePlanResolution {
  * documentation authoritative when it disagrees with dispatch metadata, so
  * resolving from anywhere else would defeat the point.
  */
-export function resolveActivePlan(repoRoot: string, projectSlug?: string, alreadyRead?: DiscoveryResult): ActivePlanResolution {
+export function resolveActivePlan(
+  repoRoot: string,
+  projectSlug?: string,
+  alreadyRead?: DiscoveryResult,
+  options?: {
+    /** Skip the two current_action pointer-consistency blockers (a competing
+     *  plan-level pointer, or PROJECT.md and the active plan disagreeing).
+     *  For a caller re-validating a specific, already-identified Action by
+     *  id — never the pointer — for whom an unrelated pointer disagreement
+     *  elsewhere in the Project is not this Action's problem. Every other
+     *  blocker (project/plan not found or not active, document parse
+     *  errors) still applies. */
+    ignorePointerConsistency?: boolean;
+  }
+): ActivePlanResolution {
   const blockers: DispatchBlocker[] = [];
   const discovered = alreadyRead ?? discoverDocs(repoRoot);
 
@@ -184,7 +198,7 @@ export function resolveActivePlan(repoRoot: string, projectSlug?: string, alread
   // Only one action may be current across the whole project. Checked only once
   // the active plan resolves: if `active_plan` itself is wrong, saying "this
   // other plan is competing" sends the operator to fix the wrong file.
-  for (const other of plans) {
+  if (!options?.ignorePointerConsistency) for (const other of plans) {
     if (other.currentAction && other.slug.toLowerCase() !== plan.slug.toLowerCase() && !project.currentAction) {
       blockers.push({
         relativePath: other.relativePath,
@@ -198,7 +212,8 @@ export function resolveActivePlan(repoRoot: string, projectSlug?: string, alread
   // The contract puts both pointers on the project. A plan-level pointer is
   // still honored for projects that have not adopted that, but the project's
   // wins and a disagreement is reported rather than silently resolved.
-  if (project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
+  if (!options?.ignorePointerConsistency &&
+      project.currentAction && plan.currentAction && project.currentAction !== plan.currentAction) {
     blockers.push({
       relativePath: plan.relativePath,
       field: "current_action",
