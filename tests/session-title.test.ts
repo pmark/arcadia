@@ -29,6 +29,7 @@ describe("session titles", () => {
     expect(titles).toEqual({
       working: "🔍🔵 WD tidy-docs",
       pr: "🔍🟣 WD tidy-docs",
+      ci: "🔍🟡 WD tidy-docs",
       waiting: "🔍🟠 WD tidy-docs",
       blocked: "🔍🔴 WD tidy-docs",
       done: "🔍🟢 WD tidy-docs"

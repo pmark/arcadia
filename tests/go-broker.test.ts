@@ -227,6 +227,7 @@ describe("protected Arcadia go broker", () => {
         sessionTitles: {
           working: "🩹🔵 repair",
           pr: "🩹🟣 repair",
+          ci: "🩹🟡 repair",
           waiting: "🩹🟠 repair",
           blocked: "🩹🔴 repair",
           done: "🩹🟢 repair"

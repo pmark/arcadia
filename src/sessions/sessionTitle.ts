@@ -12,7 +12,7 @@
 export const SESSION_TITLE_KINDS = ["build", "review", "plan", "repair"] as const;
 export type SessionTitleKind = (typeof SESSION_TITLE_KINDS)[number];
 
-export const SESSION_TITLE_STATES = ["working", "pr", "waiting", "blocked", "done"] as const;
+export const SESSION_TITLE_STATES = ["working", "pr", "ci", "waiting", "blocked", "done"] as const;
 export type SessionTitleState = (typeof SESSION_TITLE_STATES)[number];
 
 /** Single-code-point emoji only: variation-selector glyphs render at uneven widths. */
@@ -27,6 +27,7 @@ export const SESSION_TITLE_KIND_GLYPHS: Record<SessionTitleKind, string> = {
 export const SESSION_TITLE_STATE_GLYPHS: Record<SessionTitleState, string> = {
   working: "🔵",
   pr: "🟣",
+  ci: "🟡",
   waiting: "🟠",
   blocked: "🔴",
   done: "🟢"
