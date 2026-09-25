@@ -58,6 +58,23 @@ actions:
     depends_on: [align-ask-superpower-outcome]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/589", "https://github.com/pmark/arcadia/issues/591", "docs/planning-process.md"]
+  - id: copy-edit-ask-fast-path
+    title: "Build the fast path: a plain-language Ask naming a text/content change to mission-control-site is classified as a copy-edit request, resolves the exact page(s)/copy to change, auto-drafts and settles its own Action against an active mission-control-site-scoped Plan, and dispatches without further manual Agent Ask authoring."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Build the fast path: a plain-language Ask naming a text/content change to mission-control-site is classified as a copy-edit request, resolves the exact page(s)/copy to change, auto-drafts and settles its own Action against an active mission-control-site-scoped Plan, and dispatches without further manual Agent Ask authoring."
+    expected_artifact: Evidence satisfying Agent Ask copy-edit-ask-fast-path
+    clarification: clarified
+    confidence: high
+    source: Agent Ask mc-site-copy-edit-fast-path-2026-09-25
+    acceptance_criteria:
+      - A plain-language request such as 'change the FAQ answer about X to say Y' produces a settled, queued Action with no hand-written Agent Ask JSON.
+      - The resulting Action's dispatched session opens a PR against mission-control-site, runs the CodeRabbit loop, and is eligible for Merge-on-Green exactly like any other Action -- no new merge authority is introduced.
+      - A request that is ambiguous about which page/copy to change, or that touches anything beyond static text/content (layout, data model, new pages), is refused or routed to Requires Review instead of guessed.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0068-decide-whether-to-generalize-arcadia-s-existing-agent-git-identity-naming.md"]
 questions: []
 decisions: []
 ---

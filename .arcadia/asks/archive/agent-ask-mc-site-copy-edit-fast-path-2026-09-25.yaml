@@ -1,0 +1,23 @@
+{
+  "agent_ask": "v1",
+  "request_id": "mc-site-copy-edit-fast-path-2026-09-25",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and",
+  "requested_authority": "propose",
+  "desired_result": "Give a plain-language copy/content-edit request against mission-control-site a fast path from Ask straight to a merged PR: Arcadia classifies the request, drafts and settles its own governed Action (no human or agent hand-authoring Agent Ask JSON), a dispatched session makes the edit, and the existing CodeRabbit loop plus Merge-on-Green carries it to done with no extra operator step beyond the original request.",
+  "rationale": "The operator wants to simply Ask Arcadia to change site copy and have the whole build automated, framed as the UX-optimization answer to the copywriting workflow. This is the smallest concrete slice of the already-drafted Ask-superpower plan (align-ask-superpower-outcome / route-execution-shaped-asks-to-planning): one narrow request shape (text-only edits to one small static site) instead of the general classifier. It also does not need a new publish-authority Decision: Merge-on-Green in AGENTS.md already authorizes autonomous merge once CodeRabbit approves and checks are green, for any PR that does not touch the Constitution, approval boundaries, spend, or credentials -- a copy-only PR to mission-control-site qualifies today. The actual gap is upstream of that: turning the plain-language request into a governed Action without a session manually composing and settling Agent Ask YAML, which is what this session did by hand this turn. Which bot/persona writes the copy is the separate, already-open Decision 0068 (generalizing agentIdentity.ts into content personas); this Action does not depend on 0068 -- it can ship using an ordinary dispatched coding-agent session today and adopt a named persona later without changing the pipeline.",
+  "actions": [
+    {
+      "id": "copy-edit-ask-fast-path",
+      "desired_result": "Build the fast path: a plain-language Ask naming a text/content change to mission-control-site is classified as a copy-edit request, resolves the exact page(s)/copy to change, auto-drafts and settles its own Action against an active mission-control-site-scoped Plan, and dispatches without further manual Agent Ask authoring.",
+      "acceptance": [
+        "A plain-language request such as 'change the FAQ answer about X to say Y' produces a settled, queued Action with no hand-written Agent Ask JSON.",
+        "The resulting Action's dispatched session opens a PR against mission-control-site, runs the CodeRabbit loop, and is eligible for Merge-on-Green exactly like any other Action -- no new merge authority is introduced.",
+        "A request that is ambiguous about which page/copy to change, or that touches anything beyond static text/content (layout, data model, new pages), is refused or routed to Requires Review instead of guessed."
+      ],
+      "dependencies": [],
+      "references": ["docs/decisions/0068-decide-whether-to-generalize-arcadia-s-existing-agent-git-identity-naming.md"]
+    }
+  ]
+}
