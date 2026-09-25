@@ -86,7 +86,10 @@ changes (pushing a PR, CodeRabbit clearing so checks start, stopping at a
 picker, hitting a blocker, finishing), never batched for later and never
 skipped because the change felt minor. It is cheap: reuse the `sessionTitles`
 map already returned by the current brief and call the title tool with the
-matching key, with no recomputation. Skip it only in a coding-agent runtime
+matching key, with no recomputation. The map names only the Action that
+brief resolved: when the session moves on to a different Action, rerun the
+brief launcher and retitle from its fresh `data.sessionTitles` instead of
+reusing the old map. Skip retitling only in a coding-agent runtime
 that exposes no session-naming capability at all — never skip it merely
 because the session is mid-task.
 
