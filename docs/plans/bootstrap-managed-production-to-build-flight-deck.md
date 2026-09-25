@@ -2074,16 +2074,17 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask admit-ready-set-across-repositories
     clarification: clarified
     confidence: high
-    source: Agent Ask add-ready-set-admission-and-pipelining-actions-2026-09-25
+    source: Agent Ask gate-concurrent-admission-behind-sequential-proof-2026-09-25
     acceptance_criteria:
       - The production tick (src/production/tick.ts) computes the ready set from every in-scope Plan of every active Project -- status not done/deferred/needs_operator, every depends_on landed on the base branch, no live claim -- and launches in canonicalOrder up to host and per-repository lane limits, per docs/proposals/portfolio-parallel-execution.md section 3.
       - settleAgentAsk (src/ask/settlement.ts) stops calling selectNextAfterCompletion and stops writing current_action; a completion records its evidence and releases its claim only.
       - current_action becomes a derived projection -- the highest-priority claimed Action, or the highest-priority ready Action if nothing is claimed -- recomputed and written only by the host settler established under Decision 0070, never by settlement, deferral, or advance.
       - A read-only status surface reports one wait reason per in-scope Action that did not launch this tick (dependency, dependency_unresolved, claimed, host_full, needs_operator, ...), recomputed every tick and never stored as truth.
       - "Deterministic tests cover: two ready Actions in different repositories launching in the same tick, an Action correctly excluded by a live claim, current_action reflecting the highest-priority claim with no settlement write, and the #505/#507 race scenarios each closed; pnpm test and the core, Discord and Dashboard builds pass."
+      - Activating a production policy scope with maxConcurrentSessions greater than 1 (the validation path in src/production/policy.ts) is refused with a named reason that cites prove-two-action-unattended-production by id, unless that Action's status is done in the active Plan; building and shipping this Action's own code does not itself turn on concurrent admission. A deterministic test covers both the refusal while the Action is open or deferred, and the allowed activation once it is done.
     depends_on: [resolve-cross-plan-dependency-ids]
     decisions: []
-    references: ["src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/order.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
+    references: ["docs/managed-production-readiness.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "src/production/policy.ts", "src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/order.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
   - id: pipeline-independent-actions-while-pr-unmerged
     title: "Let an independent, non-overlapping Action start in a repository whose previous candidate PR is still unmerged, up to a per-repository review limit, using declared touches: scope to prevent overlap."
     status: open
