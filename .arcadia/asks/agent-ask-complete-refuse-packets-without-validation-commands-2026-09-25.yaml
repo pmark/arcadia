@@ -4,7 +4,7 @@
   "project": "arcadia",
   "intent": "complete",
   "target_ref": "action/refuse-packets-without-validation-commands",
-  "candidate_revision": "bce0db2d6560243fe5338cb26b714c003818e340",
+  "candidate_revision": "a990d9fe950cada31a7d30ec74e66df6c147e682",
   "desired_result": "Mark refuse-packets-without-validation-commands complete.",
   "evidence": [
     {
