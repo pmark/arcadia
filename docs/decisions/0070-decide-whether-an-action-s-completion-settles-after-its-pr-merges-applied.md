@@ -17,7 +17,7 @@ options:
     consequence: Same conflict elimination, but the settlement commit stays LOCAL ONLY on main until the operator (or an operator-run /runs action) pushes it; no new unattended push authority, at the cost of a manual step after every merge batch.
     recommended: false
   - label: Keep settling in the candidate
-    consequence: "No change: parallel PRs keep conflicting on PROJECT.md, the Plan, and MISSION_LOG.md, and each conflict is repaired by re-running the settlement against fresh main. The three held Actions are closed as rejected."
+    consequence: "No change: parallel PRs keep conflicting on PROJECT.md, the Plan, and MISSION_LOG.md, and each conflict is repaired by re-running the settlement against fresh main. The two held Actions (settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch) are closed as rejected."
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
@@ -30,7 +30,7 @@ updated: 2026-09-25
 
 - **Settle after merge, serially, with host push** (recommended): Governance files leave every PR, so parallel sessions stop conflicting; the host worker (or arcadia go preflight) settles merged completions in merge order with no LLM and pushes chore(arcadia): settle commits to main. AGENTS.md's settle-in-candidate rule is replaced. The pointer lags a merge by at most one worker tick.
 - **Settle after merge, operator pushes**: Same conflict elimination, but the settlement commit stays LOCAL ONLY on main until the operator (or an operator-run /runs action) pushes it; no new unattended push authority, at the cost of a manual step after every merge batch.
-- **Keep settling in the candidate**: No change: parallel PRs keep conflicting on PROJECT.md, the Plan, and MISSION_LOG.md, and each conflict is repaired by re-running the settlement against fresh main. The three held Actions are closed as rejected.
+- **Keep settling in the candidate**: No change: parallel PRs keep conflicting on PROJECT.md, the Plan, and MISSION_LOG.md, and each conflict is repaired by re-running the settlement against fresh main. The two held Actions (settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch) are closed as rejected.
 
 ## Rationale
 
