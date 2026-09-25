@@ -379,6 +379,53 @@ describe("launchGuardedHostSession", () => {
     expect(lease?.id).toBe(result.session.id);
   });
 
+  it("refuses to start a prepared-but-never-launched lease once its Project declares no validation commands", () => {
+    // CodeRabbit review on PR #647: `matchesPreview` (the lease-reuse guard
+    // above) checks only project/Action/packet hash, not `preview.ready`, so
+    // without this refusal a prepared-but-not-running lease would still be
+    // handed to `resumeOrReturn` -- which calls `launchPreparedSession` and
+    // starts a brand-new process -- even though the fresh preview built in
+    // this same call already carries the "no validation commands" prerequisite.
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const result = doLaunch(fixture, tmux, preview.previewFingerprint);
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET status = 'prepared', started_at = NULL WHERE id = ?").run(result.session.id);
+    });
+    tmux.live.delete(result.session.tmux_session_name);
+    tmux.launches.length = 0;
+
+    withDatabase(fixture.workspace, (db) => {
+      const project = upsertProject(db, { name: "Test Project", mission: "Prove guarded launch.", goal: "Prove guarded launch.", status: "active" });
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: fixture.repo, validationCommands: [] });
+    });
+
+    expectArcadiaError(
+      () =>
+        withDatabase(fixture.workspace, (db) =>
+          launchGuardedHostSession({
+            db,
+            workspace: fixture.workspace,
+            repoRoot: fixture.repo,
+            projectSlug: "test-project",
+            requestId: "recover-req-no-validation-commands",
+            previewFingerprint: preview.previewFingerprint,
+            profiles,
+            adapters,
+            now: fixture.now,
+            tmux
+          })
+        ),
+      "not ready to launch"
+    );
+    expect(tmux.launches).toHaveLength(0);
+
+    const lease = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo));
+    expect(lease?.id).toBe(result.session.id);
+    expect(lease?.status).toBe("prepared");
+  });
+
   it("recovers a post-spawn crash: a failed spawn releases the lease so a fresh launch succeeds with exactly one live Session", () => {
     const fixture = preparedFixture();
     const failing = new FakeTmux();
