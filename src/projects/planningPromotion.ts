@@ -3,7 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { createCodexPacket, selectAgentProfileForWorkItem, selectCompliantPolicyPermittedProfileName } from "../codex/packets.js";
+import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { validationError } from "../cli/errors.js";
 import {
   createExecutionPlan,
@@ -367,24 +367,33 @@ export function persistProjectIdeaPromotion(
 
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
-  // `prepared.buildProfile` was chosen before `promotedAction` existed, so it
-  // could not be checked against this Action's own execution requirement
-  // (capability, tools, context scope, locality, effort, sandbox). Try it
-  // first -- it is still the validated, recorded intent -- then fall back
-  // through the policy's other permitted providers for this now-real
-  // identity, and finally to the registry default, rather than letting an
-  // incompliant recorded preference throw ExecutionProfileUnsatisfiedError
-  // with no fallback (CodeRabbit, PR #646, fix round 2).
-  const requestedName = selectCompliantPolicyPermittedProfileName({
-    profiles: registries.codingAgents.profiles,
-    adapters: registries.providerAdapters,
-    workItem: promotedAction,
-    purpose: "build",
-    candidateNames: [
-      prepared.buildProfile,
-      ...selectPolicyPermittedProfileNames(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, promotedAction))
-    ]
-  }) ?? undefined;
+  // `prepared.buildProfile` was chosen before `promotedAction` existed and
+  // possibly before the standing policy's permitted providers last changed,
+  // so neither its execution-requirement compliance nor its current policy
+  // permission is guaranteed. When no policy governs this now-real identity,
+  // use it exactly as recorded (unchanged from before this fallback existed).
+  // When a policy DOES govern it, recheck it against the CURRENT permitted
+  // set first -- a still-permitted recorded choice is tried first, but a
+  // since-forbidden one is dropped rather than bound to the promoted Action's
+  // immutable packet (CodeRabbit, PR #646, fix round 3) -- then fall back
+  // through the policy's other permitted providers for compliance. If the
+  // policy governs this identity and none of what it currently permits is
+  // compliant, refuse rather than silently falling back to a nonpermitted
+  // registry default (CodeRabbit, PR #646, fix round 3): that would create
+  // exactly the mismatch Issue #559 exists to prevent, only discovered later
+  // as a launch refusal.
+  const permittedNow = selectPolicyPermittedProfileNames(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, promotedAction));
+  const requestedName = permittedNow.length === 0
+    ? prepared.buildProfile
+    : selectPolicyPermittedProfileNameOrRefuse({
+        profiles: registries.codingAgents.profiles,
+        adapters: registries.providerAdapters,
+        workItem: promotedAction,
+        purpose: "build",
+        permittedCandidateNames: permittedNow.includes(prepared.buildProfile)
+          ? [prepared.buildProfile, ...permittedNow.filter((name) => name !== prepared.buildProfile)]
+          : permittedNow
+      });
   const selection = selectAgentProfileForWorkItem({
     profiles: registries.codingAgents.profiles,
     adapters: registries.providerAdapters,
