@@ -12,6 +12,7 @@ import {
 import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint } from "../sessions/manualPreservation.js";
 import { resolveDispatch } from "../docs/dispatch.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
+import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import {
@@ -63,9 +64,15 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       if (!projectSlug) throw validationError("Manual preservation cannot resolve its Project.");
       const binding = bindManualPreservation(db, { repository: controlWorktree, worktree: source, baseBranch, projectSlug });
       const assertBinding = () => assertManualPreservationBinding(db, binding);
-      const validation = validateBoundCandidate(options.workspace, {
-        id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
-      }, binding, assertBinding);
+      // No managed Session exists for a manual handoff (Decision: `arcadia go`'s
+      // manual path never creates an agent_sessions row), so an exhausted
+      // budget here has nothing to reconcile -- the augmented refusal message
+      // is the whole remedy: stop retrying and get the operator or a fresh
+      // repair attempt.
+      const validation = guardPreservationRefusal(db, binding.reservationId, options.now ?? new Date(), () =>
+        validateBoundCandidate(options.workspace, {
+          id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
+        }, binding, assertBinding));
       return preserveCandidate(db, {
         requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
         candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
@@ -104,7 +111,19 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
                   : "the Active policy does not include remote preservation"
           };
 
-    const validation = validatePreservationCandidate(db, options.workspace, lease);
+    // This CLI call can run while the Session's own agent process is still
+    // alive (it is exactly what a live agent invokes to preserve its own
+    // candidate), so exhausting the budget here must never reconcile the
+    // Session itself -- that would terminate a `running` lease out from
+    // under a worker that has not actually died, letting a competing launch
+    // treat the repository as unleased. Only record the refusal (shared with
+    // the tick's own budget, keyed on the same Session id) and refuse; the
+    // managed-production tick reconciles the Session as a non-resumable
+    // incomplete exit itself, only once it has independently confirmed the
+    // worker's tmux session is actually dead (see `preserveSessionCandidate`
+    // in sessionHandoff.ts).
+    const validation = guardPreservationRefusal(db, lease.id, options.now ?? new Date(), () =>
+      validatePreservationCandidate(db, options.workspace, lease));
     const current = preservationAuthority(db, options.workspace, lease);
     if (JSON.stringify(current) !== JSON.stringify(validation.binding) || JSON.stringify(policy) !== JSON.stringify(current.policy)) {
       throw validationError("Preservation authority changed after validation.");

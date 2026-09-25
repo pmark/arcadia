@@ -7,6 +7,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/sessions/preservationCheckBinding.js";
+import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
 const fixtures: ReturnType<typeof preservationFixture>[] = [];
@@ -111,6 +112,28 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     const writes = fixture("printf forged > marker.txt");
     expect(() => runPreserveCommand({ source: writes.candidate, workspace: writes.workspace })).toThrow(/validation failed/);
   });
+  it("names the failing check, its command and exit status in the refusal's details", () => {
+    const f = fixture("exit 1");
+    withDatabase(f.workspace, db => {
+      let error: unknown;
+      try { validatePreservationCandidate(db, f.workspace, f.lease); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({
+        message: "Declared preservation validation failed or was skipped.",
+        details: { checks: [{ command: "exit 1", status: "failed", exitStatus: 1 }] }
+      });
+    });
+  });
+  it("names a skipped check's command and its skip reason (a killing signal) in the refusal's details", () => {
+    const f = fixture("kill -KILL $$");
+    withDatabase(f.workspace, db => {
+      let error: unknown;
+      try { validatePreservationCandidate(db, f.workspace, f.lease); } catch (caught) { error = caught; }
+      expect(error).toMatchObject({
+        message: "Declared preservation validation failed or was skipped.",
+        details: { checks: [{ command: "kill -KILL $$", status: "skipped", skipReason: "terminated by signal SIGKILL" }] }
+      });
+    });
+  });
   it("refuses worktree mutation during validation even though the immutable snapshot passes", () => {
     const f = fixture("sleep 1; node check.mjs");
     const mutator = spawn(process.execPath, ["-e", "setTimeout(()=>require('fs').writeFileSync(process.argv[1],'altered\\n'),400)", path.join(f.candidate, "marker.txt")], { stdio: "ignore" });
@@ -128,5 +151,58 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     const f = fixture();
     expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace, deps: { hooks: { beforeStage() { writeFileSync(path.join(f.candidate, "marker.txt"), "altered\n"); } } } })).toThrow(/differs from the validated/);
     expect(fixtureGit(f.candidate, ["rev-parse", "HEAD"])).toBe(f.base);
+  });
+  it("bounds a Session's identical preservation refusals from the CLI without reconciling a Session that may still be live", () => {
+    const f = fixture("exit 1");
+    for (let attempt = 1; attempt < MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt++) {
+      expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace }))
+        .toThrow("Declared preservation validation failed or was skipped.");
+    }
+    // The identical-refusal budget is now exhausted: the next attempt gets a
+    // distinct refusal naming the limit. This CLI call can run from inside a
+    // still-live Session (it is exactly what a live agent invokes to preserve
+    // its own candidate), so it must refuse without touching the Session's
+    // own lease or status -- reconciling a `running` Session out from under
+    // its own live worker would let a competing launch treat the repository
+    // as unleased. Only the managed-production tick, which independently
+    // confirms the worker's tmux session is actually dead before it ever
+    // calls preservation, may reconcile the Session as an incomplete exit
+    // (proven in tests/preserve-on-exit-and-integrate.test.ts).
+    let limitError: unknown;
+    try {
+      runPreserveCommand({ source: f.candidate, workspace: f.workspace });
+    } catch (caught) {
+      limitError = caught;
+    }
+    expect(limitError).toMatchObject({
+      message: expect.stringContaining(`identical reason ${MAX_IDENTICAL_PRESERVATION_REFUSALS} times in a row`)
+    });
+    withDatabase(f.workspace, db => {
+      const session = db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(f.lease.id) as { status: string };
+      expect(["prepared", "running"]).toContain(session.status);
+      const receipt = db.prepare("SELECT COUNT(*) AS n FROM session_exit_receipts WHERE session_id = ?").get(f.lease.id) as { n: number };
+      expect(receipt.n).toBe(0);
+      const budget = db.prepare("SELECT attempts FROM preservation_refusal_attempts WHERE subject_id = ?").get(f.lease.id) as { attempts: number };
+      expect(budget.attempts).toBe(MAX_IDENTICAL_PRESERVATION_REFUSALS);
+    });
+  });
+  it("resets the identical-refusal budget when the refusal reason changes", () => {
+    const f = fixture(); // default command: "node check.mjs", which fails until marker.txt reads "ready\n"
+    writeFileSync(path.join(f.candidate, "marker.txt"), "not ready\n");
+    expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(
+      "Declared preservation validation failed or was skipped."
+    );
+    // A candidate that neuters its own declared check is refused for a
+    // completely different reason, before any command even runs -- a sign
+    // this is a new problem, not the same one repeating -- so it must not
+    // inherit the prior attempt's count.
+    writeFileSync(path.join(f.candidate, "check.mjs"), "process.exit(0);\n");
+    expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(/cannot rewrite the check/);
+    withDatabase(f.workspace, db => {
+      const row = db.prepare("SELECT attempts, fingerprint FROM preservation_refusal_attempts WHERE subject_id = ?").get(f.lease.id) as
+        | { attempts: number; fingerprint: string }
+        | undefined;
+      expect(row?.attempts).toBe(1);
+    });
   });
 });

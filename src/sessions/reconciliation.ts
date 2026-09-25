@@ -106,7 +106,7 @@ export function getResumableLeaseHandoff(
   const row = db.prepare(`
     SELECT r.* FROM session_exit_receipts r
     JOIN agent_sessions s ON s.id = r.session_id
-    WHERE r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL
+    WHERE r.outcome = 'incomplete_resumable' AND r.lease_handoff = 1 AND r.superseded_by_session_id IS NULL
       AND s.repository_path = ?
     ORDER BY r.created_at DESC LIMIT 1
   `).get(canonicalPath(repositoryPath)) as SessionExitReceipt | undefined;
@@ -395,6 +395,18 @@ export interface ReconcileSessionExitInput {
   sessionId: string;
   requestId: string;
   repoRoot: string;
+  /**
+   * Set when a caller has already decided this Session's candidate must not
+   * be offered to a future `prepareSession` call for automatic resumption --
+   * e.g. an identical-preservation-refusal budget was exhausted, so resuming
+   * would only reproduce the same failure. The outcome this reconciliation
+   * writes is unaffected (still `incomplete_resumable` when the evidence says
+   * so: the candidate's work is genuinely incomplete); only `lease_handoff`
+   * is forced to 0, and `getResumableLeaseHandoff` only ever returns a
+   * receipt with `lease_handoff = 1`. Has no effect on an outcome other than
+   * `incomplete_resumable`, which was never resumable to begin with.
+   */
+  suppressLeaseHandoff?: { reason: string };
 }
 
 export interface ReconcileSessionExitResult {
@@ -448,19 +460,20 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   }
   const nextMove = resolveNextMove(db, nextMoveRepoRoot, session, outcome);
   const now = new Date().toISOString();
+  const suppressHandoff = outcome === "incomplete_resumable" && input.suppressLeaseHandoff;
   const row: SessionExitReceipt = {
     id: createId("sessionExitReceipt"),
     session_id: session.id,
     request_id: input.requestId,
     outcome,
-    reason,
+    reason: suppressHandoff ? `${reason} ${input.suppressLeaseHandoff!.reason}` : reason,
     run_id: evidence.runId,
     artifact_id: evidence.artifactId,
     decision_id: evidence.decisionId,
     candidate_revision: evidence.candidateRevision,
     evidence_json: JSON.stringify(evidence),
     next_action_json: JSON.stringify(nextMove),
-    lease_handoff: outcome === "incomplete_resumable" ? 1 : 0,
+    lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
     superseded_by_session_id: null,
     created_at: now,
     updated_at: now

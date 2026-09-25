@@ -3,6 +3,7 @@ import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
 import { preserveCandidate, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
+import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { readProductionPolicySafely } from "./policy.js";
 
@@ -24,7 +25,7 @@ import { readProductionPolicySafely } from "./policy.js";
 export type PreservationStep =
   | { kind: "preserved"; receiptId: string; commitSha: string; state: PreservationState; replayed: boolean; baseBranch: string }
   | { kind: "not_applicable"; reason: string }
-  | { kind: "refused"; reason: string; detail?: unknown };
+  | { kind: "refused"; reason: string; detail?: unknown; identicalRefusalLimitReached?: boolean };
 
 export type IntegrationStep =
   | { kind: "integrated"; baseBranch: string; commits: number }
@@ -125,9 +126,16 @@ export function preserveSessionCandidate(
   const validate = deps.validate ?? validatePreservationCandidate;
   let validation: ReturnType<typeof validatePreservationCandidate>;
   try {
-    validation = validate(db, workspace, session);
+    // Bound on the Session's own id, so this tick-driven attempt shares its
+    // identical-refusal count with any prior `arcadia preserve` calls the
+    // agent itself made from inside the Session before its tmux died -- one
+    // repository-wide budget per Session, whichever path checks it.
+    validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session));
   } catch (error) {
-    return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail: (error as { details?: unknown }).details };
+    const detail = (error as { details?: unknown }).details;
+    const identicalRefusalLimitReached =
+      !!detail && typeof detail === "object" && (detail as { identicalRefusalLimitReached?: unknown }).identicalRefusalLimitReached === true;
+    return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
   }
 
   const remotePreservation: RemotePreservationAuthorization =
