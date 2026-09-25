@@ -12,6 +12,7 @@ import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/conn
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
+import { renderOperatorAlerts } from "../docs/operatorGate.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
 import { activateNextPlan, type ActivateNextPlanResult } from "../dispatch/planActivationApply.js";
@@ -857,7 +858,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       modelResolution,
       dispatch,
       queueFallback,
-      dispatchable: isDispatchable(dispatch),
+      // Reported from `transition`, not a bare `isDispatchable(dispatch)`: the
+      // transition is the one place a pending operator item blocking this
+      // Action (a Decision or Agent Ask naming it) turns an otherwise-ready
+      // Action into `kind: "decision"` instead of `"launch"`. Reporting the
+      // two independently would print `dispatchable: true` next to a
+      // transition that refuses to launch anything.
+      dispatchable: transition.kind === "launch",
       activation: activationResult,
       transition,
       session,
@@ -1205,6 +1212,11 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
       `Session: ${data.session.id} (${data.session.status})`,
       `Reattach: tmux attach-session -t ${data.session.tmux_session_name}`
     );
+  }
+
+  const alerts = data.transition.operatorGate?.alerts ?? [];
+  if (alerts.length > 0) {
+    lines.push("", ...renderOperatorAlerts(alerts));
   }
 
   if (data.clutter) {

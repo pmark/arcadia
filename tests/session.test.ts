@@ -359,6 +359,41 @@ describe("tmux-backed Sessions", () => {
     expect(resolveProjectTransition({ repoRoot: rebuster, projectSlug: "rebuster" }).kind).toBe("decision");
     expect(resolveProjectTransition({ repoRoot: idea, projectSlug: "field-notes" }).kind).toBe("plan");
   });
+
+  it("stops for an open Decision that blocks the resolved Action instead of authorizing launch", () => {
+    const fixture = preparedFixture();
+    writeFileSync(
+      path.join(fixture.repo, "docs", "decisions", "0002-block-define-contract.md"),
+      blockingDecisionDocument
+    );
+
+    const transition = withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db })
+    );
+
+    expect(transition.kind).toBe("decision");
+    expect(transition.operatorGate?.blocking).toHaveLength(1);
+    expect(transition.operatorGate?.blocking[0].id).toBe("0002");
+    expect(transition.nextAction).toContain("arcadia decision approve 0002");
+    expect(transition.reason).toContain("Should the fixture pause?");
+  });
+
+  it("dispatches normally and lists an unrelated open Decision as an alert, not a blocker", () => {
+    const fixture = preparedFixture();
+    writeFileSync(
+      path.join(fixture.repo, "docs", "decisions", "0002-unrelated.md"),
+      unrelatedDecisionDocument
+    );
+
+    const transition = withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db })
+    );
+
+    expect(transition.kind).toBe("launch");
+    expect(transition.operatorGate?.blocking).toHaveLength(0);
+    expect(transition.operatorGate?.alerts).toHaveLength(1);
+    expect(transition.operatorGate?.alerts[0].id).toBe("0002");
+  });
 });
 
 function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suffix = "launch") {
@@ -602,6 +637,43 @@ status: approved
 question: Authorize this fixture?
 answer: Yes.
 decided: 2026-08-30
+updated: 2026-08-30
+---
+
+# Decision
+`;
+
+const blockingDecisionDocument = `---
+arcadia: v1
+type: decision
+id: "0002"
+slug: block-define-contract
+project: test-project
+action: define-contract
+status: open
+question: Should the fixture pause?
+options:
+  - label: Pause the fixture
+    consequence: The fixture Action waits for this Decision.
+    recommended: true
+updated: 2026-08-30
+---
+
+# Decision
+`;
+
+const unrelatedDecisionDocument = `---
+arcadia: v1
+type: decision
+id: "0002"
+slug: unrelated
+project: test-project
+status: open
+question: Should we rename an unrelated report?
+options:
+  - label: Rename it
+    consequence: The report gets a clearer name.
+    recommended: true
 updated: 2026-08-30
 ---
 
