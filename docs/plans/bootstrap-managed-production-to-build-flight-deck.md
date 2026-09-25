@@ -1959,6 +1959,25 @@ actions:
     depends_on: []
     decisions: []
     references: ["apps/dashboard/app/api/approvals/route.ts", "src/commands/agentAsk.ts", "src/commands/decision.ts", "src/docs/dispatch.ts", "src/commands/go.ts", "src/commands/advance.ts", "apps/discord-bot"]
+  - id: support-per-project-north-star
+    title: Read a NORTH_STAR.md from each Project repository root as that Project's target, alongside the workspace NORTH_STAR as the portfolio-wide target.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Read a NORTH_STAR.md from each Project repository root as that Project's target, alongside the workspace NORTH_STAR as the portfolio-wide target.
+    expected_artifact: Evidence satisfying Agent Ask support-per-project-north-star
+    clarification: clarified
+    confidence: high
+    source: Agent Ask file-per-project-north-star-2026-09-25
+    acceptance_criteria:
+      - The north-star loader reads an optional NORTH_STAR.md at each Project repository root with the same schema as the workspace file, taking project from its own Project when the field is omitted, and never replaces or reinterprets the workspace NORTH_STAR.md, which remains the portfolio-wide target.
+      - arcadia now and the dashboard /now and /path screens can show one Project's target and gates (a --project flag or equivalent selector), while the default view stays the portfolio-wide target.
+      - A Project NORTH_STAR.md that fails to parse is reported as a named validation issue for that Project only, and does not break the portfolio view or other Projects.
+      - Deterministic tests cover a Project file, a missing Project file, a malformed Project file, and an unchanged workspace-only setup; pnpm test and the core, Discord and Dashboard builds pass.
+      - START_HERE.md documents where each NORTH_STAR lives and which view reads it.
+    depends_on: [prove-two-action-unattended-production]
+    decisions: []
+    references: ["src/northStar/document.ts", "src/northStar/compute.ts", "src/northStar/path.ts", "apps/dashboard/app/now/page.tsx", "apps/dashboard/app/path/page.tsx", "NORTH_STAR.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
