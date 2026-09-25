@@ -4,7 +4,7 @@ type: decision
 id: "0070"
 slug: decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied
 project: arcadia
-status: open
+status: approved
 question: Decide whether an Action's completion settles after its PR merges, applied serially on main by the host, instead of inside the candidate branch before push.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-25
+answer: Settle after merge, serially, with host push
+decided: 2026-09-25
 ---
 
 # Decision 0070: Decide whether an Action's completion settles after its PR merges, applied serially on main by the host, instead of inside the candidate branch before push.
