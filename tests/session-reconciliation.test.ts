@@ -724,7 +724,7 @@ function preparedFixture(options: { responsibility?: string } = {}) {
   let approvalId = "";
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove reconciliation.", goal: "Prove reconciliation.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: ["node -e \"process.exit(0)\""] });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;

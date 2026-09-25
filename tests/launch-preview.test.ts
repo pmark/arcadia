@@ -83,6 +83,27 @@ describe("buildLaunchPreview", () => {
     expect(replay.previewFingerprint).toBe(preview.previewFingerprint);
   });
 
+  it("refuses to launch when the Project declares no validation commands, even with a current packet", () => {
+    const fixture = preparedFixture({ noValidationCommands: true });
+
+    const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-no-validation-commands",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+
+    expect(preview.ready).toBe(false);
+    expect(preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))).toBe(true);
+    expect(preview.prerequisites.some((entry) => entry.includes("arcadia project metadata"))).toBe(true);
+    expect(preview.prerequisites.some((entry) => entry.includes("--validation-command"))).toBe(true);
+  });
+
   it("names a missing build packet as a prerequisite instead of throwing", () => {
     const fixture = preparedFixture({ skipInvocation: true });
     const preview = withReadOnlyDatabase(fixture.workspace, (db) =>
@@ -416,7 +437,7 @@ describe("buildLaunchPreview", () => {
   });
 });
 
-function preparedFixture(options?: { skipInvocation?: boolean; provider?: string; model?: string; mappingId?: string; bindingId?: string }) {
+function preparedFixture(options?: { skipInvocation?: boolean; provider?: string; model?: string; mappingId?: string; bindingId?: string; noValidationCommands?: boolean }) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-launch-preview-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -439,7 +460,11 @@ function preparedFixture(options?: { skipInvocation?: boolean; provider?: string
   const bindingId = options?.bindingId ?? "fixture-binding";
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove launch previews.", goal: "Prove launch previews.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, {
+      projectId: project.id,
+      repoPath: repo,
+      validationCommands: options?.noValidationCommands ? [] : ["node -e \"process.exit(0)\""]
+    });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;

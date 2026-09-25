@@ -13,6 +13,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
   createReviewItem,
+  getProjectBySlug,
   getWorkItemByDocRef,
   upsertProject,
   upsertProjectMetadata,
@@ -374,6 +375,16 @@ describe("preserve-on-exit and integrate", () => {
     activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
     const session = launchFirstSession(fixture, tmux);
     finishCandidate(fixture, tmux, session);
+    // The launch itself already refuses a Project with no declared
+    // validation commands (see launch-preview.test.ts and packets.ts), so
+    // this scenario -- a live candidate whose Project ends up with none --
+    // can now only arise from an operator clearing them after a Session
+    // already launched with some declared. Simulate exactly that, rather
+    // than the no-longer-reachable "launched with none from the start".
+    withDatabase(fixture.workspace, (db) => {
+      const project = getProjectBySlug(db, "test-project")!;
+      upsertProjectMetadata(db, { projectId: project.id, validationCommands: [] });
+    });
 
     const result = withDatabase(fixture.workspace, (db) =>
       preserveSessionCandidate({ db, workspace: fixture.workspace, repoRoot: fixture.repo, session, now: fixture.now })
@@ -482,7 +493,7 @@ function preparedFixture() {
 
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Integrate a candidate.", goal: "Integrate a candidate.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: ["node -e \"process.exit(0)\""] });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     preparePacket(db, "define-contract", project.id);

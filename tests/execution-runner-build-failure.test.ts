@@ -63,7 +63,7 @@ describe("executeCodexStep build-purpose failure", () => {
     const projectId = imported.data.project.id;
 
     withDatabase(workspace, (db) => {
-      upsertProjectMetadata(db, { projectId, repoPath: repository });
+      upsertProjectMetadata(db, { projectId, repoPath: repository, validationCommands: ["node -e \"process.exit(0)\""] });
     });
 
     const planned = runWorkPlanCommand({ workspace, workId });
@@ -145,7 +145,7 @@ describe("executeCodexStep build-purpose failure", () => {
     const projectId = imported.data.project.id;
 
     withDatabase(workspace, (db) => {
-      upsertProjectMetadata(db, { projectId, repoPath: repository });
+      upsertProjectMetadata(db, { projectId, repoPath: repository, validationCommands: ["node -e \"process.exit(0)\""] });
     });
 
     // Before this fix, the managed-build branch dropped the requested profile,

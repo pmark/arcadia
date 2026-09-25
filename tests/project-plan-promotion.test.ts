@@ -15,7 +15,8 @@ import {
   getWorkItemByDocRef,
   listCodexInvocationsForWorkItem,
   listExecutionRuns,
-  listReviewItems
+  listReviewItems,
+  upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { isDispatchable, resolveDispatch } from "../src/docs/dispatch.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -255,6 +256,17 @@ function preparedProjectIdea(): {
     idea,
     path: repository,
     agentProfile: "claude_planning"
+  });
+  withDatabase(workspace, (db) => {
+    // upsertProjectMetadata resets repo_path (and aliases) to empty when
+    // omitted rather than preserving the existing value, so repoPath must be
+    // repeated here or `runProjectPrepareCommand`'s own repo-path metadata
+    // is wiped out.
+    upsertProjectMetadata(db, {
+      projectId: prepared.data.project.id,
+      repoPath: repository,
+      validationCommands: ["node -e \"process.exit(0)\""]
+    });
   });
   return {
     workspace,

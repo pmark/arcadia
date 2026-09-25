@@ -1169,7 +1169,7 @@ describe("arcadia ask command", () => {
         aliases: ["Rebuster"],
         repoPath,
         statusSummary: "Test repository for managed Codex execution.",
-        validationCommands: []
+        validationCommands: ["node -e \"process.exit(0)\""]
       });
     });
     const fakeAgent = path.join(workspace, "fake-codex-agent.cjs");

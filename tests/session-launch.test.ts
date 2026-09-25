@@ -983,7 +983,7 @@ function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
   const bindingId = selection.bindingId ?? "fixture-binding";
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove guarded launch.", goal: "Prove guarded launch.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo, validationCommands: ["node -e \"process.exit(0)\""] });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
     const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;

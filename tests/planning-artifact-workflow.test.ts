@@ -453,7 +453,7 @@ function setupCodexRun(
       aliases: ["Planning Validation Project"],
       repoPath: input.workspaceScope ?? workspace,
       statusSummary: "Repository for planning artifact validation workflow tests.",
-      validationCommands: []
+      validationCommands: ["node -e \"process.exit(0)\""]
     });
     const workItem = getWorkItem(db, created.workItem.id);
     if (!workItem) {

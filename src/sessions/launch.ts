@@ -167,7 +167,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
       // caller need not distinguish "caught at preview" from "caught at
       // admission" -- both are the identical policy-provider mismatch.
-      code: preview.prerequisites.some((entry) => entry.startsWith("provider not permitted")) ? "provider_not_permitted" : null
+      code: preview.prerequisites.some((entry) => entry.startsWith("provider not permitted"))
+        ? "provider_not_permitted"
+        // Never self-resolving: nothing but an operator editing the
+        // Project's metadata clears this, so the managed-production tick
+        // must escalate rather than silently retry it forever.
+        : preview.prerequisites.some((entry) => entry.startsWith("no validation commands"))
+          ? "no_validation_commands"
+          : null
     });
   }
 

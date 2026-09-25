@@ -40,7 +40,7 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
-function fixture() {
+function fixture(options?: { validationCommands?: string[] }) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-policy-packet-prep-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -103,7 +103,11 @@ actions:
   initWorkspace(workspace);
   withDatabase(workspace, (db) => {
     const project = upsertProject(db, { name: "Test Project", mission: "Prove policy-permitted packet preparation.", goal: "Prove policy-permitted packet preparation.", status: "active" });
-    upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    upsertProjectMetadata(db, {
+      projectId: project.id,
+      repoPath: repo,
+      validationCommands: options?.validationCommands ?? ["node -e \"process.exit(0)\""]
+    });
     const sync = syncProjectDocs(db, project, { apply: true });
     if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not sync");
   });
@@ -171,5 +175,27 @@ describe("build-packet preparation under an active production policy", () => {
     const prepared = runWorkPlanCommand({ workspace: fx.workspace, workId: workItem.id, agentProfile: "codex_build" });
 
     expect(prepared.data.buildInvocation?.agent_profile).toBe("codex_build");
+  });
+});
+
+describe("build-packet preparation for a Project with no declared validation commands", () => {
+  it("refuses to prepare a build packet, naming the arcadia project metadata remedy", () => {
+    const fx = fixture({ validationCommands: [] });
+    const workItem = withDatabase(fx.workspace, (db) => getWorkItemByDocRef(db, "plan/policy-packet#implement-it")!);
+    const projectId = workItem.project_id as string;
+
+    expect(() => runWorkPlanCommand({ workspace: fx.workspace, workId: workItem.id })).toThrow(
+      new RegExp(`at least one validation command.*arcadia project metadata ${projectId} --validation-command`)
+    );
+  });
+
+  it("prepares the build packet unchanged once the Project declares a validation command", () => {
+    const fx = fixture({ validationCommands: ["node -e \"process.exit(0)\""] });
+    const workItem = withDatabase(fx.workspace, (db) => getWorkItemByDocRef(db, "plan/policy-packet#implement-it")!);
+
+    const prepared = runWorkPlanCommand({ workspace: fx.workspace, workId: workItem.id });
+
+    expect(prepared.data.buildInvocation).toBeTruthy();
+    expect(prepared.data.buildInvocation?.status).toBe("packet_created");
   });
 });

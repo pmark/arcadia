@@ -779,26 +779,49 @@ function attemptProjectLaunch(
         input.log(refusalLine);
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
-      const resolvedLifecycleKind = packetLifecycleKind === "planning_required"
-        ? attemptAutomaticPlanningResolution(
-            db,
-            { workspace: input.workspace, profiles: input.options.profiles },
-            transition,
-            actionKey,
-            input.log
-          ) ?? packetLifecycleKind
-        : packetLifecycleKind;
-      if (resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)) {
-        const remedy = typeof error.details?.packetLifecycleRemedy === "string" ? error.details.packetLifecycleRemedy : null;
+      // A missing validation command is never self-resolving, and automatic
+      // planning resolution would only rediscover that the same way
+      // (`createCodexPacket` now refuses build-packet preparation on the
+      // identical condition) -- so this takes precedence over attempting it,
+      // rather than wasting a tick's `arcadia work plan` attempt on a
+      // refusal that is already fully diagnosed.
+      const resolvedLifecycleKind = rawCode === "no_validation_commands"
+        ? null
+        : packetLifecycleKind === "planning_required"
+          ? attemptAutomaticPlanningResolution(
+              db,
+              { workspace: input.workspace, profiles: input.options.profiles },
+              transition,
+              actionKey,
+              input.log
+            ) ?? packetLifecycleKind
+          : packetLifecycleKind;
+      // A Project with no declared validation commands is never
+      // self-resolving either -- unlike a `planning_required` packet, which
+      // this same tick can prepare, nothing but an operator editing Project
+      // metadata clears it, so it escalates the same way rather than
+      // retrying the same refusal forever (the fate `planning_required` was
+      // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
+      const escalationKind = rawCode === "no_validation_commands"
+        ? rawCode
+        : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
+          ? resolvedLifecycleKind
+          : null;
+      if (escalationKind) {
+        const remedy = rawCode === "no_validation_commands"
+          ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
+          : typeof error.details?.packetLifecycleRemedy === "string"
+            ? error.details.packetLifecycleRemedy
+            : null;
         const newlyDetected = recordOperatorEscalation(db, {
           actionKey,
-          kind: resolvedLifecycleKind,
+          kind: escalationKind,
           message: error.message,
           remedy,
           now: input.now
         });
         if (newlyDetected) {
-          input.log(`Escalated ${actionKey} to the operator (${resolvedLifecycleKind}): ${remedy ?? error.message}`);
+          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${remedy ?? error.message}`);
         }
       } else {
         clearOperatorEscalation(db, actionKey);

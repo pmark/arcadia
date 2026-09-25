@@ -6,6 +6,19 @@ import { getProject, getProjectMetadata, updateProject, upsertProjectMetadata } 
 export const CODEX_REPO_PATH_REQUIRED_MESSAGE =
   "Codex cannot run for this project until a repository path is configured.";
 
+/**
+ * A build Session with no configured validation commands can never be
+ * preserved or auto-completed (`arcadia agent-ask complete` has nothing to
+ * check its evidence against), so build-packet preparation refuses outright
+ * rather than producing a packet no Session can ever finish.
+ */
+export function codexValidationCommandsRequiredMessage(projectId: string): string {
+  return (
+    "Codex cannot prepare a build packet for this project until it declares at least one validation command. " +
+    `Run: arcadia project metadata ${projectId} --validation-command <command>`
+  );
+}
+
 export interface UpdateProjectSetupInput {
   projectId: string;
   mission?: string;
