@@ -42,9 +42,9 @@ export interface OrderCandidate {
   /**
    * Ids of Actions this one waits for. A bare id resolves against this
    * candidate's own `plan`; `plan/<slug>#<action-id>` resolves against that
-   * Plan instead. An id that resolves to no known Action -- in either form --
-   * is never treated as satisfied, so it holds this candidate back rather
-   * than releasing it.
+   * Plan instead. An id that resolves to no known Action -- in either form,
+   * a `dependency_unresolved` wait -- is never treated as satisfied, so it
+   * holds this candidate back rather than releasing it into the ready set.
    */
   dependsOn: string[];
   done: boolean;
