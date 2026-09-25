@@ -10,8 +10,8 @@ import {
   type AskProcessingReceipt
 } from "../ask/rules.js";
 import { captureAskEnvelope, type AskCaptureEnvelope, type CaptureAttachmentInput } from "../ask/captureEnvelope.js";
-import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
-import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "../production/policy.js";
+import { createCodexPacket, selectAgentProfileForWorkItem, selectCompliantPolicyPermittedProfileName } from "../codex/packets.js";
+import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
 import { milestoneNotFound, projectNotFound, validationError, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -944,12 +944,18 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         purpose: resolved.codexPurpose,
         requestedName: options.agentProfile
           ?? withDatabase(workspacePath, (db) =>
-            selectPolicyPermittedProfileName(
-              db,
-              registries.codingAgents.profiles,
-              resolved.codexPurpose as "build" | "planning",
-              resolveWorkItemPolicyIdentity(db, initial.workItem)
-            )
+            selectCompliantPolicyPermittedProfileName({
+              profiles: registries.codingAgents.profiles,
+              adapters: registries.providerAdapters,
+              workItem: initial.workItem,
+              purpose: resolved.codexPurpose as "build" | "planning",
+              candidateNames: selectPolicyPermittedProfileNames(
+                db,
+                registries.codingAgents.profiles,
+                resolved.codexPurpose as "build" | "planning",
+                resolveWorkItemPolicyIdentity(db, initial.workItem)
+              )
+            })
           )
           ?? undefined,
         defaults: registries.codingAgents.defaults

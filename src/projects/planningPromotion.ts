@@ -3,7 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import { createCodexPacket, selectAgentProfileForWorkItem } from "../codex/packets.js";
+import { createCodexPacket, selectAgentProfileForWorkItem, selectCompliantPolicyPermittedProfileName } from "../codex/packets.js";
 import { validationError } from "../cli/errors.js";
 import {
   createExecutionPlan,
@@ -26,7 +26,7 @@ import { persistCodexPacketRecords } from "../execution/planningPreparation.js";
 import { packetSha256, parseDecisionContext } from "../execution/planningAuthorization.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import type { ResolvedIntent } from "../intent/resolver.js";
-import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "../production/policy.js";
+import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName, selectPolicyPermittedProfileNames } from "../production/policy.js";
 import {
   extractPlanningPromotionFields,
   validatePlanningArtifact,
@@ -367,12 +367,30 @@ export function persistProjectIdeaPromotion(
 
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
+  // `prepared.buildProfile` was chosen before `promotedAction` existed, so it
+  // could not be checked against this Action's own execution requirement
+  // (capability, tools, context scope, locality, effort, sandbox). Try it
+  // first -- it is still the validated, recorded intent -- then fall back
+  // through the policy's other permitted providers for this now-real
+  // identity, and finally to the registry default, rather than letting an
+  // incompliant recorded preference throw ExecutionProfileUnsatisfiedError
+  // with no fallback (CodeRabbit, PR #646, fix round 2).
+  const requestedName = selectCompliantPolicyPermittedProfileName({
+    profiles: registries.codingAgents.profiles,
+    adapters: registries.providerAdapters,
+    workItem: promotedAction,
+    purpose: "build",
+    candidateNames: [
+      prepared.buildProfile,
+      ...selectPolicyPermittedProfileNames(db, registries.codingAgents.profiles, "build", resolveWorkItemPolicyIdentity(db, promotedAction))
+    ]
+  }) ?? undefined;
   const selection = selectAgentProfileForWorkItem({
     profiles: registries.codingAgents.profiles,
     adapters: registries.providerAdapters,
     workItem: promotedAction,
     purpose: "build",
-    requestedName: prepared.buildProfile,
+    requestedName,
     defaults: registries.codingAgents.defaults
   });
   const buildPlan = createExecutionPlan(db, {

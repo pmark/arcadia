@@ -481,19 +481,41 @@ export function selectPolicyPermittedProfileName(
   purpose: "build" | "planning",
   identity?: PolicyScopeIdentity | null
 ): string | null {
+  return selectPolicyPermittedProfileNames(db, profiles, purpose, identity)[0] ?? null;
+}
+
+/**
+ * Every profile name `selectPolicyPermittedProfileName` would consider, in
+ * `profiles` order, instead of only the first: the first policy-permitted
+ * profile is not guaranteed to satisfy a specific work item's execution
+ * requirement (capability, tools, context scope, locality, effort, sandbox),
+ * and `selectAgentProfileForWorkItem`'s `requestedName` is a strict filter
+ * with no fallback -- passing an incompliant single name throws
+ * `ExecutionProfileUnsatisfiedError` instead of trying the next permitted
+ * provider (CodeRabbit, PR #646, fix round 2). Callers that can check
+ * compliance (`selectCompliantPolicyPermittedProfileName` in
+ * `src/codex/packets.ts`) should try these in order; callers that cannot
+ * (`production/tick.ts`'s automatic planning resolution, already guarded by
+ * its own catch) may keep using the singular form above.
+ */
+export function selectPolicyPermittedProfileNames(
+  db: Database.Database,
+  profiles: CodingAgentProfile[],
+  purpose: "build" | "planning",
+  identity?: PolicyScopeIdentity | null
+): string[] {
   if (!identity) {
-    return null;
+    return [];
   }
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok" || policyRead.policy.desiredState !== "active" || !policyRead.policy.scope) {
-    return null;
+    return [];
   }
   const scope = policyRead.policy.scope;
   if (!isWithinPolicyScope(scope, identity)) {
-    return null;
+    return [];
   }
-  const candidate = profiles.find((profile) => profile.purpose === purpose && scope.providers.includes(profile.provider));
-  return candidate?.name ?? null;
+  return profiles.filter((profile) => profile.purpose === purpose && scope.providers.includes(profile.provider)).map((profile) => profile.name);
 }
 
 export interface ActivateProductionInput {

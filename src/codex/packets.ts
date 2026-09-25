@@ -13,6 +13,7 @@ import type {
 } from "../codingAgents/providerAdapters.js";
 import {
   detectHardProviderEvidence,
+  ExecutionProfileUnsatisfiedError,
   selectDefaultCodingAgentConfiguration,
   selectProviderWithHardEvidenceSubstitution
 } from "../codingAgents/providerAdapters.js";
@@ -289,6 +290,45 @@ export function selectAgentProfileForWorkItem(input: {
     executionRequirement: parsed.resolved,
     substitution: admitted.substitution
   };
+}
+
+/**
+ * The first of `candidateNames` (in order) that `selectAgentProfileForWorkItem`
+ * actually accepts as `requestedName` for this work item and purpose, probing
+ * with no side effects -- selection alone, never packet creation. A policy's
+ * permitted providers (`selectPolicyPermittedProfileNames`, production/policy.js)
+ * are not guaranteed to satisfy a specific work item's execution requirement,
+ * and `requestedName` is a strict filter with no fallback of its own
+ * (CodeRabbit, PR #646, fix round 2): binding packet preparation to the first
+ * permitted name regardless of compliance would throw
+ * `ExecutionProfileUnsatisfiedError` even when a later permitted name is
+ * compliant. Returns null when every candidate is unsatisfied, so the caller
+ * falls back to its own default exactly as if no policy had steered it.
+ */
+export function selectCompliantPolicyPermittedProfileName(input: {
+  profiles: CodingAgentProfile[];
+  adapters?: ProviderAdapterRegistry;
+  workItem: WorkItemSummary;
+  purpose: CodexInvocationPurpose;
+  candidateNames: string[];
+}): string | null {
+  for (const name of input.candidateNames) {
+    try {
+      selectAgentProfileForWorkItem({
+        profiles: input.profiles,
+        adapters: input.adapters,
+        workItem: input.workItem,
+        purpose: input.purpose,
+        requestedName: name
+      });
+      return name;
+    } catch (error) {
+      if (!(error instanceof ExecutionProfileUnsatisfiedError)) {
+        throw error;
+      }
+    }
+  }
+  return null;
 }
 
 export function selectAgentProfile(

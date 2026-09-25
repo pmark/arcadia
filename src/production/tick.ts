@@ -135,6 +135,27 @@ export function ensureProductionTickTables(db: Database.Database): void {
     );
   `);
   ensureProductionLaunchBlockersTable(db);
+  ensureProductionLaunchRefusalDedupeKeyColumn(db);
+}
+
+/**
+ * A workspace whose `production_launch_refusal_log` table predates
+ * `dedupe_key` (CodeRabbit, PR #646, fix round 2) keeps that table's exact
+ * shape under `CREATE TABLE IF NOT EXISTS`, so the first launch refusal after
+ * upgrade would fail at `SELECT dedupe_key` with no such column. Backfill
+ * existing rows from their own `message` -- an exact-match dedupe identical to
+ * this table's pre-migration behavior -- so recordLaunchRefusalIfNew's first
+ * post-migration write for each Action logs once, as a fresh episode, exactly
+ * as an upgrade should.
+ */
+function ensureProductionLaunchRefusalDedupeKeyColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(production_launch_refusal_log)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("dedupe_key")) {
+    db.prepare("ALTER TABLE production_launch_refusal_log ADD COLUMN dedupe_key TEXT").run();
+    db.prepare("UPDATE production_launch_refusal_log SET dedupe_key = message WHERE dedupe_key IS NULL").run();
+  }
 }
 
 /**
