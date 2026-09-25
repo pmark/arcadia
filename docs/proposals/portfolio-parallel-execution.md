@@ -106,12 +106,19 @@ ready  = every Action in the in-scope Plans of every active Project where
            and no live claim holds it
 order  = canonicalOrder over ready          # Project priority, then class,
                                             # queue position, declaration
+for action in in-scope Actions not in ready:
+  record its blocking reason                # dependency, needs_operator, claimed, ...
 for action in order:
-  if host has no free slot: stop
+  if host has no free slot:
+    record host_full; continue              # read-only: reason, no launch
   if any required resource is missing: record its wait reason; continue
   for provider in compliantProviders(action):      # cheapest sufficient first
     if reserve(action, provider): launch detached; break
+  else: record the missing provider resource
 ```
+
+Every in-scope Action that does not launch ends the tick with exactly one
+reason, including those left over after host capacity runs out.
 
 That is the whole scheduler. The following things disappear:
 
