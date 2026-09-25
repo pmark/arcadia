@@ -1,0 +1,22 @@
+{
+  "agent_ask": "v1",
+  "request_id": "amend-onboard-mission-control-site-tooling-criteria-2026-09-25",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/give-the-mission-control-site-repository-currently-ungoverned-no-agents-md",
+  "desired_result": "Amend the onboard-mission-control-site-tooling Action acceptance criteria to match the operators decision not to create a new Arcadia workspace, and instead register mission-control-site as its own Project in the existing shared martianrover workspace.",
+  "rationale": "The operator interrupted mid-session and said: Do not set up a new arcadia workspace. They then chose, via an in-session picker, New Project in the existing martianrover workspace over folding the work under the existing Arcadia project or deferring registration. The Actions original acceptance criterion literally required arcadia init --profile arcadia to create a new workspace, which now contradicts the operators stated decision. The choice itself was already made in this sessions picker, so this Ask records it rather than opening a new Decision.",
+  "actions": [
+    {
+      "target_ref": "action/onboard-mission-control-site-tooling",
+      "desired_result": "Onboard the mission-control-site repository into Arcadia governance without creating a new Arcadia workspace: register it as its own Project in the existing shared martianrover workspace, wire an AGENTS.md/CLAUDE.md pair the same way this repo does, seed PROJECT.md and a first plan, and confirm a coding-agent session opened in that repo can resolve a dispatch brief.",
+      "acceptance": [
+        "The mission-control-site repository is registered as its own Project in the existing shared martianrover Arcadia workspace, with no new workspace created.",
+        "The repository has an AGENTS.md/CLAUDE.md pair wired the same way as the arcadia repository.",
+        "PROJECT.md and a first plan are committed in the mission-control-site repository.",
+        "A coding-agent session opened in the mission-control-site repository can run arcadia next and receive a dispatch brief."
+      ],
+      "dependencies": []
+    }
+  ]
+}
