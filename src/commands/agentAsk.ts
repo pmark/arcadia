@@ -42,7 +42,8 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
     : null;
   const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : recovered ? recovered.content : options.request ?? "";
   const result = withDatabase(workspacePath, (db) => previewAgentAskRequest(db, {
-    request, requestId: options.requestId, project: options.project, sourcePath: options.file ? path.resolve(options.file) : null
+    request, requestId: options.requestId, project: options.project, sourcePath: options.file ? path.resolve(options.file) : null,
+    repoRoot: options.dir ? path.resolve(options.dir) : null
   }));
   // Discovery runs only after the request this call was actually asked
   // about has already been recorded above — so a file that is itself under

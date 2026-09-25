@@ -1,3 +1,4 @@
+import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import {
@@ -5,14 +6,59 @@ import {
   buildAgentAskEffects,
   normalizeAgentAsk,
   requiresManagedDocumentTransition,
+  resolveNaturalAgentAskTarget,
   stableProposalId,
-  type AgentAskProposal
+  type AgentAskProposal,
+  type AgentAskTargetContext
 } from "./agentAsk.js";
 import { captureAskEnvelope } from "./captureEnvelope.js";
 import { resolveProjectReference } from "./rules.js";
+import { parseDoc } from "../docs/parse.js";
+import type { DecisionDoc, PlanDoc } from "../docs/types.js";
+import { tryGit } from "../git/worktrees.js";
 
-export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null; }
+export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null;
+  /**
+   * The repository this Ask is being previewed against, as currently checked
+   * out. Only used to resolve a natural (`intent: auto`) Ask's free text
+   * against Plan/Action/Decision identifiers already committed there — see
+   * `resolveNaturalAgentAskTarget`. Omitted callers (structured strict-format
+   * Asks, or contexts with no repository) simply skip resolution.
+   */
+  repoRoot?: string | null;
+}
 export interface PreviewAgentAskRequestResult { proposal: AgentAskProposal; replayed: boolean; }
+
+/**
+ * Build the Plan/Action/Decision identifiers a natural Ask can resolve
+ * against, for one Project's checked-in documents — read from git's `HEAD`
+ * tree, never the working directory. Reading the filesystem directly would
+ * let an untracked new Plan file, or an uncommitted edit that adds an
+ * Action to an already-tracked Plan, become a resolved target that nothing
+ * has actually committed yet.
+ */
+function buildTargetContext(repoRoot: string, projectSlug: string): AgentAskTargetContext {
+  const plans: PlanDoc[] = [];
+  const decisions: DecisionDoc[] = [];
+  for (const directory of ["docs/plans", "docs/decisions"]) {
+    const listing = tryGit(repoRoot, ["ls-tree", "-r", "--name-only", "HEAD", "--", directory]);
+    if (!listing) continue;
+    for (const relativePath of listing.split("\n").map((line) => line.trim()).filter(Boolean)) {
+      if (!relativePath.endsWith(".md")) continue;
+      const content = tryGit(repoRoot, ["show", `HEAD:${relativePath}`]);
+      if (content === null) continue;
+      const { doc } = parseDoc(relativePath, path.join(repoRoot, relativePath), content);
+      if (!doc) continue;
+      if (doc.type === "plan" && doc.project === projectSlug) plans.push(doc);
+      else if (doc.type === "decision" && doc.project === projectSlug) decisions.push(doc);
+    }
+  }
+  return {
+    plans: plans.map((plan) => ({ slug: plan.slug })),
+    actions: plans.flatMap((plan) => plan.actions.map((action) => ({ id: action.id, planSlug: plan.slug }))),
+    decisions: decisions.map((decision) => ({ id: decision.id, slug: decision.slug }))
+  };
+}
 
 /**
  * Validate one Agent Ask request against `db` and record its preview
@@ -40,10 +86,20 @@ export function previewAgentAskRequest(db: Database.Database, input: PreviewAgen
   }
   return db.transaction(() => {
     const capture = captureAskEnvelope(db, { requestId: normalized.requestId, originalText: input.request, ingressSource: "agent.ask" });
-    const built = buildAgentAskEffects(normalized);
+    // Resolution only ever matters for a natural (`auto`) Ask: a strict-format
+    // request already names its own target_ref, so there is nothing to infer.
+    const resolution = normalized.intent === "auto" && input.repoRoot
+      ? resolveNaturalAgentAskTarget(normalized.desiredResult, buildTargetContext(input.repoRoot, normalized.project))
+      : null;
+    const built = buildAgentAskEffects(normalized, resolution);
+    const refused = resolution
+      ? resolution.considered
+          .filter((candidate) => candidate.targetRef !== resolution.resolved?.targetRef)
+          .map((candidate) => candidate.label)
+      : [];
     const proposal: AgentAskProposal = {
       id: stableProposalId(fingerprint), captureId: capture.id, normalized, effects: built.effects,
-      requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused: [],
+      requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused,
       managedDocumentTransition: { required: requiresManagedDocumentTransition(normalized.intent), status: "withheld_until_acceptance", authority: "checked_in_documents" },
       queueConsequence: "none_until_accepted", writes: { captureReceipt: true, proposalReceipt: true, projectChanges: false },
       nonActions: ["No Project record is created or changed by preview.", "Agent input grants no approval or execution authority."],

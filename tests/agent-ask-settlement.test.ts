@@ -382,6 +382,112 @@ describe("Agent Ask settlement", () => {
     }
   });
 
+  it("settles a resolved natural Ask into a focused Decision naming the resolved Plan or Action, not the generic interpretation question", () => {
+    const { workspace, repo } = fixture();
+    // Action ids only participate in natural-text resolution when they are
+    // multi-segment hyphenated slugs (CodeRabbit finding on PR #637): a
+    // single bare word like the fixture's own `existing` id is indistinguishable
+    // from ordinary prose. Add a realistically-shaped second Action to resolve against.
+    writeFileSync(path.join(repo, "docs/plans/demo-plan.md"),
+      readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8").replace(
+        "    references: []\nquestions: []",
+        [
+          "    references: []",
+          "  - id: second-existing-task",
+          "    title: A second task",
+          "    status: open",
+          "    responsibility: codex",
+          "    effort: session",
+          "    next_action: Move the second task forward.",
+          "    expected_artifact: Second proof",
+          "    clarification: clarified",
+          "    confidence: high",
+          "    acceptance_criteria:",
+          "      - Second proof exists.",
+          "    depends_on: []",
+          "    decisions: []",
+          "    references: []",
+          "questions: []"
+        ].join("\n")
+      ));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add second Action"], { cwd: repo });
+
+    const planProposal = runAgentAskPreviewCommand({
+      workspace, dir: repo, project: "demo", requestId: "resolve-plan-settle",
+      request: "Please reactivate the demo-plan effort."
+    });
+    expect(planProposal.data.proposal.effects[0]?.targetKind).toBe("plan");
+    const planPreview = runAgentAskSettleCommand({
+      workspace, proposal: planProposal.data.proposal.id, requestId: "settle-resolve-plan", disposition: "accepted", revision: 1
+    });
+    const planApplied = runAgentAskSettleCommand({
+      workspace, proposal: planProposal.data.proposal.id, requestId: "settle-resolve-plan", disposition: "accepted",
+      revision: 1, preview: planPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(planApplied.data.receipt.effects.join(" ")).toContain("focused Decision naming Plan demo-plan");
+    const planDecisionDoc = readdirSync(path.join(repo, "docs/decisions"))
+      .filter((name) => name.startsWith("0001-"))
+      .map((name) => readFileSync(path.join(repo, "docs/decisions", name), "utf8"))[0];
+    expect(planDecisionDoc).toContain("plan: demo-plan");
+    expect(planDecisionDoc).toContain("Confirm the proposed effect against Plan demo-plan");
+
+    const actionProposal = runAgentAskPreviewCommand({
+      workspace, dir: repo, project: "demo", requestId: "resolve-action-settle",
+      request: "The second-existing-task Action needs another pass."
+    });
+    expect(actionProposal.data.proposal.effects[0]?.targetKind).toBe("action");
+    const actionPreview = runAgentAskSettleCommand({
+      workspace, proposal: actionProposal.data.proposal.id, requestId: "settle-resolve-action", disposition: "accepted", revision: 1
+    });
+    const actionApplied = runAgentAskSettleCommand({
+      workspace, proposal: actionProposal.data.proposal.id, requestId: "settle-resolve-action", disposition: "accepted",
+      revision: 1, preview: actionPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(actionApplied.data.receipt.effects.join(" ")).toContain("focused Decision naming Action second-existing-task in Plan demo-plan");
+    const actionDecisionDoc = readdirSync(path.join(repo, "docs/decisions"))
+      .filter((name) => name.startsWith("0002-"))
+      .map((name) => readFileSync(path.join(repo, "docs/decisions", name), "utf8"))[0];
+    expect(actionDecisionDoc).toContain("plan: demo-plan");
+    expect(actionDecisionDoc).toContain("action: second-existing-task");
+    expect(actionDecisionDoc).toContain("Confirm the proposed effect against Action second-existing-task in Plan demo-plan");
+  });
+
+  it("settles a resolved natural Ask naming an existing Decision, keeping that Decision's own Plan rather than the active Plan", () => {
+    const { workspace, repo } = fixture();
+    // demo-plan is the active Plan; this inactive Plan and its Decision are
+    // deliberately a different one, so a correct settlement must not fall
+    // back to the active Plan for the new confirmation Decision's `plan:` link.
+    writeFileSync(path.join(repo, "docs/plans/side-plan.md"),
+      planDoc().replaceAll("demo-plan", "side-plan").replace("status: active", "status: draft"));
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/decisions/0001-side-decision.md"), [
+      "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: side-decision", "project: demo",
+      "plan: side-plan", "status: open", "question: An existing open decision on the side Plan",
+      "updated: 2026-09-01", "---", "", "# Decision 0001: An existing open decision on the side Plan", ""
+    ].join("\n"), "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Add side Plan and Decision"], { cwd: repo });
+
+    const decisionProposal = runAgentAskPreviewCommand({
+      workspace, dir: repo, project: "demo", requestId: "resolve-decision-settle",
+      request: "Follow up on Decision 0001 once the operator has time."
+    });
+    expect(decisionProposal.data.proposal.effects[0]?.targetKind).toBe("decision");
+    const decisionPreview = runAgentAskSettleCommand({
+      workspace, proposal: decisionProposal.data.proposal.id, requestId: "settle-resolve-decision", disposition: "accepted", revision: 1
+    });
+    const decisionApplied = runAgentAskSettleCommand({
+      workspace, proposal: decisionProposal.data.proposal.id, requestId: "settle-resolve-decision", disposition: "accepted",
+      revision: 1, preview: decisionPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(decisionApplied.data.receipt.effects.join(" ")).toContain("focused Decision naming Decision 0001 (side-decision) as the resolved target");
+    const newDecisionDoc = readdirSync(path.join(repo, "docs/decisions"))
+      .filter((name) => name.startsWith("0002-"))
+      .map((name) => readFileSync(path.join(repo, "docs/decisions", name), "utf8"))[0];
+    expect(newDecisionDoc).toContain("plan: side-plan");
+  });
+
   it("refuses a project_update whose target_ref has no apply path, instead of opening a Decision", () => {
     // Issue #351 / R183. This used to create an open Decision reading "How
     // should this Project update be applied: ...". Nothing could act on it:
