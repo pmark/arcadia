@@ -11,7 +11,7 @@ from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck
 are right and this file is stale. "Refreshing this document" at the bottom says
 how to re-derive it.
 
-Last derived: **2026-09-25** (updated same day, three times more — see the
+Last derived: **2026-09-25** (updated same day, four times more — see the
 notes below). This derivation also restored the dispatch guarantee
 that `arcadia go` works only on the critical path (see "What this derivation
 changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
@@ -59,6 +59,23 @@ rehearsal) and then the proof itself. `production status` is unchanged:
 2026-09-24T16:15Z — nothing has launched since then. `gh issue list` could not
 be re-checked this pass (sandbox denied `api.github.com`); the bug list below
 is carried over from the prior derivation, not reconfirmed.
+
+**Update at 2026-09-25T23:34Z: Lane B's admission Action now carries a hard
+runtime gate, not just a documentation note.** The operator raised a
+sequencing concern — building `admit-ready-set-across-repositories` ahead of
+the sequential proof is fine, and even helps (it removes the #505/#507 race
+class the proof would otherwise have to survive), but actually letting it
+admit real concurrent work in production before that proof has run live
+inverts the validation order Decision 0066 already set for the same-repository
+case. `gate-concurrent-admission-behind-sequential-proof-2026-09-25`
+(settled `442df33a`) added a sixth acceptance criterion to
+`admit-ready-set-across-repositories`: activating a production policy scope
+with `maxConcurrentSessions` above 1 must be refused, citing
+`prove-two-action-unattended-production` by id, until that Action is
+`status: done`. This changes nothing about what dispatches now — B1 and B2
+still queue ahead of the proof and carry no dependency on it — it only stops
+the mechanism they build from being switched on for real concurrent work
+before the sequential case is proven. See "Concurrency" below.
 
 ---
 
@@ -182,7 +199,7 @@ does not sit behind gate 5.
 | 4 — It keeps going without help | 🟡 **#617 and #559 both fixed and closed; provisional until the proof run passes through this gate.** |
 | 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred. Its revival trigger is now met (`fix-decision-approve-missing-commit` landed) — all it needs is the operator reversing Decision 0057. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
 | 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
-| **B — Cross-repository concurrency** (Decision 0071) | ⬜ **Not gated by 5.** `resolve-cross-plan-dependency-ids` is ready now; `admit-ready-set-across-repositories` depends only on it. Closes when settlement stops writing `current_action` and the tick admits from the ready set across repositories. |
+| **B — Cross-repository concurrency** (Decision 0071) | ⬜ **Building is not gated by 5; admitting real concurrent work is.** `resolve-cross-plan-dependency-ids` is ready now; `admit-ready-set-across-repositories` depends only on it and may be built and merged before the proof. But its own acceptance criteria (amended 2026-09-25) now require it to refuse activating `maxConcurrentSessions > 1` until `prove-two-action-unattended-production` is `status: done` — so the gate closes for *code* before 5, but stays shut for *live concurrent admission* until 5 does. |
 | **B′ — Same-repository pipelining** (Decision 0071 + 0070) | ⬜ Gated by gate B *and* gate 5, through the two existing Decision-0070 held Actions (`settle-squash-merged-completion-drafts`, `sweep-merged-completions-before-dispatch`), which depend on `prove-two-action-unattended-production`. |
 
 A gate is closed when the live system does what the gate says, not when its
@@ -256,14 +273,23 @@ and incomplete.
 This section used to say concurrency waits on the proof, full stop. Decision
 0071 splits that into two claims:
 
-- **Cross-repository concurrency (Decision 0071, supersedes 0023).** Does
-  *not* wait on the proof. `resolve-cross-plan-dependency-ids` and
-  `admit-ready-set-across-repositories` (Lane B1/B2 above) turn this on:
-  the production tick already runs independent repositories side by side
-  when `maxConcurrentSessions` is raised
+- **Cross-repository concurrency (Decision 0071, supersedes 0023).** *Building*
+  it does not wait on the proof. `resolve-cross-plan-dependency-ids` and
+  `admit-ready-set-across-repositories` (Lane B1/B2 above) build the
+  mechanism: the production tick already runs independent repositories side
+  by side when `maxConcurrentSessions` is raised
   (`docs/proposals/portfolio-parallel-execution.md` §2); what was missing was
   unknown-dependency safety and retiring the settlement-advanced pointer, and
-  that is exactly what B1/B2 build.
+  that is exactly what B1/B2 build. **Turning it on does wait on the proof.**
+  The operator's sequencing concern — prove the mechanism reliable under the
+  simple, one-session case before multiplying the failure surface, the same
+  principle Decision 0066 already applied to the same-repository case — is
+  now a hard gate in B2's own acceptance criteria (added by
+  `gate-concurrent-admission-behind-sequential-proof-2026-09-25`,
+  `442df33a`): activating a policy scope with `maxConcurrentSessions > 1` must
+  be refused until `prove-two-action-unattended-production` is `status: done`.
+  So B1/B2 land, review, and merge now, but no live Session ever actually runs
+  concurrently with another until the sequential proof has passed once.
 - **Same-repository concurrency (Decision 0066).** Still approved as written:
   same-repository concurrent Sessions wait until
   `prove-two-action-unattended-production` and the #505/#507/#549-class fixes
