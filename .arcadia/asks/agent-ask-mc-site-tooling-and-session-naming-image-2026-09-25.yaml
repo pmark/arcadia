@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "mc-site-tooling-and-session-naming-image-2026-09-25",
+  "project": "arcadia",
+  "intent": "plan",
+  "requested_authority": "propose",
+  "desired_result": "Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior.",
+  "rationale": "The operator asked to 'set up tooling for making changes' to mission-control-site before anything else, and separately wants one concrete image (a real screenshot of the live session-naming sidebar feature: colored state dots, hammer kind icons, PLAN-prefixed titles) placed on a page that discusses features without being named 'Features'. src/pages/answers/coding-agent-session-management.md already covers worktrees, session-naming, and handoff rules in exactly that voice, so it is the natural placement rather than a new page. The site's own PRD (docs/prd/martianrover-arcadia-mission-control-site.md) sets hard non-goals against a CMS or asset service (SS21 #5, #12) and against demoing anything that doesn't really work (SS21 #10) -- this image is a screenshot of real, currently-working behavior, so it does not trip that guard, and committing it directly into the site repo (no external asset-service call) keeps the no-CMS constraint intact.",
+  "actions": [
+    {
+      "id": "onboard-mission-control-site-tooling",
+      "desired_result": "Onboard the mission-control-site repository into Arcadia governance: run `arcadia init --profile arcadia` there, wire an AGENTS.md/CLAUDE.md pair the same way this repo does, and confirm a coding-agent session opened in that repo can resolve a dispatch brief.",
+      "acceptance": [
+        "`arcadia init --profile arcadia` succeeds in the mission-control-site repository and creates its own Arcadia workspace and PROJECT.md.",
+        "The repository has an AGENTS.md/CLAUDE.md pair wired the same way as the arcadia repository.",
+        "A coding-agent session opened in the mission-control-site repository can run `arcadia next` and receive a dispatch brief."
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "place-session-naming-screenshot",
+      "desired_result": "Add the operator-supplied session-naming sidebar screenshot to mission-control-site as a committed, tagged asset embedded on the coding-agent-session-management answer page (or a better-fitting existing/new answer page if review finds one), with descriptive alt text and a caption naming the session-naming feature.",
+      "acceptance": [
+        "The image file is committed into the mission-control-site repository under a clearly named asset path (no third-party asset-service dependency).",
+        "It is referenced from an answers page with descriptive alt text and a caption naming the session-naming feature, tagged/categorized in that page's frontmatter or nearby content so its subject is discoverable.",
+        "It renders correctly on the deployed Cloudflare staging URL."
+      ],
+      "dependencies": []
+    }
+  ]
+}
