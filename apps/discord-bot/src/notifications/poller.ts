@@ -363,6 +363,8 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
     `Agent Ask settled: ${notification.disposition}`,
     `Project: ${notification.projectSlug}`,
     `Intent: ${notification.intent}`,
+    ...(notification.requestId ? [`Ask: ${notification.requestId}`] : []),
+    ...(notification.desiredResult ? [`Asked: ${notification.desiredResult}`] : []),
     ...notification.effects.map((effect) => `• ${effect}`),
     notification.queueActionKeys.length > 0
       ? `Queue: ${notification.queueActionKeys.join(", ")} starting at position ${(notification.queuePosition ?? 0) + 1}`

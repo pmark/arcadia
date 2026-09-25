@@ -769,7 +769,9 @@ channel.
      settle an Agent Ask, `intent: log`, with `request_id`
      `ci-blocked-<project>-pr<number>-<yyyy-mm-dd>` and a `desired_result`
      naming the failing check, its cause, and the operator step. Arcadia posts
-     every settled Agent Ask to the configured channel (Discord by default).
+     every settled Agent Ask to the configured channel (Discord by default),
+     including its `request_id` and `desired_result`, so that text is the
+     notification: write it for the operator reading it on a phone.
      Where no workspace can settle it, commit the drafted Ask and say plainly
      in the handoff that the notification has **not** been sent;
    - end the session at that blocker, per "Before you stop".

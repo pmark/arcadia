@@ -156,6 +156,12 @@ export interface AgentAskSettlementTestHooks {
 
 export interface PendingAgentAskNotification {
   settlementId: string;
+  /** The Ask's own id, so the notification names what was asked. */
+  requestId: string | null;
+  /** The Ask's `desired_result`, so a notification carries its substance — a
+   * `log` Ask reporting a CI blocker is otherwise only "Appended one Project
+   * Log entry". Null only when the proposal row is unreadable. */
+  desiredResult: string | null;
   projectSlug: string;
   disposition: AgentAskDisposition;
   intent: string;
@@ -1522,15 +1528,20 @@ function commitSettlementOutput(
 }
 
 export function listPendingAgentAskNotifications(db: Database.Database): PendingAgentAskNotification[] {
-  return db.prepare(`SELECT id, project_slug, disposition, effects_json, queue_action_key,
-      queue_position, next_action_key, receipt_json, created_at
-    FROM agent_ask_settlements WHERE notification_status = 'pending' ORDER BY created_at, id`)
+  return db.prepare(`SELECT s.id, s.project_slug, s.disposition, s.effects_json, s.queue_action_key,
+      s.queue_position, s.next_action_key, s.receipt_json, s.created_at, p.proposal_json
+    FROM agent_ask_settlements s
+    LEFT JOIN agent_ask_proposals p ON p.id = s.proposal_id
+    WHERE s.notification_status = 'pending' ORDER BY s.created_at, s.id`)
     .all()
     .map((row) => {
       const value = row as Record<string, unknown>;
       const receipt = JSON.parse(String(value.receipt_json)) as AgentAskSettlementReceipt;
+      const asked = notificationAskSummary(value.proposal_json);
       return {
         settlementId: String(value.id),
+        requestId: asked.requestId ?? receipt.proposalRequestId ?? null,
+        desiredResult: asked.desiredResult,
         projectSlug: String(value.project_slug),
         disposition: value.disposition as AgentAskDisposition,
         intent: receipt.intent,
@@ -1543,6 +1554,19 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
         recovery: receipt.recovery ?? null
       };
     });
+}
+
+function notificationAskSummary(proposalJson: unknown): { requestId: string | null; desiredResult: string | null } {
+  if (typeof proposalJson !== "string") return { requestId: null, desiredResult: null };
+  try {
+    const normalized = (JSON.parse(proposalJson) as { normalized?: { requestId?: unknown; desiredResult?: unknown } }).normalized;
+    return {
+      requestId: typeof normalized?.requestId === "string" ? normalized.requestId : null,
+      desiredResult: typeof normalized?.desiredResult === "string" ? normalized.desiredResult : null
+    };
+  } catch {
+    return { requestId: null, desiredResult: null };
+  }
 }
 
 export interface UnsettledAgentAskProposal { id: string; requestId: string; proposal: AgentAskProposal; createdAt: string; }

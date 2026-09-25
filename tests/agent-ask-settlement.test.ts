@@ -231,6 +231,11 @@ describe("Agent Ask settlement", () => {
     expect(pending.data.notifications).toHaveLength(1);
     expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Agent Ask settled: accepted");
     expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Queue: demo/add-settlement-proof starting at position 1");
+    // The notification carries what was asked, not only its effects, so a
+    // log Ask reporting a CI blocker reaches the operator with its substance.
+    expect(pending.data.notifications[0]).toMatchObject({ requestId: "ask-action-1", desiredResult: "Add settlement proof" });
+    expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Ask: ask-action-1");
+    expect(agentAskSettlementMessage(pending.data.notifications[0])).toContain("Asked: Add settlement proof");
     runAgentAskNotificationSentCommand({ workspace, settlement: applied.data.receipt.id, messageId: "discord-ask-1" });
     expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toEqual([]);
   });

@@ -63,6 +63,8 @@ export interface AgentAskSettlementRecovery {
 
 export interface AgentAskNotificationItem {
   settlementId: string;
+  requestId?: string | null;
+  desiredResult?: string | null;
   projectSlug: string;
   disposition: "accepted" | "rejected";
   intent: string;
