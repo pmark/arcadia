@@ -21,7 +21,7 @@ import { runTidyCommand } from "./tidy.js";
  * `pushed` check cannot see, since it only asks whether a *local* upstream is
  * configured — fails loudly instead of silently overwriting anything.
  */
-export type PushUnpushedOutcome = "pushed" | "would-push" | "already-pushed" | "failed";
+export type PushUnpushedOutcome = "pushed" | "pushed-untracked" | "would-push" | "failed";
 
 export interface PushUnpushedItem {
   kind: "worktree" | "branch";
@@ -122,7 +122,20 @@ function pushOne(input: {
     stdio: ["ignore", "pipe", "pipe"]
   });
 
-  if (result.status === 0) {
+  if (result.status !== 0) {
+    const stderr = (result.stderr || "").trim().split("\n").filter(Boolean).pop() ?? "git push failed with no output";
+    return { kind, branch, path, ahead, outcome: "failed", detail: stderr };
+  }
+
+  // `git push -u` can exit 0 while the ref lands on the remote but the local
+  // upstream-tracking config write fails — observed in exactly this
+  // repository, whose agent worktrees intentionally sandbox-protect
+  // `.git/config` (see candidatePreservation.ts). Trusting the exit code alone
+  // reports success for the one property tidy actually checks (`branch@{upstream}`)
+  // that in fact never landed, so the branch would still show as "no remote
+  // copy" — the exact false positive this command exists to close. Verifying
+  // the real state, not the exit code, is what makes the report trustworthy.
+  if (upstreamMatches(repoRoot, branch, remote)) {
     return {
       kind, branch, path, ahead,
       outcome: "pushed",
@@ -130,12 +143,42 @@ function pushOne(input: {
     };
   }
 
-  const stderr = (result.stderr || "").trim().split("\n").filter(Boolean).pop() ?? "git push failed with no output";
+  // One explicit retry: the push's own attempt can lose a lock race with
+  // another process touching the same shared config, and a plain config write
+  // has a real chance of succeeding even when the combined push+config-write
+  // did not.
+  spawnSync("git", ["branch", "--set-upstream-to", `${remote}/${branch}`, branch], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "ignore", "ignore"]
+  });
+
+  if (upstreamMatches(repoRoot, branch, remote)) {
+    return {
+      kind, branch, path, ahead,
+      outcome: "pushed",
+      detail: `Pushed ${branch} to ${remote}/${branch} and set it as upstream.`
+    };
+  }
+
   return {
     kind, branch, path, ahead,
-    outcome: "failed",
-    detail: stderr
+    outcome: "pushed-untracked",
+    detail:
+      `Pushed ${branch} to ${remote}/${branch} — the commits are safe on the remote — ` +
+      `but could not record local upstream tracking (commonly a sandbox-protected .git/config). ` +
+      `\`arcadia tidy\` will still list this until tracking is set; run ` +
+      `\`git branch --set-upstream-to=${remote}/${branch} ${branch}\` outside the sandbox to clear it.`
   };
+}
+
+function upstreamMatches(repoRoot: string, branch: string, remote: string): boolean {
+  const result = spawnSync("git", ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  return result.status === 0 && result.stdout.trim() === `${remote}/${branch}`;
 }
 
 export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedCommandData>): string[] {
@@ -149,21 +192,24 @@ export function renderPushUnpushedSuccess(response: CommandSuccess<PushUnpushedC
 
   lines.push(applied ? `Pushed (${items.length}):` : `Would push (${items.length}) — re-run with --apply to actually push:`);
   for (const item of items) {
-    const mark = !applied ? "-" : item.outcome === "pushed" ? "✓" : "✗ failed";
+    const mark = !applied ? "-" : item.outcome === "pushed" ? "✓" : item.outcome === "pushed-untracked" ? "≈ untracked" : "✗ failed";
     const location = item.kind === "worktree" ? `${item.path} [${item.branch}]` : `branch ${item.branch}`;
     lines.push(`  ${mark} ${location}`);
     lines.push(`      ${item.detail}`);
   }
 
   const failed = items.filter((item) => item.outcome === "failed");
+  const untracked = items.filter((item) => item.outcome === "pushed-untracked");
   lines.push("");
-  lines.push(
-    applied
-      ? failed.length === 0
-        ? "Every branch above now has a remote copy. Re-run `arcadia tidy` to confirm nothing is flagged as at-risk."
-        : `${failed.length} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`
-      : "Nothing was changed. Re-run with --apply to push the branches listed above."
-  );
+  if (!applied) {
+    lines.push("Nothing was changed. Re-run with --apply to push the branches listed above.");
+  } else if (failed.length > 0) {
+    lines.push(`${failed.length} of ${items.length} failed to push — nothing local was changed for those; see the reason above and resolve it before retrying.`);
+  } else if (untracked.length > 0) {
+    lines.push(`Every branch's commits are safe on the remote, but ${untracked.length} of ${items.length} could not record local upstream tracking — see the fix-up command above for each.`);
+  } else {
+    lines.push("Every branch above now has a remote copy. Re-run `arcadia tidy` to confirm nothing is flagged as at-risk.");
+  }
 
   return lines;
 }
