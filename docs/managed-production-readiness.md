@@ -3,97 +3,105 @@
 **The one question this document answers:** how far is Arcadia from running
 software production unattended, steered from a GitHub Project board?
 
-It is a *derived* document. It asserts nothing on its own. Every line is a
-reading of `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`,
+It is a *derived* document and asserts nothing on its own. Every line reads
+from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`,
 `docs/decisions/`, `MISSION_LOG.md`, the live worker log, and the live
-`arcadia schedule status`, `arcadia production status` and
-`arcadia production capacity` output. When those sources disagree with this
-file, they are right and this file is stale. "Refreshing this document" at the
-bottom says how to re-derive it in about a minute.
+`arcadia advance queue`, `arcadia production status` and
+`arcadia production capacity` output. When those disagree with this file, they
+are right and this file is stale. "Refreshing this document" at the bottom says
+how to re-derive it.
 
-Last derived: **2026-09-24**. This derivation also triaged the queue, so that
-automated production arrives as soon as possible (see "What this derivation
-changed").
+Last derived: **2026-09-25**. This derivation also restored the dispatch
+guarantee that `arcadia go` works only on the critical path (see "What this
+derivation changed"). Arcadia's own target is now `NORTH_STAR.md` at the
+repository root, and its gates are the critical path below.
 
 ---
 
 ## Executive summary
 
-**The critical path has changed from "wait for the operator" to "fix what the
-live runs broke."** The 2026-09-23 derivation said every remaining
-critical-path step belonged to the operator and that no code session could move
-the path forward. That was true of the Action list. It stopped being true once
-the worker began launching real Sessions under the standing policy:
+**Distance: 3 code Actions, then 1 operator step, then 1 proof run.** It was
+7 code Actions a day ago. Four blockers landed:
 
-- **2026-09-23:** `session_e7748a398de14978b4` ran the zero-prompt-rehearsal
-  fixture's `confirm-rehearsal-marker` from a worker admission and was
-  reconciled `accepted_completion`. It took five operator touches.
-- **2026-09-24:** `session_5c1a2543cae24319a6` ran the fixture's
-  `write-rehearsal-marker` and was reconciled `incomplete_resumable` after its
-  preservation was refused. The operator turned production Off at 16:15Z.
+| Done since 2026-09-24 | Defect | Evidence |
+| --- | --- | --- |
+| `release-committed-admissions-on-session-end` | #610 | PR #619. `production status` changed from "2 committed Action(s) finishing" to "Idle". |
+| `withhold-worker-lifecycle-from-sessions` | #611 (part) | PR #624 |
+| `stop-killing-busy-workers` | #617 | No `Recovered hung worker:` line since the fix. #617 closed. |
+| `preserve-candidates-across-base-advance` | #539 | PR #622. Completion settled this derivation, after re-running its preservation tests on `main`: 50 passed, 7 skipped. |
 
-Those two runs produced the real blocker list. **Seven defects now stand
-between the worker and an unattended two-Action run. Each is a code fix, each
-is an agent-dispatchable Action. All seven lead the queue in this relative order.
-`gate-dispatch-on-blocking-operator-items` sits second in the global queue, so
-`arcadia go` reaches it before blocker 2 (see "What this derivation changed"):**
+**What remains, in dispatch order:**
 
-| # | Action | Defect | What the live run showed |
+| # | Action | Defect | Why it blocks |
 | --- | --- | --- | --- |
-| 1 | `release-committed-admissions-on-session-end` ← **pointer** | #610 | A finished Session's `committed` admission is never released. Under `maxConcurrentSessions: 1`, one completed Session blocks every later launch forever. `production status` shows it today: "2 committed Action(s) finishing", with nothing running. |
-| 2 | `preserve-candidates-across-base-advance` | #539 | Preservation refuses whenever the base branch advances during the Session. That is routine, because the base moved four times during 09-23's Session. It also compares against the pointer's Action, not the Session's own. |
-| 3 | `name-failing-preservation-check-and-bound-retries` | #611 | The refusal reads `details: {}`. The Session looped on it with no limit, then read host source outside its worktree and stalled on a sandbox prompt. |
-| 4 | `withhold-worker-lifecycle-from-sessions` | #611 | That same Session ran `arcadia worker stop && arcadia worker start` on the shared daemon. |
-| 5 | `stop-killing-busy-workers` | #617 (new) | The hung-worker self-heal fired **five times in 24h**, three of them at only 15–26s stale. These may be false kills of a busy worker; no trace yet ties them to the work in flight. The trigger this document set, "reopen on a second `Recovered hung worker:` line", has fired. |
-| 6 | `honor-policy-providers-at-launch` | #559 | Provider selection ignores the policy's `scope.providers`, so every tick is refused with `provider_not_permitted` and nothing surfaces. |
-| 7 | `refuse-packets-without-validation-commands` | #572 | A Project with no validation commands launches a Session that can never be preserved or auto-completed. 09-23's Action B had to be settled by hand. |
+| 1 | `name-failing-preservation-check-and-bound-retries` ← **pointer** | #611 | A preservation refusal reads `details: {}`, and the 09-24 Session retried it without limit. |
+| 2 | `honor-policy-providers-at-launch` | #559 | Provider selection ignores the policy's `scope.providers`. Every tick is refused `provider_not_permitted`, and nothing surfaces. |
+| 3 | `refuse-packets-without-validation-commands` | #572 | A Project with no validation commands launches a Session that can never be preserved or auto-completed. |
 
-Two cheap single-lane correctness fixes follow in the queue:
-`treat-blocked-status-as-undispatchable` (#494) and
-`serialize-decision-deferral-pointer-write` (#505). Neither blocks the proof,
-but both are hazards once the lane runs unattended.
-
-**After those seven, one operator step earns the claim.** Decision 0057/0061's
-revival trigger reads "the operator begins the live rehearsal on whichever
-configured provider has capacity … after the further managed-production
-defects are fixed." Landing the seven above satisfies its second condition.
-The operator then reverses the deferral (`arcadia decision reverse`) and runs
-`prove-two-action-unattended-production` per its runbook.
-
-**Distance: 7 code Actions, then 1 operator step, then 1 proof run.** Nothing
-else stands between the current state and the unattended claim.
+After those three land, Decision 0057/0061's revival trigger is met ("the
+operator begins the live rehearsal on whichever configured provider has capacity
+… after the further managed-production defects are fixed"). The operator
+reverses the deferral (`arcadia decision reverse`) and runs
+`prove-two-action-unattended-production` per its runbook. That run earns the
+unattended claim.
 
 ---
 
 ## What this derivation changed
 
-Governance writes landed on `main` before this document was changed:
+**The critical path had been silently abandoned, and nothing reported it.**
+Settling `activate-mc-site-tooling-plan-2026-09-25` activated the
+mission-control-site tooling Plan. As a documented side effect, it returned
+this Plan to `draft`, which drops a draft Plan's Actions from the queue. When
+that Plan finished, cross-Plan Go chose `agent-ask-execution-queue`, the Plan
+whose eligible Action ranked highest among those still queued. The bootstrap
+Plan was no longer a candidate. The pointer landed on
+`make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the`,
+which is useful work but off the path.
 
-- **Filed 6 Actions** from the live-run defects. Agent Asks
-  `file-live-production-blockers-2026-09-24` (commit `322be1ec`) and
-  `file-busy-worker-false-kill-2026-09-24` (`5cca4eec`). Filed Issue #617.
-- **Reordered the queue** so the seven blockers, then #494 and #505, come ahead
-  of `surface-terminal-operator-approvals-in-runs` (Gate 6 UI) and every other
-  ready Action (queue receipts `qorder_afd1a762…`, `qorder_7cb0c606…`,
-  `qorder_2a720eec…`, `qorder_f69fe132…`).
-- **Moved the pointer** from `surface-terminal-operator-approvals-in-runs` to
-  `release-committed-admissions-on-session-end` (`54bc4b6c`, receipt
-  `qpointer_50204854…`). The superseded pointer Action is still queued, just
-  after the blockers.
-- **One later placement is not this derivation's.** A concurrent session
-  settled `add-blocking-vs-alert-operator-gate-2026-09-24` afterwards and
-  queued `gate-dispatch-on-blocking-operator-items` second, between blockers 1
-  and 2. It is not a production blocker. It was left where it was placed
-  rather than overridden; moving it behind entry 7 is one
-  `arcadia advance queue reorder`.
-- **Took `prove-zero-prompt-production-loop` off the critical path.** It is
-  *not* a dependency of `prove-two-action-unattended-production`, whose
-  `depends_on` names only `feed-and-supervise-managed-production` and
-  `add-opencode-production-provider`. It proves the assisted go-broker path,
-  and the worker has since launched Sessions directly, so the unattended claim
-  no longer routes through it. Only `harden-zero-prompt-production-loop`
-  depends on it. Whether to narrow or retire it is left for a later session,
-  because it costs nothing while it sits unblocked-but-operator-only.
+Governance writes, all on `main`:
+
+- **`gate-dispatch-to-production-critical-path-2026-09-25`** (`c8196b7f`). It
+  adds `prove-two-action-unattended-production` to `depends_on` for every open
+  Action in this Plan that was not already held behind it. Titles, acceptance
+  and references were restated verbatim; only `depends_on` changed. The
+  directly gated Actions are `add-segment-queue-arrange`,
+  `settle-commit-survives-gitignored-asks`,
+  `serialize-decision-deferral-pointer-write`,
+  `treat-blocked-status-as-undispatchable`, `defect-bounded-triage-loop`,
+  `page-runs-this-push-list`, `renumber-duplicate-decision-files` and
+  `generate-operator-scripts-for-runs-approvals`. Their dependents follow
+  transitively. They stay ordered but ineligible until the proof is done.
+- **`reactivate-bootstrap-production-plan-2026-09-25`** (`bf99dd99`). This Plan
+  is active again, at the top of the queue, pointing at blocker 1 with
+  `claude-sonnet-5` at high effort. `agent-ask-execution-queue` returned to
+  `draft` with no Action state changed. Its in-flight PR #637 is untouched and
+  can still merge; its completion must use the
+  `plan/agent-ask-execution-queue#<action>` form.
+- **`complete-preserve-candidates-across-base-advance-2026-09-25`**
+  (`e7ffb59f`). This records the completion that #622 had shipped but no one
+  had settled.
+- **`file-per-project-north-star-2026-09-25`** (`21efe458`). It files
+  `support-per-project-north-star`, held behind the proof like every other
+  off-path Action.
+
+**Why this holds after the three blockers land.** Completion settlement reports
+`planComplete` only when every remaining Action is done or deferred
+(`selectNextAfterCompletion`, `src/ask/settlement.ts`). The held Actions stay
+`open`, so the Plan cannot complete. Go then reports the unmet dependency on the
+deferred proof, which is exactly the operator step, instead of switching to
+another Plan.
+
+**Two ways this can still be undone, both by an explicit operator act:**
+
+1. **Activating another Plan with `--activate`.** That is how it happened today.
+   Before activating, weigh the cost that settlement displays: "Returned Plan
+   bootstrap-managed-production-to-build-flight-deck to draft".
+2. **Settling the pending Ask `enable-parallel-plan-dispatch-per-repository`**
+   (`.arcadia/asks/`, filed 2026-09-25, unsettled). It asks for a second live
+   Session per repository. Decision 0066 already answered that question: wait
+   until the proof and the #505/#507/#549-class fixes have landed. Settling it
+   now would reopen that answer.
 
 ---
 
@@ -103,138 +111,85 @@ Governance writes landed on `main` before this document was changed:
 | --- | --- |
 | 1 — The board is the surface | ✅ closed 2026-09-20 |
 | 2 — Work reaches an agent with no operator | ✅ closed 2026-09-22 |
-| 3 — A finished Session lands with no operator | 🔴 **reopened by live evidence.** Its Actions are done, but #539, #611, #572 and #610 each broke landing in a real run. Blockers 1–4 and 7 above close it again. |
-| 4 — It keeps going without help | 🔴 **reopened by live evidence.** #617 (busy workers killed) and #559 (silent per-tick refusal). Blockers 5–6 close it again. |
-| 5 — Proof | ⬜ open. `prove-two-action-unattended-production` (deferred; revives after blockers 1–7), then `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` (both blocked on it). |
-| 6 — The operator surface | ⬜ open, off the critical path. `surface-terminal-operator-approvals-in-runs` is done (split; PR #616). Its remainder `generate-operator-scripts-for-runs-approvals` is queued after the blockers. `expose-bootstrap-production-controls` and `freeze-production-runtime-and-handoff-flight-deck` are blocked on the proof. |
+| 3 — A finished Session lands with no operator | 🟡 **#610 and #539 fixed. #611 (preservation details) and #572 still open**, as blockers 1 and 3. |
+| 4 — It keeps going without help | 🟡 **#617 fixed. #559 still open**, as blocker 2. |
+| 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred and revives after blockers 1–3. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
+| 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
 
 A gate is closed when the live system does what the gate says, not when its
-Actions are marked done. Gates 3 and 4 were marked closed on Action status
-alone, and the first real runs reopened them. Read a green gate as provisional
-until a live run has passed through it.
-
-### What the 2026-09-23 run's five operator touches have become
-
-The touches came from `session_e7748a398de14978b4`, recorded in the prior
-derivation.
-
-| Touch | Now |
-| --- | --- |
-| Permission re-grant | Unattributed. Watch for it in the proof run. |
-| Workspace-trust prompt | Fixed: `register-agent-workspace-trust` done. |
-| `/login` | Fixed: `preflight-provider-signin-before-launch` and `pass-managed-claude-token-into-sessions` done. |
-| Manual completion settlement (no validation commands) | Blocker 7 (#572). |
-| Operator's merge | Expected. Integration runs only under Decision 0058's separately recorded grant. |
+Actions are marked done. Gates 3 and 4 were once marked closed on status alone,
+and the first real runs reopened them. Treat them as provisional until the
+proof run passes through them.
 
 ---
 
 ## The critical path, in order
 
-1. `release-committed-admissions-on-session-end` (#610), the **pointer**
-2. `preserve-candidates-across-base-advance` (#539)
-3. `name-failing-preservation-check-and-bound-retries` (#611)
-4. `withhold-worker-lifecycle-from-sessions` (#611)
-5. `stop-killing-busy-workers` (#617)
-6. `honor-policy-providers-at-launch` (#559)
-7. `refuse-packets-without-validation-commands` (#572)
-8. **Operator:** reverse Decision 0057's deferral and start the rehearsal on a
-   provider with capacity. Before resetting the fixture, see #608 below.
-9. `prove-two-action-unattended-production`, where **the unattended claim is
+1. `name-failing-preservation-check-and-bound-retries` (#611), the **pointer**
+2. `honor-policy-providers-at-launch` (#559)
+3. `refuse-packets-without-validation-commands` (#572)
+4. **Operator:** reverse Decision 0057's deferral and start the rehearsal on a
+   provider with capacity. Read "Rehearsal hazards" first.
+5. `prove-two-action-unattended-production`, where **the unattended claim is
    earned**
 
 Then, for continuous production rather than the claim itself:
-`prove-multi-provider-production-recovery` and
+`prove-multi-provider-production-recovery`, then
 `run-managed-production-live-soak` (operator-granted scope).
 
-**Entries 1–7 are ordinary `claude-sonnet-5`/high code sessions.** Their
-Issues already hold the root-cause analysis and `file:line` pointers, so none
-needs a planning pass. `arcadia go` dispatches them in order. They touch
-different files: `policy.ts`/`reconciliation.ts`, `manualPreservation.ts`,
-`preservationValidation.ts`, `worker.ts` (entries 4 and 5 both, so run them
-in sequence) and packet preparation. That makes them good candidates for
-cross-worktree parallel sessions if the operator wants the path shorter than
-seven sequential sessions.
+Entries 1–3 are ordinary `claude-sonnet-5` sessions at high effort. Their
+Issues already hold the root cause and `file:line` pointers. They touch
+different files (`preservationValidation.ts`, packet and launch preview,
+packet preparation), so they can run in parallel worktrees if you want the
+path shorter than three sequential sessions.
 
-### Rehearsal hazards the operator should know before entry 8
+### Rehearsal hazards to know before entry 4
 
 - **#608:** while the standing policy is Off, the worker fast-forwards every
-  DB-active Project's checkout to `origin/main` each tick, so a
-  `git reset --hard` on the fixture is silently undone. Reset the fixture
-  through its remote, or stop the worker while resetting.
-- **#609:** `production activate`'s `--expect-revision` flag does not match
+  DB-active Project's checkout to `origin/main` on each tick. A `git reset --hard`
+  on the fixture is silently undone. Reset through the remote, or stop the
+  worker while resetting.
+- **#609:** `production activate`'s `--expect-revision` flag does not match the
   preview's `expectedRevision` field name.
-- **Capacity gating is off** (`codingAgent.capacityGateEnabled: false`). All
-  three providers read "admitted (unmetered by config)", which is an operator
-  choice, not observed headroom.
-- An open escalation, `private-practice-now/calibrate-river-specialty-prompt-chain`
-  (`planning_required`), will stay visible in `production status`. It is
-  unrelated to the Arcadia lane.
+- **The fixture is mid-state.** `zero-prompt-rehearsal/write-rehearsal-marker`'s
+  last Session (`session_5c1a2543cae24319a6`) is `needs_input`, with a
+  resumable candidate. `production status` still lists two `committed`
+  admissions for the fixture. They no longer count toward concurrency (#610),
+  but the listing has not caught up.
+- **Capacity gating is off** (`codingAgent.capacityGateEnabled: false`), so
+  "admitted" is an operator choice, not observed headroom.
 
 ### What is *not* on the critical path
 
-- `prove-zero-prompt-production-loop` and `harden-zero-prompt-production-loop`.
-  See "What this derivation changed".
-- `treat-blocked-status-as-undispatchable` (#494) and
-  `serialize-decision-deferral-pointer-write` (#505). They are queued right
-  behind the blockers as cheap hardening and do not gate the proof.
-- `gate-dispatch-on-blocking-operator-items` (queued second, see above).
-- Gate 6: `generate-operator-scripts-for-runs-approvals`,
-  `expose-bootstrap-production-controls`,
-  `freeze-production-runtime-and-handoff-flight-deck`.
-- `settle-commit-survives-gitignored-asks` (#512). Arcadia does not gitignore
-  `.arcadia/asks/`, so the Arcadia lane is unaffected.
-- `defect-bounded-triage-loop`, `build-agent-agnostic-learning-loop`,
-  `add-segment-queue-arrange`, `page-runs-this-push-list`,
-  `tab-runs-page-concerns`, `renumber-duplicate-decision-files`,
-  `repoint-r195-to-fresh-decision`.
-- Open Issues the lane can run beside: #549 (a claim expires after 24h,
-  relevant only to Sessions that long), #507, #582, #450, #430.
+Everything else. Every open Action in this Plan other than the three blockers
+depends on the proof, directly or transitively, or is operator-only
+(`prove-zero-prompt-production-loop`, whose only dependent is
+`harden-zero-prompt-production-loop`). Other Plans' ready Actions are
+`waiting_for_pointer`: dispatch never selects them while this Plan is active
+and incomplete.
 
 ---
 
 ## Concurrency
 
-Unchanged in substance. **Decision 0066** is now *approved*: same-repository
-concurrent Sessions wait until `prove-two-action-unattended-production` and the
-#505/#507/#549-class fixes have landed. The repository lease admits at most one
-`prepared`/`running` Session per repository. Note that #610 currently makes
-even that one lane fail after its first Session, which is why it is entry 1.
-
----
-
-## The worker-hang defect: trigger fired
-
-`self-heal-hung-worker-heartbeat` (Issue #485) made a hung worker recoverable.
-This document deferred the root cause with the trigger "reopen when a second
-`Recovered hung worker:` line appears in `.arcadia/worker.log`." The live log
-(`workspaces/martianrover/.arcadia/worker.log`) has five:
-
-```
-2026-09-22T19:31:53Z  15s  SIGKILL
-2026-09-23T06:45:08Z 170s  SIGKILL
-2026-09-23T06:45:57Z  26s  SIGKILL
-2026-09-23T19:46:45Z 292s  SIGKILL
-2026-09-23T19:51:02Z  17s  SIGTERM
-```
-
-The marginal ones fit the exposure this document already named, but no
-worker or Session trace yet confirms it for these events. A worker inside one
-long synchronous step cannot re-stamp its heartbeat, so the 15s window may
-treat it as hung and kill it. That can happen mid-tick while it holds
-admissions. The 170s and 292s stalls may be real hangs. Both are owned by
-`stop-killing-busy-workers` (Issue #617, entry 5).
+**Decision 0066** is approved: same-repository concurrent Sessions wait until
+`prove-two-action-unattended-production` and the #505/#507/#549-class fixes
+have landed. `serialize-decision-deferral-pointer-write` (#505) is now held
+behind the proof. That matches 0066, which sequences those fixes after the
+proof and before a second lane, not before the first lane.
 
 ---
 
 ## Live state at derivation
 
-| Signal | Reading (2026-09-24 ~21:41Z) |
+| Signal | Reading (2026-09-25 ~16:45Z) |
 | --- | --- |
-| Managed production | **Inactive** (policy revision 15, epoch 12, revoked 16:15:45Z). Shows 2 committed admissions "finishing" for fixture Actions that are no longer running: the #610 leak. |
-| Provider capacity | All three admitted, unmetered by config. Not observed. |
-| Worker | Running. Five hung-worker recoveries 09-22→09-23 (#617). |
-| Pointer | `release-committed-admissions-on-session-end` |
-| Open Decisions | 0041, 0052. Neither concerns production readiness. 0066 and 0067 are now approved. |
+| Managed production | **Inactive · Idle** (policy revision 15, epoch 12, revoked 2026-09-24T16:15Z). No Session has launched since 2026-09-24. |
+| Worker | Running. No `Recovered hung worker:` line since 2026-09-24T21Z. |
+| Pointer | `bootstrap-managed-production-to-build-flight-deck` / `name-failing-preservation-check-and-bound-retries` |
+| Ready in the active Plan | Exactly the 3 blockers |
+| Open Decisions | 0041, 0052. Neither concerns production readiness. |
+| Open escalation | `private-practice-now/calibrate-river-specialty-prompt-chain` (`planning_required`). Unrelated to the Arcadia lane. |
 
 ---
 
@@ -242,23 +197,24 @@ admissions. The 170s and 292s stalls may be real hangs. Both are owned by
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 103 (each `- id:` paired with the `status:` line that follows it) |
-| Done | 77 |
-| Open | 25 (6 filed by this derivation; 2 more from concurrent settlements, 1 closed) |
+| Actions in the active Plan | 104 (each `- id:` paired with the `status:` line that follows it) |
+| Done | 82 |
+| Open | 21 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
-| **On the critical path, code** | **7**, all ready, pointer on the first. They lead the queue in relative order; `gate-dispatch-on-blocking-operator-items` is interleaved at global position 2 |
+| **On the critical path, code** | **3**, all ready, pointer on the first |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal) |
-| **On the critical path, proof** | **1** (`prove-two-action-unattended-production`) |
-| Unfinished, off the critical path | 18 (includes the two post-claim proofs) |
+| **On the critical path, proof** | **1** |
+| Unfinished, off the critical path | 18, all held behind the proof or operator-only |
 
 ---
 
 ## Refreshing this document
 
-Run these, then update the summary table, gates, critical path and scoreboard:
+Run these, then update the summary, gates, critical path and scoreboard:
 
 ```bash
-mise exec -- pnpm arcadia schedule status --project arcadia
+grep -E "^(active_plan|current_action):" PROJECT.md   # is the bootstrap Plan still active?
+mise exec -- pnpm arcadia advance queue --json         # ready set: only critical-path Actions?
 mise exec -- pnpm arcadia production status
 mise exec -- pnpm arcadia production capacity
 grep -l "^status: open" docs/decisions/*.md
@@ -267,13 +223,15 @@ grep -E "Launched Session|Reconciled Session|Recovered hung worker|Escalated" <w
 gh issue list --label bug --state open
 ```
 
-**Read the worker log, not only the Plan.** This derivation's main correction
-came from `Launched Session` / `Reconciled Session` lines and their Issues, none
-of which the Plan's statuses showed. Count Actions by pairing each `- id:` with
-the `status:` line that follows it. A whole-file `status:` grep overcounts,
-because acceptance-criteria text quotes status values.
+**Check the active Plan first.** Today's main correction was not about the code
+at all. The Plan had been deactivated, and every other signal still looked
+healthy. **Read the worker log, not only the Plan.** The 2026-09-24 correction
+came from `Launched Session` / `Reconciled Session` lines that no Plan status
+showed. Count Actions by pairing each `- id:` with the `status:` line that
+follows it. A whole-file `status:` grep overcounts, because acceptance-criteria
+text quotes status values.
 
 An Action's truth is its `status:` in the Plan. A gate's truth is whether the
 live system does what the gate says. **Refresh this document whenever a
-critical-path Action completes, a live run happens, or a new blocker is
-found.**
+critical-path Action completes, a live run happens, a Plan is activated, or a
+new blocker is found.**
