@@ -35,9 +35,16 @@ type and restore the marker.
 
 Every Plan in every Project goes faster once the worker can carry work from the
 queue to a landed change unattended. The shortest path is therefore the only
-path worth working. `arcadia go` in this repository is held to it: every open
-Action off the critical path depends on `prove-two-action-unattended-production`,
-so dispatch cannot select it until the proof has run.
+path worth working. `arcadia go` in this repository is held to it by three
+separate controls:
+
+- **This Plan's off-path Actions** depend on
+  `prove-two-action-unattended-production`, directly or transitively, so
+  dispatch cannot select them until the proof has run.
+- **`prove-zero-prompt-production-loop`** is operator-only
+  (`responsibility: requires_review`), so dispatch never selects it.
+- **Other Plans' ready Actions** wait for the pointer. Dispatch never selects
+  them while this Plan is active and incomplete.
 
 ## The gates
 
