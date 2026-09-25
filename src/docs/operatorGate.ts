@@ -53,6 +53,11 @@ function recommendedOf(options: OperatorGateOption[]): OperatorGateOption | null
   return options.find((option) => option.recommended) ?? options[0] ?? null;
 }
 
+/** Single-quote a value for a POSIX shell command line, escaping embedded single quotes. */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function decisionGateItem(decision: PendingDecisionGateInput): OperatorGateItem {
   const recommended = recommendedOf(decision.options);
   return {
@@ -62,7 +67,7 @@ function decisionGateItem(decision: PendingDecisionGateInput): OperatorGateItem 
     recommendedOption: recommended?.label ?? null,
     consequence: recommended?.consequence ?? null,
     settleCommand: recommended
-      ? `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer "${recommended.label}"`
+      ? `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer ${shellQuote(recommended.label)}`
       : `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer "<answer>"`,
     projectSlug: decision.projectSlug,
     timestamp: decision.updated,

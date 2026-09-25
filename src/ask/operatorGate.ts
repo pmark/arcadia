@@ -83,9 +83,16 @@ export function resolveOperatorGate(input: {
     relativePath: doc.relativePath
   }));
 
-  const blockingDecisionIds = (input.readySetCandidates ?? [])
-    .flatMap((candidate) => [candidate.deferringDecisionId, candidate.requiredDecisionId])
-    .filter((id): id is string => id !== null);
+  // Only when nothing in the ready set can start at all: a Decision blocking
+  // one unready candidate is not "the reason no Action is eligible" while a
+  // different candidate is ready to dispatch instead.
+  const candidates = input.readySetCandidates ?? [];
+  const noneReady = candidates.length > 0 && candidates.every((candidate) => !candidate.ready);
+  const blockingDecisionIds = noneReady
+    ? candidates
+        .flatMap((candidate) => [candidate.deferringDecisionId, candidate.requiredDecisionId])
+        .filter((id): id is string => id !== null)
+    : [];
 
   return classifyOperatorItems({
     projectSlug: input.projectSlug,
