@@ -4,7 +4,7 @@ type: decision
 id: "0069"
 slug: decide-whether-mission-control-site-should-adopt-a-ppn-style-abstract-asset-to
 project: arcadia
-status: open
+status: approved
 question: Decide whether mission-control-site should adopt a PPN-style abstract asset-to-placement rubric/mapping system, plus a generated-imagery and video pipeline (motion graphics, short- and long-form video), given that the site's own PRD currently forbids exactly this shape of system.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-25
+answer: Keep mission-control-site minimal per its current PRD
+decided: 2026-09-25
 ---
 
 # Decision 0069: Decide whether mission-control-site should adopt a PPN-style abstract asset-to-placement rubric/mapping system, plus a generated-imagery and video pipeline (motion graphics, short- and long-form video), given that the site's own PRD currently forbids exactly this shape of system.

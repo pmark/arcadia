@@ -4,7 +4,7 @@ type: decision
 id: "0068"
 slug: decide-whether-to-generalize-arcadia-s-existing-agent-git-identity-naming
 project: arcadia
-status: open
+status: approved
 question: "Decide whether to generalize Arcadia's existing agent Git identity naming scheme (src/codingAgents/agentIdentity.ts: platform given-name x tier surname, plus a builder/critic role title) into a broader set of 'Ask an agent' content-generation personas -- e.g. Writer, Painter, Director, Photographer -- that can be invoked ephemerally or persistently for non-coding tasks like copy and imagery generation, and if pursued, where that registry should live."
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-25
+answer: Defer -- revisit when a first concrete content-generation task needs a named persona
+decided: 2026-09-25
 ---
 
 # Decision 0068: Decide whether to generalize Arcadia's existing agent Git identity naming scheme (src/codingAgents/agentIdentity.ts: platform given-name x tier surname, plus a builder/critic role title) into a broader set of 'Ask an agent' content-generation personas -- e.g. Writer, Painter, Director, Photographer -- that can be invoked ephemerally or persistently for non-coding tasks like copy and imagery generation, and if pursued, where that registry should live.
