@@ -47,7 +47,7 @@ export function discoverUnprocessedAgentAsks(db: Database.Database, repoRoot: st
   for (const filePath of files) {
     try {
       const request = readFileSync(filePath, "utf8");
-      const { proposal, replayed } = previewAgentAskRequest(db, { request, sourcePath: filePath });
+      const { proposal, replayed } = previewAgentAskRequest(db, { request, sourcePath: filePath, repoRoot });
       if (!replayed) result.discovered.push({ path: filePath, requestId: proposal.normalized.requestId });
     } catch (error) {
       result.failed.push({ path: filePath, error: normalizeError(error).message });

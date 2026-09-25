@@ -5,14 +5,39 @@ import {
   buildAgentAskEffects,
   normalizeAgentAsk,
   requiresManagedDocumentTransition,
+  resolveNaturalAgentAskTarget,
   stableProposalId,
-  type AgentAskProposal
+  type AgentAskProposal,
+  type AgentAskTargetContext
 } from "./agentAsk.js";
 import { captureAskEnvelope } from "./captureEnvelope.js";
 import { resolveProjectReference } from "./rules.js";
+import { discoverDocs } from "../docs/discover.js";
+import type { DecisionDoc, PlanDoc } from "../docs/types.js";
 
-export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null; }
+export interface PreviewAgentAskRequestInput { request: string; requestId?: string; project?: string; sourcePath?: string | null;
+  /**
+   * The repository this Ask is being previewed against, as currently checked
+   * out. Only used to resolve a natural (`intent: auto`) Ask's free text
+   * against Plan/Action/Decision identifiers already committed there — see
+   * `resolveNaturalAgentAskTarget`. Omitted callers (structured strict-format
+   * Asks, or contexts with no repository) simply skip resolution.
+   */
+  repoRoot?: string | null;
+}
 export interface PreviewAgentAskRequestResult { proposal: AgentAskProposal; replayed: boolean; }
+
+/** Build the Plan/Action/Decision identifiers a natural Ask can resolve against, for one Project's checked-in documents. */
+function buildTargetContext(repoRoot: string, projectSlug: string): AgentAskTargetContext {
+  const docs = discoverDocs(repoRoot).docs;
+  const plans = docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === projectSlug);
+  const decisions = docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === projectSlug);
+  return {
+    plans: plans.map((plan) => ({ slug: plan.slug })),
+    actions: plans.flatMap((plan) => plan.actions.map((action) => ({ id: action.id, planSlug: plan.slug }))),
+    decisions: decisions.map((decision) => ({ id: decision.id, slug: decision.slug }))
+  };
+}
 
 /**
  * Validate one Agent Ask request against `db` and record its preview
@@ -40,10 +65,20 @@ export function previewAgentAskRequest(db: Database.Database, input: PreviewAgen
   }
   return db.transaction(() => {
     const capture = captureAskEnvelope(db, { requestId: normalized.requestId, originalText: input.request, ingressSource: "agent.ask" });
-    const built = buildAgentAskEffects(normalized);
+    // Resolution only ever matters for a natural (`auto`) Ask: a strict-format
+    // request already names its own target_ref, so there is nothing to infer.
+    const resolution = normalized.intent === "auto" && input.repoRoot
+      ? resolveNaturalAgentAskTarget(normalized.desiredResult, buildTargetContext(input.repoRoot, normalized.project))
+      : null;
+    const built = buildAgentAskEffects(normalized, resolution);
+    const refused = resolution
+      ? resolution.considered
+          .filter((candidate) => candidate.targetRef !== resolution.resolved?.targetRef)
+          .map((candidate) => candidate.label)
+      : [];
     const proposal: AgentAskProposal = {
       id: stableProposalId(fingerprint), captureId: capture.id, normalized, effects: built.effects,
-      requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused: [],
+      requiredDecisions: built.requiredDecisions, unchanged: [], conflicts: [], refused,
       managedDocumentTransition: { required: requiresManagedDocumentTransition(normalized.intent), status: "withheld_until_acceptance", authority: "checked_in_documents" },
       queueConsequence: "none_until_accepted", writes: { captureReceipt: true, proposalReceipt: true, projectChanges: false },
       nonActions: ["No Project record is created or changed by preview.", "Agent input grants no approval or execution authority."],

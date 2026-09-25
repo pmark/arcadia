@@ -382,6 +382,49 @@ describe("Agent Ask settlement", () => {
     }
   });
 
+  it("settles a resolved natural Ask into a focused Decision naming the resolved Plan or Action, not the generic interpretation question", () => {
+    const { workspace, repo } = fixture();
+
+    const planProposal = runAgentAskPreviewCommand({
+      workspace, dir: repo, project: "demo", requestId: "resolve-plan-settle",
+      request: "Please reactivate the demo-plan effort."
+    });
+    expect(planProposal.data.proposal.effects[0]?.targetKind).toBe("plan");
+    const planPreview = runAgentAskSettleCommand({
+      workspace, proposal: planProposal.data.proposal.id, requestId: "settle-resolve-plan", disposition: "accepted", revision: 1
+    });
+    const planApplied = runAgentAskSettleCommand({
+      workspace, proposal: planProposal.data.proposal.id, requestId: "settle-resolve-plan", disposition: "accepted",
+      revision: 1, preview: planPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(planApplied.data.receipt.effects.join(" ")).toContain("focused Decision naming Plan demo-plan");
+    const planDecisionDoc = readdirSync(path.join(repo, "docs/decisions"))
+      .filter((name) => name.startsWith("0001-"))
+      .map((name) => readFileSync(path.join(repo, "docs/decisions", name), "utf8"))[0];
+    expect(planDecisionDoc).toContain("plan: demo-plan");
+    expect(planDecisionDoc).toContain("Confirm the proposed effect against Plan demo-plan");
+
+    const actionProposal = runAgentAskPreviewCommand({
+      workspace, dir: repo, project: "demo", requestId: "resolve-action-settle",
+      request: "The existing Action in demo-plan needs another pass."
+    });
+    expect(actionProposal.data.proposal.effects[0]?.targetKind).toBe("action");
+    const actionPreview = runAgentAskSettleCommand({
+      workspace, proposal: actionProposal.data.proposal.id, requestId: "settle-resolve-action", disposition: "accepted", revision: 1
+    });
+    const actionApplied = runAgentAskSettleCommand({
+      workspace, proposal: actionProposal.data.proposal.id, requestId: "settle-resolve-action", disposition: "accepted",
+      revision: 1, preview: actionPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(actionApplied.data.receipt.effects.join(" ")).toContain("focused Decision naming Action existing in Plan demo-plan");
+    const actionDecisionDoc = readdirSync(path.join(repo, "docs/decisions"))
+      .filter((name) => name.startsWith("0002-"))
+      .map((name) => readFileSync(path.join(repo, "docs/decisions", name), "utf8"))[0];
+    expect(actionDecisionDoc).toContain("plan: demo-plan");
+    expect(actionDecisionDoc).toContain("action: existing");
+    expect(actionDecisionDoc).toContain("Confirm the proposed effect against Action existing in Plan demo-plan");
+  });
+
   it("refuses a project_update whose target_ref has no apply path, instead of opening a Decision", () => {
     // Issue #351 / R183. This used to create an open Decision reading "How
     // should this Project update be applied: ...". Nothing could act on it:

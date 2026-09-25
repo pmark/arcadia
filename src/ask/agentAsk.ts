@@ -148,7 +148,59 @@ export function agentAskFingerprint(request: string, normalized: NormalizedAgent
 /** The Project fields a `project_update` Ask can actually apply. */
 const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone"]);
 
-export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects: AgentAskEffect[]; requiredDecisions: string[] } {
+/** One existing checked-in Plan, Action, or Decision a natural Ask's free text can resolve against. */
+export interface AgentAskTargetCandidate { kind: "plan" | "action" | "decision"; targetRef: string; label: string; }
+/** The Plan slugs, Action ids, and Decision ids already present in the destination Project's checked-in documents. */
+export interface AgentAskTargetContext {
+  plans: Array<{ slug: string }>;
+  actions: Array<{ id: string; planSlug: string }>;
+  decisions: Array<{ id: string; slug: string }>;
+}
+export interface AgentAskTargetResolution { resolved: AgentAskTargetCandidate | null; considered: AgentAskTargetCandidate[]; }
+
+/**
+ * Resolve a natural Ask's free text against identifiers the repository
+ * already has, deterministically and with zero model calls. Only an exact
+ * identifier — a Plan slug, an Action id, or a Decision id/slug — already
+ * present in a checked-in document counts; nothing is inferred.
+ *
+ * An Action is the most specific target, so a matched Action wins over a
+ * merely co-mentioned Plan or Decision. A Plan reference that names a
+ * *different* Plan than the matched Action's own is a genuine conflict, not
+ * extra context, and refuses resolution rather than guessing which one the
+ * author meant. The same rule applies one level down: more than one distinct
+ * Plan or more than one distinct Decision reference is ambiguous.
+ */
+export function resolveNaturalAgentAskTarget(text: string, context: AgentAskTargetContext): AgentAskTargetResolution {
+  const mentions = (identifier: string): boolean => {
+    if (!identifier) return false;
+    const escaped = identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const boundary = /^[0-9]+$/.test(identifier) ? "[0-9]" : "[a-z0-9-]";
+    return new RegExp(`(?<!${boundary})${escaped}(?!${boundary})`, "i").test(text);
+  };
+  const actionMatches: AgentAskTargetCandidate[] = context.actions
+    .filter((action) => mentions(action.id))
+    .map((action) => ({ kind: "action", targetRef: `plan/${action.planSlug}#${action.id}`, label: `Action ${action.id} in Plan ${action.planSlug}` }));
+  const planMatches: AgentAskTargetCandidate[] = context.plans
+    .filter((plan) => mentions(plan.slug))
+    .map((plan) => ({ kind: "plan", targetRef: `plan/${plan.slug}`, label: `Plan ${plan.slug}` }));
+  const decisionMatches: AgentAskTargetCandidate[] = context.decisions
+    .filter((decision) => mentions(decision.id) || mentions(decision.slug))
+    .map((decision) => ({ kind: "decision", targetRef: decision.id, label: `Decision ${decision.id} (${decision.slug})` }));
+  const considered = [...actionMatches, ...planMatches, ...decisionMatches];
+
+  if (actionMatches.length === 1) {
+    const action = context.actions.find((candidate) => mentions(candidate.id))!;
+    const conflictingPlans = planMatches.filter((plan) => plan.targetRef !== `plan/${action.planSlug}`);
+    if (conflictingPlans.length > 0) return { resolved: null, considered };
+    return { resolved: actionMatches[0], considered };
+  }
+  if (actionMatches.length === 0 && planMatches.length === 1) return { resolved: planMatches[0], considered };
+  if (actionMatches.length === 0 && planMatches.length === 0 && decisionMatches.length === 1) return { resolved: decisionMatches[0], considered };
+  return { resolved: null, considered };
+}
+
+export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?: AgentAskTargetResolution | null): { effects: AgentAskEffect[]; requiredDecisions: string[] } {
   const requiredDecisions: string[] = [];
   // A `project_update` naming a field with no apply path used to settle into an
   // open Decision: "How should this Project update be applied: ...". Nothing
@@ -171,15 +223,21 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk): { effects:
     }
   }
   if (normalized.project === "unknown") requiredDecisions.push("Choose the destination Project.");
-  if (normalized.intent === "auto") requiredDecisions.push("Confirm the proposed Arcadia structure after interpretation.");
+  const resolved = normalized.intent === "auto" ? (resolution?.resolved ?? null) : null;
+  if (normalized.intent === "auto") {
+    requiredDecisions.push(resolved
+      ? `Confirm the proposed effect against ${resolved.label} before it changes anything.`
+      : "Confirm the proposed Arcadia structure after interpretation.");
+  }
   if (normalized.requestedAuthority === "apply_if_approved") requiredDecisions.push("Accept the exact preview before apply.");
-  const targetKind = normalized.intent === "auto" ? "interpretation" : normalized.intent;
+  const targetKind = normalized.intent === "auto" ? (resolved?.kind ?? "interpretation") : normalized.intent;
   const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null }];
   const effects = proposedItems.map((item) => {
-    const itemTargetRef = item.targetRef ?? normalized.targetRef;
-    const operation = normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
+    const itemTargetRef = resolved ? resolved.targetRef : (item.targetRef ?? normalized.targetRef);
+    const operation = resolved ? "update" : normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
     const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies, references: item.references };
     if (normalized.intent === "decision") { fields.status = "open"; fields.options = normalized.options; }
+    if (resolved) { fields.resolvedIdentifier = resolved.targetRef; fields.resolvedLabel = resolved.label; }
     return { operation, targetKind, targetRef: itemTargetRef, fields, status: "proposed", authority: "operator_acceptance_required" } satisfies AgentAskEffect;
   });
   return { effects, requiredDecisions };

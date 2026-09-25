@@ -1047,10 +1047,34 @@ export function settleAgentAsk(db: Database.Database, input: {
         // Arcadia could not determine the requested structure at all, which is
         // itself a case a reasonable person could resolve differently — the
         // gate always fires here, so this intent carries no triage.
-        addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
-          project.slug, plan.slug, null, `How should Arcadia structure this request: ${proposal.normalized.desiredResult}`, proposal.normalized.rationale, proposal.normalized.requestId,
-          [], "reasonable_disagreement");
-        effects.push("Created one open interpretation Decision; no Project structure was guessed.");
+        const resolvedEffect = proposal.effects[0];
+        const resolvedLabel = resolvedEffect && resolvedEffect.targetKind !== "interpretation"
+          ? (resolvedEffect.fields.resolvedLabel as string | undefined) ?? null
+          : null;
+        if (resolvedEffect && resolvedLabel && resolvedEffect.targetRef) {
+          // The natural text named an identifier that already resolves against
+          // a checked-in Plan, Action, or Decision (`resolveNaturalAgentAskTarget`
+          // in `../ask/agentAsk.js`). Nothing is applied automatically — this
+          // still opens a Decision, per the Constitution's approval boundary —
+          // but the question names the concrete resolved target instead of
+          // asking the operator to interpret the raw request from scratch.
+          const scopedAction = resolvedEffect.targetKind === "action" ? splitPlanScopedActionRef(resolvedEffect.targetRef) : null;
+          const decisionPlanSlug = resolvedEffect.targetKind === "plan"
+            ? resolveManagedTargetRef(resolvedEffect.targetRef, "plan", project.slug)
+            : scopedAction
+              ? resolveManagedTargetRef(scopedAction.planRef, "plan", project.slug)
+              : plan.slug;
+          addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
+            project.slug, decisionPlanSlug, scopedAction?.actionRef ?? null,
+            `Confirm the proposed effect against ${resolvedLabel}: ${proposal.normalized.desiredResult}`,
+            proposal.normalized.rationale, proposal.normalized.requestId, [], "reasonable_disagreement");
+          effects.push(`Created one focused Decision naming ${resolvedLabel} as the resolved target; agent input did not answer it.`);
+        } else {
+          addDecisionMutation(fileMutations, discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision"), repoRoot,
+            project.slug, plan.slug, null, `How should Arcadia structure this request: ${proposal.normalized.desiredResult}`, proposal.normalized.rationale, proposal.normalized.requestId,
+            [], "reasonable_disagreement");
+          effects.push("Created one open interpretation Decision; no Project structure was guessed.");
+        }
         break;
       }
       case "log": {
