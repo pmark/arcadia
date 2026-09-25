@@ -2074,16 +2074,17 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask admit-ready-set-across-repositories
     clarification: clarified
     confidence: high
-    source: Agent Ask add-ready-set-admission-and-pipelining-actions-2026-09-25
+    source: Agent Ask widen-concurrency-gate-to-cite-both-proofs-2026-09-25
     acceptance_criteria:
       - The production tick (src/production/tick.ts) computes the ready set from every in-scope Plan of every active Project -- status not done/deferred/needs_operator, every depends_on landed on the base branch, no live claim -- and launches in canonicalOrder up to host and per-repository lane limits, per docs/proposals/portfolio-parallel-execution.md section 3.
       - settleAgentAsk (src/ask/settlement.ts) stops calling selectNextAfterCompletion and stops writing current_action; a completion records its evidence and releases its claim only.
       - current_action becomes a derived projection -- the highest-priority claimed Action, or the highest-priority ready Action if nothing is claimed -- recomputed and written only by the host settler established under Decision 0070, never by settlement, deferral, or advance.
       - A read-only status surface reports one wait reason per in-scope Action that did not launch this tick (dependency, dependency_unresolved, claimed, host_full, needs_operator, ...), recomputed every tick and never stored as truth.
       - "Deterministic tests cover: two ready Actions in different repositories launching in the same tick, an Action correctly excluded by a live claim, current_action reflecting the highest-priority claim with no settlement write, and the #505/#507 race scenarios each closed; pnpm test and the core, Discord and Dashboard builds pass."
+      - Activating a production policy scope with maxConcurrentSessions greater than 1 (the validation path in src/production/policy.ts) is refused with a named reason that cites both prove-two-action-unattended-production and prove-concurrent-ready-set-admission by id, unless both Actions' status is done in the active Plan; building and shipping this Action's own code does not itself turn on concurrent admission. A deterministic test covers the refusal while either cited Action is open or deferred, and the allowed activation once both are done.
     depends_on: [resolve-cross-plan-dependency-ids]
     decisions: []
-    references: ["src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/order.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
+    references: ["docs/reviews/2026-09-25-ready-set-admission-adversarial-review-prompt.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/order.ts", "src/production/policy.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md"]
   - id: pipeline-independent-actions-while-pr-unmerged
     title: "Let an independent, non-overlapping Action start in a repository whose previous candidate PR is still unmerged, up to a per-repository review limit, using declared touches: scope to prevent overlap."
     status: open
@@ -2102,6 +2103,27 @@ actions:
     depends_on: [admit-ready-set-across-repositories, settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch]
     decisions: []
     references: ["src/production/tick.ts", "src/ask/settlement.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md"]
+  - id: prove-concurrent-ready-set-admission
+    title: Prove that two independent Actions in two different repositories launch and complete correctly from the same production tick under ready-set admission, with no settlement or pointer-projection race, before real concurrent admission is ever allowed.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove that two independent Actions in two different repositories launch and complete correctly from the same production tick under ready-set admission, with no settlement or pointer-projection race, before real concurrent admission is ever allowed.
+    expected_artifact: Evidence satisfying Agent Ask prove-concurrent-ready-set-admission
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-concurrent-ready-set-admission-proof-2026-09-25-v3
+    acceptance_criteria:
+      - Provide or reuse two disposable or explicitly approved real Projects/repositories, each with at least one ready Action that does not depend on the other, and a reachable existing production control (CLI or dashboard), before requesting live execution.
+      - Under bounded rehearsal authority, with a policy scope activated at maxConcurrentSessions 2 or more (permitted for this proof specifically, ahead of the general gate, under explicit operator-granted rehearsal scope), one production tick admits and launches Sessions for both independent Actions in their separate repositories with no per-launch operator confirmation in between.
+      - "Both Sessions run to completion holding disjoint resources throughout: each Action's claim, worktree, and repository lease belong only to that Session, and neither Session's admission, launch, or settlement observably blocks or interferes with the other."
+      - "Both completions settle correctly regardless of which finishes first: current_action's derived projection reflects the correct highest-priority ready or claimed Action after each settlement, and a #505/#507-class race (a completion's projection write lost, delayed, or applied out of order against the other) does not occur; record which completion order actually happened and reason explicitly about the other order using the existing deterministic settlement-race tests if a live repetition is not practical."
+      - Turn the standing policy Off while both Sessions are in flight; prove no new launch occurs, both in-flight Sessions reconcile visibly, and no duplicate or reactivated Session appears after Off.
+      - Record exact revisions, hosts, providers, Action/Session identities, and receipts for both repositories; missing real authorization or input remains one precise review, never fixture-as-live success, and any deferred gap (same-repository pipelining, provider-account slots, review headroom) is named rather than implied proven.
+      - "This proof activates only once prove-two-action-unattended-production is status: done and admit-ready-set-across-repositories has shipped; preserve deterministic integration evidence and an exact operator procedure/target in the PR."
+    depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production]
+    decisions: []
+    references: ["docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/operator-demo-and-release-contract.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/production/policy.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
