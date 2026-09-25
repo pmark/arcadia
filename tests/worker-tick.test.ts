@@ -520,7 +520,7 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     beacon.stop();
   }, 15_000);
 
-  it("worker start restarts the heartbeat beacon and logs the loss when it exits unexpectedly (CodeRabbit #627)", () => {
+  it("worker start restarts the heartbeat beacon (after a backoff) and logs the loss when it exits unexpectedly (CodeRabbit #627)", async () => {
     const { root, logfile } = workspace();
     let starts = 0;
     const triggers: Array<(detail: { code: number | null; signal: NodeJS.Signals | null }) => void> = [];
@@ -535,6 +535,10 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     };
 
     const intervals = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as unknown as NodeJS.Timeout);
+    // Only fakes away the tick's own `setTimeout(tick, 0)` during the
+    // synchronous call below; restored before triggering the beacon's exit,
+    // so its restart backoff (500ms) runs for real and this test proves the
+    // delay exists rather than assuming it away.
     const timeouts = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as unknown as NodeJS.Timeout);
     const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
     dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
@@ -548,11 +552,14 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     expect(starts).toBe(1);
     // Simulate the first beacon dying on its own, not via stop().
     triggers[0]({ code: null, signal: "SIGKILL" });
-    expect(starts).toBe(2);
+    // The restart is deliberately delayed (CodeRabbit #627: no tight fork
+    // loop on a beacon that fails immediately), so it has not happened yet.
+    expect(starts).toBe(1);
+    await waitFor(() => starts === 2, 2_000);
 
     const logged = readFileSync(logfile, "utf8");
     expect(logged).toContain("Heartbeat beacon exited unexpectedly");
-    expect(logged).toContain("restarting it (attempt 1)");
+    expect(logged).toContain("restarting it in 500ms (attempt 1/5)");
   });
 });
 

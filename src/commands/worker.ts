@@ -89,6 +89,15 @@ const MAX_TICK_DURATION_MS = 30 * 60_000;
  */
 const REPEATED_FAILURE_LOG_INTERVAL = 30;
 
+/**
+ * Bounds how hard `runWorkerStartCommand` chases a beacon that keeps dying:
+ * a delay before each restart so a beacon that fails immediately cannot fork
+ * a fresh child in a tight loop, and a limit after which it gives up and logs
+ * a persistent failure instead of forking forever.
+ */
+const BEACON_RESTART_BACKOFF_MS = 500;
+const BEACON_RESTART_LIMIT = 5;
+
 export interface WorkerOptions {
   workspace: string;
 }
@@ -888,11 +897,22 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     beacon.onUnexpectedExit((detail) => {
       if (ownershipLost) return;
       beaconRestarts += 1;
+      if (beaconRestarts > BEACON_RESTART_LIMIT) {
+        log(
+          logfile,
+          `Heartbeat beacon failed ${beaconRestarts - 1} times in a row; giving up on restarting it. The worker's own liveness record will only be refreshed between tick steps, so a long tick step may again look hung.`
+        );
+        return;
+      }
       log(
         logfile,
-        `Heartbeat beacon exited unexpectedly (code ${detail.code}, signal ${detail.signal}${detail.error ? `, error: ${detail.error.message}` : ""}); restarting it (attempt ${beaconRestarts}).`
+        `Heartbeat beacon exited unexpectedly (code ${detail.code}, signal ${detail.signal}${detail.error ? `, error: ${detail.error.message}` : ""}); restarting it in ${BEACON_RESTART_BACKOFF_MS}ms (attempt ${beaconRestarts}/${BEACON_RESTART_LIMIT}).`
       );
-      superviseBeacon(startBeacon(workspacePath, identity));
+      // A delay, not an immediate retry: a beacon that fails at startup itself
+      // must not fork a fresh child in a tight loop.
+      setTimeout(() => {
+        if (!ownershipLost) superviseBeacon(startBeacon(workspacePath, identity));
+      }, BEACON_RESTART_BACKOFF_MS);
     });
   };
   superviseBeacon(startBeacon(workspacePath, identity));
@@ -1157,13 +1177,14 @@ function finalizeWorkerFailure(
 export function runWorkerStatusCommand(options: WorkerOptions): void {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const record = readWorkerRecord(workspacePath);
-  let { health, pid } = classifyWorkerHealth(
+  const classified = classifyWorkerHealth(
     record,
     record ? null : readLegacyPid(workspacePath),
     isProcessAlive
   );
-  const overlong = health === "running" && record ? isTickOverlong(workspacePath, record) : false;
-  if (overlong) health = "unhealthy";
+  const { pid } = classified;
+  const overlong = classified.health === "running" && record ? isTickOverlong(workspacePath, record) : false;
+  const health = overlong ? "unhealthy" : classified.health;
 
   if (health === "running") {
     process.stdout.write(`Worker: running (PID ${pid})\n`);
