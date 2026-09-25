@@ -1905,7 +1905,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/572", "src/sessions/reconciliation.ts"]
   - id: stop-killing-busy-workers
     title: Recover only a genuinely hung worker, never one that is merely busy inside a long synchronous step.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Recover only a genuinely hung worker, never one that is merely busy inside a long synchronous step.
