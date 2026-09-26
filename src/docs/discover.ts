@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { isManagedDoc, parseDoc } from "./parse.js";
+import { isManagedDoc, parseDoc, reportCrossPlanDependencyCycles } from "./parse.js";
 import type { ArcadiaDoc, DocValidationError, LogDoc, PlanDoc } from "./types.js";
 
 /** Directories never worth walking, and expensive to walk by accident. */
@@ -117,7 +117,18 @@ export function discoverDocs(repoRoot: string): DiscoveryResult {
   for (const relativePath of invalidLogs) {
     if (!rejected.includes(relativePath)) rejected.push(relativePath);
   }
-  const acceptedDocs = docs.filter((doc) => !invalidLogs.has(doc.relativePath));
+  const withoutInvalidLogs = docs.filter((doc) => !invalidLogs.has(doc.relativePath));
+
+  // A cycle confined to one Plan is already caught, and that document already
+  // rejected, inside `parsePlan` itself. A cycle that runs through a
+  // `plan/<slug>#<action-id>` reference spans documents a single-file parse
+  // never sees, so it can only be found once every surviving Plan is in hand.
+  const cyclePlans = withoutInvalidLogs.filter((doc): doc is PlanDoc => doc.type === "plan");
+  const cycleRejected = reportCrossPlanDependencyCycles(cyclePlans, errors);
+  for (const relativePath of cycleRejected) {
+    if (!rejected.includes(relativePath)) rejected.push(relativePath);
+  }
+  const acceptedDocs = withoutInvalidLogs.filter((doc) => !cycleRejected.has(doc.relativePath));
 
   // Stable ordering keeps dry-run output diffable between runs.
   acceptedDocs.sort((a, b) => a.relativePath.localeCompare(b.relativePath));

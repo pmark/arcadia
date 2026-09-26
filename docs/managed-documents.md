@@ -176,9 +176,15 @@ decisions: []
   `recommended_reasoning_effort` remains optional.
 
 - **`depends_on`** is an ordering claim that is enforced, not decoration.
-  Dependency cycles are rejected at parse time, and dispatch is blocked while
-  any transitive prerequisite is not `done`. Leave it `[]` rather than inventing
-  edges — the graph is only useful if it means something.
+  A bare id names an Action in the same Plan; `plan/<slug>#<action-id>` may
+  name an Action in another Plan, in this Project or another one — Plan slugs
+  are not namespaced by Project. Dependency cycles are rejected, including one
+  that runs through a cross-Plan reference and spans more than one Plan
+  document. Dispatch is blocked while any transitive prerequisite is not
+  `done`, and an id that resolves to no known Action, or to more than one
+  across Plans or Projects, is never treated as satisfied — it blocks the same
+  way. Leave it `[]` rather than inventing edges — the graph is only useful if
+  it means something.
 
 - **`acceptance_criteria`** are required on the current Action and are quoted
   **verbatim to the coding agent**, ahead of Arcadia's generated guardrails.
@@ -246,10 +252,12 @@ untouched instead of restoring the historical one it found (Issue #656).
 | --- | --- | --- |
 | Field types, enums, required fields | `src/docs/parse.ts` | Any managed document is read |
 | Dangling `depends_on` / `current_action` ids | `src/docs/parse.ts` | Any plan is read |
-| Dependency cycles | `src/docs/parse.ts` | Any plan is read |
+| Dependency cycles confined to one Plan | `src/docs/parse.ts` | Any plan is read |
+| Dependency cycles spanning more than one Plan | `src/docs/parse.ts` (`reportCrossPlanDependencyCycles`), called from `src/docs/discover.ts` | Discovery has read every Plan |
 | Unmet transitive prerequisites | `src/docs/dispatch.ts` | `arcadia next`, `arcadia work plan` |
 | Unanswered required Decisions | `src/docs/dispatch.ts` | `arcadia next`, `arcadia work plan` |
 | Open clarification question | `src/docs/dispatch.ts` | `arcadia next`, `arcadia work plan` |
+| A `plan/<slug>#<action-id>` id ambiguous across Plans or Projects | `src/docs/dispatch.ts`, `src/scheduling/order.ts` | `arcadia next`, `arcadia work plan`, scheduling |
 
 Both dispatch paths share one implementation deliberately. If you add a third
 way to start work, route it through `resolveActionReadiness` rather than

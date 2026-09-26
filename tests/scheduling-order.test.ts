@@ -5,7 +5,21 @@ function candidate(key: string, overrides: Partial<OrderCandidate> = {}): OrderC
   const slash = key.indexOf("/");
   const plan = slash < 0 ? key : key.slice(0, slash);
   const actionId = slash < 0 ? key : key.slice(slash + 1);
-  return { key, plan, actionId, schedulingClass: "planned", position: null, dependsOn: [], done: false, index: 0, ...overrides };
+  // Every fixture belongs to the same Project by default -- these tests
+  // predate Project-scoping and mean "cross-Plan, same Project" unless a case
+  // explicitly overrides `project` to test cross-Project resolution.
+  return {
+    key,
+    project: "proj",
+    plan,
+    actionId,
+    schedulingClass: "planned",
+    position: null,
+    dependsOn: [],
+    done: false,
+    index: 0,
+    ...overrides
+  };
 }
 
 describe("canonicalOrder", () => {
@@ -56,6 +70,30 @@ describe("canonicalOrder", () => {
       candidate("p/a", { position: 0, dependsOn: ["plan/other#setup"] })
     ]);
     expect(order).toEqual(["other/setup", "p/a"]);
+  });
+
+  it("resolves a cross-Project dependency by plan/<slug>#<action-id> and releases it once it is done", () => {
+    const order = canonicalOrder([
+      candidate("other-project/setup", { project: "other-project", plan: "other", actionId: "setup", done: true, position: 0 }),
+      candidate("p/a", { project: "proj", position: 0, dependsOn: ["plan/other#setup"] })
+    ]);
+    expect(order).toEqual(["p/a"]);
+  });
+
+  it("never resolves a depends_on id that matches more than one Plan across Projects (ambiguous)", () => {
+    // Two different Projects each declare a Plan slugged "other" carrying a
+    // done action "setup" -- Plan slugs are not namespaced by Project, so
+    // "plan/other#setup" cannot say which one is meant. p/a is preferred by
+    // position, but if canonicalOrder arbitrarily picked one side of the
+    // ambiguity (say, whichever candidate was discovered first) it would
+    // resolve to done and release p/a ahead of p/b; it must not.
+    const order = canonicalOrder([
+      candidate("project-a/setup", { project: "project-a", plan: "other", actionId: "setup", done: true, position: 0 }),
+      candidate("project-b/setup", { project: "project-b", plan: "other", actionId: "setup", done: true, position: 0 }),
+      candidate("p/a", { project: "proj", position: 0, dependsOn: ["plan/other#setup"] }),
+      candidate("p/b", { project: "proj", position: 1 })
+    ]);
+    expect(order).toEqual(["p/b", "p/a"]);
   });
 
   it("never treats an id that resolves to no known Action as satisfied (dependency_unresolved)", () => {

@@ -32,6 +32,8 @@ export function isQueuedClass(schedulingClass: SchedulingClass): boolean {
 
 export interface OrderCandidate {
   key: string;
+  /** The Project this candidate's Action belongs to. */
+  project: string;
   /** The Plan this candidate's Action is declared in. */
   plan: string;
   /** This candidate's own bare Action id (unprefixed) -- what a same-Plan `dependsOn` entry, or the `#<action-id>` half of a cross-Plan one, matches against. */
@@ -41,10 +43,12 @@ export interface OrderCandidate {
   position: number | null;
   /**
    * Ids of Actions this one waits for. A bare id resolves against this
-   * candidate's own `plan`; `plan/<slug>#<action-id>` resolves against that
-   * Plan instead. An id that resolves to no known Action -- in either form,
-   * a `dependency_unresolved` wait -- is never treated as satisfied, so it
-   * holds this candidate back rather than releasing it into the ready set.
+   * candidate's own `plan` and `project`; `plan/<slug>#<action-id>` may name
+   * an Action in another Plan, in the same Project or another one -- Plan
+   * slugs are not namespaced by Project. An id that resolves to no known
+   * Action, or to more than one across Plans or Projects, is never treated as
+   * satisfied -- either wait holds this candidate back rather than releasing
+   * it into the ready set.
    */
   dependsOn: string[];
   done: boolean;
@@ -54,25 +58,47 @@ export interface OrderCandidate {
 
 const CROSS_PLAN_DEPENDENCY = /^plan\/([^#]+)#(.+)$/;
 
+function projectPlanActionKey(project: string, plan: string, actionId: string): string {
+  return `${project}\u0000${plan}\u0000${actionId}`;
+}
+
 function planActionKey(plan: string, actionId: string): string {
   return `${plan}\u0000${actionId}`;
 }
 
 /**
- * Resolve one `dependsOn` entry to the candidate it names, or `null` when it
- * names no known Action. A bare id is a same-Plan reference; `plan/<slug>#
- * <action-id>` names an Action in another Plan by the same spelling the
- * `complete` Agent Ask intent uses for `target_ref`.
+ * Resolve `dependsOn` entries against one candidate list, ambiguity-aware.
+ *
+ * A bare id resolves only against the dependent's own `project` and `plan`.
+ * `plan/<slug>#<action-id>` may name an Action in any Plan any candidate
+ * carries -- the same Project or another one, the same spelling the
+ * `complete` Agent Ask intent uses for `target_ref` -- so it is resolved
+ * against every candidate sharing that bare `(plan, actionId)` pair
+ * regardless of Project. More than one match is exposed as ambiguous rather
+ * than resolved to whichever candidate happened to be indexed first.
  */
-function resolveDependency(
-  byPlanAction: Map<string, OrderCandidate>,
-  from: OrderCandidate,
-  dependency: string
-): OrderCandidate | null {
-  const cross = CROSS_PLAN_DEPENDENCY.exec(dependency);
-  const plan = cross ? cross[1] : from.plan;
-  const actionId = cross ? cross[2] : dependency;
-  return byPlanAction.get(planActionKey(plan, actionId)) ?? null;
+function buildDependencyResolver(candidates: OrderCandidate[]): (from: OrderCandidate, dependency: string) => OrderCandidate | null {
+  const byProjectPlanAction = new Map(
+    candidates.map((candidate) => [projectPlanActionKey(candidate.project, candidate.plan, candidate.actionId), candidate])
+  );
+  const byPlanAction = new Map<string, OrderCandidate[]>();
+  for (const candidate of candidates) {
+    const key = planActionKey(candidate.plan, candidate.actionId);
+    const bucket = byPlanAction.get(key);
+    if (bucket) bucket.push(candidate);
+    else byPlanAction.set(key, [candidate]);
+  }
+
+  return (from: OrderCandidate, dependency: string): OrderCandidate | null => {
+    const cross = CROSS_PLAN_DEPENDENCY.exec(dependency);
+    if (!cross) {
+      return byProjectPlanAction.get(projectPlanActionKey(from.project, from.plan, dependency)) ?? null;
+    }
+    const [, plan, actionId] = cross;
+    const matches = byPlanAction.get(planActionKey(plan, actionId)) ?? [];
+    // 0 matches: unresolved. 2+: ambiguous. Either way, never satisfied.
+    return matches.length === 1 ? matches[0] : null;
+  };
 }
 
 /**
@@ -86,7 +112,7 @@ function resolveDependency(
  */
 export function canonicalOrder(candidates: OrderCandidate[]): string[] {
   const live = candidates.filter((candidate) => !candidate.done && isQueuedClass(candidate.schedulingClass));
-  const byPlanAction = new Map(candidates.map((candidate) => [planActionKey(candidate.plan, candidate.actionId), candidate]));
+  const resolveDependency = buildDependencyResolver(candidates);
   const doneKeys = new Set(candidates.filter((candidate) => candidate.done).map((candidate) => candidate.key));
   const sorted = [...live].sort(compareByPreference);
   const emitted = new Set<string>();
@@ -94,7 +120,7 @@ export function canonicalOrder(candidates: OrderCandidate[]): string[] {
   const remaining = [...sorted];
 
   const isSatisfied = (from: OrderCandidate, dependency: string): boolean => {
-    const resolved = resolveDependency(byPlanAction, from, dependency);
+    const resolved = resolveDependency(from, dependency);
     if (!resolved) return false;
     return emitted.has(resolved.key) || doneKeys.has(resolved.key);
   };
@@ -171,7 +197,7 @@ export function applyOperatorOrder(candidates: OrderCandidate[], observed: strin
 
 function explainNormalization(candidates: OrderCandidate[], requested: string[], canonical: string[]): string[] {
   const byKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
-  const byPlanAction = new Map(candidates.map((candidate) => [planActionKey(candidate.plan, candidate.actionId), candidate]));
+  const resolveDependency = buildDependencyResolver(candidates);
   const canonicalIndex = new Map(canonical.map((key, index) => [key, index]));
   const reasons: string[] = [];
   for (let index = 0; index < requested.length; index += 1) {
@@ -181,7 +207,7 @@ function explainNormalization(candidates: OrderCandidate[], requested: string[],
       const moved = byKey.get(key);
       const ahead = byKey.get(later);
       if (!moved || !ahead) continue;
-      if (dependsTransitively(byPlanAction, moved, ahead.key)) {
+      if (dependsTransitively(resolveDependency, moved, ahead.key)) {
         reasons.push(`${key} depends on ${ahead.key}, so it stays behind it.`);
       } else if (TIER_RANK[moved.schedulingClass] > TIER_RANK[ahead.schedulingClass]) {
         reasons.push(`${key} (${moved.schedulingClass}) cannot move ahead of ${ahead.key} (${ahead.schedulingClass}).`);
@@ -192,17 +218,17 @@ function explainNormalization(candidates: OrderCandidate[], requested: string[],
 }
 
 function dependsTransitively(
-  byPlanAction: Map<string, OrderCandidate>,
+  resolveDependency: (from: OrderCandidate, dependency: string) => OrderCandidate | null,
   from: OrderCandidate,
   targetKey: string,
   seen = new Set<string>()
 ): boolean {
   for (const dependency of from.dependsOn) {
-    const next = resolveDependency(byPlanAction, from, dependency);
+    const next = resolveDependency(from, dependency);
     if (!next || seen.has(next.key)) continue;
     if (next.key === targetKey) return true;
     seen.add(next.key);
-    if (dependsTransitively(byPlanAction, next, targetKey, seen)) return true;
+    if (dependsTransitively(resolveDependency, next, targetKey, seen)) return true;
   }
   return false;
 }

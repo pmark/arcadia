@@ -635,6 +635,80 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
+  it("escalates a depends_on id that stays unresolved for more than one worker tick, instead of waiting silently", () => {
+    // "plan/no-such-plan#no-such-action" names no Plan anywhere in this
+    // fixture, so it can never resolve on its own the way an ordinary
+    // unfinished dependency would once the other work finishes.
+    const fixture = preparedFixture({ dependsOnUnresolved: true, skipPacket: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+
+    const firstResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(firstResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+    // The first tick to see this unresolved id only records the sighting -- a
+    // reference that is wrong for one tick and fixed before the next must
+    // never reach the operator.
+    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Escalated/));
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+
+    const secondResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/Escalated test-project\/define-contract to the operator \(dependency_unresolved\)/)
+    );
+
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations).toHaveLength(1);
+    expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "dependency_unresolved" });
+    expect(escalations[0].message).toContain("plan/no-such-plan#no-such-action");
+    expect(escalations[0].remedy).toContain("plan/no-such-plan#no-such-action");
+
+    // A third tick with the escalation already recorded keeps reporting it,
+    // rather than an escalation that only ever fires once.
+    const thirdResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 120_000),
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(thirdResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch).toMatchObject({
+      attempted: false,
+      outcome: "skipped"
+    });
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(1);
+  });
+
   it("never binds an automatically prepared build packet to a provider the standing policy does not permit", () => {
     // The workspace's own registry default build profile is `codex_build`
     // (codex-cli) -- see config/defaults/coding-agent-profiles.json -- but
@@ -1477,7 +1551,15 @@ function completeActionInWorktree(worktreePath: string, actionId: string): void 
   git(worktreePath, ["commit", "-m", `complete ${actionId}`]);
 }
 
-function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean; buildAction?: boolean; noValidationCommands?: boolean } = {}) {
+function preparedFixture(
+  options: {
+    secondAction?: boolean;
+    skipPacket?: boolean;
+    buildAction?: boolean;
+    noValidationCommands?: boolean;
+    dependsOnUnresolved?: boolean;
+  } = {}
+) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -1485,7 +1567,10 @@ function preparedFixture(options: { secondAction?: boolean; skipPacket?: boolean
   mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
   mkdirSync(path.join(repo, "docs", "decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
-  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), planDocument(options.secondAction ?? false, options.buildAction ?? false));
+  writeFileSync(
+    path.join(repo, "docs", "plans", "copy-proof.md"),
+    planDocument(options.secondAction ?? false, options.buildAction ?? false, options.dependsOnUnresolved ?? false)
+  );
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.email", "arcadia@example.test"]);
@@ -1610,7 +1695,7 @@ updated: 2026-08-30
 # Test Project
 `;
 
-function planDocument(secondAction: boolean, buildAction = false): string {
+function planDocument(secondAction: boolean, buildAction = false, dependsOnUnresolved = false): string {
   const second = secondAction
     ? `
   - id: second-action
@@ -1631,6 +1716,10 @@ function planDocument(secondAction: boolean, buildAction = false): string {
   // default wording below -- routes to `codex_planning` (Decision-gated).
   const title = buildAction ? "Implement the contract" : "Define the contract";
   const nextAction = buildAction ? "Implement the bounded contract." : "Define the bounded contract.";
+  // A reference that can never resolve -- no Plan named "no-such-plan" exists
+  // anywhere in this fixture -- so `dependency_unresolved` never self-clears
+  // the way an ordinary unfinished dependency does.
+  const dependsOn = dependsOnUnresolved ? `\n    depends_on: ["plan/no-such-plan#no-such-action"]` : "";
   return `---
 arcadia: v1
 type: plan
@@ -1655,7 +1744,7 @@ actions:
     expected_artifact: docs/contract.md
     acceptance_criteria:
       - The contract exists.
-    decisions: ["0001"]${second}
+    decisions: ["0001"]${dependsOn}${second}
 ---
 
 # Copy proof
