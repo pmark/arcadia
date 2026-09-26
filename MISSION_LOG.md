@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
 # Mission Log: Arcadia
@@ -816,3 +816,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "Answering a Decision with a plain (non-defer) effect via arcadia decision approve leaves the repository clean (no uncommitted changes) immediately after the command returns, with the Decision file change committed locally and not pushed."; "A test covers a plain-answer decision approve and asserts the working tree is clean after the command runs."; "The pull request that lands this fix includes Closes #645 in its body.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-decision-approve-missing-commit-2026-09-25).
+
+## 2026-09-26 — Completed arcadia/resolve-cross-plan-dependency-ids
+
+- **Did:** Completed Action arcadia/resolve-cross-plan-dependency-ids from accepted evidence (Candidate 11ce4586adae545515d8189c728db13ba272f929).
+- **Result:** Every declared acceptance criterion was accepted as met: "canonicalOrder (src/scheduling/order.ts) resolves a depends_on id first within the same Plan, then across the same Project's Plans as plan/<slug>#<action-id>; an id that resolves to a done Action on the base branch is satisfied."; "A depends_on id that does not resolve to any known Action within the same Project produces a dependency_unresolved wait reason instead of being treated as satisfied, and the Action does not enter the ready set."; "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, and an id that never resolves; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-resolve-cross-plan-dependency-ids-2026-09-26-r2).
