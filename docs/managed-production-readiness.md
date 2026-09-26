@@ -345,9 +345,11 @@ This section used to say concurrency waits on the proof, full stop. Decision
       concurrency proof now waits on the soak.
 
   Eight Actions are buildable now, in parallel. Everything that changes
-  lease, stall or pointer behaviour waits on the sequential proof. No live
-  Session runs concurrently with another until the fixture soak and both
-  proofs pass.
+  lease, stall or pointer behaviour waits on the sequential proof. Outside
+  the bounded, expiring rehearsal exception that the fixture soak and
+  `prove-concurrent-ready-set-admission` themselves run under, no Session
+  runs concurrently with another until the fixture soak and both proofs
+  pass.
 - **Same-repository concurrency (Decision 0066).** Still approved as written:
   same-repository concurrent Sessions wait until
   `prove-two-action-unattended-production` and the #505/#507/#549-class fixes
