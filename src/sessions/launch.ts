@@ -16,6 +16,7 @@ import type { CodingAgentProfile } from "../intent/registries.js";
 import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
   failPreparedSession,
+  getActiveActionClaim,
   getRepositoryLease,
   getSession,
   launchPreparedSession,
@@ -249,14 +250,45 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // `incomplete_resumable` receipt with its lease handed off, not merely a
   // dead tmux pane -- and only for this exact Action, and only while its
   // worktree still exists on disk to resume into.
+  //
+  // The candidate's Git metadata is probed with `tryGit` *before* the claim is
+  // renewed, and its checked-out branch confirmed against the receipt: a
+  // worktree directory that survives on disk but is no longer valid Git state
+  // (or was somehow re-checked-out to a different branch) must not have its
+  // claim renewed only to throw past that point with the claim already held
+  // and nothing left to release it (CodeRabbit, PR #696).
   const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
-  const resumableStaleClaim =
+  let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; branch: string; headRevision: string } | null = null;
+  if (
     staleHandoff
     && staleHandoff.session.action_id === preview.actionId
     && !tmux.hasSession(staleHandoff.session.tmux_session_name)
     && existsSync(staleHandoff.session.worktree_path)
-      ? staleHandoff
-      : null;
+  ) {
+    const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
+    const headProbe = tryGit(staleHandoff.session.worktree_path, ["rev-parse", "HEAD"]);
+    const branchProbe = tryGit(staleHandoff.session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
+    if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
+      resumableStaleClaim = { session: staleHandoff.session, branch: expectedBranch, headRevision: headProbe.trim() };
+    } else {
+      // Not safely resumable after all. Its stale claim would otherwise make
+      // the ordinary new-worktree path below refuse on `actionAlreadyClaimed`
+      // over a claim nothing will ever resume -- release it explicitly,
+      // fenced on the exact generation currently held, so a fresh worktree
+      // can be claimed normally. The worktree reservation itself (and the
+      // worktree on disk) is left alone, so `tidy` still will not retire it
+      // out from under an operator's manual inspection.
+      const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now);
+      if (held?.claim_generation) {
+        releaseActionClaim(input.db, {
+          repositoryPath: repoRoot,
+          project: preview.projectSlug,
+          actionId: preview.actionId!,
+          generation: held.claim_generation
+        });
+      }
+    }
+  }
 
   const reservationCommitCleanup: { candidate: PreparedAgentWorktree | null } = { candidate: null };
   // The generation this launch claimed, so a Session preparation that fails
@@ -270,14 +302,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // as a renewal, per Decision 0051). No Git write happens here -- the
     // worktree already exists and may hold uncommitted work from the dead
     // Session that must not be disturbed.
-    const branch = staleHandoff!.session.branch.replace(/^refs\/heads\//, "");
     nextWorktree = {
       agent,
-      path: staleHandoff!.session.worktree_path,
-      branch,
+      path: resumableStaleClaim.session.worktree_path,
+      branch: resumableStaleClaim.branch,
       model,
       effort,
-      command: buildAgentLaunchCommand(agent, staleHandoff!.session.worktree_path, model, effort)
+      command: buildAgentLaunchCommand(agent, resumableStaleClaim.session.worktree_path, model, effort)
     };
     claim.generation = writeTransaction(input.db, () => reserveAgentWorktree(input.db, {
       repositoryPath: repoRoot,
@@ -330,7 +361,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // one starts wherever the dead Session's own commits left it -- recording
   // the base branch's HEAD there would make that guard fail immediately.
   const sessionBaseRevision = resumableStaleClaim
-    ? git(nextWorktree.path, ["rev-parse", "HEAD"]).trim()
+    ? resumableStaleClaim.headRevision
     : baseRevision;
 
   let prepared: AgentSession;

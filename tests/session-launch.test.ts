@@ -902,6 +902,54 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     const supersededReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
     expect(supersededReceipt?.superseded_by_session_id).toBe(second.session.id);
   });
+
+  it("releases a stale claim rather than resuming it when the claimed worktree is no longer valid Git state", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+
+    // The worktree directory survives (so `existsSync` alone cannot tell), but
+    // its Git metadata is gone -- e.g. its `.git` worktree link was corrupted
+    // or the main checkout's `.git/worktrees` bookkeeping was lost. It must not
+    // be resumed, and its stale claim must not be left stuck either.
+    rmSync(path.join(worktreePath, ".git"), { force: true });
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.worktree_path).not.toBe(worktreePath);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+  });
 });
 
 const productionScope: ProductionScope = normalizeProductionScope({
