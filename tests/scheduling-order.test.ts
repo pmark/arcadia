@@ -48,8 +48,11 @@ describe("canonicalOrder", () => {
   });
 
   it("holds a candidate back behind a cross-Plan dependency that is not yet done", () => {
+    // "other/setup" is preferred by position but is not done, so the
+    // dependent still waits for it -- if canonicalOrder ignored dependency
+    // readiness, position alone would order p/a first.
     const order = canonicalOrder([
-      candidate("other/setup", { plan: "other", actionId: "setup", done: false, position: 0 }),
+      candidate("other/setup", { plan: "other", actionId: "setup", done: false, position: 1 }),
       candidate("p/a", { position: 0, dependsOn: ["plan/other#setup"] })
     ]);
     expect(order).toEqual(["other/setup", "p/a"]);
@@ -57,28 +60,33 @@ describe("canonicalOrder", () => {
 
   it("never treats an id that resolves to no known Action as satisfied (dependency_unresolved)", () => {
     const order = canonicalOrder([
-      candidate("p/a", { position: 0 }),
-      candidate("p/b", { position: 1, dependsOn: ["nowhere"] }),
+      candidate("p/a", { position: 1 }),
+      candidate("p/b", { position: 0, dependsOn: ["nowhere"] }),
       candidate("p/c", { position: 2, dependsOn: ["plan/ghost#nowhere"] })
     ]);
-    // p/a has no dependency and runs first; p/b and p/c can never resolve
-    // their dependency, so they are pushed behind everything that could
-    // proceed, in preference order between themselves.
+    // p/b and p/c are preferred by position but can never resolve their
+    // dependency, so they are pushed behind p/a despite it being preferred
+    // last -- if canonicalOrder ignored dependency readiness, position alone
+    // would order them p/b, p/a, p/c.
     expect(order).toEqual(["p/a", "p/b", "p/c"]);
   });
 
   it("releases a candidate once its previously unresolved dependency lands, across ticks", () => {
-    const tickOne = canonicalOrder([candidate("p/a", { position: 0 }), candidate("p/b", { position: 1, dependsOn: ["plan/other#setup"] })]);
+    const tickOne = canonicalOrder([
+      candidate("p/a", { position: 1 }),
+      candidate("p/b", { position: 0, dependsOn: ["plan/other#setup"] })
+    ]);
     expect(tickOne).toEqual(["p/a", "p/b"]);
 
     const tickTwo = canonicalOrder([
       candidate("other/setup", { plan: "other", actionId: "setup", done: true, position: 0 }),
-      candidate("p/a", { position: 0 }),
-      candidate("p/b", { position: 1, dependsOn: ["plan/other#setup"] })
+      candidate("p/a", { position: 1 }),
+      candidate("p/b", { position: 0, dependsOn: ["plan/other#setup"] })
     ]);
     // "other/setup" is done, so it never appears in the output (done Actions
-    // are never queued), and its dependent is released once it resolves.
-    expect(tickTwo).toEqual(["p/a", "p/b"]);
+    // are never queued), and its dependent -- now preferred by position -- is
+    // released once it resolves.
+    expect(tickTwo).toEqual(["p/b", "p/a"]);
   });
 });
 
