@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-25
+updated: 2026-09-26
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -2050,7 +2050,7 @@ actions:
     references: []
   - id: resolve-cross-plan-dependency-ids
     title: "Unknown depends_on ids block the Action instead of counting as satisfied, resolving cross-Plan references by plan/<slug>#<action> before falling back to a dependency_unresolved wait reason."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Same-Project cross-Plan depends_on resolution, consistent across ordering and dispatch readiness.
@@ -2340,7 +2340,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: resolve-cross-plan-dependency-ids
+current_action: resolve-ambiguous-and-cross-project-dependency-ids
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

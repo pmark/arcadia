@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
 # Mission Log: Arcadia
@@ -816,3 +816,10 @@ updated: 2026-09-25
 - **Result:** Every declared acceptance criterion was accepted as met: "Answering a Decision with a plain (non-defer) effect via arcadia decision approve leaves the repository clean (no uncommitted changes) immediately after the command returns, with the Decision file change committed locally and not pushed."; "A test covers a plain-answer decision approve and asserts the working tree is clean after the command runs."; "The pull request that lands this fix includes Closes #645 in its body.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-decision-approve-missing-commit-2026-09-25).
+
+## 2026-09-26 — Completed arcadia/resolve-cross-plan-dependency-ids
+
+- **Did:** Completed Action arcadia/resolve-cross-plan-dependency-ids from accepted evidence (Candidate 025afac898c06bba9b10eb34e54540d3b9f293ad).
+- **Result:** Every declared acceptance criterion was accepted as met: "canonicalOrder (src/scheduling/order.ts) and collectUnmetDependencies (src/docs/dispatch.ts) resolve a depends_on id first within the same Plan, then across the same Project's Plans as plan/<slug>#<action-id>; an id that resolves to a done Action on the base branch is satisfied in both."; "An id that does not resolve to any known Action in the Project is never treated as satisfied (dependency_unresolved): collectUnmetDependencies reports it as an unmet blocker, so deriveStatus (src/scheduling/schedule.ts) and dispatch never mark the Action ready, and canonicalOrder holds the candidate behind every candidate that can proceed."; "The plan parser (src/docs/parse.ts) accepts plan/<slug>#<action-id> dependency ids without reporting them as dangling; a bare id outside the same Plan is still reported as dangling."; "A dependency on a deferred Action is reported with its actual status (deferred), not dependency_unresolved."; "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, an id that never resolves, a dependency chain that would cycle across Plans staying safe and never looping, and a dependency on a deferred Action; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-resolve-cross-plan-dependency-ids-2026-09-26).
