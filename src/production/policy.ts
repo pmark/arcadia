@@ -407,14 +407,42 @@ export function normalizeRehearsalException(
       { field: "rehearsalException.actionRef", value: actionRef }
     );
   }
-  const expiresAt = (input.expiresAt ?? "").trim();
-  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
-    throw validationError("A rehearsal exception needs a valid ISO expiry.", {
-      field: "rehearsalException.expiresAt",
-      value: input.expiresAt
-    });
+  const expiresAt = parseStrictIsoInstant((input.expiresAt ?? "").trim());
+  if (!expiresAt) {
+    throw validationError(
+      "A rehearsal exception needs a strict RFC 3339 UTC instant, e.g. 2026-09-05T12:00:00.000Z.",
+      { field: "rehearsalException.expiresAt", value: input.expiresAt }
+    );
   }
   return { actionRef, expiresAt };
+}
+
+/**
+ * A strict RFC 3339 UTC instant: requires an explicit `Z` offset and rejects
+ * any date/time that round-trips to a different UTC instant than its literal
+ * calendar fields imply -- `Date.parse`/`Date.UTC` both silently normalize an
+ * impossible date like "2026-02-30" instead of rejecting it, which would let
+ * a mistyped expiry quietly extend the one exception that lifts the
+ * concurrency cap. Returns the canonical `toISOString()` spelling so the
+ * fingerprint and every display use one spelling; `null` when invalid.
+ */
+function parseStrictIsoInstant(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction] = match;
+  const milliseconds = fraction ? Number(fraction.padEnd(3, "0")) : 0;
+  const instant = Date.UTC(
+    Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), milliseconds
+  );
+  const date = new Date(instant);
+  const roundTrips =
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() === Number(month) - 1 &&
+    date.getUTCDate() === Number(day) &&
+    date.getUTCHours() === Number(hour) &&
+    date.getUTCMinutes() === Number(minute) &&
+    date.getUTCSeconds() === Number(second);
+  return roundTrips ? date.toISOString() : null;
 }
 
 /** Stable fingerprint of exactly what the operator was shown before granting. */

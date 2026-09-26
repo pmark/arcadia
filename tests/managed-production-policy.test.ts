@@ -424,6 +424,21 @@ describe("concurrency gate", () => {
       })
     ).toThrow(/may only name/);
   });
+
+  it("refuses a rehearsal exception expiry that is not a strict RFC 3339 UTC instant", () => {
+    for (const expiresAt of ["2026-02-30T12:00:00.000Z", "September 30 2026", "2026-09-05T12:00:00.000+02:00", ""]) {
+      expect(() =>
+        normalizeProductionScope({
+          intent: "Rehearse concurrent admission.",
+          projects: ["demo"],
+          plans: ["demo/queue-plan"],
+          actions: ["demo/migrate"],
+          providers: ["claude"],
+          rehearsalException: { actionRef: CONCURRENT_READY_SET_ADMISSION_PROOF_REF, expiresAt }
+        })
+      ).toThrow(/strict RFC 3339/);
+    }
+  });
 });
 
 describe("Off fences new work and preserves committed work", () => {
