@@ -358,7 +358,7 @@ describe("dispatch resolution", () => {
     expect(resolution.blockers[0].message).toContain("No PROJECT.md");
   });
 
-  it("resolves a cross-Plan dependency by plan/<slug>#<action-id> and releases it once it is done", () => {
+  it("resolves a cross-Plan dependency by plan/<slug>#<action-id>, blocking while it is unfinished", () => {
     const root = repo();
     write(root, "PROJECT.md", projectDoc());
     write(
@@ -380,6 +380,51 @@ describe("dispatch resolution", () => {
     expect(blocker?.message).toContain("setup");
     expect(blocker?.message).toContain('is "open", not done');
     expect(isDispatchable(blocked)).toBe(false);
+  });
+
+  it("releases a cross-Plan dependency by plan/<slug>#<action-id> once it is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc().replace("    depends_on: []\n", "    depends_on: [plan/other-plan#setup]\n")
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      planDoc({ slug: "other-plan", currentAction: null })
+        .replace("  - id: ship-it", "  - id: setup")
+        .replace("    status: open", "    status: done")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
+  it("reports a dependency on a deferred Action with its own status, not dependency_unresolved", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc().replace("    depends_on: []\n", "    depends_on: [plan/other-plan#setup]\n")
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      planDoc({ slug: "other-plan", currentAction: null })
+        .replace("  - id: ship-it", "  - id: setup")
+        .replace("    status: open", "    status: deferred")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("setup");
+    expect(blocker?.message).toContain('is "deferred", not done');
+    expect(blocker?.message).not.toContain("dependency_unresolved");
+    expect(isDispatchable(resolution)).toBe(false);
   });
 
   it("never treats an id that resolves to no known Action as satisfied (dependency_unresolved)", () => {
