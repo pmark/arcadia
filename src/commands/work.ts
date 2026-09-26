@@ -1314,12 +1314,18 @@ function ensureBuildPacketForPlan(
   packetArtifact: ArtifactSummary;
 } {
   const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile);
-    const existingApproval = listReviewItems(db, "all").find((item) =>
-    item.work_item_id === workItem.id &&
-    item.codex_invocation_id === invocation.id &&
-    item.resolved_intent === "CodexBuildPacketApproval" &&
-    (item.status === "open" || item.status === "deferred")
-  );
+  // Reuse the newest live approval for this exact packet, approved included.
+  // The launch path trusts the newest promotion review for a packet, so
+  // opening a fresh one beside an approved one silently revoked the operator's
+  // approval on every re-plan (Issue #709). Only a rejected review is not
+  // reused: re-planning after a rejection asks again.
+  const existingApproval = listReviewItems(db, "all")
+    .filter((item) =>
+      item.work_item_id === workItem.id &&
+      item.codex_invocation_id === invocation.id &&
+      item.resolved_intent === "CodexBuildPacketApproval" &&
+      (item.status === "open" || item.status === "deferred" || item.status === "approved"))
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
   if (existingApproval) {
     return { approval: existingApproval, invocation, packetArtifact };
   }
