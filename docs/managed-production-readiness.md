@@ -11,7 +11,7 @@ from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck
 are right and this file is stale. "Refreshing this document" at the bottom says
 how to re-derive it.
 
-Last derived: **2026-09-25** (updated same day, six times more — see the
+Last derived: **2026-09-25** (updated same day, seven times more — see the
 notes below). This derivation also restored the dispatch guarantee
 that `arcadia go` works only on the critical path (see "What this derivation
 changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
@@ -102,6 +102,17 @@ this fix used `intent: plan` and its preview showed it would reflow the
 Lane B's earlier promotion to the top of the queue; that preview was caught
 and discarded (`applied: false`) before anything was written.
 
+**Update at 2026-09-26T00:10Z: `resolve-cross-plan-dependency-ids` settled
+done; `current_action` moved to `admit-ready-set-across-repositories`.**
+PR #653 completed the Action and pushed the settlement in its own candidate.
+This correction (prompted by a CodeRabbit review comment on the PR) updates
+every place in this document that still called B1 "ready now" or named it as
+`current_action` — the executive summary table, "The critical path, in
+order", the live-state pointer row, and the scoreboard's Lane B code count —
+to instead name B2 (`admit-ready-set-across-repositories`) as ready and
+current. The command suite in "Refreshing this document" was not re-run in
+full for this correction.
+
 ---
 
 ## Executive summary
@@ -109,9 +120,11 @@ and discarded (`applied: false`) before anything was written.
 **Two lanes now, not one.** Lane A earns the *unattended* claim: **0 blocking
 code Actions left at all** — the ungated governance fix landed too — so all
 that remains is 1 operator step, then 1 proof run. Lane B earns the
-*concurrent* claim: **building** it needs no proof — 2 code Actions, ready now
-or one dependency away, and now the actual `current_action` the pointer sits
-on — but **turning it on** needs two proofs, Lane A's plus a
+*concurrent* claim: **building** it needs no proof — 1 code Action done
+(`resolve-cross-plan-dependency-ids`, PR #653), 1 code Action ready now and
+the actual `current_action` the pointer sits on
+(`admit-ready-set-across-repositories`) — but **turning it on** needs two
+proofs, Lane A's plus a
 concurrency-specific one added 2026-09-25 after checking that Lane A's proof
 does not actually exercise concurrent admission. A third Action pipelines
 same-repository work but stays behind Lane A's proof too, same as the
@@ -130,14 +143,14 @@ prior derivation:
 | `name-failing-preservation-check-and-bound-retries` | #611 (rest) | Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
 | `honor-policy-providers-at-launch` | #559 | PR #646. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
 | `refuse-packets-without-validation-commands` | #572 | PR #647, closed Issue #572. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
-| `fix-decision-approve-missing-commit` | #645 | Completed; evidence in `MISSION_LOG.md` 2026-09-25 ("Completed arcadia/fix-decision-approve-missing-commit"). `current_action` has already advanced past it, to `resolve-cross-plan-dependency-ids`. |
+| `fix-decision-approve-missing-commit` | #645 | Completed; evidence in `MISSION_LOG.md` 2026-09-25 ("Completed arcadia/fix-decision-approve-missing-commit"). `current_action` has already advanced past it, through `resolve-cross-plan-dependency-ids` (also done, PR #653), to `admit-ready-set-across-repositories`. |
 
 **What remains, in dispatch order (both lanes, as currently queued):**
 
 | # | Action | Lane | Defect / Decision | Why it blocks |
 | --- | --- | --- | --- | --- |
-| 1 | `resolve-cross-plan-dependency-ids` ← **current `current_action`, ready now** | B (concurrent) | Decision 0071 | No dependency; unknown `depends_on` ids must block instead of counting as satisfied before the ready set can safely span repositories. |
-| 2 | `admit-ready-set-across-repositories` | B (concurrent) | Decision 0071 | Depends on #1. Retires the settlement-advanced `current_action` pointer for a scheduler-derived one; this is what actually turns on cross-repository concurrency. |
+| 1 | ~~`resolve-cross-plan-dependency-ids`~~ — done (PR #653) | B (concurrent) | Decision 0071 | No longer blocks. `canonicalOrder` now holds an unresolved `depends_on` id back instead of counting it as satisfied. |
+| 2 | `admit-ready-set-across-repositories` ← **current `current_action`, ready now** | B (concurrent) | Decision 0071 | Depends on #1 (done). Retires the settlement-advanced `current_action` pointer for a scheduler-derived one; this is what actually turns on cross-repository concurrency. |
 | 3 | **Operator:** reverse Decision 0057's deferral and start the rehearsal | A (unattended) | — | Nothing else blocks this. All four original Lane A code blockers, including the ungated governance fix, are done. |
 | 4 | `pipeline-independent-actions-while-pr-unmerged` | B (concurrent), gated by A | Decision 0071 + Decision 0070 | Depends on #2 above, plus the two existing Decision-0070 held Actions in the table below, which are themselves held behind entry 3's proof run. |
 | 5 | `prove-concurrent-ready-set-admission` | B (concurrent), gated by A | Decision 0071 | Depends on #2 and entry 3's proof run. Added 2026-09-25: entry 3's proof only tests sequential dispatch, not concurrent admission, so `admit-ready-set-across-repositories`'s `maxConcurrentSessions` gate now requires this proof too. |
@@ -228,7 +241,7 @@ does not sit behind gate 5.
 | 4 — It keeps going without help | 🟡 **#617 and #559 both fixed and closed; provisional until the proof run passes through this gate.** |
 | 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred. Its revival trigger is now met (`fix-decision-approve-missing-commit` landed) — all it needs is the operator reversing Decision 0057. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
 | 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
-| **B — Cross-repository concurrency** (Decision 0071) | ⬜ **Building is not gated by 5; admitting real concurrent work is gated by 5 *and* a new proof.** `resolve-cross-plan-dependency-ids` is ready now; `admit-ready-set-across-repositories` depends only on it and may be built and merged before either proof. Its acceptance criteria require it to refuse activating `maxConcurrentSessions > 1` until *both* `prove-two-action-unattended-production` and `prove-concurrent-ready-set-admission` are `status: done` — the latter added 2026-09-25 because the former does not actually test concurrent admission (see "Concurrency"). |
+| **B — Cross-repository concurrency** (Decision 0071) | ⬜ **Building is not gated by 5; admitting real concurrent work is gated by 5 *and* a new proof.** `resolve-cross-plan-dependency-ids` is done (PR #653); `admit-ready-set-across-repositories` is `current_action`, depended only on it, and may be built and merged before either proof. Its acceptance criteria require it to refuse activating `maxConcurrentSessions > 1` until *both* `prove-two-action-unattended-production` and `prove-concurrent-ready-set-admission` are `status: done` — the latter added 2026-09-25 because the former does not actually test concurrent admission (see "Concurrency"). |
 | **B′ — Same-repository pipelining** (Decision 0071 + 0070) | ⬜ Gated by gate B *and* gate 5, through the two existing Decision-0070 held Actions (`settle-squash-merged-completion-drafts`, `sweep-merged-completions-before-dispatch`), which depend on `prove-two-action-unattended-production`. |
 
 A gate is closed when the live system does what the gate says, not when its
@@ -243,10 +256,10 @@ proof run passes through them.
 **Lane B (concurrent) now dispatches first**, because it was promoted to the
 top of the queue on 2026-09-25 and carries no dependency on the proof:
 
-B1. `resolve-cross-plan-dependency-ids` ← **top of queue, ready now**
-B2. `admit-ready-set-across-repositories` — depends on B1; builds the
-    mechanism, but its own acceptance criteria refuse to let
-    `maxConcurrentSessions` exceed 1 until *both* B4 and entry 6 below are done
+B1. ~~`resolve-cross-plan-dependency-ids`~~ — done (PR #653).
+B2. `admit-ready-set-across-repositories` ← **top of queue, `current_action`,
+    ready now.** Its own acceptance criteria still refuse to let
+    `maxConcurrentSessions` exceed 1 until *both* B4 and entry 6 below are done.
 B3. `pipeline-independent-actions-while-pr-unmerged` — depends on B2 *and*
     Lane A's proof (through the Decision-0070 held Actions), so it cannot
     dispatch until Lane A reaches entry 6
@@ -256,7 +269,7 @@ B4. `prove-concurrent-ready-set-admission` — depends on B2 and entry 6; the
     2026-09-25 because entry 6 alone does not test this (see "Concurrency")
 
 **Lane A (unattended) has no code Actions left.** `current_action` has moved
-past all of them, onto B1:
+past all of them, and past B1, onto B2:
 
 1. ~~`name-failing-preservation-check-and-bound-retries` (#611)~~ — done.
 2. ~~`honor-policy-providers-at-launch` (#559)~~ — done.
@@ -272,7 +285,7 @@ Then, for continuous production rather than the claim itself:
 `prove-multi-provider-production-recovery`, then
 `run-managed-production-live-soak` (operator-granted scope).
 
-B1 and B2 are each an ordinary `claude-sonnet-5` session at high effort.
+B1 (done) and B2 are each an ordinary `claude-sonnet-5` session at high effort.
 
 ### Rehearsal hazards to know before entry 5
 
@@ -363,8 +376,8 @@ This section used to say concurrency waits on the proof, full stop. Decision
 | --- | --- |
 | Managed production | **Inactive · Idle** (policy revision 15, epoch 12, revoked 2026-09-24T16:15Z). No Session has launched since 2026-09-24. Unchanged since the 23:00Z reading. |
 | Worker | Running. Recent base-advance lines through 2026-09-25T23:23Z show it ticking; no `Recovered hung worker:` line seen. |
-| Pointer (`current_action`) | `bootstrap-managed-production-to-build-flight-deck` / `resolve-cross-plan-dependency-ids` (moved off `fix-decision-approve-missing-commit` once that completed and settled). Reordering the queue does not move the pointer; only dispatch or completion does. |
-| Ready in the active Plan, in queue order | `resolve-cross-plan-dependency-ids` (Lane B1, `current_action`, ready, `pointerAuthorized: true`), then the operator rehearsal step (Lane A). `admit-ready-set-across-repositories`, `pipeline-independent-actions-while-pr-unmerged`, and `prove-concurrent-ready-set-admission` are queued but not yet ready (unmet `depends_on`). |
+| Pointer (`current_action`) | `bootstrap-managed-production-to-build-flight-deck` / `admit-ready-set-across-repositories` (moved off `resolve-cross-plan-dependency-ids` once that completed and settled via PR #653). Reordering the queue does not move the pointer; only dispatch or completion does. |
+| Ready in the active Plan, in queue order | `admit-ready-set-across-repositories` (Lane B2, `current_action`, ready, no unmet dependency), then the operator rehearsal step (Lane A). `pipeline-independent-actions-while-pr-unmerged` and `prove-concurrent-ready-set-admission` are queued but not yet ready (unmet `depends_on`). |
 | Open Decisions | 0041, 0052. Neither concerns production readiness. Decisions 0057, 0061 (proof deferral + retargeted trigger) and 0071 (ready-set admission with pipelining) are all approved, not open. |
 | Open escalation | `private-practice-now/calibrate-river-specialty-prompt-chain` (`planning_required`). Unrelated to the Arcadia lane. |
 
@@ -379,7 +392,7 @@ This section used to say concurrency waits on the proof, full stop. Decision
 | Open | 25 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
 | **On the critical path, code, Lane A** | **0** — all four landed; `fix-decision-approve-missing-commit` settled and the pointer has moved on |
-| **On the critical path, code, Lane B** | **2** (`resolve-cross-plan-dependency-ids` ready, `current_action`; `admit-ready-set-across-repositories` one dependency away) |
+| **On the critical path, code, Lane B** | **1** (`admit-ready-set-across-repositories`, ready, `current_action`; `resolve-cross-plan-dependency-ids` is done, PR #653) |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal — trigger is met, nothing else blocks it) |
 | **On the critical path, proof, Lane A** | **1** (`prove-two-action-unattended-production`) |
 | **On the critical path, proof, Lane B** | **1** (`prove-concurrent-ready-set-admission`, added 2026-09-25 — Lane A's proof alone does not test concurrency) |
