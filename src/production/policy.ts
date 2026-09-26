@@ -272,6 +272,24 @@ export function ensureProductionPolicyTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS production_admissions_status
       ON production_admissions (status, epoch);
   `);
+  ensureProductionPolicyReceiptScopeFingerprintColumn(db);
+}
+
+/**
+ * Rows written before this column existed have no fingerprint on record, so a
+ * replay against them stays idempotent rather than refusing on `NULL`
+ * mismatched with everything (#704's fix distinguishes "no fingerprint on
+ * record" from "a different fingerprint on record").
+ */
+function ensureProductionPolicyReceiptScopeFingerprintColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(production_policy_receipts)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  if (!columns.has("scope_fingerprint")) {
+    db.prepare("ALTER TABLE production_policy_receipts ADD COLUMN scope_fingerprint TEXT").run();
+  }
 }
 
 export function normalizeProductionScope(input: Partial<ProductionScope>): ProductionScope {
@@ -560,6 +578,17 @@ export function activateProduction(
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
+      if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.scopeFingerprint) {
+        throw validationError(
+          "This request id already activated a different scope; replaying it now would silently keep that scope instead of granting the one just requested. Use a new request id.",
+          {
+            requestId: input.requestId,
+            previousRevision: replay.revision_before,
+            previousScopeFingerprint: replay.scope_fingerprint,
+            requestedScopeFingerprint: input.scopeFingerprint
+          }
+        );
+      }
       return { replayed: true, revisionBefore: replay.revision_before };
     }
 
@@ -594,7 +623,8 @@ export function activateProduction(
       revisionAfter: after.revision,
       epochAfter: after.epoch,
       receipt: { authority, scope: input.scope },
-      at
+      at,
+      scopeFingerprint: input.scopeFingerprint
     });
     return { replayed: false, revisionBefore: before.revision };
   });
@@ -1041,10 +1071,10 @@ function toReceipt(row: AdmissionRow): AdmissionReceipt {
 export function findTransitionReceipt(
   db: Database.Database,
   requestId: string
-): { revision_before: number } | undefined {
+): { revision_before: number; scope_fingerprint: string | null } | undefined {
   return db
-    .prepare(`SELECT revision_before FROM production_policy_receipts WHERE request_id = ?`)
-    .get(requestId) as { revision_before: number } | undefined;
+    .prepare(`SELECT revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
+    .get(requestId) as { revision_before: number; scope_fingerprint: string | null } | undefined;
 }
 
 function recordTransitionReceipt(
@@ -1057,15 +1087,17 @@ function recordTransitionReceipt(
     epochAfter: number;
     receipt: unknown;
     at: string;
+    scopeFingerprint?: string | null;
   }
 ): void {
   db.prepare(
     `INSERT INTO production_policy_receipts
-       (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at, scope_fingerprint)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     createId("productionPolicyReceipt"), input.requestId, input.transition, input.revisionBefore,
-    input.revisionAfter, input.epochAfter, JSON.stringify(input.receipt), input.at
+    input.revisionAfter, input.epochAfter, JSON.stringify(input.receipt), input.at,
+    input.scopeFingerprint ?? null
   );
 }
 
