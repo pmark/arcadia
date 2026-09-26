@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runProjectImportCommand } from "../src/commands/project.js";
 import { runWorkPlanCommand, runWorkRunCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
-import { upsertProjectMetadata } from "../src/db/repositories.js";
+import { updateReviewItemStatus, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -122,6 +122,61 @@ describe("executeCodexStep build-purpose failure", () => {
     const result = runWorkRunCommand({ workspace, workId, allowCodexBuild: true });
     expect(result.data.run.status).toBe("failed");
     expect(result.data.run.work_item_id).toBe(workId);
+  });
+
+  it("re-planning an Action whose build packet is already approved keeps that approval instead of revoking it (Issue #709)", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-work-plan-approved-"));
+    temporaryRoots.push(root);
+    const workspace = path.join(root, "workspace");
+    const repository = path.join(root, "repository");
+    initWorkspace(workspace);
+    mkdirSync(repository, { recursive: true });
+
+    const imported = runProjectImportCommand({
+      workspace,
+      name: "Approved Packet Replan Fixture",
+      mission: "Prove re-planning never revokes an approved build packet.",
+      status: "active",
+      milestone: "Prove it",
+      nextAction: "Implement a one-line marker file.",
+      classification: "agent"
+    });
+    const workId = imported.data.workItem.id;
+    withDatabase(workspace, (db) => {
+      upsertProjectMetadata(db, { projectId: imported.data.project.id, repoPath: repository, validationCommands: ["node -e \"process.exit(0)\""] });
+    });
+
+    const planned = runWorkPlanCommand({ workspace, workId });
+    const approvalId = planned.data.buildApproval!.id;
+    withDatabase(workspace, (db) => updateReviewItemStatus(db, approvalId, { status: "approved", decisionNote: "Operator approved the packet." }));
+
+    // The launch path trusts the newest promotion review for the packet, so a
+    // fresh open review opened here would silently de-authorize it.
+    const replanned = runWorkPlanCommand({ workspace, workId });
+    expect(replanned.data.buildInvocation?.id).toBe(planned.data.buildInvocation?.id);
+    expect(replanned.data.buildApproval?.id).toBe(approvalId);
+    expect(replanned.data.buildApproval?.status).toBe("approved");
+    const approvals = withDatabase(workspace, (db) =>
+      db.prepare(
+        "SELECT id, status FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval'"
+      ).all(workId) as Array<{ id: string; status: string }>
+    );
+    expect(approvals).toEqual([{ id: approvalId, status: "approved" }]);
+
+    // The newest review decides, as it does for the launch path: an older
+    // approval does not outrank a newer rejection.
+    withDatabase(workspace, (db) => updateReviewItemStatus(db, approvalId, { status: "rejected", decisionNote: "Rejected." }));
+    const afterRejection = runWorkPlanCommand({ workspace, workId });
+    const replacementId = afterRejection.data.buildApproval!.id;
+    expect(replacementId).not.toBe(approvalId);
+    expect(afterRejection.data.buildApproval?.status).toBe("open");
+    withDatabase(workspace, (db) => {
+      updateReviewItemStatus(db, approvalId, { status: "approved", decisionNote: "Older approval." });
+      updateReviewItemStatus(db, replacementId, { status: "rejected", decisionNote: "Newer rejection." });
+    });
+    const afterNewerRejection = runWorkPlanCommand({ workspace, workId });
+    expect(afterNewerRejection.data.buildApproval?.id).not.toBe(approvalId);
+    expect(afterNewerRejection.data.buildApproval?.status).toBe("open");
   });
 
   it("seeds a build packet with the requested coding-agent profile", () => {

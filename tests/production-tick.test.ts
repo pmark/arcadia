@@ -531,16 +531,39 @@ describe("runManagedProductionTick", () => {
     const promptText = readFileSync(path.join(fixture.workspace, invocation.prompt_path), "utf8");
     expect(promptText).toMatch(/^# Arcadia .* Build Packet/);
 
+    const pendingApprovalId = withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db
+        .prepare(
+          "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(workItem.id) as { id: string }).id
+    );
+
+    // Until it is approved, the tick must say so where the operator watches
+    // (`production status`), naming the exact approval -- not refuse silently
+    // as a "stale" packet visible only in the worker log.
+    const waitingResult = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles: codexProfiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 30_000),
+        capacityObservation: codexCapacity,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(waitingResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    const waiting = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "build_packet_approval_pending" });
+    expect(waiting[0].remedy).toContain(`arcadia review approve ${pendingApprovalId} --no-execute`);
+
     // The build packet still needs its own, pre-existing, unrelated approval
     // gate (`CodexBuildPacketApproval`) -- this fix never bypasses it. Approve
     // it exactly as Review already does today, standing in for the operator.
     withDatabase(fixture.workspace, (db) => {
-      const approval = db
-        .prepare(
-          "SELECT id FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open' ORDER BY created_at DESC LIMIT 1"
-        )
-        .get(workItem.id) as { id: string };
-      updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture approval." });
+      updateReviewItemStatus(db, pendingApprovalId, { status: "approved", decisionNote: "Fixture approval." });
     });
 
     const secondResult = withDatabase(fixture.workspace, (db) =>

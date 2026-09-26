@@ -12,6 +12,7 @@ export type PacketLifecycleState =
   | { kind: "planning_approval_pending"; decisionId: string; remedy: string }
   | { kind: "planning_in_progress"; decisionId: string; remedy: string }
   | { kind: "build_packet_ready"; invocationId: string; remedy: string }
+  | { kind: "build_packet_approval_pending"; invocationId: string; decisionId: string; remedy: string }
   | { kind: "stale_packet"; invocationId: string; remedy: string };
 
 export function resolvePacketLifecycle(db: Database.Database, workItem: WorkItemSummary): PacketLifecycleState {
