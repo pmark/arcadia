@@ -349,7 +349,17 @@ describe("buildLaunchPreview", () => {
       );
 
     expect(preview().ready).toBe(false);
-    expect(preview().prerequisites.join("\n")).toContain("no longer approved");
+    const pending = preview();
+    expect(pending.prerequisites.join("\n")).toContain(`build packet approval pending: Decision ${approval.id}`);
+    expect(pending.packetLifecycle).toMatchObject({
+      kind: "build_packet_approval_pending",
+      decisionId: approval.id,
+      remedy: `Approve build packet Decision ${approval.id}: arcadia review approve ${approval.id} --no-execute`
+    });
+
+    withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "rejected", decisionNote: "Rejected." }));
+    expect(preview().prerequisites.join("\n")).toContain("no longer approved (rejected)");
+    expect(preview().packetLifecycle?.kind).toBe("stale_packet");
 
     withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Accepted." }));
 

@@ -102,6 +102,7 @@ export function buildLaunchPreview(input: {
   let selectionRationale: string | null = null;
   let substitution: HardEvidenceSubstitution | null = null;
   let authorizingDecisions: string[] = [];
+  let pendingApprovalId: string | null = null;
 
   if (context) {
     const project = getProjectBySlug(input.db, context.projectSlug);
@@ -237,6 +238,7 @@ export function buildLaunchPreview(input: {
                 providerProfile: invocation.agent_profile
               });
               if (promotion.problem) prerequisites.push(promotion.problem);
+              pendingApprovalId = promotion.pendingApprovalId ?? null;
               authorizingDecisions = context.requiredDecisions
                 .filter((decision) => decision.resolved)
                 .map((decision) => decision.id)
@@ -287,6 +289,13 @@ export function buildLaunchPreview(input: {
       kind: "stale_packet",
       invocationId: packetLifecycle.invocationId,
       remedy: "Prepare a new immutable build packet through the existing accepted-plan promotion path; do not edit or reuse its stale authority."
+    };
+  } else if (packetLifecycle?.kind === "build_packet_ready" && pendingApprovalId) {
+    packetLifecycle = {
+      kind: "build_packet_approval_pending",
+      invocationId: packetLifecycle.invocationId,
+      decisionId: pendingApprovalId,
+      remedy: `Approve build packet Decision ${pendingApprovalId}: arcadia review approve ${pendingApprovalId} --no-execute`
     };
   }
 
@@ -351,7 +360,7 @@ export function findPromotionDecisionOrProblem(
     packetSha256: string;
     providerProfile: string;
   }
-): { decisionId: string | null; problem: string | null } {
+): { decisionId: string | null; problem: string | null; pendingApprovalId?: string } {
   const rows = db
     .prepare("SELECT id, status, context_json FROM review_items WHERE project_id = ? ORDER BY created_at DESC")
     .all(expected.projectId) as Array<{ id: string; status: string; context_json: string }>;
@@ -364,6 +373,17 @@ export function findPromotionDecisionOrProblem(
     }
     const promotion = context?.planningPromotion;
     if (promotion?.buildInvocationId !== expected.invocationId) continue;
+    // An approval that was never given is pending, not stale: the packet is
+    // fine and the remedy is to approve it. Reporting it as stale sent the
+    // operator to rebuild a good packet, and it never reached
+    // `production status` at all.
+    if (row.status === "open" || row.status === "deferred") {
+      return {
+        decisionId: null,
+        pendingApprovalId: row.id,
+        problem: `build packet approval pending: Decision ${row.id} has not been approved yet (${row.status}); approve it with arcadia review approve ${row.id} --no-execute.`
+      };
+    }
     if (row.status !== "approved") {
       return { decisionId: null, problem: `stale pointer: the build packet's authorizing Decision ${row.id} is no longer approved (${row.status}).` };
     }
