@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -526,7 +526,7 @@ export function prepareSession(input: {
     // applies. Without it the automated tick refused every other Action in
     // the repository forever and burned its repair budget (Issue #697). The
     // discarded handoff is then superseded below, closing its record.
-    if (handoff && handoff.session.action_id !== context.action.id && existsSync(handoff.session.worktree_path)) {
+    if (handoff && handoff.session.action_id !== context.action.id && !candidateWorktreeIsGone(handoff.session.worktree_path)) {
       throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
         sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
       });
@@ -838,6 +838,23 @@ export function reserveAgentWorktree(db: Database.Database, input: {
  * that runs on each insert -- the same discipline `getActiveWorktreeReservation`
  * already applies to the worktree-path lookup.
  */
+/**
+ * Whether a candidate worktree has provably been removed. Only a missing path
+ * counts: `existsSync` also reports false on a permission or I/O error, which
+ * would let a still-present candidate -- possibly holding real work -- be
+ * superseded as if it had been discarded.
+ */
+function candidateWorktreeIsGone(worktreePath: string): boolean {
+  try {
+    statSync(worktreePath);
+    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return true;
+    throw error;
+  }
+}
+
 export function getActiveActionClaim(
   db: Database.Database,
   repositoryPath: string,
