@@ -33,6 +33,8 @@ import {
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** `plan/<slug>#<action-id>` -- a cross-Plan dependency reference. */
+const CROSS_PLAN_DEPENDENCY = /^plan\/([^#]+)#(.+)$/;
 
 export interface ParseResult {
   doc: ArcadiaDoc | null;
@@ -522,9 +524,16 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     );
   }
 
-  // Dangling dependencies silently break ordering, so name them.
+  // Dangling dependencies silently break ordering, so name them. A
+  // `plan/<slug>#<action-id>` reference names an Action in another Plan --
+  // the same spelling `canonicalOrder` (src/scheduling/order.ts) and the
+  // `complete` Agent Ask intent's `target_ref` use -- and this parser sees
+  // only one Plan, so it cannot confirm or deny it resolves; that check
+  // happens at dispatch time with every Plan in view
+  // (collectUnmetDependencies, src/docs/dispatch.ts).
   for (const action of actions) {
     for (const dependency of action.dependsOn) {
+      if (CROSS_PLAN_DEPENDENCY.test(dependency)) continue;
       if (!ids.has(dependency)) {
         problems.add(
           `actions.${action.id}.depends_on`,
@@ -557,7 +566,11 @@ function reportDependencyCycles(problems: Problems, actions: PlanActionDoc[]): v
   const visit = (id: string): void => {
     const action = byId.get(id);
     if (!action) {
-      // Dangling; already reported above.
+      // Dangling (reported above), or a cross-Plan plan/<slug>#<action-id>
+      // reference: this walk sees only one Plan, so it cannot detect a cycle
+      // that spans Plans. It stays safe either way -- collectUnmetDependencies
+      // (src/docs/dispatch.ts) never lets either side become ready, which is
+      // the same practical outcome a cycle has, just not reported as one.
       return;
     }
     if (state.get(id) === 2) {

@@ -309,8 +309,11 @@ export function resolveDispatch(
     (doc): doc is DecisionDoc =>
       doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
   );
+  const projectPlans = discovered.docs.filter(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === project.slug.toLowerCase()
+  );
 
-  const readiness = checkActionReadiness(plan, action, decisionDocs);
+  const readiness = checkActionReadiness(plan, action, decisionDocs, projectPlans);
   blockers.push(...readiness.blockers);
   const { requiredDecisions, operatorQuestion } = readiness;
 
@@ -467,7 +470,8 @@ interface ActionReadinessResult {
 function checkActionReadiness(
   plan: PlanDoc,
   action: PlanActionDoc,
-  decisionDocs: DecisionDoc[]
+  decisionDocs: DecisionDoc[],
+  projectPlans: PlanDoc[]
 ): ActionReadinessResult {
   const blockers: DispatchBlocker[] = [];
   let deferringDecisionId: string | null = null;
@@ -502,16 +506,23 @@ function checkActionReadiness(
   // The plan's `depends_on` edges are an ordering claim, and dispatching past
   // them hands an agent work whose prerequisites do not exist yet. Transitive,
   // because a dependency that is itself blocked blocks this action just as
-  // hard. Cycles are rejected at parse time, so this cannot loop forever.
-  for (const dependency of collectUnmetDependencies(plan, action)) {
+  // hard. A same-Plan cycle is rejected at parse time; a cross-Plan cycle is
+  // not (the parser walks one Plan at a time), so collectUnmetDependencies's
+  // own visited-set is what keeps this from looping forever in that case.
+  for (const dependency of collectUnmetDependencies(plan, action, projectPlans)) {
     blockers.push({
       relativePath: plan.relativePath,
       field: `actions.${action.id}.depends_on`,
       message:
-        dependency.path.length > 1
-          ? `Depends on "${dependency.id}" (via ${dependency.path.slice(0, -1).join(" -> ")}), which is "${dependency.status}", not done.`
-          : `Depends on "${dependency.id}", which is "${dependency.status}", not done.`,
-      remedy: `Finish "${dependency.id}" first, or make it the current_action, or drop the dependency if it no longer holds.`
+        dependency.status === "dependency_unresolved"
+          ? `Depends on "${dependency.id}", which does not resolve to any known Action in this Project (dependency_unresolved).`
+          : dependency.path.length > 1
+            ? `Depends on "${dependency.id}" (via ${dependency.path.slice(0, -1).join(" -> ")}), which is "${dependency.status}", not done.`
+            : `Depends on "${dependency.id}", which is "${dependency.status}", not done.`,
+      remedy:
+        dependency.status === "dependency_unresolved"
+          ? `Spell the dependency as a same-Plan action id or plan/<slug>#<action-id>, or drop it if it no longer holds.`
+          : `Finish "${dependency.id}" first, or make it the current_action, or drop the dependency if it no longer holds.`
     });
   }
 
@@ -655,7 +666,7 @@ export function actionReadinessFrom(
       remedy: "Fix the document so it parses and validates before starting work from it."
     }));
 
-  const readiness = checkActionReadiness(plan, action, decisionDocs);
+  const readiness = checkActionReadiness(plan, action, decisionDocs, plans);
   return {
     found: true,
     planSlug: plan.slug,
@@ -680,38 +691,75 @@ interface UnmetDependency {
   path: string[];
 }
 
+const CROSS_PLAN_DEPENDENCY = /^plan\/([^#]+)#(.+)$/;
+
+/** `${planSlug}\u0000${actionId}` — never collides with a real spelling, since actionIds cannot contain NUL. */
+function planActionKey(planSlug: string, actionId: string): string {
+  return `${planSlug}\u0000${actionId}`;
+}
+
 /**
  * Walk `depends_on` from the given action and collect every prerequisite that
- * is not done.
+ * is not done or does not resolve to a known Action.
+ *
+ * A bare id resolves against the dependent's own Plan; `plan/<slug>#<action-id>`
+ * resolves against that Plan instead, by the same spelling `canonicalOrder`
+ * (`src/scheduling/order.ts`) and the `complete` Agent Ask intent's
+ * `target_ref` use, and the same rule: an id that resolves to nothing known
+ * is never treated as satisfied (`dependency_unresolved`), so it blocks
+ * exactly like an unfinished one rather than being silently skipped.
  *
  * Breadth-first so the nearest unmet prerequisite is reported first — that is
- * the one the operator can act on. Dangling ids are skipped; the parser already
- * reports those against the plan file, and repeating it here would send the
- * operator to the same field twice with different wording.
+ * the one the operator can act on.
  */
-function collectUnmetDependencies(plan: PlanDoc, action: PlanActionDoc): UnmetDependency[] {
-  const byId = new Map(plan.actions.map((candidate) => [candidate.id, candidate]));
-  const seen = new Set<string>([action.id]);
+function collectUnmetDependencies(plan: PlanDoc, action: PlanActionDoc, projectPlans: PlanDoc[]): UnmetDependency[] {
+  const byPlanAction = new Map<string, PlanActionDoc>();
+  for (const candidatePlan of projectPlans) {
+    for (const candidate of candidatePlan.actions) {
+      byPlanAction.set(planActionKey(candidatePlan.slug, candidate.id), candidate);
+    }
+  }
+
+  const resolve = (fromPlanSlug: string, dependency: string): PlanActionDoc | null => {
+    const cross = CROSS_PLAN_DEPENDENCY.exec(dependency);
+    const planSlug = cross ? cross[1] : fromPlanSlug;
+    const actionId = cross ? cross[2] : dependency;
+    return byPlanAction.get(planActionKey(planSlug, actionId)) ?? null;
+  };
+
+  const seen = new Set<string>([planActionKey(plan.slug, action.id)]);
   const unmet: UnmetDependency[] = [];
-  const queue: string[][] = action.dependsOn.map((id) => [id]);
+  const queue: Array<{ fromPlanSlug: string; chain: string[] }> = action.dependsOn.map((id) => ({
+    fromPlanSlug: plan.slug,
+    chain: [id]
+  }));
 
   while (queue.length > 0) {
-    const chain = queue.shift()!;
+    const { fromPlanSlug, chain } = queue.shift()!;
     const id = chain[chain.length - 1];
-    if (seen.has(id)) {
+    const unresolvedKey = planActionKey(fromPlanSlug, id);
+    if (seen.has(unresolvedKey)) {
       continue;
     }
-    seen.add(id);
-
-    const dependency = byId.get(id);
+    const dependency = resolve(fromPlanSlug, id);
     if (!dependency) {
+      seen.add(unresolvedKey);
+      unmet.push({ id, status: "dependency_unresolved", path: chain });
       continue;
     }
+
+    const dependencyPlanSlug = CROSS_PLAN_DEPENDENCY.exec(id)?.[1] ?? fromPlanSlug;
+    const key = planActionKey(dependencyPlanSlug, dependency.id);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
     if (dependency.status !== "done") {
       unmet.push({ id, status: dependency.status, path: chain });
     }
     for (const next of dependency.dependsOn) {
-      queue.push([...chain, next]);
+      queue.push({ fromPlanSlug: dependencyPlanSlug, chain: [...chain, next] });
     }
   }
 

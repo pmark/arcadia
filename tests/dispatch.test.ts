@@ -357,6 +357,68 @@ describe("dispatch resolution", () => {
     expect(resolution.context).toBeNull();
     expect(resolution.blockers[0].message).toContain("No PROJECT.md");
   });
+
+  it("resolves a cross-Plan dependency by plan/<slug>#<action-id> and releases it once it is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc().replace("    depends_on: []\n", "    depends_on: [plan/other-plan#setup]\n")
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      planDoc({ slug: "other-plan", currentAction: null }).replace(
+        "  - id: ship-it",
+        "  - id: setup"
+      )
+    );
+
+    const blocked = resolveDispatch(root, "demo");
+    const blocker = blocked.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("setup");
+    expect(blocker?.message).toContain('is "open", not done');
+    expect(isDispatchable(blocked)).toBe(false);
+  });
+
+  it("never treats an id that resolves to no known Action as satisfied (dependency_unresolved)", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc().replace("    depends_on: []\n", "    depends_on: [plan/ghost#nowhere]\n")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("dependency_unresolved");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("does not loop forever on a dependency cycle that spans two Plans", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      planDoc().replace("    depends_on: []\n", "    depends_on: [plan/other-plan#setup]\n")
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      planDoc({ slug: "other-plan", currentAction: null })
+        .replace("  - id: ship-it", "  - id: setup")
+        .replace("    depends_on: []\n", "    depends_on: [plan/main-plan#ship-it]\n")
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("setup");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
 });
 
 /**
