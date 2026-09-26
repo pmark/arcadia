@@ -418,9 +418,18 @@ function recordDependencyUnresolvedSighting(
        ON CONFLICT(action_key) DO UPDATE SET
          unresolved_id = @unresolved_id, first_seen_at = @at, last_seen_at = @at`
     ).run({ action_key: input.actionKey, unresolved_id: input.unresolvedId, at });
-    // A newly (or differently) unresolved id supersedes whatever this Action
-    // was previously escalated for -- it gets its own fresh baseline tick.
-    clearOperatorEscalation(db, input.actionKey);
+    // A newly (or differently) unresolved id gets its own fresh baseline
+    // tick -- but only clear a `dependency_unresolved` escalation this same
+    // bookkeeping owns. `production_operator_escalations` is keyed only by
+    // action_key, so an unrelated kind (e.g. `no_validation_commands`) could
+    // be sitting on this row too, and a new sighting must not silently
+    // delete it.
+    const existingEscalationKind = db
+      .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
+      .get(input.actionKey) as { kind: string } | undefined;
+    if (existingEscalationKind?.kind === "dependency_unresolved") {
+      clearOperatorEscalation(db, input.actionKey);
+    }
     return;
   }
 
