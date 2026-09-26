@@ -162,6 +162,21 @@ describe("executeCodexStep build-purpose failure", () => {
       ).all(workId) as Array<{ id: string; status: string }>
     );
     expect(approvals).toEqual([{ id: approvalId, status: "approved" }]);
+
+    // The newest review decides, as it does for the launch path: an older
+    // approval does not outrank a newer rejection.
+    withDatabase(workspace, (db) => updateReviewItemStatus(db, approvalId, { status: "rejected", decisionNote: "Rejected." }));
+    const afterRejection = runWorkPlanCommand({ workspace, workId });
+    const replacementId = afterRejection.data.buildApproval!.id;
+    expect(replacementId).not.toBe(approvalId);
+    expect(afterRejection.data.buildApproval?.status).toBe("open");
+    withDatabase(workspace, (db) => {
+      updateReviewItemStatus(db, approvalId, { status: "approved", decisionNote: "Older approval." });
+      updateReviewItemStatus(db, replacementId, { status: "rejected", decisionNote: "Newer rejection." });
+    });
+    const afterNewerRejection = runWorkPlanCommand({ workspace, workId });
+    expect(afterNewerRejection.data.buildApproval?.id).not.toBe(approvalId);
+    expect(afterNewerRejection.data.buildApproval?.status).toBe("open");
   });
 
   it("seeds a build packet with the requested coding-agent profile", () => {
