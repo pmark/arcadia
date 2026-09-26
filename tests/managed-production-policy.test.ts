@@ -232,6 +232,18 @@ describe("managed production policy state", () => {
     expect(replay.policy.epoch).toBe(1);
   });
 
+  it("refuses to replay a used request id under a different scope (#704)", () => {
+    const target = workspace();
+    activate(target, "grant-reused-id", { plans: ["demo/queue-plan"] });
+
+    expect(() => activate(target, "grant-reused-id", { plans: ["demo/other-plan"] })).toThrow(
+      /already activated a different scope/
+    );
+    // Production stayed on the first grant; the mismatched replay changed nothing.
+    const status = withDatabase(target, (db) => readProductionPolicy(db));
+    expect(status.revision).toBe(1);
+  });
+
   it("never resurrects a revoked policy from a stale expected revision", () => {
     const target = workspace();
     activate(target);
