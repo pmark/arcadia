@@ -901,6 +901,22 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
 
     const supersededReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
     expect(supersededReceipt?.superseded_by_session_id).toBe(second.session.id);
+
+    // The resumed Session's own recorded `base_revision` must stay the
+    // lineage's true starting point (the original base branch HEAD), not the
+    // worktree's HEAD at resume time -- otherwise a resumed Session that
+    // itself makes no further commits before dying again would be
+    // misclassified as carrying no changes at all, losing the first Session's
+    // real committed work (CodeRabbit, PR #696).
+    expect(second.session.base_revision).toBe(first.session.base_revision);
+    expect(second.session.base_revision).not.toBe(git(worktreePath, ["log", "-1", "--format=%H"]).trim());
+
+    tmux.live.delete(second.session.tmux_session_name);
+    const secondReconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: second.session.id, requestId: "reconcile-2", repoRoot: fixture.repo })
+    );
+    expect(secondReconciled.receipt.outcome).toBe("incomplete_resumable");
+    expect(secondReconciled.receipt.lease_handoff).toBe(1);
   });
 
   it("releases a stale claim rather than resuming it when the claimed worktree is no longer valid Git state", () => {

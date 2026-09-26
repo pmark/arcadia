@@ -362,14 +362,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
   }
 
-  // `prepareSession` records `baseRevision` as the worktree's starting point,
-  // checked against its actual HEAD right before launch
-  // (`launchPreparedSession`'s "base revision changed" guard). A brand-new
-  // worktree starts exactly at the base branch's current HEAD, but a resumed
-  // one starts wherever the dead Session's own commits left it -- recording
-  // the base branch's HEAD there would make that guard fail immediately.
+  // `prepareSession` records `baseRevision` as this candidate's true lineage
+  // starting point -- what `reconcileSessionExit` and candidate preservation
+  // measure accumulated progress against (a resumed Session that itself makes
+  // no further commits must still be recognized as carrying its predecessor's
+  // real work, not misclassified as having no changes at all). A resumed
+  // Session inherits its predecessor's own `base_revision` unchanged, however
+  // many resumptions deep, rather than the worktree's current HEAD -- the
+  // launch-time "did anything touch this worktree since I decided to launch
+  // it" check below uses that current HEAD separately, via
+  // `launchPreparedSession`'s `expectedRevision` override, instead of
+  // conflating the two (CodeRabbit, PR #696).
   const sessionBaseRevision = resumableStaleClaim
-    ? resumableStaleClaim.headRevision
+    ? resumableStaleClaim.session.base_revision
     : baseRevision;
 
   let prepared: AgentSession;
@@ -482,7 +487,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   try {
-    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry, input.workspace), preview, admission };
+    return {
+      reused: false,
+      session: launchPreparedSession(
+        input.db,
+        prepared,
+        tmux,
+        registry,
+        input.workspace,
+        resumableStaleClaim ? resumableStaleClaim.headRevision : undefined
+      ),
+      preview,
+      admission
+    };
   } catch (error) {
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a

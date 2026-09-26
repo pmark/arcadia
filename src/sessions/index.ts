@@ -636,8 +636,21 @@ export function launchPreparedSession(
    * Omitted callers get the pre-existing untouched behavior (no token file
    * lookup, no injected `CLAUDE_CODE_OAUTH_TOKEN`).
    */
-  workspace?: string
+  workspace?: string,
+  /**
+   * The worktree HEAD this launch expects, checked instead of
+   * `session.base_revision` when given. `base_revision` doubles as the true
+   * lineage starting point that `reconcileSessionExit` and candidate
+   * preservation measure accumulated progress against (CodeRabbit, PR #696)
+   * -- for a resumed stale claim (Issue #695) that point predates this
+   * particular launch, since the worktree already carries a prior Session's
+   * real commits. This override lets the launch-time integrity check still
+   * verify "nothing touched this worktree since I decided to launch it"
+   * without corrupting that lineage baseline.
+   */
+  expectedRevision?: string
 ): AgentSession {
+  const expected = expectedRevision ?? session.base_revision;
   let observedRevision: string;
   try {
     observedRevision = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -652,11 +665,11 @@ export function launchPreparedSession(
       cause: error instanceof Error ? error.message : String(error)
     });
   }
-  if (observedRevision !== session.base_revision) {
+  if (observedRevision !== expected) {
     failPreparedSession(db, session.id);
     throw validationError("The prepared Session base revision changed before launch.", {
       sessionId: session.id,
-      expected: session.base_revision,
+      expected,
       observed: observedRevision
     });
   }
