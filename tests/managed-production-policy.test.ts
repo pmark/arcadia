@@ -22,6 +22,7 @@ import {
   runProductionActivateCommand,
   runProductionPreviewCommand,
   runProductionDeactivateCommand,
+  runProductionResetRepairBudgetCommand,
   runProductionStatusCommand
 } from "../src/commands/production.js";
 import {
@@ -619,6 +620,75 @@ describe("policy-store failure is never a confirmed Off", () => {
       expect(describeProductionState(readProductionPolicySafely(db), 1).state).toBe("inactive_finishing");
       expect(describeProductionState(readProductionPolicySafely(db), 0).state).toBe("inactive_idle");
     });
+  });
+});
+
+describe("production reset-repair-budget (Issue #703)", () => {
+  it("refuses an actionKey that does not name a project/action pair", () => {
+    const target = workspace();
+    expect(() => runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "no-slash" })).toThrow();
+  });
+
+  it("warns rather than failing when the named Action has no recorded repair attempts", () => {
+    const target = workspace();
+    const result = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
+    expect(result.data.attemptsCleared).toBe(0);
+    expect(result.warnings).toEqual(["demo/migrate had no recorded repair attempts; nothing was exhausted."]);
+  });
+
+  it("clears a recorded repair budget and reports what it cleared", () => {
+    const target = workspace();
+    withDatabase(target, (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS production_repair_attempts (
+          action_key TEXT PRIMARY KEY,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          last_attempt_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      db.prepare(
+        `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at)
+           VALUES ('demo/migrate', 2, 'Launch failed: boom', '2026-09-26T06:35:30.822Z', '2026-09-26T06:35:30.822Z')`
+      ).run();
+    });
+
+    const result = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
+    expect(result.data).toEqual({ actionKey: "demo/migrate", attemptsCleared: 2, lastError: "Launch failed: boom" });
+    expect(result.warnings).toEqual([]);
+
+    const after = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
+    expect(after.data.attemptsCleared).toBe(0);
+  });
+
+  it("preserves an unrelated escalation on the same Action instead of deleting it (CodeRabbit, PR #708)", () => {
+    const target = workspace();
+    withDatabase(target, (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS production_repair_attempts (
+          action_key TEXT PRIMARY KEY,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          last_attempt_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('demo/migrate', 'no_validation_commands', 'No validation commands declared.', 'Declare one.', '2026-09-26T06:00:00.000Z', '2026-09-26T06:00:00.000Z')`
+      ).run();
+    });
+
+    // No repair attempts were recorded, so this is the "nothing was
+    // exhausted" no-op path -- it must not delete the unrelated escalation.
+    const result = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
+    expect(result.data.attemptsCleared).toBe(0);
+
+    const remaining = withDatabase(target, (db) =>
+      db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get("demo/migrate")
+    ) as { kind: string } | undefined;
+    expect(remaining?.kind).toBe("no_validation_commands");
   });
 });
 

@@ -1106,7 +1106,14 @@ export function runManagedProductionIteration(
     if (!registries.providerAdapters) {
       return;
     }
-    const result = runManagedProductionTick(db, workspacePath, {
+    // `repair_budget_exhausted` is recorded as an operator escalation and
+    // logged once per episode by the tick itself (`recordOperatorEscalation`
+    // in `production/tick.ts`), exactly like every other non-self-resolving
+    // refusal -- this call no longer needs its result to log the same line
+    // again on every tick (Issue #703's noise, the pattern
+    // `recordLaunchRefusalIfNew` already exists to prevent for other
+    // refusals).
+    runManagedProductionTick(db, workspacePath, {
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters,
       heartbeat: () => {
@@ -1119,12 +1126,6 @@ export function runManagedProductionIteration(
       },
       log: (message) => log(logfile, `[managed-production] ${message}`)
     });
-    if (!result.policyActive) return;
-    for (const project of result.projects) {
-      if (project.launch && project.launch.outcome === "repair_budget_exhausted") {
-        log(logfile, `[managed-production] ${project.projectSlug}: ${project.launch.reason}`);
-      }
-    }
   } catch (error) {
     log(logfile, `[managed-production] Tick error: ${error instanceof Error ? error.message : String(error)}`);
   }
