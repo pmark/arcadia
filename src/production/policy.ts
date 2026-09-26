@@ -4,8 +4,8 @@ import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { getProjectContext } from "../db/repositories.js";
-import { parseActionDocRef } from "../docs/types.js";
+import { getProjectContext, getWorkItemByDocRef } from "../db/repositories.js";
+import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -40,6 +40,27 @@ export const MECHANICAL_TRANSITIONS: readonly MechanicalTransition[] = [
   "validation",
   "acceptance",
   "pointer"
+];
+
+/**
+ * The two live-concurrency proofs from
+ * docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md (finding
+ * F5). `resolveConcurrencyGate` reads these two fixed Plan-qualified refs
+ * directly on every admission -- never via `active_plan`/`current_action`,
+ * so a later change of active Plan can neither lift nor lock the gate, and
+ * reopening either Action restores the cap without deactivating the policy.
+ */
+export const TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF = actionDocRef(
+  "bootstrap-managed-production-to-build-flight-deck",
+  "prove-two-action-unattended-production"
+);
+export const CONCURRENT_READY_SET_ADMISSION_PROOF_REF = actionDocRef(
+  "bootstrap-managed-production-to-build-flight-deck",
+  "prove-concurrent-ready-set-admission"
+);
+const CONCURRENCY_GATE_PROOF_REFS: readonly string[] = [
+  TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF,
+  CONCURRENT_READY_SET_ADMISSION_PROOF_REF
 ];
 
 /**
@@ -95,6 +116,20 @@ export interface ProductionIntegrationGrant {
   actions: string[];
 }
 
+/**
+ * The only way to exceed the concurrency gate's 1-Session cap before both
+ * concurrency proofs are `done` (see `resolveConcurrencyGate`). It is not a
+ * blanket override: it must explicitly name the one proof it exists to run,
+ * and it lapses at its own expiry or -- for free, since deactivation wipes
+ * `scope` entirely -- whenever production goes Off.
+ */
+export interface ProductionRehearsalException {
+  /** Must equal `CONCURRENT_READY_SET_ADMISSION_PROOF_REF`; never a blanket override. */
+  actionRef: string;
+  /** ISO instant after which this exception no longer raises the cap. */
+  expiresAt: string;
+}
+
 export interface ProductionScope {
   /** The operator's whole-Plan intent, carried so routine work needs no relay. */
   intent: string;
@@ -119,6 +154,12 @@ export interface ProductionScope {
    * merge, reporting the exact operator merge command instead.
    */
   integrationGrant?: ProductionIntegrationGrant;
+  /**
+   * The optional expiring rehearsal exception that raises the concurrency gate's
+   * 1-Session cap for `prove-concurrent-ready-set-admission` specifically. Absent
+   * means the gate's ordinary cap applies. See `resolveConcurrencyGate`.
+   */
+  rehearsalException?: ProductionRehearsalException;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -323,6 +364,7 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
   if (input.remotePreservation) normalized.remotePreservation = true;
   if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
+  if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
   return normalized;
 }
 
@@ -344,6 +386,37 @@ export function normalizeIntegrationGrant(input: Partial<ProductionIntegrationGr
   return { decisionRef, expiresAt, actions: dedupePreservingOrder(input.actions ?? []) };
 }
 
+/**
+ * A rehearsal exception with no named Action, no expiry, or a malformed expiry
+ * is refused rather than silently absent. Naming anything other than the
+ * concurrent-admission proof is refused too: this is an explicit, single-purpose
+ * exception, never a blanket concurrency override.
+ */
+export function normalizeRehearsalException(
+  input: Partial<ProductionRehearsalException>
+): ProductionRehearsalException {
+  const actionRef = (input.actionRef ?? "").trim();
+  if (!actionRef) {
+    throw validationError("A rehearsal exception needs the Action it exists to prove.", {
+      field: "rehearsalException.actionRef"
+    });
+  }
+  if (actionRef !== CONCURRENT_READY_SET_ADMISSION_PROOF_REF) {
+    throw validationError(
+      `A rehearsal exception may only name ${CONCURRENT_READY_SET_ADMISSION_PROOF_REF}; it is not a blanket concurrency override.`,
+      { field: "rehearsalException.actionRef", value: actionRef }
+    );
+  }
+  const expiresAt = (input.expiresAt ?? "").trim();
+  if (!expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    throw validationError("A rehearsal exception needs a valid ISO expiry.", {
+      field: "rehearsalException.expiresAt",
+      value: input.expiresAt
+    });
+  }
+  return { actionRef, expiresAt };
+}
+
 /** Stable fingerprint of exactly what the operator was shown before granting. */
 export function fingerprintProductionScope(scope: ProductionScope): string {
   const canonical = JSON.stringify({
@@ -361,6 +434,10 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // pre-existing scope's fingerprint.
     ...(scope.integrationGrant
       ? { integrationGrant: { decisionRef: scope.integrationGrant.decisionRef, expiresAt: scope.integrationGrant.expiresAt, actions: scope.integrationGrant.actions } }
+      : {}),
+    // Same rule again for the rehearsal exception.
+    ...(scope.rehearsalException
+      ? { rehearsalException: { actionRef: scope.rehearsalException.actionRef, expiresAt: scope.rehearsalException.expiresAt } }
       : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
@@ -687,6 +764,81 @@ export function deactivateProduction(
   };
 }
 
+export interface ConcurrencyGateStatus {
+  /** Whether the gate is currently restricting concurrency below the scope's own configured maximum. */
+  closed: boolean;
+  /** The concurrency `issueAdmission` actually enforces right now. */
+  effectiveMaxConcurrentSessions: number;
+  /** The proof Actions not yet `done`; empty once the gate is open. */
+  blockingActionRefs: string[];
+  /** Whether an unexpired rehearsal exception is currently raising the cap. */
+  exceptionActive: boolean;
+  /** Explanation of why the effective cap differs from the scope's own; `null` when it does not. */
+  reason: string | null;
+}
+
+function isConcurrencyProofDone(db: Database.Database, actionRef: string): boolean {
+  return getWorkItemByDocRef(db, actionRef)?.status === "done";
+}
+
+/**
+ * Whether managed production may run above one Session at a time, re-evaluated
+ * fresh on every call rather than cached at activation (CodeRabbit finding F5,
+ * docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md): a proof
+ * Action that gets reopened after this returned "open" must restore the cap on
+ * the very next admission, with no separate deactivate/reactivate step, and a
+ * later change of `active_plan` must not move this check at all -- it reads
+ * `CONCURRENCY_GATE_PROOF_REFS` directly, never the active-plan pointer.
+ */
+export function resolveConcurrencyGate(
+  db: Database.Database,
+  scope: ProductionScope,
+  at: string
+): ConcurrencyGateStatus {
+  const blockingActionRefs = CONCURRENCY_GATE_PROOF_REFS.filter(
+    (ref) => !isConcurrencyProofDone(db, ref)
+  );
+  if (blockingActionRefs.length === 0) {
+    return {
+      closed: false,
+      effectiveMaxConcurrentSessions: scope.maxConcurrentSessions,
+      blockingActionRefs: [],
+      exceptionActive: false,
+      reason: null
+    };
+  }
+
+  const exception = scope.rehearsalException;
+  const exceptionActive = Boolean(
+    exception &&
+      exception.actionRef === CONCURRENT_READY_SET_ADMISSION_PROOF_REF &&
+      Date.parse(at) < Date.parse(exception.expiresAt)
+  );
+
+  if (exceptionActive) {
+    return {
+      closed: true,
+      effectiveMaxConcurrentSessions: scope.maxConcurrentSessions,
+      blockingActionRefs,
+      exceptionActive: true,
+      reason:
+        `The concurrency cap is raised to ${scope.maxConcurrentSessions} by the rehearsal exception for ` +
+        `${CONCURRENT_READY_SET_ADMISSION_PROOF_REF}, expiring ${exception!.expiresAt}. The general gate stays ` +
+        `closed until ${CONCURRENCY_GATE_PROOF_REFS.join(" and ")} are done.`
+    };
+  }
+
+  return {
+    closed: true,
+    effectiveMaxConcurrentSessions: 1,
+    blockingActionRefs,
+    exceptionActive: false,
+    reason:
+      `Concurrency is capped at 1 (not the configured ${scope.maxConcurrentSessions}) until ` +
+      `${CONCURRENCY_GATE_PROOF_REFS.join(" and ")} are done.`
+  };
+}
+
 /**
  * Reserve one admission slot. This is a reservation, not a launch: nothing
  * starts until `commitAdmission` redeems it, and Off in between fences it.
@@ -768,11 +920,14 @@ export function issueAdmission(db: Database.Database, request: AdmissionRequest)
     }
 
     const live = countLiveAdmissions(db, policy.epoch, at);
-    if (live >= scope.maxConcurrentSessions) {
+    const gate = resolveConcurrencyGate(db, scope, at);
+    if (live >= gate.effectiveMaxConcurrentSessions) {
       return {
         admitted: false as const,
         code: "concurrency_limit" as const,
-        reason: `Authorized concurrency is ${scope.maxConcurrentSessions}; ${live} admissions are live.`,
+        reason: gate.reason
+          ? `${gate.reason} ${live} admission(s) are live.`
+          : `Authorized concurrency is ${gate.effectiveMaxConcurrentSessions}; ${live} admissions are live.`,
         receipt: null
       };
     }
