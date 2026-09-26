@@ -154,6 +154,12 @@ export interface AgentAskSettlementTestHooks {
   beforeOperationalProjection?: () => void;
 }
 
+/** One upcoming Action from the Ready lane, as shown in a settlement notification's queue preview. */
+export interface AgentAskNotificationUpcomingAction {
+  key: string;
+  title: string | null;
+}
+
 export interface PendingAgentAskNotification {
   settlementId: string;
   /** The Ask's own id, so the notification names what was asked. */
@@ -170,6 +176,14 @@ export interface PendingAgentAskNotification {
   queueActionKeys: string[];
   queuePosition: number | null;
   nextActionKey: string | null;
+  /**
+   * The Ready lane's current front, up to 5 entries, read live at notification
+   * time rather than frozen at settlement time — the queue can move between a
+   * `complete` settlement and its Discord delivery. Computed for every
+   * settlement (cheap, already-built queue snapshot) so `intent: "complete"`
+   * notifications can show what arcadia-go will pick up next.
+   */
+  nextActions: AgentAskNotificationUpcomingAction[];
   createdAt: string;
   /** Present when the settlement's durable steps did not all complete. */
   recovery: AgentAskSettlementRecovery | null;
@@ -1558,13 +1572,23 @@ function commitSettlementOutput(
   return commitOnlyPaths(repoRoot, paths, message);
 }
 
+const NOTIFICATION_UPCOMING_ACTION_LIMIT = 5;
+
 export function listPendingAgentAskNotifications(db: Database.Database): PendingAgentAskNotification[] {
-  return db.prepare(`SELECT s.id, s.project_slug, s.disposition, s.effects_json, s.queue_action_key,
+  const rows = db.prepare(`SELECT s.id, s.project_slug, s.disposition, s.effects_json, s.queue_action_key,
       s.queue_position, s.next_action_key, s.receipt_json, s.created_at, p.proposal_json
     FROM agent_ask_settlements s
     LEFT JOIN agent_ask_proposals p ON p.id = s.proposal_id
     WHERE s.notification_status = 'pending' ORDER BY s.created_at, s.id`)
-    .all()
+    .all();
+  if (rows.length === 0) return [];
+  // Read live, not frozen at settlement time: the Ready lane can move between
+  // when an Action was completed and when its Discord notification sends.
+  // One queue build serves every pending row in this batch.
+  const nextActions: AgentAskNotificationUpcomingAction[] = buildAgentQueue(db).ready
+    .slice(0, NOTIFICATION_UPCOMING_ACTION_LIMIT)
+    .map((entry) => ({ key: entry.orderKey ?? `${entry.projectSlug}/${entry.actionId}`, title: entry.actionTitle }));
+  return rows
     .map((row) => {
       const value = row as Record<string, unknown>;
       const receipt = JSON.parse(String(value.receipt_json)) as AgentAskSettlementReceipt;
@@ -1581,6 +1605,7 @@ export function listPendingAgentAskNotifications(db: Database.Database): Pending
         queueActionKeys: receipt.queueActionKeys ?? (value.queue_action_key === null ? [] : [String(value.queue_action_key)]),
         queuePosition: value.queue_position === null ? null : Number(value.queue_position),
         nextActionKey: value.next_action_key === null ? null : String(value.next_action_key),
+        nextActions,
         createdAt: String(value.created_at),
         recovery: receipt.recovery ?? null
       };

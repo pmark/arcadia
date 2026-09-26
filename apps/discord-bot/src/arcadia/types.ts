@@ -61,6 +61,11 @@ export interface AgentAskSettlementRecovery {
   remedy: string;
 }
 
+export interface AgentAskNotificationUpcomingAction {
+  key: string;
+  title: string | null;
+}
+
 export interface AgentAskNotificationItem {
   settlementId: string;
   requestId?: string | null;
@@ -73,6 +78,7 @@ export interface AgentAskNotificationItem {
   queueActionKeys: string[];
   queuePosition: number | null;
   nextActionKey: string | null;
+  nextActions?: AgentAskNotificationUpcomingAction[];
   createdAt: string;
   recovery?: AgentAskSettlementRecovery | null;
 }

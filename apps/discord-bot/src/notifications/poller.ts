@@ -358,6 +358,9 @@ function agentAskSettlementIdFromNotificationKey(key: string): string | null {
 }
 
 export function agentAskSettlementMessage(notification: AgentAskNotificationItem): string {
+  if (notification.intent === "complete") {
+    return agentAskCompletionMessage(notification);
+  }
   const recovery = notification.recovery;
   return [
     `Agent Ask settled: ${notification.disposition}`,
@@ -370,6 +373,33 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
       ? `Queue: ${notification.queueActionKeys.join(", ")} starting at position ${(notification.queuePosition ?? 0) + 1}`
       : "Queue: no executable Action created",
     `Next: ${notification.nextActionKey ?? "none"}`,
+    ...(recovery
+      ? [
+          `Recovery needed: ${recovery.reason}`,
+          recovery.documentsCommitted
+            ? `Documents committed; projection ${recovery.operationalSync}. ${recovery.remedy}`
+            : `Documents NOT committed; projection ${recovery.operationalSync}. ${recovery.remedy}`
+        ]
+      : []),
+    `Settlement: ${notification.settlementId}`
+  ].join("\n");
+}
+
+// arcadia-go's "one session completes one Action" rule settles a `complete`
+// Ask as its last write — this is the notification that fires for it. The
+// operator asked for exactly two things: what got done, and what's queued
+// next, so this trades the generic effects dump for a short-form summary
+// instead of layering onto it.
+function agentAskCompletionMessage(notification: AgentAskNotificationItem): string {
+  const recovery = notification.recovery;
+  const summary = notification.effects[0] ?? notification.desiredResult ?? "Action completed.";
+  const upcoming = notification.nextActions ?? [];
+  return [
+    `Action complete — ${notification.projectSlug}`,
+    summary,
+    upcoming.length > 0
+      ? [`Next up (${upcoming.length}):`, ...upcoming.map((action, index) => `${index + 1}. ${action.key}${action.title ? ` — ${action.title}` : ""}`)].join("\n")
+      : "Next up: nothing else is ready in the queue.",
     ...(recovery
       ? [
           `Recovery needed: ${recovery.reason}`,

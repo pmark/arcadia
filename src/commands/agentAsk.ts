@@ -323,7 +323,8 @@ export function renderAgentAskNotificationsSuccess(response: CommandSuccess<{ no
   return response.data.notifications.flatMap((notification) => [
     `${notification.settlementId} · ${notification.projectSlug} · ${notification.disposition}`,
     ...notification.effects.map((effect) => `  ${effect}`),
-    `  Next: ${notification.nextActionKey ?? "none"}`
+    `  Next: ${notification.nextActionKey ?? "none"}`,
+    ...notification.nextActions.map((action, index) => `  Next up ${index + 1}: ${action.key}${action.title ? ` — ${action.title}` : ""}`)
   ]);
 }
 
