@@ -408,6 +408,12 @@ export interface DecisionReverseOptions {
   dryRun?: boolean;
   /** Idempotency key for the reversal transition; derived when omitted. */
   requestId?: string;
+  /**
+   * Un-park the Action and re-open the Decision without restoring the
+   * historical pointer, when the governed pointer has moved past where the
+   * deferral left it. Without this, that guard refuses the reversal outright.
+   */
+  keepPointer?: boolean;
 }
 
 export interface DecisionReverseData {
@@ -427,7 +433,9 @@ export interface DecisionReverseData {
  * committing all of it together. `--dry-run` previews it; a retry on the same
  * request id returns the recorded receipt; and it refuses, with a named reason
  * and nothing written, when the Action or pointer has moved on since the
- * deferral.
+ * deferral. `--keep-pointer` un-parks the Action anyway when only the pointer
+ * has moved, leaving today's pointer untouched instead of restoring the
+ * historical one.
  */
 export function runDecisionReverseCommand(options: DecisionReverseOptions): CommandSuccess<DecisionReverseData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -477,7 +485,8 @@ export function runDecisionReverseCommand(options: DecisionReverseOptions): Comm
       decisionAnswer: decisionDoc.answer,
       deferral,
       requestId,
-      dryRun: options.dryRun === true
+      dryRun: options.dryRun === true,
+      keepPointer: options.keepPointer === true
     });
 
     return createSuccess({
@@ -725,6 +734,11 @@ export function renderDecisionReverseSuccess(response: CommandSuccess<DecisionRe
       lines.push(
         `${applied ? "Restored" : "Would restore"} the pointer ` +
           `${consequence.pointerBefore ?? "none"} → ${consequence.pointerAfter ?? "none"}.`
+      );
+    } else if (consequence.pointerLeftInPlace) {
+      lines.push(
+        `${applied ? "Left" : "Would leave"} the pointer at ${consequence.pointerAfter ?? "none"} ` +
+          "(it moved past the deferral since, and --keep-pointer was given)."
       );
     } else {
       lines.push("The pointer did not move (the deferred Action was not the current Action).");

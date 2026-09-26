@@ -2318,6 +2318,24 @@ actions:
     depends_on: [admit-ready-set-across-repositories, add-fixture-coding-agent-provider, limit-sessions-per-provider-account, release-admission-on-every-launch-failure, recover-stalled-sessions-within-bound, load-test-workspace-db-contention, keep-action-claim-while-candidate-unmerged]
     decisions: []
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md", "docs/managed-production-readiness.md", "src/production/tick.ts"]
+  - id: resolve-ambiguous-and-cross-project-dependency-ids
+    title: Cross-Project dependency resolution, ambiguous-id refusal, cross-Plan cycle detection at parse time, and tick-based escalation for a long-unresolved dependency.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Cross-Project dependency resolution, ambiguous-id refusal, cross-Plan cycle detection at parse time, and tick-based escalation for a long-unresolved dependency.
+    expected_artifact: Evidence satisfying Agent Ask resolve-ambiguous-and-cross-project-dependency-ids
+    clarification: clarified
+    confidence: high
+    source: Agent Ask resolve-ambiguous-and-cross-project-dependency-ids-2026-09-26
+    acceptance_criteria:
+      - A depends_on id may name another Project; an id that resolves to more than one Action across Plans or Projects is reported as dependency_unresolved (ambiguous) and never resolved to either, in both collectUnmetDependencies (src/docs/dispatch.ts) and canonicalOrder (src/scheduling/order.ts).
+      - The plan parser (src/docs/parse.ts) detects and reports a dependency cycle that spans Plans, not only one confined to a single Plan.
+      - An Action that stays dependency_unresolved for more than one worker tick is surfaced as an operator escalation (src/production/tick.ts) naming the unresolved id, instead of waiting silently.
+      - "Deterministic tests cover: cross-Project resolution, an ambiguous id refused across Plans or Projects, a cross-Plan cycle detected and reported at parse time, and an unresolved dependency escalated after one tick; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: [resolve-cross-plan-dependency-ids]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
