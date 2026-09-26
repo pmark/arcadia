@@ -25,9 +25,13 @@ Every queued Action has a scheduling class: `interrupt`, `blocker`,
 
 Canonical order is: highest class first, then lowest queue position inside the
 class, then Plan declaration order. An Action is always held behind a
-dependency that is not done, whatever its position or class. That is one
-function, `canonicalOrder` in `src/scheduling/order.ts`, and the scheduler, the
-reorder validator, and the board projection all call it.
+dependency that is not done, whatever its position or class. A `depends_on` id
+that resolves to no known Action, or to more than one Action across Plans or
+Projects (Plan slugs are not namespaced by Project), is never treated as
+satisfied either — both hold the Action back the same way an unfinished
+dependency does. That is one function, `canonicalOrder` in
+`src/scheduling/order.ts`, and the scheduler, the reorder validator, and the
+board projection all call it.
 
 The next runnable Action is the first Action in canonical order whose status
 is `ready`. Statuses are derived from the documents and live Sessions:

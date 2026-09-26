@@ -27,6 +27,7 @@ import {
   type DocValidationError,
   type LogEntryDoc,
   type PlanActionDoc,
+  type PlanDoc,
   type PlanQuestionDoc,
   type SupportingDocType
 } from "./types.js";
@@ -598,6 +599,127 @@ function reportDependencyCycles(problems: Problems, actions: PlanActionDoc[]): v
   for (const id of [...byId.keys()].sort()) {
     visit(id);
   }
+}
+
+/**
+ * Report every dependency cycle that spans more than one Plan document.
+ *
+ * `reportDependencyCycles` above catches a cycle confined to one Plan while
+ * that Plan is parsed, and rejects the whole document over it -- but a single
+ * document parse cannot see a cycle that runs through a `plan/<slug>#
+ * <action-id>` reference, because following it means reading a different
+ * file. This runs once discovery has parsed every surviving Plan (see
+ * `discoverDocs`), the same way `validateLogActionReferences` resolves a
+ * Log's cross-document reference there instead of inside `parseDoc`.
+ *
+ * Resolution follows the same rule `collectUnmetDependencies`
+ * (`src/docs/dispatch.ts`) and `canonicalOrder` (`src/scheduling/order.ts`)
+ * use: a bare id resolves within its own Plan; `plan/<slug>#<action-id>` may
+ * name an Action in any Plan whose slug matches, in the same Project or
+ * another one, because Plan slugs are not namespaced by Project. An ambiguous
+ * reference (more than one match) is followed down every branch here rather
+ * than skipped -- a real cycle through one interpretation is still a real
+ * cycle, and the id will never dispatch regardless of which match was meant.
+ *
+ * Returns the relative paths of every Plan document involved in a reported
+ * cycle, for the caller to drop from the accepted document set exactly as a
+ * same-Plan cycle already does.
+ */
+export function reportCrossPlanDependencyCycles(plans: PlanDoc[], errors: DocValidationError[]): Set<string> {
+  const rejected = new Set<string>();
+  const bySlug = new Map<string, PlanDoc[]>();
+  for (const plan of plans) {
+    const bucket = bySlug.get(plan.slug);
+    if (bucket) bucket.push(plan);
+    else bySlug.set(plan.slug, [plan]);
+  }
+
+  interface Node {
+    plan: PlanDoc;
+    actionId: string;
+  }
+  const nodeKey = (node: Node): string => `${node.plan.project}\u0000${node.plan.slug}\u0000${node.actionId}`;
+  const planKey = (plan: PlanDoc): string => `${plan.project}\u0000${plan.slug}`;
+
+  function edgesFrom(node: Node): Node[] {
+    const action = node.plan.actions.find((candidate) => candidate.id === node.actionId);
+    if (!action) return [];
+    const out: Node[] = [];
+    for (const dependency of action.dependsOn) {
+      const cross = CROSS_PLAN_DEPENDENCY.exec(dependency);
+      if (!cross) {
+        if (node.plan.actions.some((candidate) => candidate.id === dependency)) {
+          out.push({ plan: node.plan, actionId: dependency });
+        }
+        continue;
+      }
+      const [, slug, actionId] = cross;
+      for (const candidatePlan of bySlug.get(slug) ?? []) {
+        if (candidatePlan.actions.some((candidate) => candidate.id === actionId)) {
+          out.push({ plan: candidatePlan, actionId });
+        }
+      }
+    }
+    return out;
+  }
+
+  // 0 = unvisited, 1 = on the current path, 2 = fully explored.
+  const state = new Map<string, 0 | 1 | 2>();
+  const path: Node[] = [];
+  const reportedCycles = new Set<string>();
+
+  function visit(node: Node): void {
+    const key = nodeKey(node);
+    if (state.get(key) === 2) return;
+    if (state.get(key) === 1) {
+      const startIndex = path.findIndex((entry) => nodeKey(entry) === key);
+      const cycle = path.slice(startIndex);
+      const distinctPlans = new Set(cycle.map((entry) => planKey(entry.plan)));
+      // A cycle entirely inside one Plan is already reported (and the whole
+      // document already rejected) by `reportDependencyCycles` above.
+      if (distinctPlans.size > 1) {
+        const cycleId = cycle.map(nodeKey).sort().join(",");
+        if (!reportedCycles.has(cycleId)) {
+          reportedCycles.add(cycleId);
+          const description = [...cycle, cycle[0]]
+            .map((entry) => `plan/${entry.plan.slug}#${entry.actionId} (project ${entry.plan.project})`)
+            .join(" -> ");
+          for (const entry of cycle) {
+            rejected.add(entry.plan.relativePath);
+            errors.push({
+              relativePath: entry.plan.relativePath,
+              field: `actions.${entry.actionId}.depends_on`,
+              message: `Cross-Plan dependency cycle: ${description}. No action in a cycle can ever become ready.`
+            });
+          }
+        }
+      }
+      return;
+    }
+
+    state.set(key, 1);
+    path.push(node);
+    for (const next of edgesFrom(node)) {
+      visit(next);
+    }
+    path.pop();
+    state.set(key, 2);
+  }
+
+  const allNodes: Node[] = [];
+  for (const plan of plans) {
+    for (const action of plan.actions) {
+      allNodes.push({ plan, actionId: action.id });
+    }
+  }
+  // Sorted so the reported entry point is stable across runs rather than
+  // dependent on discovery order.
+  allNodes.sort((left, right) => nodeKey(left).localeCompare(nodeKey(right)));
+  for (const node of allNodes) {
+    visit(node);
+  }
+
+  return rejected;
 }
 
 function parseQuestions(problems: Problems, raw: unknown): PlanQuestionDoc[] {

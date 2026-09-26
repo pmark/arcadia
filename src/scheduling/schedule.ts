@@ -254,6 +254,7 @@ function deriveStatus(
 export function orderCandidates(actions: ScheduledAction[], planSlug: string | null): OrderCandidate[] {
   return actions.map((action) => ({
     key: action.key,
+    project: action.projectSlug,
     plan: planSlug ?? action.projectSlug,
     actionId: action.actionId,
     schedulingClass: action.schedulingClass,

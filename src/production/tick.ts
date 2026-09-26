@@ -13,6 +13,7 @@ import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
@@ -133,6 +134,12 @@ export function ensureProductionTickTables(db: Database.Database): void {
       message TEXT NOT NULL,
       first_at TEXT NOT NULL,
       last_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS production_dependency_unresolved_sightings (
+      action_key TEXT PRIMARY KEY,
+      unresolved_id TEXT NOT NULL,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
     );
   `);
   ensureProductionLaunchBlockersTable(db);
@@ -347,13 +354,113 @@ function clearOperatorEscalation(db: Database.Database, actionKey: string): void
  * success -- would otherwise leave a stale row that `listOperatorEscalations`
  * keeps reporting forever. Called with the Project's live actionKey (or
  * `null` when nothing is currently dispatchable), so it always reconciles
- * against the one actionKey this tick knows to be current.
+ * against the one actionKey this tick knows to be current. Also prunes the
+ * dependency-unresolved sighting table (below) for the same reason and by the
+ * same rule: it is per-Action bookkeeping with the identical staleness risk.
  */
 function pruneStaleOperatorEscalations(db: Database.Database, projectSlug: string, currentActionKey: string | null): void {
   db.prepare("DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ?").run(
     `${projectSlug}/%`,
     currentActionKey ?? ""
   );
+  db.prepare("DELETE FROM production_dependency_unresolved_sightings WHERE action_key LIKE ? AND action_key != ?").run(
+    `${projectSlug}/%`,
+    currentActionKey ?? ""
+  );
+}
+
+/**
+ * The `depends_on` id named by a `dependency_unresolved` readiness blocker
+ * (`collectUnmetDependencies`, `src/docs/dispatch.ts`), or `null` when none of
+ * `blockers` is one. Matches both the plain "resolves nowhere" case and the
+ * "(ambiguous)" case (resolves to more than one Action) -- both are equally
+ * incapable of ever resolving on their own, so both are worth escalating the
+ * same way; only a dependency that is merely unfinished (still "open",
+ * "in_progress", etc.) is excluded, because that one resolves itself as soon
+ * as the named Action finishes.
+ */
+function unresolvedDependencyIdFrom(blockers: DispatchBlocker[]): string | null {
+  for (const blocker of blockers) {
+    if (!blocker.field.includes("depends_on")) continue;
+    const match = /^Depends on "([^"]+)".*which is "dependency_unresolved(?: \(ambiguous\))?", not done\.$/.exec(blocker.message);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
+ * Escalate a `depends_on` id that has stayed unresolved for more than one
+ * worker tick, instead of the Action simply waiting silently forever (an
+ * unresolved or ambiguous reference cannot self-resolve the way an ordinary
+ * unfinished dependency does -- no amount of other work finishing ever fixes
+ * a typo or a genuine ambiguity in the plan document).
+ *
+ * The first tick a given unresolved id is seen for an Action only records the
+ * sighting: a reference that is wrong for one tick and fixed the next
+ * (a document edit landing between two ticks, say) should never reach the
+ * operator. Only from the second consecutive tick seeing the *same*
+ * unresolved id does this record the durable `production_operator_escalations`
+ * row `listOperatorEscalations` (and `arcadia production status`) surface.
+ */
+function recordDependencyUnresolvedSighting(
+  db: Database.Database,
+  input: { actionKey: string; unresolvedId: string; now: Date; log: (message: string) => void }
+): void {
+  const at = input.now.toISOString();
+  const existing = db
+    .prepare("SELECT unresolved_id FROM production_dependency_unresolved_sightings WHERE action_key = ?")
+    .get(input.actionKey) as { unresolved_id: string } | undefined;
+
+  if (!existing || existing.unresolved_id !== input.unresolvedId) {
+    db.prepare(
+      `INSERT INTO production_dependency_unresolved_sightings (action_key, unresolved_id, first_seen_at, last_seen_at)
+         VALUES (@action_key, @unresolved_id, @at, @at)
+       ON CONFLICT(action_key) DO UPDATE SET
+         unresolved_id = @unresolved_id, first_seen_at = @at, last_seen_at = @at`
+    ).run({ action_key: input.actionKey, unresolved_id: input.unresolvedId, at });
+    // A newly (or differently) unresolved id gets its own fresh baseline
+    // tick -- but only clear a `dependency_unresolved` escalation this same
+    // bookkeeping owns. `production_operator_escalations` is keyed only by
+    // action_key, so an unrelated kind (e.g. `no_validation_commands`) could
+    // be sitting on this row too, and a new sighting must not silently
+    // delete it.
+    const existingEscalationKind = db
+      .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
+      .get(input.actionKey) as { kind: string } | undefined;
+    if (existingEscalationKind?.kind === "dependency_unresolved") {
+      clearOperatorEscalation(db, input.actionKey);
+    }
+    return;
+  }
+
+  db.prepare("UPDATE production_dependency_unresolved_sightings SET last_seen_at = @at WHERE action_key = @action_key").run({
+    action_key: input.actionKey,
+    at
+  });
+
+  const message = `Action "${input.actionKey}" depends on "${input.unresolvedId}", which has stayed unresolved for more than one worker tick.`;
+  const remedy = `Fix or remove the depends_on entry "${input.unresolvedId}" on ${input.actionKey}: it names no known Action, or names more than one.`;
+  const newlyDetected = recordOperatorEscalation(db, {
+    actionKey: input.actionKey,
+    kind: "dependency_unresolved",
+    message,
+    remedy,
+    now: input.now
+  });
+  if (newlyDetected) {
+    input.log(`Escalated ${input.actionKey} to the operator (dependency_unresolved): ${message}`);
+  }
+}
+
+/** Clear a dependency-unresolved sighting once its `depends_on` id resolves, or the Action moves on. */
+function clearDependencyUnresolvedSighting(db: Database.Database, actionKey: string): void {
+  db.prepare("DELETE FROM production_dependency_unresolved_sightings WHERE action_key = ?").run(actionKey);
+  const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
+    | { kind: string }
+    | undefined;
+  if (existing?.kind === "dependency_unresolved") {
+    clearOperatorEscalation(db, actionKey);
+  }
 }
 
 export interface OperatorEscalation {
@@ -669,11 +776,23 @@ function attemptProjectLaunch(
     // has nothing to preserve.
     const currentActionKey = transition.dispatch.context ? `${input.projectSlug}/${transition.dispatch.context.action.id}` : null;
     pruneStaleOperatorEscalations(db, input.projectSlug, currentActionKey);
+    if (currentActionKey) {
+      const unresolvedId = unresolvedDependencyIdFrom(transition.dispatch.blockers);
+      if (unresolvedId) {
+        recordDependencyUnresolvedSighting(db, { actionKey: currentActionKey, unresolvedId, now: input.now, log: input.log });
+      } else {
+        clearDependencyUnresolvedSighting(db, currentActionKey);
+      }
+    }
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }
 
   const actionKey = `${input.projectSlug}/${transition.dispatch.context.action.id}`;
   pruneStaleOperatorEscalations(db, input.projectSlug, actionKey);
+  // Reaching a "launch" transition means every depends_on entry resolved and
+  // finished; drop any dependency-unresolved bookkeeping left from an earlier
+  // tick rather than waiting for it to be pruned as some other Action's.
+  clearDependencyUnresolvedSighting(db, actionKey);
 
   // A drafted `complete` Agent Ask already covering this Action's evidence
   // means a previous session finished the work and either ended, or was

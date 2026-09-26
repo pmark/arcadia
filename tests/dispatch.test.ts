@@ -374,14 +374,14 @@ function graphPlanDoc(
     question?: string;
     decisions?: string[];
   }>,
-  options: { slug?: string } = {}
+  options: { slug?: string; project?: string } = {}
 ): string {
   const lines = [
     "---",
     "arcadia: v1",
     "type: plan",
     `slug: ${options.slug ?? "main-plan"}`,
-    "project: demo",
+    `project: ${options.project ?? "demo"}`,
     "status: active",
     "milestone: First milestone",
     "token_impact: medium",
@@ -575,6 +575,132 @@ describe("dependency readiness", () => {
     expect(blocker?.message).toContain("plan/no-such-plan#no-such-action");
     expect(blocker?.message).toContain("dependency_unresolved");
     expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("resolves a cross-Project dependency that is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "done" }], { slug: "other-plan", project: "other-project" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
+  it("blocks on a cross-Project dependency that is not yet done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "open" }], { slug: "other-plan", project: "other-project" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("plan/other-plan#finish-other");
+    expect(blocker?.message).toContain("open");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("refuses a depends_on id that resolves to more than one Action across Projects, rather than guessing which one was meant", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/shared-slug#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/shared-slug-a.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "done" }], { slug: "shared-slug", project: "project-a" })
+    );
+    write(
+      root,
+      "docs/plans/shared-slug-b.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "done" }], { slug: "shared-slug", project: "project-b" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    // The document still parses -- an ambiguous cross-Plan reference is not a
+    // dangling same-Plan id -- so the Action resolves and reports a normal
+    // readiness blocker rather than a parse error.
+    expect(resolution.context?.action.id).toBe("ship-it");
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("plan/shared-slug#finish-other");
+    expect(blocker?.message).toContain("dependency_unresolved (ambiguous)");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+});
+
+describe("cross-Plan dependency cycles", () => {
+  it("detects and reports a dependency cycle that runs through a cross-Plan reference, rejecting both documents", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", dependsOn: ["plan/main-plan#ship-it"] }], { slug: "other-plan" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    // Same severity as a same-Plan cycle: the whole document is rejected, so
+    // the pointer can no longer resolve `main-plan` at all.
+    expect(resolution.context).toBeNull();
+    const cycle = resolution.blockers.find((entry) => entry.message.includes("Cross-Plan dependency cycle"));
+    expect(cycle).toBeDefined();
+    expect(cycle?.message).toContain("plan/main-plan#ship-it");
+    expect(cycle?.message).toContain("plan/other-plan#finish-other");
+  });
+
+  it("detects a cross-Plan cycle spanning two Projects", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", dependsOn: ["plan/main-plan#ship-it"] }], {
+        slug: "other-plan",
+        project: "other-project"
+      })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.context).toBeNull();
+    const cycle = resolution.blockers.find((entry) => entry.message.includes("Cross-Plan dependency cycle"));
+    expect(cycle).toBeDefined();
+    expect(cycle?.message).toContain("project demo");
+    expect(cycle?.message).toContain("project other-project");
   });
 });
 

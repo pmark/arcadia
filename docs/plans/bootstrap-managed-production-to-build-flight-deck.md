@@ -2318,7 +2318,7 @@ actions:
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md", "docs/managed-production-readiness.md", "src/production/tick.ts"]
   - id: resolve-ambiguous-and-cross-project-dependency-ids
     title: Cross-Project dependency resolution, ambiguous-id refusal, cross-Plan cycle detection at parse time, and tick-based escalation for a long-unresolved dependency.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Cross-Project dependency resolution, ambiguous-id refusal, cross-Plan cycle detection at parse time, and tick-based escalation for a long-unresolved dependency.
@@ -2338,7 +2338,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: resolve-ambiguous-and-cross-project-dependency-ids
+current_action: enforce-concurrency-gate-at-admission
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

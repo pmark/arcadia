@@ -1,0 +1,31 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-resolve-ambiguous-and-cross-project-dependency-ids-2026-09-26",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/resolve-ambiguous-and-cross-project-dependency-ids",
+  "candidate_revision": "4257e6bc1404ee1d6f6bc197113e8acb33201fee",
+  "desired_result": "Mark resolve-ambiguous-and-cross-project-dependency-ids done: cross-Project depends_on resolution, ambiguity refusal in both readers, cross-Plan cycle detection at discovery time, and tick-based escalation for a long-unresolved dependency are all implemented and tested.",
+  "evidence": [
+    {
+      "criterion": "A depends_on id may name another Project; an id that resolves to more than one Action across Plans or Projects is reported as dependency_unresolved (ambiguous) and never resolved to either, in both collectUnmetDependencies (src/docs/dispatch.ts) and canonicalOrder (src/scheduling/order.ts).",
+      "status": "met",
+      "note": "resolveDependencyCandidates (dispatch.ts) and buildDependencyResolver (order.ts) now search every discovered Plan across every Project and refuse to resolve when a plan/<slug>#<action-id> id matches more than one; covered by tests/dispatch.test.ts (\"resolves a cross-Project dependency that is done\", \"blocks on a cross-Project dependency that is not yet done\", \"refuses a depends_on id that resolves to more than one Action across Projects\") and tests/scheduling-order.test.ts (\"resolves a cross-Project dependency...\", \"never resolves a depends_on id that matches more than one Plan across Projects (ambiguous)\")."
+    },
+    {
+      "criterion": "The plan parser (src/docs/parse.ts) detects and reports a dependency cycle that spans Plans, not only one confined to a single Plan.",
+      "status": "met",
+      "note": "New exported reportCrossPlanDependencyCycles in src/docs/parse.ts, invoked from src/docs/discover.ts once every Plan is read, rejects every Plan document in a cycle that spans more than one Plan (same-Project or cross-Project); covered by tests/dispatch.test.ts describe(\"cross-Plan dependency cycles\")."
+    },
+    {
+      "criterion": "An Action that stays dependency_unresolved for more than one worker tick is surfaced as an operator escalation (src/production/tick.ts) naming the unresolved id, instead of waiting silently.",
+      "status": "met",
+      "note": "New production_dependency_unresolved_sightings table plus recordDependencyUnresolvedSighting/clearDependencyUnresolvedSighting in tick.ts: the first tick only records a sighting, and from the second consecutive tick seeing the same unresolved id it escalates through the existing production_operator_escalations mechanism, naming the id in the message and remedy; covered by tests/production-tick.test.ts (\"escalates a depends_on id that stays unresolved for more than one worker tick, instead of waiting silently\")."
+    },
+    {
+      "criterion": "Deterministic tests cover: cross-Project resolution, an ambiguous id refused across Plans or Projects, a cross-Plan cycle detected and reported at parse time, and an unresolved dependency escalated after one tick; pnpm test and the core, Discord and Dashboard builds pass.",
+      "status": "met",
+      "note": "All four scenarios are covered by the tests named above. pnpm test: 210 files passed, 2326 tests passed, 17 skipped, 0 failed (run unsandboxed to rule out sandbox-only EPERM/tmux-socket noise seen under the sandboxed run). pnpm build (lint + core tsc + discord-bot build) and pnpm dashboard:build both exit 0."
+    }
+  ]
+}
