@@ -10,7 +10,6 @@ import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/m
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
-import { existsSync } from "node:fs";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
@@ -260,13 +259,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // and nothing left to release it (CodeRabbit, PR #696).
   const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
   let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
-  if (
-    staleHandoff
-    && staleHandoff.session.action_id === preview.actionId
-    && !tmux.hasSession(staleHandoff.session.tmux_session_name)
-    && existsSync(staleHandoff.session.worktree_path)
-  ) {
+  if (staleHandoff && staleHandoff.session.action_id === preview.actionId && !tmux.hasSession(staleHandoff.session.tmux_session_name)) {
     const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
+    // A worktree that is gone outright fails the same "not safely resumable"
+    // test as one whose Git metadata is invalid -- `tryGit` against a missing
+    // directory fails exactly like it does against a corrupt one, so the
+    // check below covers both without a separate `existsSync` gate that would
+    // otherwise skip releasing the stale claim entirely for a deleted
+    // worktree (CodeRabbit, PR #696).
     const headProbe = tryGit(staleHandoff.session.worktree_path, ["rev-parse", "HEAD"]);
     const branchProbe = tryGit(staleHandoff.session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
     if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
@@ -277,8 +277,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // over a claim nothing will ever resume -- release it explicitly,
       // fenced on the exact generation currently held, so a fresh worktree
       // can be claimed normally. The worktree reservation itself (and the
-      // worktree on disk) is left alone, so `tidy` still will not retire it
-      // out from under an operator's manual inspection.
+      // worktree on disk, if it still exists) is left alone, so `tidy` still
+      // will not retire it out from under an operator's manual inspection.
       //
       // Only ever release a claim actually held on *this* handoff's worktree.
       // A concurrent caller (another tick, a manual `arcadia go`) could have

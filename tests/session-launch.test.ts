@@ -951,6 +951,54 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(tmux.launches).toHaveLength(2);
   });
 
+  it("releases a stale claim rather than looping forever when the claimed worktree is gone outright", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+
+    // The worktree directory is removed entirely, not merely corrupted. This
+    // must not skip the stale-claim release the same way the corrupted-Git
+    // case does not: `existsSync` being false is not itself a signal that
+    // nothing needs releasing.
+    rmSync(worktreePath, { recursive: true, force: true });
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.worktree_path).not.toBe(worktreePath);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+  });
+
   it("restores a resumed handoff for a later retry when the resume attempt itself fails before ever running", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
