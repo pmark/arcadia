@@ -298,3 +298,42 @@ triggers.
   limits already spreads work, and `production-scheduling.md` defers fairness
   until a need is observed.
 - Spending to fill idle capacity.
+
+## 5. Build map
+
+Sections 1–4 are the design. This section is the plan: every Action that
+builds it, in `plan/bootstrap-managed-production-to-build-flight-deck`, and
+what each stage waits on. It was completed on 2026-09-26 after the adversarial
+review (`docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md`)
+found that several parts of sections 3 and 4 had no Action. The Plan's
+`depends_on` edges are authoritative; this table is their reading guide.
+
+| Stage | Action | Waits on | Delivers |
+| --- | --- | --- | --- |
+| **0 — now, in parallel** | `resolve-cross-plan-dependency-ids` | — | Unknown, ambiguous and cross-Plan dependency ids block in every readiness path, with escalation (§3 Dependencies rule 2). |
+| | `enforce-concurrency-gate-at-admission` | — | The concurrency cap stays at 1 on every admission until both proofs are done; the only exception is an expiring rehearsal grant. |
+| | `rewire-dependents-on-split` | — | A `split` cannot release dependents or open the gate while its remainder is open. |
+| | `fix-action-intent-target-ref-amendments` | — | #654: `intent: action` amendments settle as amendments. |
+| | `release-admission-on-every-launch-failure` | — | §3 Rollback, "Proposed". |
+| | `add-fixture-coding-agent-provider` | — | Step 1's zero-token fake provider. |
+| | `load-test-workspace-db-contention` | — | A measured writer limit behind `maxConcurrentSessions` (§2's SQLite claim). |
+| | `keep-action-claim-while-candidate-unmerged` | — | #549: no re-dispatch after 24 hours while a candidate is unmerged (a Decision 0066 prerequisite). |
+| | `limit-sessions-per-provider-account` | the gate | Step 4 provider slots; an unknown account identity counts as one account. |
+| **1 — operator** | `prove-two-action-unattended-production` | Decision 0057's deferral reversed | The sequential proof. Stages 2 onward wait on it. |
+| **2 — after the proof** | `settle-squash-merged-completion-drafts` → `sweep-merged-completions-before-dispatch` | the proof | Decision 0070's host settler, the single `current_action` writer. |
+| | `recover-stalled-sessions-within-bound` | the proof, fixture provider | A stalled Session gives back its lease and slot; a second stall escalates. |
+| **3** | `admit-ready-set-across-repositories` | stages 0–2 | Ready-set admission, wait reasons, the pointer as a projection (step 3). |
+| **4 — cross-repository concurrency goes live** | `soak-ready-set-admission-with-fixture-provider` | stage 3, every stage-0 safety Action, stall recovery | The fixture soak: 20+ Actions, 3+ repositories, concurrency 3, injected faults, invariant report (steps 1 and 6). |
+| | `prove-concurrent-ready-set-admission` | the soak, the proof | The live concurrency proof. When it is `done`, the gate lifts. |
+| **5 — single-repository speed** | `limit-unmerged-candidates-per-repository` | stage 3 | Step 4 review headroom, `review_backlog`. |
+| | `pipeline-independent-actions-while-pr-unmerged` | stage 3, the review limit, 0070's held Actions | Step 5 pipelining. |
+
+**Deliberately not planned, each with its trigger:**
+
+- **Activation previews implied throughput** (step 6's preview). The gate
+  Action already reports the effective cap. Revisit when an operator first
+  configures more than one provider account.
+- **Two live Sessions in one repository** (step 7). Decision 0066's trigger.
+- **Multi-installation ownership records** (step 8). Decision 0022's trigger.
+- **Fairness or aging across Projects.** Revisit when a Project observably
+  starves under strict queue order, per `docs/production-scheduling.md`.
