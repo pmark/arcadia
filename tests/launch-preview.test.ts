@@ -349,7 +349,17 @@ describe("buildLaunchPreview", () => {
       );
 
     expect(preview().ready).toBe(false);
-    expect(preview().prerequisites.join("\n")).toContain("no longer approved");
+    const pending = preview();
+    expect(pending.prerequisites.join("\n")).toContain(`build packet approval pending: Decision ${approval.id}`);
+    expect(pending.packetLifecycle).toMatchObject({
+      kind: "build_packet_approval_pending",
+      decisionId: approval.id,
+      remedy: `Approve build packet Decision ${approval.id}: arcadia review approve ${approval.id} --no-execute`
+    });
+
+    withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "rejected", decisionNote: "Rejected." }));
+    expect(preview().prerequisites.join("\n")).toContain("no longer approved (rejected)");
+    expect(preview().packetLifecycle?.kind).toBe("stale_packet");
 
     withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Accepted." }));
 
@@ -376,6 +386,28 @@ describe("buildLaunchPreview", () => {
     expect(preview.ready).toBe(false);
     expect(preview.packetLifecycle?.kind).toBe("stale_packet");
     expect(preview.prerequisites.some((entry) => entry.includes("stale") && entry.includes("authority"))).toBe(true);
+
+    // Still stale -- not "approval pending" -- when its approval is open:
+    // approving a changed packet would only fail at launch.
+    withDatabase(fixture.workspace, (db) => {
+      const row = db
+        .prepare("SELECT id FROM review_items WHERE context_json LIKE ?")
+        .get(`%"buildInvocationId":"${fixture.packetId}"%`) as { id: string };
+      updateReviewItemStatus(db, row.id, { status: "open", decisionNote: "Reopened." });
+    });
+    const reopened = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-3b",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+    expect(reopened.packetLifecycle?.kind).toBe("stale_packet");
+    expect(reopened.prerequisites.join("\n")).not.toContain("approval pending");
   });
 
   it("names an already-leased repository as a conflicting-execution prerequisite", () => {

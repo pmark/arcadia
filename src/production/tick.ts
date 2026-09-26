@@ -249,8 +249,15 @@ export function ensureProductionLaunchBlockersTable(db: Database.Database): void
  * `planning_required` has no other surface today -- nothing has asked for
  * planning yet, so silently retrying the same launch forever (Issue #576)
  * never gets anyone's attention.
+ *
+ * `build_packet_approval_pending` is included even though it too is an open
+ * Decision, because it is the one that stops an Active standing policy
+ * outright: the 2026-09-26 two-Action rehearsal sat Active with no admission
+ * and an empty `production status` while its only blocker was an unapproved
+ * packet, visible solely in the worker log. The escalation's remedy names the
+ * exact approval command.
  */
-const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required"]);
+const NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS = new Set<string>(["planning_required", "build_packet_approval_pending"]);
 
 /**
  * When a refusal's packet lifecycle is `planning_required`, prepare it
