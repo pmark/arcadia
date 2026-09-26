@@ -2164,6 +2164,161 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/ask/settlement.ts", "src/docs/dispatch.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
+  - id: fix-action-intent-target-ref-amendments
+    title: "An intent: action Agent Ask whose children carry target_ref amends those Actions on settlement, matching what its preview reports, instead of creating duplicates."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "An intent: action Agent Ask whose children carry target_ref amends those Actions on settlement, matching what its preview reports, instead of creating duplicates."
+    expected_artifact: Evidence satisfying Agent Ask fix-action-intent-target-ref-amendments
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - "Settling an intent: action Ask with no envelope target_ref amends every child that carries target_ref: action/<id> and creates only children without one, in src/ask/settlement.ts, exactly as its draft preview reports."
+      - A child target_ref naming an Action that does not exist is refused at preview with a named reason, never settled as a creation.
+      - "Deterministic tests cover a mixed bundle of amended and created children settling to the previewed effects, and the refused missing target; Closes #654; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/ask/settlement.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
+  - id: release-admission-on-every-launch-failure
+    title: Every launch failure after an admission is issued releases that admission at once, so a failed launch never holds a concurrency slot until its receipt expires.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Every launch failure after an admission is issued releases that admission at once, so a failed launch never holds a concurrency slot until its receipt expires.
+    expected_artifact: Evidence satisfying Agent Ask release-admission-on-every-launch-failure
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - Every failure path in src/sessions/launch.ts after issueAdmission -- worktree preparation, prepareSession, tmux start, and the commitAdmission recheck -- calls releaseAdmission for that admission, not only the lease-race path.
+      - A crash between issue and commit leaves at most one uncommitted admission, which expires within the existing 30-second receipt TTL and is then not counted by countLiveAdmissions.
+      - Deterministic tests inject a failure at each path and show the live admission count back at its prior value immediately afterwards; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/launch.ts", "src/production/policy.ts", "docs/proposals/portfolio-parallel-execution.md"]
+  - id: add-fixture-coding-agent-provider
+    title: Add a deterministic fixture coding-agent provider that sleeps, edits one file and exits, so concurrency limits can be exercised end to end at zero token cost.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a deterministic fixture coding-agent provider that sleeps, edits one file and exits, so concurrency limits can be exercised end to end at zero token cost.
+    expected_artifact: Evidence satisfying Agent Ask add-fixture-coding-agent-provider
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - A fixture provider launches through the same adapter, tmux and admission path as real providers, sleeps for a configured duration, edits one declared file in its candidate, and exits with a configured outcome (completed, failed, stalled with no output, or crashed).
+      - "The fixture provider is never selected automatically: production admits it only when the active policy scope names it in providers, and every receipt, Session and completion it produces is marked simulated so it can never be cited as live proof."
+      - Deterministic tests cover each configured outcome reaching the matching reconciliation result, and the refusal when the policy scope does not name the fixture provider; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/codingAgents/adapters.ts", "src/codingAgents/providerAdapters.ts", "docs/proposals/portfolio-parallel-execution.md"]
+  - id: load-test-workspace-db-contention
+    title: Measure the workspace database under concurrent writers so the concurrency limit rests on a tested number, not an assertion.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Measure the workspace database under concurrent writers so the concurrency limit rests on a tested number, not an assertion.
+    expected_artifact: Evidence satisfying Agent Ask load-test-workspace-db-contention
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - A repeatable test starts at least eight separate processes against one WAL workspace database, each running production admission issue/commit/release, Action claim reserve/release, and settlement-sized write transactions in a loop.
+      - The test reports surfaced SQLITE_BUSY errors, the longest write-lock wait, and the longest single write transaction; it passes only with zero surfaced errors and a longest wait under the busy_timeout set in src/db/connection.ts.
+      - The measured writer count and waits are recorded in docs/production-scheduling.md as the tested basis for maxConcurrentSessions; any write transaction that holds the lock across a git or filesystem call is named and filed as a bug Issue; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: ["src/db/connection.ts", "tests/db-write-transaction.test.ts", "docs/production-scheduling.md", "docs/proposals/portfolio-parallel-execution.md"]
+  - id: keep-action-claim-while-candidate-unmerged
+    title: An Action claim does not expire while its candidate is still unmerged, so neither arcadia go nor production can dispatch the same Action a second time.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: An Action claim does not expire while its candidate is still unmerged, so neither arcadia go nor production can dispatch the same Action a second time.
+    expected_artifact: Evidence satisfying Agent Ask keep-action-claim-while-candidate-unmerged
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - An Action claim whose worktree reservation (AGENT_WORKTREE_RESERVATION_MS, src/sessions/index.ts) has passed its 24-hour window is kept while its candidate branch or pull request is unmerged, and is released when the candidate merges or is explicitly abandoned.
+      - Both launch paths (launchGuardedHostSession and arcadia go) refuse to dispatch an Action whose claim is held this way, and name the unmerged candidate.
+      - "Deterministic tests cover a claim older than 24 hours with an unmerged candidate refusing re-dispatch, and releasing once the candidate merges; Closes #549; pnpm test and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/index.ts", "src/sessions/launch.ts", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md"]
+  - id: limit-sessions-per-provider-account
+    title: Cap concurrent Sessions per provider account in the same admission transaction as the host slot, so concurrency never oversubscribes one account.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Cap concurrent Sessions per provider account in the same admission transaction as the host slot, so concurrency never oversubscribes one account.
+    expected_artifact: Evidence satisfying Agent Ask limit-sessions-per-provider-account
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - issueAdmission (src/production/policy.ts) counts live admissions per provider account in the same transaction as the host-slot count, against a per-account limit in workspace configuration that defaults to 1.
+      - A provider whose capacity receipt cannot prove account identity (accountIdentity unsupported in src/codingAgents/capacity.ts) is counted as one account for that provider, never as unlimited.
+      - A refused admission records provider_full(<account>) as the wait reason; deterministic tests cover two admissions on one account refused at limit 1, two accounts admitted side by side, and an unknown identity folded into one account; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [enforce-concurrency-gate-at-admission]
+    decisions: []
+    references: ["src/production/policy.ts", "src/codingAgents/capacity.ts", "docs/proposals/portfolio-parallel-execution.md"]
+  - id: recover-stalled-sessions-within-bound
+    title: A Session that stays stalled past a bounded window is ended, preserved and reconciled so its repository lease and host slot are freed, with repeated stalls escalated to the operator.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A Session that stays stalled past a bounded window is ended, preserved and reconciled so its repository lease and host slot are freed, with repeated stalls escalated to the operator.
+    expected_artifact: Evidence satisfying Agent Ask recover-stalled-sessions-within-bound
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - A Session flagged stalled (src/production/stallDetection.ts) that shows no activity for a configured recovery window after the flag is ended by the production worker, its candidate is preserved, and it is reconciled through the existing path, which releases its repository lease and its admission.
+      - The Action is left resumable in the same candidate under Decision 0051, and a second stall recovery for the same Action records an operator escalation instead of relaunching.
+      - Recovery runs only while a production policy is active and the Session is inside its scope, and records a receipt naming the Session, the stall duration and the preserved candidate.
+      - Deterministic tests, using the fixture provider stalled outcome, cover recovery freeing the lease and slot, resumption in the same candidate, and escalation on the second stall; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [prove-two-action-unattended-production, add-fixture-coding-agent-provider]
+    decisions: []
+    references: ["src/production/stallDetection.ts", "src/production/tick.ts", "src/sessions/reconciliation.ts", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
+  - id: limit-unmerged-candidates-per-repository
+    title: Admission stops starting new work in a repository once its count of unmerged candidates reaches the operator-configured review limit.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Admission stops starting new work in a repository once its count of unmerged candidates reaches the operator-configured review limit.
+    expected_artifact: Evidence satisfying Agent Ask limit-unmerged-candidates-per-repository
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - Workspace configuration carries a per-repository review limit on unmerged candidates, defaulting to 1, which preserves today behaviour of waiting for each pull request to merge.
+      - The ready-set admission in src/production/tick.ts counts a repository unmerged candidates from preserved branches and open pull requests and records review_backlog(<n PRs>) instead of launching once the count reaches the limit.
+      - Deterministic tests cover a repository at its limit refused with review_backlog and admitted again once a candidate merges; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [admit-ready-set-across-repositories]
+    decisions: []
+    references: ["src/production/tick.ts", "src/scheduling/scheduler.ts", "docs/proposals/portfolio-parallel-execution.md"]
+  - id: soak-ready-set-admission-with-fixture-provider
+    title: Soak ready-set admission with the fixture provider across several repositories at a raised concurrency limit, proving every limit engages and every invariant holds before any live concurrent proof.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Soak ready-set admission with the fixture provider across several repositories at a raised concurrency limit, proving every limit engages and every invariant holds before any live concurrent proof.
+    expected_artifact: Evidence satisfying Agent Ask soak-ready-set-admission-with-fixture-provider
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-concurrent-session-management-gaps-2026-09-26
+    acceptance_criteria:
+      - Under the rehearsal exception defined by enforce-concurrency-gate-at-admission, a scripted soak runs at least twenty fixture Actions across at least three disposable repositories at maxConcurrentSessions 3, including injected launch failures, a stalled Session and a crashed Session.
+      - "Throughout the soak: live Sessions never exceed the host or per-account limit, no repository ever has two live Sessions, no Action is launched twice, every in-scope Action that did not launch on a tick carries exactly one wait reason, and every admission is released or committed."
+      - The soak command is checked in, repeatable with one command, prints a pass/fail invariant report, and its latest report is linked from docs/managed-production-readiness.md, marked simulated.
+      - Pass/fail of this soak is a prerequisite of prove-concurrent-ready-set-admission, so no live concurrent Session runs before the fixture soak is green; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [admit-ready-set-across-repositories, add-fixture-coding-agent-provider, limit-sessions-per-provider-account, release-admission-on-every-launch-failure, recover-stalled-sessions-within-bound, load-test-workspace-db-contention, keep-action-claim-while-candidate-unmerged]
+    decisions: []
+    references: ["docs/proposals/portfolio-parallel-execution.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md", "docs/managed-production-readiness.md", "src/production/tick.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
