@@ -373,13 +373,14 @@ function graphPlanDoc(
     clarification?: string;
     question?: string;
     decisions?: string[];
-  }>
+  }>,
+  options: { slug?: string } = {}
 ): string {
   const lines = [
     "---",
     "arcadia: v1",
     "type: plan",
-    "slug: main-plan",
+    `slug: ${options.slug ?? "main-plan"}`,
     "project: demo",
     "status: active",
     "milestone: First milestone",
@@ -511,6 +512,69 @@ describe("dependency readiness", () => {
     const resolution = resolveDispatch(root, "demo");
 
     expect(resolution.blockers.some((entry) => entry.message.includes("ship-it -> ship-it"))).toBe(true);
+  });
+
+  it("resolves a same-Project cross-Plan dependency that is done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "done" }], { slug: "other-plan" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    expect(resolution.blockers).toEqual([]);
+    expect(isDispatchable(resolution)).toBe(true);
+  });
+
+  it("blocks on a same-Project cross-Plan dependency that is not yet done", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/other-plan#finish-other"] }])
+    );
+    write(
+      root,
+      "docs/plans/other-plan.md",
+      graphPlanDoc(null, [{ id: "finish-other", status: "in_progress" }], { slug: "other-plan" })
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("plan/other-plan#finish-other");
+    expect(blocker?.message).toContain("in_progress");
+    expect(isDispatchable(resolution)).toBe(false);
+  });
+
+  it("holds back an Action whose cross-Plan dependency resolves nowhere, instead of treating it as satisfied", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(
+      root,
+      "docs/plans/main-plan.md",
+      graphPlanDoc("ship-it", [{ id: "ship-it", dependsOn: ["plan/no-such-plan#no-such-action"] }])
+    );
+
+    const resolution = resolveDispatch(root, "demo");
+
+    // The document still parses -- a cross-Plan reference is not a dangling
+    // same-Plan id -- so the Action resolves and reports a normal readiness
+    // blocker rather than a parse error.
+    expect(resolution.context?.action.id).toBe("ship-it");
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.depends_on");
+    expect(blocker?.message).toContain("plan/no-such-plan#no-such-action");
+    expect(blocker?.message).toContain("dependency_unresolved");
+    expect(isDispatchable(resolution)).toBe(false);
   });
 });
 

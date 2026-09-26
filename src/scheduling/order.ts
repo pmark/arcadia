@@ -32,37 +32,75 @@ export function isQueuedClass(schedulingClass: SchedulingClass): boolean {
 
 export interface OrderCandidate {
   key: string;
+  /** The Plan this candidate's Action is declared in. */
+  plan: string;
+  /** This candidate's own bare Action id (unprefixed) -- what a same-Plan `dependsOn` entry, or the `#<action-id>` half of a cross-Plan one, matches against. */
+  actionId: string;
   schedulingClass: SchedulingClass;
   /** Persisted `queue_position`; `null` means never positioned. */
   position: number | null;
-  /** Keys of Actions this one waits for. Unknown keys are ignored. */
+  /**
+   * Ids of Actions this one waits for. A bare id resolves against this
+   * candidate's own `plan`; `plan/<slug>#<action-id>` resolves against that
+   * Plan instead. An id that resolves to no known Action -- in either form,
+   * a `dependency_unresolved` wait -- is never treated as satisfied, so it
+   * holds this candidate back rather than releasing it into the ready set.
+   */
   dependsOn: string[];
   done: boolean;
   /** Tie-break for equal or missing positions: plan declaration / discovery order. */
   index: number;
 }
 
+const CROSS_PLAN_DEPENDENCY = /^plan\/([^#]+)#(.+)$/;
+
+function planActionKey(plan: string, actionId: string): string {
+  return `${plan}\u0000${actionId}`;
+}
+
+/**
+ * Resolve one `dependsOn` entry to the candidate it names, or `null` when it
+ * names no known Action. A bare id is a same-Plan reference; `plan/<slug>#
+ * <action-id>` names an Action in another Plan by the same spelling the
+ * `complete` Agent Ask intent uses for `target_ref`.
+ */
+function resolveDependency(
+  byPlanAction: Map<string, OrderCandidate>,
+  from: OrderCandidate,
+  dependency: string
+): OrderCandidate | null {
+  const cross = CROSS_PLAN_DEPENDENCY.exec(dependency);
+  const plan = cross ? cross[1] : from.plan;
+  const actionId = cross ? cross[2] : dependency;
+  return byPlanAction.get(planActionKey(plan, actionId)) ?? null;
+}
+
 /**
  * Canonical order of every unfinished queued candidate: tier, then position,
  * then declaration order -- with each Action held back until every unfinished
- * dependency it names has been emitted. A dependency cycle cannot be
- * represented as an order, so the first remaining candidate is emitted to
- * keep the result total; the document parser refuses cycles before they get
- * here.
+ * dependency it names has been emitted. A dependency cycle, or a dependency
+ * that never resolves to a known Action, cannot be represented as an order,
+ * so the first remaining candidate is emitted once nothing else can proceed,
+ * to keep the result total; the document parser refuses same-Plan cycles
+ * before they get here.
  */
 export function canonicalOrder(candidates: OrderCandidate[]): string[] {
   const live = candidates.filter((candidate) => !candidate.done && isQueuedClass(candidate.schedulingClass));
-  const known = new Map(live.map((candidate) => [candidate.key, candidate]));
+  const byPlanAction = new Map(candidates.map((candidate) => [planActionKey(candidate.plan, candidate.actionId), candidate]));
   const doneKeys = new Set(candidates.filter((candidate) => candidate.done).map((candidate) => candidate.key));
   const sorted = [...live].sort(compareByPreference);
   const emitted = new Set<string>();
   const result: string[] = [];
   const remaining = [...sorted];
 
+  const isSatisfied = (from: OrderCandidate, dependency: string): boolean => {
+    const resolved = resolveDependency(byPlanAction, from, dependency);
+    if (!resolved) return false;
+    return emitted.has(resolved.key) || doneKeys.has(resolved.key);
+  };
+
   while (remaining.length > 0) {
-    const index = remaining.findIndex((candidate) =>
-      candidate.dependsOn.every((dependency) => emitted.has(dependency) || doneKeys.has(dependency) || !known.has(dependency))
-    );
+    const index = remaining.findIndex((candidate) => candidate.dependsOn.every((dependency) => isSatisfied(candidate, dependency)));
     const next = remaining.splice(index < 0 ? 0 : index, 1)[0];
     emitted.add(next.key);
     result.push(next.key);
@@ -133,6 +171,7 @@ export function applyOperatorOrder(candidates: OrderCandidate[], observed: strin
 
 function explainNormalization(candidates: OrderCandidate[], requested: string[], canonical: string[]): string[] {
   const byKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+  const byPlanAction = new Map(candidates.map((candidate) => [planActionKey(candidate.plan, candidate.actionId), candidate]));
   const canonicalIndex = new Map(canonical.map((key, index) => [key, index]));
   const reasons: string[] = [];
   for (let index = 0; index < requested.length; index += 1) {
@@ -142,7 +181,7 @@ function explainNormalization(candidates: OrderCandidate[], requested: string[],
       const moved = byKey.get(key);
       const ahead = byKey.get(later);
       if (!moved || !ahead) continue;
-      if (dependsTransitively(byKey, moved, ahead.key)) {
+      if (dependsTransitively(byPlanAction, moved, ahead.key)) {
         reasons.push(`${key} depends on ${ahead.key}, so it stays behind it.`);
       } else if (TIER_RANK[moved.schedulingClass] > TIER_RANK[ahead.schedulingClass]) {
         reasons.push(`${key} (${moved.schedulingClass}) cannot move ahead of ${ahead.key} (${ahead.schedulingClass}).`);
@@ -152,13 +191,18 @@ function explainNormalization(candidates: OrderCandidate[], requested: string[],
   return [...new Set(reasons)];
 }
 
-function dependsTransitively(byKey: Map<string, OrderCandidate>, from: OrderCandidate, target: string, seen = new Set<string>()): boolean {
+function dependsTransitively(
+  byPlanAction: Map<string, OrderCandidate>,
+  from: OrderCandidate,
+  targetKey: string,
+  seen = new Set<string>()
+): boolean {
   for (const dependency of from.dependsOn) {
-    if (dependency === target) return true;
-    if (seen.has(dependency)) continue;
-    seen.add(dependency);
-    const next = byKey.get(dependency);
-    if (next && dependsTransitively(byKey, next, target, seen)) return true;
+    const next = resolveDependency(byPlanAction, from, dependency);
+    if (!next || seen.has(next.key)) continue;
+    if (next.key === targetKey) return true;
+    seen.add(next.key);
+    if (dependsTransitively(byPlanAction, next, targetKey, seen)) return true;
   }
   return false;
 }

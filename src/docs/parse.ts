@@ -33,6 +33,8 @@ import {
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Same spelling `canonicalOrder` and the `complete` Agent Ask intent use for a cross-Plan reference. */
+const CROSS_PLAN_DEPENDENCY = /^plan\/([^#]+)#(.+)$/;
 
 export interface ParseResult {
   doc: ArcadiaDoc | null;
@@ -522,10 +524,14 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
     );
   }
 
-  // Dangling dependencies silently break ordering, so name them.
+  // Dangling dependencies silently break ordering, so name them. A
+  // `plan/<slug>#<action-id>` reference names an Action in another Plan,
+  // which this single-document parse cannot resolve or refuse -- that is
+  // deferred to the readers that see every Plan in the Project (canonicalOrder,
+  // collectUnmetDependencies).
   for (const action of actions) {
     for (const dependency of action.dependsOn) {
-      if (!ids.has(dependency)) {
+      if (!ids.has(dependency) && !CROSS_PLAN_DEPENDENCY.test(dependency)) {
         problems.add(
           `actions.${action.id}.depends_on`,
           `Depends on "${dependency}", which is not an action id in this plan.`

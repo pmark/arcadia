@@ -192,7 +192,7 @@ export function runScheduleClassifyCommand(options: { workspace: string; action:
     const from = getSchedulingAction(db, options.action)?.schedulingClass ?? "planned";
     upsertSchedulingAction(db, options.action, { schedulingClass: to });
     const refreshed = buildProjectSchedule(db, project);
-    const write = writeProjectOrder(db, project.slug, canonicalOrder(orderCandidates(refreshed.actions)), {
+    const write = writeProjectOrder(db, project.slug, canonicalOrder(orderCandidates(refreshed.actions, refreshed.planSlug)), {
       requestId: `${options.requestId}:order`,
       source: "arcadia",
       actionKey: options.action,
@@ -306,7 +306,7 @@ export function runScheduleReconcileCommand(options: { workspace: string; projec
         && schedule.record.lastProjectedRevision >= 0
         && observed.length > 0
         && !sameSequence(observed, lastProjected);
-      const applied = operatorMoved ? applyOperatorOrder(orderCandidates(schedule.actions), observed) : null;
+      const applied = operatorMoved ? applyOperatorOrder(orderCandidates(schedule.actions, schedule.planSlug), observed) : null;
       reconciles.push({
         projectSlug: schedule.projectSlug,
         observedOrder: observed,

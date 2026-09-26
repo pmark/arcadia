@@ -329,7 +329,7 @@ export function reconcileBoard(
   let normalized = false;
   let normalizationReasons: string[] = [];
   if (operatorMoved) {
-    const applied = applyOperatorOrder(orderCandidates(schedule.actions), observedOrder);
+    const applied = applyOperatorOrder(orderCandidates(schedule.actions, schedule.planSlug), observedOrder);
     normalized = applied.normalized;
     normalizationReasons = applied.normalizationReasons;
     if (applied.changed) {
