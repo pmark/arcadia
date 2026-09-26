@@ -27,9 +27,11 @@ import {
   type ProductionTransitionResult
 } from "../production/policy.js";
 import {
+  getProductionRepairAttempts,
   listLaunchBlockers,
   listOperatorEscalations,
   listRecentBaseBranchAdvances,
+  resetProductionRepairBudget,
   type BaseBranchAdvanceRecord,
   type LaunchBlockerRecord,
   type OperatorEscalation
@@ -66,6 +68,11 @@ export interface ProductionDeactivateOptions {
   reason?: string;
 }
 
+export interface ProductionResetRepairBudgetOptions {
+  workspace: string;
+  actionKey: string;
+}
+
 export interface ProductionStatusData {
   read: ProductionPolicyRead;
   display: { state: ProductionDisplayState; label: string; observedAt: string };
@@ -88,6 +95,12 @@ export interface ProductionPreviewData {
 export interface ProductionTransitionData {
   result: ProductionTransitionResult;
   offConsequence: string;
+}
+
+export interface ProductionResetRepairBudgetData {
+  actionKey: string;
+  attemptsCleared: number;
+  lastError: string | null;
 }
 
 export function runProductionStatusCommand(
@@ -244,6 +257,36 @@ export function runProductionDeactivateCommand(
   });
 }
 
+/**
+ * Reset an Action's exhausted repair budget (Issue #703): the only way to
+ * clear `repair_budget_exhausted` used to be direct SQLite surgery on
+ * `production_repair_attempts`, because `resetProductionRepairBudget` had no
+ * CLI caller. Named after the operator has repaired whatever made every
+ * launch attempt fail, so the next worker tick attempts admission again
+ * instead of reporting the same stale error forever.
+ */
+export function runProductionResetRepairBudgetCommand(
+  options: ProductionResetRepairBudgetOptions
+): CommandSuccess<ProductionResetRepairBudgetData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const actionKey = options.actionKey?.trim();
+  if (!actionKey || !actionKey.includes("/")) {
+    throw validationError("Name the Action as \"project/action-id\".", { field: "actionKey" });
+  }
+
+  const data = withDatabase(workspacePath, (db) => {
+    const before = getProductionRepairAttempts(db, actionKey);
+    resetProductionRepairBudget(db, actionKey);
+    return { actionKey, attemptsCleared: before.attempts, lastError: before.lastError };
+  });
+
+  const warnings = data.attemptsCleared === 0
+    ? [`${actionKey} had no recorded repair attempts; nothing was exhausted.`]
+    : [];
+
+  return createSuccess({ command: "production.reset-repair-budget", workspace: workspacePath, data, warnings });
+}
+
 export function renderProductionStatusSuccess(
   response: CommandSuccess<ProductionStatusData>
 ): string[] {
@@ -364,6 +407,19 @@ export function renderProductionTransitionSuccess(
     }
   }
   lines.push(`  Off consequence: ${response.data.offConsequence}`);
+  return lines;
+}
+
+export function renderProductionResetRepairBudgetSuccess(
+  response: CommandSuccess<ProductionResetRepairBudgetData>
+): string[] {
+  const { actionKey, attemptsCleared, lastError } = response.data;
+  const lines = [`Reset ${actionKey}'s repair budget.`];
+  lines.push(`  Cleared ${attemptsCleared} failed launch attempt(s).`);
+  if (lastError) {
+    lines.push(`  Last error before reset: ${lastError}`);
+  }
+  lines.push("  The next worker tick will attempt admission again.");
   return lines;
 }
 

@@ -64,11 +64,13 @@ import {
 } from "./commands/capacity.js";
 import {
   renderProductionPreviewSuccess,
+  renderProductionResetRepairBudgetSuccess,
   renderProductionStatusSuccess,
   renderProductionTransitionSuccess,
   runProductionActivateCommand,
   runProductionDeactivateCommand,
   runProductionPreviewCommand,
+  runProductionResetRepairBudgetCommand,
   runProductionStatusCommand
 } from "./commands/production.js";
 import {
@@ -1043,6 +1045,19 @@ export function buildProgram(): Command {
       .option("--reason <text>", "Why production was switched Off")
   ).action((options: { workspace: string; requestId: string; reason?: string; json?: boolean }) =>
     runCliAction("production.deactivate", options, () => runProductionDeactivateCommand(options), renderProductionTransitionSuccess)
+  );
+  addJsonOption(
+    production
+      .command("reset-repair-budget <actionKey>")
+      .description("Reset an Action's exhausted repair budget after fixing what made every launch attempt fail")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((actionKey: string, options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "production.reset-repair-budget",
+      options,
+      () => runProductionResetRepairBudgetCommand({ workspace: options.workspace, actionKey }),
+      renderProductionResetRepairBudgetSuccess
+    )
   );
 
   interface CapacityAttestActionOptions {
@@ -4756,7 +4771,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "deactivate"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "deactivate", "reset-repair-budget"].includes(second ?? "")) {
     return `production.${second}`;
   }
 

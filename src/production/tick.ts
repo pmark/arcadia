@@ -819,10 +819,22 @@ function attemptProjectLaunch(
 
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+    const remedy = `Repair the underlying problem, then run \`arcadia production reset-repair-budget ${actionKey}\`.`;
+    const reason = `Repair budget exhausted for ${actionKey} after ${attempts.attempts} failed launch attempt(s); most recent error: ${attempts.lastError ?? "unknown"}. ${remedy}`;
+    const newlyDetected = recordOperatorEscalation(db, {
+      actionKey,
+      kind: "repair_budget_exhausted",
+      message: reason,
+      remedy,
+      now: input.now
+    });
+    if (newlyDetected) {
+      input.log(`Escalated ${actionKey} to the operator (repair_budget_exhausted): ${reason}`);
+    }
     return {
       attempted: false,
       outcome: "repair_budget_exhausted",
-      reason: `Repair budget exhausted for ${actionKey} after ${attempts.attempts} failed launch attempt(s); most recent error: ${attempts.lastError ?? "unknown"}. An operator must repair and reset it.`,
+      reason,
       actionKey
     };
   }
@@ -1013,13 +1025,28 @@ function resetRepairAttempts(db: Database.Database, actionKey: string): void {
 }
 
 /**
+ * The repair attempts currently recorded against an Action, for a command
+ * (`arcadia production reset-repair-budget`) that wants to report what it
+ * cleared rather than resetting blind.
+ */
+export function getProductionRepairAttempts(db: Database.Database, actionKey: string): { attempts: number; lastError: string | null } {
+  ensureProductionTickTables(db);
+  return getRepairAttempts(db, actionKey);
+}
+
+/**
  * Reset a repository's exhausted repair budget after an operator has fixed
  * the underlying problem, so the next tick attempts admission again rather
- * than reporting the same stale error forever.
+ * than reporting the same stale error forever. Also clears any operator
+ * escalation recorded against this Action -- typically the
+ * `repair_budget_exhausted` escalation this same reset is answering -- so
+ * `arcadia production status` stops surfacing it the instant the operator
+ * has acted, rather than waiting for the next tick's launch to succeed.
  */
 export function resetProductionRepairBudget(db: Database.Database, actionKey: string): void {
   ensureProductionTickTables(db);
   resetRepairAttempts(db, actionKey);
+  clearOperatorEscalation(db, actionKey);
 }
 
 /**

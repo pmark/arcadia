@@ -1301,8 +1301,21 @@ describe("runManagedProductionTick", () => {
     const exhaustedProject = exhausted.projects.find((entry) => entry.projectSlug === "test-project")!;
     expect(exhaustedProject.launch?.outcome).toBe("repair_budget_exhausted");
 
+    // Issue #703: an exhausted repair budget must be visible in
+    // `arcadia production status`, not only as a repeated worker-log line.
+    const escalationsBeforeReset = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    const escalation = escalationsBeforeReset.find((entry) => entry.actionKey === "test-project/define-contract");
+    expect(escalation?.kind).toBe("repair_budget_exhausted");
+    expect(escalation?.remedy).toContain("arcadia production reset-repair-budget test-project/define-contract");
+
     tmux.failLaunch = false;
     withDatabase(fixture.workspace, (db) => resetProductionRepairBudget(db, "test-project/define-contract"));
+
+    // Resetting the budget also clears the escalation immediately, rather
+    // than waiting for the next tick's launch to succeed.
+    const escalationsAfterReset = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalationsAfterReset.find((entry) => entry.actionKey === "test-project/define-contract")).toBeUndefined();
+
     const recovered = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
         profiles,
