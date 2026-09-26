@@ -368,14 +368,20 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // no further commits must still be recognized as carrying its predecessor's
   // real work, not misclassified as having no changes at all). A resumed
   // Session inherits its predecessor's own `base_revision` unchanged, however
-  // many resumptions deep, rather than the worktree's current HEAD -- the
-  // launch-time "did anything touch this worktree since I decided to launch
-  // it" check below uses that current HEAD separately, via
-  // `launchPreparedSession`'s `expectedRevision` override, instead of
-  // conflating the two (CodeRabbit, PR #696).
-  const sessionBaseRevision = resumableStaleClaim
-    ? resumableStaleClaim.session.base_revision
-    : baseRevision;
+  // many resumptions deep, rather than the worktree's current HEAD.
+  //
+  // `launchRevision` is the separate, narrower expectation `launchPreparedSession`
+  // checks immediately before spawning: "has anything touched this worktree
+  // since this Session was prepared." For a resumed claim that is the
+  // worktree's actual current HEAD (already probed above), not the lineage
+  // baseline -- conflating the two broke every other reader of
+  // `base_revision` (CodeRabbit, PR #696). Persisted on the row (not just
+  // threaded through this call) so a retry that finds this exact Session
+  // still sitting in `prepared` status -- this process died between the
+  // insert below committing and ever reaching launch -- still supplies the
+  // right expectation the second time around.
+  const sessionBaseRevision = resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  const sessionLaunchRevision = resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   let prepared: AgentSession;
   try {
@@ -388,6 +394,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       model,
       effort,
       baseRevision: sessionBaseRevision,
+      launchRevision: sessionLaunchRevision,
       branch: nextWorktree.branch,
       worktreePath: nextWorktree.path,
       now,
@@ -487,19 +494,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   try {
-    return {
-      reused: false,
-      session: launchPreparedSession(
-        input.db,
-        prepared,
-        tmux,
-        registry,
-        input.workspace,
-        resumableStaleClaim ? resumableStaleClaim.headRevision : undefined
-      ),
-      preview,
-      admission
-    };
+    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry, input.workspace), preview, admission };
   } catch (error) {
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a

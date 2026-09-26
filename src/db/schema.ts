@@ -81,6 +81,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentSessionsTable(db);
   ensureAgentSessionStallColumns(db);
   ensureAgentSessionAdmissionColumn(db);
+  ensureAgentSessionLaunchRevisionColumn(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
@@ -386,6 +387,29 @@ function ensureAgentSessionAdmissionColumn(db: Database.Database): void {
   );
   if (!columns.has("admission_request_id")) {
     db.prepare(`ALTER TABLE agent_sessions ADD COLUMN admission_request_id TEXT`).run();
+  }
+}
+
+/**
+ * The worktree HEAD `launchPreparedSession` must observe immediately before
+ * spawning this exact Session, independent of `base_revision` (the
+ * candidate's true lineage starting point, which a resumed stale claim --
+ * Issue #695 -- inherits unchanged from its predecessor rather than the
+ * worktree's current HEAD). For an ordinary fresh worktree the two are
+ * identical, so a NULL value (a row from before this column existed, or a
+ * fresh non-resumed launch that never set it) falls back to `base_revision`
+ * wherever this is read. Persisted rather than kept only in the launch
+ * call's own local state, so a retry that finds this Session still sitting
+ * in `prepared` status (the process died between `prepareSession` committing
+ * and `launchPreparedSession` ever running) can still supply the right
+ * expectation the second time (CodeRabbit, PR #696).
+ */
+function ensureAgentSessionLaunchRevisionColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("launch_revision")) {
+    db.prepare(`ALTER TABLE agent_sessions ADD COLUMN launch_revision TEXT`).run();
   }
 }
 
