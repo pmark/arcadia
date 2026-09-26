@@ -603,6 +603,112 @@ describe("reverse an applied Decision deferral", () => {
     expect(decisionFile(repo)).toBe(decisionBefore);
   });
 
+  it("--keep-pointer un-parks the Action without touching a pointer that has moved past the deferral", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    expect(projectFile(repo)).toContain("current_action: after");
+    // Real dispatch legitimately advanced the pointer further since the deferral.
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    // Real dispatch would have committed that advancement as it happened.
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Advance the pointer past the deferral"], { cwd: repo });
+
+    expect(() =>
+      runDecisionReverseCommand({ workspace, project: "demo", id: decisionId })
+    ).toThrow(/pointer has moved since the deferral/i);
+
+    const result = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, keepPointer: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.consequence).toMatchObject({
+      kind: "reverse",
+      actionId: "park-me",
+      actionStatusBefore: "deferred",
+      actionStatusAfter: "open",
+      pointerMoved: false,
+      pointerLeftInPlace: true,
+      pointerAfter: "done-first"
+    });
+    expect(decisionFile(repo)).toContain("status: open");
+    expect(planFile(repo)).toMatch(/^ {2}- id: park-me[\s\S]*?^ {4}status: open$/m);
+    // The pointer stays exactly where legitimate work left it, not restored.
+    expect(projectFile(repo)).toContain("current_action: done-first");
+    expect(planFile(repo)).toContain("current_action: done-first");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("--keep-pointer previews leaving the pointer in place under --dry-run, writing nothing", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+
+    const preview = runDecisionReverseCommand({
+      workspace, project: "demo", id: decisionId, keepPointer: true, dryRun: true
+    });
+
+    expect(preview.data.applied).toBe(false);
+    expect(preview.data.consequence).toMatchObject({
+      pointerMoved: false,
+      pointerLeftInPlace: true,
+      pointerAfter: "done-first"
+    });
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+  });
+
+  it("--keep-pointer also un-refuses when only the Plan pointer has moved since the deferral", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+
+    const result = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, keepPointer: true });
+
+    expect(result.data.applied).toBe(true);
+    expect(result.data.consequence).toMatchObject({ pointerMoved: false, pointerLeftInPlace: true });
+    // The Project pointer, which never moved from the deferral's value, is untouched too.
+    expect(projectFile(repo)).toContain("current_action: after");
+    expect(planFile(repo)).toContain("current_action: done-first");
+  });
+
+  it("--keep-pointer has no effect when nothing has moved since the deferral: the historical pointer is still restored", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+
+    const result = runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, keepPointer: true });
+
+    expect(result.data.consequence).toMatchObject({
+      pointerMoved: true,
+      pointerLeftInPlace: false,
+      pointerBefore: "after",
+      pointerAfter: "park-me"
+    });
+    expect(projectFile(repo)).toContain("current_action: park-me");
+  });
+
   it("refuses when the active Plan is no longer the deferral's Plan", () => {
     const { workspace, repo, decisionId } = fixture();
     runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
@@ -688,6 +794,57 @@ describe("reverse an applied Decision deferral", () => {
 
     expect(() =>
       runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-commit-fail" })
+    ).toThrow(/changed after the failed commit/i);
+  });
+
+  it("refuses to replay a failed --keep-pointer reversal after the left-in-place pointer drifted further", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    // Real dispatch legitimately advanced the pointer past the deferral.
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Advance the pointer past the deferral"], { cwd: repo });
+
+    execFileSync("git", ["config", "--unset", "user.email"], { cwd: repo });
+    execFileSync("git", ["config", "--unset", "user.name"], { cwd: repo });
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    expect(() =>
+      runDecisionReverseCommand({
+        workspace, project: "demo", id: decisionId, keepPointer: true, requestId: "reverse-keep-pointer-fail"
+      })
+    ).toThrow(/could not be committed/);
+
+    // Recover Git, but let the left-in-place Plan pointer drift further before retrying —
+    // this must not be silently swept into the retried commit.
+    vi.unstubAllEnvs();
+    execFileSync("git", ["config", "user.email", "deferral-test@example.invalid"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "Deferral Test"], { cwd: repo });
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: done-first$/m, "current_action: after"),
+      "utf8"
+    );
+
+    expect(() =>
+      runDecisionReverseCommand({
+        workspace, project: "demo", id: decisionId, keepPointer: true, requestId: "reverse-keep-pointer-fail"
+      })
     ).toThrow(/changed after the failed commit/i);
   });
 });

@@ -1145,6 +1145,16 @@ by itself. See
 [`managed-documents.md`](managed-documents.md#deferring-an-action-and-reviving-it)
 for the Decision fields.
 
+A deferral old enough for real dispatch to have legitimately advanced the
+pointer past it would otherwise be stuck forever behind that pointer guard —
+there is no separate "reconcile the pointer" command. `--keep-pointer` un-parks
+the Action and re-opens the Decision in that case without touching today's
+pointer at all, instead of restoring the historical one:
+
+```sh
+pnpm arcadia decision reverse 0057 --project arcadia --keep-pointer
+```
+
 `arcadia decision validate <id> --project <project>` checks one existing file
 against the same rule set with no write at all, for a hand-edited document or
 a suspicious one found in `advance queue`.
