@@ -1288,6 +1288,17 @@ describe("runManagedProductionTick", () => {
     }
     expect(tmux.launches).toHaveLength(0);
 
+    // Issue #703 / CodeRabbit PR #708: the escalation must exist the instant
+    // the final failed attempt pushes `attempts` to the limit -- not only on
+    // a later tick's pre-launch check -- so an Action that becomes
+    // ineligible for another launch attempt before that check runs (Off, a
+    // paused Project, a competing lease) still leaves the exhausted budget
+    // visible to `arcadia production status`.
+    const escalationsAfterLastFailure = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    const escalationAfterLastFailure = escalationsAfterLastFailure.find((entry) => entry.actionKey === "test-project/define-contract");
+    expect(escalationAfterLastFailure?.kind).toBe("repair_budget_exhausted");
+    expect(escalationAfterLastFailure?.remedy).toContain("arcadia production reset-repair-budget test-project/define-contract");
+
     const exhausted = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
         profiles,
@@ -1301,8 +1312,6 @@ describe("runManagedProductionTick", () => {
     const exhaustedProject = exhausted.projects.find((entry) => entry.projectSlug === "test-project")!;
     expect(exhaustedProject.launch?.outcome).toBe("repair_budget_exhausted");
 
-    // Issue #703: an exhausted repair budget must be visible in
-    // `arcadia production status`, not only as a repeated worker-log line.
     const escalationsBeforeReset = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
     const escalation = escalationsBeforeReset.find((entry) => entry.actionKey === "test-project/define-contract");
     expect(escalation?.kind).toBe("repair_budget_exhausted");

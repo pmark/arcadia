@@ -442,7 +442,7 @@ export function renderProductionResetRepairBudgetSuccess(
   if (lastError) {
     lines.push(`  Last error before reset: ${lastError}`);
   }
-  lines.push("  The next worker tick will attempt admission again.");
+  lines.push("  The Action may be admitted again once it is otherwise eligible to launch (production Active, its Project not paused, no competing lease).");
   return lines;
 }
 

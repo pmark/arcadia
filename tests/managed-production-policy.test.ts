@@ -661,6 +661,35 @@ describe("production reset-repair-budget (Issue #703)", () => {
     const after = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
     expect(after.data.attemptsCleared).toBe(0);
   });
+
+  it("preserves an unrelated escalation on the same Action instead of deleting it (CodeRabbit, PR #708)", () => {
+    const target = workspace();
+    withDatabase(target, (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS production_repair_attempts (
+          action_key TEXT PRIMARY KEY,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          last_attempt_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+      db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('demo/migrate', 'no_validation_commands', 'No validation commands declared.', 'Declare one.', '2026-09-26T06:00:00.000Z', '2026-09-26T06:00:00.000Z')`
+      ).run();
+    });
+
+    // No repair attempts were recorded, so this is the "nothing was
+    // exhausted" no-op path -- it must not delete the unrelated escalation.
+    const result = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
+    expect(result.data.attemptsCleared).toBe(0);
+
+    const remaining = withDatabase(target, (db) =>
+      db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get("demo/migrate")
+    ) as { kind: string } | undefined;
+    expect(remaining?.kind).toBe("no_validation_commands");
+  });
 });
 
 describe("the control surface stays reachable when other sources are broken", () => {

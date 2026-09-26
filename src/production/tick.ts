@@ -346,6 +346,46 @@ function clearOperatorEscalation(db: Database.Database, actionKey: string): void
 }
 
 /**
+ * Record (or refresh) the `repair_budget_exhausted` escalation for an
+ * Action, and log it exactly once per episode (CodeRabbit, PR #708).
+ *
+ * Called from two places: the instant a failed launch attempt pushes
+ * `attempts` to the limit (so the escalation exists even if the Action
+ * becomes ineligible for another launch attempt -- Off, a paused Project, a
+ * repository lease -- before a later tick would otherwise reach the
+ * pre-launch budget check below), and that pre-launch check itself, which
+ * needs the identical row on every tick the budget stays exhausted. Both
+ * calls are idempotent through `recordOperatorEscalation`'s upsert.
+ *
+ * `recordOperatorEscalation`'s own `newlyDetected` return is keyed only by
+ * whether *any* row already existed for this `actionKey`, so it stays false
+ * when an unrelated escalation (e.g. `no_validation_commands`) already
+ * occupied that row -- comparing the previous `kind` here as well is what
+ * still logs the first `repair_budget_exhausted` episode in that case.
+ */
+function recordRepairBudgetExhaustedEscalation(
+  db: Database.Database,
+  input: { actionKey: string; attempts: number; lastError: string | null; now: Date; log: (message: string) => void }
+): string {
+  const remedy = `Repair the underlying problem, then run \`arcadia production reset-repair-budget ${input.actionKey}\`.`;
+  const reason = `Repair budget exhausted for ${input.actionKey} after ${input.attempts} failed launch attempt(s); most recent error: ${input.lastError ?? "unknown"}. ${remedy}`;
+  const previousKind = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
+    | { kind: string }
+    | undefined;
+  const newlyDetected = recordOperatorEscalation(db, {
+    actionKey: input.actionKey,
+    kind: "repair_budget_exhausted",
+    message: reason,
+    remedy,
+    now: input.now
+  });
+  if (newlyDetected || previousKind?.kind !== "repair_budget_exhausted") {
+    input.log(`Escalated ${input.actionKey} to the operator (repair_budget_exhausted): ${reason}`);
+  }
+  return reason;
+}
+
+/**
  * Drop any escalation left over from a *different* Action in this Project.
  * `recordOperatorEscalation`/`clearOperatorEscalation` only ever touch the
  * actionKey the current tick is looking at, so an Action that stops being
@@ -819,18 +859,13 @@ function attemptProjectLaunch(
 
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
-    const remedy = `Repair the underlying problem, then run \`arcadia production reset-repair-budget ${actionKey}\`.`;
-    const reason = `Repair budget exhausted for ${actionKey} after ${attempts.attempts} failed launch attempt(s); most recent error: ${attempts.lastError ?? "unknown"}. ${remedy}`;
-    const newlyDetected = recordOperatorEscalation(db, {
+    const reason = recordRepairBudgetExhaustedEscalation(db, {
       actionKey,
-      kind: "repair_budget_exhausted",
-      message: reason,
-      remedy,
-      now: input.now
+      attempts: attempts.attempts,
+      lastError: attempts.lastError,
+      now: input.now,
+      log: input.log
     });
-    if (newlyDetected) {
-      input.log(`Escalated ${actionKey} to the operator (repair_budget_exhausted): ${reason}`);
-    }
     return {
       attempted: false,
       outcome: "repair_budget_exhausted",
@@ -990,6 +1025,22 @@ function attemptProjectLaunch(
     recordRepairAttempt(db, actionKey, message, input.now);
     recordFailedRun(db, input.projectSlug, { reason: `Launch failed for ${actionKey}: ${message}`, actionKey });
     input.log(`Launch attempt failed for ${actionKey}: ${message}`);
+    // Record the exhaustion escalation the instant this attempt pushes the
+    // count to the limit, not only on a later tick's pre-launch check --
+    // otherwise an Action that becomes ineligible for another launch attempt
+    // before that check runs (production switched Off, its Project paused, a
+    // repository lease) would leave the budget exhausted with no escalation
+    // for `production status` to surface (CodeRabbit, PR #708).
+    const attemptsAfter = getRepairAttempts(db, actionKey);
+    if (attemptsAfter.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+      recordRepairBudgetExhaustedEscalation(db, {
+        actionKey,
+        attempts: attemptsAfter.attempts,
+        lastError: attemptsAfter.lastError,
+        now: input.now,
+        log: input.log
+      });
+    }
     return { attempted: true, outcome: "failed", reason: message, actionKey };
   }
 }
@@ -1037,16 +1088,23 @@ export function getProductionRepairAttempts(db: Database.Database, actionKey: st
 /**
  * Reset a repository's exhausted repair budget after an operator has fixed
  * the underlying problem, so the next tick attempts admission again rather
- * than reporting the same stale error forever. Also clears any operator
- * escalation recorded against this Action -- typically the
- * `repair_budget_exhausted` escalation this same reset is answering -- so
+ * than reporting the same stale error forever. Also clears the
+ * `repair_budget_exhausted` escalation this reset is answering, so
  * `arcadia production status` stops surfacing it the instant the operator
- * has acted, rather than waiting for the next tick's launch to succeed.
+ * has acted, rather than waiting for the next tick's launch to succeed --
+ * but only when that is the escalation actually recorded: an unrelated one
+ * (e.g. `no_validation_commands`) sharing the same `actionKey` is left alone,
+ * since resetting the repair budget never answers it (CodeRabbit, PR #708).
  */
 export function resetProductionRepairBudget(db: Database.Database, actionKey: string): void {
   ensureProductionTickTables(db);
   resetRepairAttempts(db, actionKey);
-  clearOperatorEscalation(db, actionKey);
+  const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
+    | { kind: string }
+    | undefined;
+  if (existing?.kind === "repair_budget_exhausted") {
+    clearOperatorEscalation(db, actionKey);
+  }
 }
 
 /**
