@@ -4,8 +4,8 @@ import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { getProjectContext } from "../db/repositories.js";
-import { parseActionDocRef } from "../docs/types.js";
+import { getProjectContext, getWorkItemByDocRef } from "../db/repositories.js";
+import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
@@ -40,6 +40,27 @@ export const MECHANICAL_TRANSITIONS: readonly MechanicalTransition[] = [
   "validation",
   "acceptance",
   "pointer"
+];
+
+/**
+ * The two live-concurrency proofs from
+ * docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md (finding
+ * F5). `resolveConcurrencyGate` reads these two fixed Plan-qualified refs
+ * directly on every admission -- never via `active_plan`/`current_action`,
+ * so a later change of active Plan can neither lift nor lock the gate, and
+ * reopening either Action restores the cap without deactivating the policy.
+ */
+export const TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF = actionDocRef(
+  "bootstrap-managed-production-to-build-flight-deck",
+  "prove-two-action-unattended-production"
+);
+export const CONCURRENT_READY_SET_ADMISSION_PROOF_REF = actionDocRef(
+  "bootstrap-managed-production-to-build-flight-deck",
+  "prove-concurrent-ready-set-admission"
+);
+const CONCURRENCY_GATE_PROOF_REFS: readonly string[] = [
+  TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF,
+  CONCURRENT_READY_SET_ADMISSION_PROOF_REF
 ];
 
 /**
@@ -95,6 +116,20 @@ export interface ProductionIntegrationGrant {
   actions: string[];
 }
 
+/**
+ * The only way to exceed the concurrency gate's 1-Session cap before both
+ * concurrency proofs are `done` (see `resolveConcurrencyGate`). It is not a
+ * blanket override: it must explicitly name the one proof it exists to run,
+ * and it lapses at its own expiry or -- for free, since deactivation wipes
+ * `scope` entirely -- whenever production goes Off.
+ */
+export interface ProductionRehearsalException {
+  /** Must equal `CONCURRENT_READY_SET_ADMISSION_PROOF_REF`; never a blanket override. */
+  actionRef: string;
+  /** ISO instant after which this exception no longer raises the cap. */
+  expiresAt: string;
+}
+
 export interface ProductionScope {
   /** The operator's whole-Plan intent, carried so routine work needs no relay. */
   intent: string;
@@ -119,6 +154,12 @@ export interface ProductionScope {
    * merge, reporting the exact operator merge command instead.
    */
   integrationGrant?: ProductionIntegrationGrant;
+  /**
+   * The optional expiring rehearsal exception that raises the concurrency gate's
+   * 1-Session cap for `prove-concurrent-ready-set-admission` specifically. Absent
+   * means the gate's ordinary cap applies. See `resolveConcurrencyGate`.
+   */
+  rehearsalException?: ProductionRehearsalException;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -272,6 +313,24 @@ export function ensureProductionPolicyTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS production_admissions_status
       ON production_admissions (status, epoch);
   `);
+  ensureProductionPolicyReceiptScopeFingerprintColumn(db);
+}
+
+/**
+ * Rows written before this column existed have no fingerprint on record, so a
+ * replay against them stays idempotent rather than refusing on `NULL`
+ * mismatched with everything (#704's fix distinguishes "no fingerprint on
+ * record" from "a different fingerprint on record").
+ */
+function ensureProductionPolicyReceiptScopeFingerprintColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(production_policy_receipts)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  if (!columns.has("scope_fingerprint")) {
+    db.prepare("ALTER TABLE production_policy_receipts ADD COLUMN scope_fingerprint TEXT").run();
+  }
 }
 
 export function normalizeProductionScope(input: Partial<ProductionScope>): ProductionScope {
@@ -323,6 +382,7 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
   if (input.remotePreservation) normalized.remotePreservation = true;
   if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
+  if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
   return normalized;
 }
 
@@ -344,6 +404,65 @@ export function normalizeIntegrationGrant(input: Partial<ProductionIntegrationGr
   return { decisionRef, expiresAt, actions: dedupePreservingOrder(input.actions ?? []) };
 }
 
+/**
+ * A rehearsal exception with no named Action, no expiry, or a malformed expiry
+ * is refused rather than silently absent. Naming anything other than the
+ * concurrent-admission proof is refused too: this is an explicit, single-purpose
+ * exception, never a blanket concurrency override.
+ */
+export function normalizeRehearsalException(
+  input: Partial<ProductionRehearsalException>
+): ProductionRehearsalException {
+  const actionRef = (input.actionRef ?? "").trim();
+  if (!actionRef) {
+    throw validationError("A rehearsal exception needs the Action it exists to prove.", {
+      field: "rehearsalException.actionRef"
+    });
+  }
+  if (actionRef !== CONCURRENT_READY_SET_ADMISSION_PROOF_REF) {
+    throw validationError(
+      `A rehearsal exception may only name ${CONCURRENT_READY_SET_ADMISSION_PROOF_REF}; it is not a blanket concurrency override.`,
+      { field: "rehearsalException.actionRef", value: actionRef }
+    );
+  }
+  const expiresAt = parseStrictIsoInstant((input.expiresAt ?? "").trim());
+  if (!expiresAt) {
+    throw validationError(
+      "A rehearsal exception needs a strict RFC 3339 UTC instant, e.g. 2026-09-05T12:00:00.000Z.",
+      { field: "rehearsalException.expiresAt", value: input.expiresAt }
+    );
+  }
+  return { actionRef, expiresAt };
+}
+
+/**
+ * A strict RFC 3339 UTC instant: requires an explicit `Z` offset and rejects
+ * any date/time that round-trips to a different UTC instant than its literal
+ * calendar fields imply -- `Date.parse`/`Date.UTC` both silently normalize an
+ * impossible date like "2026-02-30" instead of rejecting it, which would let
+ * a mistyped expiry quietly extend the one exception that lifts the
+ * concurrency cap. Returns the canonical `toISOString()` spelling so the
+ * fingerprint and every display use one spelling; `null` when invalid.
+ */
+function parseStrictIsoInstant(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction] = match;
+  const milliseconds = fraction ? Number(fraction.padEnd(3, "0")) : 0;
+  const instant = Date.UTC(
+    Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), milliseconds
+  );
+  const date = new Date(instant);
+  const roundTrips =
+    date.getUTCFullYear() === Number(year) &&
+    date.getUTCMonth() === Number(month) - 1 &&
+    date.getUTCDate() === Number(day) &&
+    date.getUTCHours() === Number(hour) &&
+    date.getUTCMinutes() === Number(minute) &&
+    date.getUTCSeconds() === Number(second);
+  return roundTrips ? date.toISOString() : null;
+}
+
 /** Stable fingerprint of exactly what the operator was shown before granting. */
 export function fingerprintProductionScope(scope: ProductionScope): string {
   const canonical = JSON.stringify({
@@ -361,6 +480,10 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // pre-existing scope's fingerprint.
     ...(scope.integrationGrant
       ? { integrationGrant: { decisionRef: scope.integrationGrant.decisionRef, expiresAt: scope.integrationGrant.expiresAt, actions: scope.integrationGrant.actions } }
+      : {}),
+    // Same rule again for the rehearsal exception.
+    ...(scope.rehearsalException
+      ? { rehearsalException: { actionRef: scope.rehearsalException.actionRef, expiresAt: scope.rehearsalException.expiresAt } }
       : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
@@ -560,6 +683,17 @@ export function activateProduction(
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
+      if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.scopeFingerprint) {
+        throw validationError(
+          "This request id already activated a different scope; replaying it now would silently keep that scope instead of granting the one just requested. Use a new request id.",
+          {
+            requestId: input.requestId,
+            previousRevision: replay.revision_before,
+            previousScopeFingerprint: replay.scope_fingerprint,
+            requestedScopeFingerprint: input.scopeFingerprint
+          }
+        );
+      }
       return { replayed: true, revisionBefore: replay.revision_before };
     }
 
@@ -594,7 +728,8 @@ export function activateProduction(
       revisionAfter: after.revision,
       epochAfter: after.epoch,
       receipt: { authority, scope: input.scope },
-      at
+      at,
+      scopeFingerprint: input.scopeFingerprint
     });
     return { replayed: false, revisionBefore: before.revision };
   });
@@ -687,6 +822,81 @@ export function deactivateProduction(
   };
 }
 
+export interface ConcurrencyGateStatus {
+  /** Whether the gate is currently restricting concurrency below the scope's own configured maximum. */
+  closed: boolean;
+  /** The concurrency `issueAdmission` actually enforces right now. */
+  effectiveMaxConcurrentSessions: number;
+  /** The proof Actions not yet `done`; empty once the gate is open. */
+  blockingActionRefs: string[];
+  /** Whether an unexpired rehearsal exception is currently raising the cap. */
+  exceptionActive: boolean;
+  /** Explanation of why the effective cap differs from the scope's own; `null` when it does not. */
+  reason: string | null;
+}
+
+function isConcurrencyProofDone(db: Database.Database, actionRef: string): boolean {
+  return getWorkItemByDocRef(db, actionRef)?.status === "done";
+}
+
+/**
+ * Whether managed production may run above one Session at a time, re-evaluated
+ * fresh on every call rather than cached at activation (CodeRabbit finding F5,
+ * docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md): a proof
+ * Action that gets reopened after this returned "open" must restore the cap on
+ * the very next admission, with no separate deactivate/reactivate step, and a
+ * later change of `active_plan` must not move this check at all -- it reads
+ * `CONCURRENCY_GATE_PROOF_REFS` directly, never the active-plan pointer.
+ */
+export function resolveConcurrencyGate(
+  db: Database.Database,
+  scope: ProductionScope,
+  at: string
+): ConcurrencyGateStatus {
+  const blockingActionRefs = CONCURRENCY_GATE_PROOF_REFS.filter(
+    (ref) => !isConcurrencyProofDone(db, ref)
+  );
+  if (blockingActionRefs.length === 0) {
+    return {
+      closed: false,
+      effectiveMaxConcurrentSessions: scope.maxConcurrentSessions,
+      blockingActionRefs: [],
+      exceptionActive: false,
+      reason: null
+    };
+  }
+
+  const exception = scope.rehearsalException;
+  const exceptionActive = Boolean(
+    exception &&
+      exception.actionRef === CONCURRENT_READY_SET_ADMISSION_PROOF_REF &&
+      Date.parse(at) < Date.parse(exception.expiresAt)
+  );
+
+  if (exceptionActive) {
+    return {
+      closed: true,
+      effectiveMaxConcurrentSessions: scope.maxConcurrentSessions,
+      blockingActionRefs,
+      exceptionActive: true,
+      reason:
+        `The concurrency cap is raised to ${scope.maxConcurrentSessions} by the rehearsal exception for ` +
+        `${CONCURRENT_READY_SET_ADMISSION_PROOF_REF}, expiring ${exception!.expiresAt}. The general gate stays ` +
+        `closed until ${CONCURRENCY_GATE_PROOF_REFS.join(" and ")} are done.`
+    };
+  }
+
+  return {
+    closed: true,
+    effectiveMaxConcurrentSessions: 1,
+    blockingActionRefs,
+    exceptionActive: false,
+    reason:
+      `Concurrency is capped at 1 (not the configured ${scope.maxConcurrentSessions}) until ` +
+      `${CONCURRENCY_GATE_PROOF_REFS.join(" and ")} are done.`
+  };
+}
+
 /**
  * Reserve one admission slot. This is a reservation, not a launch: nothing
  * starts until `commitAdmission` redeems it, and Off in between fences it.
@@ -768,11 +978,14 @@ export function issueAdmission(db: Database.Database, request: AdmissionRequest)
     }
 
     const live = countLiveAdmissions(db, policy.epoch, at);
-    if (live >= scope.maxConcurrentSessions) {
+    const gate = resolveConcurrencyGate(db, scope, at);
+    if (live >= gate.effectiveMaxConcurrentSessions) {
       return {
         admitted: false as const,
         code: "concurrency_limit" as const,
-        reason: `Authorized concurrency is ${scope.maxConcurrentSessions}; ${live} admissions are live.`,
+        reason: gate.reason
+          ? `${gate.reason} ${live} admission(s) are live.`
+          : `Authorized concurrency is ${gate.effectiveMaxConcurrentSessions}; ${live} admissions are live.`,
         receipt: null
       };
     }
@@ -1041,10 +1254,10 @@ function toReceipt(row: AdmissionRow): AdmissionReceipt {
 export function findTransitionReceipt(
   db: Database.Database,
   requestId: string
-): { revision_before: number } | undefined {
+): { revision_before: number; scope_fingerprint: string | null } | undefined {
   return db
-    .prepare(`SELECT revision_before FROM production_policy_receipts WHERE request_id = ?`)
-    .get(requestId) as { revision_before: number } | undefined;
+    .prepare(`SELECT revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
+    .get(requestId) as { revision_before: number; scope_fingerprint: string | null } | undefined;
 }
 
 function recordTransitionReceipt(
@@ -1057,15 +1270,17 @@ function recordTransitionReceipt(
     epochAfter: number;
     receipt: unknown;
     at: string;
+    scopeFingerprint?: string | null;
   }
 ): void {
   db.prepare(
     `INSERT INTO production_policy_receipts
-       (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at, scope_fingerprint)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     createId("productionPolicyReceipt"), input.requestId, input.transition, input.revisionBefore,
-    input.revisionAfter, input.epochAfter, JSON.stringify(input.receipt), input.at
+    input.revisionAfter, input.epochAfter, JSON.stringify(input.receipt), input.at,
+    input.scopeFingerprint ?? null
   );
 }
 

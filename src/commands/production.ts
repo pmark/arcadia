@@ -12,6 +12,7 @@ import {
   type ProductionDisplayState
 } from "../production/activation.js";
 import {
+  CONCURRENT_READY_SET_ADMISSION_PROOF_REF,
   MECHANICAL_TRANSITIONS,
   PRODUCTION_CONTROL_DEADLINES,
   activateProduction,
@@ -20,7 +21,9 @@ import {
   findTransitionReceipt,
   listAdmissions,
   readProductionPolicySafely,
+  resolveConcurrencyGate,
   type AdmissionReceipt,
+  type ConcurrencyGateStatus,
   type MechanicalTransition,
   type ProductionIntegrationGrant,
   type ProductionPolicyRead,
@@ -53,6 +56,8 @@ export interface ProductionPreviewOptions {
   integrationGrantDecision?: string;
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];
+  /** Expiring rehearsal exception that raises the concurrency gate's cap for the ready-set-admission proof. */
+  rehearsalExceptionExpiresAt?: string;
 }
 
 export interface ProductionActivateOptions extends ProductionPreviewOptions {
@@ -86,6 +91,8 @@ export interface ProductionStatusData {
   operatorEscalations: OperatorEscalation[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
+  /** `null` only when no scope is active to gate; Off always reports `null`. */
+  concurrencyGate: ConcurrencyGateStatus | null;
 }
 
 export interface ProductionPreviewData {
@@ -95,6 +102,8 @@ export interface ProductionPreviewData {
 export interface ProductionTransitionData {
   result: ProductionTransitionResult;
   offConsequence: string;
+  /** `null` for deactivate, which always wipes the scope there was a gate to report on. */
+  concurrencyGate: ConcurrencyGateStatus | null;
 }
 
 export interface ProductionResetRepairBudgetData {
@@ -108,11 +117,10 @@ export function runProductionStatusCommand(
 ): CommandSuccess<ProductionStatusData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const data = withReadOnlyDatabase(workspacePath, (db) => {
+    const now = new Date().toISOString();
     const read = readProductionPolicySafely(db);
     const admissions = read.status === "ok" ? listAdmissions(db) : [];
-    const live = read.status === "ok"
-      ? countLiveAdmissions(db, read.policy.epoch, new Date().toISOString())
-      : 0;
+    const live = read.status === "ok" ? countLiveAdmissions(db, read.policy.epoch, now) : 0;
     return {
       read,
       display: describeProductionState(read, live),
@@ -122,7 +130,11 @@ export function runProductionStatusCommand(
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
-      controlDeadlines: PRODUCTION_CONTROL_DEADLINES
+      controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
+      concurrencyGate:
+        read.status === "ok" && read.policy.scope
+          ? resolveConcurrencyGate(db, read.policy.scope, now)
+          : null
     };
   });
 
@@ -172,7 +184,7 @@ export function runProductionActivateCommand(
     });
   }
 
-  const result = withDatabase(workspacePath, (db) => {
+  const { result, concurrencyGate } = withDatabase(workspacePath, (db) => {
     const requestId = options.requestId.trim();
     const preview = buildProductionActivationPreview(db, previewInput(options, workspacePath));
     /**
@@ -205,7 +217,7 @@ export function runProductionActivateCommand(
         );
       }
     }
-    return activateProduction(db, {
+    const transition = activateProduction(db, {
       requestId,
       scope: preview.scope,
       scopeFingerprint: preview.scopeFingerprint,
@@ -213,12 +225,18 @@ export function runProductionActivateCommand(
       decisionRef: options.decision ?? null,
       expectedRevision: parseOptionalInteger(options.expectRevision, "expectRevision")
     });
+    return {
+      result: transition,
+      concurrencyGate: transition.policy.scope
+        ? resolveConcurrencyGate(db, transition.policy.scope, transition.policy.updatedAt)
+        : null
+    };
   });
 
   return createSuccess({
     command: "production.activate",
     workspace: workspacePath,
-    data: { result, offConsequence: PRODUCTION_OFF_CONSEQUENCE },
+    data: { result, offConsequence: PRODUCTION_OFF_CONSEQUENCE, concurrencyGate },
     warnings: result.replayed ? ["Replayed an existing activation receipt; nothing changed."] : []
   });
 }
@@ -252,7 +270,7 @@ export function runProductionDeactivateCommand(
   return createSuccess({
     command: "production.deactivate",
     workspace: workspacePath,
-    data: { result, offConsequence: PRODUCTION_OFF_CONSEQUENCE },
+    data: { result, offConsequence: PRODUCTION_OFF_CONSEQUENCE, concurrencyGate: null },
     warnings
   });
 }
@@ -303,6 +321,7 @@ export function renderProductionStatusSuccess(
       lines.push(`  Actions in scope: ${policy.scope.actions.length}`);
       lines.push(`  Providers: ${policy.scope.providers.join(", ")}`);
       lines.push(`  Concurrency: ${policy.scope.maxConcurrentSessions}`);
+      lines.push(`  Concurrency gate: ${describeConcurrencyGate(response.data.concurrencyGate)}`);
       lines.push(`  Delegated mechanics: ${policy.scope.mechanicalTransitions.join(", ") || "none"}`);
       lines.push(`  Candidate integration grant: ${describeIntegrationGrant(policy.scope.integrationGrant)}`);
     }
@@ -368,6 +387,7 @@ export function renderProductionPreviewSuccess(
     `  Plans: ${preview.includedPlans.join(", ") || "none"}`,
     `  Providers: ${preview.scope.providers.join(", ")}`,
     `  Concurrency: ${preview.scope.maxConcurrentSessions}`,
+    `  Concurrency gate: ${describeConcurrencyGate(preview.concurrencyGate)}`,
     `  Delegated mechanics: ${preview.scope.mechanicalTransitions.join(", ") || "none"}`,
     `  Candidate integration grant: ${describeIntegrationGrant(preview.scope.integrationGrant)}`,
     `  Scope fingerprint: ${preview.scopeFingerprint}`,
@@ -406,6 +426,9 @@ export function renderProductionTransitionSuccess(
       lines.push(`    ${admission.actionKey} via ${admission.provider}`);
     }
   }
+  if (response.data.concurrencyGate) {
+    lines.push(`  Concurrency gate: ${describeConcurrencyGate(response.data.concurrencyGate)}`);
+  }
   lines.push(`  Off consequence: ${response.data.offConsequence}`);
   return lines;
 }
@@ -423,6 +446,12 @@ export function renderProductionResetRepairBudgetSuccess(
   return lines;
 }
 
+function describeConcurrencyGate(gate: ConcurrencyGateStatus | null): string {
+  if (!gate) return "unknown (no active scope)";
+  if (!gate.closed) return "open — both concurrency proofs are done";
+  return `closed — effective cap ${gate.effectiveMaxConcurrentSessions}. ${gate.reason}`;
+}
+
 function assertKnownProviders(workspacePath: string, providers: string[]): void {
   const known = [...new Set(loadPhase3Registries(workspacePath).codingAgents.profiles.map((profile) => profile.provider))].sort();
   for (const provider of providers) {
@@ -438,6 +467,7 @@ function assertKnownProviders(workspacePath: string, providers: string[]): void 
 function previewInput(options: ProductionPreviewOptions, workspacePath: string) {
   assertKnownProviders(workspacePath, options.provider ?? []);
   const integrationGrant = parseIntegrationGrant(options);
+  const rehearsalException = parseRehearsalException(options);
   return {
     projects: options.project ?? [],
     plans: options.plan ?? [],
@@ -445,7 +475,8 @@ function previewInput(options: ProductionPreviewOptions, workspacePath: string) 
     intent: options.intent ?? "",
     maxConcurrentSessions: parseOptionalInteger(options.concurrency, "concurrency") ?? 1,
     mechanicalTransitions: parseTransitions(options.transitions),
-    ...(integrationGrant ? { integrationGrant } : {})
+    ...(integrationGrant ? { integrationGrant } : {}),
+    ...(rehearsalException ? { rehearsalException } : {})
   };
 }
 
@@ -466,6 +497,17 @@ function parseIntegrationGrant(options: ProductionPreviewOptions) {
     );
   }
   return { decisionRef, expiresAt, actions: options.integrationGrantAction ?? [] };
+}
+
+/**
+ * The concurrency gate's only exception (see `resolveConcurrencyGate`) always
+ * names the ready-set-admission proof: an operator granting it never types the
+ * ref themselves, so there is exactly one way to spell it.
+ */
+function parseRehearsalException(options: ProductionPreviewOptions) {
+  const expiresAt = options.rehearsalExceptionExpiresAt?.trim();
+  if (!expiresAt) return null;
+  return { actionRef: CONCURRENT_READY_SET_ADMISSION_PROOF_REF, expiresAt };
 }
 
 function describeIntegrationGrant(grant: ProductionIntegrationGrant | undefined): string {

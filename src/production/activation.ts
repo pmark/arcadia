@@ -7,9 +7,12 @@ import {
   fingerprintProductionScope,
   normalizeProductionScope,
   readProductionPolicySafely,
+  resolveConcurrencyGate,
+  type ConcurrencyGateStatus,
   type MechanicalTransition,
   type ProductionIntegrationGrant,
   type ProductionPolicyRead,
+  type ProductionRehearsalException,
   type ProductionScope
 } from "./policy.js";
 
@@ -31,6 +34,8 @@ export interface ProductionActivationPreviewInput {
   mechanicalTransitions?: MechanicalTransition[];
   /** Optional Decision 0058 bounded candidate-integration grant. */
   integrationGrant?: ProductionIntegrationGrant;
+  /** Optional expiring rehearsal exception that raises the concurrency gate's cap. */
+  rehearsalException?: ProductionRehearsalException;
   intent: string;
   now?: Date;
 }
@@ -62,6 +67,8 @@ export interface ProductionActivationPreview {
   explicitStops: string[];
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
   offConsequence: string;
+  /** The concurrency actually enforced by this scope, and why, when it differs from `maxConcurrentSessions`. */
+  concurrencyGate: ConcurrencyGateStatus;
 }
 
 /**
@@ -128,7 +135,8 @@ export function buildProductionActivationPreview(
     providers: input.providers,
     maxConcurrentSessions: input.maxConcurrentSessions ?? 1,
     mechanicalTransitions: input.mechanicalTransitions ?? [...MECHANICAL_TRANSITIONS],
-    ...(input.integrationGrant ? { integrationGrant: input.integrationGrant } : {})
+    ...(input.integrationGrant ? { integrationGrant: input.integrationGrant } : {}),
+    ...(input.rehearsalException ? { rehearsalException: input.rehearsalException } : {})
   });
 
   const currentPolicy = readProductionPolicySafely(db);
@@ -149,7 +157,8 @@ export function buildProductionActivationPreview(
     },
     explicitStops: [...EXPLICIT_STOPS],
     controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
-    offConsequence: PRODUCTION_OFF_CONSEQUENCE
+    offConsequence: PRODUCTION_OFF_CONSEQUENCE,
+    concurrencyGate: resolveConcurrencyGate(db, scope, generatedAt)
   };
 }
 

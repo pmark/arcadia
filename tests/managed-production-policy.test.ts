@@ -4,7 +4,14 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CapacityAdmissionDecision } from "../src/codingAgents/capacity.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
-import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import {
+  createWorkItemRecord,
+  getWorkItemByDocRef,
+  setWorkItemDocRef,
+  updateWorkItem,
+  upsertProject,
+  upsertProjectMetadata
+} from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import {
   buildProductionActivationPreview,
@@ -19,7 +26,9 @@ import {
   runProductionStatusCommand
 } from "../src/commands/production.js";
 import {
+  CONCURRENT_READY_SET_ADMISSION_PROOF_REF,
   PRODUCTION_CONTROL_DEADLINES,
+  TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF,
   activateProduction,
   commitAdmission,
   deactivateProduction,
@@ -136,6 +145,28 @@ function admit(
   );
 }
 
+/**
+ * Marks both concurrency-gate proof Actions `done`, exactly as
+ * `resolveConcurrencyGate` looks them up (by their fixed Plan-qualified doc
+ * refs), so a test can exercise concurrency above 1 without that being the
+ * thing under test.
+ */
+function markConcurrencyProofsDone(workspacePath: string): void {
+  withDatabase(workspacePath, (db) => {
+    for (const ref of [TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF, CONCURRENT_READY_SET_ADMISSION_PROOF_REF]) {
+      const item = createWorkItemRecord(db, {
+        title: ref,
+        rawInput: ref,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Prove it.",
+        status: "done"
+      });
+      setWorkItemDocRef(db, item.id, ref);
+    }
+  });
+}
+
 describe("managed production policy state", () => {
   it("defaults to Inactive on first setup with no scope and no authority", () => {
     const target = workspace();
@@ -200,6 +231,18 @@ describe("managed production policy state", () => {
     expect(replay.replayed).toBe(true);
     expect(replay.policy.revision).toBe(1);
     expect(replay.policy.epoch).toBe(1);
+  });
+
+  it("refuses to replay a used request id under a different scope (#704)", () => {
+    const target = workspace();
+    activate(target, "grant-reused-id", { plans: ["demo/queue-plan"] });
+
+    expect(() => activate(target, "grant-reused-id", { plans: ["demo/other-plan"] })).toThrow(
+      /already activated a different scope/
+    );
+    // Production stayed on the first grant; the mismatched replay changed nothing.
+    const status = withDatabase(target, (db) => readProductionPolicy(db));
+    expect(status.revision).toBe(1);
   });
 
   it("never resurrects a revoked policy from a stale expected revision", () => {
@@ -304,9 +347,117 @@ describe("admission gating", () => {
   });
 });
 
+describe("concurrency gate", () => {
+  it("caps effective concurrency at 1 while the gate is closed, whatever the scope allows", () => {
+    const target = workspace();
+    activate(target, "grant-gate-closed", { maxConcurrentSessions: 3 });
+
+    expect(admit(target, "adm-gate-first").admitted).toBe(true);
+    const second = admit(target, "adm-gate-second", { actionKey: "demo/ship-it" });
+    expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(second.reason).toContain(TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF);
+    expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("holds the cap for a scope written directly to the store, without passing through activation", () => {
+    const target = workspace();
+    const rawScope = scope({ maxConcurrentSessions: 5 });
+
+    withDatabase(target, (db) => {
+      db.prepare(
+        `UPDATE production_policy
+            SET desired_state = 'active', revision = revision + 1, epoch = epoch + 1, scope_json = ?, updated_at = ?
+          WHERE id = 'workspace'`
+      ).run(JSON.stringify(rawScope), "2026-09-05T00:00:00.000Z");
+    });
+
+    expect(admit(target, "adm-raw-first").admitted).toBe(true);
+    expect(admit(target, "adm-raw-second", { actionKey: "demo/ship-it" }))
+      .toMatchObject({ admitted: false, code: "concurrency_limit" });
+  });
+
+  it("lifts the cap once both concurrency proofs are done", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-open", { maxConcurrentSessions: 2 });
+
+    expect(admit(target, "adm-open-first").admitted).toBe(true);
+    expect(admit(target, "adm-open-second", { actionKey: "demo/ship-it" }).admitted).toBe(true);
+
+    const third = admit(target, "adm-open-third", { actionKey: "demo/migrate" });
+    expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(third.reason).not.toContain(TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF);
+  });
+
+  it("returns the cap when a reopened proof Action makes the gate closed again", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-reopen", { maxConcurrentSessions: 2 });
+
+    expect(admit(target, "adm-reopen-first").admitted).toBe(true);
+    expect(admit(target, "adm-reopen-second", { actionKey: "demo/ship-it" }).admitted).toBe(true);
+
+    withDatabase(target, (db) => {
+      const item = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+      updateWorkItem(db, item!.id, { status: "open" });
+    });
+
+    const third = admit(target, "adm-reopen-third", { actionKey: "demo/migrate" });
+    expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(third.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("honours a rehearsal exception only before its expiry", () => {
+    const target = workspace();
+    const expiresAt = "2026-09-05T12:00:00.000Z";
+    activate(target, "grant-rehearsal", {
+      maxConcurrentSessions: 2,
+      rehearsalException: { actionRef: CONCURRENT_READY_SET_ADMISSION_PROOF_REF, expiresAt }
+    });
+
+    const before = new Date(Date.parse(expiresAt) - 1_000);
+    expect(admit(target, "adm-rehearsal-first", { now: before }).admitted).toBe(true);
+    expect(admit(target, "adm-rehearsal-second", { actionKey: "demo/ship-it", now: before }).admitted).toBe(true);
+
+    const after = new Date(Date.parse(expiresAt) + 1_000);
+    const third = admit(target, "adm-rehearsal-third", { actionKey: "demo/migrate", now: after });
+    expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(third.reason).toContain(TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF);
+  });
+
+  it("refuses a rehearsal exception that names anything other than the ready-set-admission proof", () => {
+    expect(() =>
+      normalizeProductionScope({
+        intent: "Rehearse concurrent admission.",
+        projects: ["demo"],
+        plans: ["demo/queue-plan"],
+        actions: ["demo/migrate"],
+        providers: ["claude"],
+        rehearsalException: { actionRef: "demo/some-other-action", expiresAt: "2026-09-05T12:00:00.000Z" }
+      })
+    ).toThrow(/may only name/);
+  });
+
+  it("refuses a rehearsal exception expiry that is not a strict RFC 3339 UTC instant", () => {
+    for (const expiresAt of ["2026-02-30T12:00:00.000Z", "September 30 2026", "2026-09-05T12:00:00.000+02:00", ""]) {
+      expect(() =>
+        normalizeProductionScope({
+          intent: "Rehearse concurrent admission.",
+          projects: ["demo"],
+          plans: ["demo/queue-plan"],
+          actions: ["demo/migrate"],
+          providers: ["claude"],
+          rehearsalException: { actionRef: CONCURRENT_READY_SET_ADMISSION_PROOF_REF, expiresAt }
+        })
+      ).toThrow(/strict RFC 3339/);
+    }
+  });
+});
+
 describe("Off fences new work and preserves committed work", () => {
   it("fences reserved-but-unlaunched work and lets committed work finish", () => {
     const target = workspace();
+    markConcurrencyProofsDone(target);
     activate(target, "grant-off", { maxConcurrentSessions: 3 });
 
     admit(target, "adm-running", { actionKey: "demo/migrate" });
