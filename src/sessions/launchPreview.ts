@@ -373,18 +373,8 @@ export function findPromotionDecisionOrProblem(
     }
     const promotion = context?.planningPromotion;
     if (promotion?.buildInvocationId !== expected.invocationId) continue;
-    // An approval that was never given is pending, not stale: the packet is
-    // fine and the remedy is to approve it. Reporting it as stale sent the
-    // operator to rebuild a good packet, and it never reached
-    // `production status` at all.
-    if (row.status === "open" || row.status === "deferred") {
-      return {
-        decisionId: null,
-        pendingApprovalId: row.id,
-        problem: `build packet approval pending: Decision ${row.id} has not been approved yet (${row.status}); approve it with arcadia review approve ${row.id} --no-execute.`
-      };
-    }
-    if (row.status !== "approved") {
+    const pending = row.status === "open" || row.status === "deferred";
+    if (row.status !== "approved" && !pending) {
       return { decisionId: null, problem: `stale pointer: the build packet's authorizing Decision ${row.id} is no longer approved (${row.status}).` };
     }
     const pairs: Record<string, [unknown, unknown]> = {
@@ -400,6 +390,18 @@ export function findPromotionDecisionOrProblem(
       return {
         decisionId: null,
         problem: `stale pointer: the promoted build packet or its authority set is stale (${stale.map(([field]) => field).join(", ")}).`
+      };
+    }
+    // An approval that was never given, over a packet whose authority still
+    // matches, is pending, not stale: the remedy is to approve it. Reporting it
+    // as stale sent the operator to rebuild a good packet, and it never reached
+    // `production status` at all. A changed packet is stale either way
+    // (checked above), since approving it would only fail at launch.
+    if (pending) {
+      return {
+        decisionId: null,
+        pendingApprovalId: row.id,
+        problem: `build packet approval pending: Decision ${row.id} has not been approved yet (${row.status}); approve it with arcadia review approve ${row.id} --no-execute.`
       };
     }
     return { decisionId: row.id, problem: null };

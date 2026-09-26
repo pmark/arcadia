@@ -386,6 +386,28 @@ describe("buildLaunchPreview", () => {
     expect(preview.ready).toBe(false);
     expect(preview.packetLifecycle?.kind).toBe("stale_packet");
     expect(preview.prerequisites.some((entry) => entry.includes("stale") && entry.includes("authority"))).toBe(true);
+
+    // Still stale -- not "approval pending" -- when its approval is open:
+    // approving a changed packet would only fail at launch.
+    withDatabase(fixture.workspace, (db) => {
+      const row = db
+        .prepare("SELECT id FROM review_items WHERE context_json LIKE ?")
+        .get(`%"buildInvocationId":"${fixture.packetId}"%`) as { id: string };
+      updateReviewItemStatus(db, row.id, { status: "open", decisionNote: "Reopened." });
+    });
+    const reopened = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "req-3b",
+        profiles,
+        adapters: defaultAdapters as ProviderAdapterRegistry
+      })
+    );
+    expect(reopened.packetLifecycle?.kind).toBe("stale_packet");
+    expect(reopened.prerequisites.join("\n")).not.toContain("approval pending");
   });
 
   it("names an already-leased repository as a conflicting-execution prerequisite", () => {
