@@ -14,7 +14,9 @@ import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
+  canonicalPath,
   failPreparedSession,
+  getActiveActionClaim,
   getRepositoryLease,
   getSession,
   launchPreparedSession,
@@ -28,7 +30,8 @@ import {
   type TmuxAdapter
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
-import { prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
+import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
+import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 
 export interface GuardedLaunchInput {
   db: Database.Database;
@@ -240,45 +243,145 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const baseBranch = resolveBaseBranch(repoRoot);
   const baseRevision = git(repoRoot, ["rev-parse", baseBranch]).trim();
 
+  // Issue #695: an unattended tick must recover from a dead-but-claimed
+  // worktree the same way `arcadia go`'s stale-claim recovery does (Decision
+  // 0051), rather than refusing on `actionAlreadyClaimed` forever. A claim is
+  // only ever resumed when its exit was *proven* terminal -- a reconciled
+  // `incomplete_resumable` receipt with its lease handed off, not merely a
+  // dead tmux pane -- and only for this exact Action, and only while its
+  // worktree still exists on disk to resume into.
+  //
+  // The candidate's Git metadata is probed with `tryGit` *before* the claim is
+  // renewed, and its checked-out branch confirmed against the receipt: a
+  // worktree directory that survives on disk but is no longer valid Git state
+  // (or was somehow re-checked-out to a different branch) must not have its
+  // claim renewed only to throw past that point with the claim already held
+  // and nothing left to release it (CodeRabbit, PR #696).
+  const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
+  let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
+  if (staleHandoff && staleHandoff.session.action_id === preview.actionId && !tmux.hasSession(staleHandoff.session.tmux_session_name)) {
+    const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
+    // A worktree that is gone outright fails the same "not safely resumable"
+    // test as one whose Git metadata is invalid -- `tryGit` against a missing
+    // directory fails exactly like it does against a corrupt one, so the
+    // check below covers both without a separate `existsSync` gate that would
+    // otherwise skip releasing the stale claim entirely for a deleted
+    // worktree (CodeRabbit, PR #696).
+    const headProbe = tryGit(staleHandoff.session.worktree_path, ["rev-parse", "HEAD"]);
+    const branchProbe = tryGit(staleHandoff.session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
+    if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
+      resumableStaleClaim = { session: staleHandoff.session, receiptId: staleHandoff.receipt.id, branch: expectedBranch, headRevision: headProbe.trim() };
+    } else {
+      // Not safely resumable after all. Its stale claim would otherwise make
+      // the ordinary new-worktree path below refuse on `actionAlreadyClaimed`
+      // over a claim nothing will ever resume -- release it explicitly,
+      // fenced on the exact generation currently held, so a fresh worktree
+      // can be claimed normally. The worktree reservation itself (and the
+      // worktree on disk, if it still exists) is left alone, so `tidy` still
+      // will not retire it out from under an operator's manual inspection.
+      //
+      // Only ever release a claim actually held on *this* handoff's worktree.
+      // A concurrent caller (another tick, a manual `arcadia go`) could have
+      // already claimed a different worktree for this same Action between
+      // our read of the handoff above and this read of the live claim; that
+      // claim is live and legitimate, not stale, and must not be torn down
+      // out from under it.
+      const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId, now);
+      if (held?.claim_generation && canonicalPath(held.worktree_path) === canonicalPath(staleHandoff.session.worktree_path)) {
+        releaseActionClaim(input.db, {
+          repositoryPath: repoRoot,
+          project: preview.projectSlug,
+          actionId: preview.actionId,
+          generation: held.claim_generation
+        });
+      }
+    }
+  }
+
   const reservationCommitCleanup: { candidate: PreparedAgentWorktree | null } = { candidate: null };
   // The generation this launch claimed, so a Session preparation that fails
   // after the claim committed releases it explicitly instead of leaving the
   // Action blocked for the TTL over work that never started.
   const claim: { generation: string | null } = { generation: null };
   let nextWorktree: PreparedAgentWorktree;
-  try {
-    nextWorktree = writeTransaction(input.db, () => {
-      const created = prepareAgentWorktree({
-        agent,
-        actionId: preview.actionId!,
-        baseBranch,
-        repositoryPath: repoRoot,
-        rootOverride: input.agentWorktreeRoot,
-        now,
-        model,
-        effort,
-        beforeCreate(candidate) {
-          claim.generation = reserveAgentWorktree(input.db, {
-            repositoryPath: repoRoot,
-            worktreePath: candidate.path,
-            branch: candidate.branch,
-            now,
-            project: preview.projectSlug,
-            actionId: preview.actionId!
-          }).claim_generation;
-        }
+  if (resumableStaleClaim) {
+    // Resume in place: same worktree and branch, claim refreshed rather than
+    // replaced (`reserveAgentWorktree` treats a reservation at the same path
+    // as a renewal, per Decision 0051). No Git write happens here -- the
+    // worktree already exists and may hold uncommitted work from the dead
+    // Session that must not be disturbed.
+    nextWorktree = {
+      agent,
+      path: resumableStaleClaim.session.worktree_path,
+      branch: resumableStaleClaim.branch,
+      model,
+      effort,
+      command: buildAgentLaunchCommand(agent, resumableStaleClaim.session.worktree_path, model, effort)
+    };
+    claim.generation = writeTransaction(input.db, () => reserveAgentWorktree(input.db, {
+      repositoryPath: repoRoot,
+      worktreePath: nextWorktree.path,
+      branch: nextWorktree.branch,
+      now,
+      project: preview.projectSlug,
+      actionId: preview.actionId!
+    }).claim_generation);
+  } else {
+    try {
+      nextWorktree = writeTransaction(input.db, () => {
+        const created = prepareAgentWorktree({
+          agent,
+          actionId: preview.actionId!,
+          baseBranch,
+          repositoryPath: repoRoot,
+          rootOverride: input.agentWorktreeRoot,
+          now,
+          model,
+          effort,
+          beforeCreate(candidate) {
+            claim.generation = reserveAgentWorktree(input.db, {
+              repositoryPath: repoRoot,
+              worktreePath: candidate.path,
+              branch: candidate.branch,
+              now,
+              project: preview.projectSlug,
+              actionId: preview.actionId!
+            }).claim_generation;
+          }
+        });
+        reservationCommitCleanup.candidate = created;
+        input.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
+        return created;
       });
-      reservationCommitCleanup.candidate = created;
-      input.testHooks?.afterWorktreeCreatedBeforeReservationCommit?.();
-      return created;
-    });
-  } catch (error) {
-    if (reservationCommitCleanup.candidate) {
-      tryGit(repoRoot, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
-      tryGit(repoRoot, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+    } catch (error) {
+      if (reservationCommitCleanup.candidate) {
+        tryGit(repoRoot, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
+        tryGit(repoRoot, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
+      }
+      throw error;
     }
-    throw error;
   }
+
+  // `prepareSession` records `baseRevision` as this candidate's true lineage
+  // starting point -- what `reconcileSessionExit` and candidate preservation
+  // measure accumulated progress against (a resumed Session that itself makes
+  // no further commits must still be recognized as carrying its predecessor's
+  // real work, not misclassified as having no changes at all). A resumed
+  // Session inherits its predecessor's own `base_revision` unchanged, however
+  // many resumptions deep, rather than the worktree's current HEAD.
+  //
+  // `launchRevision` is the separate, narrower expectation `launchPreparedSession`
+  // checks immediately before spawning: "has anything touched this worktree
+  // since this Session was prepared." For a resumed claim that is the
+  // worktree's actual current HEAD (already probed above), not the lineage
+  // baseline -- conflating the two broke every other reader of
+  // `base_revision` (CodeRabbit, PR #696). Persisted on the row (not just
+  // threaded through this call) so a retry that finds this exact Session
+  // still sitting in `prepared` status -- this process died between the
+  // insert below committing and ever reaching launch -- still supplies the
+  // right expectation the second time around.
+  const sessionBaseRevision = resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  const sessionLaunchRevision = resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   let prepared: AgentSession;
   try {
@@ -290,7 +393,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       agent,
       model,
       effort,
-      baseRevision,
+      baseRevision: sessionBaseRevision,
+      launchRevision: sessionLaunchRevision,
       branch: nextWorktree.branch,
       worktreePath: nextWorktree.path,
       now,
@@ -302,8 +406,14 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // the database's own unique lease index on a true race). Reconcile onto
     // the winner rather than leaving an orphaned worktree and a misleading
     // failure for a request that was, in substance, satisfied.
-    tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
-    tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+    //
+    // A resumed stale claim's worktree pre-dates this call and may hold the
+    // dead Session's real work -- never delete it or drop its protection
+    // here; only the claim itself is released, so a later attempt can retry.
+    if (!resumableStaleClaim) {
+      tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
+      tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+    }
     // The worktree this call claimed the Action for is gone, so both of the
     // row's guarantees end here: release the claim fenced on this call's own
     // generation, then drop the reservation the removed worktree no longer
@@ -316,7 +426,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         generation: claim.generation
       });
     }
-    releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+    if (!resumableStaleClaim) {
+      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+    }
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {
       // The winner's Session satisfies this request; this call's own reserved
@@ -344,8 +456,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     const committed = commitAdmission(input.db, admission.requestId, now);
     if (!committed.admitted) {
       failPreparedSession(input.db, prepared.id);
-      tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
-      tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+      // See the same guard above: a resumed stale claim's worktree is prior
+      // real work, never this call's to delete.
+      if (!resumableStaleClaim) {
+        tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
+        tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+      }
       if (claim.generation) {
         releaseActionClaim(input.db, {
           repositoryPath: repoRoot,
@@ -354,7 +470,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
           generation: claim.generation
         });
       }
-      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+      if (!resumableStaleClaim) {
+        releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+      } else {
+        // `prepareSession` already superseded the resumed handoff onto this
+        // now-failed Session. Undo that, or the candidate's real worktree and
+        // branch become permanently invisible to `getResumableLeaseHandoff`
+        // even though nothing ever ran in it (CodeRabbit, PR #696).
+        restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
+      }
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
         conflict: true
@@ -384,6 +508,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         actionId: preview.actionId,
         generation: claim.generation
       });
+    }
+    // Same as the admission-withdrawal path above: a spawn failure leaves
+    // `launchPreparedSession`'s own `failPreparedSession` call behind it, so
+    // the resumed handoff's supersession onto this dead Session must be
+    // undone the same way, or the candidate is lost to future resumption.
+    if (resumableStaleClaim) {
+      restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
     }
     throw error;
   }

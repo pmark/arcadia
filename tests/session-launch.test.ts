@@ -31,6 +31,7 @@ import {
 import { getRepositoryLease, prepareSession, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
+import { getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -836,6 +837,341 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     );
     expect(admission?.status).toBe("fenced");
     expect(admission?.fencedReason).toBe("production_off");
+  });
+
+  it("resumes a dead-but-claimed worktree from a proven-terminal exit instead of refusing forever (Issue #695)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    expect(first.reused).toBe(false);
+    const worktreePath = first.session.worktree_path;
+    const branch = first.session.branch;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    // The dead Session left real, uncommitted-turned-committed work behind --
+    // this is exactly what must not be discarded.
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    // The provider process died: its tmux pane is gone, but nothing released
+    // the worktree/Action claim.
+    tmux.live.delete(tmuxSessionName);
+
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+    expect(reconciled.receipt.lease_handoff).toBe(1);
+
+    // Before the fix, this second tick attempt refused with
+    // "already claimed by a live worktree" forever, because nothing released
+    // the stale claim -- it must instead resume the same worktree/branch.
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        // A distinct clock tick, exactly like an ordinary next tick -- this
+        // must not matter to which worktree gets resumed.
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.id).not.toBe(first.session.id);
+    expect(second.session.worktree_path).toBe(worktreePath);
+    expect(second.session.branch).toBe(branch);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+    expect(tmux.launches[1].cwd).toBe(worktreePath);
+
+    // The resumed worktree's prior commit must survive untouched.
+    expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
+
+    const supersededReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
+    expect(supersededReceipt?.superseded_by_session_id).toBe(second.session.id);
+
+    // The resumed Session's own recorded `base_revision` must stay the
+    // lineage's true starting point (the original base branch HEAD), not the
+    // worktree's HEAD at resume time -- otherwise a resumed Session that
+    // itself makes no further commits before dying again would be
+    // misclassified as carrying no changes at all, losing the first Session's
+    // real committed work (CodeRabbit, PR #696).
+    expect(second.session.base_revision).toBe(first.session.base_revision);
+    expect(second.session.base_revision).not.toBe(git(worktreePath, ["log", "-1", "--format=%H"]).trim());
+
+    tmux.live.delete(second.session.tmux_session_name);
+    const secondReconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: second.session.id, requestId: "reconcile-2", repoRoot: fixture.repo })
+    );
+    expect(secondReconciled.receipt.outcome).toBe("incomplete_resumable");
+    expect(secondReconciled.receipt.lease_handoff).toBe(1);
+  });
+
+  it("retries a resumed-but-never-launched prepared Session through resumeOrReturn without a false base-revision failure", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(first.session.tmux_session_name);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+    expect(second.session.worktree_path).toBe(worktreePath);
+    expect(second.session.status).toBe("running");
+
+    // Simulate this process dying between `prepareSession` committing the
+    // resumed Session's row and `launchPreparedSession` ever running it --
+    // the row is still "prepared" in substance, and tmux no longer shows it.
+    // Before persisting `launch_revision`, a retry here reached
+    // `resumeOrReturn` -> `launchPreparedSession`, which compared the
+    // worktree's HEAD (carrying the first Session's real commit) against
+    // `base_revision` (the original, older lineage baseline) and refused
+    // with a false "base revision changed" -- while the original handoff was
+    // already irreversibly superseded onto this exact Session, so nothing
+    // could ever resume this candidate again (CodeRabbit, PR #696).
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET status = 'prepared' WHERE id = ?").run(second.session.id);
+    });
+    tmux.live.delete(second.session.tmux_session_name);
+
+    const retryPreview = withReadOnlyDatabase(fixture.workspace, (db) =>
+      buildLaunchPreview({ db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "policy-req-3", profiles, adapters, tmux })
+    );
+    const third = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-3",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 2000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-3-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+    expect(retryPreview.actionId).toBe("define-contract");
+    expect(third.reused).toBe(true);
+    expect(third.session.id).toBe(second.session.id);
+    expect(third.session.status).toBe("running");
+    expect(third.session.worktree_path).toBe(worktreePath);
+    // Two real spawns so far (the resumed Session's original launch, then this
+    // retry's actual re-spawn since its tmux pane was gone) plus the very
+    // first, now-dead attempt: three total.
+    expect(tmux.launches).toHaveLength(3);
+    expect(tmux.launches[2].cwd).toBe(worktreePath);
+    expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
+  });
+
+  it("releases a stale claim rather than resuming it when the claimed worktree is no longer valid Git state", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+
+    // The worktree directory survives (so `existsSync` alone cannot tell), but
+    // its Git metadata is gone -- e.g. its `.git` worktree link was corrupted
+    // or the main checkout's `.git/worktrees` bookkeeping was lost. It must not
+    // be resumed, and its stale claim must not be left stuck either.
+    rmSync(path.join(worktreePath, ".git"), { force: true });
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.worktree_path).not.toBe(worktreePath);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+  });
+
+  it("releases a stale claim rather than looping forever when the claimed worktree is gone outright", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+
+    // The worktree directory is removed entirely, not merely corrupted. This
+    // must not skip the stale-claim release the same way the corrupted-Git
+    // case does not: `existsSync` being false is not itself a signal that
+    // nothing needs releasing.
+    rmSync(worktreePath, { recursive: true, force: true });
+
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.worktree_path).not.toBe(worktreePath);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+  });
+
+  it("restores a resumed handoff for a later retry when the resume attempt itself fails before ever running", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const branch = first.session.branch;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+
+    // The resume attempt itself dies before ever reaching a real process --
+    // this must not permanently lose the candidate: a resumed handoff that
+    // `prepareSession` marked superseded onto this now-failed Session has to
+    // become resumable again for the next tick.
+    const failingTmux = new FakeTmux();
+    failingTmux.failLaunch = true;
+    let caught: unknown;
+    try {
+      withDatabase(fixture.workspace, (db) =>
+        launchGuardedHostSession({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "policy-req-2",
+          standingPolicy: true,
+          profiles,
+          adapters,
+          now: new Date(fixture.now.getTime() + 1000),
+          tmux: failingTmux,
+          agentWorktreeRoot: path.join(fixture.root, "policy-req-2-unused"),
+          capacityObservation: fixtureCapacityObservation()
+        })
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ArcadiaError);
+
+    const restoredReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
+    expect(restoredReceipt?.superseded_by_session_id).toBeNull();
+    expect(restoredReceipt?.outcome).toBe("incomplete_resumable");
+
+    // A third, working attempt must still resume the same original worktree.
+    const workingTmux = new FakeTmux();
+    const third = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-3",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 2000),
+        tmux: workingTmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-3-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+    expect(third.session.worktree_path).toBe(worktreePath);
+    expect(third.session.branch).toBe(branch);
+    expect(third.session.status).toBe("running");
+    expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
   });
 });
 

@@ -85,6 +85,8 @@ export interface AgentSession {
   provider_mapping_id: string | null;
   provider_binding_id: string | null;
   base_revision: string;
+  /** The worktree HEAD to verify immediately before launch; falls back to `base_revision` when null. See `ensureAgentSessionLaunchRevisionColumn`. */
+  launch_revision: string | null;
   branch: string;
   worktree_path: string;
   provider_session_id: string;
@@ -436,6 +438,8 @@ export function prepareSession(input: {
   model: string;
   effort: string | null;
   baseRevision: string;
+  /** The worktree HEAD to verify immediately before launch; defaults to `baseRevision` when omitted (an ordinary fresh worktree, where the two are identical). */
+  launchRevision?: string;
   branch: string;
   worktreePath: string;
   now: Date;
@@ -547,7 +551,8 @@ export function prepareSession(input: {
       authorizing_decisions_json: JSON.stringify(decisions), execution_profile_json: invocation.execution_profile_json,
       provider_profile: invocation.agent_profile, provider: selected.provider, model: selected.model, effort: input.effort,
       provider_mapping_id: invocation.provider_mapping_id, provider_binding_id: invocation.provider_binding_id,
-      base_revision: input.baseRevision, branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
+      base_revision: input.baseRevision, launch_revision: input.launchRevision ?? input.baseRevision,
+      branch: input.branch, worktree_path: canonicalPath(input.worktreePath),
       provider_session_id: providerSessionId, display_name: displayName, terminal_transport: "tmux", tmux_session_name: tmuxName,
       host: input.host ?? hostname(),
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
@@ -638,6 +643,20 @@ export function launchPreparedSession(
    */
   workspace?: string
 ): AgentSession {
+  // `launch_revision` (falling back to `base_revision` for a row from before
+  // that column existed) is the worktree HEAD this exact launch expects --
+  // distinct from `base_revision` itself, which `reconcileSessionExit` and
+  // candidate preservation read as the candidate's true lineage starting
+  // point. A resumed stale claim (Issue #695) inherits its predecessor's
+  // `base_revision` unchanged, since the worktree already carries that
+  // predecessor's real commits; `launch_revision` is what this particular
+  // Session's worktree actually looked like when it was prepared, checked
+  // here to confirm nothing touched it since (CodeRabbit, PR #696). Reading
+  // it from the persisted row rather than a caller-supplied argument means a
+  // retry that finds this exact Session still sitting in `prepared` status --
+  // this process died between `prepareSession` committing and this function
+  // ever running the first time -- still gets the right expectation.
+  const expected = session.launch_revision ?? session.base_revision;
   let observedRevision: string;
   try {
     observedRevision = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -652,11 +671,11 @@ export function launchPreparedSession(
       cause: error instanceof Error ? error.message : String(error)
     });
   }
-  if (observedRevision !== session.base_revision) {
+  if (observedRevision !== expected) {
     failPreparedSession(db, session.id);
     throw validationError("The prepared Session base revision changed before launch.", {
       sessionId: session.id,
-      expected: session.base_revision,
+      expected,
       observed: observedRevision
     });
   }
