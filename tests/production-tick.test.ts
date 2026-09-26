@@ -638,6 +638,49 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
+  it("never approves a packet whose Plan is outside the grant, even when the Action key and packet_approval are in scope", () => {
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const outOfPlanScope = normalizeProductionScope({
+      ...productionScope,
+      plans: ["test-project/some-other-plan"],
+      providers: ["codex-cli"],
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"]
+    });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-out-of-plan",
+        scope: outOfPlanScope,
+        scopeFingerprint: fingerprintProductionScope(outOfPlanScope),
+        grantedBy: "operator"
+      })
+    );
+    for (const offsetMs of [0, 30_000, 60_000]) {
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles: codexProfiles,
+          adapters,
+          tmux,
+          now: new Date(fixture.now.getTime() + offsetMs),
+          log: vi.fn(),
+          capacityObservation: codexCapacity,
+          agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    }
+    const approvals = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT status FROM review_items WHERE resolved_intent = 'CodexBuildPacketApproval'").all() as Array<{ status: string }>
+    );
+    expect(approvals.length).toBeGreaterThan(0);
+    expect(approvals.every((row) => row.status !== "approved")).toBe(true);
+    expect(tmux.launches).toHaveLength(0);
+  });
+
   it("never implies packet_approval: the default grant omits it, and naming it is the only way in", () => {
     expect(MECHANICAL_TRANSITIONS).not.toContain("packet_approval");
     const named = normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["packet_approval"] });

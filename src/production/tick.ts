@@ -335,36 +335,54 @@ function attemptDelegatedPacketApproval(
   input: {
     actionKey: string;
     projectSlug: string;
+    planSlug: string | null;
     decisionId: string | null;
     prerequisites: string[] | null;
     now: Date;
     log: (message: string) => void;
   }
 ): string | null {
-  if (!input.decisionId) return null;
+  const decisionId = input.decisionId;
+  if (!decisionId || !input.planSlug) return null;
   if (!input.prerequisites || input.prerequisites.length !== 1 || !input.prerequisites[0].startsWith("build packet approval pending")) {
     return null;
   }
-  const read = readProductionPolicySafely(db);
-  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
-  const { policy } = read;
-  const scope = policy.scope!;
-  if (!scope.mechanicalTransitions.includes("packet_approval") || !scope.actions.includes(input.actionKey)) return null;
-  const item = getReviewItem(db, input.decisionId);
-  if (!item || item.resolved_intent !== "CodexBuildPacketApproval" || (item.status !== "open" && item.status !== "deferred")) return null;
-  updateReviewItemStatus(db, item.id, {
-    status: "approved",
-    decisionNote: `Approved by the standing production policy (revision ${policy.revision}, epoch ${policy.epoch}) under its packet_approval delegation (Decision 0072).`
+  const planKey = `${input.projectSlug}/${input.planSlug}`;
+  // The policy check, the approval and its audit event are one write
+  // transaction: an Off committed in between must not be followed by an
+  // approval it already revoked, and the approval must never exist without
+  // the event that records under which grant it happened.
+  const approved = writeTransaction(db, () => {
+    const read = readProductionPolicySafely(db);
+    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
+    const { policy } = read;
+    const scope = policy.scope!;
+    if (
+      !scope.mechanicalTransitions.includes("packet_approval") ||
+      !scope.projects.includes(input.projectSlug) ||
+      !scope.plans.includes(planKey) ||
+      !scope.actions.includes(input.actionKey)
+    ) {
+      return null;
+    }
+    const item = getReviewItem(db, decisionId);
+    if (!item || item.resolved_intent !== "CodexBuildPacketApproval" || (item.status !== "open" && item.status !== "deferred")) return null;
+    updateReviewItemStatus(db, item.id, {
+      status: "approved",
+      decisionNote: `Approved by the standing production policy (revision ${policy.revision}, epoch ${policy.epoch}) under its packet_approval delegation (Decision 0072).`
+    });
+    const project = getProjectBySlug(db, input.projectSlug);
+    recordEvent(db, {
+      eventType: "managed_production.packet_approved",
+      projectId: project?.id ?? null,
+      payload: { actionKey: input.actionKey, planKey, decisionId: item.id, policyRevision: policy.revision, epoch: policy.epoch },
+      at: input.now.toISOString()
+    });
+    return { id: item.id, revision: policy.revision };
   });
-  const project = getProjectBySlug(db, input.projectSlug);
-  recordEvent(db, {
-    eventType: "managed_production.packet_approved",
-    projectId: project?.id ?? null,
-    payload: { actionKey: input.actionKey, decisionId: item.id, policyRevision: policy.revision, epoch: policy.epoch },
-    at: input.now.toISOString()
-  });
-  input.log(`Approved build packet Decision ${item.id} for ${input.actionKey} under the standing policy's packet_approval delegation (revision ${policy.revision}).`);
-  return item.id;
+  if (!approved) return null;
+  input.log(`Approved build packet Decision ${approved.id} for ${input.actionKey} under the standing policy's packet_approval delegation (revision ${approved.revision}).`);
+  return approved.id;
 }
 
 /**
@@ -1027,6 +1045,7 @@ function attemptProjectLaunch(
         const approved = attemptDelegatedPacketApproval(db, {
           actionKey,
           projectSlug: input.projectSlug,
+          planSlug: transition.dispatch.context?.activePlan ?? null,
           decisionId: typeof error.details?.packetLifecycleDecisionId === "string" ? error.details.packetLifecycleDecisionId : null,
           prerequisites,
           now: input.now,
