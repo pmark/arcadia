@@ -278,12 +278,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // can be claimed normally. The worktree reservation itself (and the
       // worktree on disk) is left alone, so `tidy` still will not retire it
       // out from under an operator's manual inspection.
-      const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now);
+      const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId, now);
       if (held?.claim_generation) {
         releaseActionClaim(input.db, {
           repositoryPath: repoRoot,
           project: preview.projectSlug,
-          actionId: preview.actionId!,
+          actionId: preview.actionId,
           generation: held.claim_generation
         });
       }
