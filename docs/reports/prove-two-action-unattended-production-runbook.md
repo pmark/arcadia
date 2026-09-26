@@ -331,12 +331,22 @@ arcadia production preview \
   --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
+  --integration-grant-decision 0058 \
+  --integration-grant-expires-at "$GRANT_EXPIRES_AT" \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
   --json
 ```
 
-Read the preview. `scope.projects` must name only `two-action-rehearsal`.
-Then activate with the exact revision the preview returned:
+Set `GRANT_EXPIRES_AT="$(date -u -v+12H +%Y-%m-%dT%H:%M:%SZ)"` once, before
+the preview, and reuse the same value in `activate`. The bounded
+candidate-integration grant (Decision 0058, approved) is what lets the worker
+fast-forward Action A's finished candidate into the fixture's `main`.
+Without it A is preserved but never integrated, so `main`'s pointer never
+advances and Step 5 cannot launch Action B without a manual merge.
+
+Read the preview. `scope.projects` must name only `two-action-rehearsal`, and
+`scope.integrationGrant.decisionRef` must be `0058`. Then activate with the
+exact revision the preview returned:
 
 ```sh
 arcadia production activate \
@@ -345,12 +355,21 @@ arcadia production activate \
   --provider opencode-cli \
   --concurrency 1 \
   --transitions validation,acceptance,pointer \
+  --integration-grant-decision 0058 \
+  --integration-grant-expires-at "$GRANT_EXPIRES_AT" \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
-  --request-id prove-two-action-unattended-production-<yyyy-mm-dd> \
+  --request-id "prove-two-action-unattended-production-$(date -u +%Y%m%dT%H%M%SZ)" \
   --granted-by "P. Mark Anderson" \
   --expect-revision <n from preview> \
   --json
 ```
+
+Use a request id that has never been used, which is why it is timestamped to
+the second. `activate` treats a reused request id as a replay: it returns
+`ok: true`, changes nothing, and says so only in `warnings` (Issue #704). A
+date-only id collides with any earlier attempt on the same day. Confirm
+`data.result.replayed` is `false` and `data.result.policy.desiredState` is
+`active` before you continue.
 
 This grant is the "bounded rehearsal authority" the plan's second criterion
 names — activating it is the one non-CLI-boilerplate decision only you can
@@ -410,34 +429,39 @@ second execution — the existing-lease guard at `src/sessions/launch.ts:132-137
 throws "The repository already has a prepared or running Session for a
 different Action." Record the exact refusal.
 
-Then terminate A1 mid-work to simulate a crash or lost connection — **not** a
-clean `arcadia advance` exit:
+Then terminate A1 mid-work to simulate a crash or lost connection, **not** a
+clean `arcadia advance` exit. Timing matters. A Session killed before it has
+changed anything reconciles as `missing_evidence`: there is nothing to resume,
+so the next launch correctly takes a fresh worktree, and the "identical
+worktree" check below would fail by design. Kill it after A1 has written
+`MARKER.md` into its worktree and before it commits and settles:
 
 ```sh
 tmux kill-session -t <tmux_session_name>
 ```
 
-Now run the fixed launcher a second time. Per
-`refuse-to-orphan-an-uncommitted-candidate` (done) and
-`reconcile-session-exits-to-next-move` (done), the host should recognize
-`write-marker-a` still owns an existing candidate whose prior Session is now
-proven terminal, and resume that exact worktree/branch — not create a second
-one:
+Do **not** run the launcher again to resume. Since #696 the worker reconciles
+the dead Session into an `incomplete_resumable` handoff on its next tick and
+resumes that exact worktree/branch itself, as Session A2, with no operator
+command. A manual `go` launch at this point races the worker. That is a manual
+relay the proof rules out, and a lost race also counts against this Action's
+repair budget. Watch instead:
 
 ```sh
-cd ~/tmp/arcadia-two-action-rehearsal
-arcadia-go-broker-opencode
+arcadia session show --json    # expect a new Session id for write-marker-a
 ```
 
-Record the returned worktree path and branch, and confirm it is **identical**
-to the one Session A1 used, and that any partial edit A1 made (if it got that
-far before you killed it) is still present. Start Session A2 the same way
-Session A1 was started, and let it finish `write-marker-a`.
+Record the resumed Session's worktree path and branch. Confirm they are
+**identical** to Session A1's, and that A1's partial `MARKER.md` is still
+present. Let A2 finish `write-marker-a`. The generated `next-steps.md` from
+`prepare-two-action-rehearsal-*.sh` scripts this whole step: it captures A1's
+identity, kills A1 at the right moment, and compares A2 with A1 automatically.
 
 Evidence: _(the concurrent-launch attempt's exact refusal message and the
 timestamp showing it preceded the kill; the kill command and timestamp; the
-`go-broker` JSON showing the resumed — not new — worktree/branch; Session A1's
-native id and Session A2's native id; confirmation A2 saw A1's partial state;
+`session show` JSON showing the resumed — not new — worktree/branch; Session A1's
+native id and Session A2's native id, with evidence that the worker, not an
+operator, launched A2; confirmation A2 saw A1's partial state;
 A2's completion, validation, and preservation result)_
 
 ## Step 5 — confirm Action B launches with no manual relay
