@@ -125,10 +125,14 @@ cause was diagnosed from real state, not assumed:
   `arcadia review approve`. So criterion 2 ("B launches without … launch
   confirmation in between") **cannot pass on current code**. Decision 0072
   (open) asks whether the grant may delegate packet approval inside its scope.
-  The v3 attempt stopped on exactly this for Action A. The refusal is visible
-  only in `.arcadia/worker.log`, never in `production status`.
-- Re-running `arcadia work plan` on an approved packet silently revokes its
-  approval (Issue #709, open).
+  The v3 attempt stopped on exactly this for Action A. At the time the
+  refusal showed only in `.arcadia/worker.log`, misreported as a stale
+  packet. It is now a `build_packet_approval_pending` escalation in
+  `production status`, naming the exact approve command (#712, PR #713,
+  merged). The opt-in `packet_approval` transition that implements the
+  recommended answer is drafted in PR #714, which waits on Decision 0072.
+- Re-running `arcadia work plan` on an approved packet silently revoked its
+  approval (#709, PR #711, merged).
 - Fixed and merged during this pass: a discarded different-Action candidate
   blocked the automated launch path forever (#697, PR #705); an exhausted
   repair budget was invisible, with no reset (#703, PR #708); an activation
