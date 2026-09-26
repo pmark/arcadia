@@ -31,6 +31,7 @@ import {
 import { getRepositoryLease, prepareSession, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
+import { getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -836,6 +837,70 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     );
     expect(admission?.status).toBe("fenced");
     expect(admission?.fencedReason).toBe("production_off");
+  });
+
+  it("resumes a dead-but-claimed worktree from a proven-terminal exit instead of refusing forever (Issue #695)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    expect(first.reused).toBe(false);
+    const worktreePath = first.session.worktree_path;
+    const branch = first.session.branch;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    // The dead Session left real, uncommitted-turned-committed work behind --
+    // this is exactly what must not be discarded.
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    // The provider process died: its tmux pane is gone, but nothing released
+    // the worktree/Action claim.
+    tmux.live.delete(tmuxSessionName);
+
+    const reconciled = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+    expect(reconciled.receipt.outcome).toBe("incomplete_resumable");
+    expect(reconciled.receipt.lease_handoff).toBe(1);
+
+    // Before the fix, this second tick attempt refused with
+    // "already claimed by a live worktree" forever, because nothing released
+    // the stale claim -- it must instead resume the same worktree/branch.
+    const second = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-2",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        // A distinct clock tick, exactly like an ordinary next tick -- this
+        // must not matter to which worktree gets resumed.
+        now: new Date(fixture.now.getTime() + 1000),
+        tmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-2-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+
+    expect(second.reused).toBe(false);
+    expect(second.session.id).not.toBe(first.session.id);
+    expect(second.session.worktree_path).toBe(worktreePath);
+    expect(second.session.branch).toBe(branch);
+    expect(second.session.status).toBe("running");
+    expect(tmux.launches).toHaveLength(2);
+    expect(tmux.launches[1].cwd).toBe(worktreePath);
+
+    // The resumed worktree's prior commit must survive untouched.
+    expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
+
+    const supersededReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
+    expect(supersededReceipt?.superseded_by_session_id).toBe(second.session.id);
   });
 });
 
