@@ -2097,14 +2097,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pipeline-independent-actions-while-pr-unmerged
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-ready-set-admission-actions-after-review-2026-09-25
+    source: Agent Ask wire-concurrency-proofs-behind-soak-and-review-limit-2026-09-26
     acceptance_criteria:
       - "Plan Actions may declare touches: <paths>; an Action whose touches: is absent, empty, or not a list of paths (including a single scalar string) is treated as touching the whole repository and never pipelines."
       - "Admission may start a new Action in a repository with an unmerged candidate only when the ready Action's declared touches: do not overlap the unmerged candidate's actual changed paths, and the repository's unmerged-candidate count is below the operator's configured review limit; otherwise it records scope_overlap or review_backlog as the wait reason."
       - "Overlap is rechecked against both candidates' actual changed paths whenever either is pushed or preserved; a new candidate whose actual diff leaves its declared touches:, or an overlap that appears after admission, stops pipelining for that repository and is reported as scope_overlap."
       - Pipelining is available only once admit-ready-set-across-repositories, settle-squash-merged-completion-drafts and sweep-merged-completions-before-dispatch are all built, since the host settler must already be the sole current_action writer and merged completions must settle serially on main before a second unmerged candidate in one repository is safe.
       - "Deterministic tests cover: a non-overlapping Action pipelining while the prior PR is unmerged, an overlapping Action refused with scope_overlap, a repository at its review limit refused with review_backlog, an empty or scalar touches: never pipelining, and an overlap introduced by a later push to the prior candidate being caught; pnpm test and the core, Discord and Dashboard builds pass."
-    depends_on: [admit-ready-set-across-repositories, settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch]
+    depends_on: [admit-ready-set-across-repositories, settle-squash-merged-completion-drafts, sweep-merged-completions-before-dispatch, limit-unmerged-candidates-per-repository]
     decisions: []
     references: ["src/production/tick.ts", "src/ask/settlement.ts", "docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: prove-concurrent-ready-set-admission
@@ -2116,7 +2116,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-concurrent-ready-set-admission
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-ready-set-admission-actions-after-review-2026-09-25
+    source: Agent Ask wire-concurrency-proofs-behind-soak-and-review-limit-2026-09-26
     acceptance_criteria:
       - Provide or reuse two disposable or explicitly approved real Projects/repositories, each with at least one ready Action that does not depend on the other, and a reachable existing production control (CLI or dashboard), before requesting live execution.
       - Under bounded rehearsal authority, with a policy scope activated at maxConcurrentSessions 2 or more through the expiring rehearsal exception defined by enforce-concurrency-gate-at-admission (the only path that lifts the concurrency cap before both proofs are done), one production tick admits and launches Sessions for both independent Actions in their separate repositories with no per-launch operator confirmation in between.
@@ -2125,7 +2125,7 @@ actions:
       - Turn the standing policy Off while both Sessions are in flight; prove no new launch occurs, both in-flight Sessions reconcile visibly, and no duplicate or reactivated Session appears after Off.
       - Record exact revisions, hosts, providers, Action/Session identities, and receipts for both repositories; missing real authorization or input remains one precise review, never fixture-as-live success, and any deferred gap (same-repository pipelining, provider-account slots, review headroom) is named rather than implied proven.
       - "This proof activates only once prove-two-action-unattended-production is status: done and admit-ready-set-across-repositories has shipped; preserve deterministic integration evidence and an exact operator procedure/target in the PR."
-    depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production]
+    depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production, soak-ready-set-admission-with-fixture-provider]
     decisions: []
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/operator-demo-and-release-contract.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/production/policy.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: enforce-concurrency-gate-at-admission
