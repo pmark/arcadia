@@ -699,7 +699,11 @@ authority; it only records evidence the operator already accepted.
 Every applied accepted or rejected settlement creates one durable Discord
 outbox item. The configured Arcadia Discord bot posts a brief effect summary,
 queue position, and resulting next Action, then records the Discord message id.
-Preview, refusal, conflict, and rollback create no ping. Other accepted intents
+A `complete` settlement — arcadia-go finishing an Action — posts a shorter ping
+instead: one line naming the Action just marked done, followed by up to 5
+Actions currently at the front of the Ready lane, read live so the list
+reflects the queue at delivery time rather than at settlement time. Preview,
+refusal, conflict, and rollback create no ping. Other accepted intents
 use the same receipt path and smallest canonical effect:
 
 - `outcome` updates the Project Outcome; `milestone` updates the Project and

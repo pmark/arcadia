@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import { runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskNotificationsCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
@@ -58,6 +59,41 @@ describe("Agent Ask complete", () => {
       preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
     });
     expect(replay.data.receipt).toEqual(applied.data.receipt);
+  });
+
+  it("settles a completion notification naming a short summary and the next scheduled Actions", () => {
+    const { workspace, head } = fixture({ withThird: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-notify", "first", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-notify", disposition: "accepted"
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-notify", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+
+    const notifications = runAgentAskNotificationsCommand({ workspace }).data.notifications;
+    expect(notifications).toHaveLength(1);
+    // Completing "first" leaves "second" (the new pointer) and "third" ready.
+    expect(notifications[0].nextActions).toEqual([
+      { key: "demo/second", title: "Second Action" },
+      { key: "demo/third", title: "Third Action" }
+    ]);
+
+    const message = agentAskSettlementMessage(notifications[0]);
+    expect(message).toContain("Action complete — demo");
+    expect(message).toContain("Marked Action demo/first done with accepted evidence for all 1 criteria.");
+    expect(message).toContain("Next up (2):");
+    expect(message).toContain("1. demo/second — Second Action");
+    expect(message).toContain("2. demo/third — Third Action");
+    // The generic effects dump and single-Next line are gone from this format.
+    expect(message).not.toContain("Agent Ask settled:");
+    expect(message).not.toContain("Queue: no executable Action created");
+
+    // An absent `nextActions` (an older CLI response that predates the field)
+    // must read as "unknown", never as a false "nothing is ready".
+    const { nextActions: _omitted, ...withoutNextActions } = notifications[0];
+    expect(agentAskSettlementMessage(withoutNextActions)).toContain("Next up: queue preview unavailable.");
   });
 
   it("follows the explicit queue order, not document order, when advancing the pointer", () => {
