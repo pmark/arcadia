@@ -519,7 +519,14 @@ export function prepareSession(input: {
     const lease = getRepositoryLease(input.db, path.resolve(input.repoRoot));
     if (lease) throw validationError("The repository already has a prepared or running Session lease.", { sessionId: lease.id });
     const handoff = getResumableLeaseHandoff(input.db, path.resolve(input.repoRoot));
-    if (handoff && handoff.session.action_id !== context.action.id) {
+    // A different Action's candidate blocks only while its worktree still
+    // exists. Once it is discarded exactly as this refusal's remedy says
+    // (remove its worktree and branch) there is nothing left to resume or
+    // protect -- the rule `arcadia go`'s `evaluateExistingCandidate` already
+    // applies. Without it the automated tick refused every other Action in
+    // the repository forever and burned its repair budget (Issue #697). The
+    // discarded handoff is then superseded below, closing its record.
+    if (handoff && handoff.session.action_id !== context.action.id && existsSync(handoff.session.worktree_path)) {
       throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
         sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
       });

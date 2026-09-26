@@ -631,6 +631,51 @@ describe("arcadia go — candidate continuation (Decision 0051)", () => {
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
   });
 
+  it("lets prepareSession (the automated launch path) past a different Action's handoff only once its worktree is discarded, and closes that handoff", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    const branch = launched.data.session!.branch;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "wip"]);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "resume-697", repoRoot: fixture.repo })
+    );
+    // The two-action rehearsal's shape: the handoff belongs to an Action the
+    // Plan has since retired, and the live pointer names a replacement.
+    withDatabase(fixture.workspace, (db) =>
+      db.prepare("UPDATE agent_sessions SET action_id = 'retired-contract' WHERE id = ?").run(sessionId)
+    );
+
+    const dispatch = resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db: undefined }).dispatch;
+    const baseRevision = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    const prepare = (suffix: string) => {
+      const nextWorktree = path.join(fixture.root, suffix);
+      git(fixture.repo, ["worktree", "add", "-b", `claude/${suffix}`, nextWorktree, "HEAD"]);
+      return withDatabase(fixture.workspace, (db) => prepareSession({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, dispatch,
+        agent: "claude", model: fixture.model, effort: "high", baseRevision,
+        branch: `claude/${suffix}`, worktreePath: nextWorktree, now: new Date(), tmux: new FakeTmux()
+      }));
+    };
+
+    // Still on disk: it may hold real work, so it keeps blocking.
+    expect(() => prepare("while-candidate-exists")).toThrow(/different Action/);
+
+    git(fixture.repo, ["worktree", "remove", "--force", worktreePath]);
+    git(fixture.repo, ["branch", "-D", branch]);
+
+    const prepared = prepare("after-discard");
+    expect(prepared.action_id).toBe("define-contract");
+    const receipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, sessionId));
+    expect(receipt?.superseded_by_session_id).toBe(prepared.id);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getResumableLeaseHandoff(db, fixture.repo))).toBeNull();
+  });
+
   it("refuses a new worktree while a Session is still live", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
