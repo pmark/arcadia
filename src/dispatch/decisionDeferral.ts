@@ -70,6 +70,15 @@ export interface DecisionReversalConsequence {
    * the pointer at all (`pointerMoved: false` and this also `false`).
    */
   pointerLeftInPlace: boolean;
+  /**
+   * The Project and Plan pointer exactly as observed at the moment this
+   * reversal chose to leave them alone (`pointerLeftInPlace: true`), null
+   * otherwise. A retry after a failed commit checks the current pointers
+   * against these instead of skipping the check entirely, so further drift
+   * in between cannot be swept into the retried commit unnoticed.
+   */
+  pointerLeftAtProject: string | null;
+  pointerLeftAtPlan: string | null;
   /** The deferral receipt this reversal undoes. */
   reversesReceiptId: string;
 }
@@ -452,12 +461,16 @@ export function reverseDecisionDeferral(
     // pointer at all.
     let restorePointer = false;
     let currentPointer: string | null = null;
+    let observedProjectPointer: string | null = null;
+    let observedPlanPointer: string | null = null;
     if (deferral.consequence.pointerMoved) {
       // Both documents hold the pointer. Comparing only the effective one would
       // let a newer Plan pointer be overwritten by a stale Project pointer.
       const projectPointer = project.currentAction;
       const planPointer = plan.currentAction;
       currentPointer = projectPointer ?? planPointer;
+      observedProjectPointer = projectPointer;
+      observedPlanPointer = planPointer;
       restorePointer = projectPointer === deferral.consequence.pointerAfter && planPointer === deferral.consequence.pointerAfter;
       if (!restorePointer && !input.keepPointer) {
         throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
@@ -491,6 +504,7 @@ export function reverseDecisionDeferral(
     }
 
     const pointerWillMove = deferral.consequence.pointerMoved && restorePointer;
+    const pointerLeftInPlace = deferral.consequence.pointerMoved && !pointerWillMove;
     const actionKey = `${project.slug}/${action.id}`;
     const consequence: DecisionReversalConsequence = {
       kind: "reverse",
@@ -500,9 +514,11 @@ export function reverseDecisionDeferral(
       actionStatusBefore: deferral.consequence.actionStatusAfter,
       actionStatusAfter: deferral.consequence.actionStatusBefore,
       pointerBefore: deferral.consequence.pointerAfter,
-      pointerAfter: deferral.consequence.pointerMoved && !pointerWillMove ? currentPointer : deferral.consequence.pointerBefore,
+      pointerAfter: pointerLeftInPlace ? currentPointer : deferral.consequence.pointerBefore,
       pointerMoved: pointerWillMove,
-      pointerLeftInPlace: deferral.consequence.pointerMoved && !pointerWillMove,
+      pointerLeftInPlace,
+      pointerLeftAtProject: pointerLeftInPlace ? observedProjectPointer : null,
+      pointerLeftAtPlan: pointerLeftInPlace ? observedPlanPointer : null,
       reversesReceiptId: deferral.id
     };
     if (input.dryRun) {
@@ -645,6 +661,17 @@ function reversalReflectedOnDisk(
     if (
       project.currentAction !== receipt.consequence.pointerAfter ||
       plan.currentAction !== receipt.consequence.pointerAfter
+    ) {
+      return false;
+    }
+  } else if (receipt.consequence.pointerLeftInPlace) {
+    // The pointer was deliberately left untouched, but the receipt still
+    // pins the exact value observed at write time, so further drift before a
+    // retry is caught here instead of being silently swept into the retried
+    // commit alongside the status change.
+    if (
+      project.currentAction !== receipt.consequence.pointerLeftAtProject ||
+      plan.currentAction !== receipt.consequence.pointerLeftAtPlan
     ) {
       return false;
     }

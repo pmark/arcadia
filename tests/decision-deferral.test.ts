@@ -796,4 +796,55 @@ describe("reverse an applied Decision deferral", () => {
       runDecisionReverseCommand({ workspace, project: "demo", id: decisionId, requestId: "reverse-commit-fail" })
     ).toThrow(/changed after the failed commit/i);
   });
+
+  it("refuses to replay a failed --keep-pointer reversal after the left-in-place pointer drifted further", () => {
+    const { workspace, repo, decisionId } = fixture();
+    runDecisionApproveCommand({ workspace, project: "demo", id: decisionId, answer: "Defer until later" });
+    // Real dispatch legitimately advanced the pointer past the deferral.
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    writeFileSync(
+      path.join(repo, "PROJECT.md"),
+      projectFile(repo).replace(/^current_action: after$/m, "current_action: done-first"),
+      "utf8"
+    );
+    execFileSync("git", ["add", "-A"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Advance the pointer past the deferral"], { cwd: repo });
+
+    execFileSync("git", ["config", "--unset", "user.email"], { cwd: repo });
+    execFileSync("git", ["config", "--unset", "user.name"], { cwd: repo });
+    vi.stubEnv("GIT_CONFIG_GLOBAL", devNull);
+    vi.stubEnv("GIT_CONFIG_SYSTEM", devNull);
+    vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+    vi.stubEnv("GIT_AUTHOR_NAME", "");
+    vi.stubEnv("GIT_AUTHOR_EMAIL", "");
+    vi.stubEnv("GIT_COMMITTER_NAME", "");
+    vi.stubEnv("GIT_COMMITTER_EMAIL", "");
+
+    expect(() =>
+      runDecisionReverseCommand({
+        workspace, project: "demo", id: decisionId, keepPointer: true, requestId: "reverse-keep-pointer-fail"
+      })
+    ).toThrow(/could not be committed/);
+
+    // Recover Git, but let the left-in-place Plan pointer drift further before retrying —
+    // this must not be silently swept into the retried commit.
+    vi.unstubAllEnvs();
+    execFileSync("git", ["config", "user.email", "deferral-test@example.invalid"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "Deferral Test"], { cwd: repo });
+    writeFileSync(
+      path.join(repo, "docs/plans/defer-plan.md"),
+      planFile(repo).replace(/^current_action: done-first$/m, "current_action: after"),
+      "utf8"
+    );
+
+    expect(() =>
+      runDecisionReverseCommand({
+        workspace, project: "demo", id: decisionId, keepPointer: true, requestId: "reverse-keep-pointer-fail"
+      })
+    ).toThrow(/changed after the failed commit/i);
+  });
 });
