@@ -2127,7 +2127,7 @@ actions:
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/operator-demo-and-release-contract.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/production/policy.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: enforce-concurrency-gate-at-admission
     title: Cap production concurrency at one Session on every admission until both concurrency proofs are done, with an expiring operator-granted rehearsal exception as the only way around it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Cap production concurrency at one Session on every admission until both concurrency proofs are done, with an expiring operator-granted rehearsal exception as the only way around it.
@@ -2338,7 +2338,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: enforce-concurrency-gate-at-admission
+current_action: rewire-dependents-on-split
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
