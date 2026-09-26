@@ -89,6 +89,11 @@ describe("Agent Ask complete", () => {
     // The generic effects dump and single-Next line are gone from this format.
     expect(message).not.toContain("Agent Ask settled:");
     expect(message).not.toContain("Queue: no executable Action created");
+
+    // An absent `nextActions` (an older CLI response that predates the field)
+    // must read as "unknown", never as a false "nothing is ready".
+    const { nextActions: _omitted, ...withoutNextActions } = notifications[0];
+    expect(agentAskSettlementMessage(withoutNextActions)).toContain("Next up: queue preview unavailable.");
   });
 
   it("follows the explicit queue order, not document order, when advancing the pointer", () => {

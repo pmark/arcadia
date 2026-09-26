@@ -393,13 +393,19 @@ export function agentAskSettlementMessage(notification: AgentAskNotificationItem
 function agentAskCompletionMessage(notification: AgentAskNotificationItem): string {
   const recovery = notification.recovery;
   const summary = notification.effects[0] ?? notification.desiredResult ?? "Action completed.";
-  const upcoming = notification.nextActions ?? [];
+  // `undefined` (an older CLI response that predates this field) is not the
+  // same claim as `[]` (the queue was read and nothing is ready) — the first
+  // says "unknown", the second says "empty", and collapsing them would report
+  // a false "nothing ready" whenever the data just isn't there yet.
+  const upcoming = notification.nextActions;
   return [
     `Action complete — ${notification.projectSlug}`,
     summary,
-    upcoming.length > 0
-      ? [`Next up (${upcoming.length}):`, ...upcoming.map((action, index) => `${index + 1}. ${action.key}${action.title ? ` — ${action.title}` : ""}`)].join("\n")
-      : "Next up: nothing else is ready in the queue.",
+    upcoming === undefined
+      ? "Next up: queue preview unavailable."
+      : upcoming.length > 0
+        ? [`Next up (${upcoming.length}):`, ...upcoming.map((action, index) => `${index + 1}. ${action.key}${action.title ? ` — ${action.title}` : ""}`)].join("\n")
+        : "Next up: nothing else is ready in the queue.",
     ...(recovery
       ? [
           `Recovery needed: ${recovery.reason}`,
