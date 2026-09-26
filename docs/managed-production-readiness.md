@@ -90,6 +90,24 @@ this fix used `intent: plan` and its preview showed it would reflow the
 Lane B's earlier promotion to the top of the queue; that preview was caught
 and discarded (`applied: false`) before anything was written.
 
+**Update at 2026-09-26: B2 is now behind the proof, and the concurrency plan
+is complete.** The adversarial review
+(`docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md`, PR #655)
+found two problems:
+- The gate held back concurrency but not B2's settlement/pointer change, which
+  is the mechanism the sequential proof validates.
+- B2's single pointer writer, Decision 0070's host settler, is itself held
+  behind the proof.
+
+Settlements `e83cc3b9`, `ad1e05be`, `06b9428f` and `af97f223` made these
+changes:
+- moved the gate into its own ready-now Action;
+- made B2 depend on the proof and the host settler;
+- added the Actions for every remaining gap in the design.
+
+§5 "Build map" of `docs/proposals/portfolio-parallel-execution.md` is now the
+plan; see "Concurrency" below.
+
 ---
 
 ## Executive summary
@@ -97,13 +115,13 @@ and discarded (`applied: false`) before anything was written.
 **Two lanes now, not one.** Lane A earns the *unattended* claim: **0 blocking
 code Actions left at all** — the ungated governance fix landed too — so all
 that remains is 1 operator step, then 1 proof run. Lane B earns the
-*concurrent* claim: **building** it needs no proof — 2 code Actions, ready now
-or one dependency away, and now the actual `current_action` the pointer sits
-on — but **turning it on** needs two proofs, Lane A's plus a
-concurrency-specific one added 2026-09-25 after checking that Lane A's proof
-does not actually exercise concurrent admission. A third Action pipelines
-same-repository work but stays behind Lane A's proof too, same as the
-concurrency proof.
+*concurrent* claim. Eight of its Actions are ready now and need no proof,
+including `current_action` (`resolve-cross-plan-dependency-ids`) and the
+concurrency gate. Ready-set admission itself (B2) waits on Lane A's proof,
+because it retires the pointer that proof validates. **Turning concurrency
+on** waits on a fixture soak and two proofs: Lane A's, and a
+concurrency-specific one. The full sequence is §5 "Build map" of
+`docs/proposals/portfolio-parallel-execution.md`.
 
 **Lane A: 0 blocking code Actions left, period.** It was 7 code Actions four
 days ago. All four landed, the last one (the ungated governance fix) since the
@@ -228,20 +246,27 @@ proof run passes through them.
 
 ## The critical path, in order
 
-**Lane B (concurrent) now dispatches first**, because it was promoted to the
-top of the queue on 2026-09-25 and carries no dependency on the proof:
+**Lane B (concurrent) dispatches first.** Its ready Actions sit at the top of
+the queue, and eight of them can be built in parallel now:
 
-B1. `resolve-cross-plan-dependency-ids` ← **top of queue, ready now**
-B2. `admit-ready-set-across-repositories` — depends on B1; builds the
-    mechanism, but its own acceptance criteria refuse to let
-    `maxConcurrentSessions` exceed 1 until *both* B4 and entry 6 below are done
-B3. `pipeline-independent-actions-while-pr-unmerged` — depends on B2 *and*
-    Lane A's proof (through the Decision-0070 held Actions), so it cannot
-    dispatch until Lane A reaches entry 6
-B4. `prove-concurrent-ready-set-admission` — depends on B2 and entry 6; the
-    live proof that two independent Actions in two different repositories
-    actually run concurrently without a settlement/projection race, added
-    2026-09-25 because entry 6 alone does not test this (see "Concurrency")
+B1. `resolve-cross-plan-dependency-ids` ← **top of queue, `current_action`**
+B0. Also ready now, with no proof needed:
+    - `enforce-concurrency-gate-at-admission`;
+    - `rewire-dependents-on-split`;
+    - `fix-action-intent-target-ref-amendments` (#654);
+    - `release-admission-on-every-launch-failure`;
+    - `add-fixture-coding-agent-provider`;
+    - `load-test-workspace-db-contention`;
+    - `keep-action-claim-while-candidate-unmerged` (#549).
+
+    `limit-sessions-per-provider-account` follows the gate.
+B2. `admit-ready-set-across-repositories` waits on B1, the gate, the split
+    fix, entry 6 below, and Decision 0070's host settler.
+B3. The fixture soak, then `prove-concurrent-ready-set-admission`. When both
+    are done, the gate lifts and cross-repository concurrency goes live.
+B4. `limit-unmerged-candidates-per-repository`, then
+    `pipeline-independent-actions-while-pr-unmerged`: single-repository
+    speed.
 
 **Lane A (unattended) has no code Actions left.** `current_action` has moved
 past all of them, onto B1:
@@ -260,7 +285,7 @@ Then, for continuous production rather than the claim itself:
 `prove-multi-provider-production-recovery`, then
 `run-managed-production-live-soak` (operator-granted scope).
 
-B1 and B2 are each an ordinary `claude-sonnet-5` session at high effort.
+Each Lane B code Action is an ordinary `claude-sonnet-5` session: high effort for B1 and B2, medium for the small B0 Actions.
 
 ### Rehearsal hazards to know before entry 5
 
@@ -295,42 +320,36 @@ and incomplete.
 This section used to say concurrency waits on the proof, full stop. Decision
 0071 splits that into two claims:
 
-- **Cross-repository concurrency (Decision 0071, supersedes 0023).** *Building*
-  it does not wait on the proof. `resolve-cross-plan-dependency-ids` and
-  `admit-ready-set-across-repositories` (Lane B1/B2 above) build the
-  mechanism: the production tick already runs independent repositories side
-  by side when `maxConcurrentSessions` is raised
-  (`docs/proposals/portfolio-parallel-execution.md` §2); what was missing was
-  unknown-dependency safety and retiring the settlement-advanced pointer, and
-  that is exactly what B1/B2 build. **Turning it on does wait on the proof.**
-  The operator's sequencing concern — prove the mechanism reliable under the
-  simple, one-session case before multiplying the failure surface, the same
-  principle Decision 0066 already applied to the same-repository case — is
-  now a hard gate in B2's own acceptance criteria (added by
-  `gate-concurrent-admission-behind-sequential-proof-2026-09-25`,
-  `442df33a`): activating a policy scope with `maxConcurrentSessions > 1` must
-  be refused until `prove-two-action-unattended-production` is `status: done`.
-  **That citation alone was checked and found insufficient.**
-  `prove-two-action-unattended-production`'s actual acceptance criteria
-  (`docs/plans/bootstrap-managed-production-to-build-flight-deck.md:271-278`)
-  dispatch two **dependent** Actions sequentially in **one** repository, and
-  its one "concurrent" line proves the opposite property — a second
-  concurrent execution against the same candidate is *refused*. The one
-  Action that sounds like a real concurrency soak,
-  `prove-multi-provider-production-recovery`'s deferred dual-provider soak, is
-  itself deferred until after this same proof, so nothing queued actually
-  exercised two independent Actions launching at once. Two follow-up
-  settlements closed that gap: `widen-concurrency-gate-to-cite-both-proofs-2026-09-25`
-  (`751f90d6`) widened the criterion to require **both**
-  `prove-two-action-unattended-production` **and** a new
-  `prove-concurrent-ready-set-admission` by id, and
-  `add-concurrent-ready-set-admission-proof-2026-09-25-v3` (`bb9b457e`) filed
-  that Action — two independent Actions in two different repositories,
-  launched from one tick, with no settlement/projection race — queued right
-  after the pipelining bundle. So B1/B2 land, review, and merge now, but no
-  live Session ever actually runs concurrently with another until *both*
-  proofs — the sequential one and this new concurrency-specific one — have
-  passed.
+- **Cross-repository concurrency (Decision 0071, supersedes 0023).** The
+  full build plan is now §5 "Build map" of
+  `docs/proposals/portfolio-parallel-execution.md`, completed 2026-09-26 after
+  the adversarial review
+  (`docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md`). Three
+  things changed from the earlier reading of this section:
+  - **B2 no longer merges before the proof.** `admit-ready-set-across-repositories`
+    retires the settlement-advanced pointer, which is exactly the mechanism
+    `prove-two-action-unattended-production` validates. It now depends on that
+    proof and on Decision 0070's host settler, its only permitted pointer
+    writer (`ad1e05be`).
+  - **The gate is its own Action, built now.** `enforce-concurrency-gate-at-admission`
+    caps concurrency at 1 inside `issueAdmission` on every admission until
+    *both* `prove-two-action-unattended-production` and
+    `prove-concurrent-ready-set-admission` are done. Today nothing stops
+    `production activate --concurrency N`.
+  - **Nine more Actions fill the gaps** (`06b9428f`, `af97f223`):
+    - ready now: #654, full admission rollback, a zero-token fixture provider,
+      a multi-writer database load test, #549's claim expiry;
+    - behind the gate: per-account provider slots;
+    - behind the proof: bounded stall recovery;
+    - behind B2: the per-repository review limit and a fixture soak. The live
+      concurrency proof now waits on the soak.
+
+  Eight Actions are buildable now, in parallel. Everything that changes
+  lease, stall or pointer behaviour waits on the sequential proof. Outside
+  the bounded, expiring rehearsal exception that the fixture soak and
+  `prove-concurrent-ready-set-admission` themselves run under, no Session
+  runs concurrently with another until the fixture soak and both proofs
+  pass.
 - **Same-repository concurrency (Decision 0066).** Still approved as written:
   same-repository concurrent Sessions wait until
   `prove-two-action-unattended-production` and the #505/#507/#549-class fixes
@@ -367,10 +386,10 @@ This section used to say concurrency waits on the proof, full stop. Decision
 | Open | 25 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
 | **On the critical path, code, Lane A** | **0** — all four landed; `fix-decision-approve-missing-commit` settled and the pointer has moved on |
-| **On the critical path, code, Lane B** | **2** (`resolve-cross-plan-dependency-ids` ready, `current_action`; `admit-ready-set-across-repositories` one dependency away) |
+| **On the critical path, code, Lane B** | **14** (8 ready now in parallel, `resolve-cross-plan-dependency-ids` is `current_action`; 6 wait on the gate, the proof or B2. See the proposal's §5 Build map) |
 | **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal — trigger is met, nothing else blocks it) |
 | **On the critical path, proof, Lane A** | **1** (`prove-two-action-unattended-production`) |
-| **On the critical path, proof, Lane B** | **1** (`prove-concurrent-ready-set-admission`, added 2026-09-25 — Lane A's proof alone does not test concurrency) |
+| **On the critical path, proof, Lane B** | **2** (`soak-ready-set-admission-with-fixture-provider`, simulated at zero token cost; then `prove-concurrent-ready-set-admission`, live) |
 | Gated by both lanes, not yet dispatchable | 1 (`pipeline-independent-actions-while-pr-unmerged`) |
 | Unfinished, off the critical path | 21, all held behind a proof or operator-only |
 
