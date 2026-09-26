@@ -15,6 +15,7 @@ import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
+  canonicalPath,
   failPreparedSession,
   getActiveActionClaim,
   getRepositoryLease,
@@ -278,8 +279,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // can be claimed normally. The worktree reservation itself (and the
       // worktree on disk) is left alone, so `tidy` still will not retire it
       // out from under an operator's manual inspection.
+      //
+      // Only ever release a claim actually held on *this* handoff's worktree.
+      // A concurrent caller (another tick, a manual `arcadia go`) could have
+      // already claimed a different worktree for this same Action between
+      // our read of the handoff above and this read of the live claim; that
+      // claim is live and legitimate, not stale, and must not be torn down
+      // out from under it.
       const held = getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId, now);
-      if (held?.claim_generation) {
+      if (held?.claim_generation && canonicalPath(held.worktree_path) === canonicalPath(staleHandoff.session.worktree_path)) {
         releaseActionClaim(input.db, {
           repositoryPath: repoRoot,
           project: preview.projectSlug,
