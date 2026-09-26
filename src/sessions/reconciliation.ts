@@ -122,6 +122,21 @@ export function supersedeLeaseHandoff(db: Database.Database, receiptId: string, 
     .run(newSessionId, new Date().toISOString(), receiptId);
 }
 
+/**
+ * Undoes `supersedeLeaseHandoff`, fenced on the exact Session it was
+ * superseded by: a launch that resumed a handoff and then itself failed
+ * before ever reaching tmux (a withdrawn admission, a spawn failure) must not
+ * leave the original candidate permanently invisible to
+ * `getResumableLeaseHandoff` -- its worktree and real prior work are still
+ * sitting there, unresumed, and a later tick needs to find it again. The
+ * fence (`AND superseded_by_session_id = ?`) is a no-op if some other,
+ * unrelated Session has since superseded it instead.
+ */
+export function restoreLeaseHandoffIfSupersededBy(db: Database.Database, receiptId: string, failedSessionId: string): void {
+  db.prepare("UPDATE session_exit_receipts SET superseded_by_session_id = NULL, updated_at = ? WHERE id = ? AND superseded_by_session_id = ?")
+    .run(new Date().toISOString(), receiptId, failedSessionId);
+}
+
 interface ExitEvidenceProbe {
   actionDoneInPlan: boolean;
   worktreeExists: boolean;

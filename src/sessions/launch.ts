@@ -30,7 +30,7 @@ import {
   type TmuxAdapter
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
-import { getResumableLeaseHandoff } from "./reconciliation.js";
+import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 
 export interface GuardedLaunchInput {
@@ -258,7 +258,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // claim renewed only to throw past that point with the claim already held
   // and nothing left to release it (CodeRabbit, PR #696).
   const staleHandoff = getResumableLeaseHandoff(input.db, repoRoot);
-  let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; branch: string; headRevision: string } | null = null;
+  let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
   if (
     staleHandoff
     && staleHandoff.session.action_id === preview.actionId
@@ -269,7 +269,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     const headProbe = tryGit(staleHandoff.session.worktree_path, ["rev-parse", "HEAD"]);
     const branchProbe = tryGit(staleHandoff.session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
     if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
-      resumableStaleClaim = { session: staleHandoff.session, branch: expectedBranch, headRevision: headProbe.trim() };
+      resumableStaleClaim = { session: staleHandoff.session, receiptId: staleHandoff.receipt.id, branch: expectedBranch, headRevision: headProbe.trim() };
     } else {
       // Not safely resumable after all. Its stale claim would otherwise make
       // the ordinary new-worktree path below refuse on `actionAlreadyClaimed`
@@ -452,6 +452,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       }
       if (!resumableStaleClaim) {
         releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+      } else {
+        // `prepareSession` already superseded the resumed handoff onto this
+        // now-failed Session. Undo that, or the candidate's real worktree and
+        // branch become permanently invisible to `getResumableLeaseHandoff`
+        // even though nothing ever ran in it (CodeRabbit, PR #696).
+        restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
       }
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
@@ -482,6 +488,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         actionId: preview.actionId,
         generation: claim.generation
       });
+    }
+    // Same as the admission-withdrawal path above: a spawn failure leaves
+    // `launchPreparedSession`'s own `failPreparedSession` call behind it, so
+    // the resumed handoff's supersession onto this dead Session must be
+    // undone the same way, or the candidate is lost to future resumption.
+    if (resumableStaleClaim) {
+      restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
     }
     throw error;
   }

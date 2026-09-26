@@ -950,6 +950,82 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(second.session.status).toBe("running");
     expect(tmux.launches).toHaveLength(2);
   });
+
+  it("restores a resumed handoff for a later retry when the resume attempt itself fails before ever running", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    const first = doStandingLaunch(fixture, tmux, "policy-req-1");
+    const worktreePath = first.session.worktree_path;
+    const branch = first.session.branch;
+    const tmuxSessionName = first.session.tmux_session_name;
+
+    writeFileSync(path.join(worktreePath, "candidate-note.txt"), "unfinished work\n");
+    git(worktreePath, ["add", "candidate-note.txt"]);
+    git(worktreePath, ["commit", "-m", "wip: partial progress before the crash"]);
+
+    tmux.live.delete(tmuxSessionName);
+    withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "reconcile-1", repoRoot: fixture.repo })
+    );
+
+    // The resume attempt itself dies before ever reaching a real process --
+    // this must not permanently lose the candidate: a resumed handoff that
+    // `prepareSession` marked superseded onto this now-failed Session has to
+    // become resumable again for the next tick.
+    const failingTmux = new FakeTmux();
+    failingTmux.failLaunch = true;
+    let caught: unknown;
+    try {
+      withDatabase(fixture.workspace, (db) =>
+        launchGuardedHostSession({
+          db,
+          workspace: fixture.workspace,
+          repoRoot: fixture.repo,
+          projectSlug: "test-project",
+          requestId: "policy-req-2",
+          standingPolicy: true,
+          profiles,
+          adapters,
+          now: new Date(fixture.now.getTime() + 1000),
+          tmux: failingTmux,
+          agentWorktreeRoot: path.join(fixture.root, "policy-req-2-unused"),
+          capacityObservation: fixtureCapacityObservation()
+        })
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ArcadiaError);
+
+    const restoredReceipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.session.id));
+    expect(restoredReceipt?.superseded_by_session_id).toBeNull();
+    expect(restoredReceipt?.outcome).toBe("incomplete_resumable");
+
+    // A third, working attempt must still resume the same original worktree.
+    const workingTmux = new FakeTmux();
+    const third = withDatabase(fixture.workspace, (db) =>
+      launchGuardedHostSession({
+        db,
+        workspace: fixture.workspace,
+        repoRoot: fixture.repo,
+        projectSlug: "test-project",
+        requestId: "policy-req-3",
+        standingPolicy: true,
+        profiles,
+        adapters,
+        now: new Date(fixture.now.getTime() + 2000),
+        tmux: workingTmux,
+        agentWorktreeRoot: path.join(fixture.root, "policy-req-3-unused"),
+        capacityObservation: fixtureCapacityObservation()
+      })
+    );
+    expect(third.session.worktree_path).toBe(worktreePath);
+    expect(third.session.branch).toBe(branch);
+    expect(third.session.status).toBe("running");
+    expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
+  });
 });
 
 const productionScope: ProductionScope = normalizeProductionScope({
