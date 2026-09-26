@@ -34,13 +34,21 @@ import { nowIso } from "../utils/time.js";
 export type ProductionDesiredState = "active" | "inactive";
 
 /** Mechanical transitions activation may delegate. Judgment is never on this list. */
-export type MechanicalTransition = "validation" | "acceptance" | "pointer";
+export type MechanicalTransition = "validation" | "acceptance" | "pointer" | "packet_approval";
 
+/**
+ * The default delegation when a grant names no transitions. `packet_approval`
+ * is deliberately absent: approving what a Session will execute is only ever
+ * delegated when the operator names it (Decision 0072), never implied.
+ */
 export const MECHANICAL_TRANSITIONS: readonly MechanicalTransition[] = [
   "validation",
   "acceptance",
   "pointer"
 ];
+
+/** Every transition a grant may name explicitly. */
+export const DELEGABLE_TRANSITIONS: readonly MechanicalTransition[] = [...MECHANICAL_TRANSITIONS, "packet_approval"];
 
 /**
  * The two live-concurrency proofs from
@@ -371,10 +379,10 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
     input.mechanicalTransitions ?? []
   ) as MechanicalTransition[];
   for (const transition of mechanicalTransitions) {
-    if (!MECHANICAL_TRANSITIONS.includes(transition)) {
+    if (!DELEGABLE_TRANSITIONS.includes(transition)) {
       throw validationError(`Unknown mechanical transition "${transition}".`, {
         field: "mechanicalTransitions",
-        permitted: [...MECHANICAL_TRANSITIONS]
+        permitted: [...DELEGABLE_TRANSITIONS]
       });
     }
   }

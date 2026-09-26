@@ -749,6 +749,14 @@ ordered Action scope, the permitted providers, the concurrency ceiling, which
 mechanical transitions are delegated, and — just as importantly — what
 activation does *not* buy:
 
+`--transitions` defaults to `validation,acceptance,pointer`. Adding
+`packet_approval` (Decision 0072) lets the worker approve the build packet of
+an Action inside the grant's own scope, but only when that approval is the
+last thing standing between the Action and launch. It is never implied: name it
+explicitly, or every packet still waits for `arcadia review approve <id>
+--no-execute`, which `production status` shows as a
+`build_packet_approval_pending` escalation.
+
 ```sh
 pnpm arcadia production preview \
   --project arcadia \

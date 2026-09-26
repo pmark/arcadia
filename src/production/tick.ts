@@ -8,7 +8,7 @@ import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { runWorkPlanCommand } from "../commands/work.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRef, updateReviewItemStatus } from "../db/repositories.js";
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
@@ -321,6 +321,50 @@ function attemptAutomaticPlanningResolution(
     log(`Automatic planning_required resolution failed for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
+}
+
+/**
+ * Approve a pending build packet on the operator's behalf, only when the
+ * Active standing policy explicitly names the `packet_approval` transition
+ * (Decision 0072) for this exact Action, and only when that approval is the
+ * sole thing standing between the Action and launch. Returns the approved
+ * Decision id, or null (leaving the ordinary operator escalation in place).
+ */
+function attemptDelegatedPacketApproval(
+  db: Database.Database,
+  input: {
+    actionKey: string;
+    projectSlug: string;
+    decisionId: string | null;
+    prerequisites: string[] | null;
+    now: Date;
+    log: (message: string) => void;
+  }
+): string | null {
+  if (!input.decisionId) return null;
+  if (!input.prerequisites || input.prerequisites.length !== 1 || !input.prerequisites[0].startsWith("build packet approval pending")) {
+    return null;
+  }
+  const read = readProductionPolicySafely(db);
+  if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return null;
+  const { policy } = read;
+  const scope = policy.scope!;
+  if (!scope.mechanicalTransitions.includes("packet_approval") || !scope.actions.includes(input.actionKey)) return null;
+  const item = getReviewItem(db, input.decisionId);
+  if (!item || item.resolved_intent !== "CodexBuildPacketApproval" || (item.status !== "open" && item.status !== "deferred")) return null;
+  updateReviewItemStatus(db, item.id, {
+    status: "approved",
+    decisionNote: `Approved by the standing production policy (revision ${policy.revision}, epoch ${policy.epoch}) under its packet_approval delegation (Decision 0072).`
+  });
+  const project = getProjectBySlug(db, input.projectSlug);
+  recordEvent(db, {
+    eventType: "managed_production.packet_approved",
+    projectId: project?.id ?? null,
+    payload: { actionKey: input.actionKey, decisionId: item.id, policyRevision: policy.revision, epoch: policy.epoch },
+    at: input.now.toISOString()
+  });
+  input.log(`Approved build packet Decision ${item.id} for ${input.actionKey} under the standing policy's packet_approval delegation (revision ${policy.revision}).`);
+  return item.id;
 }
 
 /**
@@ -979,6 +1023,25 @@ function attemptProjectLaunch(
         input.log(refusalLine);
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
+      if (packetLifecycleKind === "build_packet_approval_pending") {
+        const approved = attemptDelegatedPacketApproval(db, {
+          actionKey,
+          projectSlug: input.projectSlug,
+          decisionId: typeof error.details?.packetLifecycleDecisionId === "string" ? error.details.packetLifecycleDecisionId : null,
+          prerequisites,
+          now: input.now,
+          log: input.log
+        });
+        if (approved) {
+          clearOperatorEscalation(db, actionKey);
+          return {
+            attempted: true,
+            outcome: "refused",
+            reason: `Approved the build packet under the standing policy's packet_approval delegation (Decision ${approved}); it launches on the next tick.`,
+            actionKey
+          };
+        }
+      }
       // A missing validation command is never self-resolving, and automatic
       // planning resolution would only rediscover that the same way
       // (`createCodexPacket` now refuses build-packet preparation on the

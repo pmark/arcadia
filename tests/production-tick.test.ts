@@ -26,6 +26,7 @@ import type { CodingAgentProfile } from "../src/intent/registries.js";
 import {
   activateProduction,
   fingerprintProductionScope,
+  MECHANICAL_TRANSITIONS,
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
   type ProductionScope
@@ -579,6 +580,69 @@ describe("runManagedProductionTick", () => {
     expect(secondResult.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
     expect(tmux.launches).toHaveLength(1);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
+  it("approves a pending build packet itself, then launches, only when the standing policy names packet_approval (Decision 0072)", () => {
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const delegatingScope = normalizeProductionScope({
+      ...productionScope,
+      providers: ["codex-cli"],
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"]
+    });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-packet-approval",
+        scope: delegatingScope,
+        scopeFingerprint: fingerprintProductionScope(delegatingScope),
+        grantedBy: "operator"
+      })
+    );
+    const log = vi.fn();
+    const tick = (offsetMs: number) =>
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles: codexProfiles,
+          adapters,
+          tmux,
+          now: new Date(fixture.now.getTime() + offsetMs),
+          log,
+          capacityObservation: codexCapacity,
+          agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+
+    tick(0); // prepares the packet; its approval is still open
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    const approvalRow = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare(
+        "SELECT id, status, decision_note FROM review_items WHERE work_item_id = ? AND resolved_intent = 'CodexBuildPacketApproval' ORDER BY created_at DESC LIMIT 1"
+      ).get(workItem.id) as { id: string; status: string; decision_note: string | null }
+    );
+    expect(approvalRow().status).toBe("open");
+
+    const approving = tick(30_000);
+    expect(approving.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.reason).toMatch(/packet_approval delegation/);
+    expect(approvalRow().status).toBe("approved");
+    expect(approvalRow().decision_note).toMatch(/standing production policy \(revision \d+, epoch \d+\)/);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+    expect(tmux.launches).toHaveLength(0);
+
+    const launching = tick(60_000);
+    expect(launching.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("never implies packet_approval: the default grant omits it, and naming it is the only way in", () => {
+    expect(MECHANICAL_TRANSITIONS).not.toContain("packet_approval");
+    const named = normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["packet_approval"] });
+    expect(named.mechanicalTransitions).toEqual(["packet_approval"]);
+    expect(() => normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["approve_everything" as never] })).toThrow(/Unknown mechanical transition/);
   });
 
   it("escalates to the operator instead of launching, once, when the Project declares no validation commands", () => {
