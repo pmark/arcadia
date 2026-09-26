@@ -1916,6 +1916,7 @@ export function buildProgram(): Command {
       .option("--receipt <receipt-id>", "Reverse this specific deferral receipt; defaults to the latest applied one")
       .option("--dry-run", "Report the reversal without writing anything")
       .option("--request-id <id>", "Idempotency key for the reversal transition; derived when omitted")
+      .option("--keep-pointer", "Un-park the Action even if the governed pointer has moved past the deferral, leaving today's pointer untouched instead of restoring it")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
@@ -1923,6 +1924,7 @@ export function buildProgram(): Command {
     receipt?: string;
     dryRun?: boolean;
     requestId?: string;
+    keepPointer?: boolean;
     json?: boolean;
   }) =>
     runCliAction(
@@ -1934,7 +1936,8 @@ export function buildProgram(): Command {
         id,
         receipt: options.receipt,
         dryRun: options.dryRun,
-        requestId: options.requestId
+        requestId: options.requestId,
+        keepPointer: options.keepPointer
       }),
       renderDecisionReverseSuccess
     )

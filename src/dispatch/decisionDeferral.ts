@@ -62,6 +62,14 @@ export interface DecisionReversalConsequence {
   pointerBefore: string | null;
   pointerAfter: string | null;
   pointerMoved: boolean;
+  /**
+   * True when the deferral moved the pointer but this reversal deliberately
+   * left today's pointer in place instead of restoring it, because the
+   * pointer had moved on since the deferral and the caller passed
+   * `keepPointer`. Distinguishes that case from a deferral that never moved
+   * the pointer at all (`pointerMoved: false` and this also `false`).
+   */
+  pointerLeftInPlace: boolean;
   /** The deferral receipt this reversal undoes. */
   reversesReceiptId: string;
 }
@@ -302,6 +310,15 @@ export interface DecisionReversalInput {
   deferral: DecisionDeferralReceipt;
   requestId: string;
   dryRun: boolean;
+  /**
+   * Un-park the Action and re-open the Decision without restoring the
+   * historical pointer, when the governed pointer has moved since the
+   * deferral. Without this, that guard refuses the reversal outright
+   * (Issue #656): a deferral old enough for legitimate dispatch to have
+   * advanced the pointer past it could never be reversed. Has no effect when
+   * the pointer has not moved, since restoring it then is unambiguous.
+   */
+  keepPointer?: boolean;
 }
 
 export interface DecisionReversalResult {
@@ -322,6 +339,12 @@ export interface DecisionReversalResult {
  * hollow success. It refuses when the world has moved on since the deferral
  * (the Action is no longer parked, or the pointer has advanced past where the
  * deferral left it), so a reversal can never silently discard newer truth.
+ *
+ * When the pointer has advanced, `input.keepPointer` un-parks the Action and
+ * re-opens the Decision anyway, leaving today's pointer untouched instead of
+ * restoring the historical one — otherwise a deferral old enough for real
+ * dispatch to have legitimately moved past it could never be reversed at all
+ * (Issue #656).
  */
 export function reverseDecisionDeferral(
   db: Database.Database,
@@ -422,17 +445,26 @@ export function reverseDecisionDeferral(
         remedy: "Reconcile the Action first, or leave the deferral in place."
       });
     }
+    // Whether the current pointer still matches exactly where the deferral
+    // left it. When it does, restoring the historical pointer is unambiguous
+    // and always happens. When it does not, `keepPointer` decides whether to
+    // refuse (the default) or un-park the Action without touching today's
+    // pointer at all.
+    let restorePointer = false;
+    let currentPointer: string | null = null;
     if (deferral.consequence.pointerMoved) {
       // Both documents hold the pointer. Comparing only the effective one would
       // let a newer Plan pointer be overwritten by a stale Project pointer.
       const projectPointer = project.currentAction;
       const planPointer = plan.currentAction;
-      if (projectPointer !== deferral.consequence.pointerAfter || planPointer !== deferral.consequence.pointerAfter) {
+      currentPointer = projectPointer ?? planPointer;
+      restorePointer = projectPointer === deferral.consequence.pointerAfter && planPointer === deferral.consequence.pointerAfter;
+      if (!restorePointer && !input.keepPointer) {
         throw validationError("The governed pointer has moved since the deferral, so reversing it would discard newer checked-in truth.", {
           deferralLeft: deferral.consequence.pointerAfter,
           projectPointer,
           planPointer,
-          remedy: "Reconcile the pointer first, or leave the deferral in place."
+          remedy: "Reconcile the pointer first, pass --keep-pointer to un-park the Action without touching it, or leave the deferral in place."
         });
       }
     }
@@ -458,6 +490,7 @@ export function reverseDecisionDeferral(
       });
     }
 
+    const pointerWillMove = deferral.consequence.pointerMoved && restorePointer;
     const actionKey = `${project.slug}/${action.id}`;
     const consequence: DecisionReversalConsequence = {
       kind: "reverse",
@@ -467,8 +500,9 @@ export function reverseDecisionDeferral(
       actionStatusBefore: deferral.consequence.actionStatusAfter,
       actionStatusAfter: deferral.consequence.actionStatusBefore,
       pointerBefore: deferral.consequence.pointerAfter,
-      pointerAfter: deferral.consequence.pointerBefore,
-      pointerMoved: deferral.consequence.pointerMoved,
+      pointerAfter: deferral.consequence.pointerMoved && !pointerWillMove ? currentPointer : deferral.consequence.pointerBefore,
+      pointerMoved: pointerWillMove,
+      pointerLeftInPlace: deferral.consequence.pointerMoved && !pointerWillMove,
       reversesReceiptId: deferral.id
     };
     if (input.dryRun) {

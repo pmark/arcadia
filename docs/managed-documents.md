@@ -234,6 +234,12 @@ deferral, so a reversal never discards newer checked-in truth. (Answering a new
 Decision that names the Action also works, but the trigger firing alone revives
 nothing.)
 
+A deferral that outlives a handful of dispatch cycles will typically hit that
+pointer guard, since real dispatch keeps advancing the pointer past it — there
+is no separate command that reconciles a stale pointer. Add `--keep-pointer` to
+un-park the Action and re-open the Decision anyway, leaving today's pointer
+untouched instead of restoring the historical one it found (Issue #656).
+
 ## What is enforced, and where
 
 | Check | Where | When it fires |
