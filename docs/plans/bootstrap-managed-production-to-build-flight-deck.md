@@ -2053,21 +2053,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: "Unknown or ambiguous depends_on ids block the Action in both ordering and dispatch readiness, resolving cross-Plan references by plan/<slug>#<action-id>, and a long-unresolved id escalates to the operator."
+    next_action: Same-Project cross-Plan depends_on resolution, consistent across ordering and dispatch readiness.
     expected_artifact: Evidence satisfying Agent Ask resolve-cross-plan-dependency-ids
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-ready-set-admission-actions-after-review-2026-09-25
+    source: Agent Ask narrow-resolve-cross-plan-dependency-ids-amend-only-2026-09-26
     acceptance_criteria:
-      - "A depends_on id resolves first within the same Plan, then across the same Project's Plans as plan/<slug>#<action-id>; an id naming another Project must carry that Project; an id that resolves to a done Action on the base branch is satisfied; an id that matches more than one Action is reported as dependency_unresolved (ambiguous) and never resolved to either."
-      - "An id that does not resolve produces a dependency_unresolved wait reason and keeps the Action out of the ready set in every readiness path: collectUnmetDependencies (src/docs/dispatch.ts) and deriveStatus (src/scheduling/schedule.ts) as well as canonicalOrder (src/scheduling/order.ts), whose cycle fallback can never emit such an Action as runnable."
-      - "The plan parser (src/docs/parse.ts) accepts plan/<slug>#<action-id> dependency ids without reporting them as dangling, still reports ids that resolve nowhere, and detects dependency cycles that span Plans."
-      - A dependency on a deferred Action is reported with a deferral wait reason, not dependency_unresolved.
-      - An Action that stays dependency_unresolved for more than one worker tick is surfaced as an operator escalation naming the unresolved id, instead of waiting silently.
-      - "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, an id that never resolves (and is escalated), an ambiguous id, a cross-Plan cycle, and a dependency on a deferred Action; pnpm test and the core, Discord and Dashboard builds pass."
+      - "canonicalOrder (src/scheduling/order.ts) and collectUnmetDependencies (src/docs/dispatch.ts) resolve a depends_on id first within the same Plan, then across the same Project's Plans as plan/<slug>#<action-id>; an id that resolves to a done Action on the base branch is satisfied in both."
+      - "An id that does not resolve to any known Action in the Project is never treated as satisfied (dependency_unresolved): collectUnmetDependencies reports it as an unmet blocker, so deriveStatus (src/scheduling/schedule.ts) and dispatch never mark the Action ready, and canonicalOrder holds the candidate behind every candidate that can proceed."
+      - "The plan parser (src/docs/parse.ts) accepts plan/<slug>#<action-id> dependency ids without reporting them as dangling; a bare id outside the same Plan is still reported as dangling."
+      - A dependency on a deferred Action is reported with its actual status (deferred), not dependency_unresolved.
+      - "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, an id that never resolves, a dependency chain that would cycle across Plans staying safe and never looping, and a dependency on a deferred Action; pnpm test and the core, Discord and Dashboard builds pass."
     depends_on: []
     decisions: []
-    references: ["src/scheduling/order.ts", "src/docs/dispatch.ts", "src/docs/parse.ts", "src/scheduling/schedule.ts", "src/production/tick.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md", "docs/proposals/portfolio-parallel-execution.md", "docs/production-scheduling.md"]
+    references: []
   - id: admit-ready-set-across-repositories
     title: "Replace current_action as a settlement-advanced pointer with ready-set admission: the production tick admits Actions from the portfolio's ready set in canonicalOrder across repositories, and completion settlement stops selecting the next Action."
     status: open

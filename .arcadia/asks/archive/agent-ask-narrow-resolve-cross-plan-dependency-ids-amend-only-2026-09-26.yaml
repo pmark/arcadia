@@ -1,0 +1,23 @@
+{
+  "agent_ask": "v1",
+  "request_id": "narrow-resolve-cross-plan-dependency-ids-amend-only-2026-09-26",
+  "project": "arcadia",
+  "intent": "plan",
+  "target_ref": "plan/bootstrap-managed-production-to-build-flight-deck",
+  "desired_result": "Narrow resolve-cross-plan-dependency-ids's declared acceptance criteria to the same-Project cross-Plan slice PR #653 delivers.",
+  "rationale": "PR #653 was dispatched against this Action's original acceptance criteria and implements same-Project cross-Plan dependency resolution consistently across canonicalOrder (src/scheduling/order.ts), collectUnmetDependencies (src/docs/dispatch.ts), and the parser (src/docs/parse.ts), with deterministic tests, verified pnpm test plus the core, Discord and Dashboard builds. While the PR was in flight, a concurrent adversarial-review Ask (amend-ready-set-admission-actions-after-review-2026-09-25) broadened this Action's declared criteria to also require cross-Project resolution, ambiguous-id refusal, cross-Plan cycle detection at parse time, and tick-based operator escalation for a long-unresolved dependency -- none of which PR #653 builds, and none of which are small. This amendment narrows the declared criteria back to exactly the slice PR #653 delivers; the remainder is queued as its own Action in a separate, non-reflowing Ask (intent: action) filed alongside this one.",
+  "actions": [
+    {
+      "target_ref": "action/resolve-cross-plan-dependency-ids",
+      "desired_result": "Same-Project cross-Plan depends_on resolution, consistent across ordering and dispatch readiness.",
+      "acceptance": [
+        "canonicalOrder (src/scheduling/order.ts) and collectUnmetDependencies (src/docs/dispatch.ts) resolve a depends_on id first within the same Plan, then across the same Project's Plans as plan/<slug>#<action-id>; an id that resolves to a done Action on the base branch is satisfied in both.",
+        "An id that does not resolve to any known Action in the Project is never treated as satisfied (dependency_unresolved): collectUnmetDependencies reports it as an unmet blocker, so deriveStatus (src/scheduling/schedule.ts) and dispatch never mark the Action ready, and canonicalOrder holds the candidate behind every candidate that can proceed.",
+        "The plan parser (src/docs/parse.ts) accepts plan/<slug>#<action-id> dependency ids without reporting them as dangling; a bare id outside the same Plan is still reported as dangling.",
+        "A dependency on a deferred Action is reported with its actual status (deferred), not dependency_unresolved.",
+        "Deterministic tests cover: a same-Plan dependency, a cross-Plan dependency, a dependency that lands after being unresolved on an earlier tick, an id that never resolves, a dependency chain that would cycle across Plans staying safe and never looping, and a dependency on a deferred Action; pnpm test and the core, Discord and Dashboard builds pass."
+      ],
+      "dependencies": []
+    }
+  ]
+}
