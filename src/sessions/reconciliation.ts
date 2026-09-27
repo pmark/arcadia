@@ -42,6 +42,8 @@ export interface SessionExitReceipt {
   next_action_json: string;
   lease_handoff: number;
   superseded_by_session_id: string | null;
+  /** Mirrors the reconciled Session's `is_simulated`: 1 for a fixture-provider Session, so this receipt can never be cited as live proof. */
+  is_simulated: number;
   created_at: string;
   updated_at: string;
 }
@@ -75,12 +77,19 @@ export function ensureSessionExitReceiptsTable(db: Database.Database): void {
       next_action_json TEXT NOT NULL,
       lease_handoff INTEGER NOT NULL DEFAULT 0,
       superseded_by_session_id TEXT,
+      is_simulated INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_session_exit_receipts_action
       ON session_exit_receipts(outcome, superseded_by_session_id);
   `);
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(session_exit_receipts)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("is_simulated")) {
+    db.prepare(`ALTER TABLE session_exit_receipts ADD COLUMN is_simulated INTEGER NOT NULL DEFAULT 0`).run();
+  }
 }
 
 function hasReceiptTable(db: Database.Database): boolean {
@@ -321,14 +330,15 @@ export function attemptAutomaticCompletion(
   // deliberately hyphenated so the settlement clean-input allowlist recognizes
   // them as disposable Ask intake.
   const requestId = `auto-complete-${session.id.replaceAll("_", "-")}`;
-  const note = `Mechanically accepted: Session ${session.id} exited cleanly with a passing Run (${evidence.runId}) on candidate ${evidence.candidateRevision}, and standing production policy revision ${policy.revision} explicitly delegates mechanical acceptance and pointer transitions for ${actionKeyFor(session)}.`;
+  const simulatedPrefix = session.is_simulated ? "[SIMULATED FIXTURE SESSION -- never cite as live proof] " : "";
+  const note = `${simulatedPrefix}Mechanically accepted: Session ${session.id} exited cleanly with a passing Run (${evidence.runId}) on candidate ${evidence.candidateRevision}, and standing production policy revision ${policy.revision} explicitly delegates mechanical acceptance and pointer transitions for ${actionKeyFor(session)}.`;
   const requestBody = {
     agent_ask: "v1",
     request_id: requestId,
     project: session.project_slug,
     intent: "complete",
     target_ref: `action/${session.action_id}`,
-    desired_result: `Automatically accept mechanical completion for ${actionKeyFor(session)} under standing production policy.`,
+    desired_result: `${simulatedPrefix}Automatically accept mechanical completion for ${actionKeyFor(session)} under standing production policy.`,
     rationale: note,
     candidate_revision: evidence.candidateRevision,
     evidence: action.acceptanceCriteria.map((criterion) => ({ criterion, status: "met", note })),
@@ -598,6 +608,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     next_action_json: JSON.stringify(nextMove),
     lease_handoff: outcome === "incomplete_resumable" && !suppressHandoff ? 1 : 0,
     superseded_by_session_id: null,
+    is_simulated: session.is_simulated ? 1 : 0,
     created_at: now,
     updated_at: now
   };
@@ -634,8 +645,8 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
         .run(canonicalPath(session.repository_path), canonicalPath(session.worktree_path), session.project_slug, session.action_id);
     }
     db.prepare(`INSERT INTO session_exit_receipts
-      (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, created_at, updated_at)
-      VALUES (@id, @session_id, @request_id, @outcome, @reason, @run_id, @artifact_id, @decision_id, @candidate_revision, @evidence_json, @next_action_json, @lease_handoff, @superseded_by_session_id, @created_at, @updated_at)`
+      (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, is_simulated, created_at, updated_at)
+      VALUES (@id, @session_id, @request_id, @outcome, @reason, @run_id, @artifact_id, @decision_id, @candidate_revision, @evidence_json, @next_action_json, @lease_handoff, @superseded_by_session_id, @is_simulated, @created_at, @updated_at)`
     ).run(row);
   });
   write();

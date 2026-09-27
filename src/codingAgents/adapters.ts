@@ -12,7 +12,8 @@ export interface CodingAgentInvocationCommand {
 export const PROVIDER_LABELS: Record<string, string> = {
   "codex-cli": "Codex",
   "claude-code-cli": "Claude Code",
-  "opencode-cli": "opencode"
+  "opencode-cli": "opencode",
+  "fixture-cli": "Fixture"
 };
 
 /** Human label for a provider id, falling back to the id itself. */

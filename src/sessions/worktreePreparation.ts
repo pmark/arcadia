@@ -7,7 +7,7 @@ import { git, tryGit } from "../git/worktrees.js";
 import { resolveMiseExecutable } from "../runtime/mise.js";
 
 export interface PreparedAgentWorktree {
-  agent: "codex" | "claude" | "opencode";
+  agent: "codex" | "claude" | "opencode" | "fixture";
   path: string;
   branch: string;
   model: string;
@@ -19,7 +19,11 @@ export interface PreparedAgentWorktree {
 const AGENT_WORKTREE_DIRECTORY: Record<PreparedAgentWorktree["agent"], string> = {
   codex: ".codex/worktrees",
   claude: ".claude/worktrees",
-  opencode: ".opencode/worktrees"
+  opencode: ".opencode/worktrees",
+  // Never used as a default root in practice: every fixture launch (the
+  // managed-production tick, and tests) supplies its own `agentWorktreeRoot`.
+  // Present only so `PreparedAgentWorktree["agent"]` stays total.
+  fixture: ".arcadia/fixture-worktrees"
 };
 
 /** The default candidate root for one agent: `<home>/<agent worktree directory>`. */
@@ -33,7 +37,7 @@ export function defaultAgentWorktreeRoot(agent: PreparedAgentWorktree["agent"]):
  * can never accidentally integrate or retire earlier work.
  */
 export function prepareAgentWorktree(input: {
-  agent: "codex" | "claude" | "opencode";
+  agent: PreparedAgentWorktree["agent"];
   actionId: string;
   baseBranch: string;
   repositoryPath: string;
@@ -165,9 +169,17 @@ export function isPlausibleClaudeModel(model: string): boolean {
   return normalized.startsWith("claude-") || CLAUDE_MODEL_ALIASES.has(normalized);
 }
 
-export function buildAgentLaunchCommand(agent: "codex" | "claude" | "opencode", worktreePath: string, model: string, effort: string | null): string {
+export function buildAgentLaunchCommand(agent: PreparedAgentWorktree["agent"], worktreePath: string, model: string, effort: string | null): string {
   const quotedPath = JSON.stringify(worktreePath);
   const quotedModel = JSON.stringify(model);
+  if (agent === "fixture") {
+    // Never rendered as an operator handoff command in practice -- the
+    // fixture provider is launched only by the managed-production tick and by
+    // tests, never by the interactive `arcadia go` handoff -- but kept
+    // faithful to the real launch command for anything that does display it.
+    const effortFlag = effort ? ` --duration ${JSON.stringify(effort)}` : "";
+    return `cd ${quotedPath} && node scripts/fixture-coding-agent.mjs --worktree ${quotedPath} --outcome ${quotedModel.replace(/^"fixture-/, '"')}${effortFlag}`;
+  }
   if (agent === "claude") {
     const effortFlag = effort ? ` --effort ${JSON.stringify(effort)}` : "";
     return `cd ${quotedPath} && claude --model ${quotedModel}${effortFlag} "arcadia advance"`;

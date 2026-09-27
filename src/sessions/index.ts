@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
@@ -111,6 +112,8 @@ export interface AgentSession {
   stall_flagged_at: string | null;
   /** The standing-policy production admission this Session's launch committed against, if any. */
   admission_request_id: string | null;
+  /** 1 only for a Session launched under the deterministic fixture provider (`fixture-cli`); see `FIXTURE_PROVIDER`. */
+  is_simulated: number;
 }
 
 export type SessionAgent = "codex" | "claude" | "opencode";
@@ -120,6 +123,21 @@ const SESSION_PROVIDER: Record<SessionAgent, string> = {
   claude: "claude-code-cli",
   opencode: "opencode-cli"
 };
+
+/**
+ * The deterministic, zero-token coding-agent provider used to exercise the
+ * Session/tmux/admission path end to end without spending a real model
+ * invocation. Deliberately excluded from `SessionAgent`/`SESSION_AGENTS`: that
+ * union backs operator-facing surfaces (`arcadia go --agent`, the go-broker
+ * installer's `ProviderExecutables`) that must never offer or expect a
+ * "fixture" broker. `sessionAgentForProvider` and `prepareSession` recognize
+ * it through this narrower, parallel path instead.
+ */
+export const FIXTURE_PROVIDER = "fixture-cli";
+const FIXTURE_AGENT = "fixture" as const;
+export type FixtureSessionAgent = typeof FIXTURE_AGENT;
+/** Any agent kind `prepareSession`/`buildSessionLaunch` accept: every real `SessionAgent`, plus the fixture. */
+export type LaunchAgent = SessionAgent | FixtureSessionAgent;
 
 /**
  * Every Session agent, in registry order. Surfaces that must enumerate
@@ -141,8 +159,9 @@ const SESSION_AGENT: Record<string, SessionAgent> = Object.fromEntries(
   (Object.entries(SESSION_PROVIDER) as Array<[SessionAgent, string]>).map(([agent, provider]) => [provider, agent])
 );
 
-/** The Session agent that launches `provider`, or null when no adapter exists. */
-export function sessionAgentForProvider(provider: string): SessionAgent | null {
+/** The Session agent that launches `provider` (including the fixture), or null when no adapter exists. */
+export function sessionAgentForProvider(provider: string): LaunchAgent | null {
+  if (provider === FIXTURE_PROVIDER) return FIXTURE_AGENT;
   return SESSION_AGENT[provider] ?? null;
 }
 
@@ -434,7 +453,7 @@ export function prepareSession(input: {
   workspace: string;
   repoRoot: string;
   dispatch: DispatchResolution;
-  agent: SessionAgent;
+  agent: LaunchAgent;
   model: string;
   effort: string | null;
   baseRevision: string;
@@ -470,7 +489,7 @@ export function prepareSession(input: {
     throw validationError("The prepared build packet metadata is stale or belongs to another Action.");
   }
   const selected = metadata.providerSelection;
-  const expectedProvider = SESSION_PROVIDER[input.agent];
+  const expectedProvider = input.agent === FIXTURE_AGENT ? FIXTURE_PROVIDER : SESSION_PROVIDER[input.agent];
   if (!selected || selected.provider !== expectedProvider) {
     throw validationError("The selected provider does not match the requested Session adapter.", {
       selectedProvider: selected?.provider ?? null,
@@ -565,7 +584,8 @@ export function prepareSession(input: {
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
       created_at: timestamp, updated_at: timestamp,
       last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null,
-      admission_request_id: null
+      admission_request_id: null,
+      is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     if (handoff) {
@@ -1016,8 +1036,14 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
  * is never touched.
  */
 function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
+  // The fixture provider is not a real coding agent: it never needs an Action
+  // brief prompt, and the Git identity it commits under is fixed and always
+  // visibly non-attributable to any real platform/tier -- resolving through
+  // `resolveSessionAgentIdentity`'s tier registry would require inventing a
+  // fake model-tier binding for a provider that has no model at all.
+  if (session.provider === FIXTURE_PROVIDER) return buildFixtureSessionLaunch(session, workspace);
   const agent = sessionAgentForProvider(session.provider);
-  if (!agent) {
+  if (!agent || agent === FIXTURE_AGENT) {
     throw validationError(`No agent Git identity can be resolved for provider "${session.provider}".`, {
       provider: session.provider
     });
@@ -1079,6 +1105,105 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspa
   const inner = { command: "claude", args };
   if (session.provider !== "claude-code-cli" || !workspace) return inner;
   return withClaudeCodeToken(inner, workspace);
+}
+
+/** The four deterministic behaviors a fixture Session's launch can be configured to reach. */
+const FIXTURE_OUTCOMES = ["completed", "failed", "stalled", "crashed"] as const;
+export type FixtureOutcome = (typeof FIXTURE_OUTCOMES)[number];
+
+function isFixtureOutcome(value: string): value is FixtureOutcome {
+  return (FIXTURE_OUTCOMES as readonly string[]).includes(value);
+}
+
+/** The one file every "completed" fixture launch edits in its candidate. */
+export const FIXTURE_EDIT_FILE = "ARCADIA_FIXTURE_SESSION_EDIT.txt";
+
+const DEFAULT_FIXTURE_DURATION_SECONDS = 1;
+
+/** The configured outcome a fixture Session's pinned `model` selects: `"fixture-<outcome>"`. */
+export function fixtureModelFor(outcome: FixtureOutcome): string {
+  return `fixture-${outcome}`;
+}
+
+function fixtureScriptPath(): string {
+  const fromCwd = path.resolve("scripts", "fixture-coding-agent.mjs");
+  if (existsSync(fromCwd)) return fromCwd;
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const fromModule = path.resolve(moduleDir, "..", "..", "scripts", "fixture-coding-agent.mjs");
+  if (existsSync(fromModule)) return fromModule;
+  throw new Error("Could not find the bundled scripts/fixture-coding-agent.mjs script.");
+}
+
+/**
+ * The fixture provider's own launch command: a small deterministic Node
+ * script (`scripts/fixture-coding-agent.mjs`) that sleeps for the configured
+ * duration and then behaves exactly as the configured outcome declares. It
+ * exercises the same tmux/admission path a real provider does, at zero token
+ * cost, and is never wrapped in the Git-identity `env` prefix real providers
+ * get -- see `buildSessionLaunch` -- because this process is not a real agent
+ * and commits (when it commits at all) under its own fixed, visibly-fake
+ * identity instead.
+ *
+ * `session.model` carries the configured outcome as `fixture-<outcome>`
+ * (see `fixtureModelFor`) and `session.effort` carries the configured sleep
+ * duration in seconds, defaulting to {@link DEFAULT_FIXTURE_DURATION_SECONDS}.
+ * Reusing these two existing pinned columns keeps the fixture's configuration
+ * flowing through the exact same build-packet/metadata plumbing a real
+ * provider's model and effort do, instead of adding fixture-only schema.
+ */
+function buildFixtureSessionLaunch(session: AgentSession, workspace?: string): { command: string; args: string[] } {
+  const outcome = session.model.startsWith("fixture-") ? session.model.slice("fixture-".length) : "";
+  if (!isFixtureOutcome(outcome)) {
+    throw validationError(`Unrecognized fixture outcome pinned to model "${session.model}".`, {
+      model: session.model,
+      validModels: FIXTURE_OUTCOMES.map(fixtureModelFor)
+    });
+  }
+  const duration = session.effort ? Number(session.effort) : DEFAULT_FIXTURE_DURATION_SECONDS;
+  if (!Number.isFinite(duration) || duration < 0) {
+    throw validationError(`A fixture Session's duration must be a non-negative number of seconds; got "${session.effort}".`, {
+      effort: session.effort
+    });
+  }
+  const args = [
+    fixtureScriptPath(),
+    "--worktree", session.worktree_path,
+    "--file", FIXTURE_EDIT_FILE,
+    "--duration", String(duration),
+    "--outcome", outcome,
+    "--session-id", session.id
+  ];
+  if (outcome === "failed") {
+    // Only "failed" needs to self-report: it deliberately leaves no git
+    // changes (the one signal the generic evidence probe would otherwise
+    // read), so it is the sole case that needs a narrow, explicitly gated
+    // write of its own configured exit status. See
+    // `scripts/fixture-coding-agent.mjs` and `applyFixtureExitStatus`.
+    if (!workspace) {
+      throw validationError('A fixture Session configured to fail needs its workspace to report its exit status.', { sessionId: session.id });
+    }
+    args.push("--db", getWorkspacePaths(workspace).databaseFile);
+  }
+  return { command: "node", args };
+}
+
+/**
+ * Applies a fixture Session's own configured exit status, gated so this
+ * self-report can never touch anything but a Session already marked
+ * `is_simulated` under the fixture provider -- the one exception to "an agent
+ * never reports its own outcome" (see `classifyExitOutcome`), narrowly scoped
+ * to the deterministic test double that exists specifically to make this
+ * outcome reachable without inventing a generic, spoofable self-attestation
+ * channel for real providers.
+ */
+export function applyFixtureExitStatus(db: Database.Database, sessionId: string, exitStatus: number): void {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(`UPDATE agent_sessions SET exit_status = ?, updated_at = ? WHERE id = ? AND provider = ? AND is_simulated = 1`)
+    .run(exitStatus, now, sessionId, FIXTURE_PROVIDER);
+  if (result.changes !== 1) {
+    throw validationError("Refused to apply a fixture exit status to a Session that is not a simulated fixture-cli Session.", { sessionId });
+  }
 }
 
 /**
