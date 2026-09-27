@@ -844,3 +844,10 @@ updated: 2026-09-27
 - **Result:** Every declared acceptance criterion was accepted as met: "When a split settles (src/ask/settlement.ts), every Action whose depends_on names the split Action also gains the remainder Action ids, so no dependent becomes ready while any remainder is still open."; "Any readiness or gate check that requires a named Action to be done, including enforce-concurrency-gate-at-admission, also requires every remainder Action split from it to be done."; "Deterministic tests cover: a dependent that stays blocked after a split until its remainder is done, and the concurrency gate staying closed when one of its proof Actions is split with an open remainder; pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-rewire-dependents-on-split-2026-09-27-v2).
+
+## 2026-09-27 — Completed arcadia/fix-action-intent-target-ref-amendments
+
+- **Did:** Completed Action arcadia/fix-action-intent-target-ref-amendments from accepted evidence (Candidate 7550b46b1874cb8d53fa8366a789427dcce65dbe).
+- **Result:** Every declared acceptance criterion was accepted as met: "Settling an intent: action Ask with no envelope target_ref amends every child that carries target_ref: action/<id> and creates only children without one, in src/ask/settlement.ts, exactly as its draft preview reports."; "A child target_ref naming an Action that does not exist is refused at preview with a named reason, never settled as a creation."; "Deterministic tests cover a mixed bundle of amended and created children settling to the previewed effects, and the refused missing target; Closes #654; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-action-intent-target-ref-amendments-2026-09-27-v2).

@@ -2163,7 +2163,7 @@ actions:
     references: ["src/ask/settlement.ts", "src/docs/dispatch.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: fix-action-intent-target-ref-amendments
     title: "An intent: action Agent Ask whose children carry target_ref amends those Actions on settlement, matching what its preview reports, instead of creating duplicates."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "An intent: action Agent Ask whose children carry target_ref amends those Actions on settlement, matching what its preview reports, instead of creating duplicates."
@@ -2338,7 +2338,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-action-intent-target-ref-amendments
+current_action: release-admission-on-every-launch-failure
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
