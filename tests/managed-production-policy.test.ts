@@ -349,6 +349,28 @@ describe("admission gating", () => {
     expect(expired).toBe(0);
   });
 
+  it("leaves an admission issued (not fenced) when the policy read fails at commit time (CodeRabbit, PR #729)", () => {
+    const target = workspace();
+    activate(target);
+    admit(target, "adm-policy-unavailable-at-commit");
+
+    // Reopening a connection re-runs migrations, which would recreate the
+    // dropped table before the read under test ever runs -- so the drop and
+    // the commit attempt must share one connection, exactly like the
+    // "policy-store failure" fixture above.
+    const db = openDatabase(target);
+    try {
+      db.exec("DROP TABLE production_policy");
+      const outcome = commitAdmission(db, "adm-policy-unavailable-at-commit");
+      expect(outcome).toMatchObject({ admitted: false, code: "policy_unavailable" });
+      // Unlike stale-epoch/expired/inactive, this refusal never fences the row --
+      // the caller (launchGuardedHostSession) is what must release it.
+      expect(outcome.receipt?.status).toBe("issued");
+    } finally {
+      db.close();
+    }
+  });
+
   it("is replay-safe: committing twice yields one committed admission", () => {
     const target = workspace();
     activate(target);

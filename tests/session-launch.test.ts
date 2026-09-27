@@ -887,6 +887,25 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(liveAdmissionCount(fixture)).toBe(0);
   });
 
+  it("releases the admission when the policy read fails at commit time, since that refusal fences nothing (CodeRabbit, PR #729)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    expectArcadiaError(
+      () =>
+        doStandingLaunch(fixture, tmux, "policy-unreadable-at-commit", undefined, {
+          afterAdmissionIssuedBeforeCommit: () => {
+            withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_policy"));
+          }
+        }),
+      "withdrew authorization"
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+  });
+
   it("resumes a dead-but-claimed worktree from a proven-terminal exit instead of refusing forever (Issue #695)", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

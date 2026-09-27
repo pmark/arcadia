@@ -489,10 +489,15 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         // even though nothing ever ran in it (CodeRabbit, PR #696).
         restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
       }
-      // `commitAdmission` itself already fenced this admission (stale epoch,
-      // expired, or production inactive) before reporting the refusal, which
-      // already excludes it from `countLiveAdmissions` -- nothing here has an
-      // admission left to release.
+      // `commitAdmission` already fenced a stale-epoch/expired/inactive
+      // admission before reporting the refusal, which already excludes it
+      // from `countLiveAdmissions`. `policy_unavailable` is the one refusal
+      // that fences nothing (the policy read itself failed, so there was
+      // nothing to compare the admission against) and would otherwise leave
+      // it "issued" and live until its receipt expires (CodeRabbit, PR #729).
+      if (committed.receipt?.status === "issued") {
+        releaseAdmission(input.db, admission.requestId, now);
+      }
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
         conflict: true
