@@ -1,0 +1,35 @@
+---
+arcadia: v1
+type: decision
+id: "0072"
+slug: decide-whether-the-standing-managed-production-grant-may-approve-the-build
+project: arcadia
+status: open
+question: Decide whether the standing managed-production grant may approve the build packet of an Action inside its own scope, so a dependent Action launches with no per-Action operator confirmation.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Delegate packet approval inside the grant scope
+options:
+  - label: Delegate packet approval inside the grant scope
+    consequence: A new packet_approval mechanical transition lets the worker approve the promotion review of a packet it prepared, only for Actions in scope.actions, only for a permitted provider profile, only while the policy is Active and unexpired. The approval is recorded with standing-policy authority and revoked by Off. Dependent Actions launch unattended and criterion 2 becomes provable; the operator no longer reviews each packet before spend.
+    recommended: true
+  - label: Keep packet approval a per-Action operator gate
+    consequence: Every Action still needs one arcadia review approve before launch. Criterion 2 is reworded to allow exactly that one recorded confirmation per Action, and unattended production pauses at each Action until the operator approves from /runs or the dashboard. No new authority is delegated.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-09-26
+---
+
+# Decision 0072: Decide whether the standing managed-production grant may approve the build packet of an Action inside its own scope, so a dependent Action launches with no per-Action operator confirmation.
+
+## Options
+
+- **Delegate packet approval inside the grant scope** (recommended): A new packet_approval mechanical transition lets the worker approve the promotion review of a packet it prepared, only for Actions in scope.actions, only for a permitted provider profile, only while the policy is Active and unexpired. The approval is recorded with standing-policy authority and revoked by Off. Dependent Actions launch unattended and criterion 2 becomes provable; the operator no longer reviews each packet before spend.
+- **Keep packet approval a per-Action operator gate**: Every Action still needs one arcadia review approve before launch. Criterion 2 is reworded to allow exactly that one recorded confirmation per Action, and unattended production pauses at each Action until the operator approves from /runs or the dashboard. No new authority is delegated.
+
+## Rationale
+
+Found preparing the prove-two-action-unattended-production rehearsal (2026-09-26). Every Action needs an approved build-packet promotion review before launch (findPromotionDecisionOrProblem, src/sessions/launchPreview.ts). When Action A completes, the production tick prepares Action B packet itself (attemptAutomaticPlanningResolution, src/production/tick.ts, which logs that it still needs its own build-packet approval) and then refuses every tick until an operator runs arcadia review approve. So the proof criterion that B launches without manual session setup or launch confirmation in between cannot pass on the current code, and unattended production needs one operator touch per Action. Delegating is an authority change: approving what an agent will execute becomes part of the standing grant, which the operator already scopes by Project, Plan, Action list, providers, concurrency and expiry. The runbook v4 fixture can prove every other criterion now, with the two approvals recorded as interventions.
+
+Proposed by Agent Ask delegate-build-packet-approval-under-standing-production-2026-09-26.
