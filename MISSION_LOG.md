@@ -851,3 +851,10 @@ updated: 2026-09-27
 - **Result:** Every declared acceptance criterion was accepted as met: "Settling an intent: action Ask with no envelope target_ref amends every child that carries target_ref: action/<id> and creates only children without one, in src/ask/settlement.ts, exactly as its draft preview reports."; "A child target_ref naming an Action that does not exist is refused at preview with a named reason, never settled as a creation."; "Deterministic tests cover a mixed bundle of amended and created children settling to the previewed effects, and the refused missing target; Closes #654; pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-action-intent-target-ref-amendments-2026-09-27-v2).
+
+## 2026-09-27 — Completed arcadia/release-admission-on-every-launch-failure
+
+- **Did:** Completed Action arcadia/release-admission-on-every-launch-failure from accepted evidence (Candidate cd949a9594dcceef44eb933bdbc3b350aff62ce5).
+- **Result:** Every declared acceptance criterion was accepted as met: "Every failure path in src/sessions/launch.ts after issueAdmission -- worktree preparation, prepareSession, tmux start, and the commitAdmission recheck -- calls releaseAdmission for that admission, not only the lease-race path."; "A crash between issue and commit leaves at most one uncommitted admission, which expires within the existing 30-second receipt TTL and is then not counted by countLiveAdmissions."; "Deterministic tests inject a failure at each path and show the live admission count back at its prior value immediately afterwards; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-release-admission-on-every-launch-failure-2026-09-27).

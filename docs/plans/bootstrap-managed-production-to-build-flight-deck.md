@@ -2180,7 +2180,7 @@ actions:
     references: ["src/ask/settlement.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: release-admission-on-every-launch-failure
     title: Every launch failure after an admission is issued releases that admission at once, so a failed launch never holds a concurrency slot until its receipt expires.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Every launch failure after an admission is issued releases that admission at once, so a failed launch never holds a concurrency slot until its receipt expires.
@@ -2338,7 +2338,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: release-admission-on-every-launch-failure
+current_action: add-fixture-coding-agent-provider
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
