@@ -2334,6 +2334,61 @@ actions:
     depends_on: [resolve-cross-plan-dependency-ids]
     decisions: []
     references: []
+  - id: tidy-quarantine-instead-of-delete
+    title: Retire worktrees and branches by moving them into a quarantine instead of deleting them, with arcadia tidy undo and arcadia tidy quarantine.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Retire worktrees and branches by moving them into a quarantine instead of deleting them, with arcadia tidy undo and arcadia tidy quarantine.
+    expected_artifact: Evidence satisfying Agent Ask tidy-quarantine-instead-of-delete
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tidy-quarantine-not-delete-2026-09-27
+    acceptance_criteria:
+      - Branch retirement is one git update-ref --stdin transaction that verifies the tip, creates refs/arcadia/tidy/<run>/heads/<branch>, and deletes refs/heads/<branch>, with the branch reflog preserved; the git branch -d shortcut and new archive/tidy tags are no longer used.
+      - Worktree retirement pins HEAD under refs/arcadia/tidy/<run>/worktrees/<id>, then renames the worktree directory and its .git/worktrees/<id> admin directory into .git/arcadia-tidy/quarantine/<run>/, refusing (never copying) across filesystems.
+      - A missing worktree has its admin directory quarantined and HEAD pinned rather than being removed by git worktree prune, and tidy refuses when its path sits under an unmounted volume.
+      - arcadia tidy undo <run> restores the exact prior git worktree list, refs, and file trees including gitignored files, and a test proves it.
+      - A test proves gitignored files and a detached HEAD whose commits no ref contains both survive tidy --apply.
+      - START_HERE.md describes quarantine, undo, and the listing command.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/737", "https://github.com/pmark/arcadia/issues/738"]
+  - id: tidy-harden-merge-and-liveness-verdicts
+    title: Tighten tidy verdicts so wrong merge proofs and live unregistered worktrees are no longer retired.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Tighten tidy verdicts so wrong merge proofs and live unregistered worktrees are no longer retired.
+    expected_artifact: Evidence satisfying Agent Ask tidy-harden-merge-and-liveness-verdicts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tidy-quarantine-not-delete-2026-09-27
+    acceptance_criteria:
+      - The pull-request proof requires the local branch tip to be an ancestor of the PR headRefOid, ignores cross-repository PRs, and fails closed when headRefOid is not in the local object store.
+      - A worktree whose branch reflog holds only its creation entry, or that saw activity inside a configurable grace window, or that is the cwd of a live process, or that is git-worktree-locked, is reported protected.
+      - Under the apply interlock every branch is re-assessed with evaluateMerge and skipped if it is now checked out in any worktree.
+      - Regression tests cover branch-name reuse after merge, a fork PR name collision, a fresh desktop-agent worktree at the base tip, and a branch checked out between preview and apply.
+    depends_on: [tidy-quarantine-instead-of-delete]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/736", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
+  - id: tidy-journal-recovery-and-conservation-tests
+    title: Make tidy crash-safe and prove its no-loss guarantee with generated repository histories.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make tidy crash-safe and prove its no-loss guarantee with generated repository histories.
+    expected_artifact: Evidence satisfying Agent Ask tidy-journal-recovery-and-conservation-tests
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tidy-quarantine-not-delete-2026-09-27
+    acceptance_criteria:
+      - Each quarantine step is written to an fsynced journal before it runs, and tidy startup rolls an interrupted run forward or back deterministically.
+      - A seeded generator of repository states (squash, rebase, detached HEADs, ignored files, missing directories, reused names, injected races) asserts that every reachable commit and every worktree file byte before tidy --apply is still reachable or quarantined after it.
+      - The same generator asserts that undo restores the exact prior state and that a second tidy --apply is a no-op.
+    depends_on: [tidy-quarantine-instead-of-delete, tidy-harden-merge-and-liveness-verdicts]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
