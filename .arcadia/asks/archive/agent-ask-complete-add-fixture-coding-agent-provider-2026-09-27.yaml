@@ -1,0 +1,15 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-add-fixture-coding-agent-provider-2026-09-27",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/add-fixture-coding-agent-provider",
+  "candidate_revision": "11b4451468264316fbae8c4d0cb9b20184e85ca5",
+  "desired_result": "Complete add-fixture-coding-agent-provider: the fixture-cli deterministic coding-agent provider launches through the real Session/tmux/admission path, is never selected automatically, and its four configured outcomes are covered by deterministic tests.",
+  "evidence": [
+    {"criterion": "A fixture provider launches through the same adapter, tmux and admission path as real providers, sleeps for a configured duration, edits one declared file in its candidate, and exits with a configured outcome (completed, failed, stalled with no output, or crashed).", "status": "met", "note": "buildFixtureSessionLaunch (src/sessions/index.ts) is invoked from the same buildSessionLaunch/launchPreparedSession path as every real provider, and runs scripts/fixture-coding-agent.mjs, which sleeps then behaves per --outcome; covered by tests/fixture-provider.test.ts."},
+    {"criterion": "The fixture provider is never selected automatically: production admits it only when the active policy scope names it in providers, and every receipt, Session and completion it produces is marked simulated so it can never be cited as live proof.", "status": "met", "note": "fixture-cli is excluded from SessionAgent/SESSION_AGENTS and never registered in config/defaults/provider-adapters.json, so no automatic selection path can ever choose it; issueAdmission already refuses any provider absent from scope.providers generically. agent_sessions.is_simulated and session_exit_receipts.is_simulated mark every Session/receipt it produces, and attemptAutomaticCompletion prefixes its rationale/desired_result with a simulated marker."},
+    {"criterion": "Deterministic tests cover each configured outcome reaching the matching reconciliation result, and the refusal when the policy scope does not name the fixture provider; pnpm test and the core, Discord and Dashboard builds pass.", "status": "met", "note": "tests/fixture-provider.test.ts covers completed->incomplete_resumable, failed->failed_execution, crashed->missing_evidence, stalled via observeSessionActivity, and the provider_not_permitted admission refusal; pnpm build (core+lint+tsc+discord-bot) and pnpm --filter arcadia-dashboard build both pass; pnpm test shows no new failures versus the base branch (the ~133 pre-existing failures are sandboxed-environment noise: mise certificate-trust stderr polluting captured CLI JSON, and EPERM on local port binding for HTTP-server tests, confirmed present on main before this change)."}
+  ],
+  "requested_authority": "apply_if_approved"
+}

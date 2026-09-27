@@ -858,3 +858,10 @@ updated: 2026-09-27
 - **Result:** Every declared acceptance criterion was accepted as met: "Every failure path in src/sessions/launch.ts after issueAdmission -- worktree preparation, prepareSession, tmux start, and the commitAdmission recheck -- calls releaseAdmission for that admission, not only the lease-race path."; "A crash between issue and commit leaves at most one uncommitted admission, which expires within the existing 30-second receipt TTL and is then not counted by countLiveAdmissions."; "Deterministic tests inject a failure at each path and show the live admission count back at its prior value immediately afterwards; pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-release-admission-on-every-launch-failure-2026-09-27).
+
+## 2026-09-27 — Completed arcadia/add-fixture-coding-agent-provider
+
+- **Did:** Completed Action arcadia/add-fixture-coding-agent-provider from accepted evidence (Candidate 11b4451468264316fbae8c4d0cb9b20184e85ca5).
+- **Result:** Every declared acceptance criterion was accepted as met: "A fixture provider launches through the same adapter, tmux and admission path as real providers, sleeps for a configured duration, edits one declared file in its candidate, and exits with a configured outcome (completed, failed, stalled with no output, or crashed)."; "The fixture provider is never selected automatically: production admits it only when the active policy scope names it in providers, and every receipt, Session and completion it produces is marked simulated so it can never be cited as live proof."; "Deterministic tests cover each configured outcome reaching the matching reconciliation result, and the refusal when the policy scope does not name the fixture provider; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-add-fixture-coding-agent-provider-2026-09-27).
