@@ -366,7 +366,8 @@ function bypassHardEvidenceRestriction(
 export const LAUNCH_ADAPTER_SUPPORT: Record<string, boolean> = {
   "codex-cli": true,
   "claude-code-cli": true,
-  "opencode-cli": true
+  "opencode-cli": true,
+  "fixture-cli": true
 };
 
 /**

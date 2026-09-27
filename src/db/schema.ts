@@ -83,6 +83,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentSessionStallColumns(db);
   ensureAgentSessionAdmissionColumn(db);
   ensureAgentSessionLaunchRevisionColumn(db);
+  ensureAgentSessionSimulatedColumn(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
@@ -411,6 +412,22 @@ function ensureAgentSessionLaunchRevisionColumn(db: Database.Database): void {
   );
   if (!columns.has("launch_revision")) {
     db.prepare(`ALTER TABLE agent_sessions ADD COLUMN launch_revision TEXT`).run();
+  }
+}
+
+/**
+ * Set only for a Session launched under the deterministic fixture coding-agent
+ * provider (`fixture-cli`) -- never for codex-cli, claude-code-cli, or
+ * opencode-cli. Every surface that renders or cites a Session's receipt or
+ * completion checks this first, so a zero-token rehearsal Session can never be
+ * mistaken for live unattended-agent proof.
+ */
+function ensureAgentSessionSimulatedColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("is_simulated")) {
+    db.prepare(`ALTER TABLE agent_sessions ADD COLUMN is_simulated INTEGER NOT NULL DEFAULT 0`).run();
   }
 }
 

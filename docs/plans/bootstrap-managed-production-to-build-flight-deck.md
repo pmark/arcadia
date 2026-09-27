@@ -2197,7 +2197,7 @@ actions:
     references: ["src/sessions/launch.ts", "src/production/policy.ts", "docs/proposals/portfolio-parallel-execution.md"]
   - id: add-fixture-coding-agent-provider
     title: Add a deterministic fixture coding-agent provider that sleeps, edits one file and exits, so concurrency limits can be exercised end to end at zero token cost.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a deterministic fixture coding-agent provider that sleeps, edits one file and exits, so concurrency limits can be exercised end to end at zero token cost.
@@ -2393,7 +2393,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: add-fixture-coding-agent-provider
+current_action: tidy-quarantine-instead-of-delete
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
