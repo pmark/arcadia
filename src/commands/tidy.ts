@@ -326,8 +326,13 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           // prior removal behavior, but recoverably: quarantined, not deleted.
           // Best-effort: a failure here leaves the ref in place, never fails
           // the worktree's own retirement, and never aborts the rest of the run.
+          // `record.head` is the commit this same interlock's recheck just
+          // read (or empty for an already-gone registration with no live HEAD
+          // to read); passing it as the CAS "old value" pins the branch
+          // quarantine to that exact commit instead of trusting a fresh
+          // `rev-parse` that could resolve a tip nobody here ever assessed.
           if (entry.retired && entry.branch && entry.branch !== baseBranch && SAFE_TASK_BRANCH.test(entry.branch)) {
-            try { quarantineBranch(repoRoot, entry.branch, runId); } catch { /* best effort */ }
+            try { quarantineBranch(repoRoot, entry.branch, runId, record.head || undefined); } catch { /* best effort */ }
           }
         }
       }
