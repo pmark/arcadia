@@ -2356,7 +2356,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/737", "https://github.com/pmark/arcadia/issues/738"]
   - id: tidy-harden-merge-and-liveness-verdicts
     title: Tighten tidy verdicts so wrong merge proofs and live unregistered worktrees are no longer retired.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Tighten tidy verdicts so wrong merge proofs and live unregistered worktrees are no longer retired.
@@ -2393,7 +2393,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: tidy-harden-merge-and-liveness-verdicts
+current_action: tidy-journal-recovery-and-conservation-tests
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
