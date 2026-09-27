@@ -396,9 +396,12 @@ function findCandidateSettledCompletion(db: Database.Database, session: AgentSes
     try {
       const receipt = JSON.parse(row.receipt_json) as AgentAskSettlementReceipt;
       const normalized = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null; candidateRevision?: string | null } }).normalized;
-      if (!receipt.applied || receipt.recovery?.documentsCommitted === false) continue;
+      if (!receipt.applied || receipt.recovery?.documentsCommitted === false || !receipt.documentsCommit) continue;
       if (!normalized?.targetRef || !targets.has(normalized.targetRef) || !normalized.candidateRevision) continue;
       git(worktree, ["merge-base", "--is-ancestor", normalized.candidateRevision, evidence.candidateRevision]);
+      // The settlement's own commit must be on this candidate: a settlement
+      // recorded on another branch never vouches for this one.
+      git(worktree, ["merge-base", "--is-ancestor", receipt.documentsCommit, evidence.candidateRevision]);
       // The evidence judged the work at `candidate_revision`. Anything the
       // candidate carries after it may only be the settlement's own managed
       // records -- never a change to the work that was accepted.

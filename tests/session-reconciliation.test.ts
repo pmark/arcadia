@@ -494,6 +494,33 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).toBe("incomplete_resumable");
   });
 
+  it("never accepts a settlement whose own commit is not on this candidate, even when the candidate claims done", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "define the contract"]);
+    const evidenceRevision = git(worktreePath, ["rev-parse", "HEAD"]).trim();
+    settleCompleteFromWorktree(fixture, worktreePath, "self-settle-elsewhere");
+    // Keep the settled Plan text, but drop the settlement commit itself: the
+    // candidate now carries only a managed-record edit on top of the evidence.
+    const plan = readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8");
+    git(worktreePath, ["reset", "-q", "--hard", evidenceRevision]);
+    writeFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), plan);
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "claim done without the settlement commit"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-settled-elsewhere", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+  });
+
   it("never accepts a settlement whose candidate_revision is not in this candidate's history", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
