@@ -29,7 +29,8 @@ Needs your attention (2) — nothing below was touched:
 Both were single-commit branches whose only change was a recovered
 `.arcadia/asks/*.yaml` file. Investigating them by hand
 (`MISSION_LOG.md:764`, `MISSION_LOG.md:813`) took several steps and showed
-both were long since resolved, in two different ways that git cannot see:
+both were already resolved two days earlier, in two different ways that git
+cannot see:
 
 - Branch `ask/recover-recovered-3563e94e` carried a `complete` Ask targeting
   Action `place-session-naming-screenshot`. That Action was completed under a
@@ -63,27 +64,51 @@ deleted or renamed Ask file disqualifies the branch from this check entirely
 — there is nothing to look up evidence for, and a deletion-only diff must not
 pass an "every Ask has evidence" check vacuously by having no Ask to check),
 have it also check — best-effort, informationally — whether Arcadia's own
-settlement records show the Ask(s) already took effect, and if so, append
-that evidence to the existing report line rather than changing the verdict:
+settlement records show **every** Ask on the branch already took effect, and
+if so, append that evidence to the existing report line rather than changing
+the verdict. A branch can carry more than one Ask file; report each one's
+status separately, and only say all of it is settled when every single one
+clears — a branch with two Asks where only one settled must never read as
+uniformly safe:
 
 ```
 Unmerged branches (1) — never touched by tidy:
   · ask/recover-recovered-7ee04f15 — 1 commit on ask/recover-recovered-7ee04f15
     not on main; NO remote copy.
     Note: Ask fix-decision-approve-missing-commit-2026-09-25 appears already
-    settled — see MISSION_LOG.md:813 and
-    docs/plans/bootstrap-managed-production-to-build-flight-deck.md:2043.
+    settled — see the Mission Log entry for fix-decision-approve-missing-commit
+    and the source: citation on the Action it created.
     Verify before deciding; tidy does not act on this by itself.
 ```
 
-This claims **no new authority and changes no deletion behavior whatsoever**.
-The verdict stays `unmerged`; `retireBranch` is never invoked for a branch
-recognized this way; nothing about `--apply`'s existing effects changes. The
-entire value is saving the next investigator the multi-step manual work this
-thread required (`gh pr list`, hand-reading `MISSION_LOG.md`, tracing a
-`request_id` through settlement records) by surfacing what `tidy` can already
-find mechanically, as a note the operator or a later agent still has to read
-and act on themselves.
+(Cite the settlement by its `request_id` or Mission Log heading, not a line
+number — line numbers drift the moment either document is edited again.)
+
+**This is a hard requirement, not a description of the expected outcome: the
+verdict must stay exactly `unmerged`, and this note must be a separate,
+additional field that no branch-mutating code path reads.** Two existing code
+paths depend on the verdict value precisely, not approximately:
+
+- `tidy --apply` retires a branch only when `entry.verdict === "merged"`
+  (`src/commands/tidy.ts:266`, and the retirable/report filters at `:698`,
+  `:737`). Any implementation that reuses `"merged"` for a
+  settlement-equivalent branch, or introduces a new value tidy's own
+  retirement filter doesn't explicitly exclude, would silently start
+  deleting these branches — the exact authority this proposal claims not to
+  need.
+- `arcadia push-unpushed` protects a branch by pushing it only when
+  `entry.verdict === "unmerged"` (`src/commands/pushUnpushed.ts:92,97`). A
+  new verdict value (e.g. `settled`) that isn't also treated as `unmerged`
+  here would silently stop protecting these no-remote-copy branches — the
+  opposite of this proposal's intent.
+
+Any implementation must include a regression test proving both: `tidy --apply`
+leaves a settlement-equivalent branch in place, and `push-unpushed` still
+lists and pushes it. The entire value here is saving the next investigator
+the multi-step manual work this thread required (`gh pr list`, hand-reading
+`MISSION_LOG.md`, tracing a `request_id` through settlement records) by
+surfacing what `tidy` can already find mechanically, as a note the operator or
+a later agent still has to read and act on themselves.
 
 Because nothing is deleted, the evidence-matching does not need to clear the
 same bar a deletion decision would — a wrong note costs a moment's
@@ -132,12 +157,23 @@ choice; the proposal's scope ends at "annotate, never act."
   (`git branch -D`, `git worktree remove --force`) instead of routing through
   `tidy`'s own safe retirement path. A first draft of this proposal built a
   standalone helper meant to enforce this and found it had real bugs (see
-  below); that helper is deleted rather than fixed. The underlying concern —
-  nothing yet stops a *future* generated script from deleting a branch
-  directly — is real but has no second instance yet to generalize from.
-  Deferred, with a trigger: revisit when a second generated operator script
-  needs to delete a branch or worktree, rather than designing the shared
-  primitive against a sample of one.
+  below); that helper is deleted rather than fixed. **This is not a
+  hypothetical to defer**: one such generated script already exists and
+  remains in the `/runs` library from this same investigation
+  (`remove-superseded-branches-and-worktree-2026-09-27.sh`, kept per the
+  one-shot-script audit-trail rule), and this proposal's whole purpose is to
+  make branches like these *look* safe to remove — which is exactly the
+  prompt that produces another hand-written `git branch -D` script, not
+  fewer of them. The note this proposal adds must therefore never itself
+  suggest or embed a deletion command; it states evidence only, and any
+  agent or operator choosing to delete a branch on the strength of it is
+  making an ordinary operator deletion decision under `CONSTITUTION.md`'s
+  existing hard stop on deletion without a Decision — recommend
+  `arcadia push-unpushed` (which only ever pushes, never deletes) as the
+  safe first move for a no-remote-copy branch, before any deletion is
+  considered at all. If a shared "don't delete a branch/worktree directly"
+  primitive is still wanted, that is this proposal's real trigger, met now
+  rather than deferred to some future second instance.
 
 ## What this proposal got wrong
 
@@ -179,7 +215,10 @@ collision, and treating a Log mention as proof of acceptance rather than
 checking the authoritative settlement record. This version removes the
 retirement step rather than trying to patch those into correctness, on the
 reviewer's own observation that an advisory note captures most of the value
-at none of the risk.
+at none of the risk. **The `settlement-equivalent`-as-a-retirement-proof
+design described above is rejected, not merely superseded or deferred** — a
+future reader should not treat this history as a design still available to
+revive without redoing the authority analysis that killed it.
 
 Three local git refs created ad hoc while investigating this proposal's
 motivating branches (`refs/arcadia/archived/*`) have been folded into tidy's
