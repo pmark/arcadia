@@ -263,6 +263,11 @@ current_action: write-marker-a
 Disposable fixture plan.
 `);
     git(this.repo, ["init", "-q", "-b", "main"]);
+    // A real Session commits under the agent identity its launch injects
+    // (GIT_AUTHOR_*/GIT_COMMITTER_*); settlement run from the simulated agent
+    // needs one too, including on a CI runner with no global Git identity.
+    git(this.repo, ["config", "user.name", "Rehearsal Agent"]);
+    git(this.repo, ["config", "user.email", "agent@rehearsal.test"]);
     git(this.repo, ["add", "-A"]);
     commit(this.repo, "Bootstrap two-action-rehearsal-v4 fixture");
     if (this.options.withOrigin) {
