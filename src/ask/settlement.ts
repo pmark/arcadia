@@ -1069,6 +1069,35 @@ export function settleAgentAsk(db: Database.Database, input: {
             .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
             .map((candidate) => candidate.id);
 
+          // The cycle-safety check for the reverse edges added below must see
+          // the graph this retry is actually about to write, not the
+          // preview-time snapshot captured before `planTransform` ever ran.
+          // A concurrent settlement can change some other Action's
+          // `depends_on` between preview and this retry such that a
+          // fresh-only path (remainder -> X -> dependent) now exists; the
+          // stale preview-time graph would miss it and write a cycle that
+          // the real parser then rejects. Built fresh on every retry from
+          // `freshPlan.actions`, which `parseFreshPlanDoc` just re-parsed.
+          const freshCycleGraph = new Map<string, string[]>(freshPlan.actions.map((candidate) => [candidate.id, candidate.dependsOn]));
+          for (const remainderAction of normalizedRemainder) freshCycleGraph.set(remainderAction.id, remainderAction.dependencies);
+          const freshReachabilityCache = new Map<string, Set<string>>();
+          const freshReachableFrom = (start: string): Set<string> => {
+            const cached = freshReachabilityCache.get(start);
+            if (cached) return cached;
+            const seen = new Set<string>();
+            const stack = [start];
+            while (stack.length > 0) {
+              const current = stack.pop()!;
+              if (seen.has(current)) continue;
+              seen.add(current);
+              for (const dependency of freshCycleGraph.get(current) ?? []) stack.push(dependency);
+            }
+            freshReachabilityCache.set(start, seen);
+            return seen;
+          };
+          const freshSafeRemainderIdsFor = (targetId: string): string[] =>
+            remainderIds.filter((id) => !freshReachableFrom(id).has(targetId));
+
           let next = amendAction(current, actionId, narrowedTitle, narrowed, freshAction.dependsOn, action.references, proposal.normalized.requestId);
           next = markActionDone(next, actionId);
           for (const remainderAction of normalizedRemainder) {
@@ -1088,7 +1117,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           next = recordSplitInto(next, actionId, remainderIds);
           for (const dependentId of freshDependentIds) {
             const freshDependent = freshPlan.actions.find((candidate) => candidate.id === dependentId)!;
-            next = setActionDependsOn(next, dependentId, withRemainderAdded(freshDependent.dependsOn, safeRemainderIdsFor(dependentId)));
+            next = setActionDependsOn(next, dependentId, withRemainderAdded(freshDependent.dependsOn, freshSafeRemainderIdsFor(dependentId)));
           }
           return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
         };

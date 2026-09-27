@@ -7,6 +7,7 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemRecord,
   getWorkItemByDocRef,
+  replaceDocumentWorkItemDependencies,
   setWorkItemDocRef,
   updateWorkItem,
   upsertProject,
@@ -434,6 +435,46 @@ describe("concurrency gate", () => {
     const second = admit(target, "adm-split-second", { actionKey: "demo/ship-it" });
     expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
     expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("stays closed when a done proof Action's own depends_on prerequisite reopens, with no split involved (Issue #720)", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-prereq-reopen", { maxConcurrentSessions: 2 });
+
+    withDatabase(target, (db) => {
+      const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+      const prereqRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-prereq";
+      const prereq = createWorkItemRecord(db, {
+        title: prereqRef,
+        rawInput: prereqRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Prove the prerequisite.",
+        status: "done"
+      });
+      setWorkItemDocRef(db, prereq.id, prereqRef);
+      // The proof Action itself carries no `split_into` at all -- it names a
+      // plain `depends_on` prerequisite, exactly like an ordinary Action.
+      replaceDocumentWorkItemDependencies(db, proof.id, proof.doc_ref ?? CONCURRENT_READY_SET_ADMISSION_PROOF_REF, [prereq.id]);
+    });
+
+    // Both proofs and the prerequisite are done: the gate opens.
+    expect(admit(target, "adm-prereq-first").admitted).toBe(true);
+    expect(admit(target, "adm-prereq-second", { actionKey: "demo/ship-it" }).admitted).toBe(true);
+
+    withDatabase(target, (db) => {
+      const prereqRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-prereq";
+      const prereq = getWorkItemByDocRef(db, prereqRef)!;
+      updateWorkItem(db, prereq.id, { status: "open" });
+    });
+
+    // The proof Action's own `status` is still `done` -- only its dependency
+    // reopened -- so a check that never walks `depends_on` would miss this
+    // and leave the cap lifted.
+    const third = admit(target, "adm-prereq-third", { actionKey: "demo/migrate" });
+    expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(third.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
   });
 
   it("honours a rehearsal exception only before its expiry", () => {

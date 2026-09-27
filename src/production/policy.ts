@@ -4,7 +4,7 @@ import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { getProjectContext, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectContext, getWorkItemByDocRef, listWorkItemDependencies } from "../db/repositories.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
@@ -836,9 +836,10 @@ export interface ConcurrencyGateStatus {
 }
 
 /**
- * Whether `actionRef` and, if it was split (`src/ask/settlement.ts`), every
- * remainder Action named in its own `split_into` -- recursively, in case a
- * remainder was itself later split -- is also `done`.
+ * Whether `actionRef` -- every remainder Action named in its own
+ * `split_into` (recursively, in case a remainder was itself later split),
+ * AND every Action its own `depends_on` names (recursively) -- is also
+ * `done`.
  *
  * A split narrows a proof Action to its finished slice and marks it `done`,
  * but that leaves the rest of its declared scope in one or more remainder
@@ -847,22 +848,51 @@ export interface ConcurrencyGateStatus {
  * Plan onto the work item specifically so a DB-only reader like this one can
  * still see the open remainder.
  *
- * `seen` guards a cycle in `split_into` itself, which should never exist --
- * settlement only ever writes it once, onto a freshly narrowed Action, never
- * onto a remainder -- but this walk must not assume that invariant holds.
+ * That is a distinct failure mode from an ordinary reopened prerequisite: a
+ * proof Action can be `done` with no `split_into` at all, yet still have a
+ * `depends_on` prerequisite that was reopened after the proof itself was
+ * marked done. `split_into` is deliberately never folded into `depends_on`
+ * (folding it in risks closing a dependency cycle -- see `src/ask/settlement.ts`),
+ * so both checks must run, not one instead of the other.
+ *
+ * `seen` guards a cycle in either edge set. A `split_into` cycle should never
+ * exist -- settlement only ever writes it once, onto a freshly narrowed
+ * Action, never onto a remainder -- and a `depends_on` cycle is refused at
+ * parse time, but this walk must not assume either invariant holds.
  */
 function isActionRefDone(db: Database.Database, actionRef: string, seen: Set<string> = new Set()): boolean {
   if (seen.has(actionRef)) return true;
   seen.add(actionRef);
   const item = getWorkItemByDocRef(db, actionRef);
   if (!item || item.status !== "done") return false;
-  if (!item.split_into_json) return true;
-  const remainderRefs = JSON.parse(item.split_into_json) as string[];
-  return remainderRefs.every((remainderId) => {
-    const parsed = parseActionDocRef(actionRef);
-    const remainderRef = parsed ? actionDocRef(parsed.planSlug, remainderId) : remainderId;
-    return isActionRefDone(db, remainderRef, seen);
-  });
+  if (item.split_into_json) {
+    const remainderRefs = JSON.parse(item.split_into_json) as string[];
+    const remaindersDone = remainderRefs.every((remainderId) => {
+      const parsed = parseActionDocRef(actionRef);
+      const remainderRef = parsed ? actionDocRef(parsed.planSlug, remainderId) : remainderId;
+      return isActionRefDone(db, remainderRef, seen);
+    });
+    if (!remaindersDone) return false;
+  }
+  return listWorkItemDependencies(db, item.id).every((dependency) =>
+    isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+  );
+}
+
+/**
+ * Whether `workItemId` (already known to have `status`) and every Action its
+ * own `depends_on` names, recursively, is `done`. The `depends_on` half of
+ * `isActionRefDone`'s two checks, walking `work_item_dependencies` by id
+ * rather than by doc ref since that is what `listWorkItemDependencies` keys
+ * on.
+ */
+function isWorkItemChainDone(db: Database.Database, workItemId: string, status: string, seen: Set<string>): boolean {
+  if (status !== "done") return false;
+  if (seen.has(workItemId)) return true;
+  seen.add(workItemId);
+  return listWorkItemDependencies(db, workItemId).every((dependency) =>
+    isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+  );
 }
 
 function isConcurrencyProofDone(db: Database.Database, actionRef: string): boolean {
