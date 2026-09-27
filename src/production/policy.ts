@@ -4,7 +4,7 @@ import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { getProjectContext, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectContext, getWorkItemByDocRef, listWorkItemDependencies } from "../db/repositories.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
@@ -883,8 +883,79 @@ export interface ConcurrencyGateStatus {
   reason: string | null;
 }
 
+/**
+ * Whether `actionRef` -- every remainder Action named in its own
+ * `split_into` (recursively, in case a remainder was itself later split),
+ * AND every Action its own `depends_on` names (recursively) -- is also
+ * `done`.
+ *
+ * A split narrows a proof Action to its finished slice and marks it `done`,
+ * but that leaves the rest of its declared scope in one or more remainder
+ * Actions. A status check alone would read the narrowed Action as satisfied
+ * and open the gate early; `split_into` is what `docs sync` mirrors from the
+ * Plan onto the work item specifically so a DB-only reader like this one can
+ * still see the open remainder.
+ *
+ * That is a distinct failure mode from an ordinary reopened prerequisite: a
+ * proof Action can be `done` with no `split_into` at all, yet still have a
+ * `depends_on` prerequisite that was reopened after the proof itself was
+ * marked done. `split_into` is deliberately never folded into `depends_on`
+ * (folding it in risks closing a dependency cycle -- see `src/ask/settlement.ts`),
+ * so both checks must run, not one instead of the other.
+ *
+ * `seen` guards a cycle in either edge set. A `split_into` cycle should never
+ * exist -- settlement only ever writes it once, onto a freshly narrowed
+ * Action, never onto a remainder -- and a `depends_on` cycle is refused at
+ * parse time, but this walk must not assume either invariant holds.
+ */
+function isActionRefDone(db: Database.Database, actionRef: string, seen: Set<string> = new Set()): boolean {
+  if (seen.has(actionRef)) return true;
+  seen.add(actionRef);
+  const item = getWorkItemByDocRef(db, actionRef);
+  if (!item || item.status !== "done") return false;
+  if (item.split_into_json) {
+    const remainderRefs = JSON.parse(item.split_into_json) as string[];
+    const remaindersDone = remainderRefs.every((remainderId) => {
+      const parsed = parseActionDocRef(actionRef);
+      const remainderRef = parsed ? actionDocRef(parsed.planSlug, remainderId) : remainderId;
+      return isActionRefDone(db, remainderRef, seen);
+    });
+    if (!remaindersDone) return false;
+  }
+  return listWorkItemDependencies(db, item.id).every((dependency) =>
+    dependency.docRef
+      ? isActionRefDone(db, dependency.docRef, seen)
+      : isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+  );
+}
+
+/**
+ * Whether `workItemId` (already known to have `status`) and every Action its
+ * own `depends_on` names, recursively, is `done`. The `depends_on` half of
+ * `isActionRefDone`'s two checks, walking `work_item_dependencies` by id
+ * rather than by doc ref since that is what `listWorkItemDependencies` keys
+ * on.
+ *
+ * A dependency row this walk reaches may itself be a split, done proof with
+ * an open remainder -- `docs sync` mirrors `split_into` onto the work item by
+ * doc ref, not by internal id, so a dependency that carries a `docRef` is
+ * routed back through `isActionRefDone` (which checks `split_into` too)
+ * rather than trusted on status alone; only a dependency with no `docRef` at
+ * all (recorded outside ingestion) falls back to this depends_on-only walk.
+ */
+function isWorkItemChainDone(db: Database.Database, workItemId: string, status: string, seen: Set<string>): boolean {
+  if (status !== "done") return false;
+  if (seen.has(workItemId)) return true;
+  seen.add(workItemId);
+  return listWorkItemDependencies(db, workItemId).every((dependency) =>
+    dependency.docRef
+      ? isActionRefDone(db, dependency.docRef, seen)
+      : isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+  );
+}
+
 function isConcurrencyProofDone(db: Database.Database, actionRef: string): boolean {
-  return getWorkItemByDocRef(db, actionRef)?.status === "done";
+  return isActionRefDone(db, actionRef);
 }
 
 /**

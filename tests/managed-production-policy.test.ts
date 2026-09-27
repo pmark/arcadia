@@ -7,6 +7,7 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemRecord,
   getWorkItemByDocRef,
+  replaceDocumentWorkItemDependencies,
   setWorkItemDocRef,
   updateWorkItem,
   upsertProject,
@@ -405,6 +406,120 @@ describe("concurrency gate", () => {
     const third = admit(target, "adm-reopen-third", { actionKey: "demo/migrate" });
     expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
     expect(third.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("stays closed when a done proof Action's split left an open remainder", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-split", { maxConcurrentSessions: 2 });
+
+    withDatabase(target, (db) => {
+      const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+      const remainderId = "prove-concurrent-ready-set-admission-remainder";
+      const remainderRef = `plan/bootstrap-managed-production-to-build-flight-deck#${remainderId}`;
+      const remainder = createWorkItemRecord(db, {
+        title: remainderRef,
+        rawInput: remainderRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Finish the split-off remainder.",
+        status: "open"
+      });
+      setWorkItemDocRef(db, remainder.id, remainderRef);
+      // Mirrors what settling a `split` writes: the narrowed (now done) proof
+      // Action gains a `split_into` naming the remainder id.
+      updateWorkItem(db, proof.id, { splitIntoJson: JSON.stringify([remainderId]) });
+    });
+
+    expect(admit(target, "adm-split-first").admitted).toBe(true);
+    const second = admit(target, "adm-split-second", { actionKey: "demo/ship-it" });
+    expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("stays closed when a done proof Action's own depends_on prerequisite reopens, with no split involved (Issue #720)", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-prereq-reopen", { maxConcurrentSessions: 2 });
+
+    withDatabase(target, (db) => {
+      const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+      const prereqRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-prereq";
+      const prereq = createWorkItemRecord(db, {
+        title: prereqRef,
+        rawInput: prereqRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Prove the prerequisite.",
+        status: "done"
+      });
+      setWorkItemDocRef(db, prereq.id, prereqRef);
+      // The proof Action itself carries no `split_into` at all -- it names a
+      // plain `depends_on` prerequisite, exactly like an ordinary Action.
+      replaceDocumentWorkItemDependencies(db, proof.id, proof.doc_ref ?? CONCURRENT_READY_SET_ADMISSION_PROOF_REF, [prereq.id]);
+    });
+
+    // Both proofs and the prerequisite are done: the gate opens.
+    expect(admit(target, "adm-prereq-first").admitted).toBe(true);
+    expect(admit(target, "adm-prereq-second", { actionKey: "demo/ship-it" }).admitted).toBe(true);
+
+    withDatabase(target, (db) => {
+      const prereqRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-prereq";
+      const prereq = getWorkItemByDocRef(db, prereqRef)!;
+      updateWorkItem(db, prereq.id, { status: "open" });
+    });
+
+    // The proof Action's own `status` is still `done` -- only its dependency
+    // reopened -- so a check that never walks `depends_on` would miss this
+    // and leave the cap lifted.
+    const third = admit(target, "adm-prereq-third", { actionKey: "demo/migrate" });
+    expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(third.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("stays closed when a done proof's depends_on prerequisite is itself a done split with an open remainder (CodeRabbit, PR #715)", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-prereq-split", { maxConcurrentSessions: 2 });
+
+    withDatabase(target, (db) => {
+      const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+      const prereqRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-prereq";
+      const remainderId = "prove-concurrent-ready-set-admission-prereq-remainder";
+      const remainderRef = `plan/bootstrap-managed-production-to-build-flight-deck#${remainderId}`;
+      const remainder = createWorkItemRecord(db, {
+        title: remainderRef,
+        rawInput: remainderRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Finish the split-off remainder.",
+        status: "open"
+      });
+      setWorkItemDocRef(db, remainder.id, remainderRef);
+      // The prerequisite is itself `done`, but only because it was split --
+      // it carries a `split_into` naming an open remainder, exactly like the
+      // proof Action can (see the split test above). Reaching it only
+      // through `depends_on`, with no `split_into` on the proof itself, is
+      // what distinguishes this from that test: it proves the depends_on
+      // walk routes a dependency with its own split back through the full
+      // `split_into`-aware check instead of trusting its `done` status.
+      const prereq = createWorkItemRecord(db, {
+        title: prereqRef,
+        rawInput: prereqRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Prove the prerequisite.",
+        status: "done"
+      });
+      setWorkItemDocRef(db, prereq.id, prereqRef);
+      updateWorkItem(db, prereq.id, { splitIntoJson: JSON.stringify([remainderId]) });
+      replaceDocumentWorkItemDependencies(db, proof.id, proof.doc_ref ?? CONCURRENT_READY_SET_ADMISSION_PROOF_REF, [prereq.id]);
+    });
+
+    expect(admit(target, "adm-prereq-split-first").admitted).toBe(true);
+    const second = admit(target, "adm-prereq-split-second", { actionKey: "demo/ship-it" });
+    expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
   });
 
   it("honours a rehearsal exception only before its expiry", () => {

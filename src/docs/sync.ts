@@ -716,7 +716,11 @@ function syncAction(
     // stores NULL so "declared none" and "never came from a plan" read alike
     // downstream — neither gives the agent anything to satisfy.
     acceptance_criteria_json:
-      action.acceptanceCriteria.length > 0 ? JSON.stringify(action.acceptanceCriteria) : null
+      action.acceptanceCriteria.length > 0 ? JSON.stringify(action.acceptanceCriteria) : null,
+    // Written only by settling a `split` (src/ask/settlement.ts); mirrored
+    // here so a DB-only reader like the concurrency gate can see it too.
+    split_into_json:
+      action.splitInto.length > 0 ? JSON.stringify(action.splitInto) : null
   };
 
   if (!existing) {
@@ -741,7 +745,8 @@ function syncAction(
         confidence: desired.confidence,
         clarificationSource: desired.clarification_source,
         executionRequirementJson: desired.execution_requirement_json,
-        acceptanceCriteriaJson: desired.acceptance_criteria_json
+        acceptanceCriteriaJson: desired.acceptance_criteria_json,
+        splitIntoJson: desired.split_into_json
       });
     }
     return {
@@ -766,7 +771,8 @@ function syncAction(
     ["confidence", existing.confidence, desired.confidence],
     ["source", existing.clarification_source, desired.clarification_source],
     ["execution", existing.execution_requirement_json, desired.execution_requirement_json],
-    ["acceptance_criteria", existing.acceptance_criteria_json, desired.acceptance_criteria_json]
+    ["acceptance_criteria", existing.acceptance_criteria_json, desired.acceptance_criteria_json],
+    ["split_into", existing.split_into_json, desired.split_into_json]
   ];
   const changed = drift.filter(([, current, next]) => (current ?? null) !== (next ?? null));
 
@@ -800,7 +806,8 @@ function syncAction(
       confidence: desired.confidence,
       clarificationSource: desired.clarification_source,
       executionRequirementJson: desired.execution_requirement_json,
-      acceptanceCriteriaJson: desired.acceptance_criteria_json
+      acceptanceCriteriaJson: desired.acceptance_criteria_json,
+      splitIntoJson: desired.split_into_json
     });
     if (existing.title !== desired.title) {
       db.prepare("UPDATE work_items SET title = ? WHERE id = ?").run(desired.title, existing.id);

@@ -125,6 +125,88 @@ describe("Agent Ask split", () => {
     })).toThrow(/drawn verbatim from the Action's declared acceptance criteria/);
   });
 
+  it("rewires an existing dependent's depends_on to include the remainder, so it stays blocked until the remainder is done", () => {
+    const { workspace, repo, head } = fixture({ withDependentOnFirst: true });
+    const proposal = runAgentAskPreviewCommand({ workspace, request: splitAsk("split-dependent", head) });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-dependent", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-dependent", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+    expect(applied.data.receipt.effects.join(" ")).toContain("Rewired 1 dependent Action in demo-plan to also depend on the remainder: third.");
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({ id: "third", dependsOn: ["first", "first-remainder"] })
+      ])
+    });
+    // The pointer must not advance onto "third": it still names the split
+    // Action as a dependency, but the remainder that covers the rest of the
+    // declared scope is still open.
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ currentAction: "first-remainder" });
+  });
+
+  it("records split_into on the narrowed Action even when a remainder depends on it directly", () => {
+    const { workspace, repo, head } = fixture();
+    const request = splitAsk("split-remainder-depends-on-narrowed", head)
+      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - first');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-remainder-depends-on-narrowed", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-remainder-depends-on-narrowed", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: expect.arrayContaining([
+        // `split_into` is a dedicated, one-way field, never folded into
+        // `depends_on` -- so it is written unconditionally, even though the
+        // remainder here also declares a direct dependency on "first" (which
+        // a reverse `depends_on` edge would have turned into a cycle).
+        expect.objectContaining({ id: "first", status: "done", dependsOn: [], splitInto: ["first-remainder"] }),
+        expect.objectContaining({ id: "first-remainder", status: "open", dependsOn: ["first"] })
+      ])
+    });
+  });
+
+  it("excludes a remainder from a dependent's rewired depends_on when the remainder already reaches that dependent through an existing Action", () => {
+    // "third" depends on "first" (the Action being split), and "second" (an
+    // existing, otherwise-unrelated Action) depends on "third". The remainder
+    // declares a dependency on "second". Rewiring "third" to also depend on
+    // the remainder would close third -> remainder -> second -> third: the
+    // cycle runs through "second", an existing Action, not through another
+    // remainder.
+    const { workspace, repo, head } = fixture({ withDependentOnFirst: true, secondDependsOnThird: true });
+    const request = splitAsk("split-transitive-cycle", head)
+      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-transitive-cycle", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-transitive-cycle", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({ id: "third", dependsOn: ["first"] }),
+        expect.objectContaining({ id: "second", dependsOn: ["third"] })
+      ])
+    });
+  });
+
   it("refuses a remainder id already used by another Plan in the Project, not only the target Plan", () => {
     // The queue key is `${project.slug}/${id}` with no Plan segment, so a
     // remainder id must be unique across every Plan, not only the one being
@@ -138,7 +220,14 @@ describe("Agent Ask split", () => {
   });
 });
 
-function fixture(options: { queueOrder?: string[]; withCollidingIdInOtherPlan?: boolean } = {}): { workspace: string; repo: string; head: string } {
+function fixture(
+  options: {
+    queueOrder?: string[];
+    withCollidingIdInOtherPlan?: boolean;
+    withDependentOnFirst?: boolean;
+    secondDependsOnThird?: boolean;
+  } = {}
+): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-split-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -164,7 +253,15 @@ function fixture(options: { queueOrder?: string[]; withCollidingIdInOtherPlan?: 
     "  - id: second", "    title: Second Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the second Action.",
     "    expected_artifact: Second proof", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - Second proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
+    "    acceptance_criteria:", "      - Second proof exists.",
+    options.secondDependsOnThird ? "    depends_on: [third]" : "    depends_on: []",
+    "    decisions: []", "    references: []",
+    ...(options.withDependentOnFirst ? [
+      "  - id: third", "    title: Third Action", "    status: open",
+      "    responsibility: agent", "    effort: session", "    next_action: Finish the third Action.",
+      "    expected_artifact: Third proof", "    clarification: clarified", "    confidence: high",
+      "    acceptance_criteria:", "      - Third proof exists.", "    depends_on: [first]", "    decisions: []", "    references: []"
+    ] : []),
     "questions: []", "---", "", "# Demo plan", ""
   ].join("\n"), "utf8");
   if (options.withCollidingIdInOtherPlan) {
@@ -192,9 +289,12 @@ function fixture(options: { queueOrder?: string[]; withCollidingIdInOtherPlan?: 
       status: "active", currentMilestone: "Split work", nextAction: "Keep going.", workClassification: "agent"
     });
     upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    const defaultOrder = options.withDependentOnFirst
+      ? ["demo/first", "demo/second", "demo/third"]
+      : ["demo/first", "demo/second"];
     arrangeActionOrder(db, {
-      currentKeys: ["demo/first", "demo/second"],
-      order: options.queueOrder ?? ["demo/first", "demo/second"],
+      currentKeys: defaultOrder,
+      order: options.queueOrder ?? defaultOrder,
       requestId: "fixture-order",
       apply: true
     });
