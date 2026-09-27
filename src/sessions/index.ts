@@ -1125,13 +1125,20 @@ export function fixtureModelFor(outcome: FixtureOutcome): string {
   return `fixture-${outcome}`;
 }
 
+/**
+ * Resolved only relative to this compiled module, never the caller's working
+ * directory: a launch command is built once and then handed to tmux, so its
+ * argv must not depend on whichever directory the host process happened to be
+ * running from at that moment. The build copies `scripts/fixture-coding-agent.mjs`
+ * to `dist/scripts/` (see `package.json`'s `build` script) so this resolves
+ * identically under `tsx` (`dist/src/sessions` doesn't exist yet; the module
+ * lives at `src/sessions`) and under the compiled CLI (`dist/src/sessions`).
+ */
 function fixtureScriptPath(): string {
-  const fromCwd = path.resolve("scripts", "fixture-coding-agent.mjs");
-  if (existsSync(fromCwd)) return fromCwd;
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const fromModule = path.resolve(moduleDir, "..", "..", "scripts", "fixture-coding-agent.mjs");
   if (existsSync(fromModule)) return fromModule;
-  throw new Error("Could not find the bundled scripts/fixture-coding-agent.mjs script.");
+  throw new Error(`Could not find the bundled fixture-coding-agent.mjs script at ${fromModule}.`);
 }
 
 /**

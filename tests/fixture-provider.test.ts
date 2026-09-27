@@ -255,13 +255,13 @@ describe("the fixture script itself (scripts/fixture-coding-agent.mjs)", () => {
     const session = prepareFixtureSession(fixture, tmux);
     const dbPath = getWorkspacePaths(fixture.workspace).databaseFile;
 
-    let caught: unknown;
+    let caught: { status: number | null } | undefined;
     try {
       runFixtureScript(["--worktree", session.worktree_path, "--file", FIXTURE_EDIT_FILE, "--duration", "0", "--outcome", "failed", "--session-id", session.id, "--db", dbPath]);
     } catch (error) {
-      caught = error;
+      caught = error as { status: number | null };
     }
-    expect(caught).toBeInstanceOf(Object);
+    expect(caught?.status).toBe(1);
 
     const updated = withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, session.id));
     expect(updated?.exit_status).toBe(1);
@@ -279,13 +279,13 @@ describe("the fixture script itself (scripts/fixture-coding-agent.mjs)", () => {
     git(root, ["add", "."]);
     git(root, ["commit", "-m", "initial"]);
 
-    let caught: unknown;
+    let caught: { status: number | null } | undefined;
     try {
       runFixtureScript(["--worktree", root, "--file", FIXTURE_EDIT_FILE, "--duration", "0", "--outcome", "crashed", "--session-id", "session_test"]);
     } catch (error) {
-      caught = error;
+      caught = error as { status: number | null };
     }
-    expect(caught).toBeDefined();
+    expect(caught?.status).toBe(1);
     expect(git(root, ["status", "--porcelain"]).trim()).toBe("");
   });
 });
