@@ -472,6 +472,28 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).toBe("incomplete_resumable");
   });
 
+  it("never accepts a self-settled completion when the work changed after the settled revision", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "define the contract"]);
+    settleCompleteFromWorktree(fixture, worktreePath, "self-settle-then-change-work");
+    writeFileSync(path.join(worktreePath, "contract.md"), "Changed after acceptance.\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "change the accepted work"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-changed-after", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+  });
+
   it("never accepts a settlement whose candidate_revision is not in this candidate's history", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();

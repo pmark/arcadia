@@ -399,12 +399,27 @@ function findCandidateSettledCompletion(db: Database.Database, session: AgentSes
       if (!receipt.applied || receipt.recovery?.documentsCommitted === false) continue;
       if (!normalized?.targetRef || !targets.has(normalized.targetRef) || !normalized.candidateRevision) continue;
       git(worktree, ["merge-base", "--is-ancestor", normalized.candidateRevision, evidence.candidateRevision]);
+      // The evidence judged the work at `candidate_revision`. Anything the
+      // candidate carries after it may only be the settlement's own managed
+      // records -- never a change to the work that was accepted.
+      const changedSince = git(worktree, ["diff", "--name-only", normalized.candidateRevision, evidence.candidateRevision])
+        .split("\n").map((line) => line.trim()).filter(Boolean);
+      if (changedSince.some((file) => !isSettlementRecordPath(file))) continue;
       return row.id;
     } catch {
       continue;
     }
   }
   return null;
+}
+
+/** The managed records a `complete` settlement writes and commits. */
+function isSettlementRecordPath(file: string): boolean {
+  return file === "PROJECT.md"
+    || file === "MISSION_LOG.md"
+    || file.startsWith("docs/plans/")
+    || file.startsWith("docs/decisions/")
+    || file.startsWith(".arcadia/asks/");
 }
 
 /**
