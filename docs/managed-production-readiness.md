@@ -11,7 +11,7 @@ from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck
 are right and this file is stale. "Refreshing this document" at the bottom says
 how to re-derive it.
 
-Last derived: **2026-09-25** (updated same day, five times more — see the
+Last derived: **2026-09-25**; blocker update **2026-09-26T20:40Z** (updated same day, five times more — see the
 notes below). This derivation also restored the dispatch guarantee
 that `arcadia go` works only on the critical path (see "What this derivation
 changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
@@ -109,6 +109,43 @@ changes:
 plan; see "Concurrency" below.
 
 ---
+
+**Update at 2026-09-26T20:40Z: the first live rehearsal attempts found a new
+blocker for gate 5, and the operator's Decision 0072 now gates criterion 2.**
+The operator ran `prove-two-action-unattended-production` against the fixtures
+`two-action-rehearsal-v2` and then `-v3`. Neither launched a Session. Every
+cause was diagnosed from real state, not assumed:
+
+- **Build-packet approval is a per-Action operator gate, and the standing
+  grant does not delegate it.** The launch path needs an approved promotion
+  review for the Action's packet (`findPromotionDecisionOrProblem`,
+  `src/sessions/launchPreview.ts`). After Action A completes, the tick
+  prepares B's packet itself (`attemptAutomaticPlanningResolution`,
+  `src/production/tick.ts`) and then refuses every tick until an operator runs
+  `arcadia review approve`. So criterion 2 ("B launches without … launch
+  confirmation in between") **cannot pass on current code**. Decision 0072
+  (open) asks whether the grant may delegate packet approval inside its scope.
+  The v3 attempt stopped on exactly this for Action A. At the time the
+  refusal showed only in `.arcadia/worker.log`, misreported as a stale
+  packet. It is now a `build_packet_approval_pending` escalation in
+  `production status`, naming the exact approve command (#712, PR #713,
+  merged). The opt-in `packet_approval` transition that implements the
+  recommended answer is drafted in PR #714, which waits on Decision 0072.
+- Re-running `arcadia work plan` on an approved packet silently revoked its
+  approval (#709, PR #711, merged).
+- Fixed and merged during this pass: a discarded different-Action candidate
+  blocked the automated launch path forever (#697, PR #705); an exhausted
+  repair budget was invisible, with no reset (#703, PR #708); an activation
+  replay under a different scope returned ok (#704, PR #707).
+- The runbook now requires the Decision 0058 integration grant and
+  never-used request ids, and its Step 4 relies on the worker's own resume
+  (#696) rather than a manual relaunch.
+
+Ready now: fixture `two-action-rehearsal-v4`, via
+`artifacts/generated/operator-scripts/prepare-two-action-rehearsal-2026-09-26.sh`.
+Its generated `next-steps.md` proves criteria 1 and 3-5 today, with A's and B's
+packet approvals recorded as two operator interventions. Criterion 2 needs
+Decision 0072 answered, and its implementation if the answer is to delegate.
 
 ## Executive summary
 
