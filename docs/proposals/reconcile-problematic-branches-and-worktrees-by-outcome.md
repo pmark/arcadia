@@ -66,14 +66,20 @@ with) with an **outcome-equivalence check** as a second classification pass,
 run only on candidates that fail the existing identity check (no remote copy /
 not ancestor of base):
 
-1. For a branch/worktree whose tip commit touches `.arcadia/asks/*.yaml`,
-   parse the Ask's `request_id` prefix and `target_ref`/Action id, and check
+1. For a branch/worktree whose **entire diff against its merge-base is
+   confined to `.arcadia/asks/*.yaml`** (no other file touched), parse the
+   Ask's `request_id` prefix and `target_ref`/Action id, and check
    `MISSION_LOG.md` for a completion entry against that same Action whose
    acceptance criteria match verbatim (or a settled Ask under a `-v2`/`-v3`
-   sibling `request_id`).
+   sibling `request_id`). A branch whose diff includes anything beyond the
+   Ask file does not qualify for this path — matching only the Ask's
+   criteria would say nothing about whatever else the branch changed. Such a
+   branch falls through to check 2, which covers the full diff.
 2. For a branch with an associated GitHub PR, check the PR's merge state via
-   `gh pr list --head <branch>`; if merged, diff the branch tip against the
-   merge commit's tree (not its hash) to confirm no content is missing.
+   `gh pr list --head <branch> --state all` (the default is open-only and
+   would silently miss every merged PR, which is the case that matters here);
+   if merged, diff the branch tip against the merge commit's tree (not its
+   hash) to confirm no content is missing.
 3. Report each candidate as **reconciled** (safe to discard, with the
    evidence — PR URL, Mission Log entry — cited in the tidy report) or
    **needs attention** (unchanged from today) — never auto-delete. The
@@ -120,10 +126,17 @@ to proceed to the (now costless) archive-and-delete step; it never substitutes
 for taking it. A demonstrated, tested implementation of exactly this — a
 `archive_and_delete_branch` helper, unconditional, idempotent, additive-only —
 now lives at
-`artifacts/generated/operator-scripts/lib/archive-before-delete.sh` and should
-be the shared primitive both this proposal's `tidy` extension and any future
-generated operator-script deletion route through, rather than each caller
-re-deciding whether archiving is warranted this time.
+`artifacts/generated/operator-scripts/lib/archive-before-delete.sh`. That path
+is local to the machine that wrote it and intentionally **not part of this
+diff**: `artifacts/generated/` is gitignored by existing convention (it is
+`/runs`'s local execution state, not reviewed code), so it will not appear in
+this PR and cannot be inspected from it directly — it is cited here as
+existing, tested prior art, not as something this PR ships. Once this proposal
+is accepted, the equivalent logic needs to live in Arcadia's own
+implementation (`tidy`/`go`, in `src/`) to be the shared primitive both the
+`tidy` extension and any future generated operator-script deletion route
+through, rather than each caller re-deciding whether archiving is warranted
+this time.
 
 Retention of `refs/arcadia/archived/*` is deliberately not addressed here:
 storage is cheap, an unreachable-but-archived ref costs nothing to keep
@@ -151,10 +164,10 @@ backwards from what the wording implies. An operator without deep git fluency
 cannot act on it without either trusting it blindly or handing it to an agent
 to re-derive the investigation this proposal exists to make unnecessary.
 
-**Three report tiers, not two**, each stating what tidy checked and what
-recovery looks like, since "impossible to lose work" is only a real promise
-to a non-technical operator if getting something back never requires reading
-git internals:
+**Two report tiers, replacing today's single "needs your attention" bucket**,
+each stating what tidy checked and what recovery looks like, since
+"impossible to lose work" is only a real promise to a non-technical operator
+if getting something back never requires reading git internals:
 
 ```
 Reconciled and cleaned up (2) — already verified, archived, and removed:
@@ -220,6 +233,15 @@ fails the "most users" bar this proposal answers to. `arcadia tidy
 --list-archived` (or a standing section in plain `arcadia tidy` output when
 the list is non-empty) gives the same operator a way to browse what exists
 without knowing `git for-each-ref refs/arcadia/archived/` is where to look.
+
+If the original branch name already exists again by the time of a restore
+(recreated independently, or restored once already), `git branch
+<original-name> ...` refuses outright rather than overwriting anything — so
+the failure mode is a clear error, not silent data loss. `tidy restore` should
+surface that refusal plainly and offer the one safe alternative: restore under
+a suffixed name (`<original-name>-restored`) and let the operator rename it
+themselves once they've looked at both. It must never force-overwrite the
+existing branch to make the original name available.
 
 None of this changes behavior for a candidate tidy cannot reconcile today —
 those still stop and wait, unchanged, unless the operator picks option 2
