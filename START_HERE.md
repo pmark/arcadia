@@ -1621,8 +1621,10 @@ arcadia tidy --apply      # retires what the dry run listed
 > Retired branches are also judged on a pull-request proof that does not yet
 > check the branch tip ([#736](https://github.com/pmark/arcadia/issues/736)),
 > and on preview-time verdicts
-> ([#740](https://github.com/pmark/arcadia/issues/740)); both are recoverable
-> from the archive tag. This note is removed when those Actions merge.
+> ([#740](https://github.com/pmark/arcadia/issues/740)). A branch retired by
+> a forced delete keeps its tip in an archive tag; one that `git branch -d`
+> accepts gets no tag, and its tip survives only through its upstream or
+> another ref. This note is removed when those Actions merge.
 
 `--apply` also requires the Arcadia workspace (resolved normally, or supplied
 with `--workspace`). Before removing anything, `tidy` checks live `prepared`
