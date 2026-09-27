@@ -555,16 +555,20 @@ export function branchReflogActivity(cwd: string, branch: string): BranchReflogA
 
 /**
  * The current working directory of every process `lsof` can see, or null when
- * `lsof` is unavailable or fails outright.
+ * `lsof` is unavailable, fails outright, or does not answer within the
+ * timeout.
  *
  * Callers must fail *open* on null — treat it as "no live process found" —
- * because a missing `lsof` binary must not itself protect every worktree
- * forever. Status 1 is `lsof`'s ordinary "some processes could not be
- * inspected" (permissions) exit and still carries a usable partial list; only
- * a genuinely different failure (a missing binary, a signal) returns null.
+ * because a missing or hung `lsof` must not itself protect every worktree
+ * forever, and must not stall a whole `tidy` run waiting for it. Status 1 is
+ * `lsof`'s ordinary "some processes could not be inspected" (permissions)
+ * exit and still carries a usable partial list; only a genuinely different
+ * failure (a missing binary, a timeout, a signal) returns null. Deliberately
+ * no `-b`: it skips `lsof`'s kernel calls and can omit exactly the cwd
+ * records this exists to find.
  */
 export function liveProcessCwds(): Set<string> | null {
-  const result = spawnSync("lsof", ["-d", "cwd", "-Fn"], { encoding: "utf8" });
+  const result = spawnSync("lsof", ["-d", "cwd", "-Fn"], { encoding: "utf8", timeout: 2000 });
   if (result.error || result.stdout === undefined || (result.status !== 0 && result.status !== 1)) return null;
 
   const cwds = new Set<string>();

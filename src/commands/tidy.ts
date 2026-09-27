@@ -15,6 +15,7 @@ import {
   git,
   hasUpstream,
   isAncestor,
+  isInside,
   isPatchEquivalent,
   listWorktrees,
   liveProcessCwds,
@@ -277,10 +278,13 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     withDatabase(workspacePath!, (db) => writeTransaction(db, () => {
       // The IMMEDIATE transaction is the shared interlock with `go`'s
       // reservation write. Re-read protection and Git state after acquiring
-      // it so a preview-era verdict can never authorize a stale removal.
+      // it so a preview-era verdict can never authorize a stale removal --
+      // including which processes are live right now, not merely which ones
+      // were live back when the preview-time snapshot was taken.
       const currentWorktrees = listWorktrees(repoRoot);
       const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
       const currentProtections = worktreeProtections(db, controlWorktree, currentWorktrees, now);
+      const currentLiveCwds = liveProcessCwds();
       for (const entry of assessed) {
         if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
         const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };
@@ -292,7 +296,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           here,
           prMergeCommits,
           protections: currentProtections,
-          liveCwds,
+          liveCwds: currentLiveCwds,
           now,
           livenessGraceMs
         });
@@ -344,10 +348,21 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           entry.reason = `Now checked out in a worktree; nothing was touched.`;
           continue;
         }
+        // Pinned before the recheck, and that exact commit -- not the branch
+        // name -- is what gets verified and then quarantined: resolving the
+        // tip a second time after the content check would leave a window
+        // where the ref could move in between, verifying one commit and
+        // deleting another.
+        const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
+        if (!expectedTip) {
+          entry.retired = false;
+          entry.reason = `${entry.reason} Skipped: could not resolve its current tip.`;
+          continue;
+        }
         // The preview-time verdict is not trusted for the delete itself: a
         // fetch, another process's commit, or a rewritten PR record between
         // preview and this transaction must be caught here, not assumed away.
-        const recheck = evaluateMerge({ cwd: repoRoot, branch: entry.branch, compareRef: comparisonBase.ref, prMergeCommits });
+        const recheck = evaluateMerge({ cwd: repoRoot, branch: entry.branch, compareRef: comparisonBase.ref, prMergeCommits, revision: expectedTip });
         if (!recheck.merged) {
           entry.verdict = "unmerged";
           entry.ahead = recheck.ahead;
@@ -355,10 +370,9 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           entry.reason = `${recheck.reason}${entry.pushed ? "; a remote copy exists" : "; NO remote copy"}. (Changed since preview.)`;
           continue;
         }
-        const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
-        if (expectedTip) options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
+        options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
         try {
-          const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
+          const quarantined = quarantineBranch(repoRoot, entry.branch, runId, expectedTip);
           entry.retired = quarantined !== null;
           entry.quarantineRef = quarantined?.quarantineRef ?? null;
         } catch (error) {
@@ -487,6 +501,15 @@ function assessWorktree(input: {
 /** Default grace window for {@link assessWorktreeLiveness}: long enough to cover a live agent's own working session. */
 export const DEFAULT_WORKTREE_LIVENESS_GRACE_MS = 24 * 60 * 60 * 1000;
 
+/** Whether any live process's cwd is the worktree itself or a directory inside it — an editor or shell open a few levels down still counts. */
+function anyCwdInsideWorktree(liveCwds: Set<string>, worktreePath: string): boolean {
+  const target = pathKey(worktreePath);
+  for (const cwd of liveCwds) {
+    if (isInside(cwd, target)) return true;
+  }
+  return false;
+}
+
 /**
  * Whether a worktree shows independent signs of life that no Session lease or
  * go handoff reservation would ever record — because Arcadia never launched
@@ -513,8 +536,8 @@ function assessWorktreeLiveness(input: {
   if (locked !== null) {
     return { live: true, reason: locked ? `Worktree is locked: ${locked}.` : "Worktree is locked." };
   }
-  if (liveCwds?.has(pathKey(worktreePath))) {
-    return { live: true, reason: "A running process has this worktree as its current directory." };
+  if (liveCwds && anyCwdInsideWorktree(liveCwds, worktreePath)) {
+    return { live: true, reason: "A running process has this worktree (or a directory inside it) as its current directory." };
   }
   if (branch !== null) {
     const activity = branchReflogActivity(worktreePath, branch);
@@ -589,18 +612,27 @@ export function evaluateMerge(input: {
   branch: string;
   compareRef: string;
   prMergeCommits: Map<string, PrMergeRecord>;
+  /**
+   * The exact commit to check for merged content, when a caller already
+   * pinned one under a write interlock rather than trusting a name that could
+   * move again between resolving it and reading it here. Defaults to
+   * `branch`. `branch` itself is still used for the PR-record lookup and every
+   * message, since a pinned tip has no name of its own to report.
+   */
+  revision?: string;
 }): { merged: true; proof: MergeProof; reason: string } | { merged: false; ahead: number; reason: string } {
   const { cwd, branch, compareRef, prMergeCommits } = input;
+  const revision = input.revision ?? branch;
   const baseName = compareRef.replace(/^origin\//, "");
-  const ahead = countCommits(cwd, compareRef, branch);
+  const ahead = countCommits(cwd, compareRef, revision);
 
-  if (ahead === 0 && isAncestor(cwd, branch, compareRef)) {
+  if (ahead === 0 && isAncestor(cwd, revision, compareRef)) {
     return { merged: true, proof: "ancestry", reason: `Every commit on ${branch} is already on ${baseName}.` };
   }
 
   // Local and free, so it runs before reaching for the network. Catches
   // cherry-picks, rebases, and amended commits, and works with no credentials.
-  if (isPatchEquivalent(cwd, compareRef, branch)) {
+  if (isPatchEquivalent(cwd, compareRef, revision)) {
     return {
       merged: true,
       proof: "patch-equivalent",
@@ -617,7 +649,7 @@ export function evaluateMerge(input: {
   // merge-base` cannot resolve it and returns false, exactly the "unmerged"
   // answer a record this repository cannot verify must get.
   const pr = prMergeCommits.get(branch);
-  if (pr && isAncestor(cwd, branch, pr.headRefOid) && isAncestor(cwd, pr.sha, compareRef)) {
+  if (pr && isAncestor(cwd, revision, pr.headRefOid) && isAncestor(cwd, pr.sha, compareRef)) {
     return {
       merged: true,
       proof: "pull-request",
