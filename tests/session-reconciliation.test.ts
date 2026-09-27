@@ -411,6 +411,48 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.nextMove.kind).not.toBe("unknown");
   });
 
+  it("settles the drafted complete Ask a sandboxed Session left on its preserved candidate, with no Run recorded", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    draftCompleteInWorktree(worktreePath, "The contract exists.");
+    // Host preservation commits the sandboxed agent's uncommitted tree, draft included.
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "preserve candidate"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("accepted_completion");
+    expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    expect(result.receipt.run_id).toBeNull();
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath, encoding: "utf8" })).toBe("");
+  });
+
+  it("leaves a drafted complete Ask whose evidence does not cover the criteria unsettled", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    draftCompleteInWorktree(worktreePath, "Something else was done.");
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "preserve candidate"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-wrong", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+  });
+
   it("never accepts a candidate whose Plan claims done without a settlement behind it", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
@@ -937,6 +979,18 @@ function preparedFixture(options: { responsibility?: string } = {}) {
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
+}
+
+/** All a sandboxed agent can do: draft its `complete` Ask as compact JSON in the worktree, uncommitted. */
+function draftCompleteInWorktree(worktreePath: string, criterion: string): void {
+  mkdirSync(path.join(worktreePath, ".arcadia", "asks"), { recursive: true });
+  writeFileSync(path.join(worktreePath, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), `${JSON.stringify({
+    agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",
+    target_ref: "action/define-contract", desired_result: "Record define-contract complete.",
+    candidate_revision: git(worktreePath, ["rev-parse", "HEAD"]).trim(),
+    evidence: [{ criterion, status: "met", note: "contract.md" }],
+    requested_authority: "apply_if_approved"
+  })}\n`);
 }
 
 /** What the Action brief tells an agent to do last: settle `complete` from inside its candidate. */

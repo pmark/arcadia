@@ -7,6 +7,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import { readProductionPolicySafely, releaseAdmission, type ProductionPolicyRecord } from "../production/policy.js";
+import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { settleAgentAsk, type AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
@@ -406,6 +407,39 @@ function findCandidateSettledCompletion(db: Database.Database, session: AgentSes
   return null;
 }
 
+/**
+ * A Session inside a provider sandbox (Codex `workspace-write`, Claude Code's
+ * sandbox) can write only its worktree: it cannot commit (a linked worktree's
+ * commits write the main repository's Git common directory) and cannot settle
+ * (settlement writes the workspace database). The most it can do is draft its
+ * `complete` Ask into `.arcadia/asks/` -- which `agent-ask draft` supports
+ * with no workspace -- and exit. Host preservation then commits the candidate,
+ * draft included.
+ *
+ * Settle that draft here, on the host, onto the candidate branch, through the
+ * same deterministic settler dispatch already uses for a draft left in the
+ * base checkout (`attemptAutoSettlePendingCompletion`): its evidence must
+ * cover every criterion verbatim and `met`, its revision must still be in the
+ * candidate's history, and settlement refuses a dirty candidate. Returns the
+ * settlement id, or null to leave the exit classified as it was.
+ */
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): string | null {
+  if (!evidence.worktreeExists) return null;
+  const worktree = session.worktree_path;
+  const plan = discoverDocs(worktree).docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
+  );
+  const action = plan?.actions.find((candidate) => candidate.id === session.action_id);
+  if (!action || action.status === "done" || action.acceptanceCriteria.length === 0) return null;
+  const result = attemptAutoSettlePendingCompletion(db, {
+    repoRoot: worktree,
+    projectSlug: session.project_slug,
+    activePlanSlug: session.plan_slug,
+    action: { id: action.id, acceptanceCriteria: action.acceptanceCriteria }
+  });
+  return result.settled ? result.receiptId ?? "unknown" : null;
+}
+
 function terminalStatusFor(outcome: SessionExitOutcome): AgentSession["status"] {
   switch (outcome) {
     case "accepted_completion":
@@ -517,9 +551,12 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   let nextMoveRepoRoot = repoRoot;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence);
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence);
     const attempt = settled
       ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled}).` }
-      : attemptAutomaticCompletion(db, session, evidence);
+      : drafted
+        ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted}).` }
+        : attemptAutomaticCompletion(db, session, evidence);
     if (attempt.completed) {
       outcome = "accepted_completion";
       reason = attempt.reason;

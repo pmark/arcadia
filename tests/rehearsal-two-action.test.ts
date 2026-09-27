@@ -268,6 +268,50 @@ describe("rehearsal provider: the launched process must be able to run and exit 
   });
 });
 
+describe("rehearsal on codex-cli, with a realistically sandboxed agent", () => {
+  const CODEX = { provider: { id: "codex-cli", profile: "codex_build" } };
+
+  it("integrates A and launches B when the agent can only edit, draft its completion, and exit", () => {
+    const { rehearsal } = activated(CODEX);
+    const a = launchA(rehearsal);
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    rehearsal.agentFinishSandboxed(a, CRITERIA_A);
+    rehearsal.tmux.exit(a.tmux_session_name);
+
+    const exited = rehearsal.tick();
+    expect(exited.handoff?.preservation.kind).toBe("preserved");
+    expect(exited.reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(exited.handoff?.integration.kind).toBe("integrated");
+    expect(rehearsal.pointer()).toBe("write-marker-b");
+    if (exited.launch?.outcome !== "launched") rehearsal.tickUntil((r) => r.launch?.outcome === "launched", 3);
+    const b = rehearsal.lease()!;
+    expect(b.action_id).toBe("write-marker-b");
+
+    rehearsal.agentEdit(b, "MARKER.md", `${LINE_A}\n${LINE_B}\n`);
+    rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
+    rehearsal.agentFinishSandboxed(b, CRITERIA_B);
+    rehearsal.tmux.exit(b.tmux_session_name);
+    const finished = rehearsal.tick();
+    expect(finished.reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(finished.handoff?.integration.kind).toBe("integrated");
+    expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
+    expect(readFileSync(path.join(rehearsal.repo, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n`);
+    expect(rehearsal.tmux.launches).toHaveLength(2);
+  });
+
+  it("launches a standing-policy Codex Session with `codex exec` in its worktree's workspace-write sandbox, never bypassing approvals", () => {
+    const { rehearsal } = activated(CODEX);
+    const a = launchA(rehearsal);
+    const argv = [rehearsal.tmux.launches[0].command, ...rehearsal.tmux.launches[0].args];
+    const codex = argv.indexOf("codex");
+    expect(codex).toBeGreaterThanOrEqual(0);
+    expect(argv[codex + 1]).toBe("exec");
+    expect(argv.slice(codex)).toEqual(expect.arrayContaining(["--sandbox", "workspace-write", "--cd", a.worktree_path]));
+    expect(argv.join(" ")).not.toMatch(/dangerously|bypass|danger-full-access/);
+    expect(argv.at(-1)).toMatch(/Arcadia managed-production Action brief/);
+  });
+});
+
 describe("rehearsal Step 6: Turn Off mid-work, then restart (criterion 4)", () => {
   it("never kills the live Session, never launches again, reconciles its exit visibly, and keeps its output after a worker restart", () => {
     const { rehearsal } = activated();

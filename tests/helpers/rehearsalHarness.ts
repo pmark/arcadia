@@ -443,6 +443,36 @@ Disposable fixture plan.
   }
 
   /**
+   * Simulated agent finishing from inside a real provider sandbox (Codex
+   * `workspace-write`, Claude Code's sandbox): writes are confined to the
+   * worktree, so it cannot commit (a linked worktree's commits write the main
+   * repository's Git common directory) and cannot settle (settlement writes
+   * the workspace database). What it can do is draft its `complete` Ask as a
+   * file -- `agent-ask draft` degrades to "no workspace" by design -- and exit.
+   * Everything after that is the host's job.
+   */
+  agentFinishSandboxed(session: AgentSession, criteria: string[]): string {
+    const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    const requestId = `complete-${session.action_id}-${session.id.replaceAll("_", "-")}`;
+    const ask = JSON.stringify({
+      agent_ask: "v1",
+      request_id: requestId,
+      project: this.projectSlug,
+      intent: "complete",
+      target_ref: `action/${session.action_id}`,
+      desired_result: `Record ${session.action_id} complete.`,
+      candidate_revision: head,
+      evidence: criteria.map((criterion) => ({ criterion, status: "met", note: "Verified in the candidate worktree." })),
+      requested_authority: "apply_if_approved"
+    });
+    const drafted = runAgentAskDraftCommand({
+      workspace: path.join(this.root, "unreachable-from-the-sandbox"), request: ask, dir: session.worktree_path
+    });
+    if (drafted.data.workspaceStatus !== "not_available") throw new Error("The sandboxed draft unexpectedly reached a workspace.");
+    return drafted.data.path;
+  }
+
+  /**
    * Simulated agent step 2 of the completion protocol: `arcadia-preserve-broker-<agent>`
    * asks the host worker to preserve the candidate, and the worker runs
    * `runPreserveCommand` for it. This calls that host command directly

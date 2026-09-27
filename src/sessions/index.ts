@@ -1044,8 +1044,19 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspa
     baseRevision: session.base_revision
   });
   if (session.provider === "codex-cli") {
-    const args = ["--model", session.model];
+    // A Session launched under a standing-policy admission has no operator at
+    // its terminal. The interactive TUI never exits after its turn, so the
+    // tick would never see it end, never reconcile it, and never admit the
+    // next Action. `codex exec` is Codex's non-interactive entry point: it
+    // runs the brief and exits. It gets the same `workspace-write` sandbox an
+    // interactive trusted Session runs in (exec would otherwise fall back to
+    // read-only on a never-trusted fresh worktree) and never asks for
+    // approval, so an escalation is refused back to the agent rather than
+    // waiting on nobody. Operator-attended launches stay interactive.
+    const unattended = Boolean(session.admission_request_id);
+    const args = unattended ? ["exec", "--model", session.model] : ["--model", session.model];
     if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(codexReasoningEffort(session.effort))}`);
+    if (unattended) args.push("--sandbox", "workspace-write");
     args.push("--cd", session.worktree_path, prompt);
     return { command: "codex", args };
   }

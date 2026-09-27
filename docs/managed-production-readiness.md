@@ -49,18 +49,30 @@ Preservation validation runs the real Seatbelt validator on the host
 under the same bindings without Seatbelt. Reconciliation,
 integration and settlement run real Git and write real managed documents.
 
-It found four rehearsal-stopping defects. Two are fixed in this pull request,
-one is a fixture decision, and one needs the operator:
+It found six rehearsal-stopping defects. Four are fixed in this pull request,
+along with the codex launch shape. One is a fixture change, and one only
+matters for a Claude-provider rehearsal. **The operator chose `codex-cli` for
+the rehearsal (2026-09-27).**
 
 | # | Defect | Where the live run stops | Status |
 | --- | --- | --- | --- |
 | 1 (#724) | **A Session that finishes by the brief's own completion protocol is never recognized as complete.** It settles `complete` inside its candidate, as `renderActionBrief` tells it to. Reconciliation read "done" only from the base checkout, and automatic completion needs a Run that guarded Sessions never write. So the exit was classified `incomplete_resumable`, integration waited forever, and the worker relaunched the finished Action every tick. | Step 5: A finishes, B never launches, A relaunches repeatedly | **Fixed here.** `findCandidateSettledCompletion` (`src/sessions/reconciliation.ts`) accepts a completion only when all of these hold: the candidate is clean; its Plan says done; an accepted, applied `complete` settlement for exactly this Action exists; and that settlement's `candidate_revision` is in the candidate's history. A hand-edited `status: done` or a rewritten candidate is refused (unit tests + replay). |
 | 2 (#725) | **A Session that dies before changing anything keeps its Action claim.** Reconciliation recorded `missing_evidence` but left the claim live, so every relaunch was refused as "already claimed by a live worktree" and two refusals exhausted the repair budget. This is the #695 class, for the non-resumable case. | Step 3, whenever the agent crashes at start-up (auth, provider outage — both happened on 2026-09-26) | **Fixed here.** Reconciliation releases the claim for `missing_evidence`/`failed_execution` exits with no candidate changes. The worktree reservation row is kept, so `tidy` still protects the worktree. |
 | 3 (#726) | **Every fixture declared a validation command that can never pass for A.** v2, v3 and v4 declare `node --test tests/marker.test.mjs`. At A's candidate that file does not exist yet, so host preservation validation fails and A is never integrated (#717 saw this live). At B's candidate, check-binding refuses it anyway, because B creates the file its own check runs. The command is frozen into each fixture's approved build packet, so none of them can be repaired in place. | Step 5: A preserved-refused, never integrated | **Fixture decision.** The replay's fixture commits a self-contained `scripts/check-marker.mjs` at genesis and declares `node scripts/check-marker.mjs`. The prepare script needs the same change and a fresh `-v5` fixture (see the picker in this PR's handoff). |
-| 4 (#727) | **A standing-policy Claude Session is launched as the interactive TUI.** `claude --help` documents that the workspace trust dialog is skipped only in non-interactive mode (`-p`). An interactive Session in a fresh `~/.claude/worktrees/…` candidate stops at that dialog (#698). It would then prompt for each edit (the operator's settings set no `acceptEdits`), and it never exits after its turn, so the tick never reconciles it. **No `claude-code-cli` Session has ever been launched by the worker**: the workspace database holds exactly one worker-launched Session, and it was opencode. | Step 3: A launches and hangs | **Needs the operator.** Recorded as an expected failure in the replay, which flips once fixed. The fix changes the permission posture of unattended agents, which is the operator's call, not an agent's. Meanwhile the replay proves the whole two-Action path works on `opencode-cli`, whose adapter already launches headless `opencode run`. |
+| 4 (#727) | **Standing-policy Sessions were launched as interactive TUIs, for both Claude and Codex.** An interactive TUI never exits after its turn, so the tick never reconciles it. `claude --help` also documents that the workspace trust dialog is skipped only in non-interactive mode (`-p`), so an interactive Claude Session hangs at it in every fresh candidate (#698). **No Claude or Codex Session has ever been launched by the worker**: the workspace database holds exactly one worker-launched Session, and it was opencode (headless `opencode run`). | Step 3: A launches and never ends | **Fixed here for codex-cli.** An admission-bound Codex Session launches as `codex exec --sandbox workspace-write --cd <worktree>`. That is Codex's non-interactive entry point, in the same sandbox an interactive trusted Session gets, with no approval bypass; operator-attended launches stay interactive. **Claude stays open.** Its fix changes unattended agents' permission posture, and an agent's attempt at it was refused. It is recorded as an expected failure, and it does not block the codex rehearsal. |
+| 5 (#731) | **A sandboxed agent's completion is never settled.** Inside Codex's `workspace-write` (or Claude's) sandbox a Session can write only its worktree. It cannot commit (a linked worktree's commits write the main repository's `.git`) or settle (that writes the workspace database). It can only `agent-ask draft` its completion and exit. Host preservation commits the draft, but nothing settled it, so the exit read `incomplete_resumable` and A relaunched every tick. | Step 5: A finishes, never integrates | **Fixed here.** Reconciliation settles the drafted Ask on the candidate through the existing deterministic settler: evidence verbatim-covering every criterion as `met`, a revision still in the candidate's history, a clean candidate. The Action brief now tells a sandboxed agent to draft and exit. |
+| 6 (#732) | **JSON-drafted completions were never auto-settled.** The settler rewrote `request_id`/`candidate_revision` with a YAML-line regex. AGENTS.md tells agents to write compact JSON, which that regex never matches, so settlement looked up the wrong proposal and failed silently — before dispatch too, not only here. | Step 5, behind defect 5 | **Fixed here.** JSON drafts are parsed and re-serialized; block YAML is still edited line by line. |
 
-**What the replay proves now** (14 scenarios, all green, plus the one expected
-failure above), mapped to the proof Action's acceptance criteria:
+**What the replay proves now** (16 scenarios, all green, plus the one expected
+Claude failure), mapped to the proof Action's acceptance criteria.
+
+- **On codex-cli, with a realistically sandboxed agent** (it edits, drafts and
+  exits; it never commits or settles):
+  - A is preserved, settled on its candidate, integrated, and the pointer moves.
+  - B launches, and completes the same way.
+  - Every launch is `codex exec` in `workspace-write`, never bypassing approvals.
+
+The remaining scenarios use the default provider fixture:
 
 - **Preparation and activation (criterion 1):** import, sync and seed name A
   as dispatchable with one open packet approval. One activation grants both
@@ -94,22 +106,27 @@ failure above), mapped to the proof Action's acceptance criteria:
   and launches the tick after the operator approves it. The v2–v4 validation
   command stops A.
 
-What the replay cannot prove: that a real provider process runs to completion
-unattended (defect 4 is exactly that class), real provider capacity, and the
-real `arcadia worker` process lifecycle across a restart. Those stay the
-operator's live rehearsal. Everything upstream and downstream of the provider
-process is now proven.
+What the replay cannot prove, and so stays the operator's live rehearsal:
+
+- that a real `codex exec` process does the work and exits (defect 4 was
+  exactly this class);
+- that the `arcadia` CLI and the preserve broker work from inside Codex's
+  sandbox;
+- real provider capacity;
+- the real `arcadia worker` process lifecycle across a restart.
+
+Everything upstream and downstream of the provider process is now proven,
+including the case where the agent can do nothing but edit, draft and exit.
 
 ---
 
 ## Executive summary
 
 **Lane A (unattended): no code Actions left in the Plan. Once this PR merges,
-one operator decision (defect 4, or choosing opencode) and one fresh fixture
-stand between here and the proof run.** Decision 0072 is approved and its
-`packet_approval` delegation is merged (#714), so criterion 2 ("B launches
-without … launch confirmation in between") is now reachable. The replay shows
-it on current code with this PR's two fixes.
+one fresh codex fixture stands between here and the proof run.** Decision
+0072 is approved and its `packet_approval` delegation is merged (#714), so
+criterion 2 ("B launches without … launch confirmation in between") is
+reachable. The replay shows it on codex-cli with this PR's fixes.
 
 **Lane B (concurrent):** unchanged from the prior derivation. The concurrency
 gate (`enforce-concurrency-gate-at-admission`) and cross-Plan dependency
@@ -132,15 +149,18 @@ on `main` without this PR it would also hit defects 1 and 2.
 
 In order:
 
-1. Merge this PR (defects 1 and 2).
-2. Resolve defect 4: either authorize the headless Claude launch, or run the
-   rehearsal on `opencode-cli`, which the replay proves end to end.
-3. Deactivate the v3 grant.
-4. Prepare a fresh `-v5` fixture whose validation command is the committed
-   `scripts/check-marker.mjs` (defect 3), with `PROVIDER`/`AGENT_PROFILE`
-   matching step 2.
-5. Follow the generated `next-steps.md`. With `packet_approval` in the
-   transitions, A's packet approval is the only operator intervention.
+1. Merge this PR (defects 1, 2, 5 and 6, plus the codex launch shape), and
+   restart the worker so it runs the merged code.
+2. Deactivate the v3 grant.
+3. Prepare a fresh `-v5` fixture with these settings:
+   - validation command: the committed `scripts/check-marker.mjs` (defect 3);
+   - `PROVIDER="codex-cli"` and `AGENT_PROFILE="codex_build"`;
+   - `GO_BROKER_LAUNCHER="arcadia-go-broker-codex"`.
+4. Activate with `--provider codex-cli` and
+   `--transitions validation,acceptance,pointer,packet_approval`, plus
+   `--packet-approval-expires-at` and the Decision 0058 integration grant.
+5. Follow the generated `next-steps.md`. A's packet approval is then the only
+   operator intervention.
 
 ---
 
@@ -149,7 +169,7 @@ In order:
 | Gate | State |
 | --- | --- |
 | 1 — The board is the surface | ✅ closed 2026-09-20 |
-| 2 — Work reaches an agent with no operator | 🟡 Launch is proven hermetically. The Claude launch cannot run unattended (defect 4); opencode can. |
+| 2 — Work reaches an agent with no operator | 🟡 Launch is proven hermetically. The codex launch is now non-interactive (defect 4); opencode already was. Claude cannot run unattended yet (#727). |
 | 3 — A finished Session lands with no operator | 🟡 Proven hermetically with this PR (defect 1 was the gap). Provisional until the proof run. |
 | 4 — It keeps going without help | 🟡 Proven hermetically with this PR (defect 2 was the gap), including B's packet approval under Decision 0072. Provisional until the proof run. |
 | 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred. Every code prerequisite is in the Plan or this PR; see "Before the next live rehearsal". |
@@ -165,12 +185,15 @@ were once marked closed on status alone, and the first real runs reopened them.
 
 ## The critical path, in order
 
-1. **This PR** — defects 1 and 2, the hermetic replay, this derivation.
-2. **Operator:** resolve defect 4 (authorize headless Claude, or choose opencode).
-3. **Operator:** deactivate the v3 grant, prepare `-v5`, reverse Decision
-   0057's deferral, and run `prove-two-action-unattended-production` per its
+1. **This PR** — defects 1, 2, 4 (codex), 5 and 6, the hermetic replay, and
+   this derivation.
+2. **Prepare-script edit** — a `-v5` codex fixture with the committed check
+   (#726).
+3. **Operator:** deactivate the v3 grant, reverse Decision 0057's deferral,
+   and run `prove-two-action-unattended-production` on codex-cli per its
    runbook. **This is where the unattended claim is earned.**
-4. `prove-multi-provider-production-recovery`, then `run-managed-production-live-soak`.
+4. `prove-multi-provider-production-recovery` (this is where #727, the Claude
+   launch, becomes blocking), then `run-managed-production-live-soak`.
 
 Lane B continues in parallel on its six ready Actions (see the executive
 summary). Each is an ordinary `claude-sonnet-5` session at medium effort.
@@ -215,13 +238,14 @@ combination proof is where the next surprise lives.
 | Automatic packet preparation | `attemptAutomaticPlanningResolution` | `production-tick` | Steps 3-5 (B's packet) |
 | Delegated packet approval | `attemptDelegatedPacketApproval` | `production-tick` (Decision 0072 cases) | Steps 3-5; the "without `packet_approval`" scenario |
 | Guarded launch, worktree, claim, brief | `sessions/launch.ts`, `sessions/index.ts`, `actionBrief.ts` | `session-launch`, `launch-preview`, `action-brief` | Steps 3-5; the brief-protocol scenario; the provider scenarios |
-| Provider launch command | `buildProviderLaunch` | `session-launch` | the provider scenarios (opencode proven; Claude expected-fail, defect 4) |
+| Provider launch command | `buildProviderLaunch` | `session-launch` | the provider and codex scenarios (codex `exec` and opencode `run` proven; Claude expected-fail, #727) |
 | Stall detection | `production/stallDetection.ts` | `production-tick` (stall cases) | not combined (needs real pane output) |
 | Agent-initiated preservation | `runPreserveCommand`, preservation transport | `manual-preservation`, `preservation-heartbeat-freshness` | the brief-protocol scenario |
 | Host preservation and validation | `preserveSessionCandidate`, Seatbelt validator | `preserve-on-exit-and-integrate` | every completion scenario; the v2-v4 validation command scenario |
 | Reconciliation | `sessions/reconciliation.ts` | `session-reconciliation` (5 new cases here) | every exit scenario; the guards |
 | Claim release and resumption | `reconcileSessionExit`, `prepareSession` | `session-reconciliation` | the split-session scenario; the dies-before-changes scenario |
 | Completion settlement | `ask/settlement.ts` | `agent-ask-settlement`, `agent-ask-complete` | every completion scenario |
+| Host settlement of a sandboxed agent's draft | `settleCandidateDraftedCompletion`, `attemptAutoSettlePendingCompletion` | `session-reconciliation`, `auto-settle-before-dispatch` (JSON drafts) | the codex scenario |
 | Candidate integration (Decision 0058) | `integrateSessionCandidate` | `preserve-on-exit-and-integrate` | every completion scenario; the "without grant" scenario |
 | Base-branch observation | `detectBaseBranchAdvance` | `production-tick` | the `origin` scenario |
 | Turn Off, restart | `deactivateProduction`, tick | `managed-production-policy`, `production-fault-matrix` | Step 6 |
@@ -269,9 +293,9 @@ Unchanged in substance since the prior derivation:
 | Done | 89 |
 | Open | 34 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
-| **Rehearsal-stopping defects found by the replay** | **4.** Two fixed here; one is a fixture change; one needs the operator. |
+| **Rehearsal-stopping defects found by the replay** | **6.** Four fixed here, plus the codex launch; one is a fixture change; Claude's launch (#727) waits for a Claude rehearsal. |
 | **On the critical path, code, Lane A** | **0** in the Plan, plus this PR |
-| **On the critical path, operator** | **2** (resolve defect 4; deactivate v3, prepare v5 and start the rehearsal) |
+| **On the critical path, operator** | **1** (deactivate v3, prepare the `-v5` codex fixture, start the rehearsal) |
 | **On the critical path, proof, Lane A** | **1** (`prove-two-action-unattended-production`) |
 | **Ready now, Lane B** | **6** |
 
