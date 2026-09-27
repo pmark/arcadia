@@ -15,7 +15,7 @@ import { quarantineBranch } from "../src/git/quarantine.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
+import { isInside, mergedPullRequests, parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
@@ -468,6 +468,7 @@ describe("evaluateMerge — squash and rebase merges", () => {
     run(root, ["add", "-A"]);
     run(root, ["commit", "-q", "-m", "add b"]);
 
+    const squashedTip = run(root, ["rev-parse", "claude/squashed"]).trim();
     run(root, ["checkout", "-q", "main"]);
     writeFileSync(path.join(root, "a.txt"), "a.txt\n", "utf8");
     writeFileSync(path.join(root, "b.txt"), "b.txt\n", "utf8");
@@ -487,7 +488,7 @@ describe("evaluateMerge — squash and rebase merges", () => {
       cwd: root,
       branch: "claude/squashed",
       compareRef: "main",
-      prMergeCommits: new Map([["claude/squashed", { sha: squashCommit, number: 42 }]])
+      prMergeCommits: new Map([["claude/squashed", { sha: squashCommit, headRefOid: squashedTip, number: 42 }]])
     });
     expect(withProof.merged).toBe(true);
     if (withProof.merged) {
@@ -499,6 +500,7 @@ describe("evaluateMerge — squash and rebase merges", () => {
   it("does not trust a PR record whose claimed merge commit is not actually on the base branch", () => {
     const root = repo();
     commitOn(root, "claude/unrelated", "a.txt");
+    const tip = run(root, ["rev-parse", "claude/unrelated"]).trim();
 
     // A fabricated or stale record naming a commit that never landed. Ancestry
     // is still checked, not merely GitHub's say-so.
@@ -506,7 +508,40 @@ describe("evaluateMerge — squash and rebase merges", () => {
       cwd: root,
       branch: "claude/unrelated",
       compareRef: "main",
-      prMergeCommits: new Map([["claude/unrelated", { sha: "0".repeat(40), number: 1 }]])
+      prMergeCommits: new Map([["claude/unrelated", { sha: "0".repeat(40), headRefOid: tip, number: 1 }]])
+    });
+
+    expect(result.merged).toBe(false);
+  });
+
+  it("does not vouch for a new branch that reuses an old merged branch's name", () => {
+    const root = repo();
+    // The original PR: claude/reused merged (squashed) onto main, then its
+    // branch was deleted, the way GitHub deletes a merged head by default.
+    run(root, ["checkout", "-q", "-b", "claude/reused"]);
+    writeFileSync(path.join(root, "old.txt"), "old\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "old content"]);
+    const oldHeadRefOid = run(root, ["rev-parse", "claude/reused"]).trim();
+    run(root, ["checkout", "-q", "main"]);
+    writeFileSync(path.join(root, "old.txt"), "old\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "squashed old content"]);
+    const squashCommit = run(root, ["rev-parse", "main"]).trim();
+    run(root, ["branch", "-D", "claude/reused"]);
+
+    // A brand-new, unrelated branch reuses the same name later.
+    run(root, ["checkout", "-q", "-b", "claude/reused"]);
+    writeFileSync(path.join(root, "new.txt"), "new\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "unrelated new work"]);
+    run(root, ["checkout", "-q", "main"]);
+
+    const result = evaluateMerge({
+      cwd: root,
+      branch: "claude/reused",
+      compareRef: "main",
+      prMergeCommits: new Map([["claude/reused", { sha: squashCommit, headRefOid: oldHeadRefOid, number: 7 }]])
     });
 
     expect(result.merged).toBe(false);
@@ -679,6 +714,165 @@ describe("arcadia tidy — quarantine ref identity and concurrent branch movemen
     expect(injected).toBe(true);
     expect(result.branches.find((entry) => entry.branch === "claude/moved-during-retire")?.retired).toBe(false);
     expect(run(root, ["show-ref", "--verify", "refs/heads/claude/moved-during-retire"])).toContain("refs/heads/claude/moved-during-retire");
+  });
+
+  it("does not delete a branch that gets checked out into a new worktree between preview and apply", () => {
+    const root = repo();
+    commitOn(root, "claude/checked-out-midrun", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/checked-out-midrun"]);
+    let tree: string | null = null;
+
+    const result = data(runTidyCommand({
+      repo: root,
+      apply: true,
+      testHooks: {
+        // The preview-time snapshot has no worktree for this branch at all; a
+        // `go` handoff or a desktop agent checking it out here, between
+        // preview and the apply transaction, is exactly what the forced
+        // `update-ref -d` path (issue #740) could not see.
+        afterAssessment() {
+          tree = worktreeOn(root, "claude/checked-out-midrun", "checked-out-midrun");
+        }
+      }
+    }));
+
+    const entry = result.branches.find((candidate) => candidate.branch === "claude/checked-out-midrun");
+    expect(entry?.retired).toBe(false);
+    expect(entry?.verdict).toBe("protected");
+    expect(run(root, ["show-ref", "--verify", "refs/heads/claude/checked-out-midrun"])).toContain("refs/heads/claude/checked-out-midrun");
+    expect(tree).not.toBeNull();
+    expect(run(root, ["worktree", "list"])).toContain(tree!);
+    expect(run(root, ["-C", tree!, "rev-parse", "HEAD"]).trim()).toBeTruthy();
+  });
+});
+
+describe("arcadia tidy — worktree liveness beyond Session leases and go handoffs", () => {
+  it("protects a fresh desktop-agent worktree at the base tip that Arcadia never tracked", () => {
+    const root = repo();
+    // No recordLiveSession, no reserveHandoff: this worktree is invisible to
+    // Arcadia's own Session/handoff tracking, exactly like a Claude Code or
+    // Codex desktop session Arcadia never launched (issue #739). Its branch
+    // reflog holds only the entry `git worktree add -b` itself writes.
+    const tree = handoffWorktree(root, "claude/fresh-desktop", "fresh-desktop");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("has not moved");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("stops protecting an untouched worktree once the grace window has passed", () => {
+    const root = repo();
+    const tree = handoffWorktree(root, "claude/long-abandoned", "long-abandoned");
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+    const result = data(runTidyCommand({ repo: root, apply: true, now: farFuture, livenessGraceMs: 1000 }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    // Never diverged from the base branch, so retiring it loses nothing.
+    expect(entry?.verdict).toBe("merged");
+    expect(entry?.retired).toBe(true);
+  });
+
+  it("protects a locked worktree regardless of its merge state", () => {
+    const root = repo();
+    commitOn(root, "claude/locked-but-merged", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/locked-but-merged"]);
+    const tree = worktreeOn(root, "claude/locked-but-merged", "locked-but-merged");
+    run(root, ["worktree", "lock", tree, "--reason", "manual inspection"]);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("locked");
+    expect(entry?.retired).toBe(false);
+    run(root, ["worktree", "unlock", tree]);
+  });
+
+  it("protects a locked worktree even after its directory is deleted by hand", () => {
+    const root = repo();
+    commitOn(root, "claude/locked-then-deleted", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/locked-then-deleted"]);
+    const tree = worktreeOn(root, "claude/locked-then-deleted", "locked-then-deleted");
+    run(root, ["worktree", "lock", tree, "--reason", "manual inspection"]);
+    // The lock marks the registration, not the directory -- simulate someone
+    // deleting the directory by hand while it stays locked.
+    rmSync(tree, { recursive: true, force: true });
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("locked");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("protects a merged worktree that is another process's current directory", () => {
+    const root = repo();
+    commitOn(root, "claude/live-cwd", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/live-cwd"]);
+    const tree = worktreeOn(root, "claude/live-cwd", "live-cwd");
+    // Decouple "this process's actual OS-level cwd" (what `lsof` reports, and
+    // what this test means to exercise) from "the directory `tidy` was
+    // invoked from" (`ARCADIA_INVOKED_FROM`, checked earlier and independently
+    // as `here` in assessWorktree) -- otherwise chdir'ing into `tree` would
+    // trip the "standing in this worktree" protection instead.
+    process.env.ARCADIA_INVOKED_FROM = root;
+    const previousCwd = process.cwd();
+    process.chdir(tree);
+
+    let result: ReturnType<typeof data>;
+    try {
+      // This test process's own cwd is exactly what `lsof -d cwd` reports for
+      // it, standing in for any other live process (an editor, a shell, an
+      // agent) with this worktree as its working directory.
+      result = data(runTidyCommand({ repo: root, apply: true }));
+    } finally {
+      process.chdir(previousCwd);
+    }
+
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("running process");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+});
+
+describe("mergedPullRequests — cross-repository (fork) exclusion", () => {
+  it("drops a cross-repository pull request, so its branch name cannot vouch for an unrelated local branch", () => {
+    const root = repo();
+    const bin = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-tidy-bin-")));
+    temporary.push(bin);
+    const gh = path.join(bin, "gh");
+    const forkOid = "1".repeat(40);
+    const ownOid = "2".repeat(40);
+    writeFileSync(
+      gh,
+      [
+        "#!/bin/sh",
+        "cat <<'JSON'",
+        JSON.stringify([
+          { number: 1, headRefName: "patch-1", mergeCommit: { oid: forkOid }, headRefOid: forkOid, isCrossRepository: true },
+          { number: 2, headRefName: "claude/own", mergeCommit: { oid: ownOid }, headRefOid: ownOid, isCrossRepository: false }
+        ]),
+        "JSON"
+      ].join("\n"),
+      "utf8"
+    );
+    chmodSync(gh, 0o755);
+    process.env.PATH = `${bin}:${originalPath ?? ""}`;
+    run(root, ["remote", "add", "origin", "https://github.com/example/fixture.git"]);
+
+    const merges = mergedPullRequests(root);
+
+    expect(merges).not.toBeNull();
+    expect(merges!.map((entry) => entry.headBranch)).toEqual(["claude/own"]);
   });
 });
 
@@ -969,5 +1163,24 @@ describe("parseGithubSlug", () => {
   it("returns null for a remote that is not GitHub", () => {
     expect(parseGithubSlug("https://gitlab.com/pmark/arcadia.git")).toBeNull();
     expect(parseGithubSlug("/Users/operator/bare-repos/arcadia.git")).toBeNull();
+  });
+});
+
+describe("isInside", () => {
+  it("accepts a real child directory whose own name happens to start with two dots", () => {
+    // `path.relative` returns the literal child name here, "..cache" -- a
+    // naive `startsWith("..")` check on that string reads it as an
+    // up-traversal and wrongly excludes a path that is genuinely inside.
+    expect(isInside("/repo/worktree/..cache", "/repo/worktree")).toBe(true);
+  });
+
+  it("still rejects an actual parent or sibling path", () => {
+    expect(isInside("/repo/worktree/..", "/repo/worktree")).toBe(false);
+    expect(isInside("/repo/other-worktree", "/repo/worktree")).toBe(false);
+  });
+
+  it("accepts the same path and a nested descendant", () => {
+    expect(isInside("/repo/worktree", "/repo/worktree")).toBe(true);
+    expect(isInside("/repo/worktree/a/b", "/repo/worktree")).toBe(true);
   });
 });

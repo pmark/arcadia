@@ -22,6 +22,8 @@ export interface WorktreeRecord {
   head: string;
   /** Full ref, e.g. `refs/heads/main`, or null when detached. */
   branch: string | null;
+  /** Set to the lock reason (or `""` when none was given) when `git worktree lock` has locked this worktree. Null, or omitted, when not locked. */
+  locked?: string | null;
 }
 
 /**
@@ -322,7 +324,8 @@ export function parseWorktrees(output: string): WorktreeRecord[] {
         // Resolving it must not throw, because tidying that is the whole point.
         path: existsSync(declared) ? realpathSync(declared) : path.resolve(declared),
         head: fields.get("HEAD") ?? "",
-        branch: fields.get("branch") ?? null
+        branch: fields.get("branch") ?? null,
+        locked: fields.has("locked") ? (fields.get("locked") ?? "") : null
       };
     });
 }
@@ -337,7 +340,12 @@ export function samePath(left: string, right: string): boolean {
 
 export function isInside(candidate: string, parent: string): boolean {
   const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  // A literal child directory named e.g. `..cache` also produces a relative
+  // path starting with the two characters "..", so testing for that prefix
+  // directly would wrongly exclude it. Only an actual up-traversal component
+  // -- exactly ".." or ".." followed by a separator -- means "outside".
+  const escapesUpward = relative === ".." || relative.startsWith(`..${path.sep}`);
+  return relative === "" || (!escapesUpward && !path.isAbsolute(relative));
 }
 
 /**
@@ -455,6 +463,15 @@ export interface MergedPullRequest {
   headBranch: string;
   /** What actually landed on the base branch — the squash commit, the merge commit, or the branch tip for a fast-forward. Ancestry of *this*, not the branch tip, is what proves the content is on base. */
   mergeCommitSha: string;
+  /**
+   * The exact commit GitHub recorded as this pull request's head at the moment
+   * it merged. A local branch is only covered by this proof when its own
+   * current tip is an ancestor of (or equal to) this commit — otherwise a
+   * branch pushed to again after its PR merged, or an unrelated local branch
+   * that merely reuses the same name later, would wrongly inherit a proof that
+   * never covered its actual content.
+   */
+  headRefOid: string;
   number: number;
 }
 
@@ -479,7 +496,7 @@ export function mergedPullRequests(repo: string): MergedPullRequest[] | null {
 
   const result = spawnSync(
     "gh",
-    ["pr", "list", "--repo", slug, "--state", "merged", "--limit", "1000", "--json", "number,headRefName,mergeCommit"],
+    ["pr", "list", "--repo", slug, "--state", "merged", "--limit", "1000", "--json", "number,headRefName,mergeCommit,headRefOid,isCrossRepository"],
     { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
   );
   if (result.status !== 0 || !result.stdout) return null;
@@ -489,13 +506,83 @@ export function mergedPullRequests(repo: string): MergedPullRequest[] | null {
       number: number;
       headRefName: string;
       mergeCommit: { oid: string } | null;
+      headRefOid: string | null;
+      isCrossRepository: boolean;
     }>;
     return parsed
-      .filter((entry) => entry.mergeCommit?.oid)
-      .map((entry) => ({ headBranch: entry.headRefName, mergeCommitSha: entry.mergeCommit!.oid, number: entry.number }));
+      // A cross-repository (fork) pull request's `headRefName` carries no
+      // owner, so its branch name can collide with an unrelated local branch —
+      // only a same-repository PR can ever vouch for a local branch at all.
+      .filter((entry) => !entry.isCrossRepository && entry.mergeCommit?.oid && entry.headRefOid)
+      .map((entry) => ({
+        headBranch: entry.headRefName,
+        mergeCommitSha: entry.mergeCommit!.oid,
+        headRefOid: entry.headRefOid!,
+        number: entry.number
+      }));
   } catch {
     return null;
   }
+}
+
+/**
+ * How recently `branch`'s own ref has moved, read from its reflog rather than
+ * any commit's committer date — a checkout that does not move the tip still
+ * writes a reflog entry, but leaves every reachable commit's own date
+ * unchanged.
+ *
+ * `moved` is false when the reflog holds nothing past the entry `git worktree
+ * add -b` (or a plain `git branch`) itself writes on creation: that is the
+ * one signal that survives an agent Arcadia never launched and therefore has
+ * no Session or handoff row for at all. `lastActivityAt` is null exactly when
+ * the reflog cannot be read (pruned, disabled, or the branch is gone) or its
+ * timestamp cannot be parsed — callers must fail closed on null exactly as on
+ * `moved: false`, never treat an unreadable clock as evidence of safety.
+ */
+export interface BranchReflogActivity {
+  moved: boolean;
+  lastActivityAt: Date | null;
+}
+
+export function branchReflogActivity(cwd: string, branch: string): BranchReflogActivity {
+  const output = tryGit(cwd, ["reflog", "show", "--date=iso-strict", "--format=%gd", branch]);
+  if (output === null) return { moved: false, lastActivityAt: null };
+
+  const entries = output.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (entries.length === 0) return { moved: false, lastActivityAt: null };
+
+  // Newest first, so the leading entry is the most recent activity.
+  const match = entries[0].match(/@\{(.+)\}$/);
+  const parsed = match ? new Date(match[1]) : null;
+  const lastActivityAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  return { moved: entries.length > 1, lastActivityAt };
+}
+
+/**
+ * The current working directory of every process `lsof` can see, or null when
+ * `lsof` is unavailable, fails outright, or does not answer within the
+ * timeout.
+ *
+ * Callers must fail *open* on null — treat it as "no live process found" —
+ * because a missing or hung `lsof` must not itself protect every worktree
+ * forever, and must not stall a whole `tidy` run waiting for it. Status 1 is
+ * `lsof`'s ordinary "some processes could not be inspected" (permissions)
+ * exit and still carries a usable partial list; only a genuinely different
+ * failure (a missing binary, a timeout, a signal) returns null. Deliberately
+ * no `-b`: it skips `lsof`'s kernel calls and can omit exactly the cwd
+ * records this exists to find.
+ */
+export function liveProcessCwds(): Set<string> | null {
+  const result = spawnSync("lsof", ["-d", "cwd", "-Fn"], { encoding: "utf8", timeout: 2000 });
+  if (result.error || result.stdout === undefined || (result.status !== 0 && result.status !== 1)) return null;
+
+  const cwds = new Set<string>();
+  for (const line of result.stdout.split("\n")) {
+    if (!line.startsWith("n")) continue;
+    const candidate = line.slice(1).trim();
+    if (candidate) cwds.add(resolvePath(candidate));
+  }
+  return cwds;
 }
 
 export function parseGithubSlug(remoteUrl: string): string | null {
