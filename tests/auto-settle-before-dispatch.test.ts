@@ -60,6 +60,20 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(stillDrafted).toEqual([]);
   });
 
+  it("settles a compact JSON draft too, rewriting its request id and stale candidate_revision structurally", () => {
+    const { repo, workspace, draftHead, currentHead } = fixture({ draftAsk: true, jsonDraft: true });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED, nextActionKey: "demo/second" });
+    const log = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(log).toContain(currentHead);
+    expect(log).not.toContain(draftHead);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
   it("skips an ineligible draft targeting the same Action and settles a later eligible one", () => {
     const { repo, workspace } = fixture({ draftAsk: true, extraIneligibleDraft: true });
 
@@ -152,6 +166,8 @@ function fixture(options: {
    * Action with evidence that cannot settle, to prove it is skipped rather
    * than stopping the scan. */
   extraIneligibleDraft?: boolean;
+  /** Write the draft as compact JSON, the form AGENTS.md tells agents to use. */
+  jsonDraft?: boolean;
 }): { repo: string; workspace: string; draftHead: string; currentHead: string; divergentSha?: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-auto-settle-"));
   roots.push(root);
@@ -195,7 +211,7 @@ function fixture(options: {
     const added = [".arcadia/asks/agent-ask-complete-first.yaml"];
     writeFileSync(
       path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml"),
-      completeAsk("complete-first", options.wrongCriterion ? "A different criterion entirely." : "First proof exists.", candidateRevision),
+      (options.jsonDraft ? completeAskJson : completeAsk)("complete-first", options.wrongCriterion ? "A different criterion entirely." : "First proof exists.", candidateRevision),
       "utf8"
     );
     if (options.extraIneligibleDraft) {
@@ -244,6 +260,16 @@ function completeAsk(requestId: string, criterion: string, candidateRevision: st
     "evidence:", `  - criterion: "${criterion}"`, "    status: met", "    note: Verified by the agent.",
     "requested_authority: apply_if_approved", ""
   ].join("\n");
+}
+
+function completeAskJson(requestId: string, criterion: string, candidateRevision: string): string {
+  return `${JSON.stringify({
+    agent_ask: "v1", request_id: requestId, project: "demo", intent: "complete",
+    target_ref: "action/first", desired_result: "Accept the completion evidence for the first Action",
+    rationale: "Every declared criterion is met.", candidate_revision: candidateRevision,
+    evidence: [{ criterion, status: "met", note: "Verified by the agent." }],
+    requested_authority: "apply_if_approved"
+  })}\n`;
 }
 
 function projectDoc(): string {

@@ -102,7 +102,10 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "  1. Run the repository's declared validation and make it pass.",
     `  2. Request protected preservation through the existing fixed launcher: arcadia-preserve-broker-${input.agent}`,
     "  3. Settle a `complete` Agent Ask with `candidate_revision` equal to this worktree's HEAD and one",
-    "     `met` evidence entry per acceptance criterion above, verbatim and in order."
+    "     `met` evidence entry per acceptance criterion above, verbatim and in order.",
+    "     If your sandbox cannot commit or reach the Arcadia workspace, `arcadia agent-ask draft` it instead",
+    "     and leave the drafted file in .arcadia/asks/; the host preserves and settles it when you exit.",
+    "  4. Exit. The host reconciles the Session only once its process has ended."
   );
   return lines.join("\n");
 }

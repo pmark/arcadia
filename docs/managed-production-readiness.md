@@ -5,412 +5,283 @@ software production unattended, steered from a GitHub Project board?
 
 It is a *derived* document and asserts nothing on its own. Every line reads
 from `PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`,
-`docs/decisions/`, `MISSION_LOG.md`, the live worker log, and the live
-`arcadia advance queue`, `arcadia production status` and
-`arcadia production capacity` output. When those disagree with this file, they
-are right and this file is stale. "Refreshing this document" at the bottom says
-how to re-derive it.
+`docs/decisions/`, `MISSION_LOG.md`, the live worker log, the workspace
+database, the live `arcadia advance queue` and `arcadia production status`
+output, and the hermetic rehearsal replay (`tests/rehearsal-two-action.test.ts`).
+When those disagree with this file, they are right and this file is stale.
+"Refreshing this document" at the bottom says how to re-derive it.
 
-Last derived: **2026-09-25**; blocker update **2026-09-26T20:40Z** (updated same day, five times more — see the
-notes below). This derivation also restored the dispatch guarantee
-that `arcadia go` works only on the critical path (see "What this derivation
-changed"). Arcadia's own target is now `NORTH_STAR.md` at the repository
-root, and its gates are the critical path below.
-
-**Update at 2026-09-25T22:07Z:** all three code blockers below have landed
-and settled (`name-failing-preservation-check-and-bound-retries`,
-`honor-policy-providers-at-launch`, `refuse-packets-without-validation-commands`
-are all `status: done` in the Plan; Issues #611, #559, #572 are all closed).
-`current_action` is not yet the operator rehearsal step — an ungated
-governance bug-fix, `fix-decision-approve-missing-commit` (filed
-2026-09-25, not held behind the proof), sits ahead of it in the queue.
-
-**Update at 2026-09-25T22:49Z: a second lane opened, and it is now the
-critical path to *concurrent* production specifically.** Decision 0071
-(ratified 2026-09-25, `b898c3b4`) superseded Decision 0023 and adopted
-ready-set admission with pipelining. Three Actions were filed and queued
-(`add-ready-set-admission-and-pipelining-actions-2026-09-25`,
-settled `85fdc8b8`) and then promoted to the top of the queue, ahead of
-`fix-decision-approve-missing-commit`:
-`resolve-cross-plan-dependency-ids` (ready now, no dependency),
-`admit-ready-set-across-repositories` (depends on the first), and
-`pipeline-independent-actions-while-pr-unmerged` (depends on the second, plus
-the two existing Decision-0070 held Actions below). The first two are **not**
-gated by `prove-two-action-unattended-production` — cross-repository
-concurrency was already built and switched off by default
-(`docs/proposals/portfolio-parallel-execution.md` §2), so raising it needs no
-proof run. Only same-repository pipelining (the third Action, and Decision
-0066 generally) stays behind the proof. The tables below reflect both lanes;
-live signals (`production status`, worker log) were re-walked at 23:00Z for
-this update.
-
-**Update at 2026-09-25T23:30Z: `fix-decision-approve-missing-commit` landed,
-so Lane A's last code blocker is gone.** `MISSION_LOG.md` records it complete
-(Candidate `37e3f28a`, PR closes #645); `PROJECT.md`'s `current_action` has
-already advanced past it to `resolve-cross-plan-dependency-ids` (Lane B1),
-confirmed `ready` with no unmet dependency in `arcadia advance queue --json`
-(`pointerAuthorized: true`, `selected: true`). **Lane A now has zero open code
-Actions.** Decision 0057/0061's revival trigger — "after the further
-managed-production defects are fixed" — is met: all three original code
-blockers and this ungated fix are done. The only thing standing between here
-and gate 5 is the operator step (reverse the Decision 0057 deferral, start the
-rehearsal) and then the proof itself. `production status` is unchanged:
-**Inactive · Idle**, desired state `inactive` (revision 15, epoch 12), revoked
-2026-09-24T16:15Z — nothing has launched since then. `gh issue list` could not
-be re-checked this pass (sandbox denied `api.github.com`); the bug list below
-is carried over from the prior derivation, not reconfirmed.
-
-**Update at 2026-09-25T23:34Z: Lane B's admission Action now carries a hard
-runtime gate, not just a documentation note.** The operator raised a
-sequencing concern — building `admit-ready-set-across-repositories` ahead of
-the sequential proof is fine, and even helps (it removes the #505/#507 race
-class the proof would otherwise have to survive), but actually letting it
-admit real concurrent work in production before that proof has run live
-inverts the validation order Decision 0066 already set for the same-repository
-case. `gate-concurrent-admission-behind-sequential-proof-2026-09-25`
-(settled `442df33a`) added a sixth acceptance criterion to
-`admit-ready-set-across-repositories`: activating a production policy scope
-with `maxConcurrentSessions` above 1 must be refused, citing
-`prove-two-action-unattended-production` by id, until that Action is
-`status: done`. This changes nothing about what dispatches now — B1 and B2
-still queue ahead of the proof and carry no dependency on it — it only stops
-the mechanism they build from being switched on for real concurrent work
-before the sequential case is proven. See "Concurrency" below.
-
-**Update at 2026-09-25T23:50Z: that gate cited the wrong proof, and now cites
-the right one.** `prove-two-action-unattended-production` tests sequential
-dependent-Action dispatch in one repository, not concurrent admission — see
-"Concurrency" below for the full check. `admit-ready-set-across-repositories`'s
-sixth acceptance criterion now also requires a new Action,
-`prove-concurrent-ready-set-admission` (queued at position 3, right after the
-pipelining bundle), before `maxConcurrentSessions > 1` can be activated.
-Filed both as `intent: action`, not `intent: plan` — the first attempt at
-this fix used `intent: plan` and its preview showed it would reflow the
-*entire* active Plan's queue into one contiguous segment, silently undoing
-Lane B's earlier promotion to the top of the queue; that preview was caught
-and discarded (`applied: false`) before anything was written.
-
-**Update at 2026-09-26: B2 is now behind the proof, and the concurrency plan
-is complete.** The adversarial review
-(`docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md`, PR #655)
-found two problems:
-- The gate held back concurrency but not B2's settlement/pointer change, which
-  is the mechanism the sequential proof validates.
-- B2's single pointer writer, Decision 0070's host settler, is itself held
-  behind the proof.
-
-Settlements `e83cc3b9`, `ad1e05be`, `06b9428f` and `af97f223` made these
-changes:
-- moved the gate into its own ready-now Action;
-- made B2 depend on the proof and the host settler;
-- added the Actions for every remaining gap in the design.
-
-§5 "Build map" of `docs/proposals/portfolio-parallel-execution.md` is now the
-plan; see "Concurrency" below.
+Last derived: **2026-09-27T05:10Z**, against `origin/main` `f670910d` plus the
+fixes in the pull request that carries this revision. Arcadia's own target is
+`NORTH_STAR.md` at the repository root, and its gates are the critical path
+below.
 
 ---
 
-**Update at 2026-09-26T20:40Z: the first live rehearsal attempts found a new
-blocker for gate 5, and the operator's Decision 0072 now gates criterion 2.**
-The operator ran `prove-two-action-unattended-production` against the fixtures
-`two-action-rehearsal-v2` and then `-v3`. Neither launched a Session. Every
-cause was diagnosed from real state, not assumed:
+## What this derivation found
 
-- **Build-packet approval is a per-Action operator gate, and the standing
-  grant does not delegate it.** The launch path needs an approved promotion
-  review for the Action's packet (`findPromotionDecisionOrProblem`,
-  `src/sessions/launchPreview.ts`). After Action A completes, the tick
-  prepares B's packet itself (`attemptAutomaticPlanningResolution`,
-  `src/production/tick.ts`) and then refuses every tick until an operator runs
-  `arcadia review approve`. So criterion 2 ("B launches without … launch
-  confirmation in between") **cannot pass on current code**. Decision 0072
-  (open) asks whether the grant may delegate packet approval inside its scope.
-  The v3 attempt stopped on exactly this for Action A. At the time the
-  refusal showed only in `.arcadia/worker.log`, misreported as a stale
-  packet. It is now a `build_packet_approval_pending` escalation in
-  `production status`, naming the exact approve command (#712, PR #713,
-  merged). The opt-in `packet_approval` transition that implements the
-  recommended answer is drafted in PR #714, which waits on Decision 0072.
-- Re-running `arcadia work plan` on an approved packet silently revoked its
-  approval (#709, PR #711, merged).
-- Fixed and merged during this pass: a discarded different-Action candidate
-  blocked the automated launch path forever (#697, PR #705); an exhausted
-  repair budget was invisible, with no reset (#703, PR #708); an activation
-  replay under a different scope returned ok (#704, PR #707).
-- The runbook now requires the Decision 0058 integration grant and
-  never-used request ids, and its Step 4 relies on the worker's own resume
-  (#696) rather than a manual relaunch.
+**Every live rehearsal attempt so far stopped on a defect nobody had seen,
+because no test ever ran the pipeline the way the rehearsal does.** Each stage
+had unit tests, but the tests that crossed stages fed them state no real
+Session produces. The clearest example: every test of "a finished Session
+completes and integrates" inserted a passing `execution_runs` row by hand. A
+Session launched by the worker never writes one.
 
-Ready now: fixture `two-action-rehearsal-v4`, via
-`artifacts/generated/operator-scripts/prepare-two-action-rehearsal-2026-09-26.sh`.
-Its generated `next-steps.md` proves criteria 1 and 3-5 today, with A's and B's
-packet approvals recorded as two operator interventions. Criterion 2 needs
-Decision 0072 answered, and its implementation if the answer is to delegate.
+This derivation adds a **hermetic replay of the operator's rehearsal**
+(`tests/rehearsal-two-action.test.ts`, harness in
+`tests/helpers/rehearsalHarness.ts`). It builds the fixture exactly as
+`prepare-two-action-rehearsal-2026-09-26.sh` does, through the same command
+functions the operator's `pnpm arcadia …` lines call: `project import`,
+`project metadata`, `docs sync --apply`, `work plan --agent-profile`,
+`review approve --no-execute`, `production preview`/`activate`/`deactivate`.
+Then it drives the real `runManagedProductionTick` with the workspace's own
+registries, exactly as `arcadia worker` does, including the worker's pre-tick
+preservation-request pass.
+
+Only three things are simulated:
+
+- tmux (a launch is recorded, and "exit" is the pane dying);
+- the coding agent's keystrokes;
+- provider capacity and sign-in.
+
+Preservation validation runs the real Seatbelt validator on the host
+(`ARCADIA_PRESERVATION_HOST_TEST=1`); on CI it runs the same declared commands
+under the same bindings without Seatbelt. Reconciliation,
+integration and settlement run real Git and write real managed documents.
+
+It found six rehearsal-stopping defects. Four are fixed in this pull request,
+along with the codex launch shape. One is a fixture change, and one only
+matters for a Claude-provider rehearsal. **The operator chose `codex-cli` for
+the rehearsal (2026-09-27).**
+
+| # | Defect | Where the live run stops | Status |
+| --- | --- | --- | --- |
+| 1 (#724) | **A Session that finishes by the brief's own completion protocol is never recognized as complete.** It settles `complete` inside its candidate, as `renderActionBrief` tells it to. Reconciliation read "done" only from the base checkout, and automatic completion needs a Run that guarded Sessions never write. So the exit was classified `incomplete_resumable`, integration waited forever, and the worker relaunched the finished Action every tick. | Step 5: A finishes, B never launches, A relaunches repeatedly | **Fixed here.** `findCandidateSettledCompletion` (`src/sessions/reconciliation.ts`) accepts a completion only when all of these hold: the candidate is clean; its Plan says done; an accepted, applied `complete` settlement for exactly this Action exists; and that settlement's `candidate_revision` is in the candidate's history. A hand-edited `status: done` or a rewritten candidate is refused (unit tests + replay). |
+| 2 (#725) | **A Session that dies before changing anything keeps its Action claim.** Reconciliation recorded `missing_evidence` but left the claim live, so every relaunch was refused as "already claimed by a live worktree" and two refusals exhausted the repair budget. This is the #695 class, for the non-resumable case. | Step 3, whenever the agent crashes at start-up (auth, provider outage — both happened on 2026-09-26) | **Fixed here.** Reconciliation releases the claim for `missing_evidence`/`failed_execution` exits with no candidate changes. The worktree reservation row is kept, so `tidy` still protects the worktree. |
+| 3 (#726) | **Every fixture declared a validation command that can never pass for A.** v2, v3 and v4 declare `node --test tests/marker.test.mjs`. At A's candidate that file does not exist yet, so host preservation validation fails and A is never integrated (#717 saw this live). At B's candidate, check-binding refuses it anyway, because B creates the file its own check runs. The command is frozen into each fixture's approved build packet, so none of them can be repaired in place. | Step 5: A preserved-refused, never integrated | **Fixture decision.** The replay's fixture commits a self-contained `scripts/check-marker.mjs` at genesis and declares `node scripts/check-marker.mjs`. The prepare script needs the same change and a fresh `-v5` fixture (see the picker in this PR's handoff). |
+| 4 (#727) | **Standing-policy Sessions were launched as interactive TUIs, for both Claude and Codex.** An interactive TUI never exits after its turn, so the tick never reconciles it. `claude --help` also documents that the workspace trust dialog is skipped only in non-interactive mode (`-p`), so an interactive Claude Session hangs at it in every fresh candidate (#698). **No Claude or Codex Session has ever been launched by the worker**: the workspace database holds exactly one worker-launched Session, and it was opencode (headless `opencode run`). | Step 3: A launches and never ends | **Fixed here for codex-cli.** An admission-bound Codex Session launches as `codex exec --sandbox workspace-write --cd <worktree>`. That is Codex's non-interactive entry point, in the same sandbox an interactive trusted Session gets, with no approval bypass; operator-attended launches stay interactive. **Claude stays open.** Its fix changes unattended agents' permission posture, and an agent's attempt at it was refused. It is recorded as an expected failure, and it does not block the codex rehearsal. |
+| 5 (#731) | **A sandboxed agent's completion is never settled.** Inside Codex's `workspace-write` (or Claude's) sandbox a Session can write only its worktree. It cannot commit (a linked worktree's commits write the main repository's `.git`) or settle (that writes the workspace database). It can only `agent-ask draft` its completion and exit. Host preservation commits the draft, but nothing settled it, so the exit read `incomplete_resumable` and A relaunched every tick. | Step 5: A finishes, never integrates | **Fixed here.** Reconciliation settles the drafted Ask on the candidate through the existing deterministic settler: evidence verbatim-covering every criterion as `met`, a revision still in the candidate's history, a clean candidate. The Action brief now tells a sandboxed agent to draft and exit. |
+| 6 (#732) | **JSON-drafted completions were never auto-settled.** The settler rewrote `request_id`/`candidate_revision` with a YAML-line regex. AGENTS.md tells agents to write compact JSON, which that regex never matches, so settlement looked up the wrong proposal and failed silently — before dispatch too, not only here. | Step 5, behind defect 5 | **Fixed here.** JSON drafts are parsed and re-serialized; block YAML is still edited line by line. |
+
+**What the replay proves now** (16 scenarios, all green, plus the one expected
+Claude failure), mapped to the proof Action's acceptance criteria.
+
+- **On codex-cli, with a realistically sandboxed agent** (it edits, drafts and
+  exits; it never commits or settles):
+  - A is preserved, settled on its candidate, integrated, and the pointer moves.
+  - B launches, and completes the same way.
+  - Every launch is `codex exec` in `workspace-write`, never bypassing approvals.
+
+The remaining scenarios use the default provider fixture:
+
+- **Preparation and activation (criterion 1):** import, sync and seed name A
+  as dispatchable with one open packet approval. One activation grants both
+  Actions, the Decision 0058 integration grant and `packet_approval`. A
+  replayed request id is a no-op with a warning.
+- **Two dependent Actions from one activation (criteria 2 and 3):**
+  - A1 launches on the first tick.
+  - A concurrent second execution is refused.
+  - A1 is killed mid-edit and reconciled `incomplete_resumable` with its work
+    preserved.
+  - The worker resumes A2 in the same worktree and branch, and A2 sees A1's
+    edit.
+  - A2 settles. A is integrated onto the fixture's `main` and the pointer moves.
+  - B's packet is prepared and approved under the standing grant.
+  - B launches on a fresh candidate from the new base, with no operator step.
+  - B completes, and nothing further launches.
+  - The brief's full protocol (validate, preserve through the host, settle,
+    exit) integrates too.
+- **Turn Off mid-work (criterion 4):**
+  - Off never kills the live Session and never launches again.
+  - The Session's exit is reconciled visibly.
+  - Integration is refused while Off.
+  - Ticks after a restart launch and reactivate nothing.
+  - The Session's finished output is still on its branch.
+- **Guards:** a hand-edited `done` is never accepted. A committed but unsettled
+  exit resumes, then integrates once settled. A Session that dies with no
+  changes relaunches on a fresh candidate. An `origin` the tick fetches from
+  never rewinds an integrated, unpushed `main`.
+- **Fixture decisions:** without the integration grant, B never launches.
+  Without `packet_approval`, B waits on a named approval in `production status`
+  and launches the tick after the operator approves it. The v2–v4 validation
+  command stops A.
+
+What the replay cannot prove, and so stays the operator's live rehearsal:
+
+- that a real `codex exec` process does the work and exits (defect 4 was
+  exactly this class);
+- that the `arcadia` CLI and the preserve broker work from inside Codex's
+  sandbox;
+- real provider capacity;
+- the real `arcadia worker` process lifecycle across a restart.
+
+Everything upstream and downstream of the provider process is now proven,
+including the case where the agent can do nothing but edit, draft and exit.
+
+---
 
 ## Executive summary
 
-**Two lanes now, not one.** Lane A earns the *unattended* claim: **0 blocking
-code Actions left at all** — the ungated governance fix landed too — so all
-that remains is 1 operator step, then 1 proof run. Lane B earns the
-*concurrent* claim. Eight of its Actions are ready now and need no proof,
-including `current_action` (`resolve-cross-plan-dependency-ids`) and the
-concurrency gate. Ready-set admission itself (B2) waits on Lane A's proof,
-because it retires the pointer that proof validates. **Turning concurrency
-on** waits on a fixture soak and two proofs: Lane A's, and a
-concurrency-specific one. The full sequence is §5 "Build map" of
-`docs/proposals/portfolio-parallel-execution.md`.
+**Lane A (unattended): no code Actions left in the Plan. Once this PR merges,
+one fresh codex fixture stands between here and the proof run.** Decision
+0072 is approved and its `packet_approval` delegation is merged (#714), so
+criterion 2 ("B launches without … launch confirmation in between") is
+reachable. The replay shows it on codex-cli with this PR's fixes.
 
-**Lane A: 0 blocking code Actions left, period.** It was 7 code Actions four
-days ago. All four landed, the last one (the ungated governance fix) since the
-prior derivation:
-
-| Done since 2026-09-24 | Defect | Evidence |
-| --- | --- | --- |
-| `release-committed-admissions-on-session-end` | #610 | PR #619. `production status` changed from "2 committed Action(s) finishing" to "Idle". |
-| `withhold-worker-lifecycle-from-sessions` | #611 (part) | PR #624 |
-| `stop-killing-busy-workers` | #617 | No `Recovered hung worker:` line since the fix. #617 closed. |
-| `preserve-candidates-across-base-advance` | #539 | PR #622. Completion settled this derivation, after re-running its preservation tests on `main`: 50 passed, 7 skipped. |
-| `name-failing-preservation-check-and-bound-retries` | #611 (rest) | Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
-| `honor-policy-providers-at-launch` | #559 | PR #646. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
-| `refuse-packets-without-validation-commands` | #572 | PR #647, closed Issue #572. Completed; evidence in `MISSION_LOG.md` 2026-09-25. |
-| `fix-decision-approve-missing-commit` | #645 | Completed; evidence in `MISSION_LOG.md` 2026-09-25 ("Completed arcadia/fix-decision-approve-missing-commit"). `current_action` has already advanced past it, to `resolve-cross-plan-dependency-ids`. |
-
-**What remains, in dispatch order (both lanes, as currently queued):**
-
-| # | Action | Lane | Defect / Decision | Why it blocks |
-| --- | --- | --- | --- | --- |
-| 1 | `resolve-cross-plan-dependency-ids` ← **current `current_action`, ready now** | B (concurrent) | Decision 0071 | No dependency; unknown `depends_on` ids must block instead of counting as satisfied before the ready set can safely span repositories. |
-| 2 | `admit-ready-set-across-repositories` | B (concurrent) | Decision 0071 | Depends on #1. Retires the settlement-advanced `current_action` pointer for a scheduler-derived one; this is what actually turns on cross-repository concurrency. |
-| 3 | **Operator:** reverse Decision 0057's deferral and start the rehearsal | A (unattended) | — | Nothing else blocks this. All four original Lane A code blockers, including the ungated governance fix, are done. |
-| 4 | `pipeline-independent-actions-while-pr-unmerged` | B (concurrent), gated by A | Decision 0071 + Decision 0070 | Depends on #2 above, plus the two existing Decision-0070 held Actions in the table below, which are themselves held behind entry 3's proof run. |
-| 5 | `prove-concurrent-ready-set-admission` | B (concurrent), gated by A | Decision 0071 | Depends on #2 and entry 3's proof run. Added 2026-09-25: entry 3's proof only tests sequential dispatch, not concurrent admission, so `admit-ready-set-across-repositories`'s `maxConcurrentSessions` gate now requires this proof too. |
-
-Decision 0057/0061's revival trigger is met now ("the operator begins the
-live rehearsal on whichever configured provider has capacity … after the
-further managed-production defects are fixed") — every defect on that list is
-done. The operator can reverse the deferral (`arcadia decision reverse`) at
-any time and run `prove-two-action-unattended-production` per its runbook
-(critical-path entry 5 below in "The critical path, in order"). That run
-earns the unattended claim and, through the Decision-0070 held Actions,
-eventually unblocks table entry 4 — same-repository pipelining. Table
-entries 1 and 2 do not wait for any of that; `resolve-cross-plan-dependency-ids`
-is the pointer's live `current_action` and dispatches on the very next
-`arcadia go`.
+**Lane B (concurrent):** unchanged from the prior derivation. The concurrency
+gate (`enforce-concurrency-gate-at-admission`) and cross-Plan dependency
+resolution have landed. Six Lane B Actions are ready now and need no proof
+(`fix-action-intent-target-ref-amendments`, the queue's selected Action;
+`release-admission-on-every-launch-failure`, `add-fixture-coding-agent-provider`,
+`load-test-workspace-db-contention`, `keep-action-claim-while-candidate-unmerged`,
+`limit-sessions-per-provider-account`). Ready-set admission itself waits on
+Lane A's proof. §5 "Build map" of
+`docs/proposals/portfolio-parallel-execution.md` is still the plan.
 
 ---
 
-## What this derivation changed
+## Before the next live rehearsal
 
-**The critical path had been silently abandoned, and nothing reported it.**
-Settling `activate-mc-site-tooling-plan-2026-09-25` activated the
-mission-control-site tooling Plan. As a documented side effect, it returned
-this Plan to `draft`, which drops a draft Plan's Actions from the queue. When
-that Plan finished, cross-Plan Go chose `agent-ask-execution-queue`, the Plan
-whose eligible Action ranked highest among those still queued. The bootstrap
-Plan was no longer a candidate. The pointer landed on
-`make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the`,
-which is useful work but off the path.
+The standing policy is **Active right now** (revision 20, epoch 15), scoped to
+`two-action-rehearsal-v3`. It waits only on v3 A's packet approval
+(`review_8029859d4b744913ad`). **Do not approve it.** v3 carries defect 3, and
+on `main` without this PR it would also hit defects 1 and 2.
 
-Governance writes, all on `main`:
+In order:
 
-- **`gate-dispatch-to-production-critical-path-2026-09-25`** (`c8196b7f`). It
-  adds `prove-two-action-unattended-production` to `depends_on` for every open
-  Action in this Plan that was not already held behind it. Titles, acceptance
-  and references were restated verbatim; only `depends_on` changed. The
-  directly gated Actions are `add-segment-queue-arrange`,
-  `settle-commit-survives-gitignored-asks`,
-  `serialize-decision-deferral-pointer-write`,
-  `treat-blocked-status-as-undispatchable`, `defect-bounded-triage-loop`,
-  `page-runs-this-push-list`, `renumber-duplicate-decision-files` and
-  `generate-operator-scripts-for-runs-approvals`. Their dependents follow
-  transitively. They stay ordered but ineligible until the proof is done.
-- **`reactivate-bootstrap-production-plan-2026-09-25`** (`bf99dd99`). This Plan
-  is active again, at the top of the queue, pointing at blocker 1 with
-  `claude-sonnet-5` at high effort. `agent-ask-execution-queue` returned to
-  `draft` with no Action state changed. Its in-flight PR #637 is untouched and
-  can still merge; its completion must use the
-  `plan/agent-ask-execution-queue#<action>` form.
-- **`complete-preserve-candidates-across-base-advance-2026-09-25`**
-  (`e7ffb59f`). This records the completion that #622 had shipped but no one
-  had settled.
-- **`file-per-project-north-star-2026-09-25`** (`21efe458`). It files
-  `support-per-project-north-star`, held behind the proof like every other
-  off-path Action.
-
-**Why this holds after the three blockers land.** Completion settlement reports
-`planComplete` only when every remaining Action is done or deferred
-(`selectNextAfterCompletion`, `src/ask/settlement.ts`). The held Actions stay
-`open`, so the Plan cannot complete. Go then reports the unmet dependency on the
-deferred proof, which is exactly the operator step, instead of switching to
-another Plan.
-
-**Two ways this can still be undone, both by an explicit operator act:**
-
-1. **Activating another Plan with `--activate`.** That is how it happened today.
-   Before activating, weigh the cost that settlement displays: "Returned Plan
-   bootstrap-managed-production-to-build-flight-deck to draft".
-2. **Settling the pending Ask `enable-parallel-plan-dispatch-per-repository`**
-   (`.arcadia/asks/`, filed 2026-09-25, unsettled). It asks for a second live
-   Session per repository. Decision 0066 already answered that question: wait
-   until the proof and the #505/#507/#549-class fixes have landed. Settling it
-   now would reopen that answer.
+1. Merge this PR (defects 1, 2, 5 and 6, plus the codex launch shape), and
+   restart the worker so it runs the merged code.
+2. Deactivate the v3 grant.
+3. Prepare a fresh `-v5` fixture with these settings:
+   - validation command: the committed `scripts/check-marker.mjs` (defect 3);
+   - `PROVIDER="codex-cli"` and `AGENT_PROFILE="codex_build"`;
+   - `GO_BROKER_LAUNCHER="arcadia-go-broker-codex"`.
+4. Activate with `--provider codex-cli` and
+   `--transitions validation,acceptance,pointer,packet_approval`, plus
+   `--packet-approval-expires-at` and the Decision 0058 integration grant.
+5. Follow the generated `next-steps.md`. A's packet approval is then the only
+   operator intervention.
 
 ---
 
 ## The gates
 
-Gates 1–6 are Lane A: they earn the *unattended* claim for one repository.
-Decision 0071 adds a parallel gate for Lane B, the *concurrent* claim, that
-does not sit behind gate 5.
-
 | Gate | State |
 | --- | --- |
 | 1 — The board is the surface | ✅ closed 2026-09-20 |
-| 2 — Work reaches an agent with no operator | ✅ closed 2026-09-22 |
-| 3 — A finished Session lands with no operator | 🟡 **#610, #539, #611 all fixed and closed; provisional until the proof run passes through this gate.** |
-| 4 — It keeps going without help | 🟡 **#617 and #559 both fixed and closed; provisional until the proof run passes through this gate.** |
-| 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred. Its revival trigger is now met (`fix-decision-approve-missing-commit` landed) — all it needs is the operator reversing Decision 0057. `prove-multi-provider-production-recovery` and `run-managed-production-live-soak` are blocked on it. |
+| 2 — Work reaches an agent with no operator | 🟡 Launch is proven hermetically. The codex launch is now non-interactive (defect 4); opencode already was. Claude cannot run unattended yet (#727). |
+| 3 — A finished Session lands with no operator | 🟡 Proven hermetically with this PR (defect 1 was the gap). Provisional until the proof run. |
+| 4 — It keeps going without help | 🟡 Proven hermetically with this PR (defect 2 was the gap), including B's packet approval under Decision 0072. Provisional until the proof run. |
+| 5 — Proof | ⬜ `prove-two-action-unattended-production` is deferred. Every code prerequisite is in the Plan or this PR; see "Before the next live rehearsal". |
 | 6 — The operator surface | ⬜ Off the critical path, held behind the proof. |
-| **B — Cross-repository concurrency** (Decision 0071) | ⬜ **Building is not gated by 5; admitting real concurrent work is gated by 5 *and* a new proof.** `resolve-cross-plan-dependency-ids` is ready now; `admit-ready-set-across-repositories` depends only on it and may be built and merged before either proof. Its acceptance criteria require it to refuse activating `maxConcurrentSessions > 1` until *both* `prove-two-action-unattended-production` and `prove-concurrent-ready-set-admission` are `status: done` — the latter added 2026-09-25 because the former does not actually test concurrent admission (see "Concurrency"). |
-| **B′ — Same-repository pipelining** (Decision 0071 + 0070) | ⬜ Gated by gate B *and* gate 5, through the two existing Decision-0070 held Actions (`settle-squash-merged-completion-drafts`, `sweep-merged-completions-before-dispatch`), which depend on `prove-two-action-unattended-production`. |
+| **B — Cross-repository concurrency** (Decision 0071) | ⬜ The gate is enforced at admission. Ready-set admission waits on gate 5 and `prove-concurrent-ready-set-admission`. |
+| **B′ — Same-repository pipelining** (Decisions 0071 + 0070) | ⬜ Gated by B and gate 5. |
 
 A gate is closed when the live system does what the gate says, not when its
-Actions are marked done. Gates 3 and 4 were once marked closed on status alone,
-and the first real runs reopened them. Treat them as provisional until the
-proof run passes through them.
+Actions are marked done, and not when a hermetic replay passes. Gates 3 and 4
+were once marked closed on status alone, and the first real runs reopened them.
 
 ---
 
 ## The critical path, in order
 
-**Lane B (concurrent) dispatches first.** Its ready Actions sit at the top of
-the queue, and eight of them can be built in parallel now:
+1. **This PR** — defects 1, 2, 4 (codex), 5 and 6, the hermetic replay, and
+   this derivation.
+2. **Prepare-script edit** — a `-v5` codex fixture with the committed check
+   (#726).
+3. **Operator:** deactivate the v3 grant, reverse Decision 0057's deferral,
+   and run `prove-two-action-unattended-production` on codex-cli per its
+   runbook. **This is where the unattended claim is earned.**
+4. `prove-multi-provider-production-recovery` (this is where #727, the Claude
+   launch, becomes blocking), then `run-managed-production-live-soak`.
 
-B1. `resolve-cross-plan-dependency-ids` ← **top of queue, `current_action`**
-B0. Also ready now, with no proof needed:
-    - `enforce-concurrency-gate-at-admission`;
-    - `rewire-dependents-on-split`;
-    - `fix-action-intent-target-ref-amendments` (#654);
-    - `release-admission-on-every-launch-failure`;
-    - `add-fixture-coding-agent-provider`;
-    - `load-test-workspace-db-contention`;
-    - `keep-action-claim-while-candidate-unmerged` (#549).
+Lane B continues in parallel on its six ready Actions (see the executive
+summary). Each is an ordinary `claude-sonnet-5` session at medium effort.
 
-    `limit-sessions-per-provider-account` follows the gate.
-B2. `admit-ready-set-across-repositories` waits on B1, the gate, the split
-    fix, entry 6 below, and Decision 0070's host settler.
-B3. The fixture soak, then `prove-concurrent-ready-set-admission`. When both
-    are done, the gate lifts and cross-repository concurrency goes live.
-B4. `limit-unmerged-candidates-per-repository`, then
-    `pipeline-independent-actions-while-pr-unmerged`: single-repository
-    speed.
-
-**Lane A (unattended) has no code Actions left.** `current_action` has moved
-past all of them, onto B1:
-
-1. ~~`name-failing-preservation-check-and-bound-retries` (#611)~~ — done.
-2. ~~`honor-policy-providers-at-launch` (#559)~~ — done.
-3. ~~`refuse-packets-without-validation-commands` (#572)~~ — done.
-4. ~~`fix-decision-approve-missing-commit` (#645)~~ — done.
-5. **Operator:** reverse Decision 0057's deferral and start the rehearsal on a
-   provider with capacity. Read "Rehearsal hazards" first. Nothing else blocks
-   this step now.
-6. `prove-two-action-unattended-production`, where **the unattended claim is
-   earned**, and where Lane B3 (pipelining) becomes dispatchable.
-
-Then, for continuous production rather than the claim itself:
-`prove-multi-provider-production-recovery`, then
-`run-managed-production-live-soak` (operator-granted scope).
-
-Each Lane B code Action is an ordinary `claude-sonnet-5` session: high effort for B1 and B2, medium for the small B0 Actions.
-
-### Rehearsal hazards to know before entry 5
+### Rehearsal hazards still open
 
 - **#608:** while the standing policy is Off, the worker fast-forwards every
-  DB-active Project's checkout to `origin/main` on each tick. A `git reset --hard`
-  on the fixture is silently undone. Reset through the remote, or stop the
-  worker while resetting.
-- **#609:** `production activate`'s `--expect-revision` flag does not match the
-  preview's `expectedRevision` field name.
-- **The fixture is mid-state.** `zero-prompt-rehearsal/write-rehearsal-marker`'s
-  last Session (`session_5c1a2543cae24319a6`) is `needs_input`, with a
-  resumable candidate. `production status` still lists two `committed`
-  admissions for the fixture. They no longer count toward concurrency (#610),
-  but the listing has not caught up.
+  DB-active Project's checkout to `origin/main`. The replay proves this never
+  rewinds an integrated, unpushed `main`, but a manual `git reset --hard` on a
+  fixture is still silently undone.
+- **#609:** `production activate --expect-revision` does not match the preview's
+  `expectedRevision` field name. The generated `next-steps.md` already passes it
+  correctly.
+- **#717:** the preserve broker strips validation failure details to `{}`, so an
+  agent cannot diagnose its own refusal. Defect 3's fix removes the known
+  trigger. The host-side `validation.json` under `artifacts/preservation/` still
+  names the cause.
+- **Stale admissions listing.** `production status` still lists
+  `zero-prompt-rehearsal` admissions as `committed` and v2 admissions as
+  `fenced`. They do not count toward concurrency (#610); only the listing lags.
 - **Capacity gating is off** (`codingAgent.capacityGateEnabled: false`), so
   "admitted" is an operator choice, not observed headroom.
+- **GitHub board reconciliation fails every tick.** The worker log shows
+  `your authentication token is missing required scopes [read:project]`. It
+  does not block a fixture rehearsal. Gate 1 needs `gh auth refresh -s read:project`.
 
-### What is *not* on the critical path
+---
 
-Everything else. Every open Action in this Plan other than B1, B2, B3 and B4
-(the last two are on a critical path but not dispatchable yet) depends on the
-proof, directly or transitively, or is operator-only
-(`prove-zero-prompt-production-loop`, whose only dependent is
-`harden-zero-prompt-production-loop`). Other Plans' ready Actions are
-`waiting_for_pointer`: dispatch never selects them while this Plan is active
-and incomplete.
+## Component proof map
+
+Each production stage, the tests that prove it alone, and the replay scenarios
+that prove it in combination with its neighbours. A stage with no
+combination proof is where the next surprise lives.
+
+| Stage | Code | Proven alone by | Proven in combination by (`rehearsal-two-action.test.ts`) |
+| --- | --- | --- | --- |
+| Fixture import, metadata, docs sync | `commands/project.ts`, `commands/docs.ts` | `cli-response-contracts`, `docs-sync` | Steps 1-2 |
+| Build-packet seeding | `runWorkPlanCommand` | `execution-runner-build-failure`, `policy-permitted-packet-preparation` | Steps 1-2 |
+| Activation, replay, scope | `production/policy.ts`, `commands/production.ts` | `managed-production-policy`, `production-fault-matrix` | Steps 1-2 (replay no-op) |
+| Scheduling pass, dispatch | `scheduling/`, `docs/dispatch.ts` | `worker-tick`, `advance-queue` | every scenario |
+| Admission and concurrency gate | `issueAdmission` | `production-fault-matrix`, `dispatch-admission` | Steps 3-5 (concurrent refusal) |
+| Automatic packet preparation | `attemptAutomaticPlanningResolution` | `production-tick` | Steps 3-5 (B's packet) |
+| Delegated packet approval | `attemptDelegatedPacketApproval` | `production-tick` (Decision 0072 cases) | Steps 3-5; the "without `packet_approval`" scenario |
+| Guarded launch, worktree, claim, brief | `sessions/launch.ts`, `sessions/index.ts`, `actionBrief.ts` | `session-launch`, `launch-preview`, `action-brief` | Steps 3-5; the brief-protocol scenario; the provider scenarios |
+| Provider launch command | `buildProviderLaunch` | `session-launch` | the provider and codex scenarios (codex `exec` and opencode `run` proven; Claude expected-fail, #727) |
+| Stall detection | `production/stallDetection.ts` | `production-tick` (stall cases) | not combined (needs real pane output) |
+| Agent-initiated preservation | `runPreserveCommand`, preservation transport | `manual-preservation`, `preservation-heartbeat-freshness` | the brief-protocol scenario |
+| Host preservation and validation | `preserveSessionCandidate`, Seatbelt validator | `preserve-on-exit-and-integrate` | every completion scenario; the v2-v4 validation command scenario |
+| Reconciliation | `sessions/reconciliation.ts` | `session-reconciliation` (5 new cases here) | every exit scenario; the guards |
+| Claim release and resumption | `reconcileSessionExit`, `prepareSession` | `session-reconciliation` | the split-session scenario; the dies-before-changes scenario |
+| Completion settlement | `ask/settlement.ts` | `agent-ask-settlement`, `agent-ask-complete` | every completion scenario |
+| Host settlement of a sandboxed agent's draft | `settleCandidateDraftedCompletion`, `attemptAutoSettlePendingCompletion` | `session-reconciliation`, `auto-settle-before-dispatch` (JSON drafts) | the codex scenario |
+| Candidate integration (Decision 0058) | `integrateSessionCandidate` | `preserve-on-exit-and-integrate` | every completion scenario; the "without grant" scenario |
+| Base-branch observation | `detectBaseBranchAdvance` | `production-tick` | the `origin` scenario |
+| Turn Off, restart | `deactivateProduction`, tick | `managed-production-policy`, `production-fault-matrix` | Step 6 |
+| Auto-settle before dispatch | `attemptAutoSettlePendingCompletion` | `auto-settle-before-dispatch`, `production-tick` | not combined (a Session-less path) |
 
 ---
 
 ## Concurrency
 
-This section used to say concurrency waits on the proof, full stop. Decision
-0071 splits that into two claims:
+Unchanged in substance since the prior derivation:
 
-- **Cross-repository concurrency (Decision 0071, supersedes 0023).** The
-  full build plan is now §5 "Build map" of
-  `docs/proposals/portfolio-parallel-execution.md`, completed 2026-09-26 after
-  the adversarial review
-  (`docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md`). Three
-  things changed from the earlier reading of this section:
-  - **B2 no longer merges before the proof.** `admit-ready-set-across-repositories`
-    retires the settlement-advanced pointer, which is exactly the mechanism
-    `prove-two-action-unattended-production` validates. It now depends on that
-    proof and on Decision 0070's host settler, its only permitted pointer
-    writer (`ad1e05be`).
-  - **The gate is its own Action, built now.** `enforce-concurrency-gate-at-admission`
-    caps concurrency at 1 inside `issueAdmission` on every admission until
-    *both* `prove-two-action-unattended-production` and
-    `prove-concurrent-ready-set-admission` are done. Today nothing stops
-    `production activate --concurrency N`.
-  - **Nine more Actions fill the gaps** (`06b9428f`, `af97f223`):
-    - ready now: #654, full admission rollback, a zero-token fixture provider,
-      a multi-writer database load test, #549's claim expiry;
-    - behind the gate: per-account provider slots;
-    - behind the proof: bounded stall recovery;
-    - behind B2: the per-repository review limit and a fixture soak. The live
-      concurrency proof now waits on the soak.
-
-  Eight Actions are buildable now, in parallel. Everything that changes
-  lease, stall or pointer behaviour waits on the sequential proof. Outside
-  the bounded, expiring rehearsal exception that the fixture soak and
-  `prove-concurrent-ready-set-admission` themselves run under, no Session
-  runs concurrently with another until the fixture soak and both proofs
-  pass.
-- **Same-repository concurrency (Decision 0066).** Still approved as written:
-  same-repository concurrent Sessions wait until
+- **Cross-repository concurrency (Decision 0071, supersedes 0023)** follows §5
+  "Build map" of `docs/proposals/portfolio-parallel-execution.md`.
+  `enforce-concurrency-gate-at-admission` has landed. It caps concurrency at 1
+  on every admission until both `prove-two-action-unattended-production` and
+  `prove-concurrent-ready-set-admission` are done, and `production status`
+  reports it ("Concurrency gate: closed — effective cap 1").
+  `admit-ready-set-across-repositories` depends on the proof and on Decision
+  0070's host settler.
+- **Same-repository concurrency (Decision 0066)** still waits until
   `prove-two-action-unattended-production` and the #505/#507/#549-class fixes
-  have landed. `serialize-decision-deferral-pointer-write` (#505) is now held
-  behind the proof. That matches 0066, which sequences those fixes after the
-  proof and before a second lane, not before the first lane. Decision 0071's
-  pipelining (Lane B3) is a narrower case than 0066 — one repository, one live
-  Session, a second *unmerged candidate* rather than a second live
-  Session — and it is gated by the proof through the Decision-0070 held
-  Actions, not by 0066 directly. 0066's own trigger (a second live Session in
-  one repository) is unchanged and still unmet.
+  have landed.
 
 ---
 
 ## Live state at derivation
 
-| Signal | Reading (2026-09-25 ~23:30Z) |
+| Signal | Reading (2026-09-27 ~05:05Z) |
 | --- | --- |
-| Managed production | **Inactive · Idle** (policy revision 15, epoch 12, revoked 2026-09-24T16:15Z). No Session has launched since 2026-09-24. Unchanged since the 23:00Z reading. |
-| Worker | Running. Recent base-advance lines through 2026-09-25T23:23Z show it ticking; no `Recovered hung worker:` line seen. |
-| Pointer (`current_action`) | `bootstrap-managed-production-to-build-flight-deck` / `resolve-cross-plan-dependency-ids` (moved off `fix-decision-approve-missing-commit` once that completed and settled). Reordering the queue does not move the pointer; only dispatch or completion does. |
-| Ready in the active Plan, in queue order | `resolve-cross-plan-dependency-ids` (Lane B1, `current_action`, ready, `pointerAuthorized: true`), then the operator rehearsal step (Lane A). `admit-ready-set-across-repositories`, `pipeline-independent-actions-while-pr-unmerged`, and `prove-concurrent-ready-set-admission` are queued but not yet ready (unmet `depends_on`). |
-| Open Decisions | 0041, 0052. Neither concerns production readiness. Decisions 0057, 0061 (proof deferral + retargeted trigger) and 0071 (ready-set admission with pipelining) are all approved, not open. |
-| Open escalation | `private-practice-now/calibrate-river-specialty-prompt-chain` (`planning_required`). Unrelated to the Arcadia lane. |
+| Managed production | **Active · No admitted work.** Revision 20, epoch 15, granted 2026-09-26T19:46Z. Scope: `two-action-rehearsal-v3`, provider `claude-code-cli`, concurrency 1, transitions acceptance, pointer and validation (no `packet_approval`). Integration grant: Decision 0058, expires 2026-09-27T07:44Z. |
+| Waiting on the operator | `two-action-rehearsal-v3/write-marker-a` `build_packet_approval_pending` (`review_8029859d4b744913ad`), and the unrelated `private-practice-now/calibrate-river-specialty-prompt-chain` `planning_required`. |
+| Worker | Running (PID 3222). No `Launched Session` line since 2026-09-26T05:34Z. Board reconciliation fails every tick on a missing `read:project` scope. |
+| Worker-launched Sessions, ever | **One:** `session_f3fce839e9a74ef1bc`, v2 `write-marker-a`, opencode, reconciled `incomplete_resumable` 54 seconds after launch. No Claude Session has ever been launched by the worker. |
+| Rehearsal fixtures | v2, v3 and v4 all declare `node --test tests/marker.test.mjs` (defect 3). v4 was prepared 2026-09-26T21:20Z; its A approval `review_686ba07c6f5c49479c` is open. |
+| Pointer (`PROJECT.md` at `f670910d`) | `bootstrap-managed-production-to-build-flight-deck` / `rewire-dependents-on-split`. The live queue's selected Action is `fix-action-intent-target-ref-amendments`. |
+| Open Decisions | 0041, 0052. Neither concerns production readiness. Decision 0072 is approved ("Delegate packet approval inside the grant scope"). |
 
 ---
 
@@ -418,42 +289,44 @@ This section used to say concurrency waits on the proof, full stop. Decision
 
 | | Count |
 | --- | --- |
-| Actions in the active Plan | 112 (each `- id:` paired with the `status:` line that follows it) |
-| Done | 86 |
-| Open | 25 |
+| Actions in the active Plan | 124 (each `- id:` paired with the `status:` line that follows it) |
+| Done | 89 |
+| Open | 34 |
 | Deferred | 1 (`prove-two-action-unattended-production`) |
-| **On the critical path, code, Lane A** | **0** — all four landed; `fix-decision-approve-missing-commit` settled and the pointer has moved on |
-| **On the critical path, code, Lane B** | **14** (8 ready now in parallel, `resolve-cross-plan-dependency-ids` is `current_action`; 6 wait on the gate, the proof or B2. See the proposal's §5 Build map) |
-| **On the critical path, operator** | **1** (reverse the deferral and start the rehearsal — trigger is met, nothing else blocks it) |
+| **Rehearsal-stopping defects found by the replay** | **6.** Four fixed here, plus the codex launch; one is a fixture change; Claude's launch (#727) waits for a Claude rehearsal. |
+| **On the critical path, code, Lane A** | **0** in the Plan, plus this PR |
+| **On the critical path, operator** | **1** (deactivate v3, prepare the `-v5` codex fixture, start the rehearsal) |
 | **On the critical path, proof, Lane A** | **1** (`prove-two-action-unattended-production`) |
-| **On the critical path, proof, Lane B** | **2** (`soak-ready-set-admission-with-fixture-provider`, simulated at zero token cost; then `prove-concurrent-ready-set-admission`, live) |
-| Gated by both lanes, not yet dispatchable | 1 (`pipeline-independent-actions-while-pr-unmerged`) |
-| Unfinished, off the critical path | 21, all held behind a proof or operator-only |
+| **Ready now, Lane B** | **6** |
 
 ---
 
 ## Refreshing this document
 
-Run these, then update the summary, gates, critical path and scoreboard:
+Run these, then update the findings, gates, critical path and scoreboard:
 
 ```bash
 grep -E "^(active_plan|current_action):" PROJECT.md   # is the bootstrap Plan still active?
 mise exec -- pnpm arcadia advance queue --json         # ready set: only critical-path Actions?
 mise exec -- pnpm arcadia production status
-mise exec -- pnpm arcadia production capacity
 grep -l "^status: open" docs/decisions/*.md
 tail -80 MISSION_LOG.md
 grep -E "Launched Session|Reconciled Session|Recovered hung worker|Escalated" <workspace>/.arcadia/worker.log | tail -30
 gh issue list --label bug --state open
+# The hermetic rehearsal replay, with real Seatbelt preservation validation.
+# sandbox-exec will not nest inside another Seatbelt sandbox, so run it from a
+# plain terminal (CI runs it without the flag, on an unsandboxed validator):
+ARCADIA_PRESERVATION_HOST_TEST=1 mise exec -- pnpm exec vitest run tests/rehearsal-two-action.test.ts
 ```
 
-**Check the active Plan first.** Today's main correction was not about the code
-at all. The Plan had been deactivated, and every other signal still looked
-healthy. **Read the worker log, not only the Plan.** The 2026-09-24 correction
-came from `Launched Session` / `Reconciled Session` lines that no Plan status
-showed. Count Actions by pairing each `- id:` with the `status:` line that
-follows it. A whole-file `status:` grep overcounts, because acceptance-criteria
-text quotes status values.
+**Run the replay before every live rehearsal**, and add a scenario for every
+live failure it did not predict. A live failure the replay could have caught
+is a missing scenario, and adding it is part of the fix.
+
+**Check the active Plan first, then read the worker log, not only the Plan.**
+Count Actions by pairing each `- id:` with the `status:` line that follows it.
+A whole-file `status:` grep overcounts, because acceptance-criteria text quotes
+status values.
 
 An Action's truth is its `status:` in the Plan. A gate's truth is whether the
 live system does what the gate says. **Refresh this document whenever a

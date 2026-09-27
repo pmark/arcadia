@@ -511,9 +511,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // forever (Issue #610).
     input.db.prepare("UPDATE agent_sessions SET admission_request_id = ? WHERE id = ?").run(admission.requestId, prepared.id);
   }
+  // The launch command depends on whether the Session is admission-bound
+  // (unattended), so hand `launchPreparedSession` the row as it now stands.
+  const launching = admission ? { ...prepared, admission_request_id: admission.requestId } : prepared;
 
   try {
-    return { reused: false, session: launchPreparedSession(input.db, prepared, tmux, registry, input.workspace), preview, admission };
+    return { reused: false, session: launchPreparedSession(input.db, launching, tmux, registry, input.workspace), preview, admission };
   } catch (error) {
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a

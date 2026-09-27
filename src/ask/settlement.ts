@@ -17,7 +17,7 @@ import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
-import { assertClean, commitOnlyPaths, git, projectCheckoutFor } from "../git/worktrees.js";
+import { assertClean, commitOnlyPaths, git, projectCheckoutFor, tryGit } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
   getActiveWorktreeReservation,
@@ -122,6 +122,12 @@ export interface AgentAskSettlementReceipt {
    * not complete, or both. Describes exactly what is safe and what to do.
    */
   recovery?: AgentAskSettlementRecovery | null;
+  /**
+   * The commit that recorded this settlement's managed documents, on the
+   * branch it was settled from. Absent when nothing was written or the commit
+   * failed, and on receipts from before this field existed.
+   */
+  documentsCommit?: string | null;
 }
 
 export interface AgentAskSettlementRecovery {
@@ -1474,6 +1480,7 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (fileMutations.length > 0) {
     commitError = commitSettlementOutput(repoRoot, fileMutations, baseReceipt);
     if (commitError) process.stderr.write(`The settled managed documents were written but could not be committed: ${commitError}\n`);
+    else baseReceipt.documentsCommit = tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
   }
 
   // Phase 3 — bounded operational projection. Review items, queue placement,

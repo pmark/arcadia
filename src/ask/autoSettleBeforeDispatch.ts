@@ -4,6 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
+import { parse as parseYaml } from "yaml";
 import { normalizeAgentAsk, type NormalizedAgentAsk } from "./agentAsk.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
@@ -89,7 +90,7 @@ function evidenceCoversCriteriaVerbatim(evidence: NormalizedAgentAsk["evidence"]
  * (including the evidence block, which may itself mention a revision in free
  * text) is left untouched. */
 function refreshCandidateRevision(content: string, head: string): string {
-  return content.replace(/^(\s*candidate_revision\s*:\s*).*$/m, `$1${head}`);
+  return setTopLevelScalar(content, "candidate_revision", head);
 }
 
 /** Rewrites only the top-level `request_id:` scalar. A strict-format Agent
@@ -98,7 +99,26 @@ function refreshCandidateRevision(content: string, head: string): string {
  * here would look up (and be refused by) whatever proposal that id was
  * already recorded under, rather than this auto-settle attempt's own. */
 function withRequestId(content: string, requestId: string): string {
-  return content.replace(/^(\s*request_id\s*:\s*).*$/m, `$1${requestId}`);
+  return setTopLevelScalar(content, "request_id", requestId);
+}
+
+/**
+ * Set one top-level scalar in an Agent Ask draft. Block YAML is edited line by
+ * line so nothing else changes. A JSON (flow) draft -- the compact form
+ * AGENTS.md tells agents to write -- has no `key:` line for a line regex to
+ * match, which silently left its original request id and revision in place
+ * and made every JSON draft unsettleable here; it is parsed and re-serialized
+ * instead, which is lossless for JSON.
+ */
+function setTopLevelScalar(content: string, key: "request_id" | "candidate_revision", value: string): string {
+  if (content.trimStart().startsWith("{")) {
+    const parsed: unknown = parseYaml(content);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return `${JSON.stringify({ ...(parsed as Record<string, unknown>), [key]: value })}\n`;
+    }
+    return content;
+  }
+  return content.replace(new RegExp(`^(\\s*${key}\\s*:\\s*).*$`, "m"), `$1${value}`);
 }
 
 /**
