@@ -2,18 +2,19 @@
 arcadia: v1
 type: proposal
 project: arcadia
-question: Can `arcadia tidy` recognize a branch as safe to retire when its work shipped through Arcadia's own settlement pipeline (a completed Action, or the Ask itself already settled) rather than through git, as a fourth proof alongside the three `evaluateMerge` already has -- reusing its existing archive-tag-and-compare-and-swap deletion exactly as-is, with no new deletion mechanism and no new authority?
+question: Can `arcadia tidy`'s report line for a branch it cannot prove merged add an advisory note when Arcadia's own settlement records suggest the branch's effect already shipped through a completed Action or a directly-settled Ask -- purely informational, with no change to tidy's verdict, no retirement, and no new deletion authority of any kind?
 ---
 
-# Recognize settlement-equivalent branches, using tidy's existing archive-and-retire path
+# Note settlement-equivalent evidence in tidy's report -- report only, no new deletion authority
 
 ## Revision note
 
-This proposal originally claimed a much larger gap than actually exists, and
-an independent review (Opus, plus CodeRabbit on the first draft of this PR)
-found that most of it was already built. That review is the reason this
-document looks the way it does now. The corrected, narrow version follows;
-see "What this proposal got wrong the first time" at the end for the record.
+This proposal has been rewritten twice in response to independent review, and
+both revisions are kept below for the record rather than erased, because the
+pattern across them is the actual lesson. The current version asks for far
+less than either predecessor: an advisory annotation only, with no change to
+what `tidy` deletes or retires. See "What this proposal got wrong" at the end
+for the full account of both prior drafts.
 
 ## Why this project needs it
 
@@ -27,144 +28,160 @@ Needs your attention (2) — nothing below was touched:
 
 Both were single-commit branches whose only change was a recovered
 `.arcadia/asks/*.yaml` file. Investigating them by hand
-(`MISSION_LOG.md:764`, `MISSION_LOG.md:813`) showed both were long since
-resolved, in two different ways that both fall outside what git can prove:
+(`MISSION_LOG.md:764`, `MISSION_LOG.md:813`) took several steps and showed
+both were long since resolved, in two different ways that git cannot see:
 
 - Branch `ask/recover-recovered-3563e94e` carried a `complete` Ask targeting
   Action `place-session-naming-screenshot`. That Action was completed under a
-  *different*, later-settled Ask (`complete-place-session-naming-screenshot-2026-09-25-v2`),
-  with the same acceptance criteria. The branch's own Ask was superseded, not
-  merged.
+  *different*, later `request_id`
+  (`complete-place-session-naming-screenshot-2026-09-25-v2`), with the same
+  acceptance criteria.
 - Branch `ask/recover-recovered-7ee04f15` carried an `action` Ask (no
-  `target_ref`) that itself creates the Action `fix-decision-approve-missing-commit`.
-  That exact Ask, under its own `request_id`, was settled directly —
-  `docs/plans/bootstrap-managed-production-to-build-flight-deck.md` records
-  `source: Agent Ask fix-decision-approve-missing-commit-2026-09-25` on the
-  Action it created. Nothing superseded it; it simply never needed to be
-  merged as a branch, because Arcadia's settlement pipeline applies an Ask's
-  effect directly to governed documents, not by merging the branch that
-  proposed it.
+  `target_ref`) that itself creates Action `fix-decision-approve-missing-commit`.
+  That exact Ask was settled directly, under its own `request_id` — the plan
+  document it created the Action in records `source: Agent Ask
+  fix-decision-approve-missing-commit-2026-09-25`.
 
-`tidy`'s `evaluateMerge` (`src/commands/tidy.ts`) already proves a branch safe
-three ways — ancestry, patch-equivalence (catches squash/rebase/cherry-pick),
-and a verified PR-merge-commit — and already retires proven-safe branches
-through `retireBranch`, which writes an `archive/tidy/<sha>` tag via
-compare-and-swap before force-deleting, and prints the restore command inline
-in its report. All of that is correct and needs no change. What none of the
-three proofs can see is a branch whose content was never merged by git at
-all, because Arcadia's own settlement pipeline — not a merge commit —
-applied its effect. That is a real, structural blind spot, and it is the
-entire scope of this proposal.
+Neither branch's content is, or ever will be, present on `main`: Arcadia's
+settlement pipeline applies an Ask's *effect* to governed documents directly;
+it does not merge the branch that proposed it. `tidy`'s three existing merge
+proofs (`evaluateMerge` in `src/commands/tidy.ts`: ancestry, patch-equivalence,
+verified PR-merge-commit) are all, correctly, about content reaching `main`,
+so none of them can or should call a branch like this "merged." That is not a
+bug in `tidy` — `START_HERE.md:1613` states the actual safety rule plainly:
+*"nothing is removed unless its working tree is clean and every branch change
+is proven present on the base branch."* A settlement-equivalent branch fails
+that test by construction, and should keep failing it. This proposal does not
+ask `tidy` to retire such a branch. It asks for a better report line while
+`tidy` continues to leave it alone.
 
 ## What we're actually asking for
 
-Add a **fourth proof**, `settlement-equivalent`, that `assessBranches` tries
-only after `evaluateMerge` reports `merged: false`, and only for a branch
-whose full diff against its merge-base touches **one or more files matching
-`.arcadia/asks/*.yaml` and nothing else**. (A branch with any other file
-changed does not qualify for this path at all — under-coverage here is worse
-than no coverage, since it would misclassify real unrelated work as safe to
-discard.)
+When `tidy` reports a branch as unmerged, and that branch's full diff is
+confined to one or more `.arcadia/asks/*.yaml` files **added or changed** (a
+deleted or renamed Ask file disqualifies the branch from this check entirely
+— there is nothing to look up evidence for, and a deletion-only diff must not
+pass an "every Ask has evidence" check vacuously by having no Ask to check),
+have it also check — best-effort, informationally — whether Arcadia's own
+settlement records show the Ask(s) already took effect, and if so, append
+that evidence to the existing report line rather than changing the verdict:
 
-For **every** `.arcadia/asks/*.yaml` file the branch adds or changes (a
-branch can carry more than one Ask; each one needs its own evidence — a
-single covered Ask does not clear the whole branch):
+```
+Unmerged branches (1) — never touched by tidy:
+  · ask/recover-recovered-7ee04f15 — 1 commit on ask/recover-recovered-7ee04f15
+    not on main; NO remote copy.
+    Note: Ask fix-decision-approve-missing-commit-2026-09-25 appears already
+    settled — see MISSION_LOG.md:813 and
+    docs/plans/bootstrap-managed-production-to-build-flight-deck.md:2043.
+    Verify before deciding; tidy does not act on this by itself.
+```
 
-1. Parse that Ask's `request_id`, `intent`, and `target_ref`.
-2. If `intent: complete` with a `target_ref` Action id: search
-   `MISSION_LOG.md` for a "Completed `<project>/<action-id>`" entry whose
-   `Result` acceptance-criteria text matches the Ask's own `evidence[].criterion`
-   entries verbatim (covers both "this exact Ask was the one that settled it"
-   and "a `-v2`/`-v3` sibling `request_id` settled the same Action later").
-3. Otherwise (an `action`, `plan`, or other intent with no single completion
-   target): search `MISSION_LOG.md` and governed plan documents under
-   `docs/plans/` for evidence that this *exact* `request_id` was itself
-   already settled (a Mission Log entry naming it, or a `source: Agent Ask
-   <request_id>` citation on an Action it created).
-4. The branch is `settlement-equivalent` only if every Ask file found in step
-   0 clears step 2 or 3. One uncovered Ask file means the whole branch falls
-   through to today's unchanged "unmerged... no remote copy" reporting.
+This claims **no new authority and changes no deletion behavior whatsoever**.
+The verdict stays `unmerged`; `retireBranch` is never invoked for a branch
+recognized this way; nothing about `--apply`'s existing effects changes. The
+entire value is saving the next investigator the multi-step manual work this
+thread required (`gh pr list`, hand-reading `MISSION_LOG.md`, tracing a
+`request_id` through settlement records) by surfacing what `tidy` can already
+find mechanically, as a note the operator or a later agent still has to read
+and act on themselves.
 
-A branch classified `settlement-equivalent` is handed to the **exact same**
-`retireBranch` function `merged` branches already use — same
-`archive/tidy/<sha>` tag, same compare-and-swap delete
-(`deleteBranchRefIfUnchanged`), same inline restore line in the report. This
-proposal adds no new deletion mechanism, no new archive namespace, and no new
-generated-script helper: reusing `retireBranch` unchanged is the entire point,
-since a second, parallel archive-and-delete path is exactly the kind of local
-reimplementation Decision 0025 warns against, and the first draft of this
-proposal did precisely that with a helper that turned out to have real
-correctness bugs (silent data loss on a name collision, no propagation of a
-failed archive) that `retireBranch`'s existing compare-and-swap design does
-not have.
+Because nothing is deleted, the evidence-matching does not need to clear the
+same bar a deletion decision would — a wrong note costs a moment's
+verification, not lost work — but it should still avoid being actively
+misleading. Any implementation should specifically avoid two precision traps
+found during this proposal's own review process:
 
-Because this reuses `retireBranch` exactly, it inherits its existing
-authority envelope: `tidy --apply` already retires proven-`merged` branches
-without a per-branch approval prompt today, because the archive tag makes it
-information-preserving. `settlement-equivalent` claims no new authority
-beyond that same, already-granted class of action — it only adds a second way
-to reach the same "proven safe to retire" verdict `merged` already means.
+- **Do not match `request_id` as a substring.** `fix-decision-approve-missing-commit-2026-09-25`
+  is a literal substring of `complete-fix-decision-approve-missing-commit-2026-09-25`;
+  a substring match would attribute one Ask's settlement record to a
+  different Ask that merely shares a suffix. Match the exact id in a
+  structured field (the Ask's own `request_id`, or the `agent_ask_settlements`
+  table's `request_id` column), never inside free text.
+- **A Mission Log entry naming an Ask is not proof it was accepted.** A
+  rejected or superseded settlement can still be mentioned in the Log. Where
+  available, prefer the authoritative settlement record (an
+  `agent_ask_settlements` row with `disposition: accepted`) over parsing Log
+  prose, and where a target Action is named, check that Action's *current*
+  status in its plan document rather than trusting a historical Log line
+  alone, since an Action can be reopened after a Log entry describes it as
+  done.
+
+Precisely how to source and phrase the note is Arcadia's own implementation
+choice; the proposal's scope ends at "annotate, never act."
 
 ## Explicitly out of scope
 
+- **Any change to what `tidy` deletes, retires, or archives.** This version
+  claims no new authority. If someone later wants to promote
+  settlement-equivalence from an advisory note into an actual retirement
+  path, that is a separate proposal, and per the discussion below it would
+  need to reckon honestly with `START_HERE.md:1613`'s actual safety rule and
+  with the fact that a branch with no remote copy has no copy anywhere else
+  once its only local trace is removed.
 - **Dirty or untracked worktree content.** `tidy` already never touches a
-  dirty worktree, and this proposal does not change that. The original
-  incident that motivated this thread also involved a worktree with an
-  untracked file, destroyed by `git worktree remove --force` with nothing
-  archived — that is a real gap, but it is a *worktree-removal* gap
-  unrelated to branch classification, and folding it in here would blur two
-  different problems. If it recurs, it should be its own proposal, scoped to
-  requiring `tidy`'s worktree-removal path to refuse (or snapshot) dirty
-  state, the same way it already refuses for branches.
-- **`go`'s worktree-safety refusal not consulting `tidy` at all.** The
-  worktree in that same incident was, separately, fully provable as merged by
-  `evaluateMerge`'s existing patch-equivalence/PR-merge-commit proofs — `go`
-  simply never asked `tidy` before refusing and pointing at manual
-  investigation. That is a real, independent, narrower opportunity (teach
-  `go`'s worktree-safety check to consult `evaluateMerge` before refusing on
-  launch-provenance grounds) but it is a `go`-side integration question, not
-  a branch-classification gap, and is left for its own proposal.
-- **`evaluateMerge`'s PR-proof not checking the local branch tip against the
-  PR's actual merged head** — a real, narrow, pre-existing correctness gap,
-  filed as
-  [pmark/arcadia#736](https://github.com/pmark/arcadia/issues/736) rather
-  than bundled here, since it applies to the existing `pull-request` proof
-  and has nothing to do with settlement-equivalence.
+  dirty worktree; this proposal doesn't touch that boundary either.
+- **`go`'s worktree-safety refusal.** An earlier draft of this proposal
+  suggested `go` could have avoided one incident by consulting `evaluateMerge`
+  before refusing to prepare a worktree. That suggestion was wrong and is
+  withdrawn: that refusal (`findUncommittedManualCandidate` in
+  `src/commands/go.ts:1078`) is triggered by uncommitted/dirty state in an
+  unlaunched worktree, which `evaluateMerge` has no way to see — it reasons
+  about committed content, not working-tree cleanliness. Nothing in this
+  proposal bears on that incident.
+- **Generated operator scripts deleting branches or worktrees directly**
+  (`git branch -D`, `git worktree remove --force`) instead of routing through
+  `tidy`'s own safe retirement path. A first draft of this proposal built a
+  standalone helper meant to enforce this and found it had real bugs (see
+  below); that helper is deleted rather than fixed. The underlying concern —
+  nothing yet stops a *future* generated script from deleting a branch
+  directly — is real but has no second instance yet to generalize from.
+  Deferred, with a trigger: revisit when a second generated operator script
+  needs to delete a branch or worktree, rather than designing the shared
+  primitive against a sample of one.
 
-## What this proposal got wrong the first time
+## What this proposal got wrong
 
-The original version of this document (and PR #734's first pushed commit)
-claimed `tidy` had no archive-before-delete mechanism and no squash-merge
-detection, and proposed building both from scratch, including a standalone
-`archive-before-delete.sh` helper described as "tested." An independent Opus
-review, given full access to the repository, found:
+**First draft:** claimed `tidy` had no archive-before-delete mechanism and no
+squash-merge detection, and proposed building both from scratch, including a
+standalone `archive-before-delete.sh` helper described as "tested." An
+independent Opus review found `tidy.ts`'s `retireBranch`/`evaluateMerge`
+already implement exactly this (a compare-and-swap `archive/tidy/<sha>` tag,
+plus ancestry/patch-equivalence/PR-merge-commit proof), that the standalone
+helper had a real silent-data-loss bug (a branch-name collision silently
+skipped archiving but still deleted) with no test suite behind the "tested"
+claim, that the stated safety guarantee never covered dirty/untracked
+worktree content, and that the proposed UX ("no longer need an operator's
+individual sign-off") contradicted `CONSTITUTION.md`'s hard stop on deletion
+without a Decision. It also mischaracterized both motivating incidents and
+several git mechanics. CodeRabbit's review of that draft independently caught
+two more gaps: a branch can carry more than one Ask file, and any deletion
+path needs a compare-and-swap guard.
 
-- `tidy.ts`'s `retireBranch`/`evaluateMerge` already implement
-  archive-before-force-delete (via a compare-and-swap `archive/tidy/<sha>`
-  tag) and three-way merge proof (ancestry, patch-equivalence, verified
-  PR-merge-commit), and `START_HERE.md` already documents this. The proposal
-  was reinventing shipped functionality without having read it first.
-- The standalone helper had a real silent-data-loss bug (a branch-name
-  collision after slash-to-dash normalization skipped archiving but still
-  deleted) and no test suite backing the "tested" claim beyond one
-  happy-path check.
-- The stated safety guarantee ("losing work is structurally impossible") was
-  overstated: it never covered dirty/untracked worktree content, which is
-  exactly what was at risk in the incident that motivated it.
-- The proposed UX ("reconciled items no longer need an operator's individual
-  sign-off") contradicted `CONSTITUTION.md`'s hard stop on deletion without a
-  Decision. This revision resolves that by claiming no new authority at all
-  — reusing `retireBranch`'s already-granted authority instead of asserting a
-  new one.
-- Several git-mechanics claims were simply wrong (this repo has
-  `core.logallrefupdates=true`; the "loose objects" cited were actually
-  already packed), and one of the two motivating branches was
-  mischaracterized (assumed superseded by a `-v2` Ask when it was actually
-  settled directly under its own `request_id` — corrected above).
+**Second draft:** removed the standalone helper and the overstated guarantee,
+narrowing to one new proof (`settlement-equivalent`) that would hand off to
+`tidy`'s *existing* `retireBranch` — reusing its real mechanism instead of a
+second one, though CodeRabbit noted the draft's description glossed over the
+fact that `retireBranch` has two paths: a plain `git branch -d` that can
+succeed with no archive tag at all (`archivedAs: null`), and only a fallback
+compare-and-swap path that actually creates `archive/tidy/<sha>` — a
+distinction the draft should have stated rather than describing `retireBranch`
+as if it always tags. A second independent review found the design still
+claimed authority it didn't have: `retireBranch`'s actual justification is
+`START_HERE.md:1613`'s
+"proven present on the base branch" rule, not merely "there's an archive tag,"
+and a settlement-equivalent branch fails that rule by construction. It also
+found that for a branch with no remote copy to begin with, the archive tag
+would become the *only* surviving copy of that content, on one machine only —
+a materially different risk than archiving a branch whose content is already
+also safe on the base branch. And it found the evidence-matching design had
+the same shape of gap as the deleted helper: a `request_id` substring
+collision, and treating a Log mention as proof of acceptance rather than
+checking the authoritative settlement record. This version removes the
+retirement step rather than trying to patch those into correctness, on the
+reviewer's own observation that an advisory note captures most of the value
+at none of the risk.
 
-CodeRabbit's review of that first draft independently caught two more real
-gaps folded into this version: a branch can carry more than one Ask file (the
-original design checked only "the Ask," singular), and any deletion path
-needs an explicit compare-and-swap on the archived tip, not an unconditional
-force-delete — both already true of `retireBranch`, which is exactly why this
-revision reuses it rather than re-deriving its guarantees.
+Three local git refs created ad hoc while investigating this proposal's
+motivating branches (`refs/arcadia/archived/*`) have been folded into tidy's
+own canonical `archive/tidy/<sha>` tag format as plain housekeeping; they are
+not part of what this proposal asks for.
