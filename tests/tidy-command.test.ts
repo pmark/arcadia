@@ -1,9 +1,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { deleteBranchRefIfUnchanged, evaluateMerge, getWorktreeProtection, runTidyCommand, type TidyCommandData } from "../src/commands/tidy.js";
+import {
+  evaluateMerge,
+  getWorktreeProtection,
+  runTidyCommand,
+  runTidyListCommand,
+  runTidyUndoCommand,
+  type TidyCommandData
+} from "../src/commands/tidy.js";
+import { quarantineBranch } from "../src/git/quarantine.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -589,8 +597,8 @@ describe("evaluateMerge — patch equivalence, without GitHub", () => {
   });
 });
 
-describe("arcadia tidy — archive identity and concurrent branch movement", () => {
-  it("refuses 100 reproducible branch-movement interleavings at compare-and-swap deletion", () => {
+describe("arcadia tidy — quarantine ref identity and concurrent branch movement", () => {
+  it("refuses 100 reproducible branch-movement interleavings at compare-and-swap quarantine", () => {
     const root = repo();
     const expected = run(root, ["commit-tree", "main^{tree}", "-p", "main", "-m", "expected race tip"]).trim();
     const advanced = run(root, ["commit-tree", "main^{tree}", "-p", expected, "-m", "advanced race tip"]).trim();
@@ -601,13 +609,13 @@ describe("arcadia tidy — archive identity and concurrent branch movement", () 
       run(root, ["update-ref", `refs/heads/${branch}`, expected]);
       run(root, ["update-ref", `refs/heads/${branch}`, advanced, expected]);
 
-      expect(deleteBranchRefIfUnchanged(root, branch, expected), `seed ${seed}`).toBe(false);
+      expect(quarantineBranch(root, branch, `run-${seed}`, expected), `seed ${seed}`).toBeNull();
       expect(run(root, ["rev-parse", branch]).trim(), `seed ${seed}`).toBe(advanced);
       run(root, ["update-ref", "-d", `refs/heads/${branch}`, advanced]);
     }
   }, 60_000);
 
-  it("keeps distinct archive tags for slash/dash branch-name collisions", () => {
+  it("never collides between branch names sharing slash/dash components, since the branch's own name is part of the ref path", () => {
     const root = repo();
     commitOn(root, "claude/a-b", "first.txt");
     const first = run(root, ["rev-parse", "claude/a-b"]).trim();
@@ -619,49 +627,34 @@ describe("arcadia tidy — archive identity and concurrent branch movement", () 
     run(root, ["cherry-pick", second]);
 
     const result = data(runTidyCommand({ repo: root, apply: true }));
-    const archived = result.branches.filter((entry) => entry.archivedAs).map((entry) => entry.archivedAs!);
+    const quarantined = result.branches.filter((entry) => entry.quarantineRef).map((entry) => entry.quarantineRef!);
 
-    expect(new Set(archived).size).toBe(2);
-    expect(archived.map((tag) => run(root, ["rev-parse", tag]).trim()).sort()).toEqual([first, second].sort());
+    expect(new Set(quarantined).size).toBe(2);
+    expect(quarantined.map((ref) => run(root, ["rev-parse", ref]).trim()).sort()).toEqual([first, second].sort());
   });
 
-  it("never overwrites the archive from an earlier incarnation of the same branch name", () => {
+  it("never collides between two generations of the same reused branch name, since each tidy run gets its own id", () => {
     const root = repo();
-    const archiveOneGeneration = (file: string) => {
+    const quarantineOneGeneration = (file: string) => {
       commitOn(root, "claude/reused", file);
       const branchTip = run(root, ["rev-parse", "claude/reused"]).trim();
       commitOnMain(root, `advance-${file}`);
       run(root, ["cherry-pick", branchTip]);
       const result = data(runTidyCommand({ repo: root, apply: true }));
-      return { branchTip, tag: result.branches.find((entry) => entry.branch === "claude/reused")?.archivedAs };
+      return { branchTip, ref: result.branches.find((entry) => entry.branch === "claude/reused")?.quarantineRef };
     };
 
-    const first = archiveOneGeneration("one.txt");
-    const second = archiveOneGeneration("two.txt");
+    const first = quarantineOneGeneration("one.txt");
+    const second = quarantineOneGeneration("two.txt");
 
-    expect(first.tag).toBeTruthy();
-    expect(second.tag).toBeTruthy();
-    expect(first.tag).not.toBe(second.tag);
-    expect(run(root, ["rev-parse", first.tag!]).trim()).toBe(first.branchTip);
-    expect(run(root, ["rev-parse", second.tag!]).trim()).toBe(second.branchTip);
+    expect(first.ref).toBeTruthy();
+    expect(second.ref).toBeTruthy();
+    expect(first.ref).not.toBe(second.ref);
+    expect(run(root, ["rev-parse", first.ref!]).trim()).toBe(first.branchTip);
+    expect(run(root, ["rev-parse", second.ref!]).trim()).toBe(second.branchTip);
   });
 
-  it("refuses retirement when the content-addressed archive name already points elsewhere", () => {
-    const root = repo();
-    commitOn(root, "claude/archive-conflict", "conflict.txt");
-    const branchTip = run(root, ["rev-parse", "claude/archive-conflict"]).trim();
-    commitOnMain(root, "advance-conflict.txt");
-    run(root, ["cherry-pick", branchTip]);
-    run(root, ["tag", `archive/tidy/${branchTip}`, "main"]);
-
-    const result = data(runTidyCommand({ repo: root, apply: true }));
-
-    expect(result.branches.find((entry) => entry.branch === "claude/archive-conflict")?.retired).toBe(false);
-    expect(run(root, ["show-ref", "--verify", "refs/heads/claude/archive-conflict"])).toContain("refs/heads/claude/archive-conflict");
-    expect(run(root, ["rev-parse", `archive/tidy/${branchTip}`]).trim()).toBe(run(root, ["rev-parse", "main"]).trim());
-  });
-
-  it("does not delete a branch that advances after its archive tag is written", () => {
+  it("does not quarantine a branch that advances after its tip is read", () => {
     const root = repo();
     commitOn(root, "claude/moved-during-retire", "move.txt");
     const original = run(root, ["rev-parse", "claude/moved-during-retire"]).trim();
@@ -797,6 +790,126 @@ describe("arcadia tidy — handoff reservations end with the work", () => {
     expect(run(root, ["worktree", "list"])).toContain(tree);
   });
 });
+
+describe("arcadia tidy — quarantine survives what deletion used to lose", () => {
+  it("carries a gitignored file through worktree quarantine and back out again on undo", () => {
+    const root = repo();
+    writeFileSync(path.join(root, ".gitignore"), "*.ignored\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "ignore rule"]);
+    commitOn(root, "claude/gitignore-survives", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/gitignore-survives"]);
+    const tree = worktreeOn(root, "claude/gitignore-survives", "gitignore-survives");
+    writeFileSync(path.join(tree, "keepme.ignored"), "untracked, ignored, and must survive\n", "utf8");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+    expect(entry?.retired).toBe(true);
+    expect(existsSync(path.join(tree, "keepme.ignored"))).toBe(false);
+    expect(run(root, ["worktree", "list"])).not.toContain(tree);
+
+    const undo = data2(runTidyUndoCommand({ repo: root, run: result.run! }));
+    expect(undo.worktreesRestored).toEqual([tree]);
+    expect(existsSync(path.join(tree, "keepme.ignored"))).toBe(true);
+    expect(readFileSync(path.join(tree, "keepme.ignored"), "utf8")).toBe("untracked, ignored, and must survive\n");
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("pins and quarantines a missing worktree's admin directory instead of pruning it, keeping an otherwise-unreachable commit alive", () => {
+    const root = repo();
+    const target = path.join(root, "..", `${path.basename(root)}-detached-missing`);
+    run(root, ["worktree", "add", "-q", "--detach", target, "main"]);
+    temporary.push(target);
+    const tree = realpathSync(target);
+    const unreachable = run(tree, ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "unreachable commit"]).trim();
+    run(tree, ["reset", "-q", "--hard", unreachable]);
+    rmSync(tree, { recursive: true, force: true });
+
+    const before = data(runTidyCommand({ repo: root }));
+    expect(before.worktrees.find((candidate) => candidate.path === tree)?.verdict).toBe("missing");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+    expect(entry?.retired).toBe(true);
+    expect(run(root, ["cat-file", "-t", unreachable]).trim()).toBe("commit");
+    expect(run(root, ["for-each-ref", "--format=%(refname)"])).toContain(`refs/arcadia/tidy/${result.run}/worktrees/`);
+
+    const undo = data2(runTidyUndoCommand({ repo: root, run: result.run! }));
+    expect(undo.worktreesRestored).toEqual([tree]);
+    // Undo restores exactly the prior state -- which already had no live
+    // directory here, only a registered-but-missing worktree. Resurrecting a
+    // directory that never existed at quarantine time would not be "exact."
+    expect(existsSync(tree)).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
+  it("preserves a branch's reflog history under its quarantine ref, and restores it verbatim on undo", () => {
+    const root = repo();
+    commitOn(root, "claude/reflog-check", "a.txt");
+    run(root, ["checkout", "-q", "claude/reflog-check"]);
+    writeFileSync(path.join(root, "b.txt"), "second\n", "utf8");
+    run(root, ["add", "-A"]);
+    run(root, ["commit", "-q", "-m", "second commit"]);
+    run(root, ["checkout", "-q", "main"]);
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/reflog-check"]);
+    const before = run(root, ["reflog", "show", "--format=%gs", "claude/reflog-check"]);
+    expect(before.trim().split("\n").length).toBeGreaterThanOrEqual(2);
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const quarantineRef = result.branches.find((entry) => entry.branch === "claude/reflog-check")?.quarantineRef;
+    expect(quarantineRef).toBeTruthy();
+    const quarantined = run(root, ["reflog", "show", "--format=%gs", quarantineRef!]);
+    for (const line of before.trim().split("\n")) {
+      expect(quarantined).toContain(line);
+    }
+
+    const undo = data2(runTidyUndoCommand({ repo: root, run: result.run! }));
+    expect(undo.branchesRestored).toEqual(["claude/reflog-check"]);
+    const restored = run(root, ["reflog", "show", "--format=%gs", "claude/reflog-check"]);
+    for (const line of before.trim().split("\n")) {
+      expect(restored).toContain(line);
+    }
+  });
+
+  it("restores the exact prior worktree list, refs, and file trees for a run mixing branches and worktrees", () => {
+    const root = repo();
+    commitOn(root, "claude/standalone", "solo.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge solo", "claude/standalone"]);
+    commitOn(root, "claude/with-tree", "tree.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge tree", "claude/with-tree"]);
+    const tree = worktreeOn(root, "claude/with-tree", "with-tree");
+
+    const beforeWorktrees = run(root, ["worktree", "list"]);
+    const beforeBranches = run(root, ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"]);
+    const beforeFile = readFileSync(path.join(tree, "tree.txt"), "utf8");
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    expect(result.branches.find((entry) => entry.branch === "claude/standalone")?.retired).toBe(true);
+    expect(result.worktrees.find((entry) => entry.path === tree)?.retired).toBe(true);
+
+    const listed = data3(runTidyListCommand({ repo: root }));
+    expect(listed.runs.map((manifest) => manifest.run)).toContain(result.run);
+
+    const undo = data2(runTidyUndoCommand({ repo: root, run: result.run! }));
+    expect(undo.branchesFailed).toEqual([]);
+    expect(undo.worktreesFailed).toEqual([]);
+
+    expect(run(root, ["worktree", "list"])).toBe(beforeWorktrees);
+    expect(run(root, ["for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads"])).toBe(beforeBranches);
+    expect(readFileSync(path.join(tree, "tree.txt"), "utf8")).toBe(beforeFile);
+
+    const afterUndo = data3(runTidyListCommand({ repo: root }));
+    expect(afterUndo.runs.map((manifest) => manifest.run)).not.toContain(result.run);
+  });
+});
+
+function data2(result: CommandSuccess<import("../src/commands/tidy.js").TidyUndoCommandData>) {
+  return result.data;
+}
+
+function data3(result: CommandSuccess<import("../src/commands/tidy.js").TidyListCommandData>) {
+  return result.data;
+}
 
 describe("summarizeClutter — the session-boundary nudge", () => {
   it("reports nothing to do for a clean repository", () => {

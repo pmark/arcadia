@@ -26,6 +26,16 @@ import {
   type ComparisonBase
 } from "../git/worktrees.js";
 import {
+  createTidyRunId,
+  listTidyRuns,
+  probePath,
+  quarantineBranch,
+  quarantineWorktree,
+  undoTidyRun,
+  type TidyQuarantineManifest,
+  type TidyUndoResult
+} from "../git/quarantine.js";
+import {
   getActiveWorktreeReservation,
   getRepositoryLease,
   hasWorktreeReservationTable,
@@ -51,10 +61,12 @@ export type TidyVerdict =
   | "merged"
   /** Clean, but carries commits the base branch does not have. Never touched. */
   | "unmerged"
-  /** Registered worktree whose directory is gone. Safe to prune. */
+  /** Registered worktree whose directory is provably gone. Safe to quarantine. */
   | "missing"
   /** Clean and detached, with nothing unreachable. Safe to retire. */
-  | "detached";
+  | "detached"
+  /** Registered worktree whose path is unreachable right now (a disconnected or unmounted volume, a permission error) rather than provably absent. Never touched. */
+  | "unavailable";
 
 /**
  * How a `merged` verdict was actually established.
@@ -116,8 +128,8 @@ export interface TidyBranch {
   agentOwned: boolean;
   mergeProof: MergeProof | null;
   retired: boolean;
-  /** Tag written before a forced delete, so the commit stays reachable by name. Null when `git branch -d` sufficed. */
-  archivedAs: string | null;
+  /** The ref its history was relocated to when quarantined: `refs/arcadia/tidy/<run>/heads/<branch>`. Null until retired. */
+  quarantineRef: string | null;
 }
 
 export interface TidyCommandData {
@@ -137,6 +149,8 @@ export interface TidyCommandData {
   branches: TidyBranch[];
   /** Anything that could lose work if handled carelessly. */
   needsAttention: string[];
+  /** The quarantine run id this apply used, so `arcadia tidy undo <run>` can restore it. Null when nothing was quarantined (including any preview, where `applied` is false). */
+  run: string | null;
 }
 
 export interface TidyCommandOptions {
@@ -234,8 +248,11 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     prMergeCommits
   });
 
+  let run: string | null = null;
   if (options.apply) {
     options.testHooks?.afterAssessment?.();
+    run = createTidyRunId(now);
+    const runId = run;
     withDatabase(workspacePath!, (db) => writeTransaction(db, () => {
       // The IMMEDIATE transaction is the shared interlock with `go`'s
       // reservation write. Re-read protection and Git state after acquiring
@@ -257,17 +274,28 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         });
         Object.assign(entry, current);
         if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
-          entry.retired = retireWorktree(repoRoot, entry, baseBranch);
+          const quarantined = quarantineWorktree(repoRoot, { path: entry.path, branch: entry.branch, head: record.head }, runId);
+          entry.retired = quarantined !== null;
           // The row outlived its worktree. Deleting it here is what turns the
           // reservation from a fixed timer into a claim that ends with the work.
           if (entry.retired) releaseWorktreeReservation(db, controlWorktree, entry.path);
+          // The worktree's own branch only goes once its worktree is gone, and
+          // only when it is an agent-owned, disposable name -- mirroring the
+          // prior removal behavior, but recoverably: quarantined, not deleted.
+          // Best-effort: a failure here leaves the ref in place, never fails
+          // the worktree's own retirement.
+          if (entry.retired && entry.branch && entry.branch !== baseBranch && SAFE_TASK_BRANCH.test(entry.branch)) {
+            quarantineBranch(repoRoot, entry.branch, runId);
+          }
         }
       }
       for (const entry of branches) {
         if (entry.verdict === "merged") {
-          const outcome = retireBranch(repoRoot, entry.branch, options.testHooks);
-          entry.retired = outcome.retired;
-          entry.archivedAs = outcome.archivedAs;
+          const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
+          if (expectedTip) options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
+          const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
+          entry.retired = quarantined !== null;
+          entry.quarantineRef = quarantined?.quarantineRef ?? null;
         }
       }
     }));
@@ -286,7 +314,8 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       applied: options.apply === true,
       worktrees: assessed,
       branches,
-      needsAttention: collectAttention(assessed, branches)
+      needsAttention: collectAttention(assessed, branches),
+      run
     }
   });
 }
@@ -313,8 +342,16 @@ function assessWorktree(input: {
     retired: false
   };
 
-  if (!existsSync(record.path)) {
+  const presence = probePath(record.path);
+  if (presence === "missing") {
     return { ...base, verdict: "missing", reason: "Registered worktree whose directory no longer exists." };
+  }
+  if (presence === "unavailable") {
+    return {
+      ...base,
+      verdict: "unavailable",
+      reason: "This path is unreachable right now (possibly an unmounted or disconnected volume), not provably absent; never touched."
+    };
   }
 
   if (samePath(record.path, controlWorktree)) {
@@ -492,7 +529,7 @@ function assessBranches(input: {
           agentOwned,
           mergeProof: null,
           retired: false,
-          archivedAs: null,
+          quarantineRef: null,
           reason: `${merge.reason}${pushed ? "; a remote copy exists" : "; NO remote copy"}.`
         };
       }
@@ -506,7 +543,7 @@ function assessBranches(input: {
           agentOwned,
           mergeProof: merge.proof,
           retired: false,
-          archivedAs: null,
+          quarantineRef: null,
           reason: `Fully merged, but not an agent-owned name (${merge.reason.toLowerCase()}). Left alone because --exclude-own-branches was set.`
         };
       }
@@ -519,60 +556,10 @@ function assessBranches(input: {
         agentOwned,
         mergeProof: merge.proof,
         retired: false,
-        archivedAs: null,
+        quarantineRef: null,
         reason: `${merge.reason} Deleting the ref loses no commit.`
       };
     });
-}
-
-/**
- * Delete a branch whose content is already on the base branch, keeping a way
- * back even when git's own check has to be overridden.
- *
- * `git branch -d` is tried first and is usually enough. It refuses in two
- * situations that are nonetheless safe here: a branch that landed by squash,
- * rebase, or cherry-pick is not an ancestor of anything, and a branch whose
- * remote-tracking counterpart still exists is compared against *that* rather
- * than against the base branch — git will say "not yet merged to
- * refs/remotes/origin/x, even though it is merged to HEAD".
- *
- * Both cases are already proven merged by `evaluateMerge`, so the deletion is
- * information-preserving. Rather than trust that proof alone, this writes an
- * `archive/<branch>` tag first and only then forces. The commit stays
- * reachable by name forever, so even a wrong verdict costs nothing but a tag
- * to recover from.
- */
-function retireBranch(
-  repoRoot: string,
-  branch: string,
-  testHooks?: TidyCommandOptions["testHooks"]
-): { retired: boolean; archivedAs: string | null } {
-  if (tryGit(repoRoot, ["branch", "-d", branch]) !== null) {
-    return { retired: true, archivedAs: null };
-  }
-
-  const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}^{commit}`])?.trim();
-  if (!expectedTip) return { retired: false, archivedAs: null };
-  const tag = `archive/tidy/${expectedTip}`;
-  const existing = tryGit(repoRoot, ["rev-parse", `refs/tags/${tag}^{commit}`])?.trim() ?? null;
-  if (existing !== null && existing !== expectedTip) {
-    return { retired: false, archivedAs: null };
-  }
-  if (existing === null && tryGit(repoRoot, ["tag", tag, expectedTip]) === null) return { retired: false, archivedAs: null };
-
-  testHooks?.beforeForcedBranchDelete?.(branch, expectedTip);
-  // Compare-and-swap deletion: if another process advances the branch after
-  // the proof/tag, update-ref refuses instead of deleting the new tip.
-  const forced = deleteBranchRefIfUnchanged(repoRoot, branch, expectedTip);
-  return { retired: forced, archivedAs: forced ? tag : null };
-}
-
-export function deleteBranchRefIfUnchanged(repoRoot: string, branch: string, expectedTip: string): boolean {
-  const ref = `refs/heads/${branch}`;
-  const observed = tryGit(repoRoot, ["rev-parse", `${ref}^{commit}`])?.trim();
-  if (observed !== expectedTip) return false;
-  if (tryGit(repoRoot, ["update-ref", "-d", ref, expectedTip]) === null) return false;
-  return tryGit(repoRoot, ["show-ref", "--verify", ref]) === null;
 }
 
 function pathKey(value: string): string {
@@ -611,22 +598,6 @@ export function getWorktreeProtection(
         reason: `Protected by go handoff reservation ${reservation.id} until ${reservation.expires_at}.`
       }
     : null;
-}
-
-function retireWorktree(repoRoot: string, entry: TidyWorktree, baseBranch: string): boolean {
-  const removed =
-    entry.verdict === "missing"
-      ? tryGit(repoRoot, ["worktree", "prune"]) !== null
-      : tryGit(repoRoot, ["worktree", "remove", entry.path]) !== null;
-
-  if (!removed) return false;
-
-  // The branch only goes once its worktree is gone, and only when git agrees
-  // it is merged. A failure here leaves the ref in place rather than forcing.
-  if (entry.branch && entry.branch !== baseBranch && SAFE_TASK_BRANCH.test(entry.branch)) {
-    tryGit(repoRoot, ["branch", "-d", entry.branch]);
-  }
-  return true;
 }
 
 /**
@@ -671,7 +642,8 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
     applied,
     worktrees,
     branches,
-    needsAttention
+    needsAttention,
+    run
   } = response.data;
 
   const lines: string[] = [`Arcadia Tidy — ${repoRoot}`];
@@ -738,9 +710,6 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
       const mark = applied ? (entry.retired ? "✓" : "✗ failed") : "-";
       lines.push(`  ${mark} branch   ${entry.branch}`);
       lines.push(`      ${entry.reason}`);
-      if (entry.archivedAs) {
-        lines.push(`      Kept as tag ${entry.archivedAs} — restore with: git branch ${entry.branch} ${entry.archivedAs}`);
-      }
     }
   }
 
@@ -761,15 +730,84 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
   }
 
   lines.push("");
-  lines.push(
-    applied
-      ? "Nothing was removed whose commits were not already on the base branch."
-      : "Nothing was changed. Re-run with --apply to retire the items listed above."
-  );
+  if (applied && run) {
+    lines.push(`Nothing was deleted: everything above is quarantined under run ${run}.`);
+    lines.push(`Undo this run entirely with: arcadia tidy undo ${run}`);
+    lines.push(`List quarantined runs with: arcadia tidy list`);
+  } else {
+    lines.push(
+      applied
+        ? "Nothing was removed whose commits were not already on the base branch."
+        : "Nothing was changed. Re-run with --apply to retire the items listed above."
+    );
+  }
 
   return lines;
 }
 
 function isRetirableWorktree(entry: TidyWorktree): boolean {
   return entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached";
+}
+
+export interface TidyUndoCommandData extends TidyUndoResult {
+  repoRoot: string;
+}
+
+export interface TidyUndoCommandOptions {
+  repo?: string;
+  run: string;
+}
+
+/** Restore every branch and worktree one `tidy --apply` run quarantined, exactly to where they were. */
+export function runTidyUndoCommand(options: TidyUndoCommandOptions): CommandSuccess<TidyUndoCommandData> {
+  const repoRoot = existingDirectory(options.repo ?? invocationRoot(), "repository");
+  const result = undoTidyRun(repoRoot, options.run);
+  return createSuccess({ command: "tidy.undo", data: { repoRoot, ...result } });
+}
+
+export function renderTidyUndoSuccess(response: CommandSuccess<TidyUndoCommandData>): string[] {
+  const { repoRoot, run, branchesRestored, branchesFailed, worktreesRestored, worktreesFailed } = response.data;
+  const lines = [`Arcadia Tidy Undo — ${repoRoot}`, `Run: ${run}`, ""];
+
+  lines.push(`Branches restored (${branchesRestored.length}):`);
+  lines.push(...(branchesRestored.length ? branchesRestored.map((branch) => `  ✓ ${branch}`) : ["  none"]));
+  if (branchesFailed.length > 0) {
+    lines.push(`Branches NOT restored (${branchesFailed.length}) — already present, or their quarantined ref moved:`);
+    lines.push(...branchesFailed.map((branch) => `  ✗ ${branch}`));
+  }
+  lines.push("");
+  lines.push(`Worktrees restored (${worktreesRestored.length}):`);
+  lines.push(...(worktreesRestored.length ? worktreesRestored.map((entry) => `  ✓ ${entry}`) : ["  none"]));
+  if (worktreesFailed.length > 0) {
+    lines.push(`Worktrees NOT restored (${worktreesFailed.length}) — their original path is occupied, or their quarantine directory is missing:`);
+    lines.push(...worktreesFailed.map((entry) => `  ✗ ${entry}`));
+  }
+
+  return lines;
+}
+
+export interface TidyListCommandData {
+  repoRoot: string;
+  runs: TidyQuarantineManifest[];
+}
+
+/** Every quarantine run still recoverable for this repository, newest first. */
+export function runTidyListCommand(options: { repo?: string } = {}): CommandSuccess<TidyListCommandData> {
+  const repoRoot = existingDirectory(options.repo ?? invocationRoot(), "repository");
+  return createSuccess({ command: "tidy.list", data: { repoRoot, runs: listTidyRuns(repoRoot) } });
+}
+
+export function renderTidyListSuccess(response: CommandSuccess<TidyListCommandData>): string[] {
+  const { repoRoot, runs } = response.data;
+  if (runs.length === 0) return [`Arcadia Tidy List — ${repoRoot}`, "No quarantined tidy runs."];
+
+  const lines = [`Arcadia Tidy List — ${repoRoot}`, `Quarantined runs (${runs.length}), newest first:`, ""];
+  for (const manifest of runs) {
+    lines.push(`${manifest.run} — ${manifest.createdAt} — ${manifest.branches.length} branch(es), ${manifest.worktrees.length} worktree(s)`);
+    for (const branch of manifest.branches) lines.push(`    branch   ${branch.branch}`);
+    for (const worktree of manifest.worktrees) lines.push(`    worktree ${worktree.worktreePath}${worktree.branch ? ` [${worktree.branch}]` : ""}`);
+  }
+  lines.push("");
+  lines.push("Restore a run with: arcadia tidy undo <run>");
+  return lines;
 }

@@ -395,7 +395,14 @@ import {
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
-import { renderTidySuccess, runTidyCommand } from "./commands/tidy.js";
+import {
+  renderTidyListSuccess,
+  renderTidySuccess,
+  renderTidyUndoSuccess,
+  runTidyCommand,
+  runTidyListCommand,
+  runTidyUndoCommand
+} from "./commands/tidy.js";
 import { renderPushUnpushedSuccess, runPushUnpushedCommand } from "./commands/pushUnpushed.js";
 import {
   renderOperatorTaskCloseSuccess,
@@ -3412,17 +3419,16 @@ export function buildProgram(): Command {
     )
   );
 
-  addJsonOption(
-    program
-      .command("tidy")
-      .description("Retire worktrees and branches whose work is already on the base branch; report everything else")
-      .option("--repo <path>", "Repository to tidy", resolveInvocationPath, invocationRoot())
-      .option("--workspace <path>", "Workspace path used to protect live Sessions and prepared handoffs", defaultWorkspace())
-      .option("--apply", "Actually retire what is listed; without it nothing is changed")
-      .option("--exclude-own-branches", "Leave fully merged branches you named yourself untouched; by default all merged branches are retired")
-      .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
-      .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available")
-  ).action((options: { repo?: string; workspace?: string; apply?: boolean; excludeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
+  const tidyCommand = program
+    .command("tidy")
+    .description("Quarantine worktrees and branches whose work is already on the base branch, instead of deleting them; report everything else")
+    .option("--repo <path>", "Repository to tidy", resolveInvocationPath, invocationRoot())
+    .option("--workspace <path>", "Workspace path used to protect live Sessions and prepared handoffs", defaultWorkspace())
+    .option("--apply", "Actually quarantine what is listed; without it nothing is changed")
+    .option("--exclude-own-branches", "Leave fully merged branches you named yourself untouched; by default all merged branches are retired")
+    .option("--no-fetch", "Compare against the local base branch only; skip fetching origin first")
+    .option("--no-github", "Skip pull-request verification even when the GitHub CLI is available");
+  addJsonOption(tidyCommand).action((options: { repo?: string; workspace?: string; apply?: boolean; excludeOwnBranches?: boolean; fetch?: boolean; github?: boolean; json?: boolean }) =>
     runCliAction(
       "tidy",
       options,
@@ -3430,6 +3436,21 @@ export function buildProgram(): Command {
       renderTidySuccess
     )
   );
+  addJsonOption(
+    tidyCommand.command("list").description("List quarantined tidy runs still recoverable for this repository")
+  ).action((options: { json?: boolean }, command: Command) => {
+    const repo = (command.parent as Command).opts<{ repo?: string }>().repo;
+    return runCliAction("tidy.list", options, () => runTidyListCommand({ repo }), renderTidyListSuccess);
+  });
+  addJsonOption(
+    tidyCommand
+      .command("undo")
+      .description("Restore every branch and worktree one `tidy --apply` run quarantined, exactly to where they were")
+      .argument("<run>", "Quarantine run id, from `arcadia tidy list`")
+  ).action((run: string, options: { json?: boolean }, command: Command) => {
+    const repo = (command.parent as Command).opts<{ repo?: string }>().repo;
+    return runCliAction("tidy.undo", options, () => runTidyUndoCommand({ repo, run }), renderTidyUndoSuccess);
+  });
 
   addJsonOption(
     program

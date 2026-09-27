@@ -1593,53 +1593,39 @@ ln -sf "$(pwd)/scripts/arcadia" ~/.local/bin/arcadia
 
 ### Cleaning up worktrees and branches
 
-Agent sessions leave worktrees and branches behind. `arcadia tidy` retires the
-ones whose work is provably already on the base branch, and reports everything
-else without touching it:
+Agent sessions leave worktrees and branches behind. `arcadia tidy` quarantines
+the ones whose work is provably already on the base branch, and reports
+everything else without touching it. **Nothing is ever deleted** — retirement
+relocates a branch's history and a worktree's files into a recoverable
+location under this repository's own `.git` directory, and `arcadia tidy undo
+<run>` reverses it byte-for-byte:
 
 ```sh
 arcadia tidy              # dry run — nothing is changed
-arcadia tidy --apply      # retires what the dry run listed
+arcadia tidy --apply      # quarantines what the dry run listed
+arcadia tidy list         # show every quarantined run still recoverable
+arcadia tidy undo <run>   # restore exactly what that run quarantined
 ```
 
-> **Known gaps — read the dry run before `--apply`.** Until
-> `tidy-quarantine-instead-of-delete` merges, `--apply` can lose work in cases
-> the safety rule below does not cover:
->
-> - **Gitignored files** (`.env*`, local notes, anything under an ignored path)
->   in a retired worktree are deleted with it — tidy's cleanliness check does
->   not see them. Copy out anything you need first.
->   ([#737](https://github.com/pmark/arcadia/issues/737))
-> - A **missing** worktree that was detached on commits no branch contains is
->   pruned, orphaning those commits. Tag them before running `--apply`.
->   ([#738](https://github.com/pmark/arcadia/issues/738))
-> - A **freshly created agent worktree** (a Claude Code desktop or Codex session
->   that has not committed yet) reads as merged and is retired out from under
->   its session. Only Arcadia-launched Sessions and `go` handoffs are protected.
->   ([#739](https://github.com/pmark/arcadia/issues/739))
->
-> Retired branches are also judged on a pull-request proof that does not yet
-> check the branch tip ([#736](https://github.com/pmark/arcadia/issues/736)),
-> and on preview-time verdicts
-> ([#740](https://github.com/pmark/arcadia/issues/740)). A branch retired by
-> a forced delete keeps its tip in an archive tag; one that `git branch -d`
-> accepts gets no tag, and its tip survives only through its upstream or
-> another ref. This note is removed when those Actions merge.
-
 `--apply` also requires the Arcadia workspace (resolved normally, or supplied
-with `--workspace`). Before removing anything, `tidy` checks live `prepared`
-and `running` Session leases and the 24-hour reservation written by `arcadia
-go --apply` for a newly prepared handoff. The check and removal share the same
-database interlock, so a concurrent `go` or `tidy` cannot turn a stale preview
-into permission to remove live work. A dry run without workspace protection is
-labelled preview-only; apply is refused.
+with `--workspace`). Before quarantining anything, `tidy` checks live
+`prepared` and `running` Session leases and the 24-hour reservation written by
+`arcadia go --apply` for a newly prepared handoff. The check and quarantine
+share the same database interlock, so a concurrent `go` or `tidy` cannot turn a
+stale preview into permission to touch live work. A dry run without workspace
+protection is labelled preview-only; apply is refused.
 
-The Git safety rule is: **nothing is removed unless its working tree is clean
-and every branch change is proven present on the base branch.** Proof may be
-literal ancestry, patch equivalence whose net effect is still present, or a
-verified merged pull-request commit. Git rechecks dirty state at removal time,
-and forced branch retirement uses a content-addressed archive tag plus an
-atomic compare-and-swap delete, so a concurrently advanced branch survives.
+The Git safety rule is: **nothing is quarantined unless its working tree is
+clean and every branch change is proven present on the base branch** — or the
+worktree is registered but its directory is provably gone (`missing`). Proof
+may be literal ancestry, patch equivalence whose net effect is still present,
+or a verified merged pull-request commit. Git rechecks dirty state at
+quarantine time, and branch quarantine is one atomic `git update-ref --stdin`
+transaction that verifies the branch's tip before moving it, so a concurrently
+advanced branch survives untouched. A worktree whose path is unreachable right
+now — a disconnected or unmounted volume, a permission error — is never
+guessed at either way; `tidy` refuses to touch it rather than treat "cannot be
+checked" as "safe."
 
 It fetches `origin` first by default. Every worktree in a repository shares one
 set of refs, so a `main` nobody has pulled in recently makes every worktree's
@@ -1667,26 +1653,52 @@ is called out explicitly as the only copy of that work.
 
 ### What stays recoverable
 
-Committed branch content stays recoverable; see the known gaps above for the
-exceptions `--apply` does not yet cover.
+Everything `tidy --apply` touches stays recoverable, not just the branch
+content: a quarantined worktree's full file tree — including gitignored files
+`git status` never sees, since a quarantine is a plain directory rename, not a
+Git operation — and even a detached HEAD's commits that no branch ref
+contains.
 
-`tidy` proves a branch landed three ways before retiring it, and reports which
-one applied: plain **ancestry**, **patch equivalence** (`git cherry`, which
-sees through cherry-picks, rebases, and amended commits with no network), or a
-verified **merged pull request** (checking the commit GitHub actually produced,
-not just its "merged" label). A branch is only called unmerged once all three
-decline it.
+**A branch** is quarantined by one `git update-ref --stdin` transaction that
+verifies its current tip, creates `refs/arcadia/tidy/<run>/heads/<branch>`
+pointing at it, and deletes `refs/heads/<branch>` — atomically, so a branch
+that moved concurrently is left untouched instead of quarantined at a stale
+tip. Its reflog moves with it, so `git reflog show
+refs/arcadia/tidy/<run>/heads/<branch>` shows the branch's full history, not
+just a "created" line.
 
-When `git branch -d` refuses — which it does for anything that landed by squash
-or rebase, and for a branch whose remote counterpart still exists — `tidy`
-writes an `archive/<branch>` tag before forcing, and prints the restore command:
+**A worktree** is quarantined by first creating
+`refs/arcadia/tidy/<run>/worktrees/<id>` pinned at its HEAD commit — this is
+what keeps that commit alive once its admin directory moves out of the
+location Git's garbage collector scans for live worktrees, which matters most
+for a detached HEAD whose commits nothing else references — and then renaming
+both its working directory and its `.git/worktrees/<id>` admin directory into
+`.git/arcadia-tidy/quarantine/<run>/<id>/`, verbatim. An already-missing
+worktree (its directory is gone, but Git still registers it) has only its
+admin directory quarantined this way, instead of being discarded by `git
+worktree prune`.
+
+`tidy` proves a branch landed three ways before quarantining it, and reports
+which one applied: plain **ancestry**, **patch equivalence** (`git cherry`,
+which sees through cherry-picks, rebases, and amended commits with no
+network), or a verified **merged pull request** (checking the commit GitHub
+actually produced, not just its "merged" label). A branch is only called
+unmerged once all three decline it.
+
+### Recovering a tidy run
 
 ```sh
-git branch <branch> archive/<branch>
+arcadia tidy list         # every quarantined run, newest first, with its contents
+arcadia tidy undo <run>   # restore exactly what that run quarantined
 ```
 
-Push those tags (`git push origin --tags`) and the commits are recoverable
-forever, from any clone, whatever happens to the local branch.
+`undo` reads only the run's own manifest — written before anything in that run
+was quarantined — so it never has to guess or re-derive prior state: every
+branch is restored to its exact prior tip with its reflog, and every worktree's
+directory and admin directory are renamed back to precisely where they were.
+A run with nothing left to restore (everything undone) drops off `tidy list`
+on its own; a partially-restored run keeps whatever failed to restore, so nothing
+recoverable is ever silently lost.
 
 ### Noticing before it piles up
 
