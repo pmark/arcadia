@@ -1180,6 +1180,54 @@ describe("Agent Ask settlement", () => {
     expect(readFileSync(planPath, "utf8")).toBe(settledPlan);
   });
 
+  it("settles a mixed bundle's target_ref children as amendments, matching what the preview reports (Issue #654)", () => {
+    const { workspace, repo } = fixture();
+    const request = bundleAsk("ask-mixed-bundle", [
+      { targetRef: "action/existing", desiredResult: "Improve the existing proof" },
+      { desiredResult: "Add a brand-new proof" }
+    ]);
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    expect(proposal.data.proposal.effects).toEqual([
+      expect.objectContaining({ operation: "update", targetKind: "action", targetRef: "action/existing" }),
+      expect.objectContaining({ operation: "create", targetKind: "action", targetRef: null })
+    ]);
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-mixed-bundle",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
+    });
+    // Exactly one Action is created; "existing" is amended, not duplicated.
+    expect(preview.data.receipt.queueActionKeys).toEqual(["demo/existing", "demo/add-a-brand-new-proof"]);
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-mixed-bundle",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(applied.data.receipt.effects).toEqual(expect.arrayContaining([
+      "Amended Action demo/existing in active Plan demo-plan.",
+      "Created Action demo/add-a-brand-new-proof in active Plan demo-plan with Responsibility agent."
+    ]));
+    const plan = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(plan.match(/id: existing\b/g)).toHaveLength(1);
+    expect(plan).toContain("next_action: Improve the existing proof");
+    expect(plan).toContain("id: add-a-brand-new-proof");
+  });
+
+  it("refuses a bundle child target_ref naming an Action that does not exist, before settling anything", () => {
+    const { workspace, repo } = fixture();
+    const request = bundleAsk("ask-missing-bundle-target", [
+      { targetRef: "action/does-not-exist", desiredResult: "Improve a nonexistent proof" }
+    ]);
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-missing-bundle-target",
+      disposition: "accepted", revision: 1
+    })).toThrow("Agent Ask Action amendment target was not found.");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+    expect(readFileSync(planPath, "utf8")).not.toContain("does-not-exist");
+  });
+
   it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
     const { workspace, repo } = fixture();
     const original = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-needs-correction") });
@@ -1906,7 +1954,7 @@ function actionAsk(requestId: string): string {
   ].join("\n");
 }
 
-function bundleAsk(requestId: string, actions: Array<{ id?: string; desiredResult: string }>): string {
+function bundleAsk(requestId: string, actions: Array<{ id?: string; desiredResult: string; targetRef?: string }>): string {
   return [
     "agent_ask: v1",
     `request_id: ${requestId}`,
@@ -1917,7 +1965,8 @@ function bundleAsk(requestId: string, actions: Array<{ id?: string; desiredResul
     "dependencies: []",
     "actions:",
     ...actions.flatMap((action) => [
-      ...(action.id ? [`  - id: ${action.id}`, `    desired_result: ${JSON.stringify(action.desiredResult)}`]
+      ...(action.targetRef ? [`  - target_ref: ${action.targetRef}`, `    desired_result: ${JSON.stringify(action.desiredResult)}`]
+        : action.id ? [`  - id: ${action.id}`, `    desired_result: ${JSON.stringify(action.desiredResult)}`]
         : [`  - desired_result: ${JSON.stringify(action.desiredResult)}`]),
       "    acceptance:",
       "      - The handle is typeable.",
