@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-26
+updated: 2026-09-27
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -2146,7 +2146,7 @@ actions:
     references: ["src/production/policy.ts", "src/production/activation.ts", "src/commands/production.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: rewire-dependents-on-split
     title: A split no longer satisfies anything that depended on the narrowed Action until its remainder Actions are done too.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: A split no longer satisfies anything that depended on the narrowed Action until its remainder Actions are done too.
@@ -2338,7 +2338,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: rewire-dependents-on-split
+current_action: fix-action-intent-target-ref-amendments
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

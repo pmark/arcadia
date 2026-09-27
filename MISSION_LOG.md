@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 # Mission Log: Arcadia
@@ -837,3 +837,10 @@ updated: 2026-09-26
 - **Result:** Every declared acceptance criterion was accepted as met: "issueAdmission (src/production/policy.ts) caps effective concurrency at 1 on every admission, whatever maxConcurrentSessions the stored scope carries, unless plan/bootstrap-managed-production-to-build-flight-deck#prove-two-action-unattended-production and plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission are both done on the base branch; a refused admission names both ids."; "The check runs on every admission and names both Actions by Plan-qualified id, so reopening either Action restores the cap without deactivating the policy, and a later change of active Plan neither lifts nor permanently locks the gate."; "production preview and activate with --concurrency greater than 1 report the effective cap and its reason while the gate is closed, instead of silently recording a limit that will not be honoured."; "The only way to exceed the cap before both proofs are done is an explicit, expiring rehearsal exception on the operator-granted policy scope that names prove-concurrent-ready-set-admission; it lapses at its expiry or on deactivation, and nothing else lifts the cap."; "Deterministic tests cover: the cap holding for a stored scope above 1 while the gate is closed, including a scope written directly without passing through activation; the cap lifting once both Actions are done; the cap returning when one is reopened; and the rehearsal exception being honoured only before its expiry; pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-concurrency-gate-at-admission-2026-09-26-v2).
+
+## 2026-09-27 — Completed arcadia/rewire-dependents-on-split
+
+- **Did:** Completed Action arcadia/rewire-dependents-on-split from accepted evidence (Candidate f670910d53356146ad081f0753ccf583f6f727ef).
+- **Result:** Every declared acceptance criterion was accepted as met: "When a split settles (src/ask/settlement.ts), every Action whose depends_on names the split Action also gains the remainder Action ids, so no dependent becomes ready while any remainder is still open."; "Any readiness or gate check that requires a named Action to be done, including enforce-concurrency-gate-at-admission, also requires every remainder Action split from it to be done."; "Deterministic tests cover: a dependent that stays blocked after a split until its remainder is done, and the concurrency gate staying closed when one of its proof Actions is split with an open remainder; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-rewire-dependents-on-split-2026-09-27-v2).
