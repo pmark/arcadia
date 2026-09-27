@@ -1692,13 +1692,15 @@ arcadia tidy list         # every quarantined run, newest first, with its conten
 arcadia tidy undo <run>   # restore exactly what that run quarantined
 ```
 
-`undo` reads only the run's own manifest — written before anything in that run
-was quarantined — so it never has to guess or re-derive prior state: every
-branch is restored to its exact prior tip with its reflog, and every worktree's
-directory and admin directory are renamed back to precisely where they were.
-A run with nothing left to restore (everything undone) drops off `tidy list`
-on its own; a partially-restored run keeps whatever failed to restore, so nothing
-recoverable is ever silently lost.
+`undo` reads only the run's own manifest — each branch recorded once its ref
+transaction commits, each worktree once both its directories are moved — so it
+never has to guess or re-derive prior state: every branch is restored to its
+exact prior tip with its reflog, and every worktree's directory and admin
+directory are renamed back to precisely where they were. A run with nothing
+left to restore (everything undone) drops off `tidy list` on its own; a
+partially-restored run keeps only whatever failed to restore, so a retry never
+re-touches what already came back, and nothing recoverable is ever silently
+lost.
 
 ### Noticing before it piles up
 

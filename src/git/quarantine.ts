@@ -349,29 +349,49 @@ export interface TidyUndoResult {
  * undo never has to re-derive or guess anything about the prior state.
  */
 export function undoTidyRun(repoRoot: string, run: string): TidyUndoResult {
+  const commonDir = gitCommonDir(repoRoot);
   const manifest = readTidyRun(repoRoot, run);
   if (!manifest) {
     throw validationError(`No quarantined tidy run "${run}" was found for this repository.`, { run });
   }
 
+  // Each successful restore is persisted immediately, removing that entry
+  // from the manifest, so a retry after a partial failure only ever
+  // re-attempts what is still genuinely quarantined -- never an
+  // already-restored branch or worktree whose original location a retry
+  // would otherwise find occupied and misreport as newly failed.
   const branchesRestored: string[] = [];
   const branchesFailed: string[] = [];
+  const remainingBranches: QuarantinedBranch[] = [];
   for (const entry of manifest.branches) {
-    (restoreBranch(repoRoot, entry) ? branchesRestored : branchesFailed).push(entry.branch);
+    if (restoreBranch(repoRoot, entry)) {
+      branchesRestored.push(entry.branch);
+    } else {
+      branchesFailed.push(entry.branch);
+      remainingBranches.push(entry);
+    }
+    writeManifest(commonDir, run, { ...manifest, branches: remainingBranches, worktrees: manifest.worktrees });
   }
 
   const worktreesRestored: string[] = [];
   const worktreesFailed: string[] = [];
+  const remainingWorktrees: QuarantinedWorktree[] = [];
   for (const entry of manifest.worktrees) {
-    (restoreWorktree(repoRoot, entry) ? worktreesRestored : worktreesFailed).push(entry.worktreePath);
+    if (restoreWorktree(repoRoot, entry)) {
+      worktreesRestored.push(entry.worktreePath);
+    } else {
+      worktreesFailed.push(entry.worktreePath);
+      remainingWorktrees.push(entry);
+    }
+    writeManifest(commonDir, run, { ...manifest, branches: remainingBranches, worktrees: remainingWorktrees });
   }
 
   // A fully-restored run has nothing left to list or undo again; remove its
   // quarantine directory (including the manifest) so `tidy list` does not
   // keep offering a phantom run forever. A partial restore leaves the
-  // manifest in place, since whatever failed is still genuinely quarantined.
+  // (now-shrunk) manifest in place, since whatever failed is still
+  // genuinely quarantined.
   if (branchesFailed.length === 0 && worktreesFailed.length === 0) {
-    const commonDir = gitCommonDir(repoRoot);
     try { rmSync(quarantineRunRoot(commonDir, run), { recursive: true, force: true }); } catch { /* best effort */ }
   }
 

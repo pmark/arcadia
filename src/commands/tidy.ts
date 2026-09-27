@@ -274,8 +274,22 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         });
         Object.assign(entry, current);
         if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
-          const quarantined = quarantineWorktree(repoRoot, { path: entry.path, branch: entry.branch, head: record.head }, runId);
-          entry.retired = quarantined !== null;
+          // One entry's failure (an EXDEV refusal, an unreachable path, an
+          // unexpected filesystem error mid-rename) must never abort the rest
+          // of this run: every other entry, and the DB writes already made for
+          // earlier ones, must still stand. A thrown quarantine leaves this
+          // entry itself unretired and explained; whatever it already
+          // relocated stays exactly where it is, still protected by its pin
+          // ref, for `tidy list`/manual recovery -- ordinary crash recovery
+          // across an interrupted single step is tidy-journal-recovery-and-conservation-tests'
+          // job, not this one's.
+          try {
+            const quarantined = quarantineWorktree(repoRoot, { path: entry.path, branch: entry.branch, head: record.head }, runId);
+            entry.retired = quarantined !== null;
+          } catch (error) {
+            entry.retired = false;
+            entry.reason = `${entry.reason} Quarantine failed: ${error instanceof Error ? error.message : String(error)}`;
+          }
           // The row outlived its worktree. Deleting it here is what turns the
           // reservation from a fixed timer into a claim that ends with the work.
           if (entry.retired) releaseWorktreeReservation(db, controlWorktree, entry.path);
@@ -283,9 +297,9 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           // only when it is an agent-owned, disposable name -- mirroring the
           // prior removal behavior, but recoverably: quarantined, not deleted.
           // Best-effort: a failure here leaves the ref in place, never fails
-          // the worktree's own retirement.
+          // the worktree's own retirement, and never aborts the rest of the run.
           if (entry.retired && entry.branch && entry.branch !== baseBranch && SAFE_TASK_BRANCH.test(entry.branch)) {
-            quarantineBranch(repoRoot, entry.branch, runId);
+            try { quarantineBranch(repoRoot, entry.branch, runId); } catch { /* best effort */ }
           }
         }
       }
@@ -293,9 +307,15 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         if (entry.verdict === "merged") {
           const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
           if (expectedTip) options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
-          const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
-          entry.retired = quarantined !== null;
-          entry.quarantineRef = quarantined?.quarantineRef ?? null;
+          try {
+            const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
+            entry.retired = quarantined !== null;
+            entry.quarantineRef = quarantined?.quarantineRef ?? null;
+          } catch (error) {
+            // One branch's failure must never abort the rest of this run.
+            entry.retired = false;
+            entry.reason = `${entry.reason} Quarantine failed: ${error instanceof Error ? error.message : String(error)}`;
+          }
         }
       }
     }));
