@@ -13,19 +13,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * against this one) can change some other Action's `depends_on` such that a
  * fresh-only path closes a cycle the stale check never saw.
  *
- * This is exercised here by intercepting `node:fs`'s `readFileSync`: the
- * first few reads of the Plan file (this settlement's own preliminary
- * `discoverDocs` passes and its direct `planBefore` read, all of which run
- * before any write) return the ORIGINAL content, while the disk itself
- * already carries a concurrently-added edge -- exactly what every later read
- * (this settlement's own compare-and-set retry, which re-reads the real
- * file) observes. `vi.mock` intercepts every import site in the module
- * graph, which is what a genuine concurrent-process race would look like
- * from this settlement's point of view: its own preview-time snapshot is
- * stale, and only the write-time read is fresh.
+ * This is exercised here by intercepting `node:fs`'s `readFileSync`: every
+ * read of the Plan file that does NOT originate from
+ * `writePointerPairWithCompareAndSet` (`src/dispatch/pointer.ts`) -- this
+ * settlement's own preliminary `discoverDocs` passes and its direct
+ * `planBefore` read, all of which run before any write -- returns the
+ * ORIGINAL content, while the disk itself already carries a
+ * concurrently-added edge. Only a read from inside that one function (the
+ * compare-and-set write step, which re-reads the real file immediately
+ * before writing) passes through to the real, already-edited disk file.
+ * Routing on the call site rather than a fixed read count is deliberate: how
+ * many times the Plan path is read before the write is an implementation
+ * detail of `discoverDocs` and the settlement pipeline, not something this
+ * test should have to keep in lockstep with. `vi.mock` intercepts every
+ * import site in the module graph, which is what a genuine
+ * concurrent-process race would look like from this settlement's point of
+ * view: its own preview-time snapshot is stale, and only the write-time read
+ * is fresh.
  */
 
-const staleReadState = { path: null as string | null, staleContent: null as string | null, remainingStaleReads: 0 };
+const staleReadState = { path: null as string | null, staleContent: null as string | null, active: false };
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -33,13 +40,21 @@ vi.mock("node:fs", async (importOriginal) => {
     ...actual,
     readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
       const [target] = args;
+      // The instant any read happens from inside the compare-and-set write
+      // step, staleness ends for good -- not just for this one read, but
+      // for everything after it too, including this same settlement's own
+      // post-write verification read. That mirrors reality: once the write
+      // has (or is about to) happen, there is no more "before the write"
+      // content to fake.
+      if ((new Error().stack ?? "").includes("writePointerPairWithCompareAndSet")) {
+        staleReadState.active = false;
+      }
       if (
+        staleReadState.active &&
         staleReadState.path !== null &&
-        staleReadState.remainingStaleReads > 0 &&
         typeof target === "string" &&
         target === staleReadState.path
       ) {
-        staleReadState.remainingStaleReads -= 1;
         return staleReadState.staleContent as ReturnType<typeof actual.readFileSync>;
       }
       return actual.readFileSync(...args);
@@ -60,7 +75,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   staleReadState.path = null;
   staleReadState.staleContent = null;
-  staleReadState.remainingStaleReads = 0;
+  staleReadState.active = false;
 });
 
 describe("Agent Ask split settlement under a concurrent dependency edit (Issue #719)", () => {
@@ -99,24 +114,18 @@ describe("Agent Ask split settlement under a concurrent dependency edit (Issue #
 
     // Getting from an accepted proposal to a written Plan takes two settle
     // calls -- an unapplied "preview" call (which computes the fingerprint
-    // this test's later apply call must match) and the applying call itself
-    // -- and each one reads the Plan path independently: the preview call
-    // reads it via its own `discoverDocs` pass and its own direct
-    // `planBefore` read (2 reads); the applying call repeats both of those
-    // and adds one more `discoverDocs` pass immediately before it writes,
-    // to check for an already-committed settlement (3 reads). All 5 of
-    // those reads are diverted back to the pre-edit content, standing in
-    // for what this settlement's own process actually observed before the
-    // other settlement's write landed -- consistently enough that the
-    // applying call's own fingerprint recomputation still matches the
-    // preview call's, exactly as it would with no race at all. Only the
-    // read after those five -- this settlement's compare-and-set write
-    // step re-reading the Plan immediately before it writes -- passes
-    // through to the real, already-edited disk file, standing in for the
-    // instant the concurrent settlement's write actually lands.
+    // this test's later apply call must match) and the applying call itself.
+    // Every read of the Plan path from either call, up to and including the
+    // applying call's own `discoverDocs` pass and direct `planBefore` read,
+    // stays diverted to the pre-edit content, so both calls' fingerprint
+    // computations agree exactly as they would with no race at all. Only
+    // the applying call's compare-and-set write step -- which re-reads the
+    // Plan immediately before it writes -- sees the real, already-edited
+    // disk file, standing in for the instant the concurrent settlement's
+    // write actually lands.
     staleReadState.path = planPath;
     staleReadState.staleContent = originalPlanContent;
-    staleReadState.remainingStaleReads = 5;
+    staleReadState.active = true;
 
     const request = splitAsk("split-concurrent-cycle", headAfterConcurrentEdit)
       .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
@@ -129,10 +138,6 @@ describe("Agent Ask split settlement under a concurrent dependency edit (Issue #
       preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
     });
     expect(applied.data.receipt.applied).toBe(true);
-
-    // Every stale read was consumed; anything left over would mean the
-    // real write-time read never happened and this test proved nothing.
-    expect(staleReadState.remainingStaleReads).toBe(0);
 
     const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
     // The fresh graph (which sees "second -> third", added concurrently)

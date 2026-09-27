@@ -875,7 +875,9 @@ function isActionRefDone(db: Database.Database, actionRef: string, seen: Set<str
     if (!remaindersDone) return false;
   }
   return listWorkItemDependencies(db, item.id).every((dependency) =>
-    isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+    dependency.docRef
+      ? isActionRefDone(db, dependency.docRef, seen)
+      : isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
   );
 }
 
@@ -885,13 +887,22 @@ function isActionRefDone(db: Database.Database, actionRef: string, seen: Set<str
  * `isActionRefDone`'s two checks, walking `work_item_dependencies` by id
  * rather than by doc ref since that is what `listWorkItemDependencies` keys
  * on.
+ *
+ * A dependency row this walk reaches may itself be a split, done proof with
+ * an open remainder -- `docs sync` mirrors `split_into` onto the work item by
+ * doc ref, not by internal id, so a dependency that carries a `docRef` is
+ * routed back through `isActionRefDone` (which checks `split_into` too)
+ * rather than trusted on status alone; only a dependency with no `docRef` at
+ * all (recorded outside ingestion) falls back to this depends_on-only walk.
  */
 function isWorkItemChainDone(db: Database.Database, workItemId: string, status: string, seen: Set<string>): boolean {
   if (status !== "done") return false;
   if (seen.has(workItemId)) return true;
   seen.add(workItemId);
   return listWorkItemDependencies(db, workItemId).every((dependency) =>
-    isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+    dependency.docRef
+      ? isActionRefDone(db, dependency.docRef, seen)
+      : isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
   );
 }
 
