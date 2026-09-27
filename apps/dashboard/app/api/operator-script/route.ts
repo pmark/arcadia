@@ -1,5 +1,6 @@
 import { constants } from "node:fs";
 import { access, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
@@ -9,7 +10,10 @@ import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const LIBRARY_PATH = "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts";
+// /runs reads the main checkout's library, never a worktree's copy.
+const LIBRARY_PATH =
+  process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY?.trim() ||
+  path.join(os.homedir(), "Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts");
 const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const STALE_LOCK_MS = 30_000;

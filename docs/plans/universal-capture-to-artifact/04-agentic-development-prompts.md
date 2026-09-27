@@ -11,7 +11,7 @@ The full recommended initial prompt appears at the end of this document.
 ```text
 Continue developing Arcadia in:
 
-/Users/pmark/Dev/MR/Arcadia/arcadia
+~/Dev/MR/Arcadia/arcadia
 
 Use the Universal Capture-to-Artifact program as the implementation contract:
 
@@ -262,7 +262,7 @@ Use this prompt for the first implementation turn:
 ```text
 Continue developing Arcadia in:
 
-/Users/pmark/Dev/MR/Arcadia/arcadia
+~/Dev/MR/Arcadia/arcadia
 
 Selected Milestone: M1 — Durable Capture Envelope And Receipt.
 

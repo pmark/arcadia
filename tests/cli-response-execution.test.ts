@@ -89,7 +89,7 @@ describe("CLI response contract — execution and review", () => {
       "--alias",
       "rebuster app",
       "--repo-path",
-      "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      "/Users/operator/Dev/MR/Rebuster/rebuster",
       "--status-summary",
       "Active product repository with posting automation work in scope.",
       "--validation-command",
@@ -106,7 +106,7 @@ describe("CLI response contract — execution and review", () => {
     expect(json.command).toBe("project.metadata");
     expect(json.data.metadata.project_id).toBe(created.project.id);
     expect(JSON.parse(json.data.metadata.aliases)).toEqual(["Rebuster", "rebuster app"]);
-    expect(json.data.metadata.repo_path).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(json.data.metadata.repo_path).toBe("/Users/operator/Dev/MR/Rebuster/rebuster");
     expect(JSON.parse(json.data.metadata.validation_commands)).toEqual(["pnpm test", "pnpm lint"]);
 
     const metadata = withDatabase(workspace, (db) => getProjectMetadata(db, created.project.id));

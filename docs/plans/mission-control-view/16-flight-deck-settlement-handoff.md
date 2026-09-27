@@ -107,7 +107,7 @@ requires the repository's explicit publication authority too.
    request id and current queue revision. Inspect the exact effects and refusal
    list. Then apply only its exact settlement fingerprint within approval.
 5. Settlement targets the configured Project repository, currently
-   `/Users/pmark/Dev/MR/Arcadia/arcadia`, not the invoking documentation worktree.
+   `~/Dev/MR/Arcadia/arcadia`, not the invoking documentation worktree.
    Inspect its branch/cleanliness and concurrent-session ownership before apply.
    It was main at audit time. Do not silently commit/push a shared branch or
    redirect the registry to a worktree to evade that fact. If publication needs
@@ -127,7 +127,7 @@ or describe this supporting bundle as the already expanded canonical Plan.
 ## Recovery material
 
 The current work is isolated in
-`/Users/pmark/Dev/MR/Arcadia/flight-deck-operations-spec`, branch
+`~/Dev/MR/Arcadia/flight-deck-operations-spec`, branch
 `codex/flight-deck-operations-spec`. The audit changes no product source,
 PROJECT.md, active-plan state or queue. The documentation-only PR should say
 there is no new runnable target and use the audit, Ask schema validation and

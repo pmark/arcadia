@@ -331,7 +331,7 @@ describe("arcadia ask command", () => {
       upsertProjectMetadata(db, {
         projectId: created.project.id,
         aliases: ["Rebuster"],
-        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
         validationCommands: ["pnpm test"]
       });
       return created;
@@ -797,7 +797,7 @@ describe("arcadia ask command", () => {
       upsertProjectMetadata(db, {
         projectId: created.project.id,
         aliases: ["Rebuster", "rebuster app"],
-        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
         statusSummary: "Active product repository.",
         validationCommands: ["pnpm test", "pnpm lint"]
       });
@@ -814,14 +814,14 @@ describe("arcadia ask command", () => {
     expect(result.data.workItem?.project_name).toBe("Rebuster");
     expect(result.data.workItem?.milestone_title).toBe("Pinterest publishing support");
     expect(result.data.codexInvocations[0].purpose).toBe("planning");
-    expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/pmark/Dev/MR/Rebuster/rebuster");
-    expect(result.data.codexInvocations[0].command).toContain("--cd /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(result.data.codexInvocations[0].workspace_scope).toBe("/Users/operator/Dev/MR/Rebuster/rebuster");
+    expect(result.data.codexInvocations[0].command).toContain("--cd /Users/operator/Dev/MR/Rebuster/rebuster");
     expect(result.data.ask?.prompt_packet_path).toBe(result.data.codexInvocations[0].prompt_path);
     expect(result.artifacts.every((artifact) => artifact.startsWith(workspace))).toBe(true);
 
     const prompt = readFileSync(path.join(workspace, result.data.codexInvocations[0].prompt_path), "utf8");
     expect(prompt).toContain("Project: Rebuster");
-    expect(prompt).toContain("Target repository/path: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Target repository/path: /Users/operator/Dev/MR/Rebuster/rebuster");
     expect(prompt).toContain("Workspace:");
   });
 

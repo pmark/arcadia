@@ -21,7 +21,7 @@
     "collectedPathPrefix": "collected:"
   },
   "publication": {
-    "destinationRoot": "~/Library/CloudStorage/GoogleDrive-wayoutwest@gmail.com/My Drive",
+    "destinationRoot": "~/Library/CloudStorage/GoogleDrive-<account>/My Drive",
     "directoryTemplate": "Thundertonk PMA/Practices/{yyyy}/{mmdd}",
     "fileNameTemplate": "{sourceName}",
     "verify": "sha256",

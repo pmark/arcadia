@@ -107,6 +107,19 @@ describe("deterministic workflows", () => {
   });
 });
 
+describe("workflow destination placeholder", () => {
+  it("refuses an unresolved destination placeholder before invoking the executable", () => {
+    const workspace = initializedWorkspace();
+    const input = writeRecording(workspace);
+    const workflow = fixtureWorkflow(workspace, "~/Library/CloudStorage/GoogleDrive-<account>/My Drive");
+    workflow.action.arguments = ["-e", "require('node:fs').writeFileSync('invoked', '')", "{input}"];
+
+    expect(() => runWorkflow({ workspace, workflow, inputPath: input })).toThrow(/placeholder/);
+    expect(existsSync(path.join(workspace, "invoked"))).toBe(false);
+    expect(listWorkflowRuns(workspace, workflow.id)).toEqual([]);
+  });
+});
+
 function initializedWorkspace(): string {
   const workspace = temporaryDirectory("arcadia-workflow-workspace-");
   initWorkspace(workspace);

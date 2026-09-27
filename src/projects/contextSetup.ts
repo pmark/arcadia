@@ -7,6 +7,7 @@ import {
   statSync,
   writeFileSync
 } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
@@ -462,12 +463,29 @@ function renderAgentContextPolicy(): string {
   ].join("\n");
 }
 
+// validateRepoPath canonicalizes, so compare against the canonical home too.
+function canonicalHome(): string {
+  const home = os.homedir();
+  try {
+    return realpathSync(home);
+  } catch {
+    return home;
+  }
+}
+
+// repo-context.md is committed, so it must not publish the operator's home
+// directory; the abbreviated form still names the checkout unambiguously.
+function displayRepoPath(repoPath: string): string {
+  const home = canonicalHome();
+  return repoPath === home || repoPath.startsWith(`${home}${path.sep}`) ? `~${repoPath.slice(home.length)}` : repoPath;
+}
+
 function renderRepoContext(context: RepoContextSummary): string {
   return [
     "# Arcadia Repo Context",
     "",
     `Generated: ${context.generated_at}`,
-    `Repo path: ${context.repo_path}`,
+    `Repo path: ${displayRepoPath(context.repo_path)}`,
     "",
     "## Detected Languages",
     renderList(context.detected_languages),

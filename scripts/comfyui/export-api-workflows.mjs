@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname);
 const sourceDir = path.join(repoRoot, "config/intelligence/comfyui");
-const outputDir = process.env.ARCADIA_COMFYUI_WORKFLOW_DIR?.trim() || "/Users/pmark/AI/Arcadia-ComfyUI/workflows";
+const outputDir = process.env.ARCADIA_COMFYUI_WORKFLOW_DIR?.trim() || path.join(os.homedir(), "AI/Arcadia-ComfyUI/workflows");
 
 const workflows = [
   ["flux2-klein-text-to-image.json", "arcadia-image-generate.json", "generate"],

@@ -855,6 +855,6 @@ describe("parseGithubSlug", () => {
 
   it("returns null for a remote that is not GitHub", () => {
     expect(parseGithubSlug("https://gitlab.com/pmark/arcadia.git")).toBeNull();
-    expect(parseGithubSlug("/Users/pmark/bare-repos/arcadia.git")).toBeNull();
+    expect(parseGithubSlug("/Users/operator/bare-repos/arcadia.git")).toBeNull();
   });
 });

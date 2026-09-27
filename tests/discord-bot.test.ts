@@ -313,7 +313,7 @@ describe("discord bot request command", () => {
     expect(reply).toContain("Active milestone: Pinterest publishing support");
     expect(reply).toContain("Approval gates: 3 (credentials_required, publication, send_email_or_messages)");
     expect(reply).toContain("Codex packet: prompts/codex/codex_1/prompt.md");
-    expect(reply).toContain("Repo scope: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(reply).toContain("Repo scope: /Users/operator/Dev/MR/Rebuster/rebuster");
     await expect(loadDiscordSubmissionState(discordSubmissionStatePath(workspace))).resolves.toMatchObject({
       submittedAskIds: ["ask_1"],
       submittedWorkItemIds: ["work_1"],
@@ -450,7 +450,7 @@ describe("discord bot end-to-end fixture", () => {
       upsertProjectMetadata(db, {
         projectId: created.project.id,
         aliases: ["Rebuster", "rebuster app"],
-        repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+        repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
         statusSummary: "Active product repository with posting automation work in scope.",
         validationCommands: ["pnpm test", "pnpm lint"]
       });
@@ -480,7 +480,7 @@ describe("discord bot end-to-end fixture", () => {
       new Set(["credentials_required", "destructive_filesystem_changes", "publication", "send_email_or_messages"])
     );
     const prompt = readFileSync(path.join(workspace, packet.invocation.prompt_path), "utf8");
-    expect(prompt).toContain("Target repository: /Users/pmark/Dev/MR/Rebuster/rebuster");
+    expect(prompt).toContain("Target repository: /Users/operator/Dev/MR/Rebuster/rebuster");
     expect(prompt).toContain("Active milestone: Pinterest publishing support");
     expect(prompt).toContain("Validation commands: pnpm test && pnpm lint");
     expect(prompt).toContain("credential access, publication, and social posting/messaging require explicit approval");
@@ -1300,7 +1300,7 @@ process.stdout.write(JSON.stringify({
     codexInvocations: [{
       id: "codex_1",
       purpose: "build",
-      workspace_scope: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      workspace_scope: "/Users/operator/Dev/MR/Rebuster/rebuster",
       prompt_path: "prompts/codex/codex_1/prompt.md",
       status: "packet_created"
     }],

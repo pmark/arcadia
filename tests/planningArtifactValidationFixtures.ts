@@ -36,7 +36,7 @@ export const completePlanningPacket = [
   "Deterministic planning artifact validation plan with phases, risks, approvals, repository impact, validation strategy, and smallest follow-up Codex goal.",
   "",
   "## Repository Impact Assessment",
-  "- Target repository/path: /Users/pmark/Dev/MR/Arcadia/arcadia.",
+  "- Target repository/path: /Users/operator/Dev/MR/Arcadia/arcadia.",
   "- Likely future implementation area: src/stewardship artifact validation.",
   "",
   "## Smallest Useful Follow-up Codex Goal",

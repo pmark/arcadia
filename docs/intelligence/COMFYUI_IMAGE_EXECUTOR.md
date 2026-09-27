@@ -20,7 +20,7 @@ API-form workflows are generated into the configured workflow directory.
 The installer selects the standard non-FP8 diffusion weights for Apple MPS;
 the FP8 weights are not a reliable execution format on this Mac backend.
 
-On this Mac the backend is installed at `/Users/pmark/AI/Arcadia-ComfyUI` and
+On this Mac the backend is installed at `~/AI/Arcadia-ComfyUI` and
 uses MPS on the Apple M4. Start it with:
 
 ```sh

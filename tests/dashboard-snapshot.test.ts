@@ -229,7 +229,7 @@ describe("dashboard snapshot", () => {
       upsertProjectMetadata(db, {
         projectId: active.project.id,
         aliases: ["active"],
-        repoPath: "/Users/pmark/Dev/MR/ActiveProject/repo",
+        repoPath: "/Users/operator/Dev/MR/ActiveProject/repo",
         statusSummary: "Dashboard test repository.",
         validationCommands: ["pnpm test"]
       });
@@ -278,8 +278,8 @@ describe("dashboard snapshot", () => {
         id: "codex_packet_pinterest",
         purpose: "planning",
         agentProfile: "codex",
-        workspaceScope: "/Users/pmark/Dev/MR/ActiveProject/repo",
-        command: "codex --cd /Users/pmark/Dev/MR/ActiveProject/repo -",
+        workspaceScope: "/Users/operator/Dev/MR/ActiveProject/repo",
+        command: "codex --cd /Users/operator/Dev/MR/ActiveProject/repo -",
         promptPath: "prompts/codex/codex_packet_pinterest/prompt.md",
         jsonlOutputPath: "prompts/codex/codex_packet_pinterest/output.jsonl",
         finalMessagePath: "prompts/codex/codex_packet_pinterest/final.md",
@@ -324,7 +324,7 @@ describe("dashboard snapshot", () => {
     expect(snapshot.requiresReviewItems[0].missingFields).toEqual(["release boundary"]);
     const activeProject = snapshot.projects.find((project) => project.name === "Active Project");
     expect(activeProject).toMatchObject({
-      repoPath: "/Users/pmark/Dev/MR/ActiveProject/repo",
+      repoPath: "/Users/operator/Dev/MR/ActiveProject/repo",
       validationCommands: ["pnpm test"],
       setupWarnings: [],
       lastArtifact: expect.objectContaining({ title: "Codex planning packet: Pinterest publishing" })
@@ -349,7 +349,7 @@ describe("dashboard snapshot", () => {
       status: "packet_created",
       statusLabel: "Packet Created",
       expectedArtifact: "Dashboard v0",
-      targetRepositoryRoot: "/Users/pmark/Dev/MR/ActiveProject/repo",
+      targetRepositoryRoot: "/Users/operator/Dev/MR/ActiveProject/repo",
       relatedArtifactPath: "prompts/codex/codex_packet_pinterest/prompt.md",
       finalArtifactPath: "prompts/codex/codex_packet_pinterest/final.md",
       validationPath: "prompts/codex/codex_packet_pinterest/planning-validation.json"
@@ -533,7 +533,7 @@ describe("dashboard snapshot", () => {
     withDatabase(workspace, (db) => {
       const result = updateProjectSetup(db, {
         projectId,
-        repoPath: "/Users/pmark/Dev/MR/RepoSetup/repo",
+        repoPath: "/Users/operator/Dev/MR/RepoSetup/repo",
         validationCommands: ["pnpm test", "", "pnpm lint"],
         mission: "Keep project setup explicit.",
         status: "active"
@@ -542,7 +542,7 @@ describe("dashboard snapshot", () => {
     });
 
     const updatedMetadata = withDatabase(workspace, (db) => getProjectMetadata(db, projectId));
-    expect(updatedMetadata?.repo_path).toBe("/Users/pmark/Dev/MR/RepoSetup/repo");
+    expect(updatedMetadata?.repo_path).toBe("/Users/operator/Dev/MR/RepoSetup/repo");
     expect(JSON.parse(updatedMetadata?.validation_commands ?? "[]")).toEqual(["pnpm test", "pnpm lint"]);
 
     const updatedSnapshot = buildDashboardSnapshot({ workspace });

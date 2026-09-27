@@ -101,6 +101,15 @@ export function runWorkflow(options: RunWorkflowOptions): WorkflowRunRecord {
     });
   }
 
+  // The shipped default names no real account; refuse it before a
+  // long extraction instead of failing on publication afterward.
+  if (/<[^>]+>/.test(destinationRoot)) {
+    throw validationError("Workflow destination root still contains a placeholder.", {
+      workflowId: options.workflow.id,
+      destinationRoot,
+      recoveryAction: "Install a workspace override with `arcadia workflow add` that sets publication.destinationRoot."
+    });
+  }
   if (!existsSync(command.executable)) {
     throw validationError("Workflow executable does not exist.", { executable: command.executable });
   }
