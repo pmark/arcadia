@@ -75,6 +75,8 @@ export interface GuardedLaunchInput {
     afterWorktreeCreatedBeforeReservationCommit?: () => void;
     /** Deterministic fault injection between admission issuance and its launch-time commit recheck. */
     afterAdmissionIssuedBeforeCommit?: () => void;
+    /** Deterministic fault injection inside `prepareSession`, before its Session row insert. */
+    beforeSessionInsert?: () => void;
   };
 }
 
@@ -359,6 +361,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         tryGit(repoRoot, ["worktree", "remove", reservationCommitCleanup.candidate.path]);
         tryGit(repoRoot, ["branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
+      // Worktree preparation failed before this admission ever reached
+      // `commitAdmission`; nothing else will free the slot it reserved.
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
       throw error;
     }
   }
@@ -399,7 +404,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       branch: nextWorktree.branch,
       worktreePath: nextWorktree.path,
       now,
-      tmux
+      tmux,
+      testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
   } catch (error) {
     // A concurrent caller may have won the repository lease between our
@@ -444,6 +450,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         admission: null
       };
     }
+    // No winning Session satisfied this request either: this admission never
+    // committed to a launch and would otherwise hold its slot until it expires.
+    if (admission) releaseAdmission(input.db, admission.requestId, now);
     throw error;
   }
 
@@ -480,6 +489,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         // even though nothing ever ran in it (CodeRabbit, PR #696).
         restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
       }
+      // `commitAdmission` itself already fenced this admission (stale epoch,
+      // expired, or production inactive) before reporting the refusal, which
+      // already excludes it from `countLiveAdmissions` -- nothing here has an
+      // admission left to release.
       throw validationError(`The standing managed-production policy withdrew authorization before launch commitment: ${committed.reason}`, {
         code: committed.code,
         conflict: true

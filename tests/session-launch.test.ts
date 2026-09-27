@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
-import { ArcadiaError } from "../src/cli/errors.js";
+import { ArcadiaError, validationError } from "../src/cli/errors.js";
 import { openDatabase, withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -732,6 +732,53 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     const admissions = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db));
     expect(admissions).toHaveLength(1);
     expect(admissions[0].status).toBe("released");
+    expect(liveAdmissionCount(fixture)).toBe(0);
+  });
+
+  it("releases a reserved admission when worktree preparation fails, before any Session exists to release it later", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    expectArcadiaError(
+      () =>
+        doStandingLaunch(fixture, tmux, "policy-worktree-fail", undefined, {
+          afterWorktreeCreatedBeforeReservationCommit: () => {
+            throw validationError("simulated worktree preparation failure");
+          }
+        }),
+      "simulated worktree preparation failure"
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    const admission = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db)).find(
+      (row) => row.requestId === "policy-worktree-fail:admission"
+    );
+    expect(admission?.status).toBe("released");
+  });
+
+  it("releases a reserved admission when prepareSession fails for a reason other than a lease race", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+
+    expectArcadiaError(
+      () =>
+        doStandingLaunch(fixture, tmux, "policy-prepare-fail", undefined, {
+          beforeSessionInsert: () => {
+            throw validationError("simulated prepareSession failure");
+          }
+        }),
+      "simulated prepareSession failure"
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    const admission = withReadOnlyDatabase(fixture.workspace, (db) => listAdmissions(db)).find(
+      (row) => row.requestId === "policy-prepare-fail:admission"
+    );
+    expect(admission?.status).toBe("released");
   });
 
   it("launches an opencode Session under a policy scoped to opencode-cli, then holds the lease guard", () => {
@@ -837,6 +884,7 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     );
     expect(admission?.status).toBe("fenced");
     expect(admission?.fencedReason).toBe("production_off");
+    expect(liveAdmissionCount(fixture)).toBe(0);
   });
 
   it("resumes a dead-but-claimed worktree from a proven-terminal exit instead of refusing forever (Issue #695)", () => {
@@ -1283,6 +1331,12 @@ function doStandingLaunch(
       testHooks
     })
   );
+}
+
+function liveAdmissionCount(fixture: ReturnType<typeof preparedFixture>): number {
+  return withReadOnlyDatabase(fixture.workspace, (db) =>
+    listAdmissions(db).filter((row) => row.status === "issued" || row.status === "committed")
+  ).length;
 }
 
 function doLaunch(
