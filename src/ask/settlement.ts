@@ -357,9 +357,6 @@ export function settleAgentAsk(db: Database.Database, input: {
             effects.push("Preserved the Action's existing Responsibility and queue position.");
           }
         } else {
-          if (!input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
-          requirePlanPositioned(queue, project.slug, plan.slug, "accepting another into the queue");
-          if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
             : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
@@ -367,21 +364,42 @@ export function settleAgentAsk(db: Database.Database, input: {
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
-          const takenIds = new Set(plan.actions.map((action) => action.id));
-          const actionIds = proposedActions.map((action) => (action.id
-            ? claimExplicitActionId(takenIds, action.id)
-            : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult))));
+          // A child carrying its own `target_ref` amends that existing Action
+          // instead of creating a duplicate with an id derived from its
+          // desired_result -- matching what `plan` intent amendments already
+          // do, and what this Ask's own preview reports (Issue #654).
+          const existingIds = new Set(plan.actions.map((action) => action.id));
+          const takenIds = new Set(existingIds);
+          const actionIds = proposedActions.map((action) => (action.targetRef
+            ? resolveManagedTargetRef(action.targetRef, "action", project.slug)
+            : action.id
+              ? claimExplicitActionId(takenIds, action.id)
+              : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult))));
+          const duplicateTargets = actionIds.filter((id, index) => actionIds.indexOf(id) !== index);
+          if (duplicateTargets.length > 0) throw validationError("An Agent Ask cannot amend the same Action more than once.", { actions: [...new Set(duplicateTargets)] });
           const availableIds = new Set([...takenIds, ...actionIds]);
           const normalizedActions = proposedActions.map((action, index) => {
+            const id = actionIds[index];
+            const existing = action.targetRef !== null;
+            if (existing && !existingIds.has(id)) throw validationError("Agent Ask Action amendment target was not found.", { targetRef: action.targetRef });
             const dependencies = normalizeDependencies(action.dependencies, project.slug);
             const unknownDependencies = dependencies.filter((dependency) => !availableIds.has(dependency));
             if (unknownDependencies.length > 0) {
               throw validationError("Agent Ask names dependencies outside the active Plan or proposed Action bundle.", {
-                action: actionIds[index], dependencies: unknownDependencies
+                action: id, dependencies: unknownDependencies
               });
             }
-            return { ...action, id: actionIds[index], dependencies };
+            return { ...action, id, existing, dependencies };
           });
+          const createsActions = normalizedActions.some((action) => !action.existing);
+          if (createsActions && !input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
+          if (!createsActions && input.responsibility) throw validationError("Action amendments preserve existing Responsibilities.");
+          if (createsActions) {
+            requirePlanPositioned(queue, project.slug, plan.slug, "accepting another into the queue");
+            if (!input.placement) throw validationError("Accepted Action settlement requires --top, --before, or --after.");
+          } else if (input.placement) {
+            throw validationError("Action amendments preserve their existing queue position.");
+          }
           // A cycle inside the bundle would leave every Action in it waiting on
           // another forever — permanently ineligible, with no event that could
           // ever free them. The Plan paths already refuse one; so does this.
@@ -389,24 +407,33 @@ export function settleAgentAsk(db: Database.Database, input: {
           queueActionKeys = actionIds.map((actionId) => `${project.slug}/${actionId}`);
           queueActionKey = queueActionKeys[0]!;
           actionIdsToValidate.push(...actionIds);
-          arrangeQueue = true;
           let planAfter = planBefore;
           for (const action of normalizedActions) {
-            planAfter = appendPlanAction(planAfter, {
-              id: action.id, title: action.desiredResult, responsibility: input.responsibility,
-              acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
-              source: `Agent Ask ${proposal.normalized.requestId}`
-            });
+            if (action.existing) {
+              planAfter = amendAction(planAfter, action.id, action.desiredResult, action.acceptance, action.dependencies,
+                action.references, proposal.normalized.requestId);
+              effects.push(`Amended Action ${project.slug}/${action.id} in active Plan ${plan.slug}.`);
+            } else {
+              planAfter = appendPlanAction(planAfter, {
+                id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
+                acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
+                source: `Agent Ask ${proposal.normalized.requestId}`
+              });
+              effects.push(`Created Action ${project.slug}/${action.id} in active Plan ${plan.slug} with Responsibility ${input.responsibility}.`);
+            }
           }
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
             after: planAfter
           });
-          queueAfter = insertQueueKeys(queueAfter, queueActionKeys, input.placement, input.anchor);
-          effects.push(`Created ${queueActionKeys.length} Action${queueActionKeys.length === 1 ? "" : "s"} in active Plan ${plan.slug}: ${queueActionKeys.join(", ")}.`);
-          effects.push(`Assigned Responsibility ${input.responsibility} to the accepted Action${queueActionKeys.length === 1 ? "" : "s"}.`);
-          effects.push(`Inserted the Action${queueActionKeys.length === 1 ? "" : " bundle"} starting at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+          if (createsActions) {
+            arrangeQueue = true;
+            queueAfter = insertQueueKeys(queueAfter, queueActionKeys, input.placement!, input.anchor);
+            effects.push(`Inserted the Action${queueActionKeys.length === 1 ? "" : " bundle"} starting at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+          } else {
+            effects.push("Preserved every amended Action's existing Responsibility and queue position.");
+          }
         }
         break;
       }
