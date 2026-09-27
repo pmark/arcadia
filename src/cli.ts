@@ -1008,11 +1008,12 @@ export function buildProgram(): Command {
       .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
-      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer or none")
+      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer (the default), none, or any list that may add packet_approval (never implied; Decision 0072)")
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
+      .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
   ).action((options: ProductionCliOptions) =>
     runCliAction("production.preview", options, () => runProductionPreviewCommand(options), renderProductionPreviewSuccess)
   );
@@ -1026,11 +1027,12 @@ export function buildProgram(): Command {
       .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
-      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer or none")
+      .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer (the default), none, or any list that may add packet_approval (never implied; Decision 0072)")
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
+      .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
       .requiredOption("--request-id <id>", "Idempotency key for this grant")
       .requiredOption("--granted-by <who>", "Operator granting the authorization")
       .option("--decision <ref>", "Authorizing Decision reference")
@@ -4513,6 +4515,7 @@ interface ProductionCliOptions {
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];
   rehearsalExceptionExpiresAt?: string;
+  packetApprovalExpiresAt?: string;
   json?: boolean;
 }
 

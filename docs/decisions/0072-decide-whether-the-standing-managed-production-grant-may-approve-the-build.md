@@ -4,7 +4,7 @@ type: decision
 id: "0072"
 slug: decide-whether-the-standing-managed-production-grant-may-approve-the-build
 project: arcadia
-status: open
+status: approved
 question: Decide whether the standing managed-production grant may approve the build packet of an Action inside its own scope, so a dependent Action launches with no per-Action operator confirmation.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-09-26
+answer: Delegate packet approval inside the grant scope
+decided: 2026-09-26
 ---
 
 # Decision 0072: Decide whether the standing managed-production grant may approve the build packet of an Action inside its own scope, so a dependent Action launches with no per-Action operator confirmation.

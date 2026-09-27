@@ -36,6 +36,8 @@ export interface ProductionActivationPreviewInput {
   integrationGrant?: ProductionIntegrationGrant;
   /** Optional expiring rehearsal exception that raises the concurrency gate's cap. */
   rehearsalException?: ProductionRehearsalException;
+  /** Expiry of the packet_approval delegation; required when it is named (Decision 0072). */
+  packetApprovalExpiresAt?: string;
   intent: string;
   now?: Date;
 }
@@ -136,7 +138,8 @@ export function buildProductionActivationPreview(
     maxConcurrentSessions: input.maxConcurrentSessions ?? 1,
     mechanicalTransitions: input.mechanicalTransitions ?? [...MECHANICAL_TRANSITIONS],
     ...(input.integrationGrant ? { integrationGrant: input.integrationGrant } : {}),
-    ...(input.rehearsalException ? { rehearsalException: input.rehearsalException } : {})
+    ...(input.rehearsalException ? { rehearsalException: input.rehearsalException } : {}),
+    ...(input.packetApprovalExpiresAt ? { packetApprovalExpiresAt: input.packetApprovalExpiresAt } : {})
   });
 
   const currentPolicy = readProductionPolicySafely(db);

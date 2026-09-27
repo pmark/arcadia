@@ -172,6 +172,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // without re-deriving packet lifecycle state itself.
       packetLifecycleKind: preview.packetLifecycle?.kind ?? null,
       packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null,
+      packetLifecycleDecisionId: preview.packetLifecycle?.kind === "build_packet_approval_pending" ? preview.packetLifecycle.decisionId : null,
       // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
       // caller need not distinguish "caught at preview" from "caught at
       // admission" -- both are the identical policy-provider mismatch.
