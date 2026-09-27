@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Reference copy. launchd does not expand ~ or $HOME: replace YOUR_USER
+     with your macOS account name before installing to ~/Library/LaunchAgents. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.litellm.proxy</string>
 
     <key>WorkingDirectory</key>
-    <string>/Users/pmark/Dev/MR/Arcadia/litellm-database</string>
+    <string>/Users/YOUR_USER/Dev/MR/Arcadia/litellm-database</string>
     
     <key>ProgramArguments</key>
     <array>
@@ -25,8 +27,8 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/pmark/Arcadia/logs/litellm_stdout.log</string>
+    <string>/Users/YOUR_USER/Arcadia/logs/litellm_stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/pmark/Arcadia/logs/litellm_stderr.log</string>
+    <string>/Users/YOUR_USER/Arcadia/logs/litellm_stderr.log</string>
 </dict>
 </plist>

@@ -51,7 +51,7 @@ fallback.
 - Private Practice Now manifest Candidate: draft
   [PR #54](https://github.com/pmark/private-practice-now/pull/54), branch
   `codex/living-system-v1-demo`.
-- Local-only target: `/Users/pmark/Dev/MR/Arcadia/vaults/Arcadia1`.
+- Local-only target: `~/Dev/MR/Arcadia/vaults/Arcadia1`.
 - Arcadia projection: 81 files, 8 Topics, 63 episodes, 70 Signals, 459 valid
   WikiLinks, 85 existing source links, 2 transclusions, valid 3-node Canvas.
 - PPN projection: 80 files, 10 Topics, 61 episodes, 97 Signals, 421 valid

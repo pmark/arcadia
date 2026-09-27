@@ -65,7 +65,7 @@ describe("SQLite workspace write-denial diagnostics", () => {
   });
 
   it("names the exact database file when better-sqlite3 reports SQLITE_READONLY", () => {
-    const databaseFile = "/Users/pmark/workspace/database/arcadia.sqlite3";
+    const databaseFile = "/Users/operator/workspace/database/arcadia.sqlite3";
     const sqliteError = Object.assign(new Error("attempt to write a readonly database"), {
       name: "SqliteError",
       code: "SQLITE_READONLY"

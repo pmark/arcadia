@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMFY_ROOT="${ARCADIA_COMFYUI_ROOT:-/Users/pmark/AI/Arcadia-ComfyUI}"
+COMFY_ROOT="${ARCADIA_COMFYUI_ROOT:-$HOME/AI/Arcadia-ComfyUI}"
 MODEL_ROOT="${COMFY_ROOT}/models"
 
 brew install python@3.13

@@ -56,7 +56,7 @@ export const defaultProjects: SeedProject[] = [
     aliases: ["Arcadia", "Back Burner"],
     activeMilestone: "Discord review workflow",
     nextAction: "Tighten stewardship review UX.",
-    repoPath: "/Users/pmark/Dev/MR/Arcadia/arcadia",
+    repoPath: "/Users/operator/Dev/MR/Arcadia/arcadia",
     validationCommands: ["pnpm test"]
   },
   {
@@ -66,7 +66,7 @@ export const defaultProjects: SeedProject[] = [
     aliases: ["Rebuster", "rebuster app"],
     activeMilestone: "Pinterest publishing support",
     nextAction: "Define Pinterest support boundaries.",
-    repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+    repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
     validationCommands: ["pnpm test", "pnpm lint"]
   },
   {
@@ -76,7 +76,7 @@ export const defaultProjects: SeedProject[] = [
     aliases: ["MIDI Opener", "midi opener app"],
     activeMilestone: "Focus Mode and MIDI IN reliability",
     nextAction: "Triage Focus Mode playback bugs.",
-    repoPath: "/Users/pmark/Dev/MR/MIDIOpener",
+    repoPath: "/Users/operator/Dev/MR/MIDIOpener",
     validationCommands: ["swift test"]
   }
 ];

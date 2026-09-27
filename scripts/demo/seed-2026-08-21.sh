@@ -11,7 +11,7 @@
 set -eu
 
 MARKER="demo-2026-08-21"
-WORKSPACE="${ARCADIA_WORKSPACE:-/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover}"
+WORKSPACE="${ARCADIA_WORKSPACE:-$HOME/Dev/MR/Arcadia/workspaces/martianrover}"
 STATE="$WORKSPACE/.demo-2026-08-21.env"
 ARCADIA_PROJECT="${DEMO_PROJECT:-proj_ccdbfb22a7e4415ca7}"
 SURFACE_DATE="${DEMO_SURFACE_DATE:-2026-08-21}"

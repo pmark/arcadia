@@ -32,7 +32,7 @@ set -eu
 ARCADIA_INVOKED_FROM="${ARCADIA_INVOKED_FROM:-$(pwd -P)}"
 export ARCADIA_INVOKED_FROM
 
-arcadia_repository="${ARCADIA_REPO:-/Users/pmark/Dev/MR/Arcadia/arcadia}"
+arcadia_repository="${ARCADIA_REPO:-$HOME/Dev/MR/Arcadia/arcadia}"
 
 if [ ! -d "$arcadia_repository" ]; then
   echo "Arcadia repository not found: $arcadia_repository" >&2

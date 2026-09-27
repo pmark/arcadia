@@ -37,14 +37,14 @@ describe("Rebuster bridge capability", () => {
     const configured = runRebusterConfigureCommand({
       workspace,
       project: project.id,
-      repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
       baseUrl: "http://localhost:5173",
       dashboardUrl: "http://localhost:5173/studio"
     });
 
     expect(configured.data.integration).toMatchObject({
       project_id: project.id,
-      repo_path: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      repo_path: "/Users/operator/Dev/MR/Rebuster/rebuster",
       base_url: "http://localhost:5173",
       dashboard_url: "http://localhost:5173/studio"
     });
@@ -59,7 +59,7 @@ describe("Rebuster bridge capability", () => {
       configured: true,
       projectId: project.id,
       projectName: "Rebuster",
-      repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
       dashboardUrl: "http://localhost:5173/studio"
     });
 
@@ -80,7 +80,7 @@ describe("Rebuster bridge capability", () => {
     runRebusterConfigureCommand({
       workspace,
       project: project.id,
-      repoPath: "/Users/pmark/Dev/MR/Rebuster/rebuster",
+      repoPath: "/Users/operator/Dev/MR/Rebuster/rebuster",
       dashboardUrl: "http://localhost:5173/studio"
     });
     const payload = rebusterEventPayload();

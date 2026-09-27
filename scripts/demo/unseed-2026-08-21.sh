@@ -16,7 +16,7 @@ INGRESS_SOURCE="ingress:DemoNotes"
 # raw_input. The phrase below appears only in scripts/demo/ingress-notes.
 INGRESS_ACTION_MATCH="%Pinterest publishing path before the next batch of rebus shorts%"
 INGRESS_ROOT="${DEMO_INGRESS_ROOT:-$HOME/Dev/MR/Arcadia/demo-ingress}"
-WORKSPACE="${ARCADIA_WORKSPACE:-/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover}"
+WORKSPACE="${ARCADIA_WORKSPACE:-$HOME/Dev/MR/Arcadia/workspaces/martianrover}"
 STATE="$WORKSPACE/.demo-2026-08-21.env"
 DB="$WORKSPACE/database/arcadia.sqlite3"
 TITLE="Deliver the 10-minute Arcadia demo to a technical peer"

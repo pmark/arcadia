@@ -71,7 +71,7 @@ The most common no-code macOS integration is a Finder Quick Action:
 5. Use this script, replacing the repository path if necessary:
 
 ```sh
-exec /Users/pmark/Dev/MR/Arcadia/arcadia/scripts/apple/arcadia-ingest \
+exec "$HOME/Dev/MR/Arcadia/arcadia/scripts/apple/arcadia-ingest" \
   --text "Capture these shared files in Arcadia." -- "$@"
 ```
 
@@ -82,7 +82,7 @@ It will appear in Finder's Quick Actions and Share menus. The helper is also sui
 For a clipboard-only macOS Shortcut, add **Run Shell Script** with:
 
 ```sh
-exec /Users/pmark/Dev/MR/Arcadia/arcadia/scripts/apple/arcadia-ingest --clipboard
+exec "$HOME/Dev/MR/Arcadia/arcadia/scripts/apple/arcadia-ingest" --clipboard
 ```
 
 Pin that Shortcut to the menu bar or assign a keyboard shortcut.
@@ -236,8 +236,20 @@ not available; it never creates a lookalike local folder.
 The Workflow reads `rehearsal`'s final `collected:` output line and publishes every MP3 in that directory. For the recording `Thundertonk practice 2026 July 16.m4a`, publication resolves to:
 
 ```text
-~/Library/CloudStorage/GoogleDrive-wayoutwest@gmail.com/My Drive/
+~/Library/CloudStorage/GoogleDrive-<account>/My Drive/
   Thundertonk PMA/Practices/2026/0716/
+```
+
+`<account>` is a placeholder: the shipped default cannot name a real Google
+account, so with it unchanged the Workflow fails closed with "Google Drive
+Desktop root is unavailable". Point it at your own sync root with a workspace
+override, which replaces the shipped definition by id and stays out of the
+repository:
+
+```sh
+cp config/defaults/workflows/thundertonk-practice.json /tmp/thundertonk-practice.json
+# edit publication.destinationRoot in /tmp/thundertonk-practice.json, then:
+pnpm arcadia workflow add /tmp/thundertonk-practice.json --workspace "$ARCADIA_WORKSPACE"
 ```
 
 Published names are the exact existing basenames produced by `rehearsal collect`, for example `01 - 3m50s.mp3`. Arcadia SHA-256 verifies each copy. A repeated input hash reuses the completed Run, an identical destination file is skipped, and a same-name file with different content fails rather than being overwritten.
