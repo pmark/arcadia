@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { ArcadiaError, validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError, type ArcadiaErrorDetails, type ArcadiaErrorCode, type ArcadiaExitCode } from "../cli/errors.js";
 import type { GoBrokerAgent } from "../goBroker.js";
 import { git } from "../git/worktrees.js";
 import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
@@ -159,6 +159,27 @@ export function agentGoTransportReady(workspace: string): boolean {
   return agentGoTransportState(workspace) === "ready";
 }
 
+/**
+ * The failure a host response carried, re-raised with its details intact.
+ *
+ * The host worker writes the structured shape `goTransportFailure` produces
+ * (the same shape the go route transports), so the failing check's command,
+ * status and skip reason reach the caller instead of stranding in the
+ * host-only evidence file (#717). A host on the previous release flattened
+ * the error to its message string; that still reads, as a plain validation
+ * error, rather than as an object rendered into the message field.
+ */
+export function preservationResponseError(error: unknown): ArcadiaError {
+  if (typeof error === "string") return validationError(error);
+  const record = (error ?? {}) as { code?: ArcadiaErrorCode; message?: string; exitCode?: ArcadiaExitCode; details?: ArcadiaErrorDetails };
+  return new ArcadiaError(
+    record.code ?? "UNEXPECTED_ERROR",
+    record.message ?? "The host reported a preservation failure without a message.",
+    record.exitCode ?? 2,
+    record.details ?? {}
+  );
+}
+
 /** The sandbox can request only preservation of its registered cwd. No commands,
  * evidence, source paths or authority flags cross this boundary. Results are
  * read from the protected workspace, never an agent-writable response file. */
@@ -182,7 +203,7 @@ export async function requestCandidatePreservation(source: string) {
     while (Date.now() < deadline) {
       if (existsSync(response)) {
         const result = JSON.parse(readFileSync(response, "utf8"));
-        if (!result.ok) throw validationError(result.error);
+        if (!result.ok) throw preservationResponseError(result.error);
         return result.response;
       }
       await new Promise(resolve => setTimeout(resolve, 250));
@@ -331,7 +352,11 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     try {
       let result;
       try { result = { ok: true, response: runPreserveCommand({ source: lease.worktree_path, workspace, db }) }; }
-      catch (error) { result = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+      // The structured shape the go route already writes, not a flattened
+      // message: the failing check's command, status and skip reason live in
+      // the error details, and a message-only response strands them in the
+      // host-only evidence file the sandboxed caller cannot read (#717).
+      catch (error) { result = goTransportFailure(error); }
       mkdirSync(path.dirname(response), { recursive: true });
       writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
       renameSync(`${response}.tmp`, response);
