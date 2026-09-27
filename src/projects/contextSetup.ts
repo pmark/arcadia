@@ -463,10 +463,20 @@ function renderAgentContextPolicy(): string {
   ].join("\n");
 }
 
+// validateRepoPath canonicalizes, so compare against the canonical home too.
+function canonicalHome(): string {
+  const home = os.homedir();
+  try {
+    return realpathSync(home);
+  } catch {
+    return home;
+  }
+}
+
 // repo-context.md is committed, so it must not publish the operator's home
 // directory; the abbreviated form still names the checkout unambiguously.
 function displayRepoPath(repoPath: string): string {
-  const home = os.homedir();
+  const home = canonicalHome();
   return repoPath === home || repoPath.startsWith(`${home}${path.sep}`) ? `~${repoPath.slice(home.length)}` : repoPath;
 }
 
