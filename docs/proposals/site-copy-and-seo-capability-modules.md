@@ -147,8 +147,12 @@ seo-audit, copywriting       therapists never see Arcadia)
    - Recommended home: its own repository, published as a package that both
      Arcadia and PPN depend on. This also settles the question of renaming
      the `@ppn/` scope.
-3. **Build `seo-audit` first.** It is model-free, read-only, and already
-   proven on two sites.
+3. **Build `seo-audit` first.** It is model-free and read-only.
+   - It has one audited non-therapy run: arcadiamissioncontrol.com on
+     2026-09-27 (`pmark/mission-control-site#52`).
+   - PPN's site studio already renders its report for PPN's pilot client
+     (`apps/keystatic-host/src/pages/site-studio/nagel/seo-report.astro` in
+     PPN).
 4. **Build `copywriting` audit commands next, then drafting.**
    - Trigger for drafting: the audit commands have caught at least one real
      finding on a governed Project other than Mission Control.
