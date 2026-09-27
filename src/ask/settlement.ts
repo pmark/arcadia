@@ -996,12 +996,28 @@ export function settleAgentAsk(db: Database.Database, input: {
         queueActionKey = remainderActionKeys[0]!;
         actionIdsToValidate.push(...remainderIds);
 
+        // A split narrows and completes `actionId`, but anything that named it
+        // in `depends_on` was waiting on the WHOLE declared scope, not just the
+        // finished slice. Gaining the remainder ids too keeps such a dependent
+        // blocked until the remainder is done as well -- both here, so the
+        // pointer resolver below sees it, and in the written Plan, so every
+        // later reader (dispatch's dependency walk, `arcadia advance`) does.
+        const dependentIds = targetPlan.actions
+          .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
+          .map((candidate) => candidate.id);
+        const withRemainderAdded = (dependencies: string[]): string[] =>
+          [...dependencies, ...remainderIds.filter((id) => !dependencies.includes(id))];
+
         // Resolve the next pointer exactly as `complete` does (Decision 0048's
         // total resolver), as though the narrowed slice were already done and
         // its remainder Actions already existed in the Plan.
         const syntheticBundle: QueueableActionBundle = {
           actions: [
-            ...targetPlan.actions,
+            ...targetPlan.actions.map((candidate) =>
+              dependentIds.includes(candidate.id)
+                ? { ...candidate, dependsOn: withRemainderAdded(candidate.dependsOn) }
+                : candidate
+            ),
             ...normalizedRemainder.map((remainderAction) => ({
               id: remainderAction.id, status: "open" as const, dependsOn: remainderAction.dependencies,
               decisions: [], clarification: "clarified" as const, responsibility: action.responsibility
@@ -1013,7 +1029,13 @@ export function settleAgentAsk(db: Database.Database, input: {
         const updated = today();
         const narrowedTitle = proposal.normalized.desiredResult;
         const planTransform = (current: string): string => {
-          let next = amendAction(current, actionId, narrowedTitle, narrowed, action.dependsOn, action.references, proposal.normalized.requestId);
+          // The narrowed Action keeps its own declared prerequisites and also
+          // gains the remainder as dependencies of itself: it is done, but a
+          // reader that walks a (done) Action's own `depends_on` chain --
+          // dispatch's `collectUnmetDependencies`, and the concurrency gate's
+          // recursive work-item-dependency walk after this settlement's edges
+          // sync -- must still see the remainder as outstanding.
+          let next = amendAction(current, actionId, narrowedTitle, narrowed, withRemainderAdded(action.dependsOn), action.references, proposal.normalized.requestId);
           next = markActionDone(next, actionId);
           for (const remainderAction of normalizedRemainder) {
             next = appendPlanAction(next, {
@@ -1022,6 +1044,10 @@ export function settleAgentAsk(db: Database.Database, input: {
               source: `Agent Ask ${proposal.normalized.requestId}`
             });
           }
+          for (const dependentId of dependentIds) {
+            const dependent = targetPlan.actions.find((candidate) => candidate.id === dependentId)!;
+            next = setActionDependsOn(next, dependentId, withRemainderAdded(dependent.dependsOn));
+          }
           return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
         };
         const projectTransform = (current: string): string => setTopLevelFields(current, { current_action: nextResolution.actionId, updated });
@@ -1029,6 +1055,9 @@ export function settleAgentAsk(db: Database.Database, input: {
         effects.push(`Narrowed Action ${targetActionKey} to ${narrowed.length} of ${declared.length} declared criteria and marked it done with accepted evidence.`);
         effects.push(`Created ${remainderIds.length} remainder Action${remainderIds.length === 1 ? "" : "s"} for the unfinished criteria: ${remainderActionKeys.join(", ")}.`);
         effects.push(`Queued the remainder immediately after ${targetActionKey}, starting at position ${queueAfter.indexOf(queueActionKey) + 1}.`);
+        if (dependentIds.length > 0) {
+          effects.push(`Rewired ${dependentIds.length} dependent Action${dependentIds.length === 1 ? "" : "s"} in ${targetPlan.slug} to also depend on the remainder: ${dependentIds.join(", ")}.`);
+        }
         effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
 
         if (completingActivePlan) {
@@ -2080,6 +2109,23 @@ function markActionDone(content: string, actionId: string): string {
   let block = match[1];
   if (!/^ {4}status:/m.test(block)) throw validationError("Managed Plan Action has no status field to amend.", { actionId });
   block = block.replace(/^ {4}status:.*$/m, "    status: done");
+  return content.replace(pattern, block);
+}
+
+/**
+ * Overwrite one Action's `depends_on` field with `dependencies`, leaving
+ * every other field untouched. Used by `split` to add remainder ids onto an
+ * existing dependent's own dependency list, and onto the narrowed Action's
+ * own list, without disturbing anything else the block declares.
+ */
+function setActionDependsOn(content: string, actionId: string, dependencies: string[]): string {
+  const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
+  const match = content.match(pattern);
+  if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
+  let block = match[1];
+  if (!/^ {4}depends_on:/m.test(block)) throw validationError("Managed Plan Action has no depends_on field to amend.", { actionId });
+  block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
+    dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
   return content.replace(pattern, block);
 }
 

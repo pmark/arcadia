@@ -4,7 +4,7 @@ import { writeTransaction } from "../db/connection.js";
 import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { getProjectContext, getWorkItemByDocRef } from "../db/repositories.js";
+import { getProjectContext, getWorkItemByDocRef, listWorkItemDependencies } from "../db/repositories.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
@@ -835,8 +835,35 @@ export interface ConcurrencyGateStatus {
   reason: string | null;
 }
 
+/**
+ * Whether `workItemId` and every Action its own `depends_on` names,
+ * recursively, is `done`.
+ *
+ * A split (`src/ask/settlement.ts`) narrows a proof Action, marks it `done`,
+ * and adds its remainder Actions onto that same Action's own `depends_on` --
+ * so a proof ref this gate names can go `done` while the remainder that
+ * covers the rest of its declared scope is still open. A status check alone
+ * would read that as satisfied and open the gate early; walking the
+ * dependency edges `docs sync` already writes from `depends_on` catches the
+ * open remainder the same way dispatch's own dependency walk does.
+ *
+ * `seen` guards a same-Plan dependency cycle (already refused at parse time,
+ * but this walk must not assume that refusal ran) and lets an already-visited
+ * ancestor short-circuit as done rather than reporting a false cycle-closure.
+ */
+function isWorkItemChainDone(db: Database.Database, workItemId: string, status: string, seen: Set<string>): boolean {
+  if (status !== "done") return false;
+  if (seen.has(workItemId)) return true;
+  seen.add(workItemId);
+  return listWorkItemDependencies(db, workItemId).every((dependency) =>
+    isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+  );
+}
+
 function isConcurrencyProofDone(db: Database.Database, actionRef: string): boolean {
-  return getWorkItemByDocRef(db, actionRef)?.status === "done";
+  const item = getWorkItemByDocRef(db, actionRef);
+  if (!item) return false;
+  return isWorkItemChainDone(db, item.id, item.status, new Set());
 }
 
 /**

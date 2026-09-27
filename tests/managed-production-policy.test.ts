@@ -7,6 +7,7 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemRecord,
   getWorkItemByDocRef,
+  replaceDocumentWorkItemDependencies,
   setWorkItemDocRef,
   updateWorkItem,
   upsertProject,
@@ -405,6 +406,34 @@ describe("concurrency gate", () => {
     const third = admit(target, "adm-reopen-third", { actionKey: "demo/migrate" });
     expect(third).toMatchObject({ admitted: false, code: "concurrency_limit" });
     expect(third.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+  });
+
+  it("stays closed when a done proof Action's split left an open remainder", () => {
+    const target = workspace();
+    markConcurrencyProofsDone(target);
+    activate(target, "grant-gate-split", { maxConcurrentSessions: 2 });
+
+    withDatabase(target, (db) => {
+      const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+      const remainderRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-remainder";
+      const remainder = createWorkItemRecord(db, {
+        title: remainderRef,
+        rawInput: remainderRef,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: "Finish the split-off remainder.",
+        status: "open"
+      });
+      setWorkItemDocRef(db, remainder.id, remainderRef);
+      // Mirrors what settling a `split` writes: the narrowed (now done) proof
+      // Action's own `depends_on` gains the remainder id.
+      replaceDocumentWorkItemDependencies(db, proof.id, CONCURRENT_READY_SET_ADMISSION_PROOF_REF, [remainder.id]);
+    });
+
+    expect(admit(target, "adm-split-first").admitted).toBe(true);
+    const second = admit(target, "adm-split-second", { actionKey: "demo/ship-it" });
+    expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
+    expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
   });
 
   it("honours a rehearsal exception only before its expiry", () => {
