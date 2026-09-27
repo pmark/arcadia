@@ -9,6 +9,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/connection.js";
 import {
   SAFE_TASK_BRANCH,
+  branchReflogActivity,
   countCommits,
   existingDirectory,
   git,
@@ -16,6 +17,7 @@ import {
   isAncestor,
   isPatchEquivalent,
   listWorktrees,
+  liveProcessCwds,
   mergedPullRequests,
   resolveBaseBranch,
   resolveComparisonBase,
@@ -88,6 +90,15 @@ export type TidyVerdict =
  * unmerged once all three decline it.
  */
 export type MergeProof = "ancestry" | "patch-equivalent" | "pull-request";
+
+/** What a verified merged pull request record needs to prove a branch's *current* content, not just its name, actually landed. */
+export interface PrMergeRecord {
+  /** What actually landed on the base branch. */
+  sha: string;
+  /** The PR's recorded head commit; the local branch's tip must be an ancestor of (or equal to) this before the record can vouch for it. */
+  headRefOid: string;
+  number: number;
+}
 
 /**
  * Why a worktree may not be retired, and whether that reason can end on
@@ -176,6 +187,14 @@ export interface TidyCommandOptions {
   noGithub?: boolean;
   /** Reservation-expiry reference point. Not exposed by the CLI; defaults to the real clock. */
   now?: Date;
+  /**
+   * How long a worktree branch that has just moved (or just been created) is
+   * protected regardless of what it otherwise proves, giving a live agent
+   * Arcadia never launched — and therefore has no Session lease or handoff
+   * reservation for — room to keep working. Not exposed by the CLI; defaults
+   * to {@link DEFAULT_WORKTREE_LIVENESS_GRACE_MS}.
+   */
+  livenessGraceMs?: number;
   /** Deterministic fault injection for race regression tests. Not exposed by the CLI. */
   testHooks?: {
     afterAssessment?: () => void;
@@ -199,6 +218,7 @@ export interface TidyCommandOptions {
 export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess<TidyCommandData> {
   const repoRoot = existingDirectory(options.repo ?? invocationRoot(), "repository");
   const now = options.now ?? new Date();
+  const livenessGraceMs = options.livenessGraceMs ?? DEFAULT_WORKTREE_LIVENESS_GRACE_MS;
   const baseBranch = resolveBaseBranch(repoRoot);
   const worktrees = listWorktrees(repoRoot);
   const controlWorktree = worktrees[0]?.path ?? repoRoot;
@@ -220,9 +240,10 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
     : resolveComparisonBase(repoRoot, baseBranch);
 
   const prMerges = options.noGithub ? null : mergedPullRequests(repoRoot);
-  const prMergeCommits = new Map(
-    (prMerges ?? []).map((entry) => [entry.headBranch, { sha: entry.mergeCommitSha, number: entry.number }])
+  const prMergeCommits = new Map<string, PrMergeRecord>(
+    (prMerges ?? []).map((entry) => [entry.headBranch, { sha: entry.mergeCommitSha, headRefOid: entry.headRefOid, number: entry.number }])
   );
+  const liveCwds = liveProcessCwds();
 
   const protectionSchemaAvailable = workspacePath
     ? withReadOnlyDatabase(workspacePath, (db) => hasWorktreeReservationTable(db))
@@ -233,7 +254,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         : withReadOnlyDatabase(workspacePath, (db) => worktreeProtections(db, controlWorktree, worktrees, now)))
     : new Map<string, WorktreeProtection>();
   const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
-    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protections
+    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protections, liveCwds, now, livenessGraceMs
   }));
 
   const claimedByWorktree = new Set(
@@ -270,7 +291,10 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           controlWorktree,
           here,
           prMergeCommits,
-          protections: currentProtections
+          protections: currentProtections,
+          liveCwds,
+          now,
+          livenessGraceMs
         });
         Object.assign(entry, current);
         if (entry.verdict === "merged" || entry.verdict === "missing" || entry.verdict === "detached") {
@@ -303,19 +327,44 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           }
         }
       }
+      // Re-listed after the worktree loop above, not reused from its own
+      // `currentWorktrees` snapshot: a worktree this same run just quarantined
+      // must no longer count as "checked out" for its own branch, while a
+      // worktree created by an entirely different process between preview and
+      // this transaction (#740's exact race) must.
+      const worktreesAfterRetirement = listWorktrees(repoRoot);
+      const checkedOutBranches = new Set(
+        worktreesAfterRetirement.map((record) => shortBranch(record.branch)).filter((b): b is string => b !== null)
+      );
       for (const entry of branches) {
-        if (entry.verdict === "merged") {
-          const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
-          if (expectedTip) options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
-          try {
-            const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
-            entry.retired = quarantined !== null;
-            entry.quarantineRef = quarantined?.quarantineRef ?? null;
-          } catch (error) {
-            // One branch's failure must never abort the rest of this run.
-            entry.retired = false;
-            entry.reason = `${entry.reason} Quarantine failed: ${error instanceof Error ? error.message : String(error)}`;
-          }
+        if (entry.verdict !== "merged") continue;
+        if (checkedOutBranches.has(entry.branch)) {
+          entry.retired = false;
+          entry.verdict = "protected";
+          entry.reason = `Now checked out in a worktree; nothing was touched.`;
+          continue;
+        }
+        // The preview-time verdict is not trusted for the delete itself: a
+        // fetch, another process's commit, or a rewritten PR record between
+        // preview and this transaction must be caught here, not assumed away.
+        const recheck = evaluateMerge({ cwd: repoRoot, branch: entry.branch, compareRef: comparisonBase.ref, prMergeCommits });
+        if (!recheck.merged) {
+          entry.verdict = "unmerged";
+          entry.ahead = recheck.ahead;
+          entry.mergeProof = null;
+          entry.reason = `${recheck.reason}${entry.pushed ? "; a remote copy exists" : "; NO remote copy"}. (Changed since preview.)`;
+          continue;
+        }
+        const expectedTip = tryGit(repoRoot, ["rev-parse", `refs/heads/${entry.branch}^{commit}`])?.trim();
+        if (expectedTip) options.testHooks?.beforeForcedBranchDelete?.(entry.branch, expectedTip);
+        try {
+          const quarantined = expectedTip ? quarantineBranch(repoRoot, entry.branch, runId, expectedTip) : null;
+          entry.retired = quarantined !== null;
+          entry.quarantineRef = quarantined?.quarantineRef ?? null;
+        } catch (error) {
+          // One branch's failure must never abort the rest of this run.
+          entry.retired = false;
+          entry.reason = `${entry.reason} Quarantine failed: ${error instanceof Error ? error.message : String(error)}`;
         }
       }
     }));
@@ -341,15 +390,18 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
 }
 
 function assessWorktree(input: {
-  record: { path: string; head: string; branch: string | null };
+  record: { path: string; head: string; branch: string | null; locked?: string | null };
   repoRoot: string;
   comparisonBase: ComparisonBase;
   controlWorktree: string;
   here: string;
-  prMergeCommits: Map<string, { sha: string; number: number }>;
+  prMergeCommits: Map<string, PrMergeRecord>;
   protections: Map<string, WorktreeProtection>;
+  liveCwds: Set<string> | null;
+  now: Date;
+  livenessGraceMs: number;
 }): TidyWorktree {
-  const { record, comparisonBase, controlWorktree, here, prMergeCommits, protections } = input;
+  const { record, comparisonBase, controlWorktree, here, prMergeCommits, protections, liveCwds, now, livenessGraceMs } = input;
   const compareRef = comparisonBase.ref;
   const branch = shortBranch(record.branch);
   const base: Omit<TidyWorktree, "verdict" | "reason"> = {
@@ -388,6 +440,18 @@ function assessWorktree(input: {
     return { ...base, verdict: "protected", reason: protection.reason };
   }
 
+  const liveness = assessWorktreeLiveness({
+    path: record.path,
+    branch,
+    locked: record.locked ?? null,
+    liveCwds,
+    now,
+    graceMs: livenessGraceMs
+  });
+  if (liveness.live) {
+    return { ...base, verdict: "protected", reason: liveness.reason };
+  }
+
   const uncommitted = uncommittedChanges(record.path);
   if (uncommitted.length > 0) {
     return {
@@ -420,6 +484,50 @@ function assessWorktree(input: {
   return { ...base, ahead: merge.ahead, pushed, verdict: "unmerged", reason };
 }
 
+/** Default grace window for {@link assessWorktreeLiveness}: long enough to cover a live agent's own working session. */
+export const DEFAULT_WORKTREE_LIVENESS_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether a worktree shows independent signs of life that no Session lease or
+ * go handoff reservation would ever record — because Arcadia never launched
+ * it. A Claude Code or Codex desktop session, or any other agent working
+ * directly against this repository, only ever shows up through one of these.
+ *
+ * A branch whose reflog holds only its own creation entry has never been
+ * worked on; whether that is still true is read from git's own clock, never
+ * this process's, so an injected or skewed `now` can only ever fail toward
+ * protecting more, not less. Past the grace window an untouched branch is no
+ * longer protected by this signal alone -- it has diverged nothing, so
+ * nothing is lost either way -- but a lock or a live process still holds.
+ */
+function assessWorktreeLiveness(input: {
+  path: string;
+  branch: string | null;
+  locked: string | null;
+  liveCwds: Set<string> | null;
+  now: Date;
+  graceMs: number;
+}): { live: true; reason: string } | { live: false } {
+  const { path: worktreePath, branch, locked, liveCwds, now, graceMs } = input;
+
+  if (locked !== null) {
+    return { live: true, reason: locked ? `Worktree is locked: ${locked}.` : "Worktree is locked." };
+  }
+  if (liveCwds?.has(pathKey(worktreePath))) {
+    return { live: true, reason: "A running process has this worktree as its current directory." };
+  }
+  if (branch !== null) {
+    const activity = branchReflogActivity(worktreePath, branch);
+    if (!activity.moved) {
+      const withinGrace = activity.lastActivityAt === null || now.getTime() - activity.lastActivityAt.getTime() < graceMs;
+      if (withinGrace) {
+        return { live: true, reason: "Branch has not moved since this worktree was created; treated as possibly still in use." };
+      }
+    }
+  }
+  return { live: false };
+}
+
 /**
  * Whether a `go` handoff reservation has already done its job.
  *
@@ -446,7 +554,7 @@ function handoffServed(protection: WorktreeProtection, input: {
   path: string;
   branch: string | null;
   compareRef: string;
-  prMergeCommits: Map<string, { sha: string; number: number }>;
+  prMergeCommits: Map<string, PrMergeRecord>;
 }): boolean {
   if (protection.kind !== "handoff-reservation") return false;
   if (input.branch === null) return false;
@@ -480,7 +588,7 @@ export function evaluateMerge(input: {
   cwd: string;
   branch: string;
   compareRef: string;
-  prMergeCommits: Map<string, { sha: string; number: number }>;
+  prMergeCommits: Map<string, PrMergeRecord>;
 }): { merged: true; proof: MergeProof; reason: string } | { merged: false; ahead: number; reason: string } {
   const { cwd, branch, compareRef, prMergeCommits } = input;
   const baseName = compareRef.replace(/^origin\//, "");
@@ -500,8 +608,16 @@ export function evaluateMerge(input: {
     };
   }
 
+  // Checking the branch's own current tip against the PR's recorded head is
+  // what makes this proof cover the branch's actual content rather than just
+  // its name: without it, a branch pushed to again after its PR merged, or an
+  // unrelated branch that later reuses the same name, would inherit a proof
+  // that never covered what is there now. `isAncestor` fails closed on its own
+  // when `headRefOid` was never fetched into this object store — `git
+  // merge-base` cannot resolve it and returns false, exactly the "unmerged"
+  // answer a record this repository cannot verify must get.
   const pr = prMergeCommits.get(branch);
-  if (pr && isAncestor(cwd, pr.sha, compareRef)) {
+  if (pr && isAncestor(cwd, branch, pr.headRefOid) && isAncestor(cwd, pr.sha, compareRef)) {
     return {
       merged: true,
       proof: "pull-request",
@@ -521,7 +637,7 @@ function assessBranches(input: {
   comparisonBase: ComparisonBase;
   claimedByWorktree: Set<string>;
   includeOwn?: boolean;
-  prMergeCommits: Map<string, { sha: string; number: number }>;
+  prMergeCommits: Map<string, PrMergeRecord>;
 }): TidyBranch[] {
   const { repoRoot, comparisonBase, claimedByWorktree, includeOwn, prMergeCommits } = input;
   const compareRef = comparisonBase.ref;
@@ -736,8 +852,8 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
   const protectedBranches = branches.filter((entry) => entry.verdict === "protected");
   if (protectedBranches.length > 0) {
     lines.push("");
-    lines.push(`Merged, but excluded by --exclude-own-branches (${protectedBranches.length}):`);
-    lines.push(...protectedBranches.map((entry) => `  · ${entry.branch}`));
+    lines.push(`Protected branches (${protectedBranches.length}) — never touched:`);
+    lines.push(...protectedBranches.map((entry) => `  · ${entry.branch} — ${entry.reason}`));
   }
 
   const unmergedBranches = branches.filter((entry) => entry.verdict === "unmerged");
