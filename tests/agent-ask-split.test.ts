@@ -151,6 +151,32 @@ describe("Agent Ask split", () => {
     expect(project).toMatchObject({ currentAction: "first-remainder" });
   });
 
+  it("does not add a reverse edge that would close a cycle when a remainder depends on the narrowed Action", () => {
+    const { workspace, repo, head } = fixture();
+    const request = splitAsk("split-remainder-depends-on-narrowed", head)
+      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - first');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-remainder-depends-on-narrowed", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-remainder-depends-on-narrowed", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: expect.arrayContaining([
+        // The narrowed Action does not gain the remainder as its own
+        // dependency here: the remainder already depends on it directly, and
+        // adding the reverse edge would close a same-Plan cycle.
+        expect.objectContaining({ id: "first", status: "done", dependsOn: [] }),
+        expect.objectContaining({ id: "first-remainder", status: "open", dependsOn: ["first"] })
+      ])
+    });
+  });
+
   it("refuses a remainder id already used by another Plan in the Project, not only the target Plan", () => {
     // The queue key is `${project.slug}/${id}` with no Plan segment, so a
     // remainder id must be unique across every Plan, not only the one being

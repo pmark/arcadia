@@ -1005,8 +1005,24 @@ export function settleAgentAsk(db: Database.Database, input: {
         const dependentIds = targetPlan.actions
           .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
           .map((candidate) => candidate.id);
-        const withRemainderAdded = (dependencies: string[]): string[] =>
-          [...dependencies, ...remainderIds.filter((id) => !dependencies.includes(id))];
+
+        // A remainder is free to declare `targetId` (the split Action, or an
+        // existing dependent) in its own `dependencies` -- pointless, since
+        // that target is already resolved by the time the remainder exists,
+        // but not currently forbidden. Adding the reverse edge onto `targetId`
+        // for such a remainder would close a same-Plan cycle and make the
+        // whole Plan unparseable, so it is excluded rather than added.
+        const remainderDependencies = new Map(normalizedRemainder.map((remainderAction) => [remainderAction.id, remainderAction.dependencies]));
+        const remainderChainReaches = (remainderId: string, targetId: string, seen: Set<string> = new Set()): boolean => {
+          if (seen.has(remainderId)) return false;
+          seen.add(remainderId);
+          const deps = remainderDependencies.get(remainderId) ?? [];
+          return deps.includes(targetId) || deps.some((dependency) => remainderChainReaches(dependency, targetId, seen));
+        };
+        const safeRemainderIdsFor = (targetId: string): string[] =>
+          remainderIds.filter((id) => !remainderChainReaches(id, targetId));
+        const withRemainderAdded = (dependencies: string[], safeIds: string[]): string[] =>
+          [...dependencies, ...safeIds.filter((id) => !dependencies.includes(id))];
 
         // Resolve the next pointer exactly as `complete` does (Decision 0048's
         // total resolver), as though the narrowed slice were already done and
@@ -1015,7 +1031,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           actions: [
             ...targetPlan.actions.map((candidate) =>
               dependentIds.includes(candidate.id)
-                ? { ...candidate, dependsOn: withRemainderAdded(candidate.dependsOn) }
+                ? { ...candidate, dependsOn: withRemainderAdded(candidate.dependsOn, safeRemainderIdsFor(candidate.id)) }
                 : candidate
             ),
             ...normalizedRemainder.map((remainderAction) => ({
@@ -1029,13 +1045,23 @@ export function settleAgentAsk(db: Database.Database, input: {
         const updated = today();
         const narrowedTitle = proposal.normalized.desiredResult;
         const planTransform = (current: string): string => {
-          // The narrowed Action keeps its own declared prerequisites and also
+          // Read each Action's own `depends_on` fresh off `current` -- the
+          // content this compare-and-set retry actually read, not the
+          // preview-time snapshot -- so a concurrent edit to it (this settling
+          // worktree is not the only writer) survives the union rather than
+          // being replaced by a stale list.
+          //
+          // The narrowed Action keeps its own current prerequisites and also
           // gains the remainder as dependencies of itself: it is done, but a
           // reader that walks a (done) Action's own `depends_on` chain --
           // dispatch's `collectUnmetDependencies`, and the concurrency gate's
           // recursive work-item-dependency walk after this settlement's edges
           // sync -- must still see the remainder as outstanding.
-          let next = amendAction(current, actionId, narrowedTitle, narrowed, withRemainderAdded(action.dependsOn), action.references, proposal.normalized.requestId);
+          let next = amendAction(
+            current, actionId, narrowedTitle, narrowed,
+            withRemainderAdded(getActionDependsOn(current, actionId), safeRemainderIdsFor(actionId)),
+            action.references, proposal.normalized.requestId
+          );
           next = markActionDone(next, actionId);
           for (const remainderAction of normalizedRemainder) {
             next = appendPlanAction(next, {
@@ -1045,8 +1071,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             });
           }
           for (const dependentId of dependentIds) {
-            const dependent = targetPlan.actions.find((candidate) => candidate.id === dependentId)!;
-            next = setActionDependsOn(next, dependentId, withRemainderAdded(dependent.dependsOn));
+            next = setActionDependsOn(next, dependentId, withRemainderAdded(getActionDependsOn(next, dependentId), safeRemainderIdsFor(dependentId)));
           }
           return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
         };
@@ -2127,6 +2152,27 @@ function setActionDependsOn(content: string, actionId: string, dependencies: str
   block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
     dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
   return content.replace(pattern, block);
+}
+
+/**
+ * Read one Action's current `depends_on` straight off `content`, inline
+ * (`[a, b]`) or block-list form. The counterpart read to {@link setActionDependsOn}
+ * -- used by `split` so a compare-and-set retry unions onto whatever `content`
+ * actually holds right now, not a preview-time snapshot that may have since
+ * been edited by a concurrent settlement.
+ */
+function getActionDependsOn(content: string, actionId: string): string[] {
+  const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
+  const match = content.match(pattern);
+  if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
+  const block = match[1];
+  const inline = /^ {4}depends_on:\s*\[(.*)\]\s*$/m.exec(block);
+  if (inline) {
+    return inline[1].split(",").map((entry) => entry.trim()).filter(Boolean);
+  }
+  const blockForm = /^ {4}depends_on:\s*\r?\n((?: {6}- .*\r?\n?)*)/m.exec(block);
+  if (!blockForm) throw validationError("Managed Plan Action has no depends_on field to read.", { actionId });
+  return [...blockForm[1].matchAll(/^ {6}- (.*)$/gm)].map((entry) => entry[1].trim());
 }
 
 interface NextAfterCompletion {
