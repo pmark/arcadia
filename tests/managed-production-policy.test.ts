@@ -32,6 +32,7 @@ import {
   TWO_ACTION_UNATTENDED_PRODUCTION_PROOF_REF,
   activateProduction,
   commitAdmission,
+  countLiveAdmissions,
   deactivateProduction,
   fingerprintProductionScope,
   issueAdmission,
@@ -332,6 +333,42 @@ describe("admission gating", () => {
 
     expect(outcome).toMatchObject({ admitted: false, code: "admission_expired" });
     expect(outcome.receipt?.status).toBe("fenced");
+  });
+
+  it("stops counting an issued admission as live once its receipt TTL lapses, with no commit ever attempted (a crash between issue and commit)", () => {
+    const target = workspace();
+    activate(target);
+    const issuedAt = new Date("2026-09-05T12:00:00.000Z");
+    admit(target, "adm-crashed-before-commit", { now: issuedAt });
+
+    const stillLive = withDatabase(target, (db) => countLiveAdmissions(db, 1, issuedAt.toISOString()));
+    expect(stillLive).toBe(1);
+
+    const afterTtl = new Date(issuedAt.getTime() + PRODUCTION_CONTROL_DEADLINES.admissionReceiptTtlMs + 1);
+    const expired = withDatabase(target, (db) => countLiveAdmissions(db, 1, afterTtl.toISOString()));
+    expect(expired).toBe(0);
+  });
+
+  it("leaves an admission issued (not fenced) when the policy read fails at commit time (CodeRabbit, PR #729)", () => {
+    const target = workspace();
+    activate(target);
+    admit(target, "adm-policy-unavailable-at-commit");
+
+    // Reopening a connection re-runs migrations, which would recreate the
+    // dropped table before the read under test ever runs -- so the drop and
+    // the commit attempt must share one connection, exactly like the
+    // "policy-store failure" fixture above.
+    const db = openDatabase(target);
+    try {
+      db.exec("DROP TABLE production_policy");
+      const outcome = commitAdmission(db, "adm-policy-unavailable-at-commit");
+      expect(outcome).toMatchObject({ admitted: false, code: "policy_unavailable" });
+      // Unlike stale-epoch/expired/inactive, this refusal never fences the row --
+      // the caller (launchGuardedHostSession) is what must release it.
+      expect(outcome.receipt?.status).toBe("issued");
+    } finally {
+      db.close();
+    }
   });
 
   it("is replay-safe: committing twice yields one committed admission", () => {
