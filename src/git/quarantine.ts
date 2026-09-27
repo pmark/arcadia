@@ -328,7 +328,19 @@ function restoreWorktree(repoRoot: string, entry: QuarantinedWorktree): boolean 
   if (entry.treeMoved) renameOntoQuarantine(treeSrc, entry.worktreePath);
   const commonDir = gitCommonDir(repoRoot);
   const adminDest = path.join(commonDir, "worktrees", entry.worktreeId);
-  renameOntoQuarantine(adminSrc, adminDest);
+  try {
+    renameOntoQuarantine(adminSrc, adminDest);
+  } catch (error) {
+    // The tree already moved but the admin directory didn't: roll the tree
+    // back to the quarantine directory so this entry's on-disk state still
+    // matches what its (retained, since this throws and the caller records
+    // the entry as failed) manifest entry describes, and a retry starts from
+    // the same clean quarantined state rather than a half-restored one.
+    if (entry.treeMoved) {
+      try { renameOntoQuarantine(entry.worktreePath, treeSrc); } catch { /* best effort */ }
+    }
+    throw error;
+  }
 
   tryGit(repoRoot, ["update-ref", "-d", entry.pinRef]);
   try { rmSync(entry.quarantineDir, { recursive: true, force: true }); } catch { /* best effort */ }
@@ -359,31 +371,40 @@ export function undoTidyRun(repoRoot: string, run: string): TidyUndoResult {
   // from the manifest, so a retry after a partial failure only ever
   // re-attempts what is still genuinely quarantined -- never an
   // already-restored branch or worktree whose original location a retry
-  // would otherwise find occupied and misreport as newly failed.
+  // would otherwise find occupied and misreport as newly failed. The
+  // not-yet-attempted tail of each list is kept in every intermediate write
+  // (never dropped), and each restore call is caught individually, so a
+  // thrown error on one entry is recorded as that entry's failure rather than
+  // abandoning the rest of the run -- and, critically, rather than losing the
+  // still-quarantined tail from the persisted manifest entirely.
+  let pendingBranches = [...manifest.branches];
+  let pendingWorktrees = [...manifest.worktrees];
   const branchesRestored: string[] = [];
   const branchesFailed: string[] = [];
-  const remainingBranches: QuarantinedBranch[] = [];
   for (const entry of manifest.branches) {
-    if (restoreBranch(repoRoot, entry)) {
-      branchesRestored.push(entry.branch);
-    } else {
-      branchesFailed.push(entry.branch);
-      remainingBranches.push(entry);
+    let restored: boolean;
+    try {
+      restored = restoreBranch(repoRoot, entry);
+    } catch {
+      restored = false;
     }
-    writeManifest(commonDir, run, { ...manifest, branches: remainingBranches, worktrees: manifest.worktrees });
+    (restored ? branchesRestored : branchesFailed).push(entry.branch);
+    pendingBranches = restored ? pendingBranches.filter((candidate) => candidate !== entry) : pendingBranches;
+    writeManifest(commonDir, run, { ...manifest, branches: pendingBranches, worktrees: pendingWorktrees });
   }
 
   const worktreesRestored: string[] = [];
   const worktreesFailed: string[] = [];
-  const remainingWorktrees: QuarantinedWorktree[] = [];
   for (const entry of manifest.worktrees) {
-    if (restoreWorktree(repoRoot, entry)) {
-      worktreesRestored.push(entry.worktreePath);
-    } else {
-      worktreesFailed.push(entry.worktreePath);
-      remainingWorktrees.push(entry);
+    let restored: boolean;
+    try {
+      restored = restoreWorktree(repoRoot, entry);
+    } catch {
+      restored = false;
     }
-    writeManifest(commonDir, run, { ...manifest, branches: remainingBranches, worktrees: remainingWorktrees });
+    (restored ? worktreesRestored : worktreesFailed).push(entry.worktreePath);
+    pendingWorktrees = restored ? pendingWorktrees.filter((candidate) => candidate !== entry) : pendingWorktrees;
+    writeManifest(commonDir, run, { ...manifest, branches: pendingBranches, worktrees: pendingWorktrees });
   }
 
   // A fully-restored run has nothing left to list or undo again; remove its
