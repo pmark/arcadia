@@ -1013,6 +1013,7 @@ export function buildProgram(): Command {
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
+      .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
   ).action((options: ProductionCliOptions) =>
     runCliAction("production.preview", options, () => runProductionPreviewCommand(options), renderProductionPreviewSuccess)
   );
@@ -1031,6 +1032,7 @@ export function buildProgram(): Command {
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
       .option("--rehearsal-exception-expires-at <iso>", "Expiry instant for the concurrency gate's rehearsal exception (prove-concurrent-ready-set-admission only)")
+      .option("--packet-approval-expires-at <iso>", "Expiry instant for the packet_approval delegation; required when --transitions names it (Decision 0072)")
       .requiredOption("--request-id <id>", "Idempotency key for this grant")
       .requiredOption("--granted-by <who>", "Operator granting the authorization")
       .option("--decision <ref>", "Authorizing Decision reference")
@@ -4513,6 +4515,7 @@ interface ProductionCliOptions {
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];
   rehearsalExceptionExpiresAt?: string;
+  packetApprovalExpiresAt?: string;
   json?: boolean;
 }
 

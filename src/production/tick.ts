@@ -359,6 +359,8 @@ function attemptDelegatedPacketApproval(
     const scope = policy.scope!;
     if (
       !scope.mechanicalTransitions.includes("packet_approval") ||
+      !scope.packetApprovalExpiresAt ||
+      input.now.getTime() >= Date.parse(scope.packetApprovalExpiresAt) ||
       !scope.projects.includes(input.projectSlug) ||
       !scope.plans.includes(planKey) ||
       !scope.actions.includes(input.actionKey)

@@ -58,6 +58,8 @@ export interface ProductionPreviewOptions {
   integrationGrantAction?: string[];
   /** Expiring rehearsal exception that raises the concurrency gate's cap for the ready-set-admission proof. */
   rehearsalExceptionExpiresAt?: string;
+  /** Expiry of the packet_approval delegation; required when it is named (Decision 0072). */
+  packetApprovalExpiresAt?: string;
 }
 
 export interface ProductionActivateOptions extends ProductionPreviewOptions {
@@ -323,6 +325,7 @@ export function renderProductionStatusSuccess(
       lines.push(`  Concurrency: ${policy.scope.maxConcurrentSessions}`);
       lines.push(`  Concurrency gate: ${describeConcurrencyGate(response.data.concurrencyGate)}`);
       lines.push(`  Delegated mechanics: ${policy.scope.mechanicalTransitions.join(", ") || "none"}`);
+      if (policy.scope.packetApprovalExpiresAt) lines.push(`  Packet approval expires: ${policy.scope.packetApprovalExpiresAt}`);
       lines.push(`  Candidate integration grant: ${describeIntegrationGrant(policy.scope.integrationGrant)}`);
     }
     if (policy.authority) {
@@ -389,6 +392,7 @@ export function renderProductionPreviewSuccess(
     `  Concurrency: ${preview.scope.maxConcurrentSessions}`,
     `  Concurrency gate: ${describeConcurrencyGate(preview.concurrencyGate)}`,
     `  Delegated mechanics: ${preview.scope.mechanicalTransitions.join(", ") || "none"}`,
+    ...(preview.scope.packetApprovalExpiresAt ? [`  Packet approval expires: ${preview.scope.packetApprovalExpiresAt}`] : []),
     `  Candidate integration grant: ${describeIntegrationGrant(preview.scope.integrationGrant)}`,
     `  Scope fingerprint: ${preview.scopeFingerprint}`,
     `  Expected revision: ${preview.expectedRevision ?? "unknown"}`,
@@ -476,7 +480,8 @@ function previewInput(options: ProductionPreviewOptions, workspacePath: string) 
     maxConcurrentSessions: parseOptionalInteger(options.concurrency, "concurrency") ?? 1,
     mechanicalTransitions: parseTransitions(options.transitions),
     ...(integrationGrant ? { integrationGrant } : {}),
-    ...(rehearsalException ? { rehearsalException } : {})
+    ...(rehearsalException ? { rehearsalException } : {}),
+    ...(options.packetApprovalExpiresAt?.trim() ? { packetApprovalExpiresAt: options.packetApprovalExpiresAt.trim() } : {})
   };
 }
 

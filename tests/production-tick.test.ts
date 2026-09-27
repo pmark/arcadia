@@ -593,7 +593,8 @@ describe("runManagedProductionTick", () => {
     const delegatingScope = normalizeProductionScope({
       ...productionScope,
       providers: ["codex-cli"],
-      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"]
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      packetApprovalExpiresAt: "2099-01-01T00:00:00.000Z"
     });
     withDatabase(fixture.workspace, (db) =>
       activateProduction(db, {
@@ -650,7 +651,8 @@ describe("runManagedProductionTick", () => {
       ...productionScope,
       plans: ["test-project/some-other-plan"],
       providers: ["codex-cli"],
-      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"]
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      packetApprovalExpiresAt: "2099-01-01T00:00:00.000Z"
     });
     withDatabase(fixture.workspace, (db) =>
       activateProduction(db, {
@@ -681,9 +683,67 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(0);
   });
 
+  it("never approves a packet once the packet_approval delegation has expired (Decision 0072)", () => {
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const expiringScope = normalizeProductionScope({
+      ...productionScope,
+      providers: ["codex-cli"],
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      // Lapses before the second tick, which is the first one that could approve.
+      packetApprovalExpiresAt: new Date(fixture.now.getTime() + 10_000).toISOString()
+    });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-expiring-packet-approval",
+        scope: expiringScope,
+        scopeFingerprint: fingerprintProductionScope(expiringScope),
+        grantedBy: "operator"
+      })
+    );
+    for (const offsetMs of [0, 30_000, 60_000]) {
+      withDatabase(fixture.workspace, (db) =>
+        runManagedProductionTick(db, fixture.workspace, {
+          profiles: codexProfiles,
+          adapters,
+          tmux,
+          now: new Date(fixture.now.getTime() + offsetMs),
+          log: vi.fn(),
+          capacityObservation: codexCapacity,
+          agentWorktreeRoot: fixture.agentWorktreeRoot
+        })
+      );
+    }
+    const approvals = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT status FROM review_items WHERE resolved_intent = 'CodexBuildPacketApproval'").all() as Array<{ status: string }>
+    );
+    expect(approvals.length).toBeGreaterThan(0);
+    expect(approvals.every((row) => row.status !== "approved")).toBe(true);
+    expect(tmux.launches).toHaveLength(0);
+  });
+
+  it("refuses packet_approval without an expiry, and an expiry without packet_approval", () => {
+    expect(() => normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["packet_approval"] })).toThrow(/needs a strict RFC 3339 UTC expiry/);
+    expect(() =>
+      normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["packet_approval"], packetApprovalExpiresAt: "2026-02-30T00:00:00Z" })
+    ).toThrow(/needs a strict RFC 3339 UTC expiry/);
+    expect(() =>
+      normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["validation"], packetApprovalExpiresAt: "2099-01-01T00:00:00.000Z" })
+    ).toThrow(/needs the packet_approval transition/);
+  });
+
   it("never implies packet_approval: the default grant omits it, and naming it is the only way in", () => {
     expect(MECHANICAL_TRANSITIONS).not.toContain("packet_approval");
-    const named = normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["packet_approval"] });
+    const named = normalizeProductionScope({
+      ...productionScope,
+      mechanicalTransitions: ["packet_approval"],
+      packetApprovalExpiresAt: "2099-01-01T00:00:00.000Z"
+    });
     expect(named.mechanicalTransitions).toEqual(["packet_approval"]);
     expect(() => normalizeProductionScope({ ...productionScope, mechanicalTransitions: ["approve_everything" as never] })).toThrow(/Unknown mechanical transition/);
   });

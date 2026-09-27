@@ -168,6 +168,13 @@ export interface ProductionScope {
    * means the gate's ordinary cap applies. See `resolveConcurrencyGate`.
    */
   rehearsalException?: ProductionRehearsalException;
+  /**
+   * When the `packet_approval` delegation (Decision 0072) lapses. Required
+   * whenever `mechanicalTransitions` names `packet_approval` and refused
+   * otherwise: the Decision bounds delegated packet approval to an unexpired
+   * grant, so it must never outlive its own expiry. Off revokes it sooner.
+   */
+  packetApprovalExpiresAt?: string;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -391,6 +398,8 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   if (input.remotePreservation) normalized.remotePreservation = true;
   if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
   if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
+  const packetApprovalExpiresAt = normalizePacketApprovalExpiry(mechanicalTransitions, input.packetApprovalExpiresAt);
+  if (packetApprovalExpiresAt) normalized.packetApprovalExpiresAt = packetApprovalExpiresAt;
   return normalized;
 }
 
@@ -444,6 +453,35 @@ export function normalizeRehearsalException(
 }
 
 /**
+ * Delegated packet approval without an expiry, or an expiry without the
+ * delegation it bounds, is refused rather than silently absent (Decision 0072).
+ */
+function normalizePacketApprovalExpiry(
+  mechanicalTransitions: MechanicalTransition[],
+  raw: string | undefined
+): string | null {
+  const delegated = mechanicalTransitions.includes("packet_approval");
+  const trimmed = (raw ?? "").trim();
+  if (!delegated) {
+    if (trimmed) {
+      throw validationError("A packet-approval expiry needs the packet_approval transition it bounds.", {
+        field: "packetApprovalExpiresAt",
+        value: raw
+      });
+    }
+    return null;
+  }
+  const expiresAt = parseStrictIsoInstant(trimmed);
+  if (!expiresAt) {
+    throw validationError(
+      "Delegating packet_approval needs a strict RFC 3339 UTC expiry, e.g. 2026-09-05T12:00:00.000Z.",
+      { field: "packetApprovalExpiresAt", value: raw }
+    );
+  }
+  return expiresAt;
+}
+
+/**
  * A strict RFC 3339 UTC instant: requires an explicit `Z` offset and rejects
  * any date/time that round-trips to a different UTC instant than its literal
  * calendar fields imply -- `Date.parse`/`Date.UTC` both silently normalize an
@@ -492,7 +530,9 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     // Same rule again for the rehearsal exception.
     ...(scope.rehearsalException
       ? { rehearsalException: { actionRef: scope.rehearsalException.actionRef, expiresAt: scope.rehearsalException.expiresAt } }
-      : {})
+      : {}),
+    // And for the packet-approval expiry.
+    ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
