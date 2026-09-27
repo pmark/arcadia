@@ -1228,6 +1228,22 @@ describe("Agent Ask settlement", () => {
     expect(readFileSync(planPath, "utf8")).not.toContain("does-not-exist");
   });
 
+  it("refuses a bundle with two children naming the same target_ref, instead of applying only the last amendment", () => {
+    const { workspace, repo } = fixture();
+    const request = bundleAsk("ask-duplicate-bundle-target", [
+      { targetRef: "action/existing", desiredResult: "First amendment" },
+      { targetRef: "action/existing", desiredResult: "Second amendment" }
+    ]);
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const before = readFileSync(planPath, "utf8");
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-duplicate-bundle-target",
+      disposition: "accepted", revision: 1
+    })).toThrow("An Agent Ask cannot amend the same Action more than once.");
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
+
   it("preserves rejected input and accepts a corrected Ask under a new request id", () => {
     const { workspace, repo } = fixture();
     const original = runAgentAskPreviewCommand({ workspace, request: actionAsk("ask-needs-correction") });

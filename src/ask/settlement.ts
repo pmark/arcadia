@@ -375,6 +375,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             : action.id
               ? claimExplicitActionId(takenIds, action.id)
               : allocateUniqueActionId(takenIds, deriveActionId(action.desiredResult))));
+          const duplicateTargets = actionIds.filter((id, index) => actionIds.indexOf(id) !== index);
+          if (duplicateTargets.length > 0) throw validationError("An Agent Ask cannot amend the same Action more than once.", { actions: [...new Set(duplicateTargets)] });
           const availableIds = new Set([...takenIds, ...actionIds]);
           const normalizedActions = proposedActions.map((action, index) => {
             const id = actionIds[index];
