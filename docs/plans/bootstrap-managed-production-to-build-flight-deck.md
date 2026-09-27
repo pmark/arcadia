@@ -2336,7 +2336,7 @@ actions:
     references: []
   - id: tidy-quarantine-instead-of-delete
     title: Retire worktrees and branches by moving them into a quarantine instead of deleting them, with arcadia tidy undo and arcadia tidy quarantine.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Retire worktrees and branches by moving them into a quarantine instead of deleting them, with arcadia tidy undo and arcadia tidy quarantine.
@@ -2393,7 +2393,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: tidy-quarantine-instead-of-delete
+current_action: tidy-harden-merge-and-liveness-verdicts
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
