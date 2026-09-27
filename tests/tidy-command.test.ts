@@ -15,7 +15,7 @@ import { quarantineBranch } from "../src/git/quarantine.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { mergedPullRequests, parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
+import { isInside, mergedPullRequests, parseGithubSlug, summarizeClutter } from "../src/git/worktrees.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 
 const temporary: string[] = [];
@@ -793,6 +793,25 @@ describe("arcadia tidy — worktree liveness beyond Session leases and go handof
     run(root, ["worktree", "unlock", tree]);
   });
 
+  it("protects a locked worktree even after its directory is deleted by hand", () => {
+    const root = repo();
+    commitOn(root, "claude/locked-then-deleted", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/locked-then-deleted"]);
+    const tree = worktreeOn(root, "claude/locked-then-deleted", "locked-then-deleted");
+    run(root, ["worktree", "lock", tree, "--reason", "manual inspection"]);
+    // The lock marks the registration, not the directory -- simulate someone
+    // deleting the directory by hand while it stays locked.
+    rmSync(tree, { recursive: true, force: true });
+
+    const result = data(runTidyCommand({ repo: root, apply: true }));
+    const entry = result.worktrees.find((candidate) => candidate.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toContain("locked");
+    expect(entry?.retired).toBe(false);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
+  });
+
   it("protects a merged worktree that is another process's current directory", () => {
     const root = repo();
     commitOn(root, "claude/live-cwd", "a.txt");
@@ -1144,5 +1163,24 @@ describe("parseGithubSlug", () => {
   it("returns null for a remote that is not GitHub", () => {
     expect(parseGithubSlug("https://gitlab.com/pmark/arcadia.git")).toBeNull();
     expect(parseGithubSlug("/Users/operator/bare-repos/arcadia.git")).toBeNull();
+  });
+});
+
+describe("isInside", () => {
+  it("accepts a real child directory whose own name happens to start with two dots", () => {
+    // `path.relative` returns the literal child name here, "..cache" -- a
+    // naive `startsWith("..")` check on that string reads it as an
+    // up-traversal and wrongly excludes a path that is genuinely inside.
+    expect(isInside("/repo/worktree/..cache", "/repo/worktree")).toBe(true);
+  });
+
+  it("still rejects an actual parent or sibling path", () => {
+    expect(isInside("/repo/worktree/..", "/repo/worktree")).toBe(false);
+    expect(isInside("/repo/other-worktree", "/repo/worktree")).toBe(false);
+  });
+
+  it("accepts the same path and a nested descendant", () => {
+    expect(isInside("/repo/worktree", "/repo/worktree")).toBe(true);
+    expect(isInside("/repo/worktree/a/b", "/repo/worktree")).toBe(true);
   });
 });

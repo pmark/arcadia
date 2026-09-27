@@ -340,7 +340,12 @@ export function samePath(left: string, right: string): boolean {
 
 export function isInside(candidate: string, parent: string): boolean {
   const relative = path.relative(parent, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  // A literal child directory named e.g. `..cache` also produces a relative
+  // path starting with the two characters "..", so testing for that prefix
+  // directly would wrongly exclude it. Only an actual up-traversal component
+  // -- exactly ".." or ".." followed by a separator -- means "outside".
+  const escapesUpward = relative === ".." || relative.startsWith(`..${path.sep}`);
+  return relative === "" || (!escapesUpward && !path.isAbsolute(relative));
 }
 
 /**

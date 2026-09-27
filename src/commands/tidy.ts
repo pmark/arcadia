@@ -430,7 +430,14 @@ function assessWorktree(input: {
 
   const presence = probePath(record.path);
   if (presence === "missing") {
-    return { ...base, verdict: "missing", reason: "Registered worktree whose directory no longer exists." };
+    // `git worktree lock` marks the registration, not the directory, so a
+    // lock survives even a directory someone deleted by hand -- and still
+    // means "leave this alone," including from the quarantine this verdict
+    // would otherwise trigger.
+    const locked = record.locked ?? null;
+    return locked !== null
+      ? { ...base, verdict: "protected", reason: locked ? `Worktree is locked: ${locked}.` : "Worktree is locked." }
+      : { ...base, verdict: "missing", reason: "Registered worktree whose directory no longer exists." };
   }
   if (presence === "unavailable") {
     return {
