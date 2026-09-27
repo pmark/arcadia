@@ -11,7 +11,7 @@ import { previewAgentAskRequest } from "../ask/preview.js";
 import { settleAgentAsk, type AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
-import { canonicalPath, getSession, type AgentSession } from "./index.js";
+import { canonicalPath, getSession, hasWorktreeReservationTable, type AgentSession } from "./index.js";
 
 /**
  * The six outcomes a Session's exit must resolve to. A zero exit code alone
@@ -356,6 +356,56 @@ export function attemptAutomaticCompletion(
   }
 }
 
+/**
+ * The Action brief's completion protocol tells a Session to finish by settling
+ * its own `complete` Agent Ask from inside its candidate worktree, which
+ * commits the completion and pointer advance onto the candidate branch. The
+ * base checkout's Plan cannot show that until the branch is integrated, so
+ * without this the exit reads as `incomplete_resumable`, integration waits on
+ * a completion that already happened, and the worker relaunches the finished
+ * Action forever.
+ *
+ * Returns the settlement id only when all of this holds: the candidate is
+ * clean, its own Plan records the Action done, and an accepted, applied
+ * `complete` settlement for exactly this Project and Action exists whose
+ * `candidate_revision` is an ancestor of (or equal to) the candidate's HEAD.
+ * A hand-edited `status: done` has no settlement row, so it never passes.
+ */
+function findCandidateSettledCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): string | null {
+  if (!evidence.worktreeExists || !evidence.candidateRevision) return null;
+  const worktree = session.worktree_path;
+  try {
+    if (git(worktree, ["status", "--porcelain"]).trim().length > 0) return null;
+  } catch {
+    return null;
+  }
+  const plan = discoverDocs(worktree).docs.find(
+    (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
+  );
+  if (plan?.actions.find((candidate) => candidate.id === session.action_id)?.status !== "done") return null;
+
+  const hasTables = db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('agent_ask_settlements', 'agent_ask_proposals')").get() as { count: number };
+  if (hasTables.count !== 2) return null;
+  const rows = db.prepare(`SELECT s.id, s.receipt_json, p.proposal_json FROM agent_ask_settlements s
+    JOIN agent_ask_proposals p ON p.id = s.proposal_id
+    WHERE s.project_slug = ? AND s.disposition = 'accepted' AND p.intent_kind = 'complete'
+    ORDER BY s.created_at DESC`).all(session.project_slug) as Array<{ id: string; receipt_json: string; proposal_json: string }>;
+  const targets = new Set([`action/${session.action_id}`, `plan/${session.plan_slug}#${session.action_id}`]);
+  for (const row of rows) {
+    try {
+      const receipt = JSON.parse(row.receipt_json) as AgentAskSettlementReceipt;
+      const normalized = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null; candidateRevision?: string | null } }).normalized;
+      if (!receipt.applied || receipt.recovery?.documentsCommitted === false) continue;
+      if (!normalized?.targetRef || !targets.has(normalized.targetRef) || !normalized.candidateRevision) continue;
+      git(worktree, ["merge-base", "--is-ancestor", normalized.candidateRevision, evidence.candidateRevision]);
+      return row.id;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function terminalStatusFor(outcome: SessionExitOutcome): AgentSession["status"] {
   switch (outcome) {
     case "accepted_completion":
@@ -466,7 +516,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   // other outcome keeps reading `repoRoot` exactly as before.
   let nextMoveRepoRoot = repoRoot;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
-    const attempt = attemptAutomaticCompletion(db, session, evidence);
+    const settled = findCandidateSettledCompletion(db, session, evidence);
+    const attempt = settled
+      ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled}).` }
+      : attemptAutomaticCompletion(db, session, evidence);
     if (attempt.completed) {
       outcome = "accepted_completion";
       reason = attempt.reason;
@@ -511,6 +564,19 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       if (session.admission_request_id) {
         releaseAdmission(db, session.admission_request_id, new Date(now));
       }
+    }
+    // A Session that ended without leaving anything to resume must give its
+    // Action claim back too. Otherwise the claim outlives it for its full TTL,
+    // every relaunch of the same Action is refused as "already claimed by a
+    // live worktree", and two refusals exhaust the repair budget -- one
+    // provider hiccup at start-up stops the Action. Only the claim columns
+    // are cleared: the worktree reservation row still protects the (clean)
+    // worktree from `tidy`, exactly as `releaseActionClaim` does.
+    if ((outcome === "missing_evidence" || outcome === "failed_execution") && !evidence.candidateHasChanges && hasWorktreeReservationTable(db)) {
+      db.prepare(`UPDATE agent_worktree_reservations
+        SET project = NULL, action_id = NULL, claim_generation = NULL
+        WHERE repository_path = ? AND worktree_path = ? AND project = ? AND action_id = ?`)
+        .run(canonicalPath(session.repository_path), canonicalPath(session.worktree_path), session.project_slug, session.action_id);
     }
     db.prepare(`INSERT INTO session_exit_receipts
       (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, created_at, updated_at)
