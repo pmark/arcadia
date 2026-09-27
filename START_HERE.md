@@ -1602,6 +1602,28 @@ arcadia tidy              # dry run — nothing is changed
 arcadia tidy --apply      # retires what the dry run listed
 ```
 
+> **Known gaps — read the dry run before `--apply`.** Until
+> `tidy-quarantine-instead-of-delete` merges, `--apply` can lose work in cases
+> the safety rule below does not cover:
+>
+> - **Gitignored files** (`.env*`, local notes, anything under an ignored path)
+>   in a retired worktree are deleted with it — tidy's cleanliness check does
+>   not see them. Copy out anything you need first.
+>   ([#737](https://github.com/pmark/arcadia/issues/737))
+> - A **missing** worktree that was detached on commits no branch contains is
+>   pruned, orphaning those commits. Tag them before running `--apply`.
+>   ([#738](https://github.com/pmark/arcadia/issues/738))
+> - A **freshly created agent worktree** (a Claude Code desktop or Codex session
+>   that has not committed yet) reads as merged and is retired out from under
+>   its session. Only Arcadia-launched Sessions and `go` handoffs are protected.
+>   ([#739](https://github.com/pmark/arcadia/issues/739))
+>
+> Retired branches are also judged on a pull-request proof that does not yet
+> check the branch tip ([#736](https://github.com/pmark/arcadia/issues/736)),
+> and on preview-time verdicts
+> ([#740](https://github.com/pmark/arcadia/issues/740)); both are recoverable
+> from the archive tag. This note is removed when those Actions merge.
+
 `--apply` also requires the Arcadia workspace (resolved normally, or supplied
 with `--workspace`). Before removing anything, `tidy` checks live `prepared`
 and `running` Session leases and the 24-hour reservation written by `arcadia
@@ -1641,7 +1663,10 @@ since deleting your own ref is your call. Agent-owned branches (`codex/`,
 Anything genuinely unmerged is never touched, and anything with no remote copy
 is called out explicitly as the only copy of that work.
 
-### Nothing is ever unrecoverable
+### What stays recoverable
+
+Committed branch content stays recoverable; see the known gaps above for the
+exceptions `--apply` does not yet cover.
 
 `tidy` proves a branch landed three ways before retiring it, and reports which
 one applied: plain **ancestry**, **patch equivalence** (`git cherry`, which
