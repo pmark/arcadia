@@ -126,6 +126,11 @@ export interface WorkItem {
    * means the Action did not come from a plan that declared any.
    */
   acceptance_criteria_json: string | null;
+  /**
+   * Remainder Action doc refs this Action was split into (`split_into`),
+   * as a JSON string array. `null` for an Action that was never split.
+   */
+  split_into_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -658,6 +663,8 @@ export interface CreateWorkItemInput {
 }
 
 export interface UpdateWorkItemInput {
+  /** Remainder Action doc refs this Action was split into, as a JSON string array; `null` clears it. */
+  splitIntoJson?: string | null;
   queue?: string;
   workClassification?: string;
   nextAction?: string;

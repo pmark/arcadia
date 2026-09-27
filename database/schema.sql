@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   doc_ref TEXT,
   execution_requirement_json TEXT,
   acceptance_criteria_json TEXT,
+  split_into_json TEXT,
   archived_at TEXT,
   archive_reason TEXT,
   created_at TEXT NOT NULL,

@@ -9,6 +9,7 @@ import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../d
 import { discoverDocs } from "../docs/discover.js";
 import { deferringDecisionFor, isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import { yamlScalar } from "../docs/frontmatter.js";
+import { parseDoc } from "../docs/parse.js";
 import { syncProjectDocs } from "../docs/sync.js";
 import type { ArcadiaDoc, DecisionDoc, LogDoc, PlanActionDoc, PlanDoc, ProjectDoc } from "../docs/types.js";
 import { buildAgentQueue, unpositionedEntriesForPlan, type AgentQueue } from "../dispatch/queue.js";
@@ -1006,21 +1007,33 @@ export function settleAgentAsk(db: Database.Database, input: {
           .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
           .map((candidate) => candidate.id);
 
-        // A remainder is free to declare `targetId` (the split Action, or an
-        // existing dependent) in its own `dependencies` -- pointless, since
-        // that target is already resolved by the time the remainder exists,
-        // but not currently forbidden. Adding the reverse edge onto `targetId`
-        // for such a remainder would close a same-Plan cycle and make the
-        // whole Plan unparseable, so it is excluded rather than added.
-        const remainderDependencies = new Map(normalizedRemainder.map((remainderAction) => [remainderAction.id, remainderAction.dependencies]));
-        const remainderChainReaches = (remainderId: string, targetId: string, seen: Set<string> = new Set()): boolean => {
-          if (seen.has(remainderId)) return false;
-          seen.add(remainderId);
-          const deps = remainderDependencies.get(remainderId) ?? [];
-          return deps.includes(targetId) || deps.some((dependency) => remainderChainReaches(dependency, targetId, seen));
+        // Cycle safety for the reverse edges added below: a dependent (or,
+        // through a chain of existing dependents, some other already-declared
+        // Action) may already be a prerequisite of a remainder, and a remainder
+        // is free to declare a dependency on the target it is being added onto
+        // -- both close a same-Plan cycle if the edge is added anyway. Built
+        // from the actions this settlement is about to write plus every
+        // remainder's own declared dependencies, so the check sees a path
+        // through an existing Action, not only through other remainders.
+        const cycleGraph = new Map<string, string[]>(targetPlan.actions.map((candidate) => [candidate.id, candidate.dependsOn]));
+        for (const remainderAction of normalizedRemainder) cycleGraph.set(remainderAction.id, remainderAction.dependencies);
+        const reachabilityCache = new Map<string, Set<string>>();
+        const reachableFrom = (start: string): Set<string> => {
+          const cached = reachabilityCache.get(start);
+          if (cached) return cached;
+          const seen = new Set<string>();
+          const stack = [start];
+          while (stack.length > 0) {
+            const current = stack.pop()!;
+            if (seen.has(current)) continue;
+            seen.add(current);
+            for (const dependency of cycleGraph.get(current) ?? []) stack.push(dependency);
+          }
+          reachabilityCache.set(start, seen);
+          return seen;
         };
         const safeRemainderIdsFor = (targetId: string): string[] =>
-          remainderIds.filter((id) => !remainderChainReaches(id, targetId));
+          remainderIds.filter((id) => !reachableFrom(id).has(targetId));
         const withRemainderAdded = (dependencies: string[], safeIds: string[]): string[] =>
           [...dependencies, ...safeIds.filter((id) => !dependencies.includes(id))];
 
@@ -1045,23 +1058,18 @@ export function settleAgentAsk(db: Database.Database, input: {
         const updated = today();
         const narrowedTitle = proposal.normalized.desiredResult;
         const planTransform = (current: string): string => {
-          // Read each Action's own `depends_on` fresh off `current` -- the
-          // content this compare-and-set retry actually read, not the
-          // preview-time snapshot -- so a concurrent edit to it (this settling
-          // worktree is not the only writer) survives the union rather than
-          // being replaced by a stale list.
-          //
-          // The narrowed Action keeps its own current prerequisites and also
-          // gains the remainder as dependencies of itself: it is done, but a
-          // reader that walks a (done) Action's own `depends_on` chain --
-          // dispatch's `collectUnmetDependencies`, and the concurrency gate's
-          // recursive work-item-dependency walk after this settlement's edges
-          // sync -- must still see the remainder as outstanding.
-          let next = amendAction(
-            current, actionId, narrowedTitle, narrowed,
-            withRemainderAdded(getActionDependsOn(current, actionId), safeRemainderIdsFor(actionId)),
-            action.references, proposal.normalized.requestId
-          );
+          // Re-parse `current` -- the content this compare-and-set retry
+          // actually read, not the preview-time snapshot -- so a concurrent
+          // edit to some other Action's `depends_on` (this settling worktree
+          // is not the only writer) is seen and preserved rather than
+          // silently dropped by writing back a stale list.
+          const freshPlan = parseFreshPlanDoc(current, targetPlan.relativePath, targetPlanPath, actionId);
+          const freshAction = freshPlan.actions.find((candidate) => candidate.id === actionId)!;
+          const freshDependentIds = freshPlan.actions
+            .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
+            .map((candidate) => candidate.id);
+
+          let next = amendAction(current, actionId, narrowedTitle, narrowed, freshAction.dependsOn, action.references, proposal.normalized.requestId);
           next = markActionDone(next, actionId);
           for (const remainderAction of normalizedRemainder) {
             next = appendPlanAction(next, {
@@ -1070,8 +1078,17 @@ export function settleAgentAsk(db: Database.Database, input: {
               source: `Agent Ask ${proposal.normalized.requestId}`
             });
           }
-          for (const dependentId of dependentIds) {
-            next = setActionDependsOn(next, dependentId, withRemainderAdded(getActionDependsOn(next, dependentId), safeRemainderIdsFor(dependentId)));
+          // The narrowed Action's own `split_into` names the remainder for any
+          // reader that must treat its scope as truly finished only once the
+          // remainder is too -- the concurrency gate (`src/production/policy.ts`)
+          // is the first such reader. A dedicated field rather than a reverse
+          // `depends_on` edge, because it is always safe to add: nothing else
+          // ever writes it, so it can never itself close a cycle, even when a
+          // remainder legitimately depends on the Action it was split from.
+          next = recordSplitInto(next, actionId, remainderIds);
+          for (const dependentId of freshDependentIds) {
+            const freshDependent = freshPlan.actions.find((candidate) => candidate.id === dependentId)!;
+            next = setActionDependsOn(next, dependentId, withRemainderAdded(freshDependent.dependsOn, safeRemainderIdsFor(dependentId)));
           }
           return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
         };
@@ -2155,24 +2172,37 @@ function setActionDependsOn(content: string, actionId: string, dependencies: str
 }
 
 /**
- * Read one Action's current `depends_on` straight off `content`, inline
- * (`[a, b]`) or block-list form. The counterpart read to {@link setActionDependsOn}
- * -- used by `split` so a compare-and-set retry unions onto whatever `content`
- * actually holds right now, not a preview-time snapshot that may have since
- * been edited by a concurrent settlement.
+ * Insert `split_into: [...]` right after `depends_on` in one Action's block.
+ * Only ever called once per Action, immediately after {@link markActionDone}
+ * marks it `done` from a `split`, so no existing `split_into` field to merge.
  */
-function getActionDependsOn(content: string, actionId: string): string[] {
+function recordSplitInto(content: string, actionId: string, remainderIds: string[]): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   const block = match[1];
-  const inline = /^ {4}depends_on:\s*\[(.*)\]\s*$/m.exec(block);
-  if (inline) {
-    return inline[1].split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (/^ {4}split_into:/m.test(block)) throw validationError("Managed Plan Action already carries a split_into field.", { actionId });
+  const dependsOnField = /^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m.exec(block);
+  if (!dependsOnField) throw validationError("Managed Plan Action has no depends_on field to anchor split_into after.", { actionId });
+  const insertAt = dependsOnField.index + dependsOnField[0].length;
+  const updatedBlock = `${block.slice(0, insertAt)}\n    split_into: [${remainderIds.join(", ")}]${block.slice(insertAt)}`;
+  return content.replace(pattern, updatedBlock);
+}
+
+/**
+ * Re-parse a Plan's block-form Actions straight off `content` -- the raw text
+ * a compare-and-set retry actually read -- through the same YAML-aware parser
+ * `discoverDocs` uses, rather than a hand-rolled regex reader: it already
+ * handles both `depends_on` spellings, block-list and inline forms, and
+ * trailing YAML comments correctly, and it is what every other reader of this
+ * Plan will see. Refuses if the fresh content fails to parse as this Plan.
+ */
+function parseFreshPlanDoc(content: string, relativePath: string, absolutePath: string, actionId: string): PlanDoc {
+  const { doc, errors } = parseDoc(relativePath, absolutePath, content);
+  if (!doc || doc.type !== "plan") {
+    throw validationError("Could not re-parse the Plan being transformed.", { actionId, errors });
   }
-  const blockForm = /^ {4}depends_on:\s*\r?\n((?: {6}- .*\r?\n?)*)/m.exec(block);
-  if (!blockForm) throw validationError("Managed Plan Action has no depends_on field to read.", { actionId });
-  return [...blockForm[1].matchAll(/^ {6}- (.*)$/gm)].map((entry) => entry[1].trim());
+  return doc;
 }
 
 interface NextAfterCompletion {

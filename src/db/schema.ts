@@ -70,6 +70,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureWorkItemDependencyTable(db);
   ensureExecutionRequirementColumn(db);
   ensureAcceptanceCriteriaColumn(db);
+  ensureSplitIntoColumn(db);
   ensureWorkItemArchiveColumns(db);
   ensureExecutionProfileProvenanceColumns(db);
   ensureDailyCapacityTable(db);
@@ -628,6 +629,20 @@ function ensureAcceptanceCriteriaColumn(db: Database.Database): void {
   );
   if (!columns.has("acceptance_criteria_json")) {
     db.prepare("ALTER TABLE work_items ADD COLUMN acceptance_criteria_json TEXT").run();
+  }
+}
+
+/**
+ * Carry a managed plan's `split_into` onto the Action, so a reader that only
+ * has DB access (`resolveConcurrencyGate` in src/production/policy.ts) can
+ * still see that a done, narrowed Action's remainder is not.
+ */
+function ensureSplitIntoColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("split_into_json")) {
+    db.prepare("ALTER TABLE work_items ADD COLUMN split_into_json TEXT").run();
   }
 }
 

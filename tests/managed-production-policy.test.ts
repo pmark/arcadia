@@ -7,7 +7,6 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import {
   createWorkItemRecord,
   getWorkItemByDocRef,
-  replaceDocumentWorkItemDependencies,
   setWorkItemDocRef,
   updateWorkItem,
   upsertProject,
@@ -415,7 +414,8 @@ describe("concurrency gate", () => {
 
     withDatabase(target, (db) => {
       const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
-      const remainderRef = "plan/bootstrap-managed-production-to-build-flight-deck#prove-concurrent-ready-set-admission-remainder";
+      const remainderId = "prove-concurrent-ready-set-admission-remainder";
+      const remainderRef = `plan/bootstrap-managed-production-to-build-flight-deck#${remainderId}`;
       const remainder = createWorkItemRecord(db, {
         title: remainderRef,
         rawInput: remainderRef,
@@ -426,8 +426,8 @@ describe("concurrency gate", () => {
       });
       setWorkItemDocRef(db, remainder.id, remainderRef);
       // Mirrors what settling a `split` writes: the narrowed (now done) proof
-      // Action's own `depends_on` gains the remainder id.
-      replaceDocumentWorkItemDependencies(db, proof.id, CONCURRENT_READY_SET_ADMISSION_PROOF_REF, [remainder.id]);
+      // Action gains a `split_into` naming the remainder id.
+      updateWorkItem(db, proof.id, { splitIntoJson: JSON.stringify([remainderId]) });
     });
 
     expect(admit(target, "adm-split-first").admitted).toBe(true);

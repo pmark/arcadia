@@ -482,6 +482,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       source: optionalString(value, "source"),
       milestone: optionalString(value, "milestone"),
       dependsOn: stringArray(value.depends_on),
+      splitInto: stringArray(value.split_into),
       acceptanceCriteria,
       decisions: stringArray(value.decisions),
       references: stringArray(value.references),

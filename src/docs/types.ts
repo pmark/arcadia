@@ -128,6 +128,15 @@ export interface PlanActionDoc {
   milestone: string | null;
   dependsOn: string[];
   /**
+   * Remainder Action ids this Action was split into (`split_into`), written
+   * only by settling a `split` Agent Ask. Deliberately not part of
+   * `dependsOn`: it names a done Action's own unfinished follow-through, not
+   * a prerequisite, and folding it into `dependsOn` would risk closing a
+   * same-Plan dependency cycle whenever a remainder legitimately depends on
+   * the Action it was split from.
+   */
+  splitInto: string[];
+  /**
    * Objective conditions that decide when this action is finished. Required on
    * the current action: "done" that only exists in someone's head is how an
    * agent declares victory on work nobody agreed was complete.

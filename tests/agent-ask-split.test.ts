@@ -151,7 +151,7 @@ describe("Agent Ask split", () => {
     expect(project).toMatchObject({ currentAction: "first-remainder" });
   });
 
-  it("does not add a reverse edge that would close a cycle when a remainder depends on the narrowed Action", () => {
+  it("records split_into on the narrowed Action even when a remainder depends on it directly", () => {
     const { workspace, repo, head } = fixture();
     const request = splitAsk("split-remainder-depends-on-narrowed", head)
       .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - first');
@@ -168,11 +168,41 @@ describe("Agent Ask split", () => {
     const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
     expect(plan).toMatchObject({
       actions: expect.arrayContaining([
-        // The narrowed Action does not gain the remainder as its own
-        // dependency here: the remainder already depends on it directly, and
-        // adding the reverse edge would close a same-Plan cycle.
-        expect.objectContaining({ id: "first", status: "done", dependsOn: [] }),
+        // `split_into` is a dedicated, one-way field, never folded into
+        // `depends_on` -- so it is written unconditionally, even though the
+        // remainder here also declares a direct dependency on "first" (which
+        // a reverse `depends_on` edge would have turned into a cycle).
+        expect.objectContaining({ id: "first", status: "done", dependsOn: [], splitInto: ["first-remainder"] }),
         expect.objectContaining({ id: "first-remainder", status: "open", dependsOn: ["first"] })
+      ])
+    });
+  });
+
+  it("excludes a remainder from a dependent's rewired depends_on when the remainder already reaches that dependent through an existing Action", () => {
+    // "third" depends on "first" (the Action being split), and "second" (an
+    // existing, otherwise-unrelated Action) depends on "third". The remainder
+    // declares a dependency on "second". Rewiring "third" to also depend on
+    // the remainder would close third -> remainder -> second -> third: the
+    // cycle runs through "second", an existing Action, not through another
+    // remainder.
+    const { workspace, repo, head } = fixture({ withDependentOnFirst: true, secondDependsOnThird: true });
+    const request = splitAsk("split-transitive-cycle", head)
+      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-transitive-cycle", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-transitive-cycle", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: expect.arrayContaining([
+        expect.objectContaining({ id: "third", dependsOn: ["first"] }),
+        expect.objectContaining({ id: "second", dependsOn: ["third"] })
       ])
     });
   });
@@ -191,7 +221,12 @@ describe("Agent Ask split", () => {
 });
 
 function fixture(
-  options: { queueOrder?: string[]; withCollidingIdInOtherPlan?: boolean; withDependentOnFirst?: boolean } = {}
+  options: {
+    queueOrder?: string[];
+    withCollidingIdInOtherPlan?: boolean;
+    withDependentOnFirst?: boolean;
+    secondDependsOnThird?: boolean;
+  } = {}
 ): { workspace: string; repo: string; head: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-split-"));
   roots.push(root);
@@ -218,7 +253,9 @@ function fixture(
     "  - id: second", "    title: Second Action", "    status: open",
     "    responsibility: agent", "    effort: session", "    next_action: Finish the second Action.",
     "    expected_artifact: Second proof", "    clarification: clarified", "    confidence: high",
-    "    acceptance_criteria:", "      - Second proof exists.", "    depends_on: []", "    decisions: []", "    references: []",
+    "    acceptance_criteria:", "      - Second proof exists.",
+    options.secondDependsOnThird ? "    depends_on: [third]" : "    depends_on: []",
+    "    decisions: []", "    references: []",
     ...(options.withDependentOnFirst ? [
       "  - id: third", "    title: Third Action", "    status: open",
       "    responsibility: agent", "    effort: session", "    next_action: Finish the third Action.",

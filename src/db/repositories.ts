@@ -400,6 +400,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     doc_ref: null,
     execution_requirement_json: input.executionRequirementJson ?? null,
     acceptance_criteria_json: input.acceptanceCriteriaJson ?? null,
+    split_into_json: null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -1118,6 +1119,11 @@ export function updateWorkItem(
   if (input.acceptanceCriteriaJson !== undefined) {
     parameters.acceptance_criteria_json = nullable(input.acceptanceCriteriaJson);
     updates.push("acceptance_criteria_json = @acceptance_criteria_json");
+  }
+
+  if (input.splitIntoJson !== undefined) {
+    parameters.split_into_json = nullable(input.splitIntoJson);
+    updates.push("split_into_json = @split_into_json");
   }
 
   if (updates.length === 0) {
