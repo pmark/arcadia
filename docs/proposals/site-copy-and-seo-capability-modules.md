@@ -2,6 +2,7 @@
 arcadia: v1
 type: proposal
 project: arcadia
+decision: "0073"
 question: Should Arcadia add two capability modules, seo-audit and copywriting, built on a site-neutral engine that Private Practice Now originated, so any governed Project can measure its website and get honest, gated copy?
 ---
 
