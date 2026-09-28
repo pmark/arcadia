@@ -864,17 +864,19 @@ poll a dashboard.
   the PR URL. This fires for every PR, including ones "Merge on green" will
   merge without further ado — it is the "something is moving" signal.
 - **On ready-for-you.** Send a second ping, `request_id`
-  `pr-ready-<project>-pr<number>-<yyyy-mm-dd>` (the same dated-suffix shape as
-  `ci-blocked-<project>-pr<number>-<yyyy-mm-dd>` above), only for a PR that
-  "Merge on green" already excludes from auto-merge (one that opens or
-  carries a Decision, or changes Constitution/approval-boundary/spend/
-  credential authority) once its CodeRabbit loop and required checks are
-  otherwise clear, or for any PR a session is stopping at as a blocker or
-  picker. Name what's ready, why it needs the operator specifically, and the
-  PR URL. A fixed per-PR id would replay the first settlement's receipt
-  instead of queuing a fresh notification the next time the same PR reaches a
-  new blocker — the date suffix keeps each distinct handoff its own event
-  while same-day retries of the same handoff stay idempotent. Do not send
+  `pr-ready-<project>-pr<number>-<reason-slug>-<yyyy-mm-dd>` (a short kebab
+  `reason-slug` naming *why* — `decision-answer`, `approval-boundary`,
+  `credentials-needed`, and so on), only for a PR that "Merge on green"
+  already excludes from auto-merge (one that opens or carries a Decision, or
+  changes Constitution/approval-boundary/spend/credential authority) once its
+  CodeRabbit loop and required checks are otherwise clear, or for any PR a
+  session is stopping at as a blocker or picker. Name what's ready, why it
+  needs the operator specifically, and the PR URL. A request_id that only
+  varies by PR number, or only by date, replays the first settlement's
+  receipt instead of queuing a fresh notification the next time the same PR
+  reaches a *different* blocker on the same day — the reason-slug gives each
+  distinct handoff its own identity, while retrying the *same* handoff (same
+  reason, same day) stays idempotent by reusing that same id. Do not send
   this for a routine PR that "Merge on green" will merge itself — by the time
   you could send it, it is already merged, and a "ready to merge" ping for
   something already merged is noise, not a decision point.
