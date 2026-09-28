@@ -388,7 +388,13 @@ describe("tidy journal — wired into runTidyCommand itself", () => {
     expect(undone.data.worktreesRestored).toEqual([tree]);
   });
 
-  it("reports a persistently failing op instead of throwing, and never attempts a second quarantine of the same stuck worktree", () => {
+  // Root ignores directory write permission, so the `chmodSync` below would
+  // not actually block the rename in a container that runs tests as root --
+  // skip there rather than fail on an assumption that CI's real permission
+  // model happens to make false.
+  it.skipIf(process.getuid?.() === 0)(
+    "reports a persistently failing op instead of throwing, and never attempts a second quarantine of the same stuck worktree",
+    () => {
     const root = repo();
     commitOn(root, "claude/stuck", "a.txt");
     run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/stuck"]);
@@ -435,6 +441,33 @@ describe("tidy journal — wired into runTidyCommand itself", () => {
     } finally {
       chmodSync(worktreesDir, 0o755);
     }
+    }
+  );
+
+  it("repairs a torn trailing record before appending, so a later op never lands after unparsable debris", () => {
+    const root = repo();
+    commitOn(root, "claude/one", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/one"]);
+    commitOn(root, "claude/two", "b.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/two"]);
+    const runId = createTidyRunId(new Date());
+
+    quarantineBranch(root, "claude/one", runId);
+
+    // Simulate a crash mid-write on some earlier op: a torn fragment with no
+    // trailing newline, appended directly rather than through
+    // `quarantineBranch`/`quarantineWorktree`.
+    const journalFile = path.join(gitCommonDir(root), "arcadia-tidy", "journal", `${runId}.ndjson`);
+    writeFileSync(journalFile, '{"phase":"begin","op":"branch","id":"branch:torn', { flag: "a" });
+
+    quarantineBranch(root, "claude/two", runId);
+
+    // The torn fragment is gone, not preserved as an unparsable middle line:
+    // every line in the file parses, and both branches are accounted for.
+    const rawLines = readFileSync(journalFile, "utf8").split("\n").filter((line) => line.trim() !== "");
+    for (const line of rawLines) expect(() => JSON.parse(line)).not.toThrow();
+    const manifest = readTidyRun(root, runId);
+    expect(manifest?.branches.map((b) => b.branch).sort()).toEqual(["claude/one", "claude/two"]);
   });
 
   it("finalizes (deletes) a run's journal once every op it recorded completed cleanly", () => {

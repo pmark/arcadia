@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  ftruncateSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -197,6 +198,8 @@ function appendJournalLine(commonDir: string, run: string, line: JournalLine): v
   const file = journalFile(commonDir, run);
   const fileAlreadyExisted = existsSync(file);
 
+  if (fileAlreadyExisted) repairTornTail(file);
+
   const fd = openSync(file, "a");
   try {
     writeSync(fd, `${JSON.stringify(line)}\n`);
@@ -208,6 +211,29 @@ function appendJournalLine(commonDir: string, run: string, line: JournalLine): v
   if (!fileAlreadyExisted) {
     fsyncDir(dir);
     if (!dirAlreadyExisted) fsyncDir(path.dirname(dir));
+  }
+}
+
+/**
+ * Truncate away an incomplete trailing record left by a crash mid-`write`,
+ * before appending anything new. {@link readJournalLines} already tolerates
+ * a torn *final* line, but that tolerance stops working the moment a later
+ * append lands after it -- the torn fragment is then a line in the middle of
+ * the file, indistinguishable from real corruption. Repairing it here, before
+ * every append, means a torn tail is only ever the last line for as long as
+ * nothing writes to this journal again, exactly the case the read side covers.
+ */
+function repairTornTail(file: string): void {
+  const content = readFileSync(file, "utf8");
+  if (content.length === 0 || content.endsWith("\n")) return;
+  const lastNewline = content.lastIndexOf("\n");
+  const goodLength = lastNewline === -1 ? 0 : lastNewline + 1;
+  const fd = openSync(file, "r+");
+  try {
+    ftruncateSync(fd, goodLength);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
   }
 }
 
