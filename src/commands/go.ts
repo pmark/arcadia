@@ -68,9 +68,12 @@ import { resolveWorkspace } from "../workspace/resolve.js";
  * Pending draft Asks never block a clean check on the main checkout, which Go
  * never removes. A linked source worktree is removed with a non-forced
  * `git worktree remove`, which refuses untracked files, so it stays strict.
+ * So does a primary-checkout source whose base branch lives in another
+ * worktree, since cleanup then also attempts to remove it.
  */
-function sourceDraftAskExemptions(controlWorktree: string, sourcePath: string): string[] {
-  return samePath(controlWorktree, sourcePath) ? untrackedDraftAskPaths(sourcePath) : [];
+function sourceDraftAskExemptions(controlWorktree: string, sourcePath: string, baseWorktreePath: string | null): string[] {
+  const staysInPlace = samePath(controlWorktree, sourcePath) && (baseWorktreePath === null || samePath(baseWorktreePath, sourcePath));
+  return staysInPlace ? untrackedDraftAskPaths(sourcePath) : [];
 }
 
 export interface GoCommandOptions {
@@ -213,7 +216,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   const askRecoveries: LegacyAskRecovery[] = [];
   const sourceAskRecovery = recoverLegacyAgentAskDrift(repo, sourceRecord.path, options.testHooks?.askRecovery);
   if (sourceAskRecovery.recovered) askRecoveries.push(sourceAskRecovery);
-  assertClean(sourceRecord.path, "source worktree", sourceDraftAskExemptions(controlWorktree, sourceRecord.path));
+  assertClean(sourceRecord.path, "source worktree", sourceDraftAskExemptions(controlWorktree, sourceRecord.path, baseRecord?.path ?? null));
   if (baseRecord && !samePath(baseRecord.path, sourceRecord.path)) {
     const baseAskRecovery = recoverLegacyAgentAskDrift(repo, baseRecord.path, options.testHooks?.askRecovery);
     if (baseAskRecovery.recovered) askRecoveries.push(baseAskRecovery);
@@ -1409,7 +1412,7 @@ function syncBaseBranchWithRemote(input: {
       assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base before reporting current remote state");
       assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before reporting current remote state");
       assertTrackingRefValue(controlWorktree, remoteRef, remoteHeadBefore);
-      assertClean(sourceWorktreePath, "source worktree after remote observation", sourceDraftAskExemptions(controlWorktree, sourceWorktreePath));
+      assertClean(sourceWorktreePath, "source worktree after remote observation", sourceDraftAskExemptions(controlWorktree, sourceWorktreePath, baseWorktreePath));
       if (baseWorktreePath && !samePath(baseWorktreePath, sourceWorktreePath)) {
         assertClean(baseWorktreePath, "base worktree after remote observation", untrackedDraftAskPaths(baseWorktreePath));
       }
@@ -1442,7 +1445,7 @@ function syncBaseBranchWithRemote(input: {
       });
       assertRefValue(controlWorktree, baseHeadRef, localHeadBefore, "local base before fast-forward");
       assertRefValue(controlWorktree, sourceHeadRef, sourceHead, "source branch before base fast-forward");
-      assertClean(sourceWorktreePath, "source worktree before base fast-forward", sourceDraftAskExemptions(controlWorktree, sourceWorktreePath));
+      assertClean(sourceWorktreePath, "source worktree before base fast-forward", sourceDraftAskExemptions(controlWorktree, sourceWorktreePath, baseWorktreePath));
       if (baseWorktreePath && !samePath(baseWorktreePath, sourceWorktreePath)) {
         assertClean(baseWorktreePath, "base worktree before fast-forward", untrackedDraftAskPaths(baseWorktreePath));
       }
