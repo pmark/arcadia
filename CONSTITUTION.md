@@ -38,6 +38,10 @@
 - Uncertainty stays visible. Open questions, blockers, assumptions, and
   unresolved disagreement remain legible until they are answered, and are never
   closed by silence or by an agent's confidence.
+- Nothing is ever lost. Whatever the work surfaces — a defect, an idea, a
+  deferral, an unfinished change, a question — is recorded where the next
+  reader will find it before the session that found it ends. A person's memory
+  is not a store, and "we know about it" is not a record.
 
 ## Economy
 
