@@ -264,8 +264,10 @@ anyone but the operator.
 
 **Whichever is chosen, extraction must prove it:** a fresh clone of
 `pmark/arcadia` with no private-registry credentials installs, builds and
-passes its test suite, with the modules reporting "unavailable" rather than
-erroring. That check becomes part of the extraction Action's acceptance.
+passes its test suite. For options that register a layer-3 module, verify it
+reports "unavailable" rather than erroring when its CLI or package is absent.
+For option 3, verify the clone passes with no module registered. These checks
+become part of the extraction Action's acceptance.
 
 **Trigger:** the engine-extraction step of Decision 0073 starts. Until then
 nothing in this repository depends on the engine, so nothing is broken.
