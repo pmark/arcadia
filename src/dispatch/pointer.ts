@@ -7,7 +7,7 @@ import { writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveActionReadiness, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
-import { assertClean, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
+import { assertClean, untrackedDraftAskPaths, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
 import { assertActionClaimGeneration, releaseActionClaim, type ActionClaimFence } from "../sessions/index.js";
 
 export interface PointerTransitionReceipt {
@@ -136,7 +136,7 @@ export function transitionActionPointer(db: Database.Database, input: {
   };
   if (!input.apply) return receipt;
 
-  assertClean(input.repoRoot, "Project repository");
+  assertClean(input.repoRoot, "Project repository", untrackedDraftAskPaths(input.repoRoot));
   // A detached HEAD would accept the commit and then lose it the moment HEAD
   // moves: the receipt would claim the governed pointer is durable from a commit
   // no branch reaches. Refuse before writing rather than report a hollow commit.

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
@@ -17,7 +17,7 @@ import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
-import { assertClean, commitOnlyPaths, git, projectCheckoutFor, tryGit } from "../git/worktrees.js";
+import { assertClean, commitOnlyPaths, git, projectCheckoutFor, tryGit, untrackedDraftAskPaths } from "../git/worktrees.js";
 import {
   assertActionClaimGeneration,
   getActiveWorktreeReservation,
@@ -58,17 +58,6 @@ function looksLikeArtifactPath(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || /\s/.test(trimmed) || NON_PATH_ARTIFACT_PATTERN.test(trimmed)) return false;
   return trimmed.includes("/") || /\.[A-Za-z0-9]+$/.test(trimmed);
-}
-
-function untrackedDraftAskPaths(repoRoot: string): string[] {
-  const directory = path.join(repoRoot, ".arcadia", "asks");
-  try {
-    return readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && /^agent-ask-[a-z0-9][a-z0-9-]*\.ya?ml$/.test(entry.name))
-      .map((entry) => path.join(".arcadia", "asks", entry.name));
-  } catch {
-    return [];
-  }
 }
 
 /** `after: null` means this mutation deletes `path` (used to archive a settled Ask's source file). */

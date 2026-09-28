@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -57,6 +57,20 @@ export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []):
   return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
     .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
+}
+
+/** Repo-relative paths of Agent Ask drafts on disk. Pending drafts from other sessions are
+ * bounded intake, not incidental dirt: pass these as `ignoreUntracked` so they never block a
+ * clean check. A tracked file at one of these paths still counts as dirty. */
+export function untrackedDraftAskPaths(repoRoot: string): string[] {
+  const directory = path.join(repoRoot, ".arcadia", "asks");
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^agent-ask-[a-z0-9][a-z0-9-]*\.ya?ml$/.test(entry.name))
+      .map((entry) => path.join(".arcadia", "asks", entry.name));
+  } catch {
+    return [];
+  }
 }
 
 export function assertClean(cwd: string, label: string, ignoreUntracked: string[] = []): void {
