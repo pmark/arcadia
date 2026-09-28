@@ -629,6 +629,49 @@ This is a decomposition strategy, not a permission structure. It does not
 relax `CONSTITUTION.md`'s approval boundaries, and it does not excuse skipping
 the 80/20 rule's obligation to name the vital few pieces before splitting.
 
+## Nothing is ever lost
+
+Arcadia exists so the operator does not have to be the institutional memory
+for every project, and that only works if the system remembers instead.
+**Anything the work surfaces is written down where the next reader will find
+it, before the session that surfaced it ends.** A defect, an idea, a deferral,
+a half-finished change, an open question, a piece of evidence: each has a home
+in the Way, and that home is never a person's memory or a conversation
+transcript.
+
+This is the principle beneath several rules that already bind here. A defect
+is filed as an Issue in the session that finds it. A deferral names its
+trigger. A settled record is pushed before the session ends. A capability the
+Way lacks is filed as a committed proposal. An unfinished candidate is left on
+a pushed branch, never on `main` or a detached HEAD. Each of those is this
+principle applied to one kind of thing; when something turns up that none of
+them covers, the principle still holds — find or make its home.
+
+- **Capture beats recall.** Writing a thing down costs a minute now. Not
+  writing it down costs the whole discovery again, later, by someone who has
+  to notice it first. "I'll remember" and "we know about it" are not records;
+  they are the same bet placed again at every future session.
+- **Capture is not decision.** Writing something down does not make it work,
+  promote it, or approve it. An Issue is a signal, a proposal is a question, a
+  Log entry is history. Capture keeps the thing legible so it can be decided
+  in the open, on its own merits, later — it never widens authority.
+- **The home is where the next reader looks.** A defect goes in the owning
+  repository's Issues, a Way gap in `docs/proposals/`, a hard-won path in
+  `docs/notes-to-self.md`, governed work in an Agent Ask. A note in the wrong
+  place is lost more slowly, not kept.
+- **Losing on purpose is a Decision.** Closing an item is fine: a trigger that
+  can never fire is a rejection, and a rejection is a record. What is never
+  fine is an item that vanishes because nobody wrote it down or because a
+  session ended first.
+- **Reversibility is the same principle applied to state.** Tidy routines
+  quarantine instead of delete, retirement keeps the record, and Git history
+  is the backing store beneath every managed document. Recovery has to stay
+  possible because loss is never an accepted outcome.
+
+The test for whether this principle is being followed: pick anything a session
+noticed and did not act on, and ask where it is now. If the answer is "in the
+transcript" or "in someone's head", it was lost, and the principle was skipped.
+
 ## If not now, then when?
 
 The 80/20 rule says deferring is a real answer. This one says what a deferral
@@ -936,7 +979,8 @@ fictional exact forecast.
 <!-- Everything outside the markers above is this repository's own and is never regenerated. -->
 
 The operating principles that used to live here — the 80/20 rule, YAGNI,
-divide and conquer, "if not now, then when?", make it real, and token economy
+divide and conquer, "nothing is ever lost", "if not now, then when?",
+make it real, and token economy
 — moved into [`docs/agents-context.md`](docs/agents-context.md) so they are
 part of the block above and reach every adopting repository, not just this
 one. Edit them there; `pnpm arcadia project setup-context --repo .`
