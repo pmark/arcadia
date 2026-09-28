@@ -285,7 +285,11 @@ function recoverWorktreeOp(repoRoot: string, commonDir: string, begin: WorktreeJ
 
   const anyRenameLanded = existsSync(begin.treeDest) || existsSync(begin.adminDest);
   if (!anyRenameLanded) {
-    tryGit(repoRoot, ["update-ref", "-d", begin.pinRef]);
+    // Compare-and-swap: only drop the pin if it still points at the exact
+    // commit this op created it for. If the ref name has since moved on
+    // (however that could happen), an unconditional delete would drop a gc
+    // root that this op never owned.
+    tryGit(repoRoot, ["update-ref", "-d", begin.pinRef, begin.head]);
     return "back";
   }
 
@@ -315,6 +319,8 @@ export interface TidyJournalRecovery {
   rolledBack: string[];
   /** Ops that still could not be resolved (e.g. a persistent EXDEV/EACCES) -- left open for the next attempt, and reported rather than blocking every later tidy invocation. */
   failed: string[];
+  /** Original paths of worktrees whose recovery just failed, so this same invocation's own assessment does not attempt to quarantine the identical worktree a second time under a fresh run id while the first attempt is still stuck. */
+  stuckWorktreePaths: string[];
 }
 
 /**
@@ -334,7 +340,7 @@ export interface TidyJournalRecovery {
 export function recoverTidyJournals(repoRoot: string): TidyJournalRecovery {
   const commonDir = gitCommonDir(repoRoot);
   const dir = journalDir(commonDir);
-  const result: TidyJournalRecovery = { rolledForward: [], rolledBack: [], failed: [] };
+  const result: TidyJournalRecovery = { rolledForward: [], rolledBack: [], failed: [], stuckWorktreePaths: [] };
   if (!existsSync(dir)) return result;
 
   for (const file of readdirSync(dir)) {
@@ -359,6 +365,7 @@ export function recoverTidyJournals(repoRoot: string): TidyJournalRecovery {
         resolved.add(id);
       } catch (error) {
         result.failed.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+        if (begin.op === "worktree") result.stuckWorktreePaths.push(begin.worktreePath);
       }
     }
     // Fully settled the moment every begin in this file has a matching

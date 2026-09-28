@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -386,6 +386,55 @@ describe("tidy journal — wired into runTidyCommand itself", () => {
 
     const undone = runTidyUndoCommand({ repo: root, run: runId });
     expect(undone.data.worktreesRestored).toEqual([tree]);
+  });
+
+  it("reports a persistently failing op instead of throwing, and never attempts a second quarantine of the same stuck worktree", () => {
+    const root = repo();
+    commitOn(root, "claude/stuck", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/stuck"]);
+    const tree = worktreeOn(root, "claude/stuck", "stuck");
+    const head = run(tree, ["rev-parse", "HEAD"]).trim();
+    const adminDir = run(tree, ["rev-parse", "--absolute-git-dir"]).trim();
+    const worktreesDir = path.dirname(adminDir);
+    const runId = createTidyRunId(new Date());
+
+    expect(() =>
+      quarantineWorktree(root, { path: tree, branch: "claude/stuck", head }, runId, {
+        afterTreeMove: () => {
+          throw new Error("simulated crash after the tree half moved");
+        }
+      })
+    ).toThrow();
+
+    // Remove write permission on `.git/worktrees` itself, so the admin
+    // half's rename -- which needs to unlink its entry from this exact
+    // directory -- fails with EACCES every time recovery retries it, the
+    // way a real persistent EXDEV/EACCES would.
+    chmodSync(worktreesDir, 0o555);
+    try {
+      const recovery = recoverTidyJournals(root);
+      expect(recovery.failed).toHaveLength(1);
+      expect(recovery.failed[0]).toContain(tree);
+      expect(recovery.stuckWorktreePaths).toEqual([tree]);
+      expect(recovery.rolledForward).toEqual([]);
+      expect(recovery.rolledBack).toEqual([]);
+
+      // A full apply run does not throw either, and does not attempt a
+      // second, independent quarantine of the same worktree under a fresh
+      // run id.
+      const result = data(runTidyCommand({ repo: root, apply: true }));
+      expect(result.journalRecovery.failed).toHaveLength(1);
+      const entry = result.worktrees.find((w) => w.path === tree);
+      expect(entry?.retired).toBe(false);
+      expect(entry?.reason).toContain("Still stuck");
+
+      const pinRefs = run(root, ["for-each-ref", "--format=%(refname)", "refs/arcadia/tidy"])
+        .split("\n")
+        .filter((line) => line.endsWith(`/worktrees/${path.basename(adminDir)}`));
+      expect(pinRefs).toHaveLength(1);
+    } finally {
+      chmodSync(worktreesDir, 0o755);
+    }
   });
 
   it("finalizes (deletes) a run's journal once every op it recorded completed cleanly", () => {

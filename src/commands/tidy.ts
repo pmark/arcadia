@@ -227,6 +227,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   // anything: a half-quarantined worktree from a crashed run must not be
   // mistaken for a fresh one to classify.
   const journalRecovery = recoverTidyJournals(repoRoot);
+  const stuckWorktreePaths = new Set(journalRecovery.stuckWorktreePaths.map(pathKey));
   const now = options.now ?? new Date();
   const livenessGraceMs = options.livenessGraceMs ?? DEFAULT_WORKTREE_LIVENESS_GRACE_MS;
   const baseBranch = resolveBaseBranch(repoRoot);
@@ -320,6 +321,16 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
           // ref, for `tidy list`/manual recovery -- ordinary crash recovery
           // across an interrupted single step is tidy-journal-recovery-and-conservation-tests'
           // job, not this one's.
+          if (stuckWorktreePaths.has(pathKey(entry.path))) {
+            // This exact worktree is still stuck from an op the journal
+            // recovery above just tried and failed again (a persistent
+            // EXDEV/EACCES, an occupied destination): attempting a second,
+            // independent quarantine under a fresh run id would only leave a
+            // second orphan pin racing the first, not make any more progress.
+            entry.retired = false;
+            entry.reason = `${entry.reason} Still stuck from a previous crashed run tidy could not finish; see the journal recovery report.`;
+            continue;
+          }
           try {
             const quarantined = quarantineWorktree(repoRoot, { path: entry.path, branch: entry.branch, head: record.head }, runId);
             entry.retired = quarantined !== null;
