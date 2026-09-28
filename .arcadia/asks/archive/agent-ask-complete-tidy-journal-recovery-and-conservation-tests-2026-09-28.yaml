@@ -1,0 +1,23 @@
+{
+  "agent_ask": "v1",
+  "request_id": "complete-tidy-journal-recovery-and-conservation-tests-2026-09-28",
+  "project": "arcadia",
+  "intent": "complete",
+  "target_ref": "action/tidy-journal-recovery-and-conservation-tests",
+  "candidate_revision": "000062bb5b144a328e9949eea9b9821af852cc03",
+  "desired_result": "Mark tidy-journal-recovery-and-conservation-tests complete.",
+  "evidence": [
+    {
+      "criterion": "Each quarantine step is written to an fsynced journal before it runs, and tidy startup rolls an interrupted run forward or back deterministically.",
+      "status": "met"
+    },
+    {
+      "criterion": "A seeded generator of repository states (squash, rebase, detached HEADs, ignored files, missing directories, reused names, injected races) asserts that every reachable commit and every worktree file byte before tidy --apply is still reachable or quarantined after it.",
+      "status": "met"
+    },
+    {
+      "criterion": "The same generator asserts that undo restores the exact prior state and that a second tidy --apply is a no-op.",
+      "status": "met"
+    }
+  ]
+}
