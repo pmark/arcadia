@@ -28,6 +28,11 @@ const WRITERS = Number(process.env.ARCADIA_DB_LOAD_WRITERS ?? 8);
 const ITERATIONS = Number(process.env.ARCADIA_DB_LOAD_ITERATIONS ?? 40);
 const SETTLEMENT_ROWS = 40;
 
+// A zero or non-numeric setting would let the test pass having run nothing.
+for (const [name, value] of [["ARCADIA_DB_LOAD_WRITERS", WRITERS], ["ARCADIA_DB_LOAD_ITERATIONS", ITERATIONS]] as const) {
+  if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive whole number, got ${value}.`);
+}
+
 interface WorkerReport {
   worker: number;
   operations: number;

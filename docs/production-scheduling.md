@@ -310,12 +310,12 @@ lock wait under `busy_timeout`, and no leaked live admissions.
 
 Measured on the development Mac (Apple Silicon, local SSD), 2026-09-28:
 
-| Writers | Operations | Surfaced `SQLITE_BUSY` | Longest operation (upper bound on any lock wait) | Longest settlement lock wait | Longest settlement hold |
-| --- | --- | --- | --- | --- | --- |
-| 8 | 2,240 | 0 | 153 ms | 23 ms | 4 ms |
-| 12 | 3,360 | 0 | 253 ms | 95 ms | 0.2 ms |
-| 16 | 4,480 | 0 | 965 ms | 144 ms | 4 ms |
-| 32 | 4,480 | 0 | 1,021 ms | 394 ms | 3 ms |
+| Writers | Iterations per writer | Operations | Surfaced `SQLITE_BUSY` | Longest operation (upper bound on any lock wait) | Longest settlement lock wait | Longest settlement hold |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8 | 40 | 2,240 | 0 | 153 ms | 23 ms | 4 ms |
+| 12 | 40 | 3,360 | 0 | 253 ms | 95 ms | 0.2 ms |
+| 16 | 40 | 4,480 | 0 | 965 ms | 144 ms | 4 ms |
+| 32 | 20 | 4,480 | 0 | 1,021 ms | 394 ms | 3 ms |
 
 `busy_timeout` is 15,000 ms, so the worst wait observed at four times the
 default target of eight is under 7% of the limit. The tested basis is
