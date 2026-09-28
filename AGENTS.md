@@ -892,6 +892,56 @@ attention and protects nothing.
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
 
+## PR lifecycle notifications
+
+The operator has authorized this standing notification: whenever this session
+opens a pull request, and again whenever a pull request reaches the point
+where the operator's own call is the only thing left, send exactly one short
+Discord ping. The operator wants their decisions made predominantly through
+pull requests — this is what makes that possible instead of requiring them to
+poll a dashboard.
+
+- **On open.** The moment a PR is created, draft and settle an Agent Ask,
+  `intent: log`, `request_id` `pr-opened-<project>-pr<number>`, whose
+  `desired_result` is one upbeat, specific sentence naming what shipped, plus
+  the PR URL. This fires for every PR, including ones "Merge on green" will
+  merge without further ado — it is the "something is moving" signal.
+- **On ready-for-you.** Send a second ping, `request_id`
+  `pr-ready-<project>-pr<number>-<reason-slug>-<yyyy-mm-dd>` (a short kebab
+  `reason-slug` naming *why* — `decision-answer`, `approval-boundary`,
+  `credentials-needed`, and so on), only for a PR that "Merge on green"
+  already excludes from auto-merge (one that opens or carries a Decision, or
+  changes Constitution/approval-boundary/spend/credential authority) once its
+  CodeRabbit loop and required checks are otherwise clear, or for any PR a
+  session is stopping at as a blocker or picker. Name what's ready, why it
+  needs the operator specifically, and the PR URL. A request_id that only
+  varies by PR number, or only by date, replays the first settlement's
+  receipt instead of queuing a fresh notification the next time the same PR
+  reaches a *different* blocker on the same day — the reason-slug gives each
+  distinct handoff its own identity, while retrying the *same* handoff (same
+  reason, same day) stays idempotent by reusing that same id. Do not send
+  this for a routine PR that "Merge on green" will merge itself — by the time
+  you could send it, it is already merged, and a "ready to merge" ping for
+  something already merged is noise, not a decision point.
+- **Keep both messages to one or two sentences.** Fun, warm, specific — the
+  Discord message is the whole notification; the operator should not have to
+  open the PR to know why they were pinged. This is the queued Discord
+  delivery every `intent: log` settlement already uses, not a new channel.
+- **Link the PR itself**
+  (`https://github.com/<owner>/<repo>/pull/<number>`). GitHub exposes no
+  anchor that scrolls to the merge control, so do not claim the link does —
+  say only that the merge button is near the bottom of the Conversation tab
+  once checks are green.
+- **A plain PR comment from the operator is a legitimate answer.** Read it the
+  next time you touch that PR and act on it like any other operator
+  instruction — alongside the normal Decision or picker flow, never as a
+  silent substitute for recording the Decision's actual answer.
+- **This never widens authority.** It reuses the Discord channel and
+  `intent: log` settlement already governing "CI failures are fixed
+  immediately" above; it does not authorize a new messaging channel, and it
+  never substitutes for a required Decision, approval boundary, or the
+  CodeRabbit/CI loops above.
+
 ## Make it real
 
 Plans, analysis, and architecture are valuable when they turn into something a

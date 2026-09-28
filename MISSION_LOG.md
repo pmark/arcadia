@@ -887,9 +887,23 @@ updated: 2026-09-28
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-tidy-journal-recovery-and-conservation-tests-2026-09-28).
 
+## 2026-09-28 — Agent Ask pr-opened-arcadia-pr750
+
+- **Did:** Shipped! Every future Arcadia PR now gets a Discord shout the moment it opens, and again the moment it truly needs your call: https://github.com/pmark/arcadia/pull/750
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-09-28 — Agent Ask pr-opened-arcadia-pr751
 
 - **Did:** The Way now says it out loud: "Nothing is ever lost" joined the Constitution and AGENTS.md as the principle beneath defect capture, deferral triggers, and settle-before-push. Constitution change, so this one is yours to merge: https://github.com/pmark/arcadia/pull/751
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-09-28 — Agent Ask pr-ready-arcadia-pr750-approval-boundary-2026-09-27
+
+- **Did:** Ready for your call: PR 750 adds the standing rule authorizing these very Discord PR pings, so it counts as changing agent authority -- Merge on green wont touch it. CodeRabbit approved, all checks green. https://github.com/pmark/arcadia/pull/750
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

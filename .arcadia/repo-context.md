@@ -1,10 +1,9 @@
 # Arcadia Repo Context
 
-Generated: 2026-09-20T06:08:09.762Z
+Generated: 2026-09-28T01:29:34.180Z
 Repo path: ~/Dev/MR/Arcadia/arcadia
 
 ## Detected Languages
-- CSS
 - Markdown
 - TypeScript
 - YAML
