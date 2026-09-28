@@ -30,11 +30,14 @@ import {
 } from "../git/worktrees.js";
 import {
   createTidyRunId,
+  finalizeTidyJournal,
   listTidyRuns,
   probePath,
   quarantineBranch,
   quarantineWorktree,
+  recoverTidyJournals,
   undoTidyRun,
+  type TidyJournalRecovery,
   type TidyQuarantineManifest,
   type TidyUndoResult
 } from "../git/quarantine.js";
@@ -163,6 +166,8 @@ export interface TidyCommandData {
   needsAttention: string[];
   /** The quarantine run id this apply used, so `arcadia tidy undo <run>` can restore it. Null when nothing was quarantined (including any preview, where `applied` is false). */
   run: string | null;
+  /** Interrupted ops from a previous run this invocation found and settled before doing anything else. Empty on an ordinary run. */
+  journalRecovery: TidyJournalRecovery;
 }
 
 export interface TidyCommandOptions {
@@ -218,6 +223,10 @@ export interface TidyCommandOptions {
  */
 export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess<TidyCommandData> {
   const repoRoot = existingDirectory(options.repo ?? invocationRoot(), "repository");
+  // Settle any op a previous --apply left mid-flight before assessing
+  // anything: a half-quarantined worktree from a crashed run must not be
+  // mistaken for a fresh one to classify.
+  const journalRecovery = recoverTidyJournals(repoRoot);
   const now = options.now ?? new Date();
   const livenessGraceMs = options.livenessGraceMs ?? DEFAULT_WORKTREE_LIVENESS_GRACE_MS;
   const baseBranch = resolveBaseBranch(repoRoot);
@@ -387,6 +396,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         }
       }
     }));
+    finalizeTidyJournal(repoRoot, runId);
   }
 
   return createSuccess({
@@ -403,7 +413,8 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       worktrees: assessed,
       branches,
       needsAttention: collectAttention(assessed, branches),
-      run
+      run,
+      journalRecovery
     }
   });
 }
@@ -823,10 +834,18 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
     worktrees,
     branches,
     needsAttention,
-    run
+    run,
+    journalRecovery
   } = response.data;
 
   const lines: string[] = [`Arcadia Tidy — ${repoRoot}`];
+
+  if (journalRecovery.rolledForward.length > 0 || journalRecovery.rolledBack.length > 0) {
+    lines.push("Recovered from a previous run that did not finish:");
+    lines.push(...journalRecovery.rolledForward.map((entry) => `  ✓ finished ${entry}`));
+    lines.push(...journalRecovery.rolledBack.map((entry) => `  · never started ${entry} — nothing to undo`));
+    lines.push("");
+  }
 
   // Freshness first, unconditionally — every verdict below depends on it, and
   // a stale comparison looks identical to a fresh one unless this is said.
