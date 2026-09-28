@@ -971,7 +971,8 @@ coding agent, a terminal, or the dashboard just to decide something.
 - **Make the PR a complete ballot.** The PR body opens with:
   - "Merging accepts: <recommended option>";
   - each other option, numbered, with its consequence;
-  - "To choose another option, comment with its number."
+  - "To choose another option, comment with its number, then wait for the
+    updated ballot and green checks before merging."
 - **Ping and keep going.** Send the "ready for you" notification (reason-slug
   `decision-answer`) once CodeRabbit and CI are clear. Then continue with any
   work that does not depend on the answer. A Decision PR waiting for review
@@ -980,7 +981,9 @@ coding agent, a terminal, or the dashboard just to decide something.
   operator comments with another option's number or words, change `answer`
   (and the PR body) to that option, validate, and push. The operator's merge
   still does the deciding. A comment that is not a clear choice is a
-  question: answer it on the PR.
+  question: answer it on the PR. After pushing the switched ballot, reply on
+  the PR saying it is ready to merge once checks are green. The comment
+  itself changes nothing, and merging the old head records the old answer.
 - **Only the operator merges a Decision PR.** "Merge on green" never applies
   to it, and CodeRabbit approval does not stand in for the operator. If the
   operator explicitly tells an agent to merge a specific Decision PR, record

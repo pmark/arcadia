@@ -15,7 +15,7 @@ answer: Adopt decide-by-merge as the default in every Project
 decided: 2026-09-28
 options:
   - label: Adopt decide-by-merge as the default in every Project
-    consequence: Every Decision reaches the operator as its own PR whose merge accepts the recommended option, and a comment naming another option switches it. Agents keep working on everything that does not depend on the answer. The rule reaches every managed repository through the shared AGENTS.md block, and `decision approve` becomes a fallback rather than the path.
+    consequence: Every Decision reaches the operator as its own PR whose merge accepts the recommended option, and a comment naming another option asks the agent to switch the ballot, which the operator merges once the updated head's checks are green. Agents keep working on everything that does not depend on the answer. The rule reaches every managed repository through the shared AGENTS.md block, and `decision approve` becomes a fallback rather than the path.
     recommended: true
   - label: Use decide-by-merge only when the operator asks for it
     consequence: The CLI stays the default; agents offer a Decision PR only on request. Less changes today, but every unattended Decision still waits for the operator at a terminal, which is the bottleneck this Decision exists to remove.
@@ -56,7 +56,9 @@ file exists only on an unmerged branch and decides nothing.
   preference.
 - **The shape of a Decision PR.** It carries one Decision, whose document has
   every option and uses the recommended option as its `answer`. It opens with
-  "Merging accepts: …". A comment naming another option switches the answer.
+  "Merging accepts: …". A comment naming another option does not change the
+  answer by itself: the agent pushes the switched ballot, and the operator
+  merges that updated head once its checks are green.
   Agents never merge it.
 - **Arcadia will be asked to enforce it.** That request is
   `docs/proposals/ratify-decisions-by-pr-merge.md`: a `ratified_by` check

@@ -40,12 +40,16 @@ written to prevent.
   Decision carrying it only when both of these hold, and would refuse or flag
   it otherwise:
   - that PR was merged by the operator, not by an agent identity; and
-  - that PR's merge added or changed this exact Decision path, with the same
-    `answer` and `status` as the document now on the base branch.
+  - that PR's merge added or changed this exact Decision path, and the
+    document now on the base branch is byte-for-byte the version that merge
+    produced (or matches a content fingerprint recorded at merge).
 
-  The second check binds the ratification to its content. Without it, a
-  Decision could cite an unrelated PR the operator merged, or be edited after
-  the merge that ratified it.
+  The second check binds the ratification to the whole document: question,
+  options, consequences, and answer. Without it, a Decision could cite an
+  unrelated PR the operator merged, or have its question or options edited
+  after the merge that ratified it while `answer` and `status` stayed the same.
+  Later edits that are only document hygiene need a new ratifying PR, or an
+  explicit hygiene exception that the check can verify.
 - **Decision PRs from managed production.** When a production session
   settles a `decision` Ask, it writes the ballot (recommended option as
   `answer`) on its own branch and opens the Decision PR, instead of leaving an

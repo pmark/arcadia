@@ -1722,8 +1722,10 @@ their consequences, numbered. Discord pings you once CodeRabbit and CI are
 clear.
 
 - **Merge it** to accept the recommendation.
-- **Comment with another option's number** to switch to that option, then
-  merge.
+- **Comment with another option's number** to ask for that option. The agent
+  pushes an updated ballot that opens with "Merging accepts: <your option>".
+  Merge only after that update appears and its checks are green. Merging
+  sooner records the old answer.
 - **Comment with a question** if neither is clear yet.
 
 Agents never merge a Decision PR, and they keep working on anything that does
