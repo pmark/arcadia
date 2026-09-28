@@ -914,3 +914,10 @@ updated: 2026-09-28
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-28 — Completed arcadia/load-test-workspace-db-contention
+
+- **Did:** Completed Action arcadia/load-test-workspace-db-contention from accepted evidence (Candidate 70153e206286778a66712204e0b5a2d342892caa).
+- **Result:** Every declared acceptance criterion was accepted as met: "A repeatable test starts at least eight separate processes against one WAL workspace database, each running production admission issue/commit/release, Action claim reserve/release, and settlement-sized write transactions in a loop."; "The test reports surfaced SQLITE_BUSY errors, the longest write-lock wait, and the longest single write transaction; it passes only with zero surfaced errors and a longest wait under the busy_timeout set in src/db/connection.ts."; "The measured writer count and waits are recorded in docs/production-scheduling.md as the tested basis for maxConcurrentSessions; any write transaction that holds the lock across a git or filesystem call is named and filed as a bug Issue; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-load-test-workspace-db-contention-2026-09-28).
