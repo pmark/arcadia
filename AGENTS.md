@@ -864,15 +864,20 @@ poll a dashboard.
   the PR URL. This fires for every PR, including ones "Merge on green" will
   merge without further ado — it is the "something is moving" signal.
 - **On ready-for-you.** Send a second ping, `request_id`
-  `pr-ready-<project>-pr<number>`, only for a PR that "Merge on green" already
-  excludes from auto-merge (one that opens or carries a Decision, or changes
-  Constitution/approval-boundary/spend/credential authority) once its
-  CodeRabbit loop and required checks are otherwise clear, or for any PR a
-  session is stopping at as a blocker or picker. Name what's ready, why it
-  needs the operator specifically, and the PR URL. Do not send this for a
-  routine PR that "Merge on green" will merge itself — by the time you could
-  send it, it is already merged, and a "ready to merge" ping for something
-  already merged is noise, not a decision point.
+  `pr-ready-<project>-pr<number>-<yyyy-mm-dd>` (the same dated-suffix shape as
+  `ci-blocked-<project>-pr<number>-<yyyy-mm-dd>` above), only for a PR that
+  "Merge on green" already excludes from auto-merge (one that opens or
+  carries a Decision, or changes Constitution/approval-boundary/spend/
+  credential authority) once its CodeRabbit loop and required checks are
+  otherwise clear, or for any PR a session is stopping at as a blocker or
+  picker. Name what's ready, why it needs the operator specifically, and the
+  PR URL. A fixed per-PR id would replay the first settlement's receipt
+  instead of queuing a fresh notification the next time the same PR reaches a
+  new blocker — the date suffix keeps each distinct handoff its own event
+  while same-day retries of the same handoff stay idempotent. Do not send
+  this for a routine PR that "Merge on green" will merge itself — by the time
+  you could send it, it is already merged, and a "ready to merge" ping for
+  something already merged is noise, not a decision point.
 - **Keep both messages to one or two sentences.** Fun, warm, specific — the
   Discord message is the whole notification; the operator should not have to
   open the PR to know why they were pinged. This is the queued Discord
