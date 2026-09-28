@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-27
+updated: 2026-09-28
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -2374,7 +2374,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/736", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
   - id: tidy-journal-recovery-and-conservation-tests
     title: Make tidy crash-safe and prove its no-loss guarantee with generated repository histories.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make tidy crash-safe and prove its no-loss guarantee with generated repository histories.
@@ -2393,7 +2393,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: tidy-journal-recovery-and-conservation-tests
+current_action: load-test-workspace-db-contention
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
