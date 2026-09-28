@@ -1,0 +1,1 @@
+{"agent_ask": "v1", "request_id": "pr-opened-arcadia-pr758", "project": "arcadia", "intent": "log", "desired_result": "Load-tested the workspace DB with 8-32 concurrent writer processes: zero SQLITE_BUSY, worst lock wait 394 ms vs a 15 s timeout, so maxConcurrentSessions now has a measured basis \u2014 https://github.com/pmark/arcadia/pull/758"}
