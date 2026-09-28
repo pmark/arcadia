@@ -295,6 +295,49 @@ Every board operation sits behind the `SchedulingBoard` interface, so the
 tests drive an in-memory board and prove reconciliation without network
 access.
 
+## Workspace database concurrency
+
+`maxConcurrentSessions` rests on a measured number, not an assertion.
+`tests/db-contention.test.ts` starts separate OS processes against one WAL
+workspace database, each opened through `openDatabase` (production settings:
+`journal_mode = WAL`, `busy_timeout = 15000`). Every process loops the three
+write shapes managed production performs: `issueAdmission` /
+`commitAdmission` / `releaseAdmission`, `reserveAgentWorktree` with an Action
+claim then `releaseActionClaim` / `releaseWorktreeReservation`, and a
+settlement-sized `writeTransaction` (one read, then 40 inserts). It passes only
+with zero surfaced `SQLITE_BUSY` errors, every operation and every settlement
+lock wait under `busy_timeout`, and no leaked live admissions.
+
+Measured on the development Mac (Apple Silicon, local SSD), 2026-09-28:
+
+| Writers | Operations | Surfaced `SQLITE_BUSY` | Longest operation (upper bound on any lock wait) | Longest settlement lock wait | Longest settlement hold |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 2,240 | 0 | 153 ms | 23 ms | 4 ms |
+| 12 | 3,360 | 0 | 253 ms | 95 ms | 0.2 ms |
+| 16 | 4,480 | 0 | 965 ms | 144 ms | 4 ms |
+| 32 | 4,480 | 0 | 1,021 ms | 394 ms | 3 ms |
+
+`busy_timeout` is 15,000 ms, so the worst wait observed at four times the
+default target of eight is under 7% of the limit. The tested basis is
+therefore **at least 8 concurrent writer processes, tested through 32, with
+zero surfaced errors**; the database is not what limits `maxConcurrentSessions`
+at any value the scheduler is likely to be given. The figures are one machine's
+run, not a bound: rerun with
+`ARCADIA_DB_LOAD_WRITERS=<n> ARCADIA_DB_LOAD_ITERATIONS=<n> ARCADIA_DB_LOAD_REPORT=<file> pnpm vitest run tests/db-contention.test.ts`
+to check another machine or a heavier write shape.
+
+The admission and claim functions open their own transaction, so their lock
+wait cannot be separated from their hold time from outside; the table reports
+their end-to-end latency, which bounds the wait from above. The settlement-sized
+transaction is timed from inside and is exact.
+
+Lock held across a filesystem call: the database is not the slow part (a
+settlement-sized write holds the lock for milliseconds), but seven transaction
+sites read or write files while holding it. They are named in
+[Issue #757](https://github.com/pmark/arcadia/issues/757). No git subprocess
+call was found directly inside a transaction body; calls made through helper
+functions were not traced.
+
 ## Departures from the brief
 
 - **Positions live in the existing portfolio queue.** The brief asked for one
