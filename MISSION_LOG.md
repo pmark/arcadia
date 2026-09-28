@@ -886,3 +886,10 @@ updated: 2026-09-28
 - **Result:** Every declared acceptance criterion was accepted as met: "Each quarantine step is written to an fsynced journal before it runs, and tidy startup rolls an interrupted run forward or back deterministically."; "A seeded generator of repository states (squash, rebase, detached HEADs, ignored files, missing directories, reused names, injected races) asserts that every reachable commit and every worktree file byte before tidy --apply is still reachable or quarantined after it."; "The same generator asserts that undo restores the exact prior state and that a second tidy --apply is a no-op.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-tidy-journal-recovery-and-conservation-tests-2026-09-28).
+
+## 2026-09-28 — Agent Ask pr-opened-arcadia-pr751
+
+- **Did:** The Way now says it out loud: "Nothing is ever lost" joined the Constitution and AGENTS.md as the principle beneath defect capture, deferral triggers, and settle-before-push. Constitution change, so this one is yours to merge: https://github.com/pmark/arcadia/pull/751
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
