@@ -8,7 +8,7 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import type { PlanDoc, ProjectDoc } from "../docs/types.js";
-import { assertClean, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
+import { assertClean, untrackedDraftAskPaths, commitOnlyPaths, git, tryGit } from "../git/worktrees.js";
 import { buildAgentQueue } from "./queue.js";
 import { loadActionOrder, seedActionOrderFifo, type ActionOrderReceipt } from "./order.js";
 import { resolvePlanActivation, projectActionKeys, type PlanActivationResolution } from "./planActivation.js";
@@ -158,7 +158,7 @@ export function activatePlan(db: Database.Database, input: {
   };
   if (!input.apply) return receipt;
 
-  assertClean(input.repoRoot, "Project repository");
+  assertClean(input.repoRoot, "Project repository", untrackedDraftAskPaths(input.repoRoot));
   if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
     throw validationError("The Project repository is on a detached HEAD, so an activation commit would be unreachable from any branch.", {
       repoRoot: input.repoRoot,
