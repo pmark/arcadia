@@ -2214,7 +2214,7 @@ actions:
     references: ["src/codingAgents/adapters.ts", "src/codingAgents/providerAdapters.ts", "docs/proposals/portfolio-parallel-execution.md"]
   - id: load-test-workspace-db-contention
     title: Measure the workspace database under concurrent writers so the concurrency limit rests on a tested number, not an assertion.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Measure the workspace database under concurrent writers so the concurrency limit rests on a tested number, not an assertion.
@@ -2609,7 +2609,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: load-test-workspace-db-contention
+current_action: fix-rehearsal-fixture-validation-command
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
