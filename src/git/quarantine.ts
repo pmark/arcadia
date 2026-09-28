@@ -171,27 +171,67 @@ function journalFile(commonDir: string, run: string): string {
   return path.join(journalDir(commonDir), `${run}.ndjson`);
 }
 
-/**
- * Append one line and fsync it before returning, so the write is durable on
- * disk the moment this call returns -- not merely handed to a buffer the OS
- * might still be holding when the process dies.
- */
-function appendJournalLine(commonDir: string, run: string, line: JournalLine): void {
-  mkdirSync(journalDir(commonDir), { recursive: true });
-  const fd = openSync(journalFile(commonDir, run), "a");
+function fsyncDir(dir: string): void {
+  const fd = openSync(dir, "r");
   try {
-    writeSync(fd, `${JSON.stringify(line)}\n`);
     fsyncSync(fd);
   } finally {
     closeSync(fd);
   }
 }
 
+/**
+ * Append one line and fsync it before returning, so the write is durable on
+ * disk the moment this call returns -- not merely handed to a buffer the OS
+ * might still be holding when the process dies. Fsyncing the file descriptor
+ * makes the line's own bytes durable but not the directory entry that makes
+ * the file findable at all; the first line of a run additionally fsyncs the
+ * directory it just created the file in (and that directory's own parent, if
+ * this call is what created the directory too), so a power loss can never
+ * leave a step committed with no journal file to show for it.
+ */
+function appendJournalLine(commonDir: string, run: string, line: JournalLine): void {
+  const dir = journalDir(commonDir);
+  const dirAlreadyExisted = existsSync(dir);
+  mkdirSync(dir, { recursive: true });
+  const file = journalFile(commonDir, run);
+  const fileAlreadyExisted = existsSync(file);
+
+  const fd = openSync(file, "a");
+  try {
+    writeSync(fd, `${JSON.stringify(line)}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+
+  if (!fileAlreadyExisted) {
+    fsyncDir(dir);
+    if (!dirAlreadyExisted) fsyncDir(path.dirname(dir));
+  }
+}
+
+/**
+ * Parse every line, tolerating exactly one failure mode: a crash mid-`write`
+ * tearing the final line in half. That torn line is necessarily a `begin`
+ * whose own fsync never happened, so nothing after it ever ran either --
+ * dropping it loses no recoverable state. A malformed line anywhere else is
+ * real corruption, not a torn write, and must not be silently discarded.
+ */
 function readJournalLines(file: string): JournalLine[] {
-  return readFileSync(file, "utf8")
+  const rawLines = readFileSync(file, "utf8")
     .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => JSON.parse(line) as JournalLine);
+    .filter((line) => line.trim() !== "");
+  const parsed: JournalLine[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    try {
+      parsed.push(JSON.parse(rawLines[i]) as JournalLine);
+    } catch (error) {
+      if (i === rawLines.length - 1) break;
+      throw error;
+    }
+  }
+  return parsed;
 }
 
 function refExists(repoRoot: string, ref: string): boolean {
@@ -227,16 +267,27 @@ function recoverBranchOp(repoRoot: string, commonDir: string, begin: BranchJourn
 /**
  * Finish or discard one interrupted worktree op.
  *
- * The pin ref is the first and only atomic step; once it exists, everything
- * downstream (both directory renames, the manifest write) is idempotent and
- * safe to finish, because the pin already keeps the worktree's HEAD reachable
- * no matter where the two directories currently sit. So "forward" is always
- * the answer once the pin exists — there is real progress worth keeping, and
- * finishing it loses nothing. "Back" is the answer only when the pin itself
- * never landed: at that point nothing has moved, and there is nothing to undo.
+ * The pin ref is the first atomic step, but it alone is not "real progress":
+ * recovery runs at the start of *every* tidy invocation, including a plain
+ * preview, and before the write interlock that would otherwise re-check
+ * whether a Session has since leased the worktree, a process now has it as
+ * its cwd, or someone has resumed work in it. Finishing the move on the
+ * strength of the pin alone would relocate a worktree nobody has re-assessed
+ * since the crash. Once at least one of the two renames has actually landed
+ * the calculus flips: both halves already sit wherever they sit, and finishing
+ * the (idempotent) move is strictly safe and loses nothing. So "forward" is
+ * the answer only once real filesystem progress exists to protect; "back" —
+ * dropping the orphan pin — is the answer whenever nothing has moved yet,
+ * pin included.
  */
 function recoverWorktreeOp(repoRoot: string, commonDir: string, begin: WorktreeJournalOp): "forward" | "back" {
   if (!refExists(repoRoot, begin.pinRef)) return "back";
+
+  const anyRenameLanded = existsSync(begin.treeDest) || existsSync(begin.adminDest);
+  if (!anyRenameLanded) {
+    tryGit(repoRoot, ["update-ref", "-d", begin.pinRef]);
+    return "back";
+  }
 
   if (!begin.missing && existsSync(begin.worktreePath) && !existsSync(begin.treeDest)) {
     renameOntoQuarantine(begin.worktreePath, begin.treeDest);
@@ -262,6 +313,8 @@ export interface TidyJournalRecovery {
   rolledForward: string[];
   /** Human-readable description of each interrupted op that never actually started, and needed nothing. */
   rolledBack: string[];
+  /** Ops that still could not be resolved (e.g. a persistent EXDEV/EACCES) -- left open for the next attempt, and reported rather than blocking every later tidy invocation. */
+  failed: string[];
 }
 
 /**
@@ -273,31 +326,50 @@ export interface TidyJournalRecovery {
  *
  * Called at the start of every `tidy` invocation, preview or apply, because an
  * interrupted run's damage belongs to whoever crashed it, not to whichever
- * command happens to run next.
+ * command happens to run next. Each op is resolved independently: one that
+ * keeps failing (a permanently unwritable filesystem, a persistently occupied
+ * destination) is reported and left open rather than throwing out of this
+ * function and taking every later tidy invocation down with it.
  */
 export function recoverTidyJournals(repoRoot: string): TidyJournalRecovery {
   const commonDir = gitCommonDir(repoRoot);
   const dir = journalDir(commonDir);
-  const result: TidyJournalRecovery = { rolledForward: [], rolledBack: [] };
+  const result: TidyJournalRecovery = { rolledForward: [], rolledBack: [], failed: [] };
   if (!existsSync(dir)) return result;
 
   for (const file of readdirSync(dir)) {
     if (!file.endsWith(".ndjson")) continue;
     const run = file.slice(0, -".ndjson".length);
-    const lines = readJournalLines(path.join(dir, file));
+    const filePath = path.join(dir, file);
+    const lines = readJournalLines(filePath);
     const begins = new Map<string, JournalOp>();
-    const done = new Set<string>();
+    const resolved = new Set<string>();
     for (const line of lines) {
       if (line.phase === "begin") begins.set(line.id, line);
-      else done.add(line.id);
+      else resolved.add(line.id);
     }
     for (const [id, begin] of begins) {
-      if (done.has(id)) continue;
-      const outcome =
-        begin.op === "branch" ? recoverBranchOp(repoRoot, commonDir, begin) : recoverWorktreeOp(repoRoot, commonDir, begin);
+      if (resolved.has(id)) continue;
       const label = begin.op === "branch" ? `branch ${begin.branch} (run ${run})` : `worktree ${begin.worktreePath} (run ${run})`;
-      (outcome === "forward" ? result.rolledForward : result.rolledBack).push(label);
-      appendJournalLine(commonDir, run, { phase: "done", id, run });
+      try {
+        const outcome =
+          begin.op === "branch" ? recoverBranchOp(repoRoot, commonDir, begin) : recoverWorktreeOp(repoRoot, commonDir, begin);
+        (outcome === "forward" ? result.rolledForward : result.rolledBack).push(label);
+        appendJournalLine(commonDir, run, { phase: "done", id, run });
+        resolved.add(id);
+      } catch (error) {
+        result.failed.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    // Fully settled the moment every begin in this file has a matching
+    // resolution -- drop it here rather than waiting for `finalizeTidyJournal`,
+    // which only ever looks at the current invocation's own run id.
+    if ([...begins.keys()].every((id) => resolved.has(id))) {
+      try {
+        rmSync(filePath, { force: true });
+      } catch {
+        /* best effort */
+      }
     }
   }
   return result;

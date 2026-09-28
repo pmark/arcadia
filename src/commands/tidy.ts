@@ -840,10 +840,11 @@ export function renderTidySuccess(response: CommandSuccess<TidyCommandData>): st
 
   const lines: string[] = [`Arcadia Tidy — ${repoRoot}`];
 
-  if (journalRecovery.rolledForward.length > 0 || journalRecovery.rolledBack.length > 0) {
+  if (journalRecovery.rolledForward.length > 0 || journalRecovery.rolledBack.length > 0 || journalRecovery.failed.length > 0) {
     lines.push("Recovered from a previous run that did not finish:");
     lines.push(...journalRecovery.rolledForward.map((entry) => `  ✓ finished ${entry}`));
     lines.push(...journalRecovery.rolledBack.map((entry) => `  · never started ${entry} — nothing to undo`));
+    lines.push(...journalRecovery.failed.map((entry) => `  ✗ still stuck: ${entry}`));
     lines.push("");
   }
 

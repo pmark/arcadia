@@ -194,11 +194,14 @@ describe("tidy journal — branch quarantine crash recovery", () => {
 });
 
 describe("tidy journal — worktree quarantine crash recovery", () => {
-  it("finishes the quarantine when the crash lands right after the pin ref, before either directory moves", () => {
-    // Once the pin ref exists, the worktree's HEAD is already reachable no
-    // matter where the two directories sit, so finishing the (idempotent)
-    // renames loses nothing -- recovery always completes from here rather
-    // than tearing the pin back down.
+  it("rolls back when the crash lands right after the pin ref, before either directory moves", () => {
+    // Recovery runs at the start of every tidy invocation, including a plain
+    // preview, and before the write interlock that would otherwise re-check
+    // liveness. Finishing the move on the pin alone would relocate a
+    // worktree nobody has re-assessed since the crash -- someone may have
+    // resumed work in it in the meantime. With neither directory actually
+    // moved yet, the safe and correct answer is to drop the orphan pin and
+    // leave the worktree exactly where it was.
     const root = repo();
     commitOn(root, "claude/spent", "a.txt");
     run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/spent"]);
@@ -220,16 +223,15 @@ describe("tidy journal — worktree quarantine crash recovery", () => {
     expect(readTidyRun(root, runId)?.worktrees ?? []).toHaveLength(0);
 
     const recovery = recoverTidyJournals(root);
-    expect(recovery.rolledForward).toEqual([`worktree ${tree} (run ${runId})`]);
-    expect(recovery.rolledBack).toEqual([]);
+    expect(recovery.rolledForward).toEqual([]);
+    expect(recovery.rolledBack).toEqual([`worktree ${tree} (run ${runId})`]);
 
-    // The worktree is now fully quarantined, exactly as a clean --apply
-    // would have left it, and undo restores it byte-for-byte.
-    expect(existsSync(tree)).toBe(false);
-    expect(run(root, ["worktree", "list"])).not.toContain(tree);
-    const undone = runTidyUndoCommand({ repo: root, run: runId });
-    expect(undone.data.worktreesRestored).toEqual([tree]);
+    // The worktree is untouched, exactly as if the crashed attempt had never
+    // happened, and the orphan pin ref is gone.
+    expect(existsSync(tree)).toBe(true);
+    expect(run(root, ["worktree", "list"])).toContain(tree);
     expect(run(tree, ["rev-parse", "HEAD"]).trim()).toBe(head);
+    expect(readTidyRun(root, runId)).toBeNull();
   });
 
   it("rolls back (is a true no-op) when the pin ref itself never landed", () => {
