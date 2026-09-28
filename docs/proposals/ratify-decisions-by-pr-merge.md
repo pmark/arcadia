@@ -43,8 +43,15 @@ already excludes but does not enforce.
 
 - **A `ratified_by` field on a Decision** naming the pull request, e.g.
   `ratified_by: pmark/arcadia#NNN`. `docs sync` would accept an `approved`
-  Decision carrying it only when that PR was merged by the operator, not by an
-  agent identity, and would refuse or flag it otherwise.
+  Decision carrying it only when both of these hold, and would refuse or flag
+  it otherwise:
+  - that PR was merged by the operator, not by an agent identity; and
+  - that PR's merge added or changed this exact Decision path, with the same
+    `answer` and `status` as the document now on the base branch.
+
+  The second check binds the ratification to its content. Without it, a
+  Decision could cite an unrelated PR the operator merged, or be edited after
+  the merge that ratified it.
 - **Settle-on-merge for Decision Asks.** When a merged PR adds a
   `decision`-intent Ask plus the operator's chosen option, Arcadia settles
   and answers it deterministically, the way `attemptAutoSettlePendingCompletion`
