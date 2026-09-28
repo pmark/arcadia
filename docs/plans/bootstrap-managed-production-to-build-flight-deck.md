@@ -2389,6 +2389,222 @@ actions:
     depends_on: [tidy-quarantine-instead-of-delete, tidy-harden-merge-and-liveness-verdicts]
     decisions: []
     references: []
+  - id: fix-rehearsal-fixture-validation-command
+    title: Give the two-Action rehearsal fixture a validation command that can actually pass for both Actions.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give the two-Action rehearsal fixture a validation command that can actually pass for both Actions.
+    expected_artifact: Evidence satisfying Agent Ask fix-rehearsal-fixture-validation-command
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#726: The v5 fixture declares scripts/check-marker.mjs (committed at genesis) as its validation command instead of a file that does not exist yet for Action A."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/726"]
+  - id: enable-unattended-claude-session-launch
+    title: Launch standing-policy Claude Sessions the same non-interactive way Codex launches, and remove the worktree-trust dialog that blocks them.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Launch standing-policy Claude Sessions the same non-interactive way Codex launches, and remove the worktree-trust dialog that blocks them.
+    expected_artifact: Evidence satisfying Agent Ask enable-unattended-claude-session-launch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#727: A Claude Session launched by the worker runs non-interactively and exits on its own, with no approval bypass."
+      - "#698: go-broker install pre-trusts Claude Code's global worktree root so a fresh Session never hits the interactive 'trust this folder' dialog."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/727", "https://github.com/pmark/arcadia/issues/698"]
+  - id: harden-agent-ask-settlement-races-and-state
+    title: "Fix the agent-ask settle correctness defects: stale revisions, missing locks, and state that diverges across concurrent or replayed settlements."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Fix the agent-ask settle correctness defects: stale revisions, missing locks, and state that diverges across concurrent or replayed settlements."
+    expected_artifact: Evidence satisfying Agent Ask harden-agent-ask-settlement-races-and-state
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#296: settle --revision only hard-fails on genuinely stale input, matching what --preview's fingerprint already reported."
+      - "#304: agent-ask draft refuses to produce a completion Ask that is un-applicable at its own recorded candidate_revision."
+      - "#320: decision approve --dry-run replay of an applied deferral receipt is covered by a test and behaves correctly."
+      - "#321: An archived complete Ask's candidate_revision matches what the Mission Log records, not the settle commit."
+      - "#505: applyDecisionDeferral writes the pointer pair under a lock or compare-and-set so it cannot clobber a concurrent write."
+      - "#507: arcadia action settle prints the correct Next action under concurrent settlement."
+      - "#512: agent-ask settle --apply's auto-commit succeeds because it no longer stages its own gitignored archive file."
+      - "#592: agent-ask draft does not report an already-settled .arcadia/asks file as an auto-discover failure."
+      - "#598: agent-ask settle bumps a Plan's updated date when it amends that Plan."
+      - "#609: production activate's --expect-revision flag matches preview's expectedRevision field name."
+      - "#639: attemptSettleOneDraft only refreshes a stale candidate_revision when the refreshed evidence still verbatim-covers every criterion, not by ancestry alone."
+      - "#663: review approve --no-execute routes the packet's sourceInput correctly instead of through the general intent classifier."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/296", "https://github.com/pmark/arcadia/issues/304", "https://github.com/pmark/arcadia/issues/320", "https://github.com/pmark/arcadia/issues/321", "https://github.com/pmark/arcadia/issues/505", "https://github.com/pmark/arcadia/issues/507", "https://github.com/pmark/arcadia/issues/512", "https://github.com/pmark/arcadia/issues/592", "https://github.com/pmark/arcadia/issues/598", "https://github.com/pmark/arcadia/issues/609", "https://github.com/pmark/arcadia/issues/639", "https://github.com/pmark/arcadia/issues/663"]
+  - id: improve-agent-ask-settle-usability
+    title: Reduce agent-ask settle's friction so the correct flag combination and next step are discoverable without repeated failed attempts.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Reduce agent-ask settle's friction so the correct flag combination and next step are discoverable without repeated failed attempts.
+    expected_artifact: Evidence satisfying Agent Ask improve-agent-ask-settle-usability
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#718: agent-ask settle's documentation or error output shows a combined usage example covering the required flag combination and preview-fingerprint requirement."
+      - "#722: split settlement chooses its next_action pointer after the compare-and-set retry, not before, so it cannot reflect a stale dependent set."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/718", "https://github.com/pmark/arcadia/issues/722"]
+  - id: fix-docs-sync-paused-project-handling
+    title: Make a paused Project actually stop being read, synced, and routed to, matching what 'paused' should mean.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make a paused Project actually stop being read, synced, and routed to, matching what 'paused' should mean.
+    expected_artifact: Evidence satisfying Agent Ask fix-docs-sync-paused-project-handling
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#298: Agent Ask v1 can set a Project's status, so pausing/reactivating no longer requires a hand edit of PROJECT.md."
+      - "#299: docs sync --all has a defined, tested scope for whether it ingests paused Projects."
+      - "#300: Ask routing (resolveProjectReference / resolveProjectContextFromRequest) does not resolve a paused Project."
+      - "#455: arcadia docs sync no longer silently omits documents whose frontmatter declares an unrecognized type; it reports them."
+      - "#662: docs sync --project cannot mutate another project's work_item when a plan slug and action id collide."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/298", "https://github.com/pmark/arcadia/issues/299", "https://github.com/pmark/arcadia/issues/300", "https://github.com/pmark/arcadia/issues/455", "https://github.com/pmark/arcadia/issues/662"]
+  - id: fix-auto-settle-eligibility-docs
+    title: Correct docs/agents-context.md's description of auto-settle eligibility and the no-workspace draft-only settle invocation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Correct docs/agents-context.md's description of auto-settle eligibility and the no-workspace draft-only settle invocation.
+    expected_artifact: Evidence satisfying Agent Ask fix-auto-settle-eligibility-docs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#640: docs/agents-context.md's auto-settle eligibility text states the per-criterion met requirement the code actually enforces."
+      - "#641: docs/agents-context.md states the exact settle invocation for the no-workspace draft-only case."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/640", "https://github.com/pmark/arcadia/issues/641"]
+  - id: harden-dispatch-and-claim-lifecycle
+    title: "Fix the dispatch and Action-claim defects: wrong dispatchability reporting, claims that outlive their worktree or candidate, and worktree prep that ignores an operator gate."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Fix the dispatch and Action-claim defects: wrong dispatchability reporting, claims that outlive their worktree or candidate, and worktree prep that ignores an operator gate."
+    expected_artifact: Evidence satisfying Agent Ask harden-dispatch-and-claim-lifecycle
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#459: go's refusal message's allowedPrefixes list includes opencode/, matching what SAFE_TASK_BRANCH actually allows."
+      - "#464: selectCompliantCodingAgent's capacityRefusals parameter receives capacity refusals, not launch-adapter refusals."
+      - "#494: resolveDispatch reports an Action with status: blocked as not dispatchable, matching the ready set and scheduler."
+      - "#549: An Action claim does not expire at 24h while its candidate is still unmerged, so arcadia go cannot re-dispatch a live Action."
+      - "#621: arcadia go's worktree-preparation branching is gated by the same resolveOperatorGate classification as launch, so it never prepares a worktree for an Action a pending operator item blocks."
+      - "#625: An Action claim (agent_worktree_reservations) is released once its worktree no longer exists, instead of outliving it and refusing dispatch."
+      - "#733: An Action claim is released once the claiming worktree's PR is confirmed merged (landed)."
+      - "#608: Base-branch-advance does not silently revert a manual git reset on a DB-active Project."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/459", "https://github.com/pmark/arcadia/issues/464", "https://github.com/pmark/arcadia/issues/494", "https://github.com/pmark/arcadia/issues/549", "https://github.com/pmark/arcadia/issues/621", "https://github.com/pmark/arcadia/issues/625", "https://github.com/pmark/arcadia/issues/733", "https://github.com/pmark/arcadia/issues/608"]
+  - id: fix-worker-and-dashboard-operational-bugs
+    title: Fix operational bugs in the worker, its install/recovery scripts, and the dashboard's status reporting.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Fix operational bugs in the worker, its install/recovery scripts, and the dashboard's status reporting.
+    expected_artifact: Evidence satisfying Agent Ask fix-worker-and-dashboard-operational-bugs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#392: The dashboard's production toggle does not re-derive scope.actions on reactivation."
+      - "#430: services.sh restart does not tear down all services when a single 2s health probe times out."
+      - "#450: The recovery script does not report failure before worker transports are actually ready."
+      - "#560: Worker install tests do not write to the real ~/Library/LaunchAgents/com.arcadia.worker.plist."
+      - "#569: add-arcadia-push-field-to-board.sh does not write a pnpm warning line into schedule-status.json."
+      - "#582: The dashboard /runs page reports the worker's actual running/stopped state, matching the real pidfile format."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/392", "https://github.com/pmark/arcadia/issues/430", "https://github.com/pmark/arcadia/issues/450", "https://github.com/pmark/arcadia/issues/560", "https://github.com/pmark/arcadia/issues/569", "https://github.com/pmark/arcadia/issues/582"]
+  - id: stabilize-test-and-build-infra
+    title: Remove flakiness and false failures from the test and build pipeline.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Remove flakiness and false failures from the test and build pipeline.
+    expected_artifact: Evidence satisfying Agent Ask stabilize-test-and-build-infra
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#452: pnpm test does not flake into 30s timeouts on CLI/discord subprocess tests under file parallelism."
+      - "#480: eslint's type-aware rules do not report false positives in a prepared worktree that are absent on the main checkout."
+      - "#514: The packageBoundary beforeAll build completes within vitest's 10s hook timeout on a clean checkout."
+      - "#557: Preservation check binding resolves dotted local Python submodule imports."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/452", "https://github.com/pmark/arcadia/issues/480", "https://github.com/pmark/arcadia/issues/514", "https://github.com/pmark/arcadia/issues/557"]
+  - id: close-ask-traceability-and-cli-portability-gaps
+    title: Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.
+    expected_artifact: Evidence satisfying Agent Ask close-ask-traceability-and-cli-portability-gaps
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced."
+      - "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/591", "https://github.com/pmark/arcadia/issues/716"]
+  - id: prove-contract-20-completion-gate
+    title: Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.
+    expected_artifact: Evidence satisfying Agent Ask prove-contract-20-completion-gate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#555: Contract-20's false-agent-completion quality gate is proven by a test, with an owning Action recorded."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/555"]
+  - id: harden-tidy-quarantine-safety-and-docs
+    title: Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.
+    expected_artifact: Evidence satisfying Agent Ask harden-tidy-quarantine-safety-and-docs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    acceptance_criteria:
+      - "#735: START_HERE.md documents tidy's actual archive-tag name (archive/tidy/<sha>), not archive/<branch>."
+      - "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet."
+      - "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/735", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5

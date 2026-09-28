@@ -1,0 +1,214 @@
+{
+  "agent_ask": "v1",
+  "request_id": "batch-defect-issues-into-actions-2026-09-27",
+  "project": "arcadia",
+  "intent": "action",
+  "desired_result": "Promote the 48 open, non-board-mirror defect issues into 12 batched, governed Actions in the active Plan, grouped by shared subsystem, so they are dispatchable work instead of an ungoverned issue backlog.",
+  "rationale": "A triage pass (Haiku classification, verified by hand) found that of 171 open issues, 121 are intentional GitHub-board mirrors of existing governed Actions (NORTH_STAR gate 1, 'the board is the surface') and must stay open as-is. The remaining 48 are genuine, independent defect reports that were never promoted to governed Actions. Batching by shared file/subsystem keeps the queue from growing by 48 near-duplicate single-issue Actions while still making each one individually closeable (Closes #<n> per issue) as its batch Action's PR lands.",
+  "actions": [
+    {
+      "id": "fix-rehearsal-fixture-validation-command",
+      "desired_result": "Give the two-Action rehearsal fixture a validation command that can actually pass for both Actions.",
+      "acceptance": [
+        "#726: The v5 fixture declares scripts/check-marker.mjs (committed at genesis) as its validation command instead of a file that does not exist yet for Action A."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/726"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "enable-unattended-claude-session-launch",
+      "desired_result": "Launch standing-policy Claude Sessions the same non-interactive way Codex launches, and remove the worktree-trust dialog that blocks them.",
+      "acceptance": [
+        "#727: A Claude Session launched by the worker runs non-interactively and exits on its own, with no approval bypass.",
+        "#698: go-broker install pre-trusts Claude Code's global worktree root so a fresh Session never hits the interactive 'trust this folder' dialog."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/727",
+        "https://github.com/pmark/arcadia/issues/698"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "harden-agent-ask-settlement-races-and-state",
+      "desired_result": "Fix the agent-ask settle correctness defects: stale revisions, missing locks, and state that diverges across concurrent or replayed settlements.",
+      "acceptance": [
+        "#296: settle --revision only hard-fails on genuinely stale input, matching what --preview's fingerprint already reported.",
+        "#304: agent-ask draft refuses to produce a completion Ask that is un-applicable at its own recorded candidate_revision.",
+        "#320: decision approve --dry-run replay of an applied deferral receipt is covered by a test and behaves correctly.",
+        "#321: An archived complete Ask's candidate_revision matches what the Mission Log records, not the settle commit.",
+        "#505: applyDecisionDeferral writes the pointer pair under a lock or compare-and-set so it cannot clobber a concurrent write.",
+        "#507: arcadia action settle prints the correct Next action under concurrent settlement.",
+        "#512: agent-ask settle --apply's auto-commit succeeds because it no longer stages its own gitignored archive file.",
+        "#592: agent-ask draft does not report an already-settled .arcadia/asks file as an auto-discover failure.",
+        "#598: agent-ask settle bumps a Plan's updated date when it amends that Plan.",
+        "#609: production activate's --expect-revision flag matches preview's expectedRevision field name.",
+        "#639: attemptSettleOneDraft only refreshes a stale candidate_revision when the refreshed evidence still verbatim-covers every criterion, not by ancestry alone.",
+        "#663: review approve --no-execute routes the packet's sourceInput correctly instead of through the general intent classifier."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/296",
+        "https://github.com/pmark/arcadia/issues/304",
+        "https://github.com/pmark/arcadia/issues/320",
+        "https://github.com/pmark/arcadia/issues/321",
+        "https://github.com/pmark/arcadia/issues/505",
+        "https://github.com/pmark/arcadia/issues/507",
+        "https://github.com/pmark/arcadia/issues/512",
+        "https://github.com/pmark/arcadia/issues/592",
+        "https://github.com/pmark/arcadia/issues/598",
+        "https://github.com/pmark/arcadia/issues/609",
+        "https://github.com/pmark/arcadia/issues/639",
+        "https://github.com/pmark/arcadia/issues/663"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "improve-agent-ask-settle-usability",
+      "desired_result": "Reduce agent-ask settle's friction so the correct flag combination and next step are discoverable without repeated failed attempts.",
+      "acceptance": [
+        "#718: agent-ask settle's documentation or error output shows a combined usage example covering the required flag combination and preview-fingerprint requirement.",
+        "#722: split settlement chooses its next_action pointer after the compare-and-set retry, not before, so it cannot reflect a stale dependent set."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/718",
+        "https://github.com/pmark/arcadia/issues/722"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "fix-docs-sync-paused-project-handling",
+      "desired_result": "Make a paused Project actually stop being read, synced, and routed to, matching what 'paused' should mean.",
+      "acceptance": [
+        "#298: Agent Ask v1 can set a Project's status, so pausing/reactivating no longer requires a hand edit of PROJECT.md.",
+        "#299: docs sync --all has a defined, tested scope for whether it ingests paused Projects.",
+        "#300: Ask routing (resolveProjectReference / resolveProjectContextFromRequest) does not resolve a paused Project.",
+        "#455: arcadia docs sync no longer silently omits documents whose frontmatter declares an unrecognized type; it reports them.",
+        "#662: docs sync --project cannot mutate another project's work_item when a plan slug and action id collide."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/298",
+        "https://github.com/pmark/arcadia/issues/299",
+        "https://github.com/pmark/arcadia/issues/300",
+        "https://github.com/pmark/arcadia/issues/455",
+        "https://github.com/pmark/arcadia/issues/662"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "fix-auto-settle-eligibility-docs",
+      "desired_result": "Correct docs/agents-context.md's description of auto-settle eligibility and the no-workspace draft-only settle invocation.",
+      "acceptance": [
+        "#640: docs/agents-context.md's auto-settle eligibility text states the per-criterion met requirement the code actually enforces.",
+        "#641: docs/agents-context.md states the exact settle invocation for the no-workspace draft-only case."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/640",
+        "https://github.com/pmark/arcadia/issues/641"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "harden-dispatch-and-claim-lifecycle",
+      "desired_result": "Fix the dispatch and Action-claim defects: wrong dispatchability reporting, claims that outlive their worktree or candidate, and worktree prep that ignores an operator gate.",
+      "acceptance": [
+        "#459: go's refusal message's allowedPrefixes list includes opencode/, matching what SAFE_TASK_BRANCH actually allows.",
+        "#464: selectCompliantCodingAgent's capacityRefusals parameter receives capacity refusals, not launch-adapter refusals.",
+        "#494: resolveDispatch reports an Action with status: blocked as not dispatchable, matching the ready set and scheduler.",
+        "#549: An Action claim does not expire at 24h while its candidate is still unmerged, so arcadia go cannot re-dispatch a live Action.",
+        "#621: arcadia go's worktree-preparation branching is gated by the same resolveOperatorGate classification as launch, so it never prepares a worktree for an Action a pending operator item blocks.",
+        "#625: An Action claim (agent_worktree_reservations) is released once its worktree no longer exists, instead of outliving it and refusing dispatch.",
+        "#733: An Action claim is released once the claiming worktree's PR is confirmed merged (landed).",
+        "#608: Base-branch-advance does not silently revert a manual git reset on a DB-active Project."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/459",
+        "https://github.com/pmark/arcadia/issues/464",
+        "https://github.com/pmark/arcadia/issues/494",
+        "https://github.com/pmark/arcadia/issues/549",
+        "https://github.com/pmark/arcadia/issues/621",
+        "https://github.com/pmark/arcadia/issues/625",
+        "https://github.com/pmark/arcadia/issues/733",
+        "https://github.com/pmark/arcadia/issues/608"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "fix-worker-and-dashboard-operational-bugs",
+      "desired_result": "Fix operational bugs in the worker, its install/recovery scripts, and the dashboard's status reporting.",
+      "acceptance": [
+        "#392: The dashboard's production toggle does not re-derive scope.actions on reactivation.",
+        "#430: services.sh restart does not tear down all services when a single 2s health probe times out.",
+        "#450: The recovery script does not report failure before worker transports are actually ready.",
+        "#560: Worker install tests do not write to the real ~/Library/LaunchAgents/com.arcadia.worker.plist.",
+        "#569: add-arcadia-push-field-to-board.sh does not write a pnpm warning line into schedule-status.json.",
+        "#582: The dashboard /runs page reports the worker's actual running/stopped state, matching the real pidfile format."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/392",
+        "https://github.com/pmark/arcadia/issues/430",
+        "https://github.com/pmark/arcadia/issues/450",
+        "https://github.com/pmark/arcadia/issues/560",
+        "https://github.com/pmark/arcadia/issues/569",
+        "https://github.com/pmark/arcadia/issues/582"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "stabilize-test-and-build-infra",
+      "desired_result": "Remove flakiness and false failures from the test and build pipeline.",
+      "acceptance": [
+        "#452: pnpm test does not flake into 30s timeouts on CLI/discord subprocess tests under file parallelism.",
+        "#480: eslint's type-aware rules do not report false positives in a prepared worktree that are absent on the main checkout.",
+        "#514: The packageBoundary beforeAll build completes within vitest's 10s hook timeout on a clean checkout.",
+        "#557: Preservation check binding resolves dotted local Python submodule imports."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/452",
+        "https://github.com/pmark/arcadia/issues/480",
+        "https://github.com/pmark/arcadia/issues/514",
+        "https://github.com/pmark/arcadia/issues/557"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "close-ask-traceability-and-cli-portability-gaps",
+      "desired_result": "Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.",
+      "acceptance": [
+        "#591: A command maps a capture_\u2026 id to the ask, back-burner item, or Action it produced.",
+        "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/591",
+        "https://github.com/pmark/arcadia/issues/716"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "prove-contract-20-completion-gate",
+      "desired_result": "Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.",
+      "acceptance": [
+        "#555: Contract-20's false-agent-completion quality gate is proven by a test, with an owning Action recorded."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/555"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "harden-tidy-quarantine-safety-and-docs",
+      "desired_result": "Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.",
+      "acceptance": [
+        "#735: START_HERE.md documents tidy's actual archive-tag name (archive/tidy/<sha>), not archive/<branch>.",
+        "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet.",
+        "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree."
+      ],
+      "references": [
+        "https://github.com/pmark/arcadia/issues/735",
+        "https://github.com/pmark/arcadia/issues/739",
+        "https://github.com/pmark/arcadia/issues/740"
+      ],
+      "dependencies": []
+    }
+  ]
+}
