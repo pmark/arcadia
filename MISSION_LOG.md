@@ -880,6 +880,13 @@ updated: 2026-09-28
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-tidy-harden-merge-and-liveness-verdicts-2026-09-27).
 
+## 2026-09-28 — Completed arcadia/tidy-journal-recovery-and-conservation-tests
+
+- **Did:** Completed Action arcadia/tidy-journal-recovery-and-conservation-tests from accepted evidence (Candidate 000062bb5b144a328e9949eea9b9821af852cc03).
+- **Result:** Every declared acceptance criterion was accepted as met: "Each quarantine step is written to an fsynced journal before it runs, and tidy startup rolls an interrupted run forward or back deterministically."; "A seeded generator of repository states (squash, rebase, detached HEADs, ignored files, missing directories, reused names, injected races) asserts that every reachable commit and every worktree file byte before tidy --apply is still reachable or quarantined after it."; "The same generator asserts that undo restores the exact prior state and that a second tidy --apply is a no-op.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-tidy-journal-recovery-and-conservation-tests-2026-09-28).
+
 ## 2026-09-28 — Agent Ask pr-opened-arcadia-pr750
 
 - **Did:** Shipped! Every future Arcadia PR now gets a Discord shout the moment it opens, and again the moment it truly needs your call: https://github.com/pmark/arcadia/pull/750

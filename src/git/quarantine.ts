@@ -1,5 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  ftruncateSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync
+} from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { git, tryGit } from "./worktrees.js";
@@ -19,8 +33,11 @@ import { git, tryGit } from "./worktrees.js";
  *
  * Every quarantine op writes its own manifest entry before returning
  * success, so a crash mid-run leaves a manifest that accounts for exactly
- * what has (and has not yet) been quarantined -- there is no separate
- * "commit" step that could be skipped.
+ * what has (and has not yet) been quarantined. A worktree quarantine also
+ * moves two directories that cannot rename atomically together, so an
+ * fsynced journal entry precedes each op and {@link recoverTidyJournals}
+ * settles anything left unfinished the next time tidy runs -- see the
+ * journal section below for how.
  */
 
 export interface QuarantinedBranch {
@@ -102,6 +119,313 @@ export function readTidyRun(repoRoot: string, run: string): TidyQuarantineManife
 }
 
 /**
+ * The crash-recovery journal.
+ *
+ * A branch quarantine is one atomic `git update-ref --stdin` transaction, but
+ * a worktree quarantine is not: it pins a ref, then renames two directories,
+ * then writes the manifest -- four steps a crash (or, for these tests, an
+ * injected fault) can land between. Before any of those steps runs, tidy
+ * writes a `begin` line here naming everything needed to finish or discard the
+ * step, and fsyncs it -- so the record of "this was in flight" survives even
+ * when the step itself does not. A `done` line, written only once every
+ * physical step and the manifest write above have actually landed, is what
+ * lets the next tidy invocation tell a finished op from one that crashed.
+ *
+ * Nothing here decides *whether* to roll forward or back: {@link
+ * recoverTidyJournals} decides that once, per op, from what is actually on
+ * disk, and this module never re-derives it from guesswork.
+ */
+
+interface BranchJournalOp {
+  op: "branch";
+  id: string;
+  run: string;
+  branch: string;
+  expectedTip: string;
+  quarantineRef: string;
+}
+
+interface WorktreeJournalOp {
+  op: "worktree";
+  id: string;
+  run: string;
+  worktreeId: string;
+  pinRef: string;
+  head: string;
+  worktreePath: string;
+  branch: string | null;
+  adminDirOriginal: string;
+  treeDest: string;
+  adminDest: string;
+  /** Whether the worktree's directory was already gone when this op began (no tree half to move). */
+  missing: boolean;
+}
+
+type JournalOp = BranchJournalOp | WorktreeJournalOp;
+type JournalLine = ({ phase: "begin" } & JournalOp) | { phase: "done"; id: string; run: string };
+
+function journalDir(commonDir: string): string {
+  return path.join(commonDir, "arcadia-tidy", "journal");
+}
+
+function journalFile(commonDir: string, run: string): string {
+  return path.join(journalDir(commonDir), `${run}.ndjson`);
+}
+
+function fsyncDir(dir: string): void {
+  const fd = openSync(dir, "r");
+  try {
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Append one line and fsync it before returning, so the write is durable on
+ * disk the moment this call returns -- not merely handed to a buffer the OS
+ * might still be holding when the process dies. Fsyncing the file descriptor
+ * makes the line's own bytes durable but not the directory entry that makes
+ * the file findable at all; the first line of a run additionally fsyncs the
+ * directory it just created the file in (and that directory's own parent, if
+ * this call is what created the directory too), so a power loss can never
+ * leave a step committed with no journal file to show for it.
+ */
+function appendJournalLine(commonDir: string, run: string, line: JournalLine): void {
+  const dir = journalDir(commonDir);
+  const dirAlreadyExisted = existsSync(dir);
+  mkdirSync(dir, { recursive: true });
+  const file = journalFile(commonDir, run);
+  const fileAlreadyExisted = existsSync(file);
+
+  if (fileAlreadyExisted) repairTornTail(file);
+
+  const fd = openSync(file, "a");
+  try {
+    writeSync(fd, `${JSON.stringify(line)}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+
+  if (!fileAlreadyExisted) {
+    fsyncDir(dir);
+    if (!dirAlreadyExisted) fsyncDir(path.dirname(dir));
+  }
+}
+
+/**
+ * Truncate away an incomplete trailing record left by a crash mid-`write`,
+ * before appending anything new. {@link readJournalLines} already tolerates
+ * a torn *final* line, but that tolerance stops working the moment a later
+ * append lands after it -- the torn fragment is then a line in the middle of
+ * the file, indistinguishable from real corruption. Repairing it here, before
+ * every append, means a torn tail is only ever the last line for as long as
+ * nothing writes to this journal again, exactly the case the read side covers.
+ */
+function repairTornTail(file: string): void {
+  const content = readFileSync(file, "utf8");
+  if (content.length === 0 || content.endsWith("\n")) return;
+  const lastNewline = content.lastIndexOf("\n");
+  const goodLength = lastNewline === -1 ? 0 : lastNewline + 1;
+  const fd = openSync(file, "r+");
+  try {
+    ftruncateSync(fd, goodLength);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Parse every line, tolerating exactly one failure mode: a crash mid-`write`
+ * tearing the final line in half. That torn line is necessarily a `begin`
+ * whose own fsync never happened, so nothing after it ever ran either --
+ * dropping it loses no recoverable state. A malformed line anywhere else is
+ * real corruption, not a torn write, and must not be silently discarded.
+ */
+function readJournalLines(file: string): JournalLine[] {
+  const rawLines = readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "");
+  const parsed: JournalLine[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    try {
+      parsed.push(JSON.parse(rawLines[i]) as JournalLine);
+    } catch (error) {
+      if (i === rawLines.length - 1) break;
+      throw error;
+    }
+  }
+  return parsed;
+}
+
+function refExists(repoRoot: string, ref: string): boolean {
+  return tryGit(repoRoot, ["rev-parse", "--verify", `${ref}^{commit}`]) !== null;
+}
+
+function ensureBranchManifestEntry(commonDir: string, run: string, entry: QuarantinedBranch): void {
+  const manifest = readManifest(commonDir, run);
+  if (manifest.branches.some((candidate) => candidate.branch === entry.branch)) return;
+  manifest.branches.push(entry);
+  writeManifest(commonDir, run, manifest);
+}
+
+function ensureWorktreeManifestEntry(commonDir: string, run: string, entry: QuarantinedWorktree): void {
+  const manifest = readManifest(commonDir, run);
+  if (manifest.worktrees.some((candidate) => candidate.worktreeId === entry.worktreeId)) return;
+  manifest.worktrees.push(entry);
+  writeManifest(commonDir, run, manifest);
+}
+
+/**
+ * Finish or discard one interrupted branch op, purely from what git reports
+ * now. The ref transaction that does the actual work is atomic, so there are
+ * only two reachable states: it happened (the quarantine ref exists) or it
+ * never did (the live branch ref is still there, untouched).
+ */
+function recoverBranchOp(repoRoot: string, commonDir: string, begin: BranchJournalOp): "forward" | "back" {
+  if (!refExists(repoRoot, begin.quarantineRef)) return "back";
+  ensureBranchManifestEntry(commonDir, begin.run, { branch: begin.branch, oldTip: begin.expectedTip, quarantineRef: begin.quarantineRef });
+  return "forward";
+}
+
+/**
+ * Finish or discard one interrupted worktree op.
+ *
+ * The pin ref is the first atomic step, but it alone is not "real progress":
+ * recovery runs at the start of *every* tidy invocation, including a plain
+ * preview, and before the write interlock that would otherwise re-check
+ * whether a Session has since leased the worktree, a process now has it as
+ * its cwd, or someone has resumed work in it. Finishing the move on the
+ * strength of the pin alone would relocate a worktree nobody has re-assessed
+ * since the crash. Once at least one of the two renames has actually landed
+ * the calculus flips: both halves already sit wherever they sit, and finishing
+ * the (idempotent) move is strictly safe and loses nothing. So "forward" is
+ * the answer only once real filesystem progress exists to protect; "back" —
+ * dropping the orphan pin — is the answer whenever nothing has moved yet,
+ * pin included.
+ */
+function recoverWorktreeOp(repoRoot: string, commonDir: string, begin: WorktreeJournalOp): "forward" | "back" {
+  if (!refExists(repoRoot, begin.pinRef)) return "back";
+
+  const anyRenameLanded = existsSync(begin.treeDest) || existsSync(begin.adminDest);
+  if (!anyRenameLanded) {
+    // Compare-and-swap: only drop the pin if it still points at the exact
+    // commit this op created it for. If the ref name has since moved on
+    // (however that could happen), an unconditional delete would drop a gc
+    // root that this op never owned.
+    tryGit(repoRoot, ["update-ref", "-d", begin.pinRef, begin.head]);
+    return "back";
+  }
+
+  if (!begin.missing && existsSync(begin.worktreePath) && !existsSync(begin.treeDest)) {
+    renameOntoQuarantine(begin.worktreePath, begin.treeDest);
+  }
+  if (existsSync(begin.adminDirOriginal) && !existsSync(begin.adminDest)) {
+    renameOntoQuarantine(begin.adminDirOriginal, begin.adminDest);
+  }
+
+  ensureWorktreeManifestEntry(commonDir, begin.run, {
+    worktreePath: begin.worktreePath,
+    branch: begin.branch,
+    head: begin.head,
+    worktreeId: begin.worktreeId,
+    pinRef: begin.pinRef,
+    treeMoved: !begin.missing,
+    quarantineDir: path.dirname(begin.adminDest)
+  });
+  return "forward";
+}
+
+export interface TidyJournalRecovery {
+  /** Human-readable description of each interrupted op that was finished. */
+  rolledForward: string[];
+  /** Human-readable description of each interrupted op that never actually started, and needed nothing. */
+  rolledBack: string[];
+  /** Ops that still could not be resolved (e.g. a persistent EXDEV/EACCES) -- left open for the next attempt, and reported rather than blocking every later tidy invocation. */
+  failed: string[];
+  /** Original paths of worktrees whose recovery just failed, so this same invocation's own assessment does not attempt to quarantine the identical worktree a second time under a fresh run id while the first attempt is still stuck. */
+  stuckWorktreePaths: string[];
+}
+
+/**
+ * Resolve every quarantine op left in flight by a previous `tidy --apply` that
+ * never reached its `done` line -- a crash, a killed process, or (for these
+ * tests) an injected fault. Deterministic and idempotent: run it as many
+ * times as you like, including with nothing to recover, and it settles into
+ * the same end state and writes each op's `done` line at most once.
+ *
+ * Called at the start of every `tidy` invocation, preview or apply, because an
+ * interrupted run's damage belongs to whoever crashed it, not to whichever
+ * command happens to run next. Each op is resolved independently: one that
+ * keeps failing (a permanently unwritable filesystem, a persistently occupied
+ * destination) is reported and left open rather than throwing out of this
+ * function and taking every later tidy invocation down with it.
+ */
+export function recoverTidyJournals(repoRoot: string): TidyJournalRecovery {
+  const commonDir = gitCommonDir(repoRoot);
+  const dir = journalDir(commonDir);
+  const result: TidyJournalRecovery = { rolledForward: [], rolledBack: [], failed: [], stuckWorktreePaths: [] };
+  if (!existsSync(dir)) return result;
+
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".ndjson")) continue;
+    const run = file.slice(0, -".ndjson".length);
+    const filePath = path.join(dir, file);
+    const lines = readJournalLines(filePath);
+    const begins = new Map<string, JournalOp>();
+    const resolved = new Set<string>();
+    for (const line of lines) {
+      if (line.phase === "begin") begins.set(line.id, line);
+      else resolved.add(line.id);
+    }
+    for (const [id, begin] of begins) {
+      if (resolved.has(id)) continue;
+      const label = begin.op === "branch" ? `branch ${begin.branch} (run ${run})` : `worktree ${begin.worktreePath} (run ${run})`;
+      try {
+        const outcome =
+          begin.op === "branch" ? recoverBranchOp(repoRoot, commonDir, begin) : recoverWorktreeOp(repoRoot, commonDir, begin);
+        (outcome === "forward" ? result.rolledForward : result.rolledBack).push(label);
+        appendJournalLine(commonDir, run, { phase: "done", id, run });
+        resolved.add(id);
+      } catch (error) {
+        result.failed.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+        if (begin.op === "worktree") result.stuckWorktreePaths.push(begin.worktreePath);
+      }
+    }
+    // Fully settled the moment every begin in this file has a matching
+    // resolution -- drop it here rather than waiting for `finalizeTidyJournal`,
+    // which only ever looks at the current invocation's own run id.
+    if ([...begins.keys()].every((id) => resolved.has(id))) {
+      try {
+        rmSync(filePath, { force: true });
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Drop a run's journal file once every op it recorded has reached `done` --
+ * it has finished doing its job and would otherwise accumulate forever. A run
+ * with anything still dangling (a genuinely failed quarantine attempt tidy
+ * itself already reported, not merely an old, fully-resolved one) is left
+ * alone: {@link recoverTidyJournals} still needs it on the next invocation.
+ */
+export function finalizeTidyJournal(repoRoot: string, run: string): void {
+  const commonDir = gitCommonDir(repoRoot);
+  const file = journalFile(commonDir, run);
+  if (!existsSync(file)) return;
+  const lines = readJournalLines(file);
+  const doneIds = new Set(lines.filter((line) => line.phase === "done").map((line) => line.id));
+  const allDone = lines.filter((line) => line.phase === "begin").every((line) => doneIds.has(line.id));
+  if (allDone) rmSync(file, { force: true });
+}
+
+/**
  * Whether a path is reachable at all, distinguishing three states a plain
  * `existsSync` collapses into one: present, provably gone (`ENOENT`/`ENOTDIR`
  * -- ordinary `git worktree prune` territory), or merely unreachable right
@@ -158,24 +482,35 @@ export function quarantineBranch(
   branch: string,
   run: string,
   /** The tip to require as the CAS "old value", when a caller already resolved it (e.g. before injecting a test race). Resolved fresh when omitted. */
-  knownTip?: string
+  knownTip?: string,
+  /** Deterministic fault injection for race regression tests. Not exposed by the CLI. */
+  testHooks?: { beforeRefTransaction?: () => void; afterRefTransaction?: () => void }
 ): QuarantinedBranch | null {
   const expectedTip = knownTip ?? tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}^{commit}`])?.trim();
   if (!expectedTip) return null;
 
   const commonDir = gitCommonDir(repoRoot);
   const quarantineRef = `refs/arcadia/tidy/${run}/heads/${branch}`;
+  const id = `branch:${run}:${branch}`;
   const oldReflogPath = path.join(commonDir, "logs", "refs", "heads", branch);
   const oldReflog = existsSync(oldReflogPath) ? readFileSync(oldReflogPath, "utf8") : null;
+
+  appendJournalLine(commonDir, run, { phase: "begin", op: "branch", id, run, branch, expectedTip, quarantineRef });
+  testHooks?.beforeRefTransaction?.();
 
   const script = `start\ncreate ${quarantineRef} ${expectedTip}\ndelete refs/heads/${branch} ${expectedTip}\ncommit\n`;
   const result = spawnSync("git", ["update-ref", "--stdin"], { cwd: repoRoot, input: script, encoding: "utf8" });
   if (result.status !== 0) return null;
 
+  testHooks?.afterRefTransaction?.();
+
   // The ref transaction above already committed: the branch is quarantined
   // whether or not anything below succeeds. The manifest entry is written
   // immediately, before the best-effort reflog copy, so a crash never leaves
-  // a quarantined ref `tidy list`/`tidy undo` cannot find.
+  // a quarantined ref `tidy list`/`tidy undo` cannot find -- and if it does
+  // anyway (the process dies between the two lines below), the next tidy
+  // invocation's journal recovery reconstructs this same entry from the
+  // quarantine ref alone.
   const entry: QuarantinedBranch = { branch, oldTip: expectedTip, quarantineRef };
   const manifest = readManifest(commonDir, run);
   manifest.branches.push(entry);
@@ -188,6 +523,7 @@ export function quarantineBranch(
     writeFileSync(newReflogPath, oldReflog + freshEntry);
   }
 
+  appendJournalLine(commonDir, run, { phase: "done", id, run });
   return entry;
 }
 
@@ -268,7 +604,9 @@ export function findAdminDirForMissingWorktree(commonDir: string, worktreePath: 
 export function quarantineWorktree(
   repoRoot: string,
   entry: { path: string; branch: string | null; head: string },
-  run: string
+  run: string,
+  /** Deterministic fault injection for race regression tests. Not exposed by the CLI. */
+  testHooks?: { afterPin?: () => void; afterTreeMove?: () => void; afterAdminMove?: () => void }
 ): QuarantinedWorktree | null {
   const commonDir = gitCommonDir(repoRoot);
   const presence = probePath(entry.path);
@@ -293,14 +631,34 @@ export function quarantineWorktree(
 
   const worktreeId = path.basename(adminDir);
   const pinRef = `refs/arcadia/tidy/${run}/worktrees/${worktreeId}`;
-  if (tryGit(repoRoot, ["update-ref", pinRef, head]) === null) return null;
-
   const quarantineDir = path.join(quarantineRunRoot(commonDir, run), worktreeId);
   const treeDest = path.join(quarantineDir, "worktree");
   const adminDest = path.join(quarantineDir, "admin");
+  const id = `worktree:${run}:${worktreeId}`;
+
+  appendJournalLine(commonDir, run, {
+    phase: "begin",
+    op: "worktree",
+    id,
+    run,
+    worktreeId,
+    pinRef,
+    head,
+    worktreePath: entry.path,
+    branch: entry.branch,
+    adminDirOriginal: adminDir,
+    treeDest,
+    adminDest,
+    missing
+  });
+
+  if (tryGit(repoRoot, ["update-ref", pinRef, head]) === null) return null;
+  testHooks?.afterPin?.();
 
   if (!missing) renameOntoQuarantine(entry.path, treeDest);
+  testHooks?.afterTreeMove?.();
   renameOntoQuarantine(adminDir, adminDest);
+  testHooks?.afterAdminMove?.();
 
   const result: QuarantinedWorktree = {
     worktreePath: entry.path,
@@ -314,6 +672,7 @@ export function quarantineWorktree(
   const manifest = readManifest(commonDir, run);
   manifest.worktrees.push(result);
   writeManifest(commonDir, run, manifest);
+  appendJournalLine(commonDir, run, { phase: "done", id, run });
   return result;
 }
 
