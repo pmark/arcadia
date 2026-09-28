@@ -209,7 +209,9 @@ Governance state is what a document *asserts about the work*: an Action's
 `status`, `delivered`, or `result`; the `current_action` and `active_plan`
 pointers; a Decision's answer; a Milestone or Outcome; anything in the queue.
 Writing those by hand is fabricating a record of something nobody decided, and
-it is the whole reason this rule exists.
+it is the whole reason this rule exists. The one exception is a Decision
+document in a Decision PR. There the `answer` is a ballot that only the
+operator's merge makes true (see "Decide by merging a pull request").
 
 **Document hygiene is not governance state.** A malformed `type:` in
 frontmatter, a heading that does not parse, a stale date, a typo — these assert
@@ -846,7 +848,9 @@ attention and protects nothing.
   important Decision, or that changes what agents are authorized to do: the
   Constitution, approval boundaries, spend, or credentials. Settle, commit,
   push, open the PR, and run the CodeRabbit loop as usual, then stop at the
-  handoff and leave the merge and the Decision's answer to the operator.
+  handoff and leave the merge and the Decision's answer to the operator. A
+  Decision PR (see "Decide by merging a pull request") is always in this
+  group.
 - **This is a merge authorization only.** It does not authorize deployment,
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
@@ -894,12 +898,65 @@ poll a dashboard.
 - **A plain PR comment from the operator is a legitimate answer.** Read it the
   next time you touch that PR and act on it like any other operator
   instruction — alongside the normal Decision or picker flow, never as a
-  silent substitute for recording the Decision's actual answer.
+  silent substitute for recording the Decision's actual answer. On a Decision
+  PR, a comment choosing an option rewrites the ballot, as "Decide by merging
+  a pull request" describes.
 - **This never widens authority.** It reuses the Discord channel and
   `intent: log` settlement already governing "CI failures are fixed
   immediately" above; it does not authorize a new messaging channel, and it
   never substitutes for a required Decision, approval boundary, or the
   CodeRabbit/CI loops above.
+
+## Decide by merging a pull request
+
+The operator answers Decisions by merging pull requests. This is the default
+in every Project, and it holds whether the agent was launched by managed
+production or by the operator. **The pull request is the question; the
+operator's merge is the answer.** The operator should never have to open a
+coding agent, a terminal, or the dashboard just to decide something.
+
+- **Open a Decision PR.** When work reaches a Decision that the Decision
+  intent triage says the operator must answer, put the Decision document on a
+  branch and open a PR for it.
+  - Where a workspace is reachable, create the document through the
+    `decision` Agent Ask settled in that branch. Otherwise write it by hand
+    under `docs/decisions/`, with the next free id.
+  - Either way, the document carries every option with its consequence and
+    `status: approved`, with the **recommended** option as `answer`.
+  - Say plainly in the document and the PR body that it takes effect only
+    when the operator merges.
+- **One Decision per PR.** Keep the Decision PR free of unrelated code, so
+  that merging it answers exactly one question.
+- **Make the PR a complete ballot.** The PR body opens with:
+  - "Merging accepts: <recommended option>";
+  - each other option, numbered, with its consequence;
+  - "To choose another option, comment with its number."
+- **Ping and keep going.** Send the "ready for you" notification (reason-slug
+  `decision-answer`) once CodeRabbit and CI are clear. Then continue with any
+  work that does not depend on the answer. A Decision PR waiting for review
+  does not block unrelated work.
+- **A comment choosing another option rewrites the ballot.** When the
+  operator comments with another option's number or words, change `answer`
+  (and the PR body) to that option, validate, and push. The operator's merge
+  still does the deciding. A comment that is not a clear choice is a
+  question: answer it on the PR.
+- **Only the operator merges a Decision PR.** "Merge on green" never applies
+  to it, and CodeRabbit approval does not stand in for the operator. If the
+  operator explicitly tells an agent to merge a specific Decision PR, record
+  that instruction verbatim on the PR first, then merge.
+- **A Decision the operator answered in their own words** goes into the same
+  shape of PR, with their answer rather than the recommendation. Decisions
+  0073 and 0074 were recorded this way.
+- **An unmerged Decision decides nothing.** An `approved` Decision document on
+  an unmerged branch is a proposal. Nothing may act on it as settled until it
+  is on the base branch.
+- **Retire superseded Asks.** If a `decision` Ask was already drafted for the
+  same question, move it to `.arcadia/asks/archive/` in the Decision PR.
+  Settling it later would open a duplicate Decision.
+
+This never widens authority. A Decision PR records an answer; it does not
+carry out a deploy, spend, credential use, or any other approval boundary
+that answer might authorize. Those remain their own gated steps.
 
 ## Make it real
 
