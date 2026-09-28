@@ -2,6 +2,7 @@
 arcadia: v1
 type: proposal
 project: arcadia
+decision: "0074"
 question: Should every Arcadia website module follow one integration contract — a neutral library, a CLI printing versioned schema-defined JSON, a Capability Contract v1 module that alone holds governance, and an MCP facade generated from the same JSON — with Uplink (copywriting) and Downlink (SEO) as the first worked example, and MCP built only when its trigger fires?
 ---
 
