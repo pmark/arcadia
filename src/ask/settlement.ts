@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
