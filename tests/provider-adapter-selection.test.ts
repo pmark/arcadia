@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CodingAgentAvailabilitySnapshot } from "../src/codingAgents/availability.js";
 import {
@@ -299,6 +301,28 @@ describe("hard-evidence provider substitution (Decision 0063)", () => {
 
     expect(selection.configuration.provider).not.toBe("codex-cli");
     expect(selection.substitution).toBeNull();
+  });
+
+  it("fills capacityRefusals only from capacity admission, never from launch-adapter refusals (Issue #464)", () => {
+    // One parameter must not carry two meanings: launch-adapter support is
+    // hard evidence (`launch_precluded`), and Decision 0063 forbids advisory
+    // capacity from ever riding the same door. Only capacity.ts may supply
+    // `capacityRefusals`; providerAdapters.ts declares and echoes it.
+    const allowed = new Set(["src/codingAgents/capacity.ts", "src/codingAgents/providerAdapters.ts"]);
+    const suppliers: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const full = path.join(directory, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".ts") && /\bcapacityRefusals\s*:/.test(readFileSync(full, "utf8"))) {
+          suppliers.push(path.relative(process.cwd(), full).split(path.sep).join("/"));
+        }
+      }
+    };
+    walk(path.join(process.cwd(), "src"));
+
+    expect(suppliers.filter((file) => !allowed.has(file))).toEqual([]);
+    expect(suppliers).toContain("src/codingAgents/capacity.ts");
   });
 
   it("surfaces incapacity normally rather than lowering a capability floor", () => {

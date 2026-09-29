@@ -12,12 +12,14 @@ import { withDatabase, withReadOnlyDatabase, writeTransaction } from "../db/conn
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { discoverDocs } from "../docs/discover.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
-import { renderOperatorAlerts } from "../docs/operatorGate.js";
+import { operatorGateBlockers, renderOperatorAlerts } from "../docs/operatorGate.js";
+import { resolveOperatorGate } from "../ask/operatorGate.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
 import { activateNextPlan, type ActivateNextPlanResult } from "../dispatch/planActivationApply.js";
 import {
   SAFE_TASK_BRANCH,
+  SAFE_TASK_BRANCH_PREFIXES,
   assertClean,
   untrackedDraftAskPaths,
   countCommits,
@@ -43,6 +45,7 @@ import {
   launchPreparedSession,
   prepareSession,
   releaseActionClaim,
+  releaseLandedActionClaim,
   reserveAgentWorktree,
   resolveProjectTransition,
   systemTmux,
@@ -253,7 +256,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     if (!SAFE_TASK_BRANCH.test(sourceBranch)) {
       throw validationError("Arcadia go only removes clearly agent-owned task branches.", {
         sourceBranch,
-        allowedPrefixes: ["codex/", "claude/", "agent/", "worktree-"],
+        allowedPrefixes: [...SAFE_TASK_BRANCH_PREFIXES],
         remedy: "Preserve this branch and route it through a reviewed Arcadia recovery; protected Go will not retire it."
       });
     }
@@ -673,6 +676,34 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             // here. So skip this entry and try the next, rather than letting one
             // Action's unresolved candidate stop the whole walk.
             continue;
+          }
+
+          // The same operator gate `resolveProjectTransition` applies before a
+          // launch, applied before any worktree is prepared or resumed: a
+          // pending Decision or unsettled Agent Ask naming this Action stops
+          // preparation itself, not only the reported status (Issue #621).
+          const gate = resolveOperatorGate({
+            db,
+            repoRoot: fallbackDispatchRoot(),
+            projectSlug,
+            selectedActionId: attemptActionId
+          });
+          const gateBlocker = gate.blocking[0];
+          if (gateBlocker) {
+            // The pointer's own Action is refused with the item to settle; a
+            // fallback candidate is skipped like any other ineligible entry.
+            if (attemptActionId !== actionId) continue;
+            refusal ??= {
+              kind: "refuse",
+              reason: "A pending operator item blocks this Action; Arcadia go will not prepare a worktree for it until it is settled.",
+              details: {
+                actionId: attemptActionId,
+                projectSlug,
+                blockers: operatorGateBlockers(gate.blocking),
+                remedy: `Settle this before dispatch: ${gateBlocker.settleCommand}`
+              }
+            };
+            break;
           }
 
           if (candidate.kind === "resume") {
@@ -1108,7 +1139,12 @@ function evaluateExistingCandidate(
   // Session, no handoff and no orphan of its own. A live claim is a hard
   // refusal, never an advisory flag a caller can act past -- the whole failure
   // being fixed is a session reading a clearly-worded brief and starting anyway.
-  const claimed = getActiveActionClaim(db, input.controlWorktree, input.projectSlug, input.actionId, input.now);
+  let claimed = getActiveActionClaim(db, input.controlWorktree, input.projectSlug, input.actionId, input.now);
+  // A claim whose candidate PR is confirmed merged has finished its work, so
+  // release it here instead of refusing until its window lapses (Issue #733).
+  if (claimed && releaseLandedActionClaim(db, claimed)) {
+    claimed = getActiveActionClaim(db, input.controlWorktree, input.projectSlug, input.actionId, input.now);
+  }
   if (claimed) {
     // Past its 24-hour window, a claim is only still returned because its
     // candidate is unmerged (Issue #549) -- name that candidate, since the

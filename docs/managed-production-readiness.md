@@ -200,10 +200,12 @@ summary). Each is an ordinary `claude-sonnet-5` session at medium effort.
 
 ### Rehearsal hazards still open
 
-- **#608:** while the standing policy is Off, the worker fast-forwards every
-  DB-active Project's checkout to `origin/main`. The replay proves this never
-  rewinds an integrated, unpushed `main`, but a manual `git reset --hard` on a
-  fixture is still silently undone.
+- **#608 (fixed by `harden-dispatch-and-claim-lifecycle`):** the worker now
+  fast-forwards a checkout onto `origin/main` only under an Active policy
+  whose scope names that Project, and logs every fast-forward with both SHAs.
+  With production Off, a manual `git reset --hard` on a fixture stays put.
+  Under an Active in-scope policy it is still reverted, but the worker log
+  names the revert.
 - **#717:** the preserve broker strips validation failure details to `{}`, so an
   agent cannot diagnose its own refusal. Defect 3's fix removes the known
   trigger. The host-side `validation.json` under `artifacts/preservation/` still

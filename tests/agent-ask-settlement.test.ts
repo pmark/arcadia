@@ -564,7 +564,7 @@ describe("Agent Ask settlement", () => {
           withDatabase(workspace, (db) => {
             db.prepare("UPDATE agent_worktree_reservations SET expires_at = ?").run(now.toISOString());
             reserveAgentWorktree(db, {
-              repositoryPath: repo, worktreePath: path.join(path.dirname(repo), "candidate-took-over"),
+              repositoryPath: repo, worktreePath: existingDirectory(path.join(path.dirname(repo), "candidate-took-over")),
               branch: "claude/candidate-took-over", now, project: "demo", actionId: "first"
             });
           });
@@ -2194,4 +2194,10 @@ function planDoc(): string {
     "    expected_artifact: Existing proof", "    clarification: clarified", "    confidence: high",
     "    acceptance_criteria:", "      - Existing proof exists.", "    depends_on: []", "    decisions: []",
     "    references: []", "questions: []", "---", "", "# Demo plan", ""].join("\n");
+}
+
+/** A directory that exists, standing in for a live claim's worktree (Issue #625). */
+function existingDirectory(directory: string): string {
+  mkdirSync(directory, { recursive: true });
+  return directory;
 }

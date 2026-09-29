@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -8,10 +8,12 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { transitionActionPointer } from "../src/dispatch/pointer.js";
 import {
+  claimCandidateLanded,
   getActiveActionClaim,
   getActiveWorktreeReservation,
   isHeldByUnmergedCandidate,
   releaseActionClaim,
+  releaseLandedActionClaim,
   reserveAgentWorktree
 } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -429,6 +431,137 @@ describe("Action claims held past their window by an unmerged candidate (Issue #
   });
 });
 
+describe("Action claims whose worktree no longer exists (Issue #625)", () => {
+  it("releases a live claim once its worktree is removed, and lets the Action be claimed again", () => {
+    const candidate = candidateRepository();
+    withDatabase(claimWorkspace(), (db) => {
+      reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: candidate.worktree,
+        branch: candidate.branch,
+        now: NOW,
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)?.worktree_path)
+        .toBe(realpathSync(candidate.worktree));
+
+      // Removed out of band -- the raw Git cleanup `go`'s remedy text names --
+      // with nothing releasing the claim, well inside its 24-hour window.
+      git(candidate.repo, ["worktree", "remove", "--force", candidate.worktree]);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).toBeNull();
+
+      // Re-dispatch is not refused, by the query or by the unique index.
+      const second = scratch("arcadia-live-worktree-second-");
+      const reclaimed = reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: second,
+        branch: "claude/action-a-second",
+        now: new Date(NOW.getTime() + 60_000),
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)?.claim_generation)
+        .toBe(reclaimed.claim_generation);
+    });
+  });
+});
+
+describe("Action claims whose candidate PR is confirmed merged (Issue #733)", () => {
+  const originalPath = process.env.PATH;
+  afterEach(() => {
+    process.env.PATH = originalPath;
+  });
+
+  /** A `gh` stub that reports exactly these merged pull requests, or fails. */
+  function fakeGh(merged: Array<{ headRefName: string; headRefOid: string }> | "fail"): void {
+    const bin = scratch("arcadia-claim-gh-");
+    const gh = path.join(bin, "gh");
+    writeFileSync(gh, merged === "fail"
+      ? "#!/bin/sh\nexit 1\n"
+      : [
+          "#!/bin/sh",
+          "cat <<'JSON'",
+          JSON.stringify(merged.map((entry, index) => ({
+            number: index + 1,
+            headRefName: entry.headRefName,
+            headRefOid: entry.headRefOid,
+            mergeCommit: { oid: "f".repeat(40) },
+            isCrossRepository: false
+          }))),
+          "JSON"
+        ].join("\n"), "utf8");
+    chmodSync(gh, 0o755);
+    process.env.PATH = `${bin}:${originalPath ?? ""}`;
+  }
+
+  /** A clean, live claim on a candidate squash-merged elsewhere: offline ancestry cannot prove it landed. */
+  function landedCandidate() {
+    const candidate = candidateRepository();
+    git(candidate.repo, ["remote", "add", "origin", "https://github.com/example/fixture.git"]);
+    const tip = git(candidate.repo, ["rev-parse", candidate.branch]).trim();
+    return { ...candidate, tip };
+  }
+
+  function claim(db: Database.Database, candidate: { repo: string; worktree: string; branch: string }) {
+    return reserveAgentWorktree(db, {
+      repositoryPath: candidate.repo,
+      worktreePath: candidate.worktree,
+      branch: candidate.branch,
+      now: NOW,
+      project: "arcadia",
+      actionId: "action-a"
+    });
+  }
+
+  function claimSecond(db: Database.Database, repo: string) {
+    return reserveAgentWorktree(db, {
+      repositoryPath: repo,
+      worktreePath: scratch("arcadia-live-worktree-second-"),
+      branch: "claude/action-a-second",
+      now: new Date(NOW.getTime() + 60_000),
+      project: "arcadia",
+      actionId: "action-a"
+    });
+  }
+
+  it("releases a live claim once its branch's PR is merged at the current tip and the worktree is clean", () => {
+    const candidate = landedCandidate();
+    fakeGh([{ headRefName: candidate.branch, headRefOid: candidate.tip }]);
+    withDatabase(claimWorkspace(), (db) => {
+      const first = claim(db, candidate);
+      expect(claimCandidateLanded(first)).toBe(true);
+
+      const second = claimSecond(db, candidate.repo);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)?.claim_generation)
+        .toBe(second.claim_generation);
+    });
+  });
+
+  it("keeps the claim when the branch moved past the merged head, the worktree is dirty, or GitHub cannot confirm", () => {
+    const candidate = landedCandidate();
+    withDatabase(claimWorkspace(), (db) => {
+      const first = claim(db, candidate);
+
+      // Merged, but at an older head: the agent has committed since.
+      fakeGh([{ headRefName: candidate.branch, headRefOid: "0".repeat(40) }]);
+      expect(releaseLandedActionClaim(db, first)).toBe(false);
+      expect(() => claimSecond(db, candidate.repo)).toThrowError(/already claimed by a live worktree/);
+
+      // GitHub unavailable: an unconfirmed merge is not a merge.
+      fakeGh("fail");
+      expect(releaseLandedActionClaim(db, first)).toBe(false);
+
+      // Merged at the tip, but uncommitted work remains in the worktree.
+      fakeGh([{ headRefName: candidate.branch, headRefOid: candidate.tip }]);
+      writeFileSync(path.join(candidate.worktree, "unsaved.md"), "work after the merge\n");
+      expect(releaseLandedActionClaim(db, first)).toBe(false);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)?.claim_generation)
+        .toBe(first.claim_generation);
+    });
+  });
+});
+
 interface PointerFixture {
   repo: string;
   workspace: string;
@@ -550,7 +683,8 @@ describe("Action claims fenced through the pointer transition", () => {
     withDatabase(fixture.workspace, (db) => {
       const claimed = reserveAgentWorktree(db, {
         repositoryPath: fixture.repo,
-        worktreePath: path.join(fixture.repo, ".claude/worktrees/alpha"),
+        // A live claim needs a worktree that exists (Issue #625).
+        worktreePath: scratch("arcadia-live-worktree-alpha-"),
         branch: "claude/alpha",
         now: NOW,
         project: "demo",
@@ -578,7 +712,8 @@ describe("Action claims fenced through the pointer transition", () => {
     withDatabase(fixture.workspace, (db) => {
       const first = reserveAgentWorktree(db, {
         repositoryPath: fixture.repo,
-        worktreePath: path.join(fixture.repo, ".claude/worktrees/alpha-1"),
+        // A live claim needs a worktree that exists (Issue #625).
+        worktreePath: scratch("arcadia-live-worktree-alpha-1-"),
         branch: "claude/alpha-1",
         now: NOW,
         project: "demo",
@@ -591,7 +726,8 @@ describe("Action claims fenced through the pointer transition", () => {
       db.prepare("UPDATE agent_worktree_reservations SET expires_at = ?").run(NOW.toISOString());
       const second = reserveAgentWorktree(db, {
         repositoryPath: fixture.repo,
-        worktreePath: path.join(fixture.repo, ".claude/worktrees/alpha-2"),
+        // A live claim needs a worktree that exists (Issue #625).
+        worktreePath: scratch("arcadia-live-worktree-alpha-2-"),
         branch: "claude/alpha-2",
         now: NOW,
         project: "demo",

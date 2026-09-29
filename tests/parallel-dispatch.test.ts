@@ -130,7 +130,8 @@ describe("arcadia go — one ready Action per concurrent session", () => {
     withDatabase(fixture.workspace, (db) => {
       reserveAgentWorktree(db, {
         repositoryPath: fixture.main,
-        worktreePath: path.join(fixture.root, "elsewhere", "gamma"),
+        // A live claim needs a worktree that exists (Issue #625).
+        worktreePath: existingDirectory(path.join(fixture.root, "elsewhere", "gamma")),
         branch: "claude/gamma-elsewhere",
         now: new Date(START.getTime() - 60 * 60_000),
         project: "parallel-project",
@@ -203,7 +204,8 @@ describe("arcadia go — one ready Action per concurrent session", () => {
     withDatabase(fixture.workspace, (db) => {
       reserveAgentWorktree(db, {
         repositoryPath: fixture.main,
-        worktreePath: path.join(fixture.root, "elsewhere", "alpha"),
+        // A live claim needs a worktree that exists (Issue #625).
+        worktreePath: existingDirectory(path.join(fixture.root, "elsewhere", "alpha")),
         branch: "claude/alpha-elsewhere",
         now: START,
         project: "parallel-project",
@@ -395,3 +397,9 @@ actions:
 
 # Parallel plan
 `;
+
+/** A directory that exists, standing in for a live claim's worktree (Issue #625). */
+function existingDirectory(directory: string): string {
+  mkdirSync(directory, { recursive: true });
+  return directory;
+}

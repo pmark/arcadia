@@ -703,7 +703,15 @@ export function runManagedProductionTick(
     let askSurfacing: MergedAskSurfacing | null = null;
     if (projectInActiveScope(db, project.slug) && shouldAttemptBaseBranchObservation(db, { projectSlug: project.slug, repoRoot, now })) {
       try {
-        baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
+        // Moving the checkout is management, so only an Active policy whose
+        // scope names this Project authorizes it. With production Off every
+        // Project passes the scope check above, and fast-forwarding then kept
+        // every DB-active checkout in lockstep with its remote, silently
+        // undoing a manual `git reset` (Issue #608). Observation still runs.
+        const policyForAdvance = readProductionPolicySafely(db);
+        const fastForward = policyForAdvance.status === "ok" && policyForAdvance.policy.desiredState === "active"
+          && (policyForAdvance.policy.scope?.projects ?? []).includes(project.slug);
+        baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log, fastForward });
         clearBaseBranchObservationFailure(db, project.slug);
         // An Ask merged from a cloud session only becomes a pending approval
         // once something previews it; do that here, on the checkout the tick
@@ -1280,7 +1288,15 @@ function clearBaseBranchObservationFailure(db: Database.Database, projectSlug: s
 
 function detectBaseBranchAdvance(
   db: Database.Database,
-  input: { repoRoot: string; projectSlug: string; projectId: string; now: Date; log: (message: string) => void }
+  input: {
+    repoRoot: string;
+    projectSlug: string;
+    projectId: string;
+    now: Date;
+    log: (message: string) => void;
+    /** Whether the standing policy authorizes moving this checkout onto its remote. */
+    fastForward: boolean;
+  }
 ): BaseBranchAdvanceObservation | null {
   const baseBranch = resolveBaseBranch(input.repoRoot);
   // Fetch and fast-forward the local base branch onto its remote when that is
@@ -1291,8 +1307,15 @@ function detectBaseBranchAdvance(
   // `--ff-only` refuses (leaving everything untouched) on any divergence or
   // conflicting local change, so a tick can attempt this every time with no
   // risk of rewriting or discarding work.
-  if (tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
+  // Never silent: a fast-forward that moved the checkout is logged with both
+  // SHAs, so a manual reset it undid is named rather than just gone (#608).
+  if (input.fastForward && tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
+    const headBefore = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
     tryGit(input.repoRoot, ["merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
+    const headAfter = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
+    if (headBefore && headAfter && headBefore !== headAfter) {
+      input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
+    }
   }
   const newSha = git(input.repoRoot, ["rev-parse", baseBranch]).trim();
   const at = input.now.toISOString();
