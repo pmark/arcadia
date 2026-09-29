@@ -254,17 +254,20 @@ describe("rehearsal provider: the launched process must be able to run and exit 
     expect([a.provider, b.provider]).toEqual(["opencode-cli", "opencode-cli"]);
   });
 
-  // pmark/arcadia#727, recorded as an expected failure so it flips loudly once fixed:
-  // a standing-policy Claude Session is launched as the interactive TUI, which
-  // stops at the workspace trust dialog on a fresh candidate worktree
-  // (pmark/arcadia#698), prompts for each edit, and never exits after its
-  // turn -- so the tick never reconciles it and B never launches. `claude
-  // --help` documents that `--print` skips the trust dialog and exits.
-  it.fails("launches a standing-policy Claude Session non-interactively, so it can pass the trust dialog and exit", () => {
+  // pmark/arcadia#727 / #698: a standing-policy Claude Session is launched with
+  // `--print`, which skips the workspace trust dialog on a fresh candidate
+  // worktree and exits after its turn, so the tick can reconcile it and launch B.
+  it("launches a standing-policy Claude Session with `--print` and `acceptEdits`, never bypassing approvals", () => {
     const { rehearsal } = activated();
     launchA(rehearsal);
     const launch = rehearsal.tmux.launches[0];
-    expect(JSON.stringify([launch.command, ...launch.args])).toMatch(/"(?:-p|--print)"/);
+    const argv = [launch.command, ...launch.args];
+    const claude = argv.indexOf("claude");
+    expect(claude).toBeGreaterThanOrEqual(0);
+    expect(argv[claude + 1]).toBe("--print");
+    expect(argv.slice(claude)).toEqual(expect.arrayContaining(["--permission-mode", "acceptEdits"]));
+    expect(argv.join(" ")).not.toMatch(/dangerously|bypass/i);
+    expect(argv.at(-1)).toMatch(/Arcadia managed-production Action brief/);
   });
 });
 

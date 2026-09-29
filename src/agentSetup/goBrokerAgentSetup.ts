@@ -54,6 +54,8 @@ export interface AgentSetupPaths {
   codexAgentAskSkillDirectory: string;
   codexAgentAskSkill: string;
   claudeSettings: string;
+  /** Claude Code's per-user state file, where each folder's trust answer lives. */
+  claudeState: string;
   claudeSkill: string;
   claudeAgentAskSkill: string;
 }
@@ -81,6 +83,7 @@ export interface AgentSetupStatus {
     claudeSandbox: boolean;
     claudeBypassDisabled: boolean;
     claudeWorktreeDirectories: boolean;
+    claudeWorkspaceTrust: boolean;
     codexWorkspaceTrust: boolean;
   };
   workspaceTrust: WorkspaceTrustStatus;
@@ -135,6 +138,7 @@ export function resolveAgentSetupPaths(home: string): AgentSetupPaths {
     codexAgentAskSkillDirectory,
     codexAgentAskSkill: path.join(codexAgentAskSkillDirectory, "SKILL.md"),
     claudeSettings: path.join(resolvedHome, ".claude", "settings.json"),
+    claudeState: path.join(resolvedHome, ".claude.json"),
     claudeSkill: path.join(resolvedHome, ".claude", "skills", "arcadia-go"),
     claudeAgentAskSkill: path.join(resolvedHome, ".claude", "skills", "arcadia-agent-ask")
   };
@@ -185,6 +189,7 @@ export function configureGoBrokerAgents(options: ConfigureAgentSetupOptions): Co
   updateManagedSkill(paths.codexSkill, skill, MANAGED_SKILL_MARKER, changed, backups, timestamp);
   updateManagedSkill(paths.codexAgentAskSkill, agentAskSkill, MANAGED_AGENT_ASK_SKILL_MARKER, changed, backups, timestamp);
   updateClaudeSettings(paths.claudeSettings, options, changed, backups, timestamp);
+  updateClaudeWorkspaceTrust(paths.claudeState, claudeWorktreeRoot(options.home), changed, backups, timestamp);
   updateClaudeSkillLink(paths.claudeSkill, paths.codexSkillDirectory, changed, backups, timestamp);
   updateClaudeSkillLink(paths.claudeAgentAskSkill, paths.codexAgentAskSkillDirectory, changed, backups, timestamp);
 
@@ -206,6 +211,7 @@ export function validateGoBrokerAgentSetupInputs(options: ConfigureAgentSetupOpt
   renderAgentAskManagedSkill(options.agentAskSkillTemplate);
   setCodexPermissionProfile(readOptional(paths.codexConfig), options.home);
   readClaudeSettings(paths.claudeSettings, true);
+  readClaudeState(paths.claudeState, true);
   assertManagedSkillDirectoryIsSafe(paths.codexSkillDirectory);
   assertManagedSkillDirectoryIsSafe(paths.codexAgentAskSkillDirectory);
 }
@@ -260,6 +266,7 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     claudeSandbox: claude?.sandbox?.enabled === true && claude?.sandbox?.failIfUnavailable === true,
     claudeBypassDisabled: claude?.permissions?.disableBypassPermissionsMode === "disable",
     claudeWorktreeDirectories: expectedDirectories.every((directory) => additionalDirectories.includes(directory)),
+    claudeWorkspaceTrust: isClaudeFolderTrusted(readClaudeState(paths.claudeState, false), claudeWorktreeRoot(options.home)),
     codexWorkspaceTrust: workspaceTrust.missing.length === 0
   };
   const issues = [
@@ -474,6 +481,37 @@ function updateClaudeSettings(
   };
   settings.sandbox = { ...settings.sandbox, enabled: true, failIfUnavailable: true };
   writeManagedFile(file, `${JSON.stringify(settings, null, 2)}\n`, changed, backups, timestamp, true);
+}
+
+/**
+ * Claude Code asks "do you trust this folder?" the first time it opens a path
+ * it has no answer for, and honors an answer recorded on any ancestor. Sessions
+ * for a Project outside the fixed home set are prepared under the shared
+ * `~/.claude/worktrees/<action>-<stamp>/<repo>` root, which no install ever
+ * answered (pmark/arcadia#698). Recording the answer once on that root covers
+ * every fresh candidate beneath it. Only that Arcadia-owned root is trusted,
+ * never a Project repository or the home directory.
+ */
+function updateClaudeWorkspaceTrust(
+  file: string,
+  root: string,
+  changed: string[],
+  backups: string[],
+  timestamp: string
+): void {
+  const state = readClaudeState(file, true) ?? {};
+  if (isClaudeFolderTrusted(state, root)) return;
+  const projects = state.projects ?? {};
+  state.projects = { ...projects, [root]: { ...(projects[root] ?? {}), hasTrustDialogAccepted: true } };
+  writeManagedFile(file, `${JSON.stringify(state, null, 2)}\n`, changed, backups, timestamp, true);
+}
+
+function claudeWorktreeRoot(home: string): string {
+  return path.join(path.resolve(home), ".claude", "worktrees");
+}
+
+function isClaudeFolderTrusted(state: ClaudeState | null, folder: string): boolean {
+  return state?.projects?.[folder]?.hasTrustDialogAccepted === true;
 }
 
 function updateClaudeSkillLink(
@@ -725,6 +763,33 @@ interface ClaudeSettings {
   };
   sandbox?: { enabled?: boolean; failIfUnavailable?: boolean; [key: string]: unknown };
   [key: string]: unknown;
+}
+
+interface ClaudeState {
+  projects?: Record<string, { hasTrustDialogAccepted?: boolean; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
+function readClaudeState(file: string, strict: boolean): ClaudeState | null {
+  if (!existsSync(file)) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    if (!strict) return null;
+    throw validationError("Claude Code state is not valid JSON; Arcadia will not overwrite it.", {
+      file,
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  if (!isObject(parsed) || (parsed.projects !== undefined && (!isObject(parsed.projects) ||
+    Object.values(parsed.projects).some((project) => !isObject(project))))) {
+    if (!strict) return null;
+    throw validationError("Claude Code state must be a JSON object whose projects are objects.", { file });
+  }
+  return parsed as ClaudeState;
 }
 
 function readClaudeSettings(file: string, strict: boolean): ClaudeSettings | null {
