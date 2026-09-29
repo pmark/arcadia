@@ -998,3 +998,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "#459: go's refusal message's allowedPrefixes list includes opencode/, matching what SAFE_TASK_BRANCH actually allows."; "#464: selectCompliantCodingAgent's capacityRefusals parameter receives capacity refusals, not launch-adapter refusals."; "#494: resolveDispatch reports an Action with status: blocked as not dispatchable, matching the ready set and scheduler."; "#549: An Action claim does not expire at 24h while its candidate is still unmerged, so arcadia go cannot re-dispatch a live Action."; "#621: arcadia go's worktree-preparation branching is gated by the same resolveOperatorGate classification as launch, so it never prepares a worktree for an Action a pending operator item blocks."; "#625: An Action claim (agent_worktree_reservations) is released once its worktree no longer exists, instead of outliving it and refusing dispatch."; "#733: An Action claim is released once the claiming worktree's PR is confirmed merged (landed)."; "#608: Base-branch-advance does not silently revert a manual git reset on a DB-active Project.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-harden-dispatch-and-claim-lifecycle-2026-09-28).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr771
+
+- **Did:** PR #771 is up: stale Action claims now release themselves when their worktree vanishes or their PR merges, go refuses to prepare gated worktrees, and the worker stops silently undoing your manual resets. https://github.com/pmark/arcadia/pull/771
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr771","project":"arcadia","intent":"log","desired_result":"PR #771 is up: stale Action claims now release themselves when their worktree vanishes or their PR merges, go refuses to prepare gated worktrees, and the worker stops silently undoing your manual resets. https://github.com/pmark/arcadia/pull/771"}
