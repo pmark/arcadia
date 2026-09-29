@@ -2422,7 +2422,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/727", "https://github.com/pmark/arcadia/issues/698"]
   - id: harden-agent-ask-settlement-races-and-state
     title: "Fix the agent-ask settle correctness defects: stale revisions, missing locks, and state that diverges across concurrent or replayed settlements."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Fix the agent-ask settle correctness defects: stale revisions, missing locks, and state that diverges across concurrent or replayed settlements."
@@ -2628,7 +2628,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: harden-agent-ask-settlement-races-and-state
+current_action: improve-agent-ask-settle-usability
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
