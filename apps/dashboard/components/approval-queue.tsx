@@ -51,6 +51,10 @@ export function ApprovalQueue() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  // Collapsed by default: /api/approvals shells out to the CLI and is the
+  // slowest call on /runs, so nothing is fetched (or polled) until the
+  // operator opens the section.
+  const [open, setOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const requested = ++approvalRefreshSequence;
@@ -74,10 +78,11 @@ export function ApprovalQueue() {
   }, []);
 
   useEffect(() => {
+    if (!open) return undefined;
     void refresh();
     const interval = setInterval(() => void refresh(), 15_000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [open, refresh]);
 
   const act = useCallback(async (approval: Approval, choice: Choice) => {
     const key = `${cardKey(approval)}:${choice.label}`;
@@ -107,13 +112,23 @@ export function ApprovalQueue() {
     }
   }, [refresh]);
 
-  if (!hasLoaded && approvals.length === 0 && !error) {
-    return null;
-  }
-
   return (
     <section className="mb-6" aria-label="Approval queue">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Needs your approval</h2>
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex min-h-11 items-center gap-2 uppercase tracking-[0.14em]"
+        >
+          Needs your approval{hasLoaded ? ` (${approvals.length})` : ""}
+          {open ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+        </button>
+      </h2>
+      {!open ? null : !hasLoaded && !error ? (
+        <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</p>
+      ) : (
+        <>
       {error ? <ErrorState title="Approvals unavailable" message={error} /> : null}
       {message ? <p className="mb-3 flex items-center gap-2 text-sm text-moss"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{message}</p> : null}
       {approvals.length === 0 && !error ? (
@@ -244,6 +259,8 @@ export function ApprovalQueue() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </section>
   );
