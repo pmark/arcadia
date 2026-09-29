@@ -21,7 +21,15 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    testTimeout: 30_000,
+    // The CLI-response and discord suites spawn `mise exec`/`tsx`
+    // subprocesses that routinely exceed 30s under file parallelism on a busy
+    // host (#452), so a slow machine reported itself as a broken change. A
+    // timeout is a hang detector, not a performance assertion: 120s is
+    // adequate headroom (a full run passed at that value) and a real hang
+    // still fails. The hook timeout matches for the same reason (#514: a cold
+    // `tsc` build in a `beforeAll` exceeds the 10s default).
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
     env: {
       // Codex observation falls back to the developer's real ~/.codex, so any
       // test that reaches profile selection read, attached and queried the

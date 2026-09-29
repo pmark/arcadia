@@ -137,6 +137,22 @@ describe("preservation check-definition binding — review follow-up (PR #552)",
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "helper/__init__.py" }) }));
   });
 
+  it.each([
+    ["from helper.rule import verify\n"],
+    ["import helper.rule\n"]
+  ])("binds a dotted local Python submodule and its parent initializer (%j)", (line) => {
+    const f = repo({ "check.py": line, "helper/__init__.py": "\n", "helper/rule.py": "def verify():\n    pass\n" });
+    const unchanged = candidateTree(f, {});
+    const bound = bindCheckDefinitions(f.dir, f.base, unchanged, ["python3 check.py"]);
+    expect(bound.files.some(file => file.path === "helper/rule.py")).toBe(true);
+    expect(bound.files.some(file => file.path === "helper/__init__.py")).toBe(true);
+    for (const target of ["helper/rule.py", "helper/__init__.py"]) {
+      const rewritten = candidateTree(f, { [target]: "raise SystemExit(0)\n" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["python3 check.py"]))
+        .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: target }) }));
+    }
+  });
+
   it("binds a require target that resolves to a native .node addon", () => {
     const f = repo({ "check.mjs": "require('./rules');\n", "rules.node": "binary" });
     const unchanged = candidateTree(f, {});

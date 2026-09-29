@@ -63,7 +63,7 @@ const RELATIVE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bim
 // names with optional `as` aliases — anything else (a trailing line
 // continuation, an unsupported construct) fails the full-line match and is
 // rejected below rather than partially bound.
-const PYTHON_FROM_IMPORT = /^\s*from\s+(\w+)\s+import\b/gm;
+const PYTHON_FROM_IMPORT = /^\s*from\s+(\w+(?:\.\w+)*)\s+import\b/gm;
 const PYTHON_BARE_IMPORT_LINE = /^\s*import\s+.*$/gm;
 const PYTHON_BARE_IMPORT_SUPPORTED =
   /^\s*import\s+(\w+(?:\.\w+)*(?:\s+as\s+\w+)?(?:\s*,\s*\w+(?:\.\w+)*(?:\s+as\s+\w+)?)*)\s*(?:#.*)?$/;
@@ -80,13 +80,20 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (PYTHON_EXTENSION.test(file)) {
       const source = execFileSync("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       const dir = path.posix.dirname(file);
-      const visitPythonModule = (name: string) => {
+      const visitPythonModule = (dotted: string) => {
         // A same-directory import resolves to a plain module or, when that
         // file is absent, a regular package whose __init__.py Python executes
         // on import — bind both candidates unconditionally so a candidate
-        // cannot introduce or swap either form unnoticed.
-        visit(path.posix.join(dir, `${name}.py`));
-        visit(path.posix.join(dir, name, "__init__.py"));
+        // cannot introduce or swap either form unnoticed. A dotted name
+        // (`helper.rule`) executes every parent package's initializer on the
+        // way to the leaf, so each prefix is bound, not just the first
+        // component or the leaf.
+        const parts = dotted.split(".");
+        for (let end = 1; end <= parts.length; end++) {
+          const name = parts.slice(0, end).join("/");
+          visit(path.posix.join(dir, `${name}.py`));
+          visit(path.posix.join(dir, name, "__init__.py"));
+        }
       };
       for (const match of source.matchAll(PYTHON_FROM_IMPORT)) visitPythonModule(match[1]);
       for (const match of source.matchAll(PYTHON_BARE_IMPORT_LINE)) {
@@ -99,7 +106,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
           );
         }
         for (const entry of supported[1].split(",")) {
-          const module = entry.split(/\bas\b/)[0].trim().split(".")[0].trim();
+          const module = entry.split(/\bas\b/)[0].trim();
           if (module) visitPythonModule(module);
         }
       }
