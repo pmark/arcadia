@@ -410,6 +410,23 @@ describe("Action claims held past their window by an unmerged candidate (Issue #
       expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).toBeNull();
     });
   });
+
+  it("keeps a claim whose commits merged while its worktree still holds uncommitted work", () => {
+    const candidate = candidateRepository();
+    git(candidate.repo, ["merge", "-q", "--no-ff", "-m", "merge candidate", candidate.branch]);
+    writeFileSync(path.join(candidate.worktree, "unsaved.md"), "work after the merge\n");
+    withDatabase(claimWorkspace(), (db) => {
+      reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: candidate.worktree,
+        branch: candidate.branch,
+        now: new Date(NOW.getTime() - 2 * DAY_MS),
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).not.toBeNull();
+    });
+  });
 });
 
 interface PointerFixture {

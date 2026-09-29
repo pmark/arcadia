@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { hostname } from "node:os";
@@ -919,9 +919,10 @@ export function getActiveActionClaim(
  * Released -- returns false -- when the candidate branch no longer exists
  * (merged and retired by `go`/`tidy`, or deleted to abandon it), or when its
  * commits are already on the base branch (ancestry, or patch-equivalence for a
- * rebase or single-commit squash). A branch with no commits of its own is
- * still held while its worktree carries uncommitted work: a long-running
- * candidate that has not committed yet is not an abandoned one.
+ * rebase or single-commit squash) and its worktree holds no uncommitted work.
+ * A dirty worktree keeps the claim either way: a long-running candidate that
+ * has not committed yet is not an abandoned one. A Git check that fails, as
+ * opposed to one that proves the branch absent, keeps the claim too.
  *
  * Deliberately offline: dispatch must not depend on GitHub being reachable. A
  * multi-commit squash merge that no offline check can prove keeps the claim
@@ -933,7 +934,15 @@ export function getActiveActionClaim(
 export function expiredClaimStillHeld(claim: Pick<AgentWorktreeReservation, "repository_path" | "worktree_path" | "branch">): boolean {
   const repo = claim.repository_path;
   const branch = claim.branch.replace(/^refs\/heads\//, "");
-  if (!refExists(repo, `refs/heads/${branch}`)) return false;
+  // A repository that is gone has nothing left to dispatch into.
+  try {
+    if (candidateWorktreeIsGone(repo)) return false;
+  } catch {
+    return true;
+  }
+  const branchState = localBranchState(repo, branch);
+  if (branchState === "absent") return false;
+  if (branchState === "unknown") return true;
   let base: string;
   try {
     base = resolveBaseBranch(repo);
@@ -941,16 +950,29 @@ export function expiredClaimStillHeld(claim: Pick<AgentWorktreeReservation, "rep
     return true;
   }
   const bases = [base, ...(refExists(repo, `refs/remotes/origin/${base}`) ? [`origin/${base}`] : [])];
-  if (bases.some((ref) => isPatchEquivalent(repo, ref, branch))) return false;
-  if (!bases.some((ref) => isAncestor(repo, branch, ref))) return true;
-  // No commits of its own that base lacks: merged, or never committed. Only
-  // uncommitted work in a still-present worktree distinguishes the second.
+  const onBase = bases.some((ref) => isPatchEquivalent(repo, ref, branch) || isAncestor(repo, branch, ref));
+  if (!onBase) return true;
+  // Everything committed is already on base: merged, or never committed. Only
+  // uncommitted work in a still-present worktree keeps the claim then, since
+  // releasing it would let a second dispatch start over work nobody saved.
   try {
     if (candidateWorktreeIsGone(claim.worktree_path)) return false;
     return uncommittedChanges(claim.worktree_path).length > 0;
   } catch {
     return true;
   }
+}
+
+/**
+ * Whether a local branch exists, keeping a failed Git check distinct from a
+ * confirmed-absent ref: `show-ref --verify --quiet` exits 1 only for a missing
+ * ref, so any other outcome is "unknown" and must never release a claim.
+ */
+function localBranchState(repo: string, branch: string): "present" | "absent" | "unknown" {
+  const result = spawnSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repo, stdio: "ignore" });
+  if (result.status === 0) return "present";
+  if (result.status === 1) return "absent";
+  return "unknown";
 }
 
 /**
