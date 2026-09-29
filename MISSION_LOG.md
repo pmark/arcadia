@@ -935,3 +935,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "#726: The v5 fixture declares scripts/check-marker.mjs (committed at genesis) as its validation command instead of a file that does not exist yet for Action A.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-rehearsal-fixture-validation-command-2026-09-29).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr762
+
+- **Did:** Closed out the rehearsal-fixture validation-command defect (#726): the v5 fixture already ships a check that can pass for both Actions, so the pointer moves on to unattended Claude launch — https://github.com/pmark/arcadia/pull/762
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
