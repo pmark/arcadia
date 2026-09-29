@@ -109,6 +109,30 @@ describe("Agent Ask automatic discovery", () => {
     ]);
   });
 
+  it("skips an already-settled Ask file instead of reporting it as a failure, while still reporting an unsettled conflict (Issue #592)", () => {
+    const dir = scratchRepo();
+    const workspace = scratchWorkspace();
+    const settled = runAgentAskPreviewCommand({ workspace, request: strictAsk("settled-1") });
+    runAgentAskPreviewCommand({ workspace, request: strictAsk("unsettled-1") });
+    withDatabase(workspace, (db) => {
+      db.prepare(`INSERT INTO agent_ask_settlements
+        (id, proposal_id, request_id, operation_json, fingerprint, disposition, project_slug, effects_json,
+         queue_action_key, queue_position, next_action_key, notification_status, receipt_json, created_at)
+        VALUES ('asksettle_test', ?, 'settle-settled-1', '{}', 'fp', 'accepted', 'demo', '[]', NULL, NULL, NULL, 'sent', '{}', ?)`)
+        .run(settled.data.proposal.id, new Date().toISOString());
+    });
+    // Both committed files have since drifted from what was previewed.
+    planted(dir, "agent-ask-settled.yaml", strictAsk("settled-1").replace("Record something worth keeping", "Reworded after settlement"));
+    planted(dir, "agent-ask-unsettled.yaml", strictAsk("unsettled-1").replace("Record something worth keeping", "Reworded before settlement"));
+
+    const result = runAgentAskDraftCommand({ request: strictAsk("fresh-draft"), dir, workspace });
+
+    expect(result.data.discovery.failed).toEqual([
+      { path: path.join(dir, ".arcadia", "asks", "agent-ask-unsettled.yaml"), error: expect.stringContaining("already used with different content") }
+    ]);
+    expect(result.data.discovery.discovered).toEqual([]);
+  });
+
   it("does not scan a directory it was never told about, so existing callers that omit --dir are unaffected", () => {
     const dir = scratchRepo();
     const workspace = scratchWorkspace();

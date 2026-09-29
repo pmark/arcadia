@@ -196,13 +196,15 @@ describe("runManagedProductionTick", () => {
 
     // A previous session did the work and drafted its completion, but ended
     // (or was interrupted) before running the final settle -- exactly the gap
-    // this Action closes. The draft's candidate_revision is the repository's
-    // initial commit; the artifact and draft themselves land in a later
-    // commit, so by the time the tick runs, HEAD has moved past it purely
-    // because that later commit landed, not because anything diverged.
-    const initialHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    // this Action closes. The draft's candidate_revision is the commit that
+    // produced the artifact; the draft itself lands in a later commit, so by
+    // the time the tick runs, HEAD has moved past it only by a governance
+    // record, not by anything the evidence validated (Issue #639).
     mkdirSync(path.join(fixture.repo, "docs"), { recursive: true });
     writeFileSync(path.join(fixture.repo, "docs", "contract.md"), "# Contract\n\nDefined by define-contract.\n");
+    git(fixture.repo, ["add", "."]);
+    git(fixture.repo, ["commit", "-m", "Produce the contract"]);
+    const initialHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
     mkdirSync(path.join(fixture.repo, ".arcadia", "asks"), { recursive: true });
     writeFileSync(path.join(fixture.repo, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), [
       "agent_ask: v1", "request_id: complete-define-contract", "project: test-project", "intent: complete",
@@ -213,7 +215,7 @@ describe("runManagedProductionTick", () => {
       "requested_authority: apply_if_approved", ""
     ].join("\n"));
     git(fixture.repo, ["add", "."]);
-    git(fixture.repo, ["commit", "-m", "Produce the contract and draft its completion"]);
+    git(fixture.repo, ["commit", "-m", "Draft the contract's completion"]);
 
     const result = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {

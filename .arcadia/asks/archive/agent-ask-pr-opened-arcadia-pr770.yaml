@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr770","project":"arcadia","intent":"log","desired_result":"Twelve Agent Ask settlement bugs squashed in one go: stale-revision refusals, unlocked deferral writes, wrong Next action, ignored-archive commit failures and more are fixed in https://github.com/pmark/arcadia/pull/770"}

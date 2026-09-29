@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { AgentAskProposal, NormalizedAgentAsk, NormalizedAgentAskAction, NormalizedAgentAskEvidence, NormalizedAgentAskOption } from "./agentAsk.js";
+import { setTopLevelAskScalar, type AgentAskProposal, type NormalizedAgentAsk, type NormalizedAgentAskAction, type NormalizedAgentAskEvidence, type NormalizedAgentAskOption } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
@@ -97,6 +97,13 @@ export interface AgentAskSettlementReceipt {
   queuePosition: number | null;
   nextActionKey: string | null;
   previewFingerprint: string;
+  /**
+   * The Action queue revision this settlement was resolved against — the same
+   * value `previewFingerprint` binds — so a caller that wants to pass
+   * `--revision` can copy it instead of re-deriving it (Issue #296). Absent on
+   * receipts from before this field existed.
+   */
+  queueRevision?: number;
   applied: boolean;
   authority: {
     kind: "operator_acceptance" | "deterministic_proof";
@@ -284,7 +291,14 @@ export function settleAgentAsk(db: Database.Database, input: {
   // to write the same state by naming a different intent.
   let claimFence: ActionClaimFence | null = null;
   const queue = buildAgentQueue(db);
-  if (input.expectedQueueRevision !== undefined && queue.revision !== input.expectedQueueRevision) {
+  // The preview fingerprint already hashes `queue.revision`, so an apply that
+  // carries one is refused below whenever the queue genuinely moved. A second,
+  // hand-copied `--revision` beside it only ever added a way to fail on a
+  // mistyped literal after the settlement it guards had already been
+  // previewed correctly (Issue #296). It stays a guard for a preview-only
+  // call, the one place it is the sole binding.
+  if (input.expectedQueueRevision !== undefined && input.previewFingerprint === undefined &&
+      queue.revision !== input.expectedQueueRevision) {
     throw validationError("Action queue revision changed; refresh the Agent Ask settlement preview.", {
       expectedRevision: input.expectedQueueRevision,
       actualRevision: queue.revision
@@ -305,6 +319,14 @@ export function settleAgentAsk(db: Database.Database, input: {
   let artifactInput: { title: string; path?: string } | null = null;
   let completionActionId: string | null = null;
   let completionPlanSlug: string | null = null;
+  // The Candidate revision a `complete` or `split` settlement bound its
+  // evidence to -- the full sha the Mission Log records. The archived Ask
+  // carries the same value (Issue #321).
+  let boundCandidateRevision: string | null = null;
+  // The pointer a completion wrote, read back from the PROJECT.md content
+  // actually written, so the receipt's next Action names what landed rather
+  // than a queue snapshot that can lag it (Issue #507).
+  let pointerProjectSlug: string | null = null;
   const effects: string[] = [];
 
   if (input.disposition === "rejected") {
@@ -342,8 +364,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
-            after: amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
-              dependencies, proposal.normalized.references, proposal.normalized.requestId, input.responsibility)
+            after: withPlanUpdated(amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
+              dependencies, proposal.normalized.references, proposal.normalized.requestId, input.responsibility))
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
           if (input.responsibility) {
@@ -420,7 +442,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
-            after: planAfter
+            after: withPlanUpdated(planAfter)
           });
           if (createsActions) {
             arrangeQueue = true;
@@ -557,7 +579,7 @@ export function settleAgentAsk(db: Database.Database, input: {
               effects.push(`Moved the Plan segment to start at queue position ${queueAfter.indexOf(queueActionKey) + 1}.`);
             } else {
               requireNoQueueOptions(input);
-              fileMutations.push({ path: targetPath, before, after: replaceTopLevelField(before, "milestone", proposal.normalized.desiredResult) });
+              fileMutations.push({ path: targetPath, before, after: withPlanUpdated(replaceTopLevelField(before, "milestone", proposal.normalized.desiredResult)) });
               effects.push(`Amended Plan ${target.slug} Milestone.`);
             }
             break;
@@ -618,7 +640,7 @@ export function settleAgentAsk(db: Database.Database, input: {
               actionIdsToValidate.push(action.id);
             }
           }
-          fileMutations.push({ path: targetPath, before, after });
+          fileMutations.push({ path: targetPath, before, after: withPlanUpdated(after) });
 
           if (input.placement) {
             const changes = new Map(normalizedActions.map((action) => [action.id, action.dependencies]));
@@ -750,6 +772,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             { expectedHead: head, receivedRevision: candidateRevision, repoRoot }
           );
         }
+        boundCandidateRevision = head;
         // `expected_artifact` is free text in most Plans ("First proof",
         // "Evidence satisfying Agent Ask X") but a real repo-relative path in
         // others (session-reconciliation's `docs/contract.md`). Only the path
@@ -826,6 +849,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
         }
         if (completingActivePlan) {
+          pointerProjectSlug = project.slug;
           // The Project pointer belongs to the active Plan, so PROJECT.md and the
           // Plan are written and compared as one atomic pair.
           fileMutations.push(
@@ -920,6 +944,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             { expectedHead: head, receivedRevision: candidateRevision, repoRoot }
           );
         }
+        boundCandidateRevision = head;
         const declared = action.acceptanceCriteria;
         if (declared.length === 0) throw validationError("Action declares no acceptance criteria to bind a split to.", { actionId });
         const narrowed = proposal.normalized.acceptance;
@@ -1154,6 +1179,7 @@ export function settleAgentAsk(db: Database.Database, input: {
         effects.push(`${nextResolution.note} Pointer: ${project.slug}/${nextResolution.actionId}.`);
 
         if (completingActivePlan) {
+          pointerProjectSlug = project.slug;
           fileMutations.push(
             { path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" },
             { path: projectPath, before: projectBefore, after: projectTransform(projectBefore), retransform: projectTransform, pair: "project" }
@@ -1259,7 +1285,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     });
   }
 
-  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null);
+  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision);
 
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
@@ -1288,8 +1314,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     queueActionKey,
     queueActionKeys,
     queuePosition: queueActionKey ? queueAfter.indexOf(queueActionKey) : null,
-    nextActionKey: input.disposition === "accepted" ? queue.nextActionKey : queue.nextActionKey,
+    nextActionKey: queue.nextActionKey,
     previewFingerprint,
+    queueRevision: queue.revision,
     applied: input.apply === true,
     authority: {
       kind: proposal.normalized.intent === "complete" && !input.operator
@@ -1330,6 +1357,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     );
   }
 
+  // Undefined until a completion's pointer write lands; then the pointer that
+  // write actually left in PROJECT.md, or null when it left none.
+  let writtenNextActionKey: string | null | undefined;
   hooks?.beforeDocumentWrite?.();
   // Phase 1 — write the managed documents and prove the canonical truth they
   // are supposed to produce, all inside the workspace database's immediate
@@ -1367,6 +1397,10 @@ export function settleAgentAsk(db: Database.Database, input: {
         pointerPair.plan.before = receipt.planBefore;
         pointerPair.plan.after = receipt.planAfter;
         applied.push(pointerPair.project, pointerPair.plan);
+        if (pointerProjectSlug) {
+          const written = frontmatterScalar(receipt.projectAfter, "current_action");
+          writtenNextActionKey = written ? `${pointerProjectSlug}/${written}` : null;
+        }
         if (receipt.retried) {
           effects.push("Re-read PROJECT.md and the Plan after a concurrent pointer write and re-applied this settlement's change on top.");
         }
@@ -1525,7 +1559,12 @@ export function settleAgentAsk(db: Database.Database, input: {
           apply: true
         });
       }
-      const nextActionKey = buildAgentQueue(db).nextActionKey;
+      // A completion's next Action is the pointer it wrote. The global queue's
+      // front can name something else entirely: a settlement from a candidate
+      // worktree leaves the base checkout's pointer on the Action it just
+      // completed until the pull request merges, and a concurrent settlement
+      // can move the queue between the write and this read (Issue #507).
+      const nextActionKey = writtenNextActionKey !== undefined ? writtenNextActionKey : buildAgentQueue(db).nextActionKey;
       const receipt: AgentAskSettlementReceipt = { ...baseReceipt, nextActionKey };
       insertSettlementRow(db, receipt, {
         proposalId: proposal.id, settlementRequestId: input.settlementRequestId, operation,
@@ -1542,7 +1581,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     process.stderr.write(`The settled managed documents were written, but the operational sync did not complete: ${reason}\n${syncRemedy}\n`);
     const recoveryReceipt: AgentAskSettlementReceipt = {
       ...baseReceipt,
-      nextActionKey: null,
+      nextActionKey: writtenNextActionKey ?? null,
       recovery: {
         documentsCommitted: commitError === null,
         operationalSync: "pending",
@@ -1681,7 +1720,18 @@ function commitSettlementOutput(
   const tracked = deletionPaths.length > 0
     ? new Set(git(repoRoot, ["ls-files", "-z", "--", ...deletionPaths]).split("\0").filter(Boolean))
     : new Set<string>();
-  const paths = allPaths.filter((entry) => !entry.deleted || tracked.has(entry.relative)).map((entry) => entry.relative);
+  const candidates = allPaths.filter((entry) => !entry.deleted || tracked.has(entry.relative)).map((entry) => entry.relative);
+  // A Project may gitignore its `.arcadia/asks/` directory. The archived Ask is
+  // bookkeeping for a file that Project chose not to track, so staging it made
+  // `git add` refuse the whole commit — every settlement's managed documents
+  // included (Issue #512). `git check-ignore` reports only untracked ignored
+  // paths, so a tracked file is always still committed. It exits 1 when
+  // nothing matches, which `tryGit` reports as null.
+  // (`-z` is accepted only together with `--stdin`; these paths are
+  // repository-relative names Arcadia chose, so newline splitting is safe.)
+  const ignored = new Set((candidates.length > 0 ? tryGit(repoRoot, ["check-ignore", "--", ...candidates]) ?? "" : "")
+    .split("\n").map((line) => line.trim()).filter(Boolean));
+  const paths = candidates.filter((relative) => !ignored.has(relative));
   const message = [
     `chore(arcadia): settle ${receipt.proposalRequestId}`,
     "",
@@ -1992,13 +2042,32 @@ function setTopLevelFields(content: string, fields: Record<string, string | null
   return content.replace(match[0], `---\n${lines.join("\n")}\n---`);
 }
 
+/** One top-level frontmatter scalar, unquoted; null when absent or empty. */
+function frontmatterScalar(content: string, field: string): string | null {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const line = match?.[1].split(/\r?\n/).find((candidate) => candidate.startsWith(`${field}:`));
+  if (!line) return null;
+  const value = line.slice(field.length + 1).trim().replace(/^(["'])(.*)\1$/, "$2");
+  return value && value !== "null" && value !== "~" ? value : null;
+}
+
+/**
+ * Stamp a Plan's `updated` with the settlement date. Every settlement that
+ * changes a Plan document's content goes through here, so the field keeps
+ * describing the Plan's last real change instead of its creation (Issue #598).
+ */
+function withPlanUpdated(content: string): string {
+  return setTopLevelFields(content, { updated: today() });
+}
+
 function addMilestoneMutations(mutations: FileMutation[], projectPath: string, planPath: string, milestone: string): void {
   const projectBefore = readFileSync(projectPath, "utf8");
   const planBefore = readFileSync(planPath, "utf8");
   const transform = (current: string): string => replaceTopLevelField(current, "milestone", milestone);
+  const planTransform = (current: string): string => withPlanUpdated(transform(current));
   mutations.push(
     { path: projectPath, before: projectBefore, after: transform(projectBefore), retransform: transform, pair: "project" },
-    { path: planPath, before: planBefore, after: transform(planBefore), retransform: transform, pair: "plan" }
+    { path: planPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" }
   );
 }
 
@@ -2411,7 +2480,13 @@ function appendLog(before: string | null, projectSlug: string, normalized: Norma
  */
 /** Returns the archived source file's path relative to `repoRoot`, or null when
  * nothing was archived (no source, outside `.arcadia/asks/`, or already gone). */
-function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[], repoRoot: string, sourcePath: string | null): string | null {
+function archiveSettledAskFile(
+  fileMutations: FileMutation[],
+  effects: string[],
+  repoRoot: string,
+  sourcePath: string | null,
+  boundCandidateRevision: string | null
+): string | null {
   if (!sourcePath) return null;
   const requested = path.resolve(sourcePath);
   if (!existsSync(requested)) return null;
@@ -2432,8 +2507,14 @@ function archiveSettledAskFile(fileMutations: FileMutation[], effects: string[],
   const resolved = path.join(asksDir, path.basename(requested));
   const content = readFileSync(resolved, "utf8");
   const archivePath = path.join(asksDir, "archive", path.basename(resolved));
+  // The draft may name its Candidate by an abbreviated sha, or by a revision a
+  // pre-dispatch auto-settle refreshed in memory before settling it. Archive
+  // the revision the settlement actually bound and the Mission Log records,
+  // never the draft's own spelling and never the settlement commit, so the two
+  // governance records of one completion cannot name different Candidates.
+  const archived = boundCandidateRevision ? setTopLevelAskScalar(content, "candidate_revision", boundCandidateRevision) : content;
   fileMutations.push({ path: resolved, before: content, after: null });
-  fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: content });
+  fileMutations.push({ path: archivePath, before: existsSync(archivePath) ? readFileSync(archivePath, "utf8") : null, after: archived });
   effects.push(`Archived the settled Ask file to ${path.relative(repoRoot, archivePath)}.`);
   return path.relative(repoRoot, resolved);
 }

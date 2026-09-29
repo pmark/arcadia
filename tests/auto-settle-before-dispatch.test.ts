@@ -7,6 +7,7 @@ import {
   attemptAutoSettlePendingCompletion,
   AUTO_SETTLE_EVIDENCE_INCOMPLETE,
   AUTO_SETTLE_NO_DRAFT,
+  AUTO_SETTLE_REVISION_CHANGED,
   AUTO_SETTLE_SETTLED,
   AUTO_SETTLE_STALE_REVISION
 } from "../src/ask/autoSettleBeforeDispatch.js";
@@ -55,6 +56,10 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
     const archived = execFileSync("git", ["ls-files", ".arcadia/asks/archive"], { cwd: repo, encoding: "utf8" });
     expect(archived).toContain("agent-ask-complete-first.yaml");
+    // The archived Ask names the Candidate the Log records, not the draft's
+    // stale spelling (Issue #321).
+    const archivedAsk = readFileSync(path.join(repo, ".arcadia/asks/archive/agent-ask-complete-first.yaml"), "utf8");
+    expect(archivedAsk).toMatch(new RegExp(`^candidate_revision: ${currentHead}$`, "m"));
     const stillDrafted = execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" })
       .split("\n").filter((line) => line && !line.includes("/archive/"));
     expect(stillDrafted).toEqual([]);
@@ -142,6 +147,23 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(plan).toMatchObject({ currentAction: "first" });
   });
 
+  it("falls through instead of refreshing a stale candidate_revision when a later commit changed more than governance records (Issue #639)", () => {
+    const { repo, workspace, draftHead } = fixture({ draftAsk: true, laterCodeCommit: true });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    // draftHead is still an ancestor of HEAD, and the evidence still covers
+    // every criterion verbatim -- but the code it validated may have changed,
+    // so ancestry alone no longer earns a refresh.
+    expect(execFileSync("git", ["merge-base", "--is-ancestor", draftHead, "HEAD"], { cwd: repo }).toString()).toBe("");
+    expect(result).toMatchObject({ settled: false, reason: AUTO_SETTLE_REVISION_CHANGED });
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({ currentAction: "first" });
+  });
+
   it("falls through when settlement itself refuses (e.g. an unresolved required review Decision), with no partial write", () => {
     const { repo, workspace } = fixture({ draftAsk: true, withOpenDecision: true });
 
@@ -168,6 +190,8 @@ function fixture(options: {
   extraIneligibleDraft?: boolean;
   /** Write the draft as compact JSON, the form AGENTS.md tells agents to use. */
   jsonDraft?: boolean;
+  /** Make the commit after the draft change a non-governance file. */
+  laterCodeCommit?: boolean;
 }): { repo: string; workspace: string; draftHead: string; currentHead: string; divergentSha?: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-auto-settle-"));
   roots.push(root);
@@ -227,11 +251,17 @@ function fixture(options: {
     execFileSync("git", ["commit", "-qm", "Draft complete Ask(s) for first"], { cwd: repo });
   }
 
-  // A commit that lands after the draft -- the ordinary reason
-  // candidate_revision goes stale with nothing wrong about the evidence.
-  writeFileSync(path.join(repo, "NOTES.md"), "unrelated later work\n", "utf8");
+  // A commit that lands after the draft. A governance record -- another
+  // settlement's archived Ask -- is the ordinary reason candidate_revision
+  // goes stale with nothing wrong about the evidence; a code change is not.
+  if (options.laterCodeCommit) {
+    writeFileSync(path.join(repo, "NOTES.md"), "later code work\n", "utf8");
+  } else {
+    writeFileSync(path.join(repo, ".arcadia/asks/archive/agent-ask-earlier-log.yaml"),
+      `${JSON.stringify({ agent_ask: "v1", request_id: "earlier-log", project: "demo", intent: "log", desired_result: "An earlier Log entry." })}\n`, "utf8");
+  }
   execFileSync("git", ["add", "."], { cwd: repo });
-  execFileSync("git", ["commit", "-qm", "Unrelated later commit"], { cwd: repo });
+  execFileSync("git", ["commit", "-qm", "Later commit"], { cwd: repo });
   const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
 
   initWorkspace(workspace);

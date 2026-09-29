@@ -58,7 +58,7 @@ export interface ProductionActivationPreview {
   scopeFingerprint: string;
   queueRevision: number;
   currentPolicy: ProductionPolicyRead;
-  /** Revision to pass back to `activate --expect-revision`. */
+  /** Revision to pass back to `activate --expected-revision`. */
   expectedRevision: number | null;
   includedProjects: string[];
   includedPlans: string[];

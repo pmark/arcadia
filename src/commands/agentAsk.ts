@@ -7,6 +7,7 @@ import { WORK_CLASSIFICATIONS } from "../domain/constants.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
+import { tryGit } from "../git/worktrees.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -110,7 +111,9 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : options.request ?? "";
   const normalized = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
   const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
-  const askDir = path.join(path.resolve(options.dir ?? process.cwd()), ".arcadia", "asks");
+  const repoDir = path.resolve(options.dir ?? process.cwd());
+  if (normalized.intent === "complete") assertCompletionApplicableAtHead(repoDir, normalized.candidateRevision);
+  const askDir = path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
   const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : null;
   let written: "created" | "unchanged";
@@ -159,6 +162,31 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     command: "agent-ask.draft",
     data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus, discovery }
   });
+}
+
+/**
+ * Refuse to place a `complete` Ask that `settle --apply` could never apply.
+ * Settlement binds the evidence to the checkout's HEAD, accepting only an exact
+ * or abbreviated match, so a draft naming any other revision is broken on
+ * arrival — and the operator used to find that out only at the apply step,
+ * after the pull request was open (Issue #304). The common trap is committing
+ * the drafted file: that moves HEAD past the revision it records, and no
+ * amendment can catch up, because committing the amended file moves HEAD
+ * again. Outside a Git checkout there is nothing to bind yet, so nothing is
+ * refused; settlement still checks when it runs.
+ */
+function assertCompletionApplicableAtHead(repoDir: string, candidateRevision: string | null): void {
+  const head = tryGit(repoDir, ["rev-parse", "HEAD"]);
+  if (!head || !candidateRevision) return;
+  if (head === candidateRevision || head.startsWith(candidateRevision)) return;
+  throw validationError(
+    `This complete Ask records candidate_revision ${candidateRevision}, but ${repoDir} is at HEAD ${head}; settlement could never apply it.`,
+    {
+      candidateRevision,
+      head,
+      remedy: "Set candidate_revision to `git rev-parse HEAD` after your final code commit, and leave the drafted Ask file uncommitted: settlement commits and archives it itself."
+    }
+  );
 }
 
 export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraftData>): string[] {
@@ -247,6 +275,7 @@ export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSet
     `Discord: ${receipt.notificationStatus}`,
     ...(receipt.recovery ? [`Recovery: ${receipt.recovery.remedy}`] : []),
     `Preview fingerprint: ${receipt.previewFingerprint}`,
+    ...(receipt.queueRevision === undefined ? [] : [`Queue revision: ${receipt.queueRevision}`]),
     `Receipt: ${receipt.id}`
   ];
 }

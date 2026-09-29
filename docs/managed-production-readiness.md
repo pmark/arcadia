@@ -204,9 +204,6 @@ summary). Each is an ordinary `claude-sonnet-5` session at medium effort.
   DB-active Project's checkout to `origin/main`. The replay proves this never
   rewinds an integrated, unpushed `main`, but a manual `git reset --hard` on a
   fixture is still silently undone.
-- **#609:** `production activate --expect-revision` does not match the preview's
-  `expectedRevision` field name. The generated `next-steps.md` already passes it
-  correctly.
 - **#717:** the preserve broker strips validation failure details to `{}`, so an
   agent cannot diagnose its own refusal. Defect 3's fix removes the known
   trigger. The host-side `validation.json` under `artifacts/preservation/` still
@@ -266,8 +263,8 @@ Unchanged in substance since the prior derivation:
   `admit-ready-set-across-repositories` depends on the proof and on Decision
   0070's host settler.
 - **Same-repository concurrency (Decision 0066)** still waits until
-  `prove-two-action-unattended-production` and the #505/#507/#549-class fixes
-  have landed.
+  `prove-two-action-unattended-production` and the #549-class fixes have
+  landed (#505 and #507 landed with `harden-agent-ask-settlement-races-and-state`).
 
 ---
 

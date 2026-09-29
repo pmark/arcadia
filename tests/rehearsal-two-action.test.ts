@@ -400,7 +400,24 @@ describe("rehearsal fixture decisions the prepare script must get right", () => 
     expect(approvalB).toBeDefined();
     expect(rehearsal.tmux.launches).toHaveLength(1);
 
-    runReviewApproveCommand({ workspace: rehearsal.workspace, id: approvalB!, execute: false });
+    const workItemsBefore = withDatabase(rehearsal.workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM work_items").get() as { count: number }).count);
+    const approved = runReviewApproveCommand({ workspace: rehearsal.workspace, id: approvalB!, execute: false });
+    // The packet's sourceInput is a doc reference, not free text: approving it
+    // never runs intent classification, so no Requires Review Action is filed
+    // under whatever Project the path resembles (Issue #663). Only the
+    // pending-execution marker is created, scoped to the item's own Project.
+    expect(approved.data.approval).toBeNull();
+    expect(approved.data.item.status).toBe("approved");
+    withDatabase(rehearsal.workspace, (db) => {
+      expect((db.prepare("SELECT COUNT(*) AS count FROM work_items").get() as { count: number }).count).toBe(workItemsBefore);
+      const source = db.prepare("SELECT project_id FROM review_items WHERE id = ?").get(approvalB!) as { project_id: string };
+      const pending = db.prepare(`SELECT project_id FROM review_items
+        WHERE resolved_intent = 'ReviewExecutionPending' AND json_extract(context_json, '$.originalReviewId') = ?`)
+        .get(approvalB!) as { project_id: string } | undefined;
+      expect(pending).toBeDefined();
+      expect(pending!.project_id).toBe(source.project_id);
+    });
     const launched = rehearsal.tick();
     expect(launched.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionB });
     expect(rehearsal.status().operatorEscalations).toEqual([]);

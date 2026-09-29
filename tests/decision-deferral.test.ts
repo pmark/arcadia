@@ -7,6 +7,7 @@ import { runDecisionApproveCommand, runDecisionNewCommand, runDecisionReverseCom
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { resolveDispatch, resolveReadySet } from "../src/docs/dispatch.js";
+import { applyDecisionDeferral } from "../src/dispatch/decisionDeferral.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -240,6 +241,66 @@ describe("apply an answered Decision's consequence", () => {
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe(dirtyAfterFailure);
 
     vi.unstubAllEnvs();
+  });
+
+  it("never writes under --dry-run when replaying an applied deferral receipt (Issue #320)", () => {
+    const { workspace, repo, decisionId } = fixture();
+    const applied = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-applied-dry-run"
+    });
+    expect(applied.data.applied).toBe(true);
+    const planAfterApply = planFile(repo);
+    const projectAfterApply = projectFile(repo);
+    const decisionAfterApply = decisionFile(repo);
+    const headAfterApply = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" });
+
+    // The dry run reports the recorded consequence, claims nothing was applied,
+    // and touches no document, index entry, or commit.
+    const preview = runDecisionApproveCommand({
+      workspace, project: "demo", id: decisionId, answer: "Defer until later", requestId: "defer-applied-dry-run", dryRun: true
+    });
+
+    expect(preview.data.applied).toBe(false);
+    expect(preview.data.receiptId).toBe(applied.data.receiptId);
+    expect(preview.data.consequence).toEqual(applied.data.consequence);
+    expect(planFile(repo)).toBe(planAfterApply);
+    expect(projectFile(repo)).toBe(projectAfterApply);
+    expect(decisionFile(repo)).toBe(decisionAfterApply);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+    expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" })).toBe(headAfterApply);
+  });
+
+  it("takes the workspace write interlock before reading or writing the pointer pair (Issue #505)", () => {
+    const { workspace, repo } = fixture();
+    const planBefore = planFile(repo);
+    const projectBefore = projectFile(repo);
+    const decisionBefore = decisionFile(repo);
+    const decisionPath = path.join(repo, "docs/decisions/0057-defer-park-me.md");
+
+    // Another pointer writer (a settlement, a worker make-next) holds the
+    // interlock. The deferral must wait for it rather than read a base the
+    // other writer is about to change and write over its result.
+    withDatabase(workspace, (db) => {
+      db.pragma("busy_timeout = 50");
+      withDatabase(workspace, (holder) => {
+        holder.prepare("BEGIN IMMEDIATE").run();
+        try {
+          expect(() => applyDecisionDeferral(db, {
+            repoRoot: repo, projectSlug: "demo", decisionId: "0057", actionId: "park-me", requestId: "defer-under-lock",
+            decisionAbsolutePath: decisionPath, decisionRelativePath: "docs/decisions/0057-defer-park-me.md",
+            decisionAfter: decisionBefore.replace("status: open", "status: approved\nanswer: Defer until later"),
+            decisionAnswer: "Defer until later", dryRun: false
+          })).toThrow(/locked|busy/i);
+        } finally {
+          holder.prepare("ROLLBACK").run();
+        }
+      });
+    });
+
+    expect(planFile(repo)).toBe(planBefore);
+    expect(projectFile(repo)).toBe(projectBefore);
+    expect(decisionFile(repo)).toBe(decisionBefore);
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
   });
 
   it("refuses to apply a defer option when the recorded status is not approved", () => {

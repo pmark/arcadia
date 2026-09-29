@@ -463,7 +463,10 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     repoRoot: worktree,
     projectSlug: session.project_slug,
     activePlanSlug: session.plan_slug,
-    action: { id: action.id, acceptanceCriteria: action.acceptanceCriteria }
+    action: { id: action.id, acceptanceCriteria: action.acceptanceCriteria },
+    // Host preservation has already committed exactly the tree the Session
+    // left, draft included, so that commit is what its evidence describes.
+    evidencedRevision: evidence.candidateRevision
   });
   return result.settled ? result.receiptId ?? "unknown" : null;
 }

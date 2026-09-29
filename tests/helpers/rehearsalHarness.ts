@@ -343,7 +343,7 @@ Disposable fixture plan.
       ...base,
       requestId,
       grantedBy: "rehearsal-harness",
-      expectRevision: String(preview.data.preview.expectedRevision)
+      expectedRevision: String(preview.data.preview.expectedRevision)
     });
     return { preview: preview.data.preview, result: activated.data.result, warnings: activated.warnings };
   }

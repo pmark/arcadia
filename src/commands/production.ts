@@ -66,6 +66,9 @@ export interface ProductionActivateOptions extends ProductionPreviewOptions {
   requestId: string;
   grantedBy: string;
   decision?: string;
+  /** From `--expected-revision`, matching the preview's `expectedRevision` field. */
+  expectedRevision?: string;
+  /** From the deprecated `--expect-revision` spelling. */
   expectRevision?: string;
 }
 
@@ -225,7 +228,7 @@ export function runProductionActivateCommand(
       scopeFingerprint: preview.scopeFingerprint,
       grantedBy: options.grantedBy.trim(),
       decisionRef: options.decision ?? null,
-      expectedRevision: parseOptionalInteger(options.expectRevision, "expectRevision")
+      expectedRevision: parseOptionalInteger(options.expectedRevision ?? options.expectRevision, "expected-revision")
     });
     return {
       result: transition,

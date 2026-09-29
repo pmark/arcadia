@@ -359,20 +359,85 @@ describe("Agent Ask complete", () => {
     const { workspace, repo, head } = fixture();
     const candidate = path.join(path.dirname(repo), "candidate-complete-stale");
     execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-complete-stale", candidate], { cwd: repo });
+    // Drafted while it was still applicable; the candidate moves on afterwards.
+    const draft = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-from-candidate-stale", "first", head)
+    });
     writeFileSync(path.join(candidate, "README.md"), "advance the candidate past the recorded revision\n", "utf8");
     execFileSync("git", ["add", "README.md"], { cwd: candidate });
     execFileSync("git", ["commit", "-qm", "Advance candidate"], { cwd: candidate });
     const advancedCandidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
 
-    const draft = runAgentAskDraftCommand({
-      workspace, dir: candidate, request: completeAsk("complete-from-candidate-stale", "first", head)
-    });
     expect(() => runAgentAskSettleCommand({
       workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-complete-from-candidate-stale",
       disposition: "accepted", cwd: candidate
     })).toThrow(new RegExp(`Candidate revision ${head} does not match .*current HEAD ${advancedCandidateHead}`));
     // Refused before any write: the drafted file is still exactly where draft left it.
     expect(existsSync(draft.data.path)).toBe(true);
+  });
+
+  it("refuses to draft a complete Ask whose candidate_revision is not the checkout's HEAD, writing nothing (Issue #304)", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-draft-guard");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-draft-guard", candidate], { cwd: repo });
+    writeFileSync(path.join(candidate, "README.md"), "candidate work\n", "utf8");
+    execFileSync("git", ["add", "README.md"], { cwd: candidate });
+    execFileSync("git", ["commit", "-qm", "Candidate work"], { cwd: candidate });
+    const candidateHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim();
+
+    // A revision the checkout has already moved past can never be applied.
+    expect(() => runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-draft-stale", "first", head)
+    })).toThrow(new RegExp(`candidate_revision ${head}.*HEAD ${candidateHead}; settlement could never apply it`));
+    expect(existsSync(path.join(candidate, ".arcadia", "asks", "agent-ask-complete-draft-stale.yaml"))).toBe(false);
+
+    // The trap the Issue names: drafting correctly, then committing the draft,
+    // moves HEAD past the recorded revision. Re-drafting it now refuses rather
+    // than handing over an Ask that fails only at apply time.
+    const drafted = runAgentAskDraftCommand({
+      workspace: path.join(path.dirname(repo), "no-workspace-here"), dir: candidate,
+      request: completeAsk("complete-draft-committed", "first", candidateHead)
+    });
+    execFileSync("git", ["add", drafted.data.path], { cwd: candidate });
+    execFileSync("git", ["commit", "-qm", "Commit the drafted Ask"], { cwd: candidate });
+    expect(() => runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-draft-committed", "first", candidateHead)
+    })).toThrow(/settlement could never apply it/);
+
+    // An abbreviated sha of HEAD is exactly as applicable as the full one.
+    const abbreviated = runAgentAskDraftCommand({
+      workspace: path.join(path.dirname(repo), "no-workspace-here"), dir: repo,
+      request: completeAsk("complete-draft-abbreviated", "first", JSON.stringify(head.slice(0, 12)))
+    });
+    expect(abbreviated.data.written).toBe("created");
+  });
+
+  it("archives a complete Ask with the Candidate revision the Mission Log records, not the draft's spelling or the settle commit (Issue #321)", () => {
+    const { workspace, repo, head } = fixture();
+    const candidate = path.join(path.dirname(repo), "candidate-archive-revision");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-archive-revision", candidate], { cwd: repo });
+    const draft = runAgentAskDraftCommand({
+      workspace, dir: candidate, request: completeAsk("complete-archive-revision", "first", JSON.stringify(head.slice(0, 10)))
+    });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-archive-revision", disposition: "accepted", cwd: candidate
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: draft.data.preview!.proposal.id, requestId: "settle-archive-revision", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate
+    });
+    const settleCommit = applied.data.receipt.documentsCommit;
+    expect(settleCommit).toBeTruthy();
+    expect(settleCommit).not.toBe(head);
+
+    const archived = readFileSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-archive-revision.yaml"), "utf8");
+    expect(archived).toMatch(new RegExp(`^candidate_revision: ${head}$`, "m"));
+    expect(archived).not.toContain(settleCommit!);
+    const log = readFileSync(path.join(candidate, "MISSION_LOG.md"), "utf8");
+    expect(log).toContain(`(Candidate ${head})`);
+    // The archive is part of the settlement commit, so what a reader finds on
+    // the branch agrees with the Log.
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
   });
 
   it("carries the Action's completion in its own PR branch, so merging it alone advances the pointer with no further command", () => {
@@ -400,6 +465,10 @@ describe("Agent Ask complete", () => {
       disposition: "accepted", preview: preview.data.receipt.previewFingerprint, apply: true, operator: true, cwd: candidate
     });
     expect(applied.data.receipt.applied).toBe(true);
+    // The receipt names the pointer this settlement wrote on the candidate
+    // branch, not the base checkout's queue front, which still names the
+    // Action just completed until the merge (Issue #507).
+    expect(applied.data.receipt.nextActionKey).toBe("demo/second");
 
     // Before merge: the base checkout still shows the Action open and the
     // old pointer — the candidate's completion has not reached it yet.
@@ -472,6 +541,8 @@ describe("Agent Ask complete", () => {
     // The compare-and-set detected A's change and re-applied B's pinned change
     // on top of it, rather than writing a stale resolution-time result.
     expect(appliedB.data.receipt.effects.join(" ")).toContain("Re-read PROJECT.md and the Plan");
+    // The receipt's next Action is the pointer the retried write actually left.
+    expect(appliedB.data.receipt.nextActionKey).toBe("demo/second");
     // The shared completion log kept A's entry as well as B's: neither
     // settlement's record was silently discarded.
     const log = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");

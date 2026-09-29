@@ -792,7 +792,7 @@ than overwrites, and replaying a `--request-id` returns the original receipt:
 pnpm arcadia production activate \
   --project arcadia --provider claude \
   --intent "Finish the bootstrap Plan without a per-Action relay." \
-  --request-id bootstrap-grant-1 --granted-by "$USER" --expect-revision 0
+  --request-id bootstrap-grant-1 --granted-by "$USER" --expected-revision 0
 ```
 
 Switch it Off at any time:
@@ -879,7 +879,7 @@ pnpm arcadia production activate \
   --intent "Finish the bootstrap Plan without a per-Action relay." \
   --integration-grant-decision 0058 \
   --integration-grant-expires-at 2026-10-01T00:00:00.000Z \
-  --request-id bootstrap-grant-1 --granted-by "$USER" --expect-revision 0
+  --request-id bootstrap-grant-1 --granted-by "$USER" --expected-revision 0
 ```
 
 Integration is a fast-forward of the Session's own agent-owned branch into the

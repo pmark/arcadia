@@ -4,8 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
-import { parse as parseYaml } from "yaml";
-import { normalizeAgentAsk, type NormalizedAgentAsk } from "./agentAsk.js";
+import { normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
 
@@ -19,6 +18,16 @@ export interface AutoSettlePendingCompletionInput {
   projectSlug: string;
   activePlanSlug: string;
   action: { id: string; acceptanceCriteria: string[] };
+  /**
+   * The revision whose tree is exactly what a Session left at exit, when the
+   * host preserved that tree into a commit on the Session's behalf (session
+   * reconciliation). A sandboxed Session cannot commit, so it drafts its
+   * evidence against the working tree it is leaving; commits up to this
+   * revision are that Session's own evidenced work. Only commits after it must
+   * be governance-only. Omitted everywhere else, where the draft's own
+   * `candidate_revision` is the only evidenced tree.
+   */
+  evidencedRevision?: string | null;
 }
 
 export interface AutoSettlePendingCompletionResult {
@@ -33,7 +42,16 @@ export interface AutoSettlePendingCompletionResult {
 export const AUTO_SETTLE_NO_DRAFT = "no_drafted_complete_ask_for_current_pointer";
 export const AUTO_SETTLE_EVIDENCE_INCOMPLETE = "evidence_does_not_verbatim_cover_declared_criteria";
 export const AUTO_SETTLE_STALE_REVISION = "candidate_revision_is_stale_and_not_an_ancestor_of_head";
+export const AUTO_SETTLE_REVISION_CHANGED = "candidate_revision_is_stale_and_later_commits_changed_more_than_governance_records";
 export const AUTO_SETTLE_SETTLED = "settled_from_drafted_complete_ask";
+
+/**
+ * Paths a later commit may touch without invalidating completion evidence
+ * recorded at an earlier revision: the governance records settlement itself
+ * and other Asks write. A commit touching anything else may have changed what
+ * the evidence validated, so it is never refreshed past (Issue #639).
+ */
+const GOVERNANCE_RECORD_PATHS = [/^\.arcadia\//, /^PROJECT\.md$/, /^MISSION_LOG\.md$/, /^docs\/plans\//, /^docs\/decisions\//];
 
 interface DraftedCompleteAsk {
   path: string;
@@ -90,7 +108,7 @@ function evidenceCoversCriteriaVerbatim(evidence: NormalizedAgentAsk["evidence"]
  * (including the evidence block, which may itself mention a revision in free
  * text) is left untouched. */
 function refreshCandidateRevision(content: string, head: string): string {
-  return setTopLevelScalar(content, "candidate_revision", head);
+  return setTopLevelAskScalar(content, "candidate_revision", head);
 }
 
 /** Rewrites only the top-level `request_id:` scalar. A strict-format Agent
@@ -99,26 +117,7 @@ function refreshCandidateRevision(content: string, head: string): string {
  * here would look up (and be refused by) whatever proposal that id was
  * already recorded under, rather than this auto-settle attempt's own. */
 function withRequestId(content: string, requestId: string): string {
-  return setTopLevelScalar(content, "request_id", requestId);
-}
-
-/**
- * Set one top-level scalar in an Agent Ask draft. Block YAML is edited line by
- * line so nothing else changes. A JSON (flow) draft -- the compact form
- * AGENTS.md tells agents to write -- has no `key:` line for a line regex to
- * match, which silently left its original request id and revision in place
- * and made every JSON draft unsettleable here; it is parsed and re-serialized
- * instead, which is lossless for JSON.
- */
-function setTopLevelScalar(content: string, key: "request_id" | "candidate_revision", value: string): string {
-  if (content.trimStart().startsWith("{")) {
-    const parsed: unknown = parseYaml(content);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return `${JSON.stringify({ ...(parsed as Record<string, unknown>), [key]: value })}\n`;
-    }
-    return content;
-  }
-  return content.replace(new RegExp(`^(\\s*${key}\\s*:\\s*).*$`, "m"), `$1${value}`);
+  return setTopLevelAskScalar(content, "request_id", requestId);
 }
 
 /**
@@ -132,11 +131,14 @@ function setTopLevelScalar(content: string, key: "request_id" | "candidate_revis
  * done.
  *
  * `candidate_revision` in that draft is very often stale by the time this
- * runs, purely because later commits (a CodeRabbit-loop fix, a governance
- * reconciliation, another Action's merge) landed on the branch afterward.
- * That is refreshed to the repository's current HEAD only when HEAD is a
- * strict descendant of the draft's revision — i.e. the commit the evidence
- * was about is still on the branch, nothing was rewritten or diverged. Any
+ * runs, because later commits landed on the branch afterward. That is
+ * refreshed to the repository's current HEAD only when HEAD is a strict
+ * descendant of the draft's revision *and* every commit since touched only
+ * governance records (another settlement, a Log entry, a Plan or Decision
+ * edit) — so the evidence, which must still verbatim-cover every declared
+ * criterion, describes exactly the code at HEAD. A later code change (even a
+ * CodeRabbit-loop fix) falls through to an ordinary dispatch that re-validates
+ * the work (Issue #639). Any
  * other reason preview or settlement is not clean (a conflict, an unresolved
  * required review Decision, a genuinely divergent revision, evidence that
  * does not match) falls through untouched, exactly as `settleAgentAsk` would
@@ -186,6 +188,24 @@ function attemptSettleOneDraft(
     const isAncestor = tryGit(input.repoRoot, ["merge-base", "--is-ancestor", candidateRevision, "HEAD"]) !== null;
     if (!isAncestor) {
       return { settled: false, reason: AUTO_SETTLE_STALE_REVISION, askPath: draft.path };
+    }
+    // Ancestry alone proves only that the evidenced commit is still reachable,
+    // not that the commits since left what it validated alone. Refresh only
+    // when every file those commits changed is a governance record, so the
+    // code the evidence covers is byte-identical at HEAD and the evidence --
+    // already checked above to verbatim-cover every criterion the Action
+    // declares at HEAD -- still describes it. Anything else falls through to an
+    // ordinary dispatch that re-validates the work.
+    const evidencedFrom = input.evidencedRevision &&
+      tryGit(input.repoRoot, ["merge-base", "--is-ancestor", candidateRevision, input.evidencedRevision]) !== null &&
+      tryGit(input.repoRoot, ["merge-base", "--is-ancestor", input.evidencedRevision, "HEAD"]) !== null
+      ? input.evidencedRevision
+      : candidateRevision;
+    const changed = tryGit(input.repoRoot, ["diff", "--name-only", `${evidencedFrom}..HEAD`]);
+    const onlyGovernance = changed !== null && changed.split("\n").map((line) => line.trim()).filter(Boolean)
+      .every((changedPath) => GOVERNANCE_RECORD_PATHS.some((pattern) => pattern.test(changedPath)));
+    if (!onlyGovernance) {
+      return { settled: false, reason: AUTO_SETTLE_REVISION_CHANGED, askPath: draft.path };
     }
     effectiveContent = refreshCandidateRevision(draft.content, head);
   }

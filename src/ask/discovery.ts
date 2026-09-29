@@ -55,18 +55,24 @@ export function discoverUnprocessedAgentAsks(
     .filter((filePath) => options.includeFile?.(filePath) ?? true)
     .sort();
   const result: AgentAskDiscoveryResult = { discovered: [], failed: [] };
+  const settledRequest = db.prepare(`SELECT 1 FROM agent_ask_proposals p
+    JOIN agent_ask_settlements s ON s.proposal_id = p.id WHERE p.request_id = ? LIMIT 1`);
   for (const filePath of files) {
     try {
       const request = readFileSync(filePath, "utf8");
-      if (options.shouldPreview) {
-        let normalized: NormalizedAgentAsk | null = null;
-        try {
-          normalized = normalizeAgentAsk({ request });
-        } catch {
-          normalized = null;
-        }
-        if (normalized && !options.shouldPreview(normalized)) continue;
+      let normalized: NormalizedAgentAsk | null = null;
+      try {
+        normalized = normalizeAgentAsk({ request });
+      } catch {
+        normalized = null;
       }
+      // An Ask whose request id already has a settlement is done: nothing
+      // discovery could do to it would change anything, and a later edit or
+      // normalization of the committed file is not a failure anyone can act on.
+      // Reporting every such file drowned each `draft` in false failures
+      // (Issue #592). Unsettled files are still judged exactly as before.
+      if (normalized && settledRequest.get(normalized.requestId)) continue;
+      if (options.shouldPreview && normalized && !options.shouldPreview(normalized)) continue;
       const { proposal, replayed } = previewAgentAskRequest(db, { request, sourcePath: filePath, repoRoot });
       if (!replayed) result.discovered.push({ path: filePath, requestId: proposal.normalized.requestId });
     } catch (error) {
