@@ -1018,6 +1018,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <slug>", "Project to include (repeatable)", collectRepeatable, [])
       .option("--plan <project/plan>", "Plan to include (repeatable; default every Plan of the named Projects)", collectRepeatable, [])
+      .option("--action <project/action>", "Exact Action allowlist (repeatable; default every queued Action of the Plans). Only narrows, never adds", collectRepeatable, [])
       .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
@@ -1037,6 +1038,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <slug>", "Project to include (repeatable)", collectRepeatable, [])
       .option("--plan <project/plan>", "Plan to include (repeatable)", collectRepeatable, [])
+      .option("--action <project/action>", "Exact Action allowlist (repeatable; default every queued Action of the Plans). Only narrows, never adds", collectRepeatable, [])
       .option("--provider <name>", "Permitted coding-agent provider (repeatable)", collectRepeatable, [])
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
@@ -4536,6 +4538,7 @@ interface ProductionCliOptions {
   workspace: string;
   project: string[];
   plan: string[];
+  action?: string[];
   provider: string[];
   intent?: string;
   concurrency?: string;

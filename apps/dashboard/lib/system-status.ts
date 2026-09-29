@@ -303,15 +303,38 @@ async function resolveWorkspaceSafely(): Promise<string | null> {
   }
 }
 
-export async function readManagedRunWorker(workspace: string): Promise<{ running: boolean; heartbeat: HeartbeatState }> {
-  const pidPath = path.join(workspace, ".arcadia", "worker.pid");
-  let pid: number | null = null;
+/**
+ * The worker's pidfile is one JSON record, `{"pid","owner","at"}`, where `at`
+ * is the epoch-ms of its last liveness refresh (src/commands/worker.ts). A bare
+ * integer is the older format and still reads as a pid with no heartbeat.
+ */
+function readWorkerPidRecord(pidPath: string): { pid: number; at: number | null } | null {
+  let raw: string;
   try {
-    const parsed = Number.parseInt(readFileSync(pidPath, "utf8").trim(), 10);
-    pid = Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    raw = readFileSync(pidPath, "utf8").trim();
+  } catch {
+    return null;
+  }
+  try {
+    const value = JSON.parse(raw) as { pid?: unknown; at?: unknown } | number;
+    if (typeof value === "number") return Number.isInteger(value) && value > 0 ? { pid: value, at: null } : null;
+    if (typeof value?.pid === "number" && Number.isInteger(value.pid) && value.pid > 0) {
+      return { pid: value.pid, at: typeof value.at === "number" && Number.isFinite(value.at) ? value.at : null };
+    }
   } catch {}
-  const running = pid !== null && isProcessAlive(pid);
-  const heartbeat = readHeartbeat(path.join(workspace, ".arcadia", "worker.heartbeat"));
+  return null;
+}
+
+export async function readManagedRunWorker(workspace: string): Promise<{ running: boolean; heartbeat: HeartbeatState }> {
+  const record = readWorkerPidRecord(path.join(workspace, ".arcadia", "worker.pid"));
+  const running = record !== null && isProcessAlive(record.pid);
+  const heartbeat: HeartbeatState = record?.at != null
+    ? {
+        timestamp: new Date(record.at).toISOString(),
+        fresh: Date.now() - record.at <= HEARTBEAT_MAX_AGE_MS,
+        available: true
+      }
+    : readHeartbeat(path.join(workspace, ".arcadia", "worker.heartbeat"));
   return { running, heartbeat };
 }
 

@@ -30,6 +30,13 @@ export interface ProductionActivationPreviewInput {
   projects: string[];
   providers: string[];
   plans?: string[];
+  /**
+   * Optional exact Action allowlist (project/action keys). Only narrows the
+   * queue-derived set: an Action not named here is left out, and a key the
+   * queue no longer offers is never added. Lets reactivation keep the scope
+   * originally granted instead of re-deriving it (Issue #392).
+   */
+  actions?: string[];
   maxConcurrentSessions?: number;
   mechanicalTransitions?: MechanicalTransition[];
   /** Optional Decision 0058 bounded candidate-integration grant. */
@@ -96,6 +103,7 @@ export function buildProductionActivationPreview(
   const generatedAt = (input.now ?? new Date()).toISOString();
   const requestedProjects = clean(input.projects);
   const requestedPlans = clean(input.plans ?? []);
+  const requestedActions = clean(input.actions ?? []);
 
   if (requestedProjects.length === 0) {
     throw validationError("Name at least one Project to include in managed production.", {
@@ -110,6 +118,9 @@ export function buildProductionActivationPreview(
 
   const matched = candidates.filter((entry) => {
     if (!requestedProjects.includes(entry.projectSlug!)) return false;
+    if (requestedActions.length > 0 && !requestedActions.includes(entry.orderKey ?? `${entry.projectSlug}/${entry.actionId}`)) {
+      return false;
+    }
     if (requestedPlans.length === 0) return true;
     return requestedPlans.includes(`${entry.projectSlug}/${entry.planSlug}`);
   });

@@ -986,6 +986,20 @@ describe("activation preview", () => {
     expect(preview.controlDeadlines).toBe(PRODUCTION_CONTROL_DEADLINES);
   });
 
+  it("keeps an exact Action allowlist and never adds an Action outside it (Issue #392)", () => {
+    const target = fixtureWorkspace();
+    const preview = withDatabase(target, (db) =>
+      buildProductionActivationPreview(db, {
+        projects: ["demo"],
+        actions: ["demo/migrate", "demo/not-queued"],
+        providers: ["claude"],
+        intent: "Finish the queue Plan."
+      })
+    );
+    expect(preview.scope.actions).toEqual(["demo/migrate"]);
+    expect(preview.orderedActions.map((action) => action.actionKey)).toEqual(["demo/migrate"]);
+  });
+
   it("writes nothing", () => {
     const target = fixtureWorkspace();
     withDatabase(target, (db) =>
