@@ -1019,3 +1019,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/soak-rehearsal-harness-until-clean
+
+- **Did:** Completed Action arcadia/soak-rehearsal-harness-until-clean from accepted evidence (Candidate 83470e71c8154ef2b90bc6676125e4a27150141b).
+- **Result:** Every declared acceptance criterion was accepted as met: "A single documented command runs tests/rehearsal-two-action.test.ts repeatedly against a freshly prepared fixture each iteration, and refuses to start when the fixture shows leftover repair budget, stale handoffs, live claims or a reused request_id."; "The loop stops on any of: N consecutive clean iterations (default 5), a configured iteration or token budget, or the same failure recurring after three fix attempts; each stop reason is printed and recorded."; "Every failing iteration files or updates one bug Issue in the owning repository with evidence and file:line, and only a failure that blocks the loop becomes a fix; non-blocking failures stay Issues."; "The loop never merges a change to the concurrency gate, admission policy or approval boundaries; such a fix is left as an open pull request for the operator."; "Deterministic tests cover the clean-fixture refusal, each stop condition, and the gate-file merge refusal; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-soak-rehearsal-harness-until-clean-2026-09-29).
