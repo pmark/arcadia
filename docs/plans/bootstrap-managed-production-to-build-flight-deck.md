@@ -2642,6 +2642,59 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: raise-red-alert-on-stop-the-line-failures
+    title: Detect stop-the-line failures deterministically in the worker tick and record a red alert with evidence and a Discord post.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Detect stop-the-line failures deterministically in the worker tick and record a red alert with evidence and a Discord post.
+    expected_artifact: Evidence satisfying Agent Ask raise-red-alert-on-stop-the-line-failures
+    clarification: clarified
+    confidence: high
+    source: Agent Ask red-alert-stop-the-line-monitoring-2026-09-29
+    acceptance_criteria:
+      - "docs/arcadia-semantics.md defines a red alert as a managed-production failure that meets the Stop the line test, and lists the triggers: an admission refused on consecutive ticks, a Session past its stall window, a failed reconcile, and a failure repeating after the repair budget."
+      - The worker tick detects each trigger with no model call and records one red alert per distinct failure, with the Project, Action, Session id, trigger, first-seen time, and the log or artifact path that shows the cause; a repeat of the same failure updates the alert instead of creating another.
+      - Each new red alert posts once to the configured notification channel with its request id, the Action, the trigger and a link to the evidence, and production status lists open red alerts before every other section.
+      - Deterministic tests cover each trigger raising exactly one alert, a repeat updating it, and an alert clearing when the failure resolves; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: diagnose-red-alerts-and-propose-the-fix
+    title: Run one bounded diagnosis per red alert that files the Issue and proposes the fix Action, never merging changes to safety gates.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Run one bounded diagnosis per red alert that files the Issue and proposes the fix Action, never merging changes to safety gates.
+    expected_artifact: Evidence satisfying Agent Ask diagnose-red-alerts-and-propose-the-fix
+    clarification: clarified
+    confidence: high
+    source: Agent Ask red-alert-stop-the-line-monitoring-2026-09-29
+    acceptance_criteria:
+      - "An open red alert starts at most one bounded diagnosis with a declared token budget, which reads the alert evidence, files or updates one bug Issue with file:line evidence, and records a proposed fix Action through an Agent Ask."
+      - A diagnosis whose fix touches the concurrency gate, admission policy, approval boundaries or credentials stops at an open pull request for the operator and is never merged automatically.
+      - A diagnosis that exceeds its budget or finds no cause records that fact on the alert and leaves it open and visible; it does not retry.
+      - Deterministic tests cover the single-diagnosis limit, the budget stop, and the safety-gate refusal; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [raise-red-alert-on-stop-the-line-failures]
+    decisions: []
+    references: []
+  - id: prove-red-alert-with-injected-failures
+    title: Prove the red alert and diagnosis path fire end to end by injecting failures into the hermetic rehearsal harness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove the red alert and diagnosis path fire end to end by injecting failures into the hermetic rehearsal harness.
+    expected_artifact: Evidence satisfying Agent Ask prove-red-alert-with-injected-failures
+    clarification: clarified
+    confidence: high
+    source: Agent Ask red-alert-stop-the-line-monitoring-2026-09-29
+    acceptance_criteria:
+      - tests/rehearsal-two-action.test.ts or a sibling suite injects a stalled Session, a refused admission on consecutive ticks and a failed reconcile through tests/helpers/rehearsalHarness.ts, and asserts each raises its red alert with evidence.
+      - The suite asserts the alert posts one notification and starts one bounded diagnosis, and that resolving the failure clears the alert.
+      - The suite runs in the standard pnpm test run with no live production grant and no network; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [diagnose-red-alerts-and-propose-the-fix]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
