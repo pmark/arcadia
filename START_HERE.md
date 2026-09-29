@@ -964,6 +964,37 @@ pnpm arcadia production capacity attest \
   --note "Read from the Codex status line."
 ```
 
+### Soak the hermetic rehearsal harness
+
+`tests/rehearsal-two-action.test.ts` replays the two-Action rehearsal with no
+live grant. To loop it until it is boringly green:
+
+```sh
+mise exec -- node --import tsx scripts/soak-rehearsal.ts run
+```
+
+Each iteration is a fresh `vitest run`, and the harness builds a throwaway
+fixture every time. The loop stops, printing and recording the reason in
+`artifacts/generated/soak/rehearsal-soak.json`, on the first of: `--clean-target`
+consecutive clean iterations (default 5), `--max-iterations` (default 20),
+`--token-budget` (counting `--spent-tokens` you report), a blocking failure that
+needs a fix, or the same failure recurring after three fix attempts. Fix the
+defect and rerun the same command; the state file carries the count. Every
+failing iteration files (or comments on) one `bug` Issue per distinct failure
+signature, so an iteration with several failures can touch several Issues, and a
+recurring failure updates its existing Issue instead of duplicating it. `--non-blocking <test-name-fragment>` keeps a failure as an Issue
+without failing the iteration; `--reset` starts a fresh state.
+
+To refuse a contaminated live fixture, add `--fixture-workspace <dir>
+--fixture-repo <path> --action-key <project/action> --request-id <id>`: the loop
+exits 2 without running if it finds leftover repair budget, an unsuperseded
+handoff, a live claim, or a request_id that already has a receipt.
+
+Before merging any fix the loop produced, run
+`mise exec -- node --import tsx scripts/soak-rehearsal.ts guard-merge`. It exits
+2 if the branch touches the concurrency gate, admission policy or approval
+boundary files; such a pull request stays open for the operator.
+
 ## Protect active coding work
 
 The Morning Packet puts **Coding work safety** first whenever an active

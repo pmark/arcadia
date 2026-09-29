@@ -2607,7 +2607,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/735", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
   - id: soak-rehearsal-harness-until-clean
     title: Run the hermetic rehearsal harness in a bounded soak loop that files each defect as an Issue, fixes only loop-blocking ones, and stops on fixed conditions.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Run the hermetic rehearsal harness in a bounded soak loop that files each defect as an Issue, fixes only loop-blocking ones, and stops on fixed conditions.
