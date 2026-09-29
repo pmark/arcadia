@@ -1054,3 +1054,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "#392: The dashboard's production toggle does not re-derive scope.actions on reactivation."; "#430: services.sh restart does not tear down all services when a single 2s health probe times out."; "#450: The recovery script does not report failure before worker transports are actually ready."; "#560: Worker install tests do not write to the real ~/Library/LaunchAgents/com.arcadia.worker.plist."; "#569: add-arcadia-push-field-to-board.sh does not write a pnpm warning line into schedule-status.json."; "#582: The dashboard /runs page reports the worker's actual running/stopped state, matching the real pidfile format.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-worker-and-dashboard-operational-bugs-2026-09-29).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr807
+
+- **Did:** Six operational bugs (production reactivation scope, restart retry, recovery readiness, install-test isolation, schedule JSON, /runs worker state) are fixed and up for review: https://github.com/pmark/arcadia/pull/807
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr807","project":"arcadia","intent":"log","requested_authority":"apply_if_approved","desired_result":"Six operational bugs (production reactivation scope, restart retry, recovery readiness, install-test isolation, schedule JSON, /runs worker state) are fixed and up for review: https://github.com/pmark/arcadia/pull/807"}
