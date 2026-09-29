@@ -2231,7 +2231,7 @@ actions:
     references: ["src/db/connection.ts", "tests/db-write-transaction.test.ts", "docs/production-scheduling.md", "docs/proposals/portfolio-parallel-execution.md"]
   - id: keep-action-claim-while-candidate-unmerged
     title: An Action claim does not expire while its candidate is still unmerged, so neither arcadia go nor production can dispatch the same Action a second time.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: An Action claim does not expire while its candidate is still unmerged, so neither arcadia go nor production can dispatch the same Action a second time.

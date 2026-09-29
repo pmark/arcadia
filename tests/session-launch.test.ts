@@ -28,7 +28,7 @@ import {
   normalizeProductionScope,
   type ProductionScope
 } from "../src/production/policy.js";
-import { getRepositoryLease, prepareSession, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
@@ -341,6 +341,41 @@ describe("launchGuardedHostSession", () => {
     const preview = preview1(fixture, "req-1", tmux);
     expectArcadiaError(() => doLaunch(fixture, tmux, preview.previewFingerprint), "different Action");
     expect(tmux.launches).toHaveLength(0);
+  });
+
+  it("refuses an Action whose claim is older than 24 hours while its candidate is unmerged, and launches once it is abandoned (Issue #549)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const branch = "claude/define-contract-20260829T000000000Z";
+    const candidate = path.join(fixture.root, "earlier-candidate");
+    git(fixture.repo, ["worktree", "add", "-q", "-b", branch, candidate, "main"]);
+    writeFileSync(path.join(candidate, "contract.md"), "the earlier dispatch's work\n");
+    git(candidate, ["add", "contract.md"]);
+    git(candidate, ["commit", "-qm", "earlier candidate"]);
+    withDatabase(fixture.workspace, (db) => {
+      reserveAgentWorktree(db, {
+        repositoryPath: fixture.repo,
+        worktreePath: candidate,
+        branch,
+        now: new Date(fixture.now.getTime() - 25 * 60 * 60 * 1000),
+        project: "test-project",
+        actionId: "define-contract"
+      });
+    });
+
+    const preview = preview1(fixture);
+    expectArcadiaError(
+      () => doLaunch(fixture, tmux, preview.previewFingerprint),
+      `candidate branch ${branch} is still unmerged`
+    );
+    expect(tmux.launches).toHaveLength(0);
+
+    // Explicitly abandoned: the candidate's worktree and branch are removed.
+    git(fixture.repo, ["worktree", "remove", "--force", candidate]);
+    git(fixture.repo, ["branch", "-D", branch]);
+    const launched = doLaunch(fixture, tmux, preview.previewFingerprint);
+    expect(launched.session.action_id).toBe("define-contract");
+    expect(tmux.launches).toHaveLength(1);
   });
 
   it("recovers a pre-spawn crash: a prepared-but-never-launched lease is resumed rather than left stuck", () => {

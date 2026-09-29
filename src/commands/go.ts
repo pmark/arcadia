@@ -38,6 +38,7 @@ import {
 } from "../git/worktrees.js";
 import {
   getActiveActionClaim,
+  isHeldByUnmergedCandidate,
   getRepositoryLease,
   launchPreparedSession,
   prepareSession,
@@ -1109,17 +1110,26 @@ function evaluateExistingCandidate(
   // being fixed is a session reading a clearly-worded brief and starting anyway.
   const claimed = getActiveActionClaim(db, input.controlWorktree, input.projectSlug, input.actionId, input.now);
   if (claimed) {
+    // Past its 24-hour window, a claim is only still returned because its
+    // candidate is unmerged (Issue #549) -- name that candidate, since the
+    // remedy is to merge or abandon it, not to wait for the claim to lapse.
+    const unmerged = isHeldByUnmergedCandidate(claimed, input.now);
     return {
       kind: "refuse",
       code: "action_claimed",
-      reason: "Another live worktree already claims this Action; Arcadia go will not dispatch it a second time.",
+      reason: unmerged
+        ? `Another worktree still claims this Action: its claim outlived its 24-hour window because candidate branch ${claimed.branch} is still unmerged; Arcadia go will not dispatch it a second time.`
+        : "Another live worktree already claims this Action; Arcadia go will not dispatch it a second time.",
       details: {
         actionId: input.actionId,
         projectSlug: input.projectSlug,
         claimedByWorktreePath: claimed.worktree_path,
         claimedByBranch: claimed.branch,
         claimExpiresAt: claimed.expires_at,
-        remedy: `Finish or retire ${claimed.worktree_path}, or dispatch a different ready Action.`
+        unmergedCandidateBranch: unmerged ? claimed.branch : null,
+        remedy: unmerged
+          ? `Merge the candidate branch ${claimed.branch}, or abandon it (retire ${claimed.worktree_path} and delete the branch), or dispatch a different ready Action.`
+          : `Finish or retire ${claimed.worktree_path}, or dispatch a different ready Action.`
       }
     };
   }
