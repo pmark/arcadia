@@ -499,12 +499,23 @@ function updateClaudeWorkspaceTrust(
   backups: string[],
   timestamp: string
 ): void {
-  const state = readClaudeState(file, true) ?? {};
-  if (isClaudeFolderTrusted(state, root)) return;
-  const projects = state.projects ?? {};
-  state.projects = { ...projects, [root]: { ...(projects[root] ?? {}), hasTrustDialogAccepted: true } };
-  writeManagedFile(file, `${JSON.stringify(state, null, 2)}\n`, changed, backups, timestamp, true);
+  // A running Claude Code rewrites this file on its own schedule. Re-read it just
+  // before replacing it and redo the merge if it moved, so the install cannot
+  // overwrite a concurrent update with an older snapshot; a few attempts bound
+  // the window to one that a live Session would have to hit every time.
+  for (let attempt = 0; attempt < CLAUDE_STATE_MERGE_ATTEMPTS; attempt += 1) {
+    const before = readOptional(file);
+    const state = readClaudeState(file, true) ?? {};
+    if (isClaudeFolderTrusted(state, root)) return;
+    const projects = state.projects ?? {};
+    state.projects = { ...projects, [root]: { ...(projects[root] ?? {}), hasTrustDialogAccepted: true } };
+    if (readOptional(file) !== before && attempt < CLAUDE_STATE_MERGE_ATTEMPTS - 1) continue;
+    writeManagedFile(file, `${JSON.stringify(state, null, 2)}\n`, changed, backups, timestamp, true);
+    return;
+  }
 }
+
+const CLAUDE_STATE_MERGE_ATTEMPTS = 3;
 
 function claudeWorktreeRoot(home: string): string {
   return path.join(path.resolve(home), ".claude", "worktrees");
