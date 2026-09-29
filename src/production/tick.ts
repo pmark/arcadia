@@ -3,6 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
+import { surfaceMergedAgentAsks, type MergedAskSurfacing } from "../ask/surfaceMergedAsks.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
@@ -91,6 +92,8 @@ export interface ManagedProductionTickProjectResult {
   projectSlug: string;
   repositoryRoot: string | null;
   baseBranchAdvance: BaseBranchAdvanceObservation | null;
+  /** Merged Agent Asks this tick surfaced as pending approvals; null when base-branch observation did not run or failed. */
+  askSurfacing?: MergedAskSurfacing | null;
   reconciled: Array<{ sessionId: string; outcome: string }>;
   handoff: SessionHandoffResult | null;
   launch: ManagedProductionLaunchAttempt | null;
@@ -697,10 +700,20 @@ export function runManagedProductionTick(
     const repoRoot = path.resolve(configuredPath);
 
     let baseBranchAdvance: BaseBranchAdvanceObservation | null = null;
+    let askSurfacing: MergedAskSurfacing | null = null;
     if (projectInActiveScope(db, project.slug) && shouldAttemptBaseBranchObservation(db, { projectSlug: project.slug, repoRoot, now })) {
       try {
         baseBranchAdvance = detectBaseBranchAdvance(db, { repoRoot, projectSlug: project.slug, projectId: project.id, now, log });
         clearBaseBranchObservationFailure(db, project.slug);
+        // An Ask merged from a cloud session only becomes a pending approval
+        // once something previews it; do that here, on the checkout the tick
+        // just fast-forwarded, so the operator can accept it from the
+        // dashboard without running a command on this machine.
+        try {
+          askSurfacing = surfaceMergedAgentAsks(db, { repoRoot, projectSlug: project.slug, now, log });
+        } catch (error) {
+          log(`Agent Ask surfacing failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (recordBaseBranchObservationFailure(db, { projectSlug: project.slug, repoRoot, message, now })) {
@@ -833,7 +846,7 @@ export function runManagedProductionTick(
     }
 
     options.heartbeat?.();
-    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, reconciled, handoff, launch });
+    projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, askSurfacing, reconciled, handoff, launch });
   }
 
   return { policyActive: active, scheduling, schedulingError, projects };
