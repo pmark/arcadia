@@ -2626,7 +2626,7 @@ actions:
     references: []
   - id: session-signal-catalog-and-classifier
     title: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
-    status: done
+    status: open
     responsibility: agent
     effort: session
     next_action: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
