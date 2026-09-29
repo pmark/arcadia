@@ -252,7 +252,8 @@ export function writePointerPairWithCompareAndSet(input: {
   planPath: string;
   projectBefore: string;
   planBefore: string;
-  projectAfter: (current: string) => string;
+  /** Receives the Plan content this same attempt read, so a pointer derived from the Plan is derived from fresh content. */
+  projectAfter: (current: string, planCurrent: string) => string;
   planAfter: (current: string) => string;
   /** Bound on re-reads when another writer keeps changing the documents. */
   maxAttempts?: number;
@@ -267,7 +268,7 @@ export function writePointerPairWithCompareAndSet(input: {
     const projectCurrentSha = sha256(projectCurrent);
     const planCurrentSha = sha256(planCurrent);
     if (projectCurrentSha === expectedProject && planCurrentSha === expectedPlan) {
-      const projectAfter = input.projectAfter(projectCurrent);
+      const projectAfter = input.projectAfter(projectCurrent, planCurrent);
       const planAfter = input.planAfter(planCurrent);
       writePairAtomically(input.projectPath, projectCurrent, projectAfter, input.planPath, planCurrent, planAfter);
       return {

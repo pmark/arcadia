@@ -275,6 +275,7 @@ export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSet
     `Discord: ${receipt.notificationStatus}`,
     ...(receipt.recovery ? [`Recovery: ${receipt.recovery.remedy}`] : []),
     `Preview fingerprint: ${receipt.previewFingerprint}`,
+    ...(receipt.applied ? [] : [`To apply: rerun the same command with --apply --preview ${receipt.previewFingerprint}`]),
     ...(receipt.queueRevision === undefined ? [] : [`Queue revision: ${receipt.queueRevision}`]),
     `Receipt: ${receipt.id}`
   ];
