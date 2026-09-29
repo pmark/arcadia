@@ -453,6 +453,42 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).toBe("incomplete_resumable");
   });
 
+  // Contract 20 false-agent-completion quality gate (Issue #555), owned by the
+  // Action `prove-contract-20-completion-gate`. The evidence below is verbatim
+  // and every criterion says `met`; only the declared Artifact is missing, so
+  // the claim is false and must be refused, not accepted from the claim alone.
+  it("refuses a drafted complete Ask whose verbatim met evidence is false because the declared Artifact was never produced (contract 20, #555)", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const sessionId = launched.data.session!.id;
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+    draftCompleteInWorktree(worktreePath, "The contract exists.");
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "claim completion without the work"]);
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-false-drafted", repoRoot: fixture.repo })
+    );
+
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+    expect(result.receipt.outcome).not.toBe("accepted_completion");
+    expect(existsSync(path.join(worktreePath, "contract.md"))).toBe(false);
+    expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+  });
+
+  it("refuses to settle a self-completion whose verbatim met evidence is false because the declared Artifact is missing (contract 20, #555)", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launch(fixture, tmux);
+    const worktreePath = launched.data.session!.worktree_path;
+    tmux.live = false;
+
+    expect(() => settleCompleteFromWorktree(fixture, worktreePath, "false-self-settle")).toThrow();
+    expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+  });
+
   it("never accepts a candidate whose Plan claims done without a settlement behind it", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
