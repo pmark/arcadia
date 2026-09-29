@@ -53,7 +53,7 @@ this Mac: <http://127.0.0.1:3020/runs>) for **Active now**, above the history
 list: every prepared or running agent Session and every pending or running
 execution Run across the whole portfolio, independent of any recent-history
 limit — a Session that has been running far longer than everything else never
-falls off the page just because newer work finished. Each Session card shows
+falls off the page just because newer work finished. The **Needs your approval** section on this page is collapsed and loads nothing until you tap it (its count appears after the first open), so the page opens fast. Each Session card shows
 its Action, packet, agent/model, host, worktree, native session id, lifecycle
 status, and when it was last observed, plus **Copy Reattach** (and **Copy
 Resume** for Claude Code Sessions) so you can act from a terminal; a phone-only
