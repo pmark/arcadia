@@ -104,6 +104,10 @@ export function buildProductionActivationPreview(
   const requestedProjects = clean(input.projects);
   const requestedPlans = clean(input.plans ?? []);
   const requestedActions = clean(input.actions ?? []);
+  if (input.actions !== undefined && input.actions.length > 0 && requestedActions.length === 0) {
+    // An explicit allowlist that cleans to nothing must not widen to every queued Action.
+    throw validationError("--action was given but every value was blank; name the Actions to allow.", { field: "actions" });
+  }
 
   if (requestedProjects.length === 0) {
     throw validationError("Name at least one Project to include in managed production.", {

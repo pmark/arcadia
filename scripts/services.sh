@@ -59,6 +59,12 @@ fi
 # failed restart is retried, up to ARCADIA_RESTART_ATTEMPTS attempts in total
 # (default 2), instead of stopping at a full outage on one slow probe.
 ATTEMPTS="${ARCADIA_RESTART_ATTEMPTS:-2}"
+# Reject anything but a plain decimal 1-10 (a leading zero would read as octal
+# in the comparison below and silently defeat the limit).
+if [[ ! "$ATTEMPTS" =~ ^([1-9]|10)$ ]]; then
+  echo "ARCADIA_RESTART_ATTEMPTS must be an integer from 1 to 10, got: $ATTEMPTS" >&2
+  exit 2
+fi
 attempt=1
 until "$IMPL" "$ACTION" "$REPO"; do
   status=$?

@@ -45,4 +45,10 @@ describe("readManagedRunWorker (Issue #582)", () => {
     const worker = await readManagedRunWorker(workspaceWithPidfile(String(process.pid)));
     expect(worker.running).toBe(true);
   });
+
+  it("ignores an out-of-range timestamp instead of throwing", async () => {
+    const worker = await readManagedRunWorker(workspaceWithPidfile(`{"pid":${process.pid},"owner":"uuid","at":1e20}`));
+    expect(worker.running).toBe(true);
+    expect(worker.heartbeat.available).toBe(false);
+  });
 });

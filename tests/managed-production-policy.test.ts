@@ -1000,6 +1000,15 @@ describe("activation preview", () => {
     expect(preview.orderedActions.map((action) => action.actionKey)).toEqual(["demo/migrate"]);
   });
 
+  it("refuses an explicit Action allowlist that is entirely blank rather than widening it", () => {
+    const target = fixtureWorkspace();
+    expect(() =>
+      withDatabase(target, (db) =>
+        buildProductionActivationPreview(db, { projects: ["demo"], actions: ["  "], providers: ["claude"], intent: "x" })
+      )
+    ).toThrow(/blank/);
+  });
+
   it("writes nothing", () => {
     const target = fixtureWorkspace();
     withDatabase(target, (db) =>

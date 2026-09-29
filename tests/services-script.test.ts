@@ -70,4 +70,14 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart (Issue 
     expect(result.stderr).toContain("Restart failed after 2 attempt(s).");
     expect(readFileSync(calls, "utf8").trim().split("\n")).toHaveLength(2);
   });
+
+  it("refuses an invalid attempt limit before restarting anything", () => {
+    for (const bad of ["08", "0", "abc", "99"]) {
+      const { impl, calls } = stubImpl(0);
+      const result = runRestart(impl, bad);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("ARCADIA_RESTART_ATTEMPTS");
+      expect(readFileSync(calls, "utf8")).toBe("");
+    }
+  });
 });

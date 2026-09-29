@@ -319,7 +319,7 @@ function readWorkerPidRecord(pidPath: string): { pid: number; at: number | null 
     const value = JSON.parse(raw) as { pid?: unknown; at?: unknown } | number;
     if (typeof value === "number") return Number.isInteger(value) && value > 0 ? { pid: value, at: null } : null;
     if (typeof value?.pid === "number" && Number.isInteger(value.pid) && value.pid > 0) {
-      return { pid: value.pid, at: typeof value.at === "number" && Number.isFinite(value.at) ? value.at : null };
+      return { pid: value.pid, at: typeof value.at === "number" && Number.isFinite(new Date(value.at).getTime()) ? value.at : null };
     }
   } catch {}
   return null;
