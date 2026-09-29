@@ -456,5 +456,5 @@ describe("contract-20 fault matrix (completion and pointer)", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(path.join(dir, "summary-completion-pointer.json"), `${JSON.stringify({ scenario: "completion-pointer", seeds: SEEDS_PER_SCENARIO, violations: 0, ...totals }, null, 2)}\n`);
     }
-  }, 300_000);
+  }, 900_000); // ~190s alone; 300s was exceeded under full-suite load (#768)
 });

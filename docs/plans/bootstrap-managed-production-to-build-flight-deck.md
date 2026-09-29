@@ -2541,7 +2541,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/392", "https://github.com/pmark/arcadia/issues/430", "https://github.com/pmark/arcadia/issues/450", "https://github.com/pmark/arcadia/issues/560", "https://github.com/pmark/arcadia/issues/569", "https://github.com/pmark/arcadia/issues/582"]
   - id: stabilize-test-and-build-infra
     title: Remove flakiness and false failures from the test and build pipeline.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Remove flakiness and false failures from the test and build pipeline.

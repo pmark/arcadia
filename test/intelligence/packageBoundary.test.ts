@@ -14,7 +14,9 @@ describe("@pmark/arcadia public package boundary", () => {
     if (!existsSync(clientEntry)) {
       execFileSync("npx", ["tsc", "-p", "tsconfig.json"], { cwd: repoRoot });
     }
-  });
+    // A cold compile exceeds vitest's 10s default hook timeout under a full
+    // parallel run (#514), so this hook carries its own generous bound.
+  }, 120_000);
 
 
   it("emits the built files the exports map points to", () => {
