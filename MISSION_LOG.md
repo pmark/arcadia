@@ -1033,3 +1033,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/stabilize-test-and-build-infra
+
+- **Did:** Completed Action arcadia/stabilize-test-and-build-infra from accepted evidence (Candidate 905db62e240b334ac7e289c831daf61d0b9bb763).
+- **Result:** Every declared acceptance criterion was accepted as met: "#452: pnpm test does not flake into 30s timeouts on CLI/discord subprocess tests under file parallelism."; "#480: eslint's type-aware rules do not report false positives in a prepared worktree that are absent on the main checkout."; "#514: The packageBoundary beforeAll build completes within vitest's 10s hook timeout on a clean checkout."; "#557: Preservation check binding resolves dotted local Python submodule imports.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-stabilize-test-and-build-infra-2026-09-29).
