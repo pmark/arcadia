@@ -34,7 +34,16 @@ export interface WorktreeRecord {
  * base branch or nowhere. Anything else is presumed to be the operator's and is
  * only ever reported.
  */
-export const SAFE_TASK_BRANCH = /^(codex\/|claude\/|opencode\/|agent\/|worktree-)/;
+export const SAFE_TASK_BRANCH_PREFIXES: readonly string[] = Object.freeze(["codex/", "claude/", "opencode/", "agent/", "worktree-"]);
+
+/**
+ * Derived from {@link SAFE_TASK_BRANCH_PREFIXES} so a refusal that reports the
+ * accepted prefixes can never name a different set than the guard accepts
+ * (Issue #459).
+ */
+export const SAFE_TASK_BRANCH = new RegExp(
+  `^(${SAFE_TASK_BRANCH_PREFIXES.map((prefix) => prefix.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("|")})`
+);
 
 export function shortBranch(branch: string | null): string | null {
   return branch === null ? null : branch.replace(/^refs\/heads\//, "");

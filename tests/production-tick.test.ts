@@ -1218,6 +1218,36 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(2);
   });
 
+  it("never silently reverts a manual reset: no fast-forward while production is Off, and a logged one under an in-scope Active policy (Issue #608)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const log = vi.fn();
+    const origin = path.join(fixture.root, "origin.git");
+    git(fixture.root, ["clone", "-q", "--bare", fixture.repo, origin]);
+    git(fixture.repo, ["remote", "add", "origin", origin]);
+    writeFileSync(path.join(fixture.repo, "REMOTE.md"), "on the remote\n");
+    git(fixture.repo, ["add", "REMOTE.md"]);
+    git(fixture.repo, ["commit", "-qm", "remote tip"]);
+    git(fixture.repo, ["push", "-q", "origin", "main"]);
+    const remoteTip = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    // The operator's deliberate manual reset of a DB-active Project.
+    git(fixture.repo, ["reset", "-q", "--hard", "HEAD~1"]);
+    const resetTo = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: fixture.now, log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(resetTo);
+
+    activatePolicy(fixture);
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, { profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000), log, agentWorktreeRoot: fixture.agentWorktreeRoot })
+    );
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(remoteTip);
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    expect(lines.some((line) => line.includes("Fast-forwarded test-project's checkout") && line.includes(`${resetTo} -> ${remoteTip}`))).toBe(true);
+  });
+
   it("detects a base branch advance independent of its own completion signal and records one event with no Mission Log write or commit", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

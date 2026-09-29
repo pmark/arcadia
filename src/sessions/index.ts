@@ -22,7 +22,7 @@ import { loadActionOrder } from "../dispatch/order.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
-import { isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, uncommittedChanges } from "../git/worktrees.js";
+import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
 import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
@@ -826,8 +826,22 @@ export function reserveAgentWorktree(db: Database.Database, input: {
     // this: a cleanup path that crashed mid-way could leave a stale row the
     // delete never reached, and treating that row as live would block
     // legitimate dispatch for the rest of its TTL.
-    const held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
+    let held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
+    // A claim whose candidate already landed through a merged PR is released
+    // rather than refused over (Issue #733).
+    if (held && held.worktree_path !== worktreePath && releaseLandedActionClaim(db, held)) {
+      held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
+    }
     if (held && held.worktree_path !== worktreePath) throw actionAlreadyClaimed(held, input.actionId, input.now);
+    if (!held) {
+      // Whatever claim row remains for this Action is one the query above no
+      // longer honours -- its worktree is gone (Issue #625). Release it so the
+      // unique Action index, which cannot see why, does not refuse this claim.
+      db.prepare(`UPDATE agent_worktree_reservations
+        SET project = NULL, action_id = NULL, claim_generation = NULL
+        WHERE repository_path = ? AND project = ? AND action_id = ?`)
+        .run(repositoryPath, input.project, input.actionId);
+    }
   }
   const reservation = {
     id: createId("worktreeReservation"),
@@ -897,7 +911,11 @@ export function getActiveActionClaim(
       actionId,
       now.toISOString()
     ) as AgentWorktreeReservation | undefined) ?? null;
-  if (live) return live;
+  // A claim whose worktree no longer exists claims nothing (Issue #625): the
+  // worktree was removed by a path that never released it (raw Git cleanup, a
+  // non-`--launch` `go` failure), and honouring it would refuse dispatch of an
+  // Action nobody holds for the rest of its window.
+  if (live) return claimWorktreeIsGone(live) ? null : live;
   // Past its window, a claim is still held while its candidate is unmerged
   // (Issue #549). Only a claim nobody released qualifies: an explicit release
   // clears these columns, and retiring the worktree deletes the row.
@@ -910,6 +928,70 @@ export function getActiveActionClaim(
       now.toISOString()
     ) as AgentWorktreeReservation | undefined) ?? null;
   return expired && expiredClaimStillHeld(expired) ? expired : null;
+}
+
+/**
+ * Whether a claim's worktree has provably been removed while its repository
+ * is still present. A repository that cannot be observed proves nothing, and
+ * neither does a filesystem error, so both keep the claim: an indeterminate
+ * answer must never read as "safe to dispatch again".
+ */
+function claimWorktreeIsGone(claim: Pick<AgentWorktreeReservation, "repository_path" | "worktree_path">): boolean {
+  try {
+    if (candidateWorktreeIsGone(claim.repository_path)) return false;
+    return candidateWorktreeIsGone(claim.worktree_path);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a live claim's candidate is confirmed landed through a merged pull
+ * request (Issue #733): GitHub reports a same-repository PR from the claim's
+ * branch merged at exactly the branch's current tip, and the worktree holds no
+ * uncommitted work. Anything short of that proof -- no GitHub remote, `gh`
+ * unavailable, a tip that moved past the merged head, a dirty worktree, a Git
+ * error -- keeps the claim.
+ *
+ * An offline ancestry check cannot answer this for a live claim: a worktree
+ * prepared a minute ago with no commits yet is an ancestor of its base too, so
+ * only the merged pull request distinguishes "done" from "not started".
+ */
+export function claimCandidateLanded(claim: Pick<AgentWorktreeReservation, "repository_path" | "worktree_path" | "branch">): boolean {
+  const repo = claim.repository_path;
+  const branch = claim.branch.replace(/^refs\/heads\//, "");
+  try {
+    if (candidateWorktreeIsGone(repo) || candidateWorktreeIsGone(claim.worktree_path)) return false;
+  } catch {
+    return false;
+  }
+  const tip = tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`])?.trim();
+  if (!tip) return false;
+  const merges = mergedPullRequests(repo);
+  if (!merges?.some((merge) => merge.headBranch === branch && merge.headRefOid === tip)) return false;
+  try {
+    return uncommittedChanges(claim.worktree_path).length === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Release `claim` when its candidate is confirmed landed (see
+ * {@link claimCandidateLanded}), fenced on its exact generation so a newer
+ * claim is never torn down. Only dispatch refusal paths call this -- the
+ * GitHub lookup runs only when a claim is about to refuse a dispatch, never on
+ * the common path. Returns whether the claim was released.
+ */
+export function releaseLandedActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+  if (!claim.project || !claim.action_id || !claim.claim_generation) return false;
+  if (!claimCandidateLanded(claim)) return false;
+  return releaseActionClaim(db, {
+    repositoryPath: claim.repository_path,
+    project: claim.project,
+    actionId: claim.action_id,
+    generation: claim.claim_generation
+  });
 }
 
 /**

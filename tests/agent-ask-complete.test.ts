@@ -728,7 +728,8 @@ describe("Agent Ask complete — the settling worktree's own Action claim", () =
             db.prepare("UPDATE agent_worktree_reservations SET expires_at = ?").run(CLAIM_NOW.toISOString());
             reserveAgentWorktree(db, {
               repositoryPath: repo,
-              worktreePath: path.join(path.dirname(repo), "candidate-reclaimed"),
+              // A live claim needs a worktree that exists (Issue #625).
+              worktreePath: existingDirectory(path.join(path.dirname(repo), "candidate-reclaimed")),
               branch: "claude/candidate-reclaimed",
               now: CLAIM_NOW,
               project: "demo",
@@ -942,4 +943,10 @@ function planDoc(options: {
       "    acceptance_criteria:", "      - Third proof exists.", "    depends_on: []", "    decisions: []", "    references: []"
     ] : []),
     "questions: []", "---", "", "# Demo plan", ""].join("\n");
+}
+
+/** A directory that exists, standing in for a live claim's worktree (Issue #625). */
+function existingDirectory(directory: string): string {
+  mkdirSync(directory, { recursive: true });
+  return directory;
 }

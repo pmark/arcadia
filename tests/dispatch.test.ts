@@ -288,6 +288,19 @@ describe("dispatch resolution", () => {
     expect(resolution.blockers.some((entry) => entry.message.includes("already done"))).toBe(true);
   });
 
+  it("reports a status: blocked Action as not dispatchable, agreeing with the ready set (Issue #494)", () => {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc());
+    write(root, "docs/plans/main-plan.md", planDoc().replace("status: open", "status: blocked").replace("responsibility: codex", "responsibility: agent"));
+
+    const resolution = resolveDispatch(root, "demo");
+
+    const blocker = resolution.blockers.find((entry) => entry.field === "actions.ship-it.status");
+    expect(blocker?.message).toContain("is blocked");
+    expect(isDispatchable(resolution)).toBe(false);
+    expect(resolveReadySet(root, "demo").ready.map((entry) => entry.actionId)).not.toContain("ship-it");
+  });
+
   it("refuses to dispatch an action whose dependency is unfinished", () => {
     const root = repo();
     write(root, "PROJECT.md", projectDoc());

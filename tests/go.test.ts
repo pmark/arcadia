@@ -8,6 +8,7 @@ import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withReadOnlyDatabase } from "../src/db/connection.js";
+import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
 import { runGoBroker } from "../src/goBroker.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -436,8 +437,15 @@ describe("arcadia go", () => {
     const fixture = createFixture("feature/copy-contract");
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    expectValidation(() => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }), "agent-owned");
+    const refusal = expectValidation(() => runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true }), "agent-owned");
     expect(existsSync(fixture.feature)).toBe(true);
+    // The reported prefixes are exactly what the guard accepts, opencode/
+    // included, so the refusal can never name a subset of it (Issue #459).
+    const allowed = (refusal.details as { allowedPrefixes: string[] }).allowedPrefixes;
+    expect(allowed).toEqual([...SAFE_TASK_BRANCH_PREFIXES]);
+    expect(allowed).toContain("opencode/");
+    for (const prefix of allowed) expect(SAFE_TASK_BRANCH.test(`${prefix}copy-contract`)).toBe(true);
+    expect(SAFE_TASK_BRANCH.test("feature/copy-contract")).toBe(false);
   });
 });
 

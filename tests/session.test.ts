@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -376,6 +376,36 @@ describe("tmux-backed Sessions", () => {
     expect(transition.operatorGate?.blocking[0].id).toBe("0002");
     expect(transition.nextAction).toContain("arcadia decision approve 0002");
     expect(transition.reason).toContain("Should the fixture pause?");
+  });
+
+  it("never prepares a worktree for an Action a pending operator item blocks, even without --launch (Issue #621)", () => {
+    const fixture = preparedFixture();
+    writeFileSync(
+      path.join(fixture.repo, "docs", "decisions", "0002-block-define-contract.md"),
+      blockingDecisionDocument
+    );
+    git(fixture.repo, ["add", "."]);
+    git(fixture.repo, ["commit", "-qm", "open a blocking Decision"]);
+    const worktreeRoot = path.join(fixture.root, "gated");
+
+    expect(() => runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: fixture.model,
+      workspace: fixture.workspace,
+      agentWorktreeRoot: worktreeRoot,
+      now: fixture.now
+    })).toThrowError(/pending operator item blocks this Action/);
+
+    // Nothing was prepared: no worktree on disk, none registered, no claim.
+    expect(existsSync(worktreeRoot) ? readdirSync(worktreeRoot) : []).toEqual([]);
+    expect(git(fixture.repo, ["worktree", "list", "--porcelain"]).match(/^worktree /gm)).toHaveLength(1);
+    const claims = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations WHERE action_id IS NOT NULL").get()
+    ) as { n: number };
+    expect(claims.n).toBe(0);
   });
 
   it("dispatches normally and lists an unrelated open Decision as an alert, not a blocker", () => {

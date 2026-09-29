@@ -491,6 +491,16 @@ function checkActionReadiness(
       message: `Action "${action.id}" is deferred; dispatch must not select it.`,
       remedy: "Advance the pointer to the next eligible Action in the explicit queue. The deferral revives on its named condition."
     });
+  } else if (action.status === "blocked") {
+    // An externally blocked Action is not runnable: the ready set excludes it
+    // and the scheduler reports it `blocked`, so dispatch must agree rather
+    // than authorize a session whose prerequisite does not exist (Issue #494).
+    blockers.push({
+      relativePath: plan.relativePath,
+      field: `actions.${action.id}.status`,
+      message: `Action "${action.id}" is blocked; dispatch must not select it.`,
+      remedy: "Resolve the external blocker and reopen the Action, or advance the pointer to the next eligible Action in the explicit queue."
+    });
   } else {
     // The Decision is authoritative even before its consequence is written
     // into the Plan: an approved `defer` Decision parks its Action at read
