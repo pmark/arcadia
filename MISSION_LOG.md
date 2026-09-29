@@ -1082,3 +1082,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "A regex catalog recognizes provider rate/usage limits, auth or scope failures, permission prompts, sandbox denials, context exhaustion, and repeated-command loops from pane text."; "A pure classifier combines process, pane, git, Run, preservation, drafted-Ask, PR and claim signals into one state from a documented closed set, each state mapped to one action."; "The classifier documents an explicit precedence order for overlapping signals, so a provider limit, auth failure, or permission prompt is never classified as a stall when pane or process signals also overlap."; "Recorded real pane transcripts replay through the classifier as fixtures in tests, with at least one case per catalog class and representative overlap cases, including overlaps with stall indicators.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-session-signal-catalog-and-classifier-2026-09-29).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr812
+
+- **Did:** Session signal catalog and pure classifier are up for review: Arcadia can now tell a rate limit, login failure or approval prompt from a real stall. https://github.com/pmark/arcadia/pull/812
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr812","project":"arcadia","intent":"log","desired_result":"Session signal catalog and pure classifier are up for review: Arcadia can now tell a rate limit, login failure or approval prompt from a real stall. https://github.com/pmark/arcadia/pull/812"}
