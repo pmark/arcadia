@@ -2499,7 +2499,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/640", "https://github.com/pmark/arcadia/issues/641"]
   - id: harden-dispatch-and-claim-lifecycle
     title: "Fix the dispatch and Action-claim defects: wrong dispatchability reporting, claims that outlive their worktree or candidate, and worktree prep that ignores an operator gate."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Fix the dispatch and Action-claim defects: wrong dispatchability reporting, claims that outlive their worktree or candidate, and worktree prep that ignores an operator gate."
