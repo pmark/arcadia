@@ -44,17 +44,20 @@ function cardKey(approval: Approval): string {
   return `${approval.kind}:${approval.project}:${approval.id}`;
 }
 
-export function ApprovalQueue() {
+/**
+ * The Accept/Reject queue. It leads /runs and loads on mount, because these
+ * buttons are what the operator opens the page for; every slower or less
+ * urgent section on /runs loads on demand instead. Collapsing it stops the
+ * poll. `refreshSignal` lets the page's refresh button reload it.
+ */
+export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
-  // Collapsed by default: /api/approvals shells out to the CLI and is the
-  // slowest call on /runs, so nothing is fetched (or polled) until the
-  // operator opens the section.
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   const refresh = useCallback(async () => {
     const requested = ++approvalRefreshSequence;
@@ -82,7 +85,7 @@ export function ApprovalQueue() {
     void refresh();
     const interval = setInterval(() => void refresh(), 15_000);
     return () => clearInterval(interval);
-  }, [open, refresh]);
+  }, [open, refresh, refreshSignal]);
 
   const act = useCallback(async (approval: Approval, choice: Choice) => {
     const key = `${cardKey(approval)}:${choice.label}`;
