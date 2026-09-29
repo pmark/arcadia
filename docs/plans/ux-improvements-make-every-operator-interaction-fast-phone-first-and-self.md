@@ -90,6 +90,23 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: local-model-session-advisory
+    title: Label unmatched or stalled session states with a one-line diagnosis from a closed set using the local model.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Label unmatched or stalled session states with a one-line diagnosis from a closed set using the local model.
+    expected_artifact: Evidence satisfying Agent Ask local-model-session-advisory
+    clarification: clarified
+    confidence: high
+    source: Agent Ask local-model-session-advisory-2026-09-29
+    acceptance_criteria:
+      - The local model runs only on a state the deterministic classifier could not label, never on every tick.
+      - Its output is one label from a closed set plus a one-line reason, logged with the pane excerpt used.
+      - Its output is advisory and cannot approve, merge, settle, or change Action state.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 ---
