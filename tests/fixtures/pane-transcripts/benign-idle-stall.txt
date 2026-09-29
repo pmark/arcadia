@@ -1,0 +1,7 @@
+⏺ Bash(pnpm test)
+  ⎿  Test Files  120 passed (120)
+     Tests  1983 passed (1983)
+
+⏺ Reading the plan before the next step.
+
+✻ Thinking… (312s · esc to interrupt)

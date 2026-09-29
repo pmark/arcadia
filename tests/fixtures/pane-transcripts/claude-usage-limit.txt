@@ -1,0 +1,9 @@
+⏺ Bash(pnpm test -- sessionSignals)
+  ⎿  Test Files  1 passed (1)
+
+⏺ Update(src/production/sessionSignals.ts)
+  ⎿  Updated src/production/sessionSignals.ts with 4 additions
+
+  Claude usage limit reached. Your limit will reset at 3pm (America/New_York).
+
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

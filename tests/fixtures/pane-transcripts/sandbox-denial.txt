@@ -1,0 +1,5 @@
+⏺ Bash(git commit -m "feat: catalog")
+  ⎿  fatal: Unable to create '/repo/.git/worktrees/x/index.lock': Operation not permitted
+
+⏺ Bash(mkdir -p /Users/pmark/.cache/x)
+  ⎿  mkdir: /Users/pmark/.cache/x: Operation not permitted

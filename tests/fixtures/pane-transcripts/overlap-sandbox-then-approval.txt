@@ -1,0 +1,6 @@
+⏺ Bash(pnpm install)
+  ⎿  EPERM: operation not permitted, open '/Users/pmark/.pnpm-store/v3/tmp'
+
+  Do you want to proceed?
+  ❯ 1. Yes, and run without the sandbox
+    2. No

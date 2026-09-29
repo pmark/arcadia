@@ -1,0 +1,2 @@
+  ⎿  API Error: 429 rate_limit_error
+  ⎿  API Error: 401 authentication_error · Please run /login

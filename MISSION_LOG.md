@@ -1075,3 +1075,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr812
+
+- **Did:** Session signal catalog and pure classifier are up for review: Arcadia can now tell a rate limit, login failure or approval prompt from a real stall. https://github.com/pmark/arcadia/pull/812
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

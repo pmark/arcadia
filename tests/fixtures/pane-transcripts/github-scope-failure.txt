@@ -1,0 +1,4 @@
+⏺ Bash(gh pr create --fill)
+  ⎿  GraphQL: Resource not accessible by personal access token (createPullRequest)
+
+  I'll wait a moment and look at the repository settings.
