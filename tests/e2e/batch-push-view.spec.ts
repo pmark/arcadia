@@ -122,6 +122,13 @@ test("the Runs dashboard shows the push, its boundary, and the collapsed next pu
   seedPlan(arcadia.root);
   await page.goto(`${arcadia.url}/runs`);
 
+  // Production control loads on demand: /runs leads with the approval
+  // buttons, and the panel mounts only once the operator opens it.
+  const productionControl = page.getByRole("button", { name: /Production control/ });
+  await expect(productionControl).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("heading", { name: /This push/ })).toHaveCount(0);
+  await productionControl.click();
+
   await expect(page.getByRole("heading", { name: /This push/ })).toBeVisible();
   await expect(page.getByText("1 lane · 4 token points", { exact: false })).toBeVisible();
   await expect(page.getByText(path.basename(path.join(arcadia.root, "repos", "arcadia")), { exact: true })).toBeVisible();
