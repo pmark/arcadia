@@ -10,7 +10,9 @@ import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush,
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
 import {
   DEFAULT_BOARD_POLL_INTERVAL_MS,
+  MAX_BOARD_ERROR_BACKOFF_MS,
   MAX_FAILED_RUNS_PER_MILESTONE,
+  resetBoardErrorBackoff,
   recordFailedRun,
   resumeProjectScheduling,
   runSchedulingPass
@@ -397,6 +399,49 @@ describe("scheduling pass", () => {
       expect(boardsOpened).toBe(3);
       expect(published.projects[0]?.boardSkipped).toBeNull();
       expect(published.projects[0]?.reconcile?.projection?.moves.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("backs off exponentially after a board error instead of retrying every tick, and recovers on success", () => {
+    resetBoardErrorBackoff();
+    const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "b" }] }]);
+    const board = new FakeBoard();
+    let attempts = 0;
+    let failing = true;
+    const boardFactory = () => {
+      attempts += 1;
+      if (failing) throw new Error("your authentication token is missing required scopes [project]");
+      return board;
+    };
+    const start = new Date("2026-09-18T10:00:00.000Z");
+    const at = (seconds: number) => new Date(start.getTime() + seconds * 1000);
+
+    withDatabase(fx.workspace, (db) => {
+      upsertSchedulingProject(db, "alpha", { githubOwner: "example", githubProjectNumber: 7, githubRepository: "example/repo" });
+      const first = runSchedulingPass(db, { boardFactory, now: at(0) });
+      expect(first.projects[0]?.reconcileError).toMatch(/missing required scopes/);
+      expect(attempts).toBe(1);
+
+      // Two-second worker ticks inside the backoff window never reach GitHub.
+      for (let tick = 1; tick <= 20; tick += 1) {
+        const pass = runSchedulingPass(db, { boardFactory, now: at(tick * 2) });
+        expect(pass.projects[0]?.reconcileError).toBeNull();
+        expect(pass.projects[0]?.boardSkipped).toMatch(/failed 1 time/);
+      }
+      expect(attempts).toBe(1);
+
+      // Past the first window (60s plus at most 20% jitter) it retries once, and the delay doubles.
+      runSchedulingPass(db, { boardFactory, now: at(73) });
+      expect(attempts).toBe(2);
+      runSchedulingPass(db, { boardFactory, now: at(73 + 100) });
+      expect(attempts).toBe(2);
+
+      // The delay is capped, and a success clears it.
+      failing = false;
+      const recovered = runSchedulingPass(db, { boardFactory, now: at(73 + MAX_BOARD_ERROR_BACKOFF_MS / 1000 * 1.3) });
+      expect(attempts).toBe(3);
+      expect(recovered.projects[0]?.reconcileError).toBeNull();
+      expect(recovered.projects[0]?.reconcile).not.toBeNull();
     });
   });
 
