@@ -2695,6 +2695,41 @@ actions:
     depends_on: [diagnose-red-alerts-and-propose-the-fix]
     decisions: []
     references: []
+  - id: define-grant-operator-action-pattern
+    title: Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.
+    expected_artifact: Evidence satisfying Agent Ask define-grant-operator-action-pattern
+    clarification: clarified
+    confidence: high
+    source: Agent Ask define-grant-pattern-and-page-2026-09-29
+    acceptance_criteria:
+      - "docs/arcadia-semantics.md defines Grant as a one-shot operator action that delegates bounded authority, and states what every Grant must do: pin the policy revision it was built against, cover a named scope only, carry an expiry, refuse on any precondition drift, and record a receipt."
+      - The arcadia-operator-script-v1 descriptor contract accepts an optional kind field with the value grant; descriptors without it keep listing exactly as before, and a test proves both.
+      - AGENTS.md operator-step guidance (via docs/agents-context.md and regeneration) tells agents to tag an authority-delegating script as kind grant and points at the semantics definition.
+      - The existing grant-production-two-action-v5-rehearsal and regrant-production scripts are tagged kind grant, and /runs shows the tag; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: move-grants-to-their-own-page
+    title: Show Grants on their own dashboard page, separate from the other /runs operator actions.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Show Grants on their own dashboard page, separate from the other /runs operator actions.
+    expected_artifact: Evidence satisfying Agent Ask move-grants-to-their-own-page
+    clarification: clarified
+    confidence: high
+    source: Agent Ask define-grant-pattern-and-page-2026-09-29
+    acceptance_criteria:
+      - A dashboard route lists only actions tagged kind grant, with each one showing its scope, expiry, pinned revision, availability and last receipt; /runs no longer lists them.
+      - The page reuses the existing operator-script API and launch lifecycle with no new execution path; the browser still never supplies a command or path.
+      - The route is documented in START_HERE.md with its exact URL and start command; a component test covers listing, a disabled succeeded one-shot, and the handoff link of a failed run; pnpm test and the Dashboard build pass.
+    depends_on: [define-grant-operator-action-pattern]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
