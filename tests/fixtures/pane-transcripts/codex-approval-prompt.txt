@@ -1,0 +1,9 @@
+• I need to install the dependencies before running the tests.
+
+  Would you like to run the following command?
+
+  $ pnpm install --frozen-lockfile
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for this command (a)
+  3. No, and tell Codex what to do differently (esc)

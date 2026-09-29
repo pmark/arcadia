@@ -1,0 +1,4 @@
+⏺ Bash(pnpm build)
+  ⎿  Build succeeded
+
+  Context limit reached · /compact or /clear to continue

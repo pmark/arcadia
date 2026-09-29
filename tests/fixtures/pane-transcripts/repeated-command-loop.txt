@@ -1,0 +1,19 @@
+⏺ Bash(pnpm vitest run tests/foo.test.ts)
+  ⎿  FAIL tests/foo.test.ts > bar
+     AssertionError: expected 1 to be 2
+
+⏺ Bash(pnpm vitest run tests/foo.test.ts)
+  ⎿  FAIL tests/foo.test.ts > bar
+     AssertionError: expected 1 to be 2
+
+⏺ Bash(pnpm vitest run tests/foo.test.ts)
+  ⎿  FAIL tests/foo.test.ts > bar
+     AssertionError: expected 1 to be 2
+
+⏺ Bash(pnpm vitest run tests/foo.test.ts)
+  ⎿  FAIL tests/foo.test.ts > bar
+     AssertionError: expected 1 to be 2
+
+⏺ Bash(pnpm vitest run tests/foo.test.ts)
+  ⎿  FAIL tests/foo.test.ts > bar
+     AssertionError: expected 1 to be 2
