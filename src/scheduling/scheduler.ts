@@ -37,6 +37,31 @@ export const MAX_FAILED_RUNS_PER_MILESTONE = 8;
  */
 export const DEFAULT_BOARD_POLL_INTERVAL_MS = 60_000;
 
+/**
+ * Backoff after a failed board pass. A reconcile error (a token missing the
+ * `project` scope, a deleted field, a rate limit) does not fix itself in two
+ * seconds, and each retry re-resolves the board and re-pages every item. An
+ * unthrottled retry per tick spent thousands of GraphQL points an hour and
+ * exhausted the account's quota (Issue #773). The delay doubles per
+ * consecutive failure from the poll interval up to {@link MAX_BOARD_ERROR_BACKOFF_MS},
+ * with up to 20% jitter, and is cleared by the first success. It lives in
+ * process memory: a restart retries once, then backs off again.
+ */
+export const MAX_BOARD_ERROR_BACKOFF_MS = 30 * 60_000;
+const boardErrorBackoff = new Map<string, { failures: number; until: number }>();
+
+export function resetBoardErrorBackoff(): void {
+  boardErrorBackoff.clear();
+}
+
+function recordBoardFailure(slug: string, now: Date, baseMs: number): number {
+  const failures = (boardErrorBackoff.get(slug)?.failures ?? 0) + 1;
+  const delay = Math.min(MAX_BOARD_ERROR_BACKOFF_MS, baseMs * 2 ** (failures - 1));
+  const until = now.getTime() + Math.min(MAX_BOARD_ERROR_BACKOFF_MS, delay * (1 + Math.random() * 0.2));
+  boardErrorBackoff.set(slug, { failures, until });
+  return until;
+}
+
 export type BoardFactory = (schedule: ProjectSchedule, db: Database.Database) => SchedulingBoard | null;
 
 export const defaultBoardFactory: BoardFactory = (schedule, db) => {
@@ -199,7 +224,10 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
     let boardSkipped: string | null = null;
     if (schedule.blockers.length === 0) {
       const decision = boardPassDecision(schedule, now, pollIntervalMs);
-      if (!decision.touch) {
+      const backoff = pollIntervalMs > 0 ? boardErrorBackoff.get(project.slug) : undefined;
+      if (backoff && now.getTime() < backoff.until) {
+        boardSkipped = `Board pass failed ${backoff.failures} time(s) in a row; retrying in ${Math.ceil((backoff.until - now.getTime()) / 1000)}s.`;
+      } else if (!decision.touch) {
         boardSkipped = decision.reason;
       } else {
         try {
@@ -211,6 +239,7 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
               now,
               batch: repositoryBatch(db, schedule, batchesByRepository)
             });
+            boardErrorBackoff.delete(project.slug);
             if (reconcile.operatorMoved || reconcile.projection?.changed) schedule = buildProjectSchedule(db, project);
           } else {
             boardSkipped = "No GitHub board is linked to this Project.";
@@ -221,7 +250,8 @@ export function runSchedulingPass(db: Database.Database, options: SchedulingPass
           // cause of this, and a cache that never expires would keep failing
           // the same way. The next pass pays two calls to re-resolve.
           upsertSchedulingProject(db, project.slug, { githubStatusFieldId: null, githubStatusOptions: null, githubPushField: null });
-          log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError}`);
+          const retryAt = recordBoardFailure(project.slug, now, Math.max(pollIntervalMs, DEFAULT_BOARD_POLL_INTERVAL_MS));
+          log(`GitHub reconciliation failed for ${project.slug}: ${reconcileError} (next attempt after ${new Date(retryAt).toISOString()})`);
         }
       }
     }
