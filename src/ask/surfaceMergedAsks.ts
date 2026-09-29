@@ -28,9 +28,14 @@ function ensureSurfacingFailureTable(db: Database.Database): void {
   `);
 }
 
-/** Git's blob id for `content`, so a working-tree file can be matched to a committed one without spawning `git hash-object`. */
-function gitBlobSha(content: Buffer): string {
-  return createHash("sha1").update(`blob ${content.length}\0`).update(content).digest("hex");
+/**
+ * Git's blob id for `content`, so a working-tree file can be matched to a
+ * committed one without spawning `git hash-object`. `committedId` picks the
+ * repository's object format: a 64-character id means SHA-256, otherwise SHA-1.
+ */
+export function gitBlobSha(content: Buffer, committedId: string): string {
+  const algorithm = committedId.length === 64 ? "sha256" : "sha1";
+  return createHash(algorithm).update(`blob ${content.length}\0`).update(content).digest("hex");
 }
 
 /**
@@ -53,7 +58,7 @@ function isCommittedAt(blobs: Map<string, string>, filePath: string): boolean {
   const committed = blobs.get(filePath);
   if (!committed) return false;
   try {
-    return gitBlobSha(readFileSync(filePath)) === committed;
+    return gitBlobSha(readFileSync(filePath), committed) === committed;
   } catch {
     return false;
   }
