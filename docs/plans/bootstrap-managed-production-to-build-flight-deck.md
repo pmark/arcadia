@@ -2626,20 +2626,20 @@ actions:
     references: []
   - id: session-signal-catalog-and-classifier
     title: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
+    next_action: Ship the session signal catalog, the pure classifier and its documented precedence (PR 812).
     expected_artifact: Evidence satisfying Agent Ask session-signal-catalog-and-classifier
     clarification: clarified
     confidence: high
-    source: Agent Ask signal-catalog-classifier-v2-2026-09-29
+    source: Agent Ask split-session-signal-catalog-and-classifier-2026-09-29
     acceptance_criteria:
       - A regex catalog recognizes provider rate/usage limits, auth or scope failures, permission prompts, sandbox denials, context exhaustion, and repeated-command loops from pane text.
       - A pure classifier combines process, pane, git, Run, preservation, drafted-Ask, PR and claim signals into one state from a documented closed set, each state mapped to one action.
       - The classifier documents an explicit precedence order for overlapping signals, so a provider limit, auth failure, or permission prompt is never classified as a stall when pane or process signals also overlap.
-      - Recorded real pane transcripts replay through the classifier as fixtures in tests, with at least one case per catalog class and representative overlap cases, including overlaps with stall indicators.
     depends_on: []
+    split_into: [replay-real-pane-transcripts-through-classifier]
     decisions: []
     references: []
   - id: raise-red-alert-on-stop-the-line-failures
@@ -2728,6 +2728,21 @@ actions:
       - The page reuses the existing operator-script API and launch lifecycle with no new execution path; the browser still never supplies a command or path.
       - The route is documented in START_HERE.md with its exact URL and start command; a component test covers listing, a disabled succeeded one-shot, and the handoff link of a failed run; pnpm test and the Dashboard build pass.
     depends_on: [define-grant-operator-action-pattern]
+    decisions: []
+    references: []
+  - id: replay-real-pane-transcripts-through-classifier
+    title: Capture real pane transcripts and replay them through the session signal classifier as fixtures, replacing the constructed ones.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Capture real pane transcripts and replay them through the session signal classifier as fixtures, replacing the constructed ones.
+    expected_artifact: Evidence satisfying Agent Ask replay-real-pane-transcripts-through-classifier
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-session-signal-catalog-and-classifier-2026-09-29
+    acceptance_criteria:
+      - Recorded real pane transcripts replay through the classifier as fixtures in tests, with at least one case per catalog class and representative overlap cases, including overlaps with stall indicators.
+    depends_on: []
     decisions: []
     references: []
 questions: []
