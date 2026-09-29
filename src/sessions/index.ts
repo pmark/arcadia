@@ -1192,7 +1192,17 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspa
     return { command: "opencode", args };
   }
 
-  const args = ["--model", session.model];
+  // A Session launched under a standing-policy admission has no operator at its
+  // terminal, and the interactive TUI would stop at the workspace trust dialog,
+  // prompt for every edit, and never exit after its turn (pmark/arcadia#727,
+  // #698). `--print` is Claude's non-interactive entry point: it skips the trust
+  // dialog, runs the brief, and exits. `acceptEdits` lets it edit the candidate
+  // without prompting; it is not a bypass, so any other tool call outside the
+  // ambient allow rules is refused back to the agent rather than waiting on
+  // nobody, as Codex's unattended `workspace-write` sandbox does. Operator-
+  // attended launches stay interactive.
+  const unattended = Boolean(session.admission_request_id);
+  const args = unattended ? ["--print", "--permission-mode", "acceptEdits", "--model", session.model] : ["--model", session.model];
   if (session.effort) args.push("--effort", claudeReasoningEffort(session.effort));
   args.push("--session-id", session.provider_session_id, "--name", session.display_name, prompt);
   const inner = { command: "claude", args };

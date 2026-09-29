@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr764","project":"arcadia","intent":"log","desired_result":"Unattended Claude Sessions now launch headless with --print and the global worktree root is pre-trusted — no more hung trust dialogs: https://github.com/pmark/arcadia/pull/764"}

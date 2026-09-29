@@ -430,7 +430,8 @@ describe("go broker agent setup", () => {
       "claudePermission",
       "claudeSandbox",
       "claudeBypassDisabled",
-      "claudeWorktreeDirectories"
+      "claudeWorktreeDirectories",
+      "claudeWorkspaceTrust"
     ]));
   });
 
@@ -487,6 +488,43 @@ describe("go broker workspace trust", () => {
     }
     expect(result.status.checks.codexWorkspaceTrust).toBe(true);
     expect(result.status.workspaceTrust).toEqual({ required: [alpha, beta].sort(), missing: [], refused: [] });
+  });
+
+  it("trusts Claude Code's shared global worktree root and preserves the rest of its state", () => {
+    const fixture = createFixture();
+    const paths = resolveAgentSetupPaths(fixture.home);
+    const root = path.join(path.resolve(fixture.home), ".claude", "worktrees");
+    write(paths.claudeState, `${JSON.stringify({
+      userID: "keep-me",
+      projects: { "/other/project": { hasTrustDialogAccepted: false, allowedTools: ["keep"] } }
+    }, null, 2)}\n`);
+
+    expect(inspectGoBrokerAgentSetup(setupOptions(fixture, [])).issues).toContain("claudeWorkspaceTrust");
+    const result = configureGoBrokerAgents(setupOptions(fixture, []));
+
+    const state = JSON.parse(readFileSync(paths.claudeState, "utf8"));
+    expect(state.projects[root]).toEqual({ hasTrustDialogAccepted: true });
+    expect(state.projects["/other/project"]).toEqual({ hasTrustDialogAccepted: false, allowedTools: ["keep"] });
+    expect(state.userID).toBe("keep-me");
+    expect(result.backups.some((backup) => backup.startsWith(`${paths.claudeState}.arcadia-backup-`))).toBe(true);
+    expect(result.status.checks.claudeWorkspaceTrust).toBe(true);
+
+    const again = configureGoBrokerAgents(setupOptions(fixture, []));
+    expect(again.changed).not.toContain(paths.claudeState);
+  });
+
+  it("creates Claude Code's state file when it does not exist and refuses to overwrite an unparsable one", () => {
+    const fixture = createFixture();
+    const paths = resolveAgentSetupPaths(fixture.home);
+    configureGoBrokerAgents(setupOptions(fixture, []));
+    const root = path.join(path.resolve(fixture.home), ".claude", "worktrees");
+    expect(JSON.parse(readFileSync(paths.claudeState, "utf8")).projects[root].hasTrustDialogAccepted).toBe(true);
+
+    const broken = createFixture();
+    const brokenPaths = resolveAgentSetupPaths(broken.home);
+    write(brokenPaths.claudeState, "{not json");
+    expect(() => configureGoBrokerAgents(setupOptions(broken, []))).toThrow("Claude Code state is not valid JSON");
+    expect(readFileSync(brokenPaths.claudeState, "utf8")).toBe("{not json");
   });
 
   it("refuses the home directory, a shared worktree root, and a parent directory", () => {
