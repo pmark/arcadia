@@ -800,7 +800,7 @@ function readClaudeState(file: string, strict: boolean): ClaudeState | null {
     if (!strict) return null;
     throw validationError("Claude Code state must be a JSON object whose projects are objects.", { file });
   }
-  return parsed as ClaudeState;
+  return parsed;
 }
 
 function readClaudeSettings(file: string, strict: boolean): ClaudeSettings | null {
