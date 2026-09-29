@@ -2,10 +2,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
+import { normalizeAgentAsk, type NormalizedAgentAsk } from "./agentAsk.js";
 import { previewAgentAskRequest } from "./preview.js";
 
 /** Where isolated Agent Ask drafts live, relative to a repository root. Matches `ASK_ISOLATION_DIR` in `sessions/legacyAskRecovery.ts` — duplicated as a literal here rather than imported, since that module is about repairing drift onto a git branch and pulling it in would wire an unrelated git dependency into a plain filesystem scan. */
-const AGENT_ASK_ASKS_DIR = ".arcadia/asks";
+export const AGENT_ASK_ASKS_DIR = ".arcadia/asks";
 
 export interface AgentAskDiscoveryFinding { path: string; requestId: string; }
 export interface AgentAskDiscoveryFailure { path: string; error: string; }
@@ -36,17 +37,36 @@ export const EMPTY_AGENT_ASK_DISCOVERY: AgentAskDiscoveryResult = { discovered: 
  * can put it in front of whoever is looking at that command's own output,
  * every time, until someone fixes or removes it.
  */
-export function discoverUnprocessedAgentAsks(db: Database.Database, repoRoot: string): AgentAskDiscoveryResult {
+export function discoverUnprocessedAgentAsks(
+  db: Database.Database,
+  repoRoot: string,
+  options: {
+    /** Return false to leave a file unread and unpreviewed, before it is parsed. */
+    includeFile?: (filePath: string) => boolean;
+    /** Return false to leave a parsed Ask unpreviewed. An Ask that does not parse is always previewed, so its error is reported. */
+    shouldPreview?: (ask: NormalizedAgentAsk) => boolean;
+  } = {}
+): AgentAskDiscoveryResult {
   const dir = path.join(repoRoot, AGENT_ASK_ASKS_DIR);
   if (!existsSync(dir)) return EMPTY_AGENT_ASK_DISCOVERY;
   const files = readdirSync(dir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
     .map((entry) => path.join(dir, entry.name))
+    .filter((filePath) => options.includeFile?.(filePath) ?? true)
     .sort();
   const result: AgentAskDiscoveryResult = { discovered: [], failed: [] };
   for (const filePath of files) {
     try {
       const request = readFileSync(filePath, "utf8");
+      if (options.shouldPreview) {
+        let normalized: NormalizedAgentAsk | null = null;
+        try {
+          normalized = normalizeAgentAsk({ request });
+        } catch {
+          normalized = null;
+        }
+        if (normalized && !options.shouldPreview(normalized)) continue;
+      }
       const { proposal, replayed } = previewAgentAskRequest(db, { request, sourcePath: filePath, repoRoot });
       if (!replayed) result.discovered.push({ path: filePath, requestId: proposal.normalized.requestId });
     } catch (error) {

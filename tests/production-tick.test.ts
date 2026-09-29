@@ -39,6 +39,7 @@ import {
   listOperatorEscalations,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
 } from "../src/production/tick.js";
+import { listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -1274,6 +1275,77 @@ describe("runManagedProductionTick", () => {
     ) as Array<{ event_type: string }>;
     expect(eventsAfter).toHaveLength(1);
     expect(existsSync(path.join(fixture.repo, "MISSION_LOG.md"))).toBe(false);
+  });
+
+  it("surfaces an Agent Ask merged onto the base branch as a pending approval, and reports a broken one once per version", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const lines: string[] = [];
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        log: (message) => lines.push(message)
+      })
+    );
+    const pendingIds = () => withReadOnlyDatabase(fixture.workspace, (db) => listUnsettledAgentAskProposals(db).map((row) => row.requestId));
+    const asksDir = path.join(fixture.repo, ".arcadia", "asks");
+
+    tick(0);
+    expect(pendingIds()).toEqual([]);
+
+    // A cloud session's Asks reach main through a merged pull request; no
+    // agent-ask command ever runs on this machine. The complete Ask is left
+    // for the worker's own evidence-based settlement, not surfaced.
+    mkdirSync(asksDir, { recursive: true });
+    writeFileSync(
+      path.join(asksDir, "agent-ask-merged-from-cloud.yaml"),
+      `${JSON.stringify({ agent_ask: "v1", request_id: "merged-from-cloud", project: "test-project", intent: "log", desired_result: "Record that a cloud session shipped something." })}\n`
+    );
+    writeFileSync(
+      path.join(asksDir, "agent-ask-complete-elsewhere.yaml"),
+      `${JSON.stringify({
+        agent_ask: "v1", request_id: "complete-elsewhere", project: "test-project", intent: "complete", target_ref: "action/define-contract",
+        desired_result: "Complete it.", candidate_revision: "0123456", evidence: [{ criterion: "completion", status: "met", note: "Completed elsewhere." }]
+      })}\n`
+    );
+    writeFileSync(path.join(asksDir, "agent-ask-broken.yaml"), "agent_ask: v1\nintent: log\n");
+    git(fixture.repo, ["add", ".arcadia"]);
+    git(fixture.repo, ["commit", "-m", "merge cloud asks"]);
+    // An Ask that only sits in the working tree was never merged, so it is
+    // never surfaced, however valid it is.
+    writeFileSync(
+      path.join(asksDir, "agent-ask-never-merged.yaml"),
+      `${JSON.stringify({ agent_ask: "v1", request_id: "never-merged", project: "test-project", intent: "log", desired_result: "Only on disk." })}\n`
+    );
+
+    // With production Off, nothing surfaces on its own.
+    const off = tick(30_000);
+    expect(off.projects[0]?.askSurfacing ?? null).toBeNull();
+    expect(pendingIds()).toEqual([]);
+
+    activatePolicy(fixture);
+    const surfaced = tick(60_000);
+    expect(surfaced.projects[0]?.askSurfacing?.discovered).toEqual(["merged-from-cloud"]);
+    expect(surfaced.projects[0]?.askSurfacing?.failed.map((failure) => path.basename(failure.path))).toEqual(["agent-ask-broken.yaml"]);
+    expect(pendingIds()).toEqual(["merged-from-cloud"]);
+    expect(lines.filter((line) => line.includes("Surfaced merged Agent Ask merged-from-cloud"))).toHaveLength(1);
+    const brokenReports = () => lines.filter((line) => line.includes("agent-ask-broken.yaml") && line.includes("could not be surfaced"));
+    expect(brokenReports()).toHaveLength(1);
+
+    // The next tick changes nothing: the Ask is already pending and the broken
+    // file's version was already reported.
+    const again = tick(120_000);
+    expect(again.projects[0]?.askSurfacing?.discovered).toEqual([]);
+    expect(pendingIds()).toEqual(["merged-from-cloud"]);
+    expect(brokenReports()).toHaveLength(1);
+
+    // Editing the broken file is a new version, reported once more.
+    writeFileSync(path.join(asksDir, "agent-ask-broken.yaml"), "agent_ask: v1\nintent: log\nproject: test-project\n");
+    git(fixture.repo, ["add", ".arcadia/asks/agent-ask-broken.yaml"]);
+    git(fixture.repo, ["commit", "-m", "edit broken ask"]);
+    tick(180_000);
+    expect(brokenReports()).toHaveLength(2);
+    expect(pendingIds()).toEqual(["merged-from-cloud"]);
   });
 
   it("reports a base advance's previous and new SHA through the read-only production surface", () => {
