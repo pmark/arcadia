@@ -963,3 +963,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/keep-action-claim-while-candidate-unmerged
+
+- **Did:** Completed Action arcadia/keep-action-claim-while-candidate-unmerged from accepted evidence (Candidate c57bbf352a79cf3aa9ca2ff27d976ea8ba8ffc55).
+- **Result:** Every declared acceptance criterion was accepted as met: "An Action claim whose worktree reservation (AGENT_WORKTREE_RESERVATION_MS, src/sessions/index.ts) has passed its 24-hour window is kept while its candidate branch or pull request is unmerged, and is released when the candidate merges or is explicitly abandoned."; "Both launch paths (launchGuardedHostSession and arcadia go) refuse to dispatch an Action whose claim is held this way, and name the unmerged candidate."; "Deterministic tests cover a claim older than 24 hours with an unmerged candidate refusing re-dispatch, and releasing once the candidate merges; Closes #549; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-keep-action-claim-while-candidate-unmerged-2026-09-28).
