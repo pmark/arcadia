@@ -956,3 +956,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Agent Ask pr-ready-arcadia-pr764-permission-posture-2026-09-28
+
+- **Did:** PR 764 is green and CodeRabbit-approved, but it sets unattended Claude Sessions to run with acceptEdits, so the permission posture is your call before it merges: https://github.com/pmark/arcadia/pull/764 (merge button is near the bottom of the Conversation tab).
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
