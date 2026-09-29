@@ -161,6 +161,8 @@ describe("launchGuardedHostSession", () => {
       doLaunch(fixture, tmux, preview.previewFingerprint);
       expect(tmux.launches[0].args).toEqual(expect.arrayContaining([...expected]));
       expect(tmux.launches[0].args).not.toContain("e3_deep");
+      // No standing-policy admission, so an operator is at the terminal: Claude stays interactive.
+      expect(tmux.launches[0].args).not.toContain("--print");
     }
   });
 

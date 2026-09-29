@@ -2406,7 +2406,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/726"]
   - id: enable-unattended-claude-session-launch
     title: Launch standing-policy Claude Sessions the same non-interactive way Codex launches, and remove the worktree-trust dialog that blocks them.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Launch standing-policy Claude Sessions the same non-interactive way Codex launches, and remove the worktree-trust dialog that blocks them.
@@ -2609,7 +2609,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: enable-unattended-claude-session-launch
+current_action: harden-agent-ask-settlement-races-and-state
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

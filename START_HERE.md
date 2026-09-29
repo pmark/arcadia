@@ -1077,7 +1077,13 @@ when no go-capable worker is there (start the updated worker). A fresh heartbeat
 alone is never sufficient. `Workspace trust` reports how many Project
 repositories carry Codex trust; a missing one makes status `NOT READY` and is
 named in the issues as `codexWorkspaceTrust missing: <repository>`. Rerun
-`pnpm arcadia go-broker install` to add it.
+`pnpm arcadia go-broker install` to add it. Install also records Claude Code's
+own trust answer for the shared `~/.claude/worktrees` root in `~/.claude.json`
+(backing the file up first), so a fresh Claude candidate worktree never stops at
+the interactive "trust this folder" dialog; status names a missing one as
+`claudeWorkspaceTrust`. A Claude Session the worker launches under a
+standing-policy admission runs `claude --print --permission-mode acceptEdits`:
+non-interactive, exits after its turn, and never bypasses approvals.
 
 No registry request is part of installation: if local dependencies are absent,
 it fails with the `pnpm bridge:worktree` recovery command. Before it reports success, installation also creates and retires one
