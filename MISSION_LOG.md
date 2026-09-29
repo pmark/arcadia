@@ -942,3 +942,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/enable-unattended-claude-session-launch
+
+- **Did:** Completed Action arcadia/enable-unattended-claude-session-launch from accepted evidence (Candidate 43eb17b26ceb053d28d43b27e5aef06c87e71a04).
+- **Result:** Every declared acceptance criterion was accepted as met: "#727: A Claude Session launched by the worker runs non-interactively and exits on its own, with no approval bypass."; "#698: go-broker install pre-trusts Claude Code's global worktree root so a fresh Session never hits the interactive 'trust this folder' dialog.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enable-unattended-claude-session-launch-2026-09-28).
