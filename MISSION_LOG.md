@@ -1005,3 +1005,10 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/improve-agent-ask-settle-usability
+
+- **Did:** Completed Action arcadia/improve-agent-ask-settle-usability from accepted evidence (Candidate e9c41b1d90e4e7cda3067d2a65d0dc7ec271fef1).
+- **Result:** Every declared acceptance criterion was accepted as met: "#718: agent-ask settle's documentation or error output shows a combined usage example covering the required flag combination and preview-fingerprint requirement."; "#722: split settlement chooses its next_action pointer after the compare-and-set retry, not before, so it cannot reflect a stale dependent set.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-improve-agent-ask-settle-usability-2026-09-29).
