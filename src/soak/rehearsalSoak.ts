@@ -175,6 +175,10 @@ export function parseVitestReport(json: string | null, exitStatus: number | null
       failures.push({ signature: failureSignature(testName, file.message), testName, message: file.message, location: firstRepositoryFrame(file.message) });
     }
   }
+  if (failures.length === 0 && exitStatus !== 0) {
+    const message = `vitest exited ${exitStatus ?? "signal"} with no failed assertion in its report`;
+    failures.push({ signature: failureSignature("vitest-run", message), testName: "vitest-run", message, location: null });
+  }
   return failures;
 }
 

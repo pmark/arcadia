@@ -106,6 +106,8 @@ describe("vitest report parsing", () => {
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatchObject({ testName: "b fails", location: "tests/rehearsal-two-action.test.ts:42" });
     expect(parseVitestReport(null, 137)[0]?.testName).toBe("vitest-run");
+    expect(parseVitestReport(JSON.stringify({ testResults: [] }), 1)[0]?.testName).toBe("vitest-run");
+    expect(parseVitestReport(JSON.stringify({ testResults: [] }), 0)).toEqual([]);
   });
 });
 
