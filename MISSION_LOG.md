@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 
 # Mission Log: Arcadia
@@ -928,3 +928,10 @@ updated: 2026-09-28
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/fix-rehearsal-fixture-validation-command
+
+- **Did:** Completed Action arcadia/fix-rehearsal-fixture-validation-command from accepted evidence (Candidate b9ea24c5fad60a9cc0e25d7f9c5b45d1eed3e1d5).
+- **Result:** Every declared acceptance criterion was accepted as met: "#726: The v5 fixture declares scripts/check-marker.mjs (committed at genesis) as its validation command instead of a file that does not exist yet for Action A.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-rehearsal-fixture-validation-command-2026-09-29).
