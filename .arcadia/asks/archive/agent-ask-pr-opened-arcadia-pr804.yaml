@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr804","project":"arcadia","intent":"log","desired_result":"A bounded soak loop for the hermetic rehearsal harness just landed in a PR: it stops on clean streaks, budgets or repeat failures and files one Issue per failing iteration. https://github.com/pmark/arcadia/pull/804"}
