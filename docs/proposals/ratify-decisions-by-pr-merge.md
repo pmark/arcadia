@@ -2,7 +2,7 @@
 arcadia: v1
 type: proposal
 project: arcadia
-decision: "0075"
+decision: "0076"
 question: Can Arcadia enforce and automate decide-by-merge, checking that an approved Decision was ratified by the operator's own merge of the PR that added it, and letting managed production open Decision PRs and record merged answers without the operator touching the CLI?
 ---
 
@@ -61,3 +61,10 @@ written to prevent.
 
 Trigger, if deferred: managed production raises a Decision that sits unanswered
 for a week, or an agent merges a Decision PR.
+
+## Answered by Decision 0076
+
+Not built. GitHub records an agent's merge as the operator's, because the
+connection agents use acts as the operator's account, so no `ratified_by`
+check can tell the two apart. Decision 0076 drops decide-by-merge in favour of
+answering Decisions through Discord or the dashboard.

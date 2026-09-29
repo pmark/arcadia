@@ -25,6 +25,9 @@ options:
 
 # Decision 0075: Decide by merging a pull request
 
+> Superseded by Decision 0076: GitHub cannot tell an agent's merge from the
+> operator's, so Decisions are answered through Discord or the dashboard.
+
 ## Context
 
 Answering a Decision used to take two Arcadia commands on the operator's
