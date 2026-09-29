@@ -949,3 +949,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "#727: A Claude Session launched by the worker runs non-interactively and exits on its own, with no approval bypass."; "#698: go-broker install pre-trusts Claude Code's global worktree root so a fresh Session never hits the interactive 'trust this folder' dialog.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-enable-unattended-claude-session-launch-2026-09-28).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr764
+
+- **Did:** Unattended Claude Sessions now launch headless with --print and the global worktree root is pre-trusted — no more hung trust dialogs: https://github.com/pmark/arcadia/pull/764
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
