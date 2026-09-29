@@ -708,11 +708,16 @@ export function runManagedProductionTick(
         // An Ask merged from a cloud session only becomes a pending approval
         // once something previews it; do that here, on the checkout the tick
         // just fast-forwarded, so the operator can accept it from the
-        // dashboard without running a command on this machine.
-        try {
-          askSurfacing = surfaceMergedAgentAsks(db, { repoRoot, projectSlug: project.slug, now, log });
-        } catch (error) {
-          log(`Agent Ask surfacing failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+        // dashboard without running a command on this machine. Only an Active
+        // policy authorizes it: with production Off every Project passes the
+        // scope check, and nothing should surface on its own.
+        const policyNow = readProductionPolicySafely(db);
+        if (policyNow.status === "ok" && policyNow.policy.desiredState === "active" && baseBranchAdvance) {
+          try {
+            askSurfacing = surfaceMergedAgentAsks(db, { repoRoot, projectSlug: project.slug, baseSha: baseBranchAdvance.newSha, now, log });
+          } catch (error) {
+            log(`Agent Ask surfacing failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

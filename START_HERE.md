@@ -574,8 +574,10 @@ Project's base branch. The Ask then waits in **Needs you** at
 <http://arcadia-1.alpine-rattlesnake.ts.net:3020/review> with Accept and
 Reject, and you never need to run an `agent-ask` command on this Mac.
 
-- `complete` and `split` Asks are the exception. The worker settles those
-  itself from their evidence, so it does not surface them.
+- `complete` Asks are the exception. The worker settles those itself from
+  their evidence, so it does not surface them.
+- Only an Ask committed on the base branch surfaces. A file that is untracked
+  or edited locally stays out of Needs you until it is committed.
 - An Ask file that will not preview is named in the worker log once per version
   of the file.
 - This needs the worker running with an Active production policy that includes
