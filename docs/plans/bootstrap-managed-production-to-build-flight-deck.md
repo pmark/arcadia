@@ -2605,6 +2605,25 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/735", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
+  - id: soak-rehearsal-harness-until-clean
+    title: Run the hermetic rehearsal harness in a bounded soak loop that files each defect as an Issue, fixes only loop-blocking ones, and stops on fixed conditions.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Run the hermetic rehearsal harness in a bounded soak loop that files each defect as an Issue, fixes only loop-blocking ones, and stops on fixed conditions.
+    expected_artifact: Evidence satisfying Agent Ask soak-rehearsal-harness-until-clean
+    clarification: clarified
+    confidence: high
+    source: Agent Ask soak-rehearsal-harness-loop-2026-09-29
+    acceptance_criteria:
+      - A single documented command runs tests/rehearsal-two-action.test.ts repeatedly against a freshly prepared fixture each iteration, and refuses to start when the fixture shows leftover repair budget, stale handoffs, live claims or a reused request_id.
+      - "The loop stops on any of: N consecutive clean iterations (default 5), a configured iteration or token budget, or the same failure recurring after three fix attempts; each stop reason is printed and recorded."
+      - "Every failing iteration files or updates one bug Issue in the owning repository with evidence and file:line, and only a failure that blocks the loop becomes a fix; non-blocking failures stay Issues."
+      - The loop never merges a change to the concurrency gate, admission policy or approval boundaries; such a fix is left as an open pull request for the operator.
+      - Deterministic tests cover the clean-fixture refusal, each stop condition, and the gate-file merge refusal; pnpm test and the core, Discord and Dashboard builds pass.
+    depends_on: [harden-dispatch-and-claim-lifecycle]
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5

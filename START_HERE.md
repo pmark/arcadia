@@ -566,6 +566,23 @@ ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview \
 The fallback never invents a Project, intent kind, dependency, date, priority,
 or approval.
 
+**Asks merged from anywhere appear in Needs you by themselves.** A cloud or
+phone session can only commit its Ask to `.arcadia/asks/`, because it has no
+workspace to preview it in. Once that commit is merged, the managed-production
+worker previews the Ask on its next tick, right after it fast-forwards the
+Project's base branch. The Ask then waits in **Needs you** at
+<http://arcadia-1.alpine-rattlesnake.ts.net:3020/review> with Accept and
+Reject, and you never need to run an `agent-ask` command on this Mac.
+
+- `complete` Asks are the exception. The worker settles those itself from
+  their evidence, so it does not surface them.
+- Only an Ask committed on the base branch surfaces. A file that is untracked
+  or edited locally stays out of Needs you until it is committed.
+- An Ask file that will not preview is named in the worker log once per version
+  of the file.
+- This needs the worker running with an Active production policy that includes
+  the Project, because surfacing rides on the worker's own base-branch refresh.
+
 Both `action` and `plan` Asks may carry an `actions` list. Each child accepts
 an optional `id`, `desired_result`, `acceptance`, `dependencies`, optional
 `references`, and — when amending a Plan — an optional Action `target_ref`.
