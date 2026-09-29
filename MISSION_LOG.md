@@ -1061,3 +1061,17 @@ updated: 2026-09-29
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-29 — Completed arcadia/prove-contract-20-completion-gate
+
+- **Did:** Completed Action arcadia/prove-contract-20-completion-gate from accepted evidence (Candidate 1f28e68fe5755e79e4ede4307b34ff5129e8d8cc).
+- **Result:** Every declared acceptance criterion was accepted as met: "#555: Contract-20's false-agent-completion quality gate is proven by a test, with an owning Action recorded.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-contract-20-completion-gate-2026-09-29).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr810
+
+- **Did:** Contract-20 false-agent-completion gate now has a proving test and an owner, closing #555: https://github.com/pmark/arcadia/pull/810
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

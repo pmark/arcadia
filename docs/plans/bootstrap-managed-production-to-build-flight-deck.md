@@ -2575,7 +2575,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/591", "https://github.com/pmark/arcadia/issues/716"]
   - id: prove-contract-20-completion-gate
     title: Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.

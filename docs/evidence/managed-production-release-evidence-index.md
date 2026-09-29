@@ -89,7 +89,7 @@ row still passed the whole matrix.
 | Stale commit evidence | pass | same file, "refuses a stale Candidate revision"; `tests/session-reconciliation.test.ts` stale candidate revision |
 | Unresolved blocking review | pass | same file, "refuses completion while a required review Decision is unresolved" |
 | Missing artifact | pass | `tests/agent-ask-complete.test.ts` "refuses completion when the declared expected Artifact was not produced" / "accepts completion when the declared expected Artifact (a real path) exists" / "does not refuse completion when the declared expected Artifact is prose, not a path". `expected_artifact` is checked only when it reads as a repo-relative path (contains `/` or a file extension, no spaces) — most Plans use prose ("First proof") there, which is never checked. |
-| False agent completion claim | **unproven** | Completion requires verbatim per-criterion `met` evidence and a matching candidate revision, but no test or live artifact yet shows a *false* `met` being rejected. |
+| False agent completion claim | pass | `tests/session-reconciliation.test.ts` "refuses a drafted complete Ask whose verbatim met evidence is false because the declared Artifact was never produced (contract 20, #555)" and "refuses to settle a self-completion whose verbatim met evidence is false ..."; also "never accepts a candidate whose Plan claims done without a settlement behind it". Owning Action: `prove-contract-20-completion-gate` (Issue #555). A `met` claim is trusted only when verbatim, revision-matched, and its declared path-shaped Artifact exists; prose-only criteria cannot be checked mechanically, which is the same limit as the missing-artifact row. |
 
 ## Stages 2–6 — live evidence
 
