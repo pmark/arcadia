@@ -22,6 +22,7 @@ import { loadActionOrder } from "../dispatch/order.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
+import { isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, uncommittedChanges } from "../git/worktrees.js";
 import { renderActionBrief } from "./actionBrief.js";
 import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
@@ -204,6 +205,11 @@ export interface ActionClaimFence {
  * genuinely died mid-work -- because leaning on it for either of the others
  * would leave a finished or never-started Action wrongly claimed, blocking
  * legitimate re-dispatch for up to a day.
+ *
+ * Expiry alone never releases an Action *claim* whose candidate is still
+ * unmerged (Issue #549): a PR that waits more than a day for review is not a
+ * dead owner, and letting the claim lapse let `go` dispatch the same Action to
+ * a second worktree. See `expiredClaimStillHeld`.
  */
 export const AGENT_WORKTREE_RESERVATION_MS = 24 * 60 * 60 * 1000;
 
@@ -810,7 +816,7 @@ export function reserveAgentWorktree(db: Database.Database, input: {
   const createdAt = input.now.toISOString();
   const repositoryPath = canonicalPath(input.repositoryPath);
   const worktreePath = canonicalPath(input.worktreePath);
-  db.prepare("DELETE FROM agent_worktree_reservations WHERE expires_at <= ?").run(createdAt);
+  purgeExpiredReservations(db, createdAt);
   // A resumed candidate (Decision 0051) reserves the same path a second time
   // to refresh its protection window; replace rather than collide with the
   // still-active row `prepareAgentWorktree`'s first reservation already left.
@@ -821,7 +827,7 @@ export function reserveAgentWorktree(db: Database.Database, input: {
     // delete never reached, and treating that row as live would block
     // legitimate dispatch for the rest of its TTL.
     const held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
-    if (held && held.worktree_path !== worktreePath) throw actionAlreadyClaimed(held, input.actionId);
+    if (held && held.worktree_path !== worktreePath) throw actionAlreadyClaimed(held, input.actionId, input.now);
   }
   const reservation = {
     id: createId("worktreeReservation"),
@@ -845,7 +851,7 @@ export function reserveAgentWorktree(db: Database.Database, input: {
     // Losing here is the same refusal as losing to a visible claim.
     if (input.actionId !== undefined && isActionClaimConflict(error)) {
       const winner = getActiveActionClaim(db, repositoryPath, input.project!, input.actionId, input.now);
-      if (winner) throw actionAlreadyClaimed(winner, input.actionId);
+      if (winner) throw actionAlreadyClaimed(winner, input.actionId, input.now);
     }
     throw error;
   }
@@ -883,7 +889,7 @@ export function getActiveActionClaim(
   now: Date = new Date()
 ): AgentWorktreeReservation | null {
   if (!hasWorktreeReservationTable(db)) return null;
-  return (db.prepare(`SELECT * FROM agent_worktree_reservations
+  const live = (db.prepare(`SELECT * FROM agent_worktree_reservations
     WHERE repository_path = ? AND project = ? AND action_id = ? AND expires_at > ?
     ORDER BY created_at DESC LIMIT 1`).get(
       canonicalPath(repositoryPath),
@@ -891,6 +897,75 @@ export function getActiveActionClaim(
       actionId,
       now.toISOString()
     ) as AgentWorktreeReservation | undefined) ?? null;
+  if (live) return live;
+  // Past its window, a claim is still held while its candidate is unmerged
+  // (Issue #549). Only a claim nobody released qualifies: an explicit release
+  // clears these columns, and retiring the worktree deletes the row.
+  const expired = (db.prepare(`SELECT * FROM agent_worktree_reservations
+    WHERE repository_path = ? AND project = ? AND action_id = ? AND expires_at <= ?
+    ORDER BY created_at DESC LIMIT 1`).get(
+      canonicalPath(repositoryPath),
+      project,
+      actionId,
+      now.toISOString()
+    ) as AgentWorktreeReservation | undefined) ?? null;
+  return expired && expiredClaimStillHeld(expired) ? expired : null;
+}
+
+/**
+ * Whether a claim past its 24-hour window must still be honoured because its
+ * candidate has not merged (Issue #549).
+ *
+ * Released -- returns false -- when the candidate branch no longer exists
+ * (merged and retired by `go`/`tidy`, or deleted to abandon it), or when its
+ * commits are already on the base branch (ancestry, or patch-equivalence for a
+ * rebase or single-commit squash). A branch with no commits of its own is
+ * still held while its worktree carries uncommitted work: a long-running
+ * candidate that has not committed yet is not an abandoned one.
+ *
+ * Deliberately offline: dispatch must not depend on GitHub being reachable. A
+ * multi-commit squash merge that no offline check can prove keeps the claim
+ * until `go` or `tidy` retires the worktree, which only ever delays a
+ * re-dispatch of an Action that is already done -- never duplicates one. When
+ * the base branch cannot be determined at all the claim is kept, because an
+ * indeterminate answer must never read as "safe to dispatch again".
+ */
+export function expiredClaimStillHeld(claim: Pick<AgentWorktreeReservation, "repository_path" | "worktree_path" | "branch">): boolean {
+  const repo = claim.repository_path;
+  const branch = claim.branch.replace(/^refs\/heads\//, "");
+  if (!refExists(repo, `refs/heads/${branch}`)) return false;
+  let base: string;
+  try {
+    base = resolveBaseBranch(repo);
+  } catch {
+    return true;
+  }
+  const bases = [base, ...(refExists(repo, `refs/remotes/origin/${base}`) ? [`origin/${base}`] : [])];
+  if (bases.some((ref) => isPatchEquivalent(repo, ref, branch))) return false;
+  if (!bases.some((ref) => isAncestor(repo, branch, ref))) return true;
+  // No commits of its own that base lacks: merged, or never committed. Only
+  // uncommitted work in a still-present worktree distinguishes the second.
+  try {
+    if (candidateWorktreeIsGone(claim.worktree_path)) return false;
+    return uncommittedChanges(claim.worktree_path).length > 0;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The expiry cleanup `reserveAgentWorktree` runs on each insert, minus any
+ * expired claim whose candidate is still unmerged -- deleting that row would
+ * release the claim by expiry alone, which is exactly Issue #549.
+ */
+function purgeExpiredReservations(db: Database.Database, nowIso: string): void {
+  const expired = db.prepare("SELECT * FROM agent_worktree_reservations WHERE expires_at <= ?")
+    .all(nowIso) as AgentWorktreeReservation[];
+  const remove = db.prepare("DELETE FROM agent_worktree_reservations WHERE id = ?");
+  for (const row of expired) {
+    if (row.action_id !== null && expiredClaimStillHeld(row)) continue;
+    remove.run(row.id);
+  }
 }
 
 /**
@@ -943,15 +1018,33 @@ export function assertActionClaimGeneration(db: Database.Database, fence: Action
   });
 }
 
-function actionAlreadyClaimed(held: AgentWorktreeReservation, actionId: string): Error {
-  return validationError("This Action is already claimed by a live worktree; Arcadia will not dispatch it a second time.", {
-    actionId,
-    project: held.project,
-    claimedByWorktreePath: held.worktree_path,
-    claimedByBranch: held.branch,
-    claimExpiresAt: held.expires_at,
-    remedy: `Finish or retire ${held.worktree_path}, or dispatch a different ready Action.`
-  });
+function actionAlreadyClaimed(held: AgentWorktreeReservation, actionId: string, now: Date): Error {
+  const unmerged = isHeldByUnmergedCandidate(held, now);
+  return validationError(
+    unmerged
+      ? `This Action is already claimed by a live worktree: its claim outlived its 24-hour window because candidate branch ${held.branch} is still unmerged; Arcadia will not dispatch it a second time.`
+      : "This Action is already claimed by a live worktree; Arcadia will not dispatch it a second time.",
+    {
+      actionId,
+      project: held.project,
+      claimedByWorktreePath: held.worktree_path,
+      claimedByBranch: held.branch,
+      claimExpiresAt: held.expires_at,
+      unmergedCandidateBranch: unmerged ? held.branch : null,
+      remedy: unmerged
+        ? `Merge the candidate branch ${held.branch}, or abandon it (retire ${held.worktree_path} and delete the branch), or dispatch a different ready Action.`
+        : `Finish or retire ${held.worktree_path}, or dispatch a different ready Action.`
+    }
+  );
+}
+
+/**
+ * Whether a claim `getActiveActionClaim` returned is held only because its
+ * candidate is unmerged -- it is past its window, so nothing else could have
+ * kept it.
+ */
+export function isHeldByUnmergedCandidate(claim: Pick<AgentWorktreeReservation, "expires_at">, now: Date = new Date()): boolean {
+  return claim.expires_at <= now.toISOString();
 }
 
 function isActionClaimConflict(error: unknown): boolean {

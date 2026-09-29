@@ -10,6 +10,7 @@ import { transitionActionPointer } from "../src/dispatch/pointer.js";
 import {
   getActiveActionClaim,
   getActiveWorktreeReservation,
+  isHeldByUnmergedCandidate,
   releaseActionClaim,
   reserveAgentWorktree
 } from "../src/sessions/index.js";
@@ -282,6 +283,131 @@ describe("Action-scoped worktree claims", () => {
 
       expect(getActiveActionClaim(db, "/repo", "arcadia", "action-a", NOW)).toBeNull();
       expect((db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get() as { n: number }).n).toBe(0);
+    });
+  });
+});
+
+/**
+ * A real repository with one candidate branch carrying a commit `main` lacks,
+ * checked out in its own worktree -- the shape a dispatched Action leaves
+ * behind while its pull request waits for review.
+ */
+function candidateRepository(): { repo: string; worktree: string; branch: string } {
+  const root = scratch("arcadia-claim-candidate-");
+  const repo = path.join(root, "repo");
+  const worktree = path.join(root, "candidate");
+  const branch = "claude/action-a-20260926T000000000Z";
+  mkdirSync(repo);
+  git(repo, ["init", "-q", "-b", "main"]);
+  git(repo, ["config", "user.email", "arcadia@example.test"]);
+  git(repo, ["config", "user.name", "Arcadia Test"]);
+  writeFileSync(path.join(repo, "README.md"), "base\n");
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-qm", "initial"]);
+  git(repo, ["worktree", "add", "-q", "-b", branch, worktree, "main"]);
+  writeFileSync(path.join(worktree, "candidate.md"), "the Action's work\n");
+  git(worktree, ["add", "."]);
+  git(worktree, ["commit", "-qm", "candidate work"]);
+  return { repo, worktree, branch };
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe("Action claims held past their window by an unmerged candidate (Issue #549)", () => {
+  it("keeps a claim older than 24 hours while its candidate is unmerged, and releases it once the candidate merges", () => {
+    const candidate = candidateRepository();
+    withDatabase(claimWorkspace(), (db) => {
+      const dispatchedAt = new Date(NOW.getTime() - DAY_MS - 60 * 60_000);
+      reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: candidate.worktree,
+        branch: candidate.branch,
+        now: dispatchedAt,
+        project: "arcadia",
+        actionId: "action-a"
+      });
+
+      // Past the 24-hour window, the unmerged candidate still holds the claim.
+      const held = getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW);
+      expect(held?.branch).toBe(candidate.branch);
+      expect(isHeldByUnmergedCandidate(held!, NOW)).toBe(true);
+
+      // A second dispatch is refused, and the refusal names the candidate.
+      let refusal: unknown;
+      try {
+        reserveAgentWorktree(db, {
+          repositoryPath: candidate.repo,
+          worktreePath: path.join(candidate.repo, "..", "second"),
+          branch: "claude/action-a-second",
+          now: NOW,
+          project: "arcadia",
+          actionId: "action-a"
+        });
+      } catch (error) {
+        refusal = error;
+      }
+      expect((refusal as Error).message).toMatch(/already claimed by a live worktree/);
+      expect((refusal as Error).message).toContain(`candidate branch ${candidate.branch} is still unmerged`);
+      expect((refusal as { details: Record<string, unknown> }).details).toMatchObject({
+        unmergedCandidateBranch: candidate.branch
+      });
+
+      // The candidate merges: the claim is released, and re-dispatch proceeds.
+      git(candidate.repo, ["merge", "-q", "--no-ff", "-m", "merge candidate", candidate.branch]);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).toBeNull();
+      const reclaimed = reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: path.join(candidate.repo, "..", "second"),
+        branch: "claude/action-a-second",
+        now: NOW,
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(reclaimed.branch).toBe("claude/action-a-second");
+    });
+  });
+
+  it("releases a claim older than 24 hours once its candidate is explicitly abandoned", () => {
+    const candidate = candidateRepository();
+    withDatabase(claimWorkspace(), (db) => {
+      reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: candidate.worktree,
+        branch: candidate.branch,
+        now: new Date(NOW.getTime() - 2 * DAY_MS),
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).not.toBeNull();
+
+      // Abandoning it -- removing the worktree and deleting its branch.
+      git(candidate.repo, ["worktree", "remove", "--force", candidate.worktree]);
+      git(candidate.repo, ["branch", "-D", candidate.branch]);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).toBeNull();
+    });
+  });
+
+  it("keeps a claim for a candidate with only uncommitted work, but not for one with nothing at all", () => {
+    const candidate = candidateRepository();
+    // Rewind the branch to main: no commits of its own, only a dirty worktree.
+    git(candidate.worktree, ["reset", "-q", "--soft", "main"]);
+    withDatabase(claimWorkspace(), (db) => {
+      reserveAgentWorktree(db, {
+        repositoryPath: candidate.repo,
+        worktreePath: candidate.worktree,
+        branch: candidate.branch,
+        now: new Date(NOW.getTime() - 2 * DAY_MS),
+        project: "arcadia",
+        actionId: "action-a"
+      });
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).not.toBeNull();
+
+      git(candidate.worktree, ["reset", "-q", "--hard", "main"]);
+      expect(getActiveActionClaim(db, candidate.repo, "arcadia", "action-a", NOW)).toBeNull();
     });
   });
 });

@@ -233,6 +233,30 @@ describe("arcadia go — one ready Action per concurrent session", () => {
     expect(registered).not.toContain("arcadia-go-fallback-");
     expect(registered).toContain(realpathSync(result.nextWorktree!.path));
   });
+
+  it("refuses to re-dispatch an Action whose claim is older than 24 hours while its candidate is unmerged, until it merges (Issue #549)", () => {
+    const fixture = createFixture();
+    const first = dispatch(fixture, 0);
+    expect(first.dispatch.context?.action.id).toBe("alpha");
+    const candidate = first.nextWorktree!;
+    writeFileSync(path.join(candidate.path, "alpha.md"), "alpha's work, waiting on review\n");
+    git(candidate.path, ["add", "alpha.md"]);
+    git(candidate.path, ["commit", "-qm", "alpha candidate"]);
+
+    // 25 hours later the claim is past its window, but its pull request has
+    // not merged: alpha is still refused, naming the unmerged candidate, and
+    // the walk hands out a different ready Action instead of alpha twice.
+    const later = dispatch(fixture, 25 * 60);
+    expect(later.dispatch.context?.action.id).toBe("gamma");
+    expect(later.queueFallback?.pointerActionId).toBe("alpha");
+    expect(later.queueFallback?.reason).toContain(`candidate branch ${candidate.branch} is still unmerged`);
+
+    // Once the candidate merges, the claim is released and alpha dispatches.
+    git(fixture.main, ["merge", "-q", "--no-ff", "-m", "merge alpha", candidate.branch]);
+    const afterMerge = dispatch(fixture, 25 * 60 + 2);
+    expect(afterMerge.dispatch.context?.action.id).toBe("alpha");
+    expect(afterMerge.queueFallback).toBeNull();
+  });
 });
 
 describe("arcadia advance — a prepared worktree resolves its own claim", () => {
