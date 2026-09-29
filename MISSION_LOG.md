@@ -984,3 +984,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "#296: settle --revision only hard-fails on genuinely stale input, matching what --preview's fingerprint already reported."; "#304: agent-ask draft refuses to produce a completion Ask that is un-applicable at its own recorded candidate_revision."; "#320: decision approve --dry-run replay of an applied deferral receipt is covered by a test and behaves correctly."; "#321: An archived complete Ask's candidate_revision matches what the Mission Log records, not the settle commit."; "#505: applyDecisionDeferral writes the pointer pair under a lock or compare-and-set so it cannot clobber a concurrent write."; "#507: arcadia action settle prints the correct Next action under concurrent settlement."; "#512: agent-ask settle --apply's auto-commit succeeds because it no longer stages its own gitignored archive file."; "#592: agent-ask draft does not report an already-settled .arcadia/asks file as an auto-discover failure."; "#598: agent-ask settle bumps a Plan's updated date when it amends that Plan."; "#609: production activate's --expect-revision flag matches preview's expectedRevision field name."; "#639: attemptSettleOneDraft only refreshes a stale candidate_revision when the refreshed evidence still verbatim-covers every criterion, not by ancestry alone."; "#663: review approve --no-execute routes the packet's sourceInput correctly instead of through the general intent classifier.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-harden-agent-ask-settlement-races-and-state-2026-09-28).
+
+## 2026-09-29 — Agent Ask pr-opened-arcadia-pr770
+
+- **Did:** Twelve Agent Ask settlement bugs squashed in one go: stale-revision refusals, unlocked deferral writes, wrong Next action, ignored-archive commit failures and more are fixed in https://github.com/pmark/arcadia/pull/770
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
