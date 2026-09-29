@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr772","project":"arcadia","intent":"log","desired_result":"Opened a PR that makes agent-ask settle self-explaining and fixes split settlement picking a stale next pointer: https://github.com/pmark/arcadia/pull/772"}
