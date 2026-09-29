@@ -57,7 +57,7 @@ export function resetBoardErrorBackoff(): void {
 function recordBoardFailure(slug: string, now: Date, baseMs: number): number {
   const failures = (boardErrorBackoff.get(slug)?.failures ?? 0) + 1;
   const delay = Math.min(MAX_BOARD_ERROR_BACKOFF_MS, baseMs * 2 ** (failures - 1));
-  const until = now.getTime() + delay * (1 + Math.random() * 0.2);
+  const until = now.getTime() + Math.min(MAX_BOARD_ERROR_BACKOFF_MS, delay * (1 + Math.random() * 0.2));
   boardErrorBackoff.set(slug, { failures, until });
   return until;
 }
