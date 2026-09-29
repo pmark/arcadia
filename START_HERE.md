@@ -48,12 +48,17 @@ not infer that first portfolio priority. The same read and mutation contract is
 available through `arcadia advance queue`, `reorder`, `arrange`, `make-next`,
 and `undo`.
 
-Open **Recent Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
-this Mac: <http://127.0.0.1:3020/runs>) for **Active now**, above the history
-list: every prepared or running agent Session and every pending or running
-execution Run across the whole portfolio, independent of any recent-history
-limit — a Session that has been running far longer than everything else never
-falls off the page just because newer work finished. The **Needs your approval** section on this page is collapsed and loads nothing until you tap it (its count appears after the first open), so the page opens fast. Each Session card shows
+Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
+this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
+**Needs your approval** (Accept/Reject for Agent Asks, Approve for Decisions)
+loads and opens first, then any **Operator actions** that are running, failed,
+or recently added. Everything else is collapsed and loads nothing until you tap
+it, so the page opens fast: **Production control**, and **Sessions and runs**.
+Inside Sessions and runs, **Active now** lists every prepared or running agent
+Session and every pending or running execution Run across the whole portfolio,
+independent of any recent-history limit — a Session that has been running far
+longer than everything else never falls off the page just because newer work
+finished — above a collapsed **Recent history**. Each Session card shows
 its Action, packet, agent/model, host, worktree, native session id, lifecycle
 status, and when it was last observed, plus **Copy Reattach** (and **Copy
 Resume** for Claude Code Sessions) so you can act from a terminal; a phone-only

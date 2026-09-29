@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, CircleAlert, Loader2, Play } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ApprovalQueue } from "../../components/approval-queue";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
@@ -45,24 +45,27 @@ const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 // instance against an earlier poll response overwriting a later one.
 let operatorRefreshSequence = 0;
 
+/**
+ * /runs leads with the buttons the operator comes here to press: the
+ * Accept/Reject approval queue, then the operator actions that need
+ * attention. Everything else (production control, live sessions and runs,
+ * history, older actions) is collapsed and only mounts, fetches and polls
+ * once it is opened.
+ */
 export default function RunsPage() {
-  const [historyOpen, setHistoryOpen] = useState(false);
-  // The push disclosure mirrors Recent history: collapsed until asked for, so
-  // the page leads with the work that is happening now.
-  const [nextPushOpen, setNextPushOpen] = useState(false);
+  const [approvalRefreshSignal, setApprovalRefreshSignal] = useState(0);
+  const [scriptsRefreshing, setScriptsRefreshing] = useState(false);
+  const [scriptsLoadedAt, setScriptsLoadedAt] = useState<Date | null>(null);
   const [operatorScripts, setOperatorScripts] = useState<OperatorScript[]>([]);
   const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
   const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
   const [operatorMessage, setOperatorMessage] = useState<string | null>(null);
   const [olderReadyOpen, setOlderReadyOpen] = useState(false);
   const [completedOpen, setCompletedOpen] = useState(false);
-  const runs = useRuns(historyOpen);
-  const control = useProductionControl();
-  const activeSessions = runs.data?.activeAgentSessions ?? [];
-  const activeRuns = runs.data?.activeExecutionRuns ?? [];
 
   const refreshOperatorScripts = useCallback(async () => {
     const requested = ++operatorRefreshSequence;
+    setScriptsRefreshing(true);
     await fetch("/api/operator-script", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
@@ -70,12 +73,16 @@ export default function RunsPage() {
         if (requested === operatorRefreshSequence) {
           setOperatorScripts(body.scripts ?? []);
           setOperatorScriptError(null);
+          setScriptsLoadedAt(new Date());
         }
       })
       .catch((error) => {
         if (requested === operatorRefreshSequence) {
           setOperatorScriptError(error instanceof Error ? error.message : String(error));
         }
+      })
+      .finally(() => {
+        if (requested === operatorRefreshSequence) setScriptsRefreshing(false);
       });
   }, []);
 
@@ -109,27 +116,14 @@ export default function RunsPage() {
   return (
     <DashboardChrome
       title="Runs"
-      subtitle={runs.data ? `${activeSessions.length + activeRuns.length} active` : undefined}
-      refreshing={runs.refreshing}
-      lastLoadedAt={runs.lastLoadedAt}
+      refreshing={scriptsRefreshing}
+      lastLoadedAt={scriptsLoadedAt}
       onRefresh={() => {
-        void runs.refresh();
-        void control.refresh();
+        setApprovalRefreshSignal((signal) => signal + 1);
+        void refreshOperatorScripts();
       }}
     >
-      <ApprovalQueue />
-      <ProductionControlPanel
-        core={control.core}
-        queue={control.queue}
-        alerts={control.alerts}
-        error={control.error}
-        queueError={control.queueError}
-        alertsError={control.alertsError}
-        toggling={control.toggling}
-        onToggle={control.toggle}
-        nextPushOpen={nextPushOpen}
-        onToggleNextPush={() => setNextPushOpen((open) => !open)}
-      />
+      <ApprovalQueue refreshSignal={approvalRefreshSignal} />
       {operatorScripts.length > 0 || operatorScriptError ? (
         (() => {
           const needsAttention = operatorScripts
@@ -174,8 +168,6 @@ export default function RunsPage() {
                     />
                   ))}
                 </div>
-              ) : needsAttention.length === 0 && operatorScripts.length > 0 ? (
-                <EmptyState text="No operator actions need attention right now." />
               ) : null}
               {olderReady.length > 0 ? (
                 <div className="mb-4">
@@ -227,12 +219,66 @@ export default function RunsPage() {
           );
         })()
       ) : null}
+      <OnDemandSection label="Production control">
+        <ProductionControlSection />
+      </OnDemandSection>
+      <OnDemandSection label="Sessions and runs">
+        <SessionsAndRunsSection />
+      </OnDemandSection>
+    </DashboardChrome>
+  );
+}
+
+/** A collapsed disclosure whose children mount -- and so fetch and poll -- only once opened. */
+function OnDemandSection({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-label={label} className="mb-6">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="mb-3 inline-flex min-h-11 items-center text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
+      >
+        {open ? "▾" : "▸"} {label}
+      </button>
+      {open ? children : null}
+    </section>
+  );
+}
+
+function ProductionControlSection() {
+  const control = useProductionControl();
+  const [nextPushOpen, setNextPushOpen] = useState(false);
+  return (
+    <ProductionControlPanel
+      core={control.core}
+      queue={control.queue}
+      alerts={control.alerts}
+      error={control.error}
+      queueError={control.queueError}
+      alertsError={control.alertsError}
+      toggling={control.toggling}
+      onToggle={control.toggle}
+      nextPushOpen={nextPushOpen}
+      onToggleNextPush={() => setNextPushOpen((open) => !open)}
+    />
+  );
+}
+
+function SessionsAndRunsSection() {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const runs = useRuns(historyOpen);
+  const activeSessions = runs.data?.activeAgentSessions ?? [];
+  const activeRuns = runs.data?.activeExecutionRuns ?? [];
+  return (
+    <>
       {runs.error ? (
         <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} />
       ) : null}
 
-      <section aria-label="Active now" aria-busy={runs.loading} className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Active now</h2>
+      <div aria-label="Active now" aria-busy={runs.loading} className="mb-6">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Active now</h3>
         {runs.loading && !runs.data ? (
           <CardSkeletons />
         ) : activeSessions.length === 0 && activeRuns.length === 0 ? (
@@ -249,9 +295,9 @@ export default function RunsPage() {
               ))}
           </div>
         )}
-      </section>
+      </div>
 
-      <section aria-label="Recent history">
+      <div aria-label="Recent history">
         <button
           type="button"
           aria-expanded={historyOpen}
@@ -273,8 +319,8 @@ export default function RunsPage() {
             <EmptyState text="No runs yet." />
           )
         ) : null}
-      </section>
-    </DashboardChrome>
+      </div>
+    </>
   );
 }
 
