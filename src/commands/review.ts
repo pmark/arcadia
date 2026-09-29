@@ -1062,6 +1062,12 @@ export function runReviewApproveCommand(
     // One transaction, so the Decision is never left approved without its
     // pending-execution marker (which would make a retry refuse as decided).
     const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => db.transaction(() => {
+      // Re-read under the write lock: a concurrent approval that won the race
+      // must not be approved again or get a second pending-execution marker.
+      const current = getReviewItem(db, reviewItem.id);
+      if (!current || (current.status !== "open" && current.status !== "deferred")) {
+        throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: current?.status ?? null });
+      }
       const item = updateReviewItemStatus(db, reviewItem.id, {
         status: "approved",
         decisionNote: "Build packet approved. Execution pending."
@@ -1070,7 +1076,7 @@ export function runReviewApproveCommand(
         throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
       }
       return { updated: item, pendingExecutionReview: createPendingExecutionReviewItem(db, item) };
-    })());
+    }).immediate());
     return createSuccess({
       command: "review.approve",
       workspace: workspacePath,
