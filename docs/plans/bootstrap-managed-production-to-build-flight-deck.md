@@ -2624,6 +2624,24 @@ actions:
     depends_on: [harden-dispatch-and-claim-lifecycle]
     decisions: []
     references: []
+  - id: session-signal-catalog-and-classifier
+    title: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Classify a live managed Session into a closed state set from deterministic signals, with no model calls.
+    expected_artifact: Evidence satisfying Agent Ask session-signal-catalog-and-classifier
+    clarification: clarified
+    confidence: high
+    source: Agent Ask signal-catalog-classifier-v2-2026-09-29
+    acceptance_criteria:
+      - A regex catalog recognizes provider rate/usage limits, auth or scope failures, permission prompts, sandbox denials, context exhaustion, and repeated-command loops from pane text.
+      - A pure classifier combines process, pane, git, Run, preservation, drafted-Ask, PR and claim signals into one state from a documented closed set, each state mapped to one action.
+      - The classifier documents an explicit precedence order for overlapping signals, so a provider limit, auth failure, or permission prompt is never classified as a stall when pane or process signals also overlap.
+      - Recorded real pane transcripts replay through the classifier as fixtures in tests, with at least one case per catalog class and representative overlap cases, including overlaps with stall indicators.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
