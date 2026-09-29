@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifyWorkerHealth,
   createWorkerTick,
@@ -14,7 +14,8 @@ import {
   runWorkerStartCommand,
   runWorkerStatusCommand,
   runWorkerStopCommand,
-  terminateStaleWorker
+  terminateStaleWorker,
+  waitForWorkerRoutes
 } from "../src/commands/worker.js";
 import { startHeartbeatBeacon } from "../src/commands/workerHeartbeatBeaconExecutor.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
@@ -595,6 +596,14 @@ describe("managed production iteration liveness", () => {
 });
 
 describe("worker install readiness", () => {
+  // runWorkerInstallCommand writes the LaunchAgents plist under $HOME before any
+  // injected dependency runs, so each test gets a throwaway HOME (Issue #560).
+  beforeEach(() => {
+    const home = mkdtempSync(path.join(tmpdir(), "arcadia-worker-home-"));
+    temporary.push(home);
+    vi.stubEnv("HOME", home);
+  });
+
   it("refuses clearly when launchd cannot load the worker", () => {
     const { root } = workspace();
 
@@ -627,6 +636,29 @@ describe("worker install readiness", () => {
       execFileSync: vi.fn(),
       waitForRoutes: () => false
     })).toThrow(/did not publish fresh heartbeats/i);
+  });
+});
+
+describe("waitForWorkerRoutes", () => {
+  it("returns true when the worker publishes its heartbeat after a delay, within the budget (Issue #450)", async () => {
+    const { root } = workspace();
+    const notBefore = Date.now();
+    // waitForWorkerRoutes blocks this thread, so the late publisher must be a separate process.
+    const writer = spawn(process.execPath, ["-e", `
+      const fs = require("node:fs"), path = require("node:path");
+      setTimeout(() => {
+        const file = path.join(${JSON.stringify(root)}, ".arcadia", "preservation.heartbeat");
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const at = Date.now();
+        fs.writeFileSync(file, JSON.stringify({ schema: "arcadia-preservation-transport-v1", at, sessions: [], goRequests: true, goRequestsAt: at }));
+      }, 1500);
+    `], { stdio: "ignore" });
+    fixtures.push(writer);
+    const exited = new Promise<void>((resolve) => writer.once("exit", () => resolve()));
+
+    expect(waitForWorkerRoutes(root, 200, notBefore)).toBe(false);
+    expect(waitForWorkerRoutes(root, 15_000, notBefore)).toBe(true);
+    await exited;
   });
 });
 

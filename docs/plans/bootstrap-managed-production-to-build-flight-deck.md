@@ -2521,7 +2521,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/459", "https://github.com/pmark/arcadia/issues/464", "https://github.com/pmark/arcadia/issues/494", "https://github.com/pmark/arcadia/issues/549", "https://github.com/pmark/arcadia/issues/621", "https://github.com/pmark/arcadia/issues/625", "https://github.com/pmark/arcadia/issues/733", "https://github.com/pmark/arcadia/issues/608"]
   - id: fix-worker-and-dashboard-operational-bugs
     title: Fix operational bugs in the worker, its install/recovery scripts, and the dashboard's status reporting.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Fix operational bugs in the worker, its install/recovery scripts, and the dashboard's status reporting.

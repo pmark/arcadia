@@ -537,6 +537,9 @@ export async function activateProduction(input: {
   ];
   for (const project of input.scope.projects) args.push("--project", project);
   for (const plan of input.scope.plans) args.push("--plan", plan);
+  // Keep the exact allowlist recorded at the original grant; without it the
+  // CLI re-derives every queued Action of the Plans (Issue #392).
+  for (const action of input.scope.actions) args.push("--action", action);
   for (const provider of input.scope.providers) args.push("--provider", provider);
   if (input.scope.intent) args.push("--intent", input.scope.intent);
   if (input.scope.mechanicalTransitions?.length) {

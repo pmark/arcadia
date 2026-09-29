@@ -49,6 +49,8 @@ export interface ProductionPreviewOptions {
   project: string[];
   provider: string[];
   plan?: string[];
+  /** Exact Action allowlist (project/action); narrows the queue-derived scope. */
+  action?: string[];
   intent?: string;
   concurrency?: string;
   transitions?: string;
@@ -478,6 +480,7 @@ function previewInput(options: ProductionPreviewOptions, workspacePath: string) 
   return {
     projects: options.project ?? [],
     plans: options.plan ?? [],
+    actions: options.action ?? [],
     providers: options.provider ?? [],
     intent: options.intent ?? "",
     maxConcurrentSessions: parseOptionalInteger(options.concurrency, "concurrency") ?? 1,
