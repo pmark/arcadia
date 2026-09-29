@@ -412,9 +412,11 @@ describe("rehearsal fixture decisions the prepare script must get right", () => 
     withDatabase(rehearsal.workspace, (db) => {
       expect((db.prepare("SELECT COUNT(*) AS count FROM work_items").get() as { count: number }).count).toBe(workItemsBefore);
       const source = db.prepare("SELECT project_id FROM review_items WHERE id = ?").get(approvalB!) as { project_id: string };
-      const pending = db.prepare("SELECT project_id FROM review_items WHERE resolved_intent = 'ReviewExecutionPending' ORDER BY created_at DESC LIMIT 1")
-        .get() as { project_id: string };
-      expect(pending.project_id).toBe(source.project_id);
+      const pending = db.prepare(`SELECT project_id FROM review_items
+        WHERE resolved_intent = 'ReviewExecutionPending' AND json_extract(context_json, '$.originalReviewId') = ?`)
+        .get(approvalB!) as { project_id: string } | undefined;
+      expect(pending).toBeDefined();
+      expect(pending!.project_id).toBe(source.project_id);
     });
     const launched = rehearsal.tick();
     expect(launched.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionB });

@@ -1059,7 +1059,9 @@ export function runReviewApproveCommand(
   // Project and Action, and the pending-execution marker below carries both, so
   // there is nothing for intent classification to add.
   if (reviewItem.resolved_intent === "CodexBuildPacketApproval") {
-    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => {
+    // One transaction, so the Decision is never left approved without its
+    // pending-execution marker (which would make a retry refuse as decided).
+    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => db.transaction(() => {
       const item = updateReviewItemStatus(db, reviewItem.id, {
         status: "approved",
         decisionNote: "Build packet approved. Execution pending."
@@ -1068,7 +1070,7 @@ export function runReviewApproveCommand(
         throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
       }
       return { updated: item, pendingExecutionReview: createPendingExecutionReviewItem(db, item) };
-    });
+    })());
     return createSuccess({
       command: "review.approve",
       workspace: workspacePath,
