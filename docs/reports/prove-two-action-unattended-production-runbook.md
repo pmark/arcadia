@@ -360,7 +360,7 @@ arcadia production activate \
   --intent "Prove two-Action unattended production with a deliberate split-session continuation." \
   --request-id "prove-two-action-unattended-production-$(date -u +%Y%m%dT%H%M%SZ)" \
   --granted-by "P. Mark Anderson" \
-  --expect-revision <n from preview> \
+  --expected-revision <n from preview> \
   --json
 ```
 

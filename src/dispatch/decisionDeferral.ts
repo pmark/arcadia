@@ -179,100 +179,118 @@ export function applyDecisionDeferral(
     // re-opened Decision is not a silent no-op (Issue #317).
   }
 
-  const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, input.actionId);
-  // A completed Action must never be parked: rewriting `done` to `deferred`
-  // would write false checked-in truth, and dispatch already excludes done
-  // Actions, so the deferral would change nothing it could honestly describe.
-  if (action.status === "done") {
-    throw validationError("This Decision defers an Action that is already done.", {
-      action: action.id,
-      status: action.status,
-      remedy: "A completed Action cannot be parked. Re-open the Action first, or answer the Decision the other way."
-    });
+  // Resolution, guards, file writes, and the post-write assertion all run
+  // under the workspace write interlock that settlement's pointer write and
+  // `transitionActionPointer` take. Reading the base outside it let a pointer
+  // move landing between this read and its write be silently overwritten, or
+  // leave PROJECT.md and the Plan naming different Actions (Issue #505); under
+  // it, a concurrent pointer writer either finishes first and is re-read here,
+  // or waits until this transition has written. The Git commit stays outside
+  // the transaction so a commit failure leaves the written documents for
+  // recovery instead of rolling them back over a receipt.
+  const prepared = writeTransaction(db, () => {
+    const { project, plan, action } = resolveTarget(input.repoRoot, input.projectSlug, input.actionId);
+    // A completed Action must never be parked: rewriting `done` to `deferred`
+    // would write false checked-in truth, and dispatch already excludes done
+    // Actions, so the deferral would change nothing it could honestly describe.
+    if (action.status === "done") {
+      throw validationError("This Decision defers an Action that is already done.", {
+        action: action.id,
+        status: action.status,
+        remedy: "A completed Action cannot be parked. Re-open the Action first, or answer the Decision the other way."
+      });
+    }
+    const pointerBefore = project.currentAction ?? plan.currentAction;
+    const needsPark = action.status !== "deferred";
+    const pointerMoved = needsPark && pointerBefore === action.id;
+    const actionKey = `${project.slug}/${action.id}`;
+
+    const nextActionId = pointerMoved
+      ? nextEligibleInQueue(input.repoRoot, project.slug, plan, action.id, loadActionOrder(db).positions)
+      : null;
+    if (pointerMoved && !nextActionId) {
+      throw validationError("This Decision defers the current Action, but no other eligible Action can take the pointer.", {
+        action: input.actionId,
+        remedy: "Make the next queued Action eligible first, or defer this Action once its successor can be dispatched."
+      });
+    }
+
+    const consequence: DecisionDeferralConsequence = {
+      kind: "defer",
+      actionId: action.id,
+      actionKey,
+      planPath: plan.relativePath,
+      actionStatusBefore: action.status,
+      actionStatusAfter: needsPark ? "deferred" : action.status,
+      pointerBefore,
+      pointerAfter: pointerMoved ? nextActionId : pointerBefore,
+      pointerMoved,
+      decisionAnswer: input.decisionAnswer
+    };
+    if (input.dryRun) {
+      return { consequence, receipt: null as DecisionDeferralReceipt | null };
+    }
+
+    const projectAbsolutePath = path.join(input.repoRoot, project.relativePath);
+    const planAbsolutePath = path.join(input.repoRoot, plan.relativePath);
+    const projectBefore = readFileSync(projectAbsolutePath, "utf8");
+    const planBefore = readFileSync(planAbsolutePath, "utf8");
+    const decisionBefore = readFileSync(input.decisionAbsolutePath, "utf8");
+
+    let planAfter = planBefore;
+    let projectAfter = projectBefore;
+    if (needsPark) {
+      planAfter = setActionStatus(planAfter, action.id, "deferred");
+    }
+    if (pointerMoved && nextActionId) {
+      planAfter = replacePointer(planAfter, nextActionId, "milestone");
+      projectAfter = replacePointer(projectAfter, nextActionId, "active_plan");
+    }
+
+    const mutations = [
+      { absolutePath: input.decisionAbsolutePath, relativePath: input.decisionRelativePath, before: decisionBefore, after: input.decisionAfter },
+      ...(needsPark ? [{ absolutePath: planAbsolutePath, relativePath: plan.relativePath, before: planBefore, after: planAfter }] : []),
+      ...(pointerMoved ? [{ absolutePath: projectAbsolutePath, relativePath: project.relativePath, before: projectBefore, after: projectAfter }] : [])
+    ];
+
+    // A detached HEAD would accept the commit and lose it the moment HEAD moves.
+    if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
+      throw validationError("The Project repository is on a detached HEAD, so the deferral commit would be unreachable from any branch.", {
+        repoRoot: input.repoRoot,
+        actionKey
+      });
+    }
+
+    writeAllAtomically(mutations);
+    try {
+      assertPostDeferralDispatch(input.repoRoot, project.slug, consequence, nextActionId);
+    } catch (error) {
+      restoreAll(mutations);
+      throw error;
+    }
+
+    const receipt: DecisionDeferralReceipt = {
+      id: `decisiondefer_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
+      requestId: input.requestId,
+      decisionId: input.decisionId,
+      decisionPath: input.decisionRelativePath,
+      actionKey,
+      consequence,
+      changedPaths: mutations
+        .filter((mutation) => sha256(mutation.before) !== sha256(mutation.after))
+        .map((mutation) => mutation.relativePath),
+      applied: false,
+      commitError: null,
+      createdAt: new Date().toISOString()
+    };
+    return { consequence, receipt };
+  });
+
+  if (!prepared.receipt) {
+    return { consequence: prepared.consequence, receiptId: null, applied: false };
   }
-  const pointerBefore = project.currentAction ?? plan.currentAction;
-  const needsPark = action.status !== "deferred";
-  const pointerMoved = needsPark && pointerBefore === action.id;
-  const actionKey = `${project.slug}/${action.id}`;
-
-  const nextActionId = pointerMoved
-    ? nextEligibleInQueue(input.repoRoot, project.slug, plan, action.id, loadActionOrder(db).positions)
-    : null;
-  if (pointerMoved && !nextActionId) {
-    throw validationError("This Decision defers the current Action, but no other eligible Action can take the pointer.", {
-      action: input.actionId,
-      remedy: "Make the next queued Action eligible first, or defer this Action once its successor can be dispatched."
-    });
-  }
-
-  const consequence: DecisionDeferralConsequence = {
-    kind: "defer",
-    actionId: action.id,
-    actionKey,
-    planPath: plan.relativePath,
-    actionStatusBefore: action.status,
-    actionStatusAfter: needsPark ? "deferred" : action.status,
-    pointerBefore,
-    pointerAfter: pointerMoved ? nextActionId : pointerBefore,
-    pointerMoved,
-    decisionAnswer: input.decisionAnswer
-  };
-  if (input.dryRun) {
-    return { consequence, receiptId: null, applied: false };
-  }
-
-  const projectAbsolutePath = path.join(input.repoRoot, project.relativePath);
-  const planAbsolutePath = path.join(input.repoRoot, plan.relativePath);
-  const projectBefore = readFileSync(projectAbsolutePath, "utf8");
-  const planBefore = readFileSync(planAbsolutePath, "utf8");
-  const decisionBefore = readFileSync(input.decisionAbsolutePath, "utf8");
-
-  let planAfter = planBefore;
-  let projectAfter = projectBefore;
-  if (needsPark) {
-    planAfter = setActionStatus(planAfter, action.id, "deferred");
-  }
-  if (pointerMoved && nextActionId) {
-    planAfter = replacePointer(planAfter, nextActionId, "milestone");
-    projectAfter = replacePointer(projectAfter, nextActionId, "active_plan");
-  }
-
-  const mutations = [
-    { absolutePath: input.decisionAbsolutePath, relativePath: input.decisionRelativePath, before: decisionBefore, after: input.decisionAfter },
-    ...(needsPark ? [{ absolutePath: planAbsolutePath, relativePath: plan.relativePath, before: planBefore, after: planAfter }] : []),
-    ...(pointerMoved ? [{ absolutePath: projectAbsolutePath, relativePath: project.relativePath, before: projectBefore, after: projectAfter }] : [])
-  ];
-
-  // A detached HEAD would accept the commit and lose it the moment HEAD moves.
-  if (tryGit(input.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]) === null) {
-    throw validationError("The Project repository is on a detached HEAD, so the deferral commit would be unreachable from any branch.", {
-      repoRoot: input.repoRoot,
-      actionKey
-    });
-  }
-
-  writeAllAtomically(mutations);
-  try {
-    assertPostDeferralDispatch(input.repoRoot, project.slug, consequence, nextActionId);
-  } catch (error) {
-    restoreAll(mutations);
-    throw error;
-  }
-
-  const receipt: DecisionDeferralReceipt = {
-    id: `decisiondefer_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
-    requestId: input.requestId,
-    decisionId: input.decisionId,
-    decisionPath: input.decisionRelativePath,
-    actionKey,
-    consequence,
-    changedPaths: mutations
-      .filter((mutation) => sha256(mutation.before) !== sha256(mutation.after))
-      .map((mutation) => mutation.relativePath),
-    applied: false,
-    commitError: null,
-    createdAt: new Date().toISOString()
-  };
+  const receipt = prepared.receipt;
+  const consequence = prepared.consequence;
 
   const commitError = receipt.changedPaths.length > 0
     ? commitDecisionDeferral(input.repoRoot, receipt.changedPaths, receipt)

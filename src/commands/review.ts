@@ -1051,6 +1051,41 @@ export function runReviewApproveCommand(
     return item;
   });
 
+  // A build-packet approval's `sourceInput` is a structured doc reference
+  // (`docs/plans/<slug>.md#<action-id>`), not something a person wrote. Feeding
+  // it through the general capture pipeline re-derived a Project by fuzzy name
+  // match and filed a spurious Requires Review Action under whichever Project
+  // the path happened to resemble (Issue #663). The item already names its own
+  // Project and Action, and the pending-execution marker below carries both, so
+  // there is nothing for intent classification to add.
+  if (reviewItem.resolved_intent === "CodexBuildPacketApproval") {
+    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => {
+      const item = updateReviewItemStatus(db, reviewItem.id, {
+        status: "approved",
+        decisionNote: "Build packet approved. Execution pending."
+      });
+      if (!item) {
+        throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
+      }
+      return { updated: item, pendingExecutionReview: createPendingExecutionReviewItem(db, item) };
+    });
+    return createSuccess({
+      command: "review.approve",
+      workspace: workspacePath,
+      data: {
+        item: reviewPacketForReviewItem(updated),
+        result: {
+          status: "approved",
+          summary: `Build packet approved. Run pending as Requires Review Decision ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
+        },
+        approval: null,
+        execution: null,
+        run: null
+      },
+      warnings: [`Execution was not run. Approve ${pendingExecutionReview.slug ?? pendingExecutionReview.id} to execute the approved work.`]
+    });
+  }
+
   const approval = runAskCommand({
     workspace: workspacePath,
     request: reviewItem.source_input,

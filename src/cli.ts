@@ -7,7 +7,7 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, Option } from "commander";
 import {
   renderArtifactCreateSuccess,
   renderArtifactListSuccess,
@@ -1043,8 +1043,10 @@ export function buildProgram(): Command {
       .requiredOption("--request-id <id>", "Idempotency key for this grant")
       .requiredOption("--granted-by <who>", "Operator granting the authorization")
       .option("--decision <ref>", "Authorizing Decision reference")
-      .option("--expect-revision <n>", "Policy revision the preview showed")
-  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectRevision?: string }) =>
+      .option("--expected-revision <n>", "Policy revision the preview showed (its expectedRevision)")
+      // The flag's earlier spelling, kept so existing callers keep working (Issue #609).
+      .addOption(new Option("--expect-revision <n>").hideHelp())
+  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string }) =>
     runCliAction("production.activate", options, () => runProductionActivateCommand(options), renderProductionTransitionSuccess)
   );
   addJsonOption(

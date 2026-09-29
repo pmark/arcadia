@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await activateProduction({ scope, requestId, grantedBy: "dashboard-toggle", expectRevision: revision });
+    await activateProduction({ scope, requestId, grantedBy: "dashboard-toggle", expectedRevision: revision });
     const status = await loadProductionStatus();
     return NextResponse.json({ production: status.data });
   } catch (error) {

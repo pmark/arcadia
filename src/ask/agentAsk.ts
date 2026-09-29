@@ -322,3 +322,22 @@ function actionId(value: unknown, index: number): string | null {
   return id;
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
+
+/**
+ * Set one top-level scalar in an Agent Ask draft. Block YAML is edited line by
+ * line so nothing else changes. A JSON (flow) draft -- the compact form
+ * AGENTS.md tells agents to write -- has no `key:` line for a line regex to
+ * match, which silently left its original request id and revision in place
+ * and made every JSON draft unsettleable here; it is parsed and re-serialized
+ * instead, which is lossless for JSON.
+ */
+export function setTopLevelAskScalar(content: string, key: "request_id" | "candidate_revision", value: string): string {
+  if (content.trimStart().startsWith("{")) {
+    const parsed: unknown = parseYaml(content);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return `${JSON.stringify({ ...(parsed as Record<string, unknown>), [key]: value })}\n`;
+    }
+    return content;
+  }
+  return content.replace(new RegExp(`^(\\s*${key}\\s*:\\s*).*$`, "m"), `$1${value}`);
+}

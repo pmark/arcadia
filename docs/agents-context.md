@@ -449,11 +449,15 @@ repository for exactly this: a drafted `complete` Ask already sitting in
 still declares. When one exists, that settlement runs there and then —
 deterministically, with no coding-agent process and no LLM call — and the
 would-be Session is never started. A `candidate_revision` that has merely
-gone stale because later commits landed on top of it (a CodeRabbit-loop fix,
-a governance reconciliation) is refreshed to current `HEAD` first, but only
-when that stale revision is still an ancestor of `HEAD`; anything else —
-missing or incomplete evidence, a genuinely divergent revision, an unresolved
-required review Decision — falls through to an ordinary dispatch untouched.
+gone stale because later governance commits landed on top of it (another
+settlement, a Log entry, a Plan or Decision edit) is refreshed to current
+`HEAD` first, but only when that stale revision is still an ancestor of `HEAD`
+*and* every commit since touched only governance records, so the evidence
+still describes exactly the code at `HEAD`. Ancestry alone is not enough: a
+later code change — even a CodeRabbit-loop fix — could break a criterion the
+evidence recorded as met. That, and anything else — missing or incomplete
+evidence, a genuinely divergent revision, an unresolved required review
+Decision — falls through to an ordinary dispatch untouched.
 See `attemptAutoSettlePendingCompletion` in `src/ask/autoSettleBeforeDispatch.ts`.
 
 ## Asking for a capability the Way does not have

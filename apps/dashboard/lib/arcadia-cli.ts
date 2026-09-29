@@ -521,7 +521,7 @@ export async function activateProduction(input: {
   scope: ProductionScopeInfo;
   requestId: string;
   grantedBy: string;
-  expectRevision: number;
+  expectedRevision: number;
 }): Promise<ArcadiaJsonSuccess<unknown>> {
   const args = [
     "production",
@@ -530,8 +530,8 @@ export async function activateProduction(input: {
     input.requestId,
     "--granted-by",
     input.grantedBy,
-    "--expect-revision",
-    String(input.expectRevision),
+    "--expected-revision",
+    String(input.expectedRevision),
     "--concurrency",
     String(input.scope.maxConcurrentSessions || 1)
   ];

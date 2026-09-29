@@ -9,7 +9,8 @@ import {
   runAgentAskNotificationSentCommand,
   runAgentAskNotificationsCommand,
   runAgentAskPreviewCommand,
-  runAgentAskSettleCommand
+  runAgentAskSettleCommand,
+  renderAgentAskSettleSuccess
 } from "../src/commands/agentAsk.js";
 import { openDatabase, withDatabase } from "../src/db/connection.js";
 import type { AgentAskSettlementReceipt } from "../src/ask/settlement.js";import { discoverDocs } from "../src/docs/discover.js";
@@ -1443,6 +1444,93 @@ describe("Agent Ask settlement", () => {
     });
     expect(existsSync(draft.data.path)).toBe(false);
     expect(existsSync(path.join(repo, ".arcadia/asks/archive/agent-ask-archive-on-reject.yaml"))).toBe(true);
+  });
+
+  it("commits the settled documents when the Project gitignores its .arcadia/asks/ directory (Issue #512)", () => {
+    const { workspace, repo } = fixture();
+    writeFileSync(path.join(repo, ".gitignore"), ".arcadia/asks/\n", "utf8");
+    execFileSync("git", ["add", ".gitignore"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Ignore Agent Asks"], { cwd: repo });
+    const draft = runAgentAskDraftCommand({
+      dir: repo, workspace,
+      request: JSON.stringify({ agent_ask: "v1", request_id: "ignored-asks-dir", project: "demo", intent: "log", desired_result: "Record under an ignored asks directory" })
+    });
+
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "ignored-asks-dir", requestId: "settle-ignored-asks-dir", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "ignored-asks-dir", requestId: "settle-ignored-asks-dir", disposition: "accepted",
+      apply: true, preview: preview.data.receipt.previewFingerprint
+    });
+
+    expect(applied.data.receipt.recovery ?? null).toBeNull();
+    expect(applied.data.receipt.documentsCommit).toBeTruthy();
+    // The source is archived on disk, as bookkeeping the Project chose not to track...
+    expect(existsSync(draft.data.path)).toBe(false);
+    expect(existsSync(path.join(repo, ".arcadia/asks/archive/agent-ask-ignored-asks-dir.yaml"))).toBe(true);
+    // ...and the managed record the settlement exists for is committed.
+    const committedPaths = execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], { cwd: repo, encoding: "utf8" });
+    expect(committedPaths).toContain("MISSION_LOG.md");
+    expect(committedPaths).not.toContain(".arcadia/asks");
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" })).toBe("");
+  });
+
+  it("does not hard-fail on a stale --revision when the preview fingerprint already binds the queue revision (Issue #296)", () => {
+    const { workspace } = fixture();
+    runAgentAskPreviewCommand({
+      workspace, request: JSON.stringify({ agent_ask: "v1", request_id: "revision-binding", project: "demo", intent: "log", desired_result: "Record a revision-bound settlement" })
+    });
+    const preview = runAgentAskSettleCommand({ workspace, proposal: "revision-binding", requestId: "settle-revision-binding", disposition: "accepted" });
+    const queueRevision = preview.data.receipt.queueRevision;
+    expect(typeof queueRevision).toBe("number");
+    // The preview prints the revision it bound, so it can be copied rather than guessed.
+    expect(renderAgentAskSettleSuccess(preview)).toContain(`Queue revision: ${queueRevision}`);
+    const stale = queueRevision! + 41;
+
+    // Preview-only: --revision is the sole binding, so a wrong one is still refused.
+    expect(() => runAgentAskSettleCommand({
+      workspace, proposal: "revision-binding", requestId: "settle-revision-binding", disposition: "accepted", revision: stale
+    })).toThrow(/queue revision changed/);
+
+    // Apply with the preview's fingerprint: the queue did not move, so a
+    // mistyped --revision beside it no longer refuses the settlement.
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: "revision-binding", requestId: "settle-revision-binding", disposition: "accepted",
+      revision: stale, preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+  });
+
+  it("bumps an amended Plan's updated date on every Plan-mutating settlement (Issue #598)", () => {
+    const { workspace, repo } = fixture();
+    const today = new Date().toISOString().slice(0, 10);
+    const planPath = path.join(repo, "docs/plans/demo-plan.md");
+    const settle = (requestId: string, ask: Record<string, unknown>) => {
+      runAgentAskPreviewCommand({ workspace, request: JSON.stringify({ agent_ask: "v1", request_id: requestId, project: "demo", ...ask }) });
+      const preview = runAgentAskSettleCommand({ workspace, proposal: requestId, requestId: `settle-${requestId}`, disposition: "accepted" });
+      runAgentAskSettleCommand({
+        workspace, proposal: requestId, requestId: `settle-${requestId}`, disposition: "accepted",
+        apply: true, preview: preview.data.receipt.previewFingerprint
+      });
+    };
+    const resetUpdated = () => {
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace(/^updated: .*$/m, "updated: 2026-09-01"), "utf8");
+      execFileSync("git", ["commit", "-qam", "Reset the Plan date"], { cwd: repo });
+    };
+
+    settle("amend-existing", {
+      intent: "action", target_ref: "action/existing", desired_result: "Keep existing work moving, amended.",
+      acceptance: ["Existing proof exists, amended."]
+    });
+    expect(readFileSync(planPath, "utf8")).toMatch(new RegExp(`^updated: ${today}$`, "m"));
+
+    resetUpdated();
+    settle("amend-plan-milestone", { intent: "plan", target_ref: "plan/demo-plan", desired_result: "A retargeted Milestone" });
+    expect(readFileSync(planPath, "utf8")).toMatch(/^milestone: A retargeted Milestone$/m);
+    expect(readFileSync(planPath, "utf8")).toMatch(new RegExp(`^updated: ${today}$`, "m"));
+
+    resetUpdated();
+    settle("amend-milestone", { intent: "milestone", desired_result: "Another Milestone" });
+    expect(readFileSync(planPath, "utf8")).toMatch(new RegExp(`^updated: ${today}$`, "m"));
   });
 
   it("never archives a source file outside the settling repository's own .arcadia/asks/ directory", () => {

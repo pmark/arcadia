@@ -400,11 +400,11 @@ arcadia production activate \
   --intent "Keep the unattended-production critical path and add the disposable Zero Prompt Rehearsal fixture so prove-zero-prompt-production-loop can run on opencode-cli." \
   --request-id add-zero-prompt-rehearsal-fixture-<yyyy-mm-dd> \
   --granted-by "P. Mark Anderson" \
-  --expect-revision <n from preview> \
+  --expected-revision <n from preview> \
   --json
 ```
 
-`--request-id` and `--granted-by` are required; `--expect-revision` is what
+`--request-id` and `--granted-by` are required; `--expected-revision` is what
 makes the grant refuse to apply if the policy moved between preview and
 activate. Pass `--plan` explicitly: `preview` defaults it to every Plan of the
 named Projects, but `activate` does not, and an omitted `--plan` fails with
@@ -501,7 +501,7 @@ arcadia production preview \
   --transitions validation,acceptance,pointer \
   --intent "Build the unattended-production critical path from the GitHub board without a per-Action relay." \
   --json
-# read expectedRevision, then pass it to --expect-revision below
+# read expectedRevision, then pass it to --expected-revision below
 
 arcadia production activate \
   --project arcadia \
@@ -512,7 +512,7 @@ arcadia production activate \
   --intent "Build the unattended-production critical path from the GitHub board without a per-Action relay." \
   --request-id restore-critical-path-scope-<yyyy-mm-dd> \
   --granted-by "P. Mark Anderson" \
-  --expect-revision <n from the restore preview> \
+  --expected-revision <n from the restore preview> \
   --json
 ```
 
