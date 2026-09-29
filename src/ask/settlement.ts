@@ -71,7 +71,7 @@ interface FileMutation {
    * compare-and-set failure re-reads the base and re-applies the same resolved
    * target instead of overwriting a concurrent writer with a stale `after`.
    */
-  retransform?: (current: string) => string;
+  retransform?: (current: string, planCurrent?: string) => string;
   /**
    * Recompute an append-only shared document (MISSION_LOG.md) from fresh
    * content. Recomputed under the write interlock, so a concurrent settlement's
@@ -1102,6 +1102,44 @@ export function settleAgentAsk(db: Database.Database, input: {
         };
         const decisionDocsForPlan = discovered.docs.filter((doc): doc is DecisionDoc => doc.type === "decision" && doc.project === project.slug);
         const nextResolution = selectNextAfterCompletion(syntheticBundle, actionId, decisionDocsForPlan, queueAfter, project.slug);
+        // The preview-time resolution above only feeds the effect note. What is
+        // WRITTEN is re-resolved from the Plan content each compare-and-set
+        // retry actually read, so a concurrent edit to the dependent set or to
+        // Action statuses cannot leave the pointer chosen from a stale snapshot.
+        const resolveNextFromPlan = (planContent: string): NextAfterCompletion => {
+          const freshPlan = parseFreshPlanDoc(planContent, targetPlan.relativePath, targetPlanPath, actionId);
+          const freshDependents = freshPlan.actions
+            .filter((candidate) => candidate.id !== actionId && candidate.dependsOn.includes(actionId))
+            .map((candidate) => candidate.id);
+          const freshGraph = new Map<string, string[]>(freshPlan.actions.map((candidate) => [candidate.id, candidate.dependsOn]));
+          for (const remainderAction of normalizedRemainder) freshGraph.set(remainderAction.id, remainderAction.dependencies);
+          const reaches = (start: string, goal: string): boolean => {
+            const seen = new Set<string>();
+            const stack = [start];
+            while (stack.length > 0) {
+              const current = stack.pop()!;
+              if (current === goal) return true;
+              if (seen.has(current)) continue;
+              seen.add(current);
+              for (const dependency of freshGraph.get(current) ?? []) stack.push(dependency);
+            }
+            return false;
+          };
+          const freshBundle: QueueableActionBundle = {
+            actions: [
+              ...freshPlan.actions.map((candidate) => {
+                if (!freshDependents.includes(candidate.id)) return candidate;
+                const safeIds = remainderIds.filter((id) => !reaches(id, candidate.id));
+                return { ...candidate, dependsOn: [...candidate.dependsOn, ...safeIds.filter((id) => !candidate.dependsOn.includes(id))] };
+              }),
+              ...normalizedRemainder.map((remainderAction) => ({
+                id: remainderAction.id, status: "open" as const, dependsOn: remainderAction.dependencies,
+                decisions: [], clarification: "clarified" as const, responsibility: action.responsibility
+              }))
+            ]
+          };
+          return selectNextAfterCompletion(freshBundle, actionId, decisionDocsForPlan, queueAfter, project.slug);
+        };
         const updated = today();
         const narrowedTitle = proposal.normalized.desiredResult;
         const planTransform = (current: string): string => {
@@ -1166,9 +1204,10 @@ export function settleAgentAsk(db: Database.Database, input: {
             const freshDependent = freshPlan.actions.find((candidate) => candidate.id === dependentId)!;
             next = setActionDependsOn(next, dependentId, withRemainderAdded(freshDependent.dependsOn, freshSafeRemainderIdsFor(dependentId)));
           }
-          return setTopLevelFields(next, { current_action: nextResolution.actionId, updated });
+          return setTopLevelFields(next, { current_action: resolveNextFromPlan(current).actionId, updated });
         };
-        const projectTransform = (current: string): string => setTopLevelFields(current, { current_action: nextResolution.actionId, updated });
+        const projectTransform = (current: string, planCurrent: string = planBefore): string =>
+          setTopLevelFields(current, { current_action: resolveNextFromPlan(planCurrent).actionId, updated });
 
         effects.push(`Narrowed Action ${targetActionKey} to ${narrowed.length} of ${declared.length} declared criteria and marked it done with accepted evidence.`);
         effects.push(`Created ${remainderIds.length} remainder Action${remainderIds.length === 1 ? "" : "s"} for the unfinished criteria: ${remainderActionKeys.join(", ")}.`);
@@ -1182,7 +1221,7 @@ export function settleAgentAsk(db: Database.Database, input: {
           pointerProjectSlug = project.slug;
           fileMutations.push(
             { path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform, pair: "plan" },
-            { path: projectPath, before: projectBefore, after: projectTransform(projectBefore), retransform: projectTransform, pair: "project" }
+            { path: projectPath, before: projectBefore, after: projectTransform(projectBefore, planBefore), retransform: projectTransform, pair: "project" }
           );
         } else {
           fileMutations.push({ path: targetPlanPath, before: planBefore, after: planTransform(planBefore), retransform: planTransform });
@@ -1297,7 +1336,8 @@ export function settleAgentAsk(db: Database.Database, input: {
   if (input.apply && input.previewFingerprint !== previewFingerprint) {
     throw validationError("Agent Ask settlement apply does not match the current preview.", {
       expectedPreviewFingerprint: previewFingerprint,
-      receivedPreviewFingerprint: input.previewFingerprint ?? null
+      receivedPreviewFingerprint: input.previewFingerprint ?? null,
+      remedy: `Run the same settle command without --apply to get a fresh preview fingerprint, then rerun it with the identical flags plus: --apply --preview ${previewFingerprint}`
     });
   }
 

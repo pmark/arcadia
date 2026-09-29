@@ -2448,7 +2448,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/296", "https://github.com/pmark/arcadia/issues/304", "https://github.com/pmark/arcadia/issues/320", "https://github.com/pmark/arcadia/issues/321", "https://github.com/pmark/arcadia/issues/505", "https://github.com/pmark/arcadia/issues/507", "https://github.com/pmark/arcadia/issues/512", "https://github.com/pmark/arcadia/issues/592", "https://github.com/pmark/arcadia/issues/598", "https://github.com/pmark/arcadia/issues/609", "https://github.com/pmark/arcadia/issues/639", "https://github.com/pmark/arcadia/issues/663"]
   - id: improve-agent-ask-settle-usability
     title: Reduce agent-ask settle's friction so the correct flag combination and next step are discoverable without repeated failed attempts.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Reduce agent-ask settle's friction so the correct flag combination and next step are discoverable without repeated failed attempts.
@@ -2628,7 +2628,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: improve-agent-ask-settle-usability
+current_action: fix-docs-sync-paused-project-handling
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

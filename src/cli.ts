@@ -818,6 +818,12 @@ export function buildProgram(): Command {
     .option("--apply", "Apply the exact previewed settlement")
     .option("--operator", "Compatibility flag; deterministic complete-intent settlements are agent-executable")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .addHelpText("after", `
+Two-phase usage: preview first, then apply with the fingerprint it prints.
+  arcadia agent-ask settle --proposal <id> --request-id <settle-id> --disposition accepted
+  arcadia agent-ask settle --proposal <id> --request-id <settle-id> --disposition accepted --apply --preview <fingerprint>
+Add placement flags (--top | --before | --after) and --revision to BOTH calls when the Ask creates Actions;
+the fingerprint hashes them, so any change between preview and apply is refused.`)
   ).action((options: {
     workspace: string; proposal: string; requestId: string; disposition: string; responsibility?: string;
     activate?: boolean; action?: string; model?: string; effort?: string;

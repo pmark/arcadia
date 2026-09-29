@@ -153,6 +153,45 @@ describe("Agent Ask split settlement under a concurrent dependency edit (Issue #
     // The written Plan must still parse with no dependency cycle.
     expect(() => discoverDocs(repo)).not.toThrow();
   });
+
+  it("chooses the next_action pointer from the fresh Plan the retry read, not the stale preview-time snapshot (Issue #722)", () => {
+    const { workspace, repo, planPath } = fixture();
+    const originalPlanContent = fs.readFileSync(planPath, "utf8");
+    // The remainder depends on "second". At preview time "second" is open, so
+    // the remainder is blocked and the pointer lands on "second". A concurrent
+    // settlement then finishes "second"; the fresh read must move the pointer
+    // onto the now-unblocked remainder instead.
+    const concurrentlyEditedPlanContent = originalPlanContent.replace(
+      "  - id: second\n    title: Second Action\n    status: open",
+      "  - id: second\n    title: Second Action\n    status: done"
+    );
+    expect(concurrentlyEditedPlanContent).not.toBe(originalPlanContent);
+    fs.writeFileSync(planPath, concurrentlyEditedPlanContent, "utf8");
+    execFileSync("git", ["add", "docs/plans/demo-plan.md"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Simulate a concurrent settlement finishing second"], { cwd: repo });
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    staleReadState.path = planPath;
+    staleReadState.staleContent = originalPlanContent;
+    staleReadState.active = true;
+
+    const request = splitAsk("split-concurrent-pointer", head)
+      .replace('    acceptance:\n      - "Second slice done."', '    acceptance:\n      - "Second slice done."\n    dependencies:\n      - second');
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-concurrent-pointer", disposition: "accepted"
+    });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-concurrent-pointer", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.applied).toBe(true);
+
+    const project = fs.readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+    const plan = fs.readFileSync(planPath, "utf8");
+    expect(project).toMatch(/^current_action: first-remainder$/m);
+    expect(plan).toMatch(/^current_action: first-remainder$/m);
+  });
 });
 
 function fixture(): { workspace: string; repo: string; head: string; planPath: string } {
