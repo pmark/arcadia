@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr769","project":"arcadia","intent":"log","desired_result":"PR #769 is up: an Action claim now holds past 24 hours while its candidate PR is unmerged, so neither arcadia go nor production can dispatch the same Action twice (Closes #549). https://github.com/pmark/arcadia/pull/769"}
