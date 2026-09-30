@@ -114,7 +114,7 @@ try:
 
     output = command(["mise", "exec", "--", "pnpm", "-s", "arcadia", "agent-ask", "settle",
         "--proposal", proposal, "--request-id", settlement, "--disposition", "accepted",
-        "--responsibility", "agent", "--preview", fingerprint, "--operator", "--apply", "--json"], timeout=300)
+        "--preview", fingerprint, "--operator", "--apply", "--json"], timeout=300)
     result = json.loads(output)
     (run_dir / "settlement-receipt.json").write_text(json.dumps(result, indent=2) + "\\n")
     receipt = result.get("data", {}).get("receipt", {})
