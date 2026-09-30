@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "command": "agent-ask.settle",
+  "workspace": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover",
+  "data": {
+    "receipt": {
+      "id": "asksettle_2c37efe70de24687bd",
+      "proposalId": "agentask_3f04c8afcf3c6c0aa0",
+      "proposalRequestId": "plan-phone-dashboard-judgment-actions-runs-2026-09-29-v2",
+      "settlementRequestId": "accept-phone-dashboard-plan-2026-09-29-v2",
+      "disposition": "accepted",
+      "projectSlug": "arcadia",
+      "intent": "plan",
+      "effects": [
+        "Created draft Plan redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script with 3 governed Actions: arcadia/add-single-decision-dashboard-page, arcadia/build-operator-script-library-and-launch-evidence, arcadia/focus-runs-on-active-work-and-next-push.",
+        "Kept the draft inactive; active Plan, Project pointer, dispatch authority, and execution queue are unchanged.",
+        "Archived the settled Ask file to .arcadia/asks/archive/agent-ask-plan-phone-dashboard-judgment-actions-runs-2026-09-29-v2.yaml."
+      ],
+      "queueActionKey": null,
+      "queueActionKeys": [],
+      "queuePosition": null,
+      "nextActionKey": "private-practice-now/make-nagel-publishable-search-build-fail-closed",
+      "previewFingerprint": "c389b9180001688d73368a52902078dc16ce44d5598ae0b66863db6a7216579e",
+      "queueRevision": 172,
+      "applied": true,
+      "authority": {
+        "kind": "operator_acceptance",
+        "requestedAuthority": "propose",
+        "boundedPolicyDecision": null
+      },
+      "notificationStatus": "pending",
+      "createdAt": "2026-09-30T07:37:55.490Z",
+      "documentsCommit": "7fbed47fa22d2421f1cc70edeed1283c35a8a997"
+    }
+  },
+  "artifacts": [],
+  "warnings": []
+}
