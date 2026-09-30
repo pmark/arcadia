@@ -2464,7 +2464,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/718", "https://github.com/pmark/arcadia/issues/722"]
   - id: fix-docs-sync-paused-project-handling
     title: Make a paused Project actually stop being read, synced, and routed to, matching what 'paused' should mean.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a paused Project actually stop being read, synced, and routed to, matching what 'paused' should mean.

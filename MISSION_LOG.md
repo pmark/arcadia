@@ -1138,3 +1138,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Completed arcadia/fix-docs-sync-paused-project-handling
+
+- **Did:** Completed Action arcadia/fix-docs-sync-paused-project-handling from accepted evidence (Candidate 8fce4896a14e0a11def405839718c310b3c078ee).
+- **Result:** Every declared acceptance criterion was accepted as met: "#298: Agent Ask v1 can set a Project's status, so pausing/reactivating no longer requires a hand edit of PROJECT.md."; "#299: docs sync --all has a defined, tested scope for whether it ingests paused Projects."; "#300: Ask routing (resolveProjectReference / resolveProjectContextFromRequest) does not resolve a paused Project."; "#455: arcadia docs sync no longer silently omits documents whose frontmatter declares an unrecognized type; it reports them."; "#662: docs sync --project cannot mutate another project's work_item when a plan slug and action id collide.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-docs-sync-paused-project-handling-2026-09-30).
