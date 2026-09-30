@@ -1173,3 +1173,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Completed arcadia/fix-auto-settle-eligibility-docs
+
+- **Did:** Completed Action arcadia/fix-auto-settle-eligibility-docs from accepted evidence (Candidate fdc78d990e704e5021f0eccb9bccc759cbc9f7b9).
+- **Result:** Every declared acceptance criterion was accepted as met: "#640: docs/agents-context.md's auto-settle eligibility text states the per-criterion met requirement the code actually enforces."; "#641: docs/agents-context.md states the exact settle invocation for the no-workspace draft-only case.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-auto-settle-eligibility-docs-2026-09-30-v2).

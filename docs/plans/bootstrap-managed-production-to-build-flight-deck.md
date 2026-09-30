@@ -2483,7 +2483,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/298", "https://github.com/pmark/arcadia/issues/299", "https://github.com/pmark/arcadia/issues/300", "https://github.com/pmark/arcadia/issues/455", "https://github.com/pmark/arcadia/issues/662"]
   - id: fix-auto-settle-eligibility-docs
     title: Correct docs/agents-context.md's description of auto-settle eligibility and the no-workspace draft-only settle invocation.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Correct docs/agents-context.md's description of auto-settle eligibility and the no-workspace draft-only settle invocation.
@@ -2749,7 +2749,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: limit-sessions-per-provider-account
+current_action: prove-two-action-unattended-production
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
