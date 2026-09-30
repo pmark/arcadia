@@ -1131,3 +1131,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Agent Ask pr-opened-arcadia-pr818
+
+- **Did:** A Decision PR is open to revive prove-two-action-unattended-production now that the codex-cli v5 rehearsal ran both Actions unattended: https://github.com/pmark/arcadia/pull/818
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
