@@ -1,0 +1,132 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-tidy-quarantine-safety-criterion-2026-09-30",
+  "title": "Accept the tidy quarantine criterion correction",
+  "script": "accept-tidy-quarantine-safety-criterion-2026-09-30.sh",
+  "repeatable": false,
+  "problem": "The Action's #735 criterion still describes the archive-tag recovery mechanism that quarantine deliberately replaced, so the Action cannot truthfully be completed even though #739 and #740 are already covered by durable safety tests.",
+  "desired_effect": "Accept only the reviewed Plan amendment that replaces #735 with the current run-scoped quarantine-ref and tidy-undo recovery truth, preserving #739 and #740 unchanged.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-tidy-quarantine-safety-criterion-2026-09-30.sh run",
+  "authority": {
+    "does": [
+      "Validate the exact Ask SHA-256, pinned semantic envelope, primary pmark/arcadia main checkout, synchronized origin/main, inherited reviewed base, and unchanged Project, Plan, pointer, queue, and Action status",
+      "Use shared arcadia-plan-amendment-v1 to preview the exact settlement at click time, validate only the pinned #735 replacement and preserved #739/#740 criteria, then apply that fresh fingerprint and retain durable receipts",
+      "Push only Arcadia's exact accepted main-branch settlement after all pinned preconditions match"
+    ],
+    "never_does": [
+      "Run tidy, retire or restore a worktree or branch, change the queue, pointer, active Plan, Action status, or any Action other than the exact reviewed criterion replacement",
+      "Merge or deploy, activate production, press a Grant, start, stop, or restart services, use credentials, or settle any other proposal or Decision"
+    ]
+  },
+  "success": {
+    "effect": "The Action remains open with a truthful #735 criterion and unchanged #739/#740 safety requirements; the exact settlement is committed and published on main with a durable receipt.",
+    "next": "Use the existing tidy safety evidence to complete the Action only after its amended acceptance criteria are verified; this button itself does not run tidy or mark the Action done."
+  },
+  "failure": {
+    "effect": "No unvalidated or broadened governance change is made. If settlement succeeded before push failed, the receipt remains durable and the same request can recover publication without a second settlement.",
+    "next": "Read the reason, changed field, and recovery instruction shown on /runs. Restore the named precondition and retry this exact action; do not substitute a proposal or alter #739/#740."
+  },
+  "planAmendment": {
+    "schema": "arcadia-plan-amendment-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "447b0cba2e714266aa8a28ca56129830c9f71597"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-amend-tidy-quarantine-safety-criterion-2026-09-30.yaml",
+      "sha256": "3ef7f8b7dad4a2b5fae508b95a678c9067f44ac5115d618197143e48af768bbc",
+      "proposal": "amend-tidy-quarantine-safety-criterion-2026-09-30"
+    },
+    "settlement": {
+      "requestId": "accept-tidy-quarantine-safety-criterion-2026-09-30",
+      "disposition": "accepted",
+      "operator": true
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "bootstrap-managed-production-to-build-flight-deck",
+      "action": "harden-tidy-quarantine-safety-and-docs",
+      "projectUnchanged": {
+        "slug": "arcadia",
+        "active_plan": "bootstrap-managed-production-to-build-flight-deck",
+        "current_action": "prove-two-action-unattended-production"
+      },
+      "planUnchanged": {
+        "slug": "bootstrap-managed-production-to-build-flight-deck",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "prove-two-action-unattended-production",
+        "milestone": "Bootstrap managed production to run unattended from the GitHub board"
+      },
+      "actionBefore": {
+        "id": "harden-tidy-quarantine-safety-and-docs",
+        "title": "Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.",
+        "expected_artifact": "Evidence satisfying Agent Ask harden-tidy-quarantine-safety-and-docs",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask batch-defect-issues-into-actions-2026-09-27",
+        "acceptance_criteria": [
+          "#735: START_HERE.md documents tidy's actual archive-tag name (archive/tidy/<sha>), not archive/<branch>.",
+          "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet.",
+          "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": [
+          "https://github.com/pmark/arcadia/issues/735",
+          "https://github.com/pmark/arcadia/issues/739",
+          "https://github.com/pmark/arcadia/issues/740"
+        ]
+      },
+      "actionAfter": {
+        "id": "harden-tidy-quarantine-safety-and-docs",
+        "title": "Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Fix tidy quarantine safety gaps and document the current recoverable quarantine mechanism.",
+        "expected_artifact": "Evidence satisfying Agent Ask harden-tidy-quarantine-safety-and-docs",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-tidy-quarantine-safety-criterion-2026-09-30",
+        "acceptance_criteria": [
+          "#735: START_HERE.md states that current tidy quarantines branch refs under refs/arcadia/tidy/<run>/heads/<branch> and restores them with arcadia tidy undo <run>; it does not describe archive/<branch> as an active recovery path.",
+          "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet.",
+          "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": [
+          "https://github.com/pmark/arcadia/issues/735",
+          "https://github.com/pmark/arcadia/issues/739",
+          "https://github.com/pmark/arcadia/issues/740",
+          "START_HERE.md",
+          "src/commands/tidy.ts",
+          "tests/tidy-command.test.ts"
+        ]
+      },
+      "noChange": [
+        "id",
+        "title",
+        "status",
+        "responsibility",
+        "effort",
+        "expected_artifact",
+        "clarification",
+        "confidence",
+        "depends_on",
+        "decisions"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}

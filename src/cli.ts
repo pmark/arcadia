@@ -19,7 +19,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
-import { renderAskTrailSuccess, runAskTrailCommand } from "./commands/askTrail.js";
+import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderAgentAskContractSuccess,
@@ -714,7 +714,7 @@ export function buildProgram(): Command {
     runCliAction("status", options, () => runStatusCommand(options), renderStatusSuccess)
   );
 
-  addJsonOption(
+  const ask = addJsonOption(
     program
       .command("ask")
       .description("Resolve natural language intent into an auditable Action and workflow plan")
@@ -764,6 +764,17 @@ export function buildProgram(): Command {
     }),
     renderAskSuccess
   ));
+
+  addJsonOption(
+    ask
+      .command("show")
+      .description("Show the exact capture, classification, Project, and resulting records for an Ask")
+      .argument("<id>", "capture_… id from the receipt, its request id, or an ask_… id")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((id: string, _options: unknown, command: Command) => {
+    const options: { workspace: string; json?: boolean } = command.optsWithGlobals();
+    return runCliAction("ask.show", options, () => runAskShowCommand({ ...options, id }), renderAskTrailSuccess);
+  });
 
   addJsonOption(
     program

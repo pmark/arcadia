@@ -170,6 +170,11 @@ export function runGoBrokerInstallCommand(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
         path.join(stagedRelease, "dist", "scripts", "arcadia-go-broker.js")
       );
+      mkdirSync(path.join(stagedRelease, "scripts"), { recursive: true });
+      copyFileSync(
+        path.join(repository, "scripts", "bridge-worktree-deps.mjs"),
+        path.join(stagedRelease, "scripts", "bridge-worktree-deps.mjs")
+      );
 
       const brokerEntrypoint = path.join(releaseDirectory, "dist", "scripts", "arcadia-go-broker.js");
       for (const [operation, launcherBase] of [
@@ -492,7 +497,8 @@ function validateExistingRelease(releaseDirectory: string, revision: string): vo
   const executablePaths = ["arcadia-go-broker", "arcadia-preserve-broker", "arcadia-advance-broker", "arcadia-work-monitor-broker", "arcadia-brief-broker"].flatMap((launcherBase) =>
     BROKER_AGENTS.map((agent) => path.join(releaseDirectory, `${launcherBase}-${agent}`))
   );
-  if (!existsSync(manifestPath) || !existsSync(schemaPath) || executablePaths.some((candidate) => !existsSync(candidate))) {
+  const bridgeScript = path.join(releaseDirectory, "scripts", "bridge-worktree-deps.mjs");
+  if (!existsSync(manifestPath) || !existsSync(schemaPath) || !existsSync(bridgeScript) || executablePaths.some((candidate) => !existsSync(candidate))) {
     throw validationError("The existing protected broker release is incomplete.", { releaseDirectory });
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { schema?: string; revision?: string };
@@ -653,6 +659,9 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
   const revision = path.basename(releaseDirectory);
   if (!existsSync(path.join(releaseDirectory, "dist", "database", "schema.sql"))) {
     issues.push("broker database schema is missing");
+  }
+  if (!existsSync(path.join(releaseDirectory, "scripts", "bridge-worktree-deps.mjs"))) {
+    issues.push("broker dependency bridge helper is missing");
   }
   try {
     const manifest = JSON.parse(readFileSync(path.join(releaseDirectory, "broker-manifest.json"), "utf8")) as {

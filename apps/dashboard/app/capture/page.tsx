@@ -137,6 +137,7 @@ export default function CapturePage() {
           <p className="font-semibold text-ink">Capture receipt {captureEnvelope.id}</p>
           <p>{captureEnvelope.attachments.length} attachment{captureEnvelope.attachments.length === 1 ? "" : "s"} · {captureEnvelope.submittedUrls.length} submitted URL{captureEnvelope.submittedUrls.length === 1 ? "" : "s"}</p>
           <p>Captured {new Date(captureEnvelope.capturedAt).toLocaleString()} from {captureEnvelope.ingressSource}</p>
+          <a className="mt-1 font-semibold text-steel underline" href={`/api/ask/show?id=${encodeURIComponent(captureEnvelope.id)}`}>Open Ask trace</a>
         </div>
       ) : null}
 

@@ -60,3 +60,22 @@ broker must come from a reviewed clean revision. Reuse the existing repeatable
 backups and reports installation status. Then run the installed brief in the
 same prepared worktree. Installation and governance settlement remain distinct
 from this code proof.
+
+## Publication recovery
+
+The operator published the original candidate and opened PR #840. The first
+host action then refused at `pr.codeReview`: it ran from the main checkout,
+whose HEAD was not the PR head. That is a publisher-script defect, not a
+missing push. The corrected action runs from the isolated candidate and pins
+`--repo` explicitly. Its fixture checks cover fresh publication, replacement
+of the fingerprint-pinned previous entry with a backup, refusal of an unknown
+entry, and refusal of a changed candidate HEAD. The original failure receipt
+is retained; no dashboard lifecycle state was reset.
+
+CodeRabbit approved the original head, but main had meanwhile refreshed the
+readiness derivation, causing a merge conflict. The candidate merges that base
+without rewriting history, preserves the newer derivation, and keeps this
+repair's supplemental blocker separate. All 87 focused tests pass again;
+the preservation self-check passes with 1,439 files inspected. Publication of
+the reconciled head requires a fresh review and CI; the earlier approval is
+not treated as approval of a later head.

@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   doc_ref TEXT,
   execution_requirement_json TEXT,
   acceptance_criteria_json TEXT,
+  capture_id TEXT,
   split_into_json TEXT,
   archived_at TEXT,
   archive_reason TEXT,
@@ -73,7 +74,8 @@ CREATE TABLE IF NOT EXISTS work_items (
   updated_at TEXT NOT NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
   FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
-  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS mission_logs (
@@ -123,9 +125,11 @@ CREATE TABLE IF NOT EXISTS execution_plans (
   work_item_id TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('planned', 'running', 'completed', 'requires_review', 'failed')),
   summary TEXT NOT NULL,
+  capture_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS execution_plan_steps (
@@ -313,6 +317,7 @@ CREATE TABLE IF NOT EXISTS review_items (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE,
   ask_request_id TEXT,
+  capture_id TEXT,
   work_item_id TEXT,
   plan_id TEXT,
   project_id TEXT,
@@ -335,6 +340,7 @@ CREATE TABLE IF NOT EXISTS review_items (
   decision_note TEXT,
   resulting_ask_request_id TEXT,
   FOREIGN KEY (ask_request_id) REFERENCES ask_requests(id) ON DELETE SET NULL,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL,
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
   FOREIGN KEY (plan_id) REFERENCES execution_plans(id) ON DELETE SET NULL,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
@@ -394,7 +400,9 @@ CREATE TABLE IF NOT EXISTS back_burner_items (
   updated_at TEXT NOT NULL,
   promoted_at TEXT,
   promoted_work_item_id TEXT,
-  FOREIGN KEY (promoted_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+  capture_id TEXT,
+  FOREIGN KEY (promoted_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL,
+  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_back_burner_items_status ON back_burner_items(status);
