@@ -5,7 +5,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata, listBackBurnerItems, listProjects } from "../db/repositories.js";
 import {
   isDispatchable,
@@ -50,8 +50,34 @@ export interface NextCommandData extends DispatchResolution {
  * things the contract explicitly forbids reading priority from.
  */
 export function runNextCommand(options: NextCommandOptions): CommandSuccess<NextCommandData> {
+  const { response, projectSlug } = resolveNextCommand(options, withDatabase);
+  const { data } = response;
+  withDatabase(response.workspace!, (db) =>
+    recordDispatchEvent(db, {
+      command: "next",
+      projectId: data.projectId,
+      projectSlug,
+      planSlug: data.context?.activePlan ?? null,
+      actionId: data.context?.action.id ?? null,
+      dispatchable: data.dispatchable,
+      blockers: data.blockers,
+      operatorQuestion: data.operatorQuestion
+    })
+  );
+  return response;
+}
+
+/** Sandbox handoff: the same dispatch and operator gates, without host journal writes. */
+export function runNextReadOnlyCommand(options: NextCommandOptions): CommandSuccess<NextCommandData> {
+  return resolveNextCommand(options, withReadOnlyDatabase).response;
+}
+
+function resolveNextCommand(
+  options: NextCommandOptions,
+  readDatabase: typeof withDatabase
+): { response: CommandSuccess<NextCommandData>; projectSlug: string } {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const { project, repoRoot, firedBackBurnerCount } = withDatabase(workspacePath, (db) => {
+  const { project, repoRoot, firedBackBurnerCount } = readDatabase(workspacePath, (db) => {
     const resolved = resolveProjectAndRepo(db, options);
     return {
       ...resolved,
@@ -62,7 +88,7 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
 
   const baseResolution = resolveDispatch(repoRoot, project.slug);
   const readySet = resolveReadySet(repoRoot, project.slug);
-  const operatorGate = withDatabase(workspacePath, (db) =>
+  const operatorGate = readDatabase(workspacePath, (db) =>
     resolveOperatorGate({
       db,
       repoRoot,
@@ -78,31 +104,21 @@ export function runNextCommand(options: NextCommandOptions): CommandSuccess<Next
   };
   const dispatchable = isDispatchable(resolution);
 
-  withDatabase(workspacePath, (db) =>
-    recordDispatchEvent(db, {
+  return {
+    projectSlug: project.slug,
+    response: createSuccess({
       command: "next",
-      projectId: project.id,
-      projectSlug: project.slug,
-      planSlug: resolution.context?.activePlan ?? null,
-      actionId: resolution.context?.action.id ?? null,
-      dispatchable,
-      blockers: resolution.blockers,
-      operatorQuestion: resolution.operatorQuestion
+      workspace: workspacePath,
+      data: {
+        ...resolution,
+        dispatchable,
+        projectId: project.id,
+        repoRoot,
+        operatorAlerts: operatorGate.alerts,
+        ...(firedBackBurnerCount > 0 ? { firedBackBurnerCount } : {})
+      }
     })
-  );
-
-  return createSuccess({
-    command: "next",
-    workspace: workspacePath,
-    data: {
-      ...resolution,
-      dispatchable,
-      projectId: project.id,
-      repoRoot,
-      operatorAlerts: operatorGate.alerts,
-      ...(firedBackBurnerCount > 0 ? { firedBackBurnerCount } : {})
-    }
-  });
+  };
 }
 
 function pickSoleActiveProject(db: Parameters<typeof listProjects>[0]) {

@@ -1155,7 +1155,15 @@ shared skill, writes the narrow Codex rule, migrates the default Codex config
 from legacy sandbox settings to the supported named `arcadia-unattended`
 permission profile. It grants only the three exact provider worktree roots,
 denies `.env` files and command network access, and keeps interactive approval
-on-request. Governed CLI launches explicitly select that profile with approvals
+on-request. The combined `arcadia-brief-broker-<provider>` launcher resolves
+dispatch through read-only SQLite connections. It retains operator gates and
+the full Constitution brief without schema initialization or dispatch-journal
+writes; the host's ordinary `next` command retains its existing journal.
+Workspace database and shared Git metadata writes stay on their host paths.
+An older installed brief that fails at stage `next` with
+`SQLITE_WORKSPACE_WRITE_DENIED` needs the reviewed broker update and reinstall,
+not repeated profile selection or a broader database write grant.
+Governed CLI launches explicitly select that profile with approvals
 disabled. For a Desktop or iPhone-connected task, choose
 **arcadia-unattended** in the permissions control beneath the composer and wait
 for the environment to refresh before starting `arcadia advance`. Arcadia does

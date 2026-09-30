@@ -3,7 +3,7 @@ import { ArcadiaError, normalizeError, validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
 import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
-import { renderNextSuccess, runNextCommand, type NextCommandData } from "./commands/next.js";
+import { renderNextSuccess, runNextReadOnlyCommand, type NextCommandData } from "./commands/next.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
 import { discoverDocs } from "./docs/discover.js";
 import { existingDirectory } from "./git/worktrees.js";
@@ -136,7 +136,7 @@ export function runGoBroker(
   advanceRunner: AdvanceBrokerRunner = runAdvanceCommand,
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,
   resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source }),
-  nextRunner: NextBrokerRunner = runNextCommand,
+  nextRunner: NextBrokerRunner = runNextReadOnlyCommand,
   resolveProjectSlug: BrokerProjectSlugResolver = resolveProjectSlugFromRepository
 ): CommandSuccess<GoCommandData | AdvanceCommandData | WorkMonitorCommandData | BriefCommandData> {
   if (request.operation === "advance") {
