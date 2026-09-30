@@ -49,6 +49,30 @@ export function runDocsSyncCommand(options: DocsSyncOptions): CommandSuccess<Doc
     return targets
       .filter((project): project is NonNullable<typeof project> => Boolean(project))
       .map((project) =>
+        // A paused Project is deliberately absent from a portfolio-wide sync:
+        // its repository is not read and no database projection is refreshed.
+        // An explicit --project remains a diagnostic preview only, so a caller
+        // can see why nothing was touched without creating a back door that
+        // mutates paused work.
+        project.status === "paused"
+          ? {
+              projectId: project.id,
+              projectSlug: project.slug,
+              repoRoot: null,
+              changes: [{
+                action: "skipped" as const,
+                entity: "project" as const,
+                relativePath: "-",
+                ref: project.slug,
+                title: project.name,
+                reason: "Project is paused; docs sync does not read or mutate paused Projects."
+              }],
+              errors: [],
+              rejected: [],
+              foreign: [],
+              issues: []
+            }
+          :
         options.apply
           ? db.transaction(() => syncProjectDocs(db, project, { apply: true }))()
           : syncProjectDocs(db, project, { apply: false })

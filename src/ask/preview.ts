@@ -13,6 +13,7 @@ import {
 } from "./agentAsk.js";
 import { captureAskEnvelope } from "./captureEnvelope.js";
 import { resolveProjectReference } from "./rules.js";
+import { listProjects } from "../db/repositories.js";
 import { parseDoc } from "../docs/parse.js";
 import type { DecisionDoc, PlanDoc } from "../docs/types.js";
 import { tryGit } from "../git/worktrees.js";
@@ -73,7 +74,16 @@ function buildTargetContext(repoRoot: string, projectSlug: string): AgentAskTarg
 export function previewAgentAskRequest(db: Database.Database, input: PreviewAgentAskRequestInput): PreviewAgentAskRequestResult {
   const parsed = normalizeAgentAsk({ request: input.request, requestId: input.requestId, project: input.project });
   const normalized = parsed.project === "unknown" ? parsed : (() => {
-    const project = resolveProjectReference(db, parsed.project);
+    // Normal routing never returns a paused Project. A strict status Ask that
+    // reactivates one is the one intentional exception: it must name that
+    // Project exactly, and is not a general Ask-routing candidate.
+    const project = resolveProjectReference(db, parsed.project) ?? (
+      parsed.intent === "project_update" && parsed.targetRef === "status" && parsed.desiredResult === "active"
+        ? listProjects(db).find((candidate) =>
+            [candidate.id, candidate.slug, candidate.name].some((value) => value.toLowerCase() === parsed.project.toLowerCase())
+          ) ?? null
+        : null
+    );
     if (!project) throw validationError("Agent Ask destination Project was not found.", { project: parsed.project, remedy: "Use a configured Project reference or `project: unknown`." });
     return { ...parsed, project: project.slug };
   })();

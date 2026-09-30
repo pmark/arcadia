@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
+import { PROJECT_STATUSES } from "../domain/constants.js";
 
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete", "split"] as const;
 export type AgentAskIntent = (typeof AGENT_ASK_INTENTS)[number];
@@ -146,7 +147,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
 
 export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
 /** The Project fields a `project_update` Ask can actually apply. */
-const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone"]);
+const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone", "status"]);
 
 /** One existing checked-in Plan, Action, or Decision a natural Ask's free text can resolve against. */
 export interface AgentAskTargetCandidate { kind: "plan" | "action" | "decision"; targetRef: string; label: string; }
@@ -228,10 +229,17 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?
         {
           targetRef: normalized.targetRef ?? null,
           supported: [...PROJECT_UPDATE_TARGETS],
-          remedy: "Use target_ref: outcome or milestone, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
+          remedy: "Use target_ref: outcome, milestone, or status, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
         }
       );
     }
+  }
+  if (normalized.intent === "project_update" && normalized.targetRef === "status" &&
+      !(PROJECT_STATUSES as readonly string[]).includes(normalized.desiredResult)) {
+    throw validationError("Agent Ask project_update status must name a supported Project status.", {
+      status: normalized.desiredResult,
+      supported: PROJECT_STATUSES
+    });
   }
   if (normalized.project === "unknown") requiredDecisions.push("Choose the destination Project.");
   const resolved = normalized.intent === "auto" ? (resolution?.resolved ?? null) : null;

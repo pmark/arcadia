@@ -243,7 +243,7 @@ export function matchAskRule(request: string, registry: ValidatedAskRuleRegistry
 export function resolveProjectReference(db: Database.Database, reference: string | null | undefined): Project | null {
   if (!reference?.trim()) return null;
   const normalized = reference.trim().toLowerCase();
-  const matches = listProjects(db).filter((project) =>
+  const matches = listProjects(db).filter((project) => project.status !== "paused").filter((project) =>
     [project.id, project.slug, project.name].some((value) => value.toLowerCase() === normalized)
   );
   if (matches.length > 1) {

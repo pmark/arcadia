@@ -540,7 +540,7 @@ function syncPlan(
   // Dependencies run as a second pass over the same plan: an action may depend
   // on one declared later in the list, so both endpoints must exist as rows
   // before any edge can be resolved.
-  changes.push(...syncPlanDependencies(db, doc, conflicting, apply));
+  changes.push(...syncPlanDependencies(db, project, doc, conflicting, apply));
 
   for (const question of doc.questions) {
     changes.push(syncPlanQuestion(db, project, doc, question, decisions, apply));
@@ -560,6 +560,7 @@ function syncPlan(
  */
 function syncPlanDependencies(
   db: Database.Database,
+  project: Project,
   doc: PlanDoc,
   conflicting: Set<string>,
   apply: boolean
@@ -577,7 +578,7 @@ function syncPlanDependencies(
       .map((dependency) => actionDocRef(doc.slug, dependency))
       .filter((dependencyRef) => !conflicting.has(dependencyRef));
 
-    const existingItem = getWorkItemByDocRef(db, actionRef);
+    const existingItem = getWorkItemByDocRef(db, actionRef, project.id);
     const currentRefs = existingItem
       ? listWorkItemDependencies(db, existingItem.id)
           .filter((dependency) => dependency.docRef !== null)
@@ -612,7 +613,7 @@ function syncPlanDependencies(
       continue;
     }
 
-    const dependent = existingItem ?? getWorkItemByDocRef(db, actionRef);
+    const dependent = existingItem ?? getWorkItemByDocRef(db, actionRef, project.id);
     if (!dependent) {
       changes.push({
         action: "skipped",
@@ -628,7 +629,7 @@ function syncPlanDependencies(
     const targetIds: string[] = [];
     const unresolved: string[] = [];
     for (const dependencyRef of desiredRefs) {
-      const target = getWorkItemByDocRef(db, dependencyRef);
+      const target = getWorkItemByDocRef(db, dependencyRef, project.id);
       if (target) {
         targetIds.push(target.id);
       } else {
@@ -693,7 +694,7 @@ function syncAction(
   milestoneId: string | null,
   apply: boolean
 ): DocChange {
-  const existing = getWorkItemByDocRef(db, ref);
+  const existing = getWorkItemByDocRef(db, ref, project.id);
   const responsibility = action.responsibility;
   const desired = {
     title: action.title,
@@ -865,7 +866,7 @@ function syncActionClarification(
   // must agree on what change would happen without depending on whether the
   // FK it needs has been written yet; the FK write itself waits for `apply`.
   if (apply) {
-    const workItem = getWorkItemByDocRef(db, ref);
+    const workItem = getWorkItemByDocRef(db, ref, project.id);
     if (!workItem) {
       return null;
     }

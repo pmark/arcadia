@@ -470,6 +470,10 @@ export function settleAgentAsk(db: Database.Database, input: {
         } else if (targetRef === "milestone") {
           addMilestoneMutations(fileMutations, projectPath, activePlanPath, proposal.normalized.desiredResult);
           effects.push(`Updated Project ${project.slug} and active Plan ${plan.slug} Milestone.`);
+        } else if (targetRef === "status") {
+          const before = readFileSync(projectPath, "utf8");
+          fileMutations.push({ path: projectPath, before, after: replaceTopLevelField(before, "status", proposal.normalized.desiredResult) });
+          effects.push(`Updated Project ${project.slug} Status to ${proposal.normalized.desiredResult}.`);
         } else {
           // Opening a Decision here produced a question no command could act
           // on: `review approve` has no apply path for an unnamed Project
@@ -481,8 +485,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             "Agent Ask project_update names a Project field Arcadia has no apply path for, so settling it could not change anything.",
             {
               targetRef: targetRef ?? null,
-              supported: ["outcome", "milestone"],
-              remedy: "Use target_ref: outcome or milestone, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
+              supported: ["outcome", "milestone", "status"],
+              remedy: "Use target_ref: outcome, milestone, or status, or choose the intent that owns the field — `action` or `plan` for Plan work, `decision` to ask the operator a question."
             }
           );
         }
