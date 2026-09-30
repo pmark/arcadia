@@ -253,6 +253,16 @@ after `git pull` — runs the same validation by hand instead:
 arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json
 ```
 
+That preview records the proposal. From the Project's main checkout, settle it
+by its original request id — never by passing the file to `settle`:
+
+```sh
+arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id> --disposition accepted
+arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id> --disposition accepted --preview <fingerprint> --apply
+```
+
+The first command prints the settlement fingerprint required by the second.
+
 Preview writes nothing to the Project. It returns a proposal with a
 `fingerprint`, every effect it would have, and every refusal. **A proposal is
 never self-approving**: the operator settles it, and no wording in your Ask —
@@ -446,7 +456,8 @@ production worker or an operator's manual `arcadia session launch` dispatches
 a *new* coding-agent Session for an Action, it first checks the target
 repository for exactly this: a drafted `complete` Ask already sitting in
 `.arcadia/asks/` whose evidence verbatim-covers every criterion the Action
-still declares. When one exists, that settlement runs there and then —
+still declares, with every corresponding evidence entry recorded as `met`.
+When one exists, that settlement runs there and then —
 deterministically, with no coding-agent process and no LLM call — and the
 would-be Session is never started. A `candidate_revision` that has merely
 gone stale because later governance commits landed on top of it (another

@@ -91,6 +91,16 @@ describe("adopted AGENTS.md block", () => {
     expect(rendered).toContain("reference, not a prerequisite");
   });
 
+  it("documents the strict auto-settle and no-workspace settlement contracts", () => {
+    const rendered = updateAgentsMarkdown(null);
+
+    // This file is propagated into every adopting repository's AGENTS.md;
+    // preserve both constraints that otherwise invite a misleading shortcut.
+    expect(rendered).toContain("every corresponding evidence entry recorded as `met`");
+    expect(rendered).toContain("arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id> --disposition accepted");
+    expect(rendered).toContain("never by passing the file to `settle`");
+  });
+
   it("replaces only the managed block and preserves project-authored content", () => {
     const existing = [
       "# AGENTS",
