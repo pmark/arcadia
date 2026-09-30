@@ -107,6 +107,18 @@ just to get the preview/fingerprint; expect `USAGE_ERROR: required option
 '--proposal'` or `'--request-id'` or `'--disposition'` in some order if you
 guess the flag set instead of passing all three from the start.
 
+## Publish a `/runs` action that settles an Agent Ask
+
+keys: operator script, runs, agent-ask, settlement, fingerprint, plan amendment, retry
+
+Treat the action as production code: use the shared settlement runner, never
+bespoke shell/Python parsing or hand-assembled CLI flags. Its click path must
+fresh-preview and semantically validate the pinned effect envelope, then apply
+with that same fingerprint; a PR-time fingerprint is stale after `main` moves.
+Test the real preview→apply contract in a temporary workspace before publish.
+After one failure, stop retries until that contract—not just the symptom—is fixed.
+Expires when #830 closes.
+
 ## `agent-ask draft` printed "Failed to auto-discover N files"
 
 keys: auto-discover, already used with different content, draft noise
