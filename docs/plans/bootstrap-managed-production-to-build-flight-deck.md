@@ -2707,12 +2707,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask define-grant-operator-action-pattern
     clarification: clarified
     confidence: high
-    source: Agent Ask define-grant-pattern-and-page-2026-09-29
+    source: Agent Ask amend-grant-operator-action-v6-criterion-2026-09-30-v2
     acceptance_criteria:
       - "docs/arcadia-semantics.md defines Grant as a one-shot operator action that delegates bounded authority, and states what every Grant must do: pin the policy revision it was built against, cover a named scope only, carry an expiry, refuse on any precondition drift, and record a receipt."
       - The arcadia-operator-script-v1 descriptor contract accepts an optional kind field with the value grant; descriptors without it keep listing exactly as before, and a test proves both.
       - AGENTS.md operator-step guidance (via docs/agents-context.md and regeneration) tells agents to tag an authority-delegating script as kind grant and points at the semantics definition.
-      - The existing grant-production-two-action-v5-rehearsal and regrant-production scripts are tagged kind grant, and /runs shows the tag; pnpm test and the core, Discord and Dashboard builds pass.
+      - The existing grant-production-two-action-v6-remaining-stages-2026-09-30 descriptor is tagged kind grant and /runs shows its Grant tag; neither absent v5 nor regrant descriptor is recreated or changed; pnpm test and the core, Discord and Dashboard builds pass.
     depends_on: []
     decisions: []
     references: []
