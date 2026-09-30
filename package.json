@@ -42,7 +42,8 @@
     "test:e2e": "playwright test",
     "smoke": "tsx scripts/smoke.ts",
     "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs",
-    "bridge:worktree": "node scripts/bridge-worktree-deps.mjs"
+    "bridge:worktree": "node scripts/bridge-worktree-deps.mjs",
+    "check:operator-scripts": "node --import tsx scripts/check-operator-scripts.ts"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",

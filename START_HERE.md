@@ -54,6 +54,10 @@ this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
+Operator-action authors must run `mise exec -- pnpm check:operator-scripts`
+before publishing a button. CI checks every library entry. `/runs` refuses an
+altered Plan-amendment launcher with `PLAN_AMENDMENT_RUNNER_REQUIRED`; repair
+its pinned descriptor and regenerate the shared launcher before retrying.
 Plan-amendment Operator actions validate a pinned scope with a fresh canonical
 preview on every click. A failed click shows its machine-readable reason, the
 changed field, and the exact recovery step with a durable receipt. If settlement

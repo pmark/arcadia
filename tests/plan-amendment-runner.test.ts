@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
 import { runAgentAskDraftCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -14,7 +14,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 const sourceRoot = path.resolve(import.meta.dirname, "..");
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-plan-runner-"));
   roots.push(root);
@@ -59,7 +59,7 @@ function fixture() {
   const input: PlanAmendmentInput = { schema: "arcadia-plan-amendment-v1", checkout: { path: repo, origin, branch: "main", reviewedBase: base }, ask: { path: path.relative(repo, draft.data.path), sha256: createHash("sha256").update(readFileSync(draft.data.path)).digest("hex"), proposal: "amend-first" }, settlement: { requestId: "accept-first", disposition: "accepted", operator: true }, envelope: { project: "demo", plan: "demo-plan", action: "first", projectUnchanged: { slug: "demo", active_plan: "demo-plan", current_action: "first" }, planUnchanged: { slug: "demo-plan", project: "demo", status: "active", current_action: "first", milestone: "Settlement" }, actionBefore: action, actionAfter: after, noChange: ["id", "title", "status", "responsibility", "effort", "expected_artifact", "clarification", "confidence", "depends_on", "decisions", "references"] }, publication: { remote: "origin", branch: "main" } };
   const id = "accept-first";
   const descriptor = path.join(library, `${id}.json`);
-  const saveDescriptor = () => writeFileSync(descriptor, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, planAmendment: input }, null, 2) + "\n");
+  const saveDescriptor = () => writeFileSync(descriptor, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, title: "Hermetic amendment", problem: "Prove safe amendment", desired_effect: "Replace pinned scope", authority: { does: ["Amend this Action"], never_does: ["Change queue or pointer"] }, success: { effect: "Scope replaced", next: "Keep receipt" }, failure: { effect: "Refused", next: "Restore named precondition" }, planAmendment: input }, null, 2) + "\n");
   saveDescriptor();
   const template = readFileSync(path.join(sourceRoot, "artifacts/generated/operator-scripts/accept-close-ask-traceability-scope-2026-09-30.sh"), "utf8");
   const script = path.join(library, `${id}.sh`);
@@ -92,6 +92,60 @@ function fixture() {
 }
 
 describe("Plan-amendment operator action: real workspace and canonical preview/apply", () => {
+  it("runs the shared runner through operator execution context and safely replays", () => {
+    const f = fixture();
+    const env = { ARCADIA_OPERATOR_SCRIPT_ID: "accept-first", ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: f.descriptor };
+    expect(f.run(env).reason).toBe("SETTLED_AND_PUBLISHED");
+    expect(f.run(env).reason).toBe("REPLAY_PUBLISHED");
+    expect(f.count()).toBe(1);
+  });
+  it("refuses a real CLI apply disguised as draft-Plan creation before governance mutation", () => {
+    const f = fixture();
+    const flags = { workspace: f.workspace, proposal: "amend-first", requestId: "accept-first", disposition: "accepted" as const, cwd: f.repo };
+    const preview = runAgentAskSettleCommand(flags).data.receipt;
+    const d = JSON.parse(readFileSync(f.descriptor, "utf8")) as Record<string, unknown>;
+    delete d.planAmendment;
+    d.agentAsk = { proposal: "amend-first", intent: "plan", targetRef: null };
+    writeFileSync(f.descriptor, JSON.stringify(d));
+    writeFileSync(f.script, '#!/bin/sh\n# agent-ask settle (deliberate bypass fixture)\nexit 99\n');
+    f.commit();
+    const head = f.git("rev-parse", "HEAD");
+    const before = readFileSync(path.join(f.repo, "docs/plans/demo-plan.md"), "utf8");
+    const order = withDatabase(f.workspace, db => [...loadActionOrder(db).positions]);
+    const result = spawnSync(process.execPath, ["--import", "tsx", path.join(sourceRoot, "src/cli.ts"), "agent-ask", "settle",
+      "--workspace", f.workspace, "--proposal", "amend-first", "--request-id", "accept-first", "--disposition", "accepted",
+      "--preview", preview.previewFingerprint, "--apply", "--operator", "--json"], {
+      cwd: f.repo, encoding: "utf8", env: { ...process.env, ARCADIA_OPERATOR_SCRIPT_ID: "accept-first", ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: f.descriptor }
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(2);
+    expect(JSON.parse(result.stdout || result.stderr)).toMatchObject({ ok: false, error: { details: { reason: "PLAN_AMENDMENT_RUNNER_REQUIRED" } } });
+    expect(f.count()).toBe(0);
+    expect(f.git("rev-parse", "HEAD")).toBe(head);
+    expect(readFileSync(path.join(f.repo, "docs/plans/demo-plan.md"), "utf8")).toBe(before);
+    expect(withDatabase(f.workspace, db => [...loadActionOrder(db).positions])).toEqual(order);
+  });
+  it("preserves declared non-amendment operator settlement through the real path", () => {
+    const f = fixture();
+    runAgentAskDraftCommand({ workspace: f.workspace, dir: f.repo, request: JSON.stringify({ agent_ask: "v1", request_id: "record-proof", project: "demo", intent: "log", desired_result: "Record hermetic operator proof" }) });
+    const d = JSON.parse(readFileSync(f.descriptor, "utf8")) as Record<string, unknown>;
+    delete d.planAmendment; d.agentAsk = { proposal: "record-proof", intent: "log", targetRef: null };
+    writeFileSync(f.descriptor, JSON.stringify(d));
+    writeFileSync(f.script, "#!/bin/sh\n# agent-ask settle (declared log fixture)\nexit 0\n"); f.commit();
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", "accept-first"); vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", f.descriptor);
+    const flags = { workspace: f.workspace, proposal: "record-proof", requestId: "record-proof-settle", disposition: "accepted" as const, cwd: f.repo };
+    const preview = runAgentAskSettleCommand(flags).data.receipt;
+    expect(runAgentAskSettleCommand({ ...flags, preview: preview.previewFingerprint, apply: true }).data.receipt.applied).toBe(true);
+    expect(f.count()).toBe(1);
+    expect(readFileSync(path.join(f.repo, "MISSION_LOG.md"), "utf8")).toContain("Record hermetic operator proof");
+    expect(documentState(readFileSync(path.join(f.repo, "docs/plans/demo-plan.md"), "utf8")).fields.actions).toEqual([f.action]);
+  });
+  it("refuses an operator replay bypass even after the canonical settlement exists", () => {
+    const f = fixture(); f.run();
+    const head = f.git("rev-parse", "HEAD");
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", "accept-first"); vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", f.descriptor);
+    expect(() => runAgentAskSettleCommand({ workspace: f.workspace, proposal: "amend-first", requestId: "accept-first", disposition: "accepted", cwd: f.repo })).toThrow("must settle through the shared runner");
+    expect(f.count()).toBe(1); expect(f.git("rev-parse", "HEAD")).toBe(head);
+  });
   it("handles real newlines, obtains a fresh fingerprint with legal flags, applies once and publishes", () => {
     const f = fixture();
     const old = runAgentAskSettleCommand({ workspace: f.workspace, proposal: "amend-first", requestId: "accept-first", disposition: "accepted", cwd: f.repo }).data.receipt.previewFingerprint;

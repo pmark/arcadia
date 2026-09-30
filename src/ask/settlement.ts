@@ -1,3 +1,4 @@
+import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -240,6 +241,11 @@ export function settleAgentAsk(db: Database.Database, input: {
       ? { activate: input.activate ?? false, action: input.action ?? null, model: input.model ?? null, effort: input.effort ?? null }
       : {})
   };
+  const proposalRow = db.prepare(`SELECT proposal_json FROM agent_ask_proposals
+    WHERE id = ? OR request_id = ?`).get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
+  if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
+  const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
+  assertOperatorSettlementContract(proposal.normalized);
   const existingByRequest = db.prepare("SELECT operation_json, receipt_json FROM agent_ask_settlements WHERE request_id = ?")
     .get(input.settlementRequestId) as { operation_json: string; receipt_json: string } | undefined;
   if (existingByRequest) {
@@ -249,10 +255,6 @@ export function settleAgentAsk(db: Database.Database, input: {
     return JSON.parse(existingByRequest.receipt_json) as AgentAskSettlementReceipt;
   }
 
-  const proposalRow = db.prepare(`SELECT proposal_json FROM agent_ask_proposals
-    WHERE id = ? OR request_id = ?`).get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
-  if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
-  const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
   if ((input.activate || input.action || input.model || input.effort) &&
       (input.disposition !== "accepted" || proposal.normalized.intent !== "plan" || !proposal.normalized.targetRef || !input.activate)) {
     throw validationError("Activation options require an accepted Plan target and --activate.");

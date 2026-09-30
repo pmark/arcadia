@@ -23,6 +23,8 @@ jobs:
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
       - run: mise exec -- pnpm lint
+      - name: Validate every generated operator action
+        run: mise exec -- pnpm check:operator-scripts
 
   unit-1:
     runs-on: ubuntu-latest
