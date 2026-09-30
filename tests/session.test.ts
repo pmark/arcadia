@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
@@ -31,6 +31,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 const roots: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -50,6 +51,29 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("tmux-backed Sessions", () => {
+  it("clears operator context only at the newly governed Session process boundary", () => {
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", "dispatch-button");
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "/operator/dispatch-button.json");
+    const fixture = preparedFixture({ provider: "codex-cli" });
+    const tmux = new FakeTmux();
+    launch(fixture, tmux);
+    const child = tmux.launches[0];
+    expect(child.command).toBe("env");
+    expect(child.args.slice(0, 4)).toEqual([
+      "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR"
+    ]);
+    // Execute the actual boundary argv with a fixture process instead of a
+    // coding agent. Other inherited context survives; the dispatcher itself
+    // keeps both markers so subsequent helpers remain fenced.
+    const providerIndex = child.args.indexOf("codex");
+    const output = execFileSync(child.command, [...child.args.slice(0, providerIndex), process.execPath,
+      "-e", "process.stdout.write(JSON.stringify({id:process.env.ARCADIA_OPERATOR_SCRIPT_ID,descriptor:process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR,author:process.env.GIT_AUTHOR_NAME}))"],
+      { encoding: "utf8" });
+    expect(JSON.parse(output)).toEqual({ author: "Cody Mason" });
+    expect(process.env.ARCADIA_OPERATOR_SCRIPT_ID).toBe("dispatch-button");
+    expect(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR).toBe("/operator/dispatch-button.json");
+  });
+
   it("keeps preview and manual handoff non-launching", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -95,7 +119,7 @@ describe("tmux-backed Sessions", () => {
     });
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].command).toBe("env");
-    expect(tmux.launches[0].args.slice(0, 4)).toEqual([
+    expect(tmux.launches[0].args.slice(4, 8)).toEqual([
       "GIT_AUTHOR_NAME=Claudia Mason",
       "GIT_AUTHOR_EMAIL=claudia.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Claudia Mason",
@@ -135,7 +159,7 @@ describe("tmux-backed Sessions", () => {
     expect(result.data.session?.provider_session_id).toBe(result.data.session?.id);
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].command).toBe("env");
-    expect(tmux.launches[0].args.slice(0, 4)).toEqual([
+    expect(tmux.launches[0].args.slice(4, 8)).toEqual([
       "GIT_AUTHOR_NAME=Cody Mason",
       "GIT_AUTHOR_EMAIL=cody.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Cody Mason",

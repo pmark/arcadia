@@ -19,7 +19,11 @@ Agent Ask settlement path inspects the actual proposal before previews, apply
 or receipt replay. A Plan amendment requires the shared runner's synchronous
 in-process scope and pinned declaration. Claiming draft-Plan creation or using
 CLI flags cannot satisfy it. Ordinary candidate/manual authority stays intact;
-a declared Log settlement succeeds through the real path.
+a declared Log settlement succeeds through the real path. A newly governed
+managed Session clears both operator markers at its child-process boundary;
+ordinary script helpers and the dispatcher retain them. The launch test runs
+the actual boundary argv with a fixture Node process and verifies both absence
+of the markers and preservation of the agent Git identity.
 
 Validation on 2026-09-30:
 
@@ -38,6 +42,10 @@ Validation on 2026-09-30:
 - After reconciling the traceability implementation, 176 cases passed across
   11 files, including the undeclared-helper runtime refusal and incoming feature
   tests. Core/Discord build and the four-entry library gate passed again.
+- Managed Session boundary: all 100 cases passed across Session launch,
+  reconciliation and fixture-provider files after updating one exact-argv
+  expectation (the affected 38-case file passed again). The real child-process
+  test proves inherited operator markers do not block a new governed Session.
 - Current-head CodeRabbit and full sharded CI remain integration gates.
 
 Operator QA (same procedure for end users):

@@ -128,6 +128,7 @@ describe("launchGuardedHostSession", () => {
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].command).toBe("env");
     expect(tmux.launches[0].args.slice(0, -1)).toEqual([
+      "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR",
       "GIT_AUTHOR_NAME=Owen Mason",
       "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Owen Mason",
@@ -666,9 +667,9 @@ describe("launchGuardedHostSession", () => {
     // in a shell that reads the token file itself rather than a literal
     // "claude" argv, so the token value is never a process argument anywhere.
     expect(launch.command).toBe("env");
-    expect(launch.args[4]).toBe("sh");
-    expect(launch.args[5]).toBe("-c");
-    const script = launch.args[6];
+    expect(launch.args[8]).toBe("sh");
+    expect(launch.args[9]).toBe("-c");
+    const script = launch.args[10];
     expect(script).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
     expect(script).toContain("cat");
     expect(script).toContain(getWorkspacePaths(fixture.workspace).claudeCodeTokenFile);
@@ -706,7 +707,7 @@ describe("launchGuardedHostSession", () => {
     doLaunch(fixture, tmux, preview.previewFingerprint);
     expect(tmux.launches[0].command).toBe("env");
     expect(tmux.launches[0].args).not.toContain("sh");
-    expect(tmux.launches[0].args[4]).toBe("claude");
+    expect(tmux.launches[0].args[8]).toBe("claude");
     expect(tmux.launches[0].args).toContain("--session-id");
   });
 

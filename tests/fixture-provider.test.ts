@@ -85,7 +85,10 @@ describe("fixture-cli coding agent", () => {
     const launch = tmux.launches[0];
     // Never wrapped in the Git-identity `env` prefix real providers get: this
     // process is not a real agent.
-    expect(launch.command).toBe("node");
+    expect(launch.command).toBe("env");
+    expect(launch.args.slice(0, 5)).toEqual([
+      "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "node"
+    ]);
     expect(launch.args).toContain("--outcome");
     expect(launch.args[launch.args.indexOf("--outcome") + 1]).toBe("completed");
     expect(launch.args).toContain("--duration");

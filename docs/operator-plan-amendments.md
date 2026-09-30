@@ -26,7 +26,10 @@ canonical settlement path checks the actual proposal before preview, apply or
 receipt replay, so falsely declaring draft creation cannot authorize an
 amendment. Only the shared runner's synchronous in-process scope satisfies
 that fence; there is no CLI flag or environment value granting runner authority.
-Ordinary manual/candidate settlement keeps its existing approval rules.
+Ordinary manual/candidate settlement keeps its existing approval rules. When
+Arcadia launches a newly governed managed Session, it clears the two operator
+markers at that child-process boundary. The dispatching operator script and its
+ordinary helpers keep their markers and remain subject to the fence.
 
 For entries without `planAmendment`, detecting settlement tokens in shell text
 is only a diagnostic heuristic: a wrapper can hide those strings. The actual
