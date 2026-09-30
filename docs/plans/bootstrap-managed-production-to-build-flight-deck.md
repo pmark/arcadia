@@ -2596,18 +2596,18 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.
+    next_action: Fix tidy quarantine safety gaps and document the current recoverable quarantine mechanism.
     expected_artifact: Evidence satisfying Agent Ask harden-tidy-quarantine-safety-and-docs
     clarification: clarified
     confidence: high
-    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    source: Agent Ask amend-tidy-quarantine-safety-criterion-2026-09-30
     acceptance_criteria:
-      - "#735: START_HERE.md documents tidy's actual archive-tag name (archive/tidy/<sha>), not archive/<branch>."
+      - "#735: START_HERE.md states that current tidy quarantines branch refs under refs/arcadia/tidy/<run>/heads/<branch> and restores them with arcadia tidy undo <run>; it does not describe archive/<branch> as an active recovery path."
       - "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet."
       - "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree."
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/735", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740"]
+    references: ["https://github.com/pmark/arcadia/issues/735", "https://github.com/pmark/arcadia/issues/739", "https://github.com/pmark/arcadia/issues/740", "START_HERE.md", "src/commands/tidy.ts", "tests/tidy-command.test.ts"]
   - id: soak-rehearsal-harness-until-clean
     title: Run the hermetic rehearsal harness in a bounded soak loop that files each defect as an Issue, fixes only loop-blocking ones, and stops on fixed conditions.
     status: done
