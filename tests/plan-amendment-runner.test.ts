@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -182,6 +182,25 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
     expect(existsSync(path.join(result.runDirectory, "failure-handoff.txt"))).toBe(true);
     expect(readFileSync(path.join(receipts, "accept-first.lock"), "utf8")).toBe(String(process.pid));
     expect(f.count()).toBe(0);
+  });
+  it("serializes simultaneous stale-lock retries without stealing the new owner's claim", async () => {
+    const f = fixture();
+    const receipts = path.join(f.repo, "artifacts/generated/operator-scripts/runs/receipts");
+    mkdirSync(receipts, { recursive: true });
+    writeFileSync(path.join(receipts, "accept-first.lock"), "2147483647");
+    const executions = Array.from({ length: 6 }, () => new Promise<PlanAmendmentResult>((resolve, reject) => {
+      const child = spawn(f.script, ["run"], { cwd: f.repo, env: { ...process.env, ARCADIA_WORKSPACE: f.workspace }, stdio: ["ignore", "pipe", "pipe"] });
+      let output = "";
+      child.stdout.on("data", chunk => { output += String(chunk); });
+      child.once("error", reject);
+      child.once("close", () => { try { resolve(JSON.parse(output) as PlanAmendmentResult); } catch (error) { reject(error instanceof Error ? error : new Error(String(error))); } });
+    }));
+    const results = await Promise.all(executions);
+    expect(results.filter(result => result.reason === "SETTLED_AND_PUBLISHED")).toHaveLength(1);
+    expect(results.every(result => ["SETTLED_AND_PUBLISHED", "REPLAY_PUBLISHED", "ALREADY_RUNNING"].includes(result.reason))).toBe(true);
+    expect(f.count()).toBe(1);
+    expect(f.git("status", "--porcelain")).toBe("");
+    expect(f.git("rev-parse", "HEAD")).toBe(f.git("rev-parse", "origin/main"));
   });
   it("refuses stale checkout while permitting no governance change", () => {
     const f = fixture(); const head = f.git("rev-parse", "HEAD");

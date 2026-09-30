@@ -37,7 +37,8 @@ A failed precondition changes no governance. A publication failure leaves the
 canonical settlement commit local and reports `PUBLICATION_FAILED`. The same
 request verifies its committed diff, archived Ask and current target, then
 publishes that exact commit without another apply. It refuses unrelated local
-commits or remote divergence. Dead process locks are reclaimable; live claims
+commits or remote divergence. Dead process locks are reclaimable under a shared local SQLite write interlock,
+with an ownership recheck before removal; live claims
 refuse duplicate clicks. An invocation that dies before recording its result
 gets a launcher failure receipt and preserves any existing canonical receipt.
 

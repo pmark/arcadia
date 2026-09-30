@@ -20,13 +20,15 @@ commit, and retries prove that publication recovers without another settlement.
 
 Validation on 2026-09-30:
 
-- `tests/plan-amendment-runner.test.ts`: 21 real-workspace cases (real newlines,
+- `tests/plan-amendment-runner.test.ts`: 22 real-workspace cases (real newlines,
   legal and illegal flags, fresh fingerprint, harmless base advance, target and
   semantic drift, changed Ask, dirty/wrong/stale checkout, unavailable workspace
-  or origin, another proposal/settlement, duplicate/retry, live/dead locks,
+  or origin, another proposal/settlement, duplicate/retry, live/dead locks and simultaneous stale-lock retries,
   final authority fence, and failure between settlement and publication).
 - Focused settlement/CLI/dashboard validation: 131 passed across six files;
   endpoint receipt projection and one-shot refusal: another 1 passed.
+- CodeRabbit stale-lock finding repaired; the 22-case runner suite passes,
+  including six simultaneous retries against one abandoned lock.
 - Browser: `tests/e2e/plan-amendment-receipt.spec.ts`, 1 passed. It shows failure,
   recovery and the canonical receipt at phone width, with zero operator launches.
 - Core/Discord build, Dashboard build, lint, typecheck, `git diff --check`, and
