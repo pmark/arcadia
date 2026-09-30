@@ -260,7 +260,7 @@ actions:
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/app/work-queue/page.tsx", "apps/dashboard/app/api/work-queue/route.ts"]
   - id: prove-two-action-unattended-production
     title: Prove two dependent Actions run from one activation using the existing Work Queue production control.
-    status: deferred
+    status: open
     responsibility: agent
     effort: session
     next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof), with one Action continued across two Sessions in the same candidate.

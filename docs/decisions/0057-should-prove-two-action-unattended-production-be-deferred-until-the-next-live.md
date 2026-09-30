@@ -4,7 +4,7 @@ type: decision
 id: "0057"
 slug: should-prove-two-action-unattended-production-be-deferred-until-the-next-live
 project: arcadia
-status: approved
+status: open
 question: Should prove-two-action-unattended-production be deferred until the next live rehearsal uses --provider opencode-cli, or stay dispatchable?
 gap_type: missing-decision
 recommendation: Defer until the next opencode-cli live rehearsal
@@ -19,9 +19,7 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 action: prove-two-action-unattended-production
-updated: 2026-09-18
-answer: Defer until the next opencode-cli live rehearsal
-decided: 2026-09-18
+updated: 2026-09-29
 ---
 
 # Decision 0057: Should prove-two-action-unattended-production be deferred until the next live rehearsal uses --provider opencode-cli, or stay dispatchable?
