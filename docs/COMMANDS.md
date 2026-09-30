@@ -723,6 +723,10 @@ cannot drift from what `--apply` does.
 pnpm arcadia docs sync --workspace "$WORKSPACE" --project arcadia --apply
 ```
 
+Paused Projects are excluded from both portfolio-wide and explicitly scoped
+syncs: Arcadia does not read their repositories or refresh their document
+projection. Reactivate the Project first with the governed status-update path.
+
 Arcadia crawls each Project's recorded `repo_path`, so point a Project at a real
 repository first:
 

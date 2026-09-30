@@ -664,7 +664,7 @@ export function getProjectContext(db: Database.Database, projectId: string): Pro
 
 export function resolveProjectContextFromRequest(db: Database.Database, request: string): ProjectContext | null {
   const normalizedRequest = ` ${normalizeProjectReference(request)} `;
-  const matches = listProjects(db).flatMap((project) => {
+  const matches = listProjects(db).filter((project) => project.status !== "paused").flatMap((project) => {
     const metadata = getProjectMetadata(db, project.id);
     const aliases = decodeStringArray(metadata?.aliases);
     const candidates = normalizedUniqueValues([project.name, ...aliases])
@@ -3189,8 +3189,10 @@ export function updateMilestoneTitle(db: Database.Database, id: string, title: s
   );
 }
 
-export function getWorkItemByDocRef(db: Database.Database, docRef: string): WorkItemSummary | null {
-  const row = db.prepare("SELECT id FROM work_items WHERE doc_ref = ?").get(docRef) as
+export function getWorkItemByDocRef(db: Database.Database, docRef: string, projectId?: string): WorkItemSummary | null {
+  const row = (projectId
+    ? db.prepare("SELECT id FROM work_items WHERE doc_ref = ? AND project_id = ?").get(docRef, projectId)
+    : db.prepare("SELECT id FROM work_items WHERE doc_ref = ?").get(docRef)) as
     | { id: string }
     | undefined;
   return row ? getWorkItem(db, row.id) : null;

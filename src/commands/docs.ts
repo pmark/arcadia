@@ -49,6 +49,30 @@ export function runDocsSyncCommand(options: DocsSyncOptions): CommandSuccess<Doc
     return targets
       .filter((project): project is NonNullable<typeof project> => Boolean(project))
       .map((project) =>
+        // A paused Project is deliberately absent from a portfolio-wide sync:
+        // its repository is not read and no database projection is refreshed.
+        // An explicit --project remains a diagnostic preview only, so a caller
+        // can see why nothing was touched without creating a back door that
+        // mutates paused work.
+        project.status === "paused"
+          ? {
+              projectId: project.id,
+              projectSlug: project.slug,
+              repoRoot: null,
+              changes: [{
+                action: "skipped" as const,
+                entity: "project" as const,
+                relativePath: "-",
+                ref: project.slug,
+                title: project.name,
+                reason: "Project is paused; docs sync does not read or mutate paused Projects."
+              }],
+              errors: [],
+              rejected: [],
+              foreign: [],
+              issues: []
+            }
+          :
         options.apply
           ? db.transaction(() => syncProjectDocs(db, project, { apply: true }))()
           : syncProjectDocs(db, project, { apply: false })
@@ -83,7 +107,10 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
   const lines: string[] = [];
 
   const scanned = projects.filter((project) => project.repoRoot);
-  if (scanned.length === 0) {
+  const paused = projects.filter((project) =>
+    !project.repoRoot && project.changes.some((change) => change.reason?.includes("Project is paused"))
+  );
+  if (scanned.length === 0 && paused.length === 0) {
     return ["No Projects have a repo_path recorded, so there is nothing to crawl."];
   }
 
@@ -91,11 +118,11 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
     const interesting = project.changes.filter((change) => change.action !== "unchanged");
     const unchanged = project.changes.length - interesting.length;
 
-    if (!project.repoRoot) {
+    if (!project.repoRoot && !paused.includes(project)) {
       continue;
     }
 
-    lines.push(`${project.projectSlug} — ${project.repoRoot}`);
+    lines.push(project.repoRoot ? `${project.projectSlug} — ${project.repoRoot}` : `${project.projectSlug} — paused`);
 
     if (interesting.length === 0 && project.errors.length === 0) {
       lines.push(`  Up to date (${unchanged} record${unchanged === 1 ? "" : "s"} already match).`);

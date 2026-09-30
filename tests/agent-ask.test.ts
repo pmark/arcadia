@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AGENT_ASK_INTENTS, resolveNaturalAgentAskTarget } from "../src/ask/agentAsk.js";
+import { resolveProjectReference } from "../src/ask/rules.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -88,7 +89,7 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal).toMatchObject({ unchanged: [], conflicts: [], refused: [] });
   });
 
-  it("normalizes only project_update target fields and rejects the legacy goal target", () => {
+  it("normalizes project_update target fields including status and rejects the legacy goal target", () => {
     const workspace = initializedWorkspace();
     const projectUpdate = runAgentAskPreviewCommand({
       workspace,
@@ -96,6 +97,16 @@ describe("Agent Ask v1", () => {
     });
     expect(projectUpdate.data.proposal.normalized.targetRef).toBe("milestone");
     expect(projectUpdate.data.proposal.effects[0]?.targetRef).toBe("milestone");
+
+    const status = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-status", "project_update").replace(/desired_result: .*\n/, "desired_result: paused\n")}target_ref: STATUS\n`
+    });
+    expect(status.data.proposal.normalized.targetRef).toBe("status");
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("project-update-invalid-status", "project_update").replace(/desired_result: .*\n/, "desired_result: stopped\n")}target_ref: status\n`
+    })).toThrow(/supported Project status/);
 
     expect(() => runAgentAskPreviewCommand({
       workspace,
@@ -124,6 +135,27 @@ describe("Agent Ask v1", () => {
     withDatabase(workspace, (db) => {
       expect((db.prepare("SELECT COUNT(*) AS count FROM ask_capture_envelopes").get() as { count: number }).count).toBe(0);
     });
+  });
+
+  it("keeps paused Projects out of normal routing while allowing an exact status Ask to reactivate one", () => {
+    const workspace = initializedWorkspace();
+    withDatabase(workspace, (db) => {
+      const project = upsertProject(db, { name: "Paused Project", mission: "Remain untouched.", status: "paused" });
+      expect(resolveProjectReference(db, project.slug)).toBeNull();
+    });
+    expect(() => runAgentAskPreviewCommand({
+      workspace,
+      request: strictAsk("paused-project-normal-route", "outcome")
+        .replace("project: unknown", "project: paused-project")
+        .replace(/desired_result: .*\n/, "desired_result: Do not route here.\n")
+    })).toThrow(/destination Project was not found/);
+    const reactivation = runAgentAskPreviewCommand({
+      workspace,
+      request: `${strictAsk("paused-project-reactivate", "project_update")
+        .replace("project: unknown", "project: paused-project")
+        .replace(/desired_result: .*\n/, "desired_result: active\n")}target_ref: status\n`
+    });
+    expect(reactivation.data.proposal.normalized.project).toBe("paused-project");
   });
 
   it("returns a byte-stable replay and refuses changed content under the same id", () => {

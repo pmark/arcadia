@@ -137,7 +137,7 @@ export function validateAskRuleRegistry(
 
   const seenIds = new Set<string>();
   const seenPrefixes = new Set<string>();
-  const validated = registry.rules.map((candidate, index) => {
+  const validated = registry.rules.flatMap((candidate, index) => {
     validateRuleShape(candidate, index);
     const rule = candidate;
     const normalizedPrefix = normalizePrefix(rule.prefix);
@@ -155,6 +155,14 @@ export function validateAskRuleRegistry(
 
     const destination = resolveProjectReference(db, rule.destinationProject);
     if (!destination) {
+      const pausedDestination = listProjects(db).find((project) =>
+        project.status === "paused" && [project.id, project.slug, project.name]
+          .some((value) => value.toLowerCase() === rule.destinationProject.trim().toLowerCase())
+      );
+      // A paused Project must not become a routing failure for unrelated Ask
+      // rules. It remains addressable only through the explicit governed
+      // reactivation path in Agent Ask preview.
+      if (pausedDestination) return [];
       throw validationError("Ask rule destination Project was not found.", {
         reason: "unknown-Project",
         ruleId: rule.id,
@@ -169,7 +177,7 @@ export function validateAskRuleRegistry(
       });
     }
     const sourceSha256 = validateSourceRef(db, destination, rule);
-    return { ...rule, prefix: rule.prefix.trim(), destination, sourceSha256 };
+    return [{ ...rule, prefix: rule.prefix.trim(), destination, sourceSha256 }];
   });
 
   for (let left = 0; left < validated.length; left += 1) {
@@ -243,7 +251,7 @@ export function matchAskRule(request: string, registry: ValidatedAskRuleRegistry
 export function resolveProjectReference(db: Database.Database, reference: string | null | undefined): Project | null {
   if (!reference?.trim()) return null;
   const normalized = reference.trim().toLowerCase();
-  const matches = listProjects(db).filter((project) =>
+  const matches = listProjects(db).filter((project) => project.status !== "paused").filter((project) =>
     [project.id, project.slug, project.name].some((value) => value.toLowerCase() === normalized)
   );
   if (matches.length > 1) {

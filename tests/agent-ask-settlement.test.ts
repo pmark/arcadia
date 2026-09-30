@@ -338,7 +338,8 @@ describe("Agent Ask settlement", () => {
       { intent: "log", desired: "Recorded settlement learning", effect: "Appended one Project Log entry" },
       { intent: "artifact", desired: "Settlement design reference", targetRef: "docs/design.md", effect: "Created one planned Artifact reference" },
       { intent: "proposal", desired: "Consider a future queue experiment", effect: "Accepted the proposal as preserved evidence" },
-      { intent: "project_update", desired: "Deliver a clearer Project outcome", targetRef: "outcome", effect: "Updated Project demo Outcome." }
+      { intent: "project_update", desired: "Deliver a clearer Project outcome", targetRef: "outcome", effect: "Updated Project demo Outcome." },
+      { intent: "project_update", desired: "paused", targetRef: "status", effect: "Updated Project demo Status to paused." }
     ];
 
     for (const [index, scenario] of scenarios.entries()) {
@@ -368,8 +369,10 @@ describe("Agent Ask settlement", () => {
       expect(applied.data.receipt.queueActionKey).toBeNull();
       expect(runAgentAskNotificationsCommand({ workspace }).data.notifications).toHaveLength(1);
 
-      if (scenario.intent === "outcome" || scenario.intent === "project_update") {
+      if (scenario.intent === "outcome" || (scenario.intent === "project_update" && scenario.targetRef === "outcome")) {
         expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`goal: ${scenario.desired}`);
+      } else if (scenario.intent === "project_update" && scenario.targetRef === "status") {
+        expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("status: paused");
       } else if (scenario.intent === "milestone") {
         expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);
         expect(readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8")).toContain(`milestone: ${scenario.desired}`);

@@ -12,7 +12,7 @@ import {
 import { runAskCommand } from "../src/commands/ask.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "../src/commands/askRule.js";
 import { withDatabase } from "../src/db/connection.js";
-import { countRows, createProjectWithInitialWork, listProjects, upsertProjectMetadata } from "../src/db/repositories.js";
+import { countRows, createProjectWithInitialWork, listProjects, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const workspaces: string[] = [];
@@ -22,6 +22,21 @@ afterEach(() => {
 });
 
 describe("Ask rules", () => {
+  it("ignores a paused rule destination so unrelated rules keep routing", () => {
+    const fixture = initializedRuleWorkspace();
+    withDatabase(fixture.workspace, (db) => {
+      const paused = upsertProject(db, { name: "Paused destination", mission: "Stay paused.", status: "paused" });
+      const registry = loadAskRuleRegistry(fixture.workspace);
+      const baseRule = registry.rules[0];
+      if (!baseRule) throw new Error("Rule fixture requires a base rule.");
+      registry.rules.push({ ...baseRule, id: "paused-rule", prefix: "paused", destinationProject: paused.slug,
+        examples: { matches: ["paused"], misses: [] } });
+      const validated = validateAskRuleRegistry(fixture.workspace, db, registry);
+      expect(validated.rules.map((rule) => rule.id)).not.toContain("paused-rule");
+      expect(matchAskRule("songbook practice", validated)?.rule.id).toBe("songbook");
+    });
+  });
+
   it("matches only the exact case-insensitive songbook selector at the beginning", () => {
     const fixture = initializedRuleWorkspace();
     const registry = withDatabase(fixture.workspace, (db) =>

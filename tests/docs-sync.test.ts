@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runDocsSyncCommand } from "../src/commands/docs.js";
+import { renderDocsSyncSuccess, runDocsSyncCommand } from "../src/commands/docs.js";
 import { runPortfolioCommand } from "../src/commands/portfolio.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -372,6 +372,59 @@ describe("discovery", () => {
 });
 
 describe("docs sync", () => {
+  it("does not crawl or mutate paused Projects, including explicit --project runs", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
+    const workspace = workspaceWithProject(repo);
+    withDatabase(workspace, (db) => {
+      const project = listProjects(db)[0];
+      if (!project) throw new Error("Fixture Project was not created.");
+      db.prepare("UPDATE projects SET status = 'paused' WHERE id = ?").run(project.id);
+    });
+
+    const all = runDocsSyncCommand({ workspace, apply: true });
+    const explicit = runDocsSyncCommand({ workspace, project: "demo", apply: true });
+    expect(all.data.projects[0]?.changes[0]?.reason).toContain("paused");
+    expect(explicit.data.projects[0]?.changes[0]?.reason).toContain("paused");
+    expect(renderDocsSyncSuccess(explicit).join("\n")).toContain("demo — paused");
+    expect(renderDocsSyncSuccess(explicit).join("\n")).toContain("docs sync does not read or mutate paused Projects");
+    expect(withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"))).toBeNull();
+  });
+
+  it("reports an unrecognized managed-document type in both data and human output", () => {
+    const repo = scratch();
+    writeDoc(repo, "docs/unknown.md", "---\narcadia: v1\ntype: unknowable\n---\n\n# Unknown\n");
+    const workspace = workspaceWithProject(repo);
+
+    const result = runDocsSyncCommand({ workspace });
+    expect(result.data.errorCount).toBe(1);
+    expect(result.data.projects[0]?.rejected).toEqual(["docs/unknown.md"]);
+    expect(renderDocsSyncSuccess(result).join("\n")).toContain("docs/unknown.md [type]");
+  });
+
+  it("keeps same-named document Actions scoped to the Project being synced", () => {
+    const repoA = scratch();
+    const repoB = scratch();
+    writeDoc(repoA, "docs/plans/sample-plan.md", PLAN.replace("project: demo", "project: project-a"));
+    writeDoc(repoB, "docs/plans/sample-plan.md", PLAN.replace("project: demo", "project: project-b").replace("title: Do the thing", "title: Project B action"));
+    const workspace = workspaceWithProject(repoA, "project-a");
+    withDatabase(workspace, (db) => {
+      const projectB = upsertProject(db, { name: "Project B", mission: "Keep records separate.", status: "active" });
+      upsertProjectMetadata(db, { projectId: projectB.id, repoPath: repoB });
+    });
+
+    runDocsSyncCommand({ workspace, project: "project-a", apply: true });
+    runDocsSyncCommand({ workspace, project: "project-b", apply: true });
+    const titles = withDatabase(workspace, (db) => listProjects(db).map((project) => ({
+      slug: project.slug,
+      title: getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing", project.id)?.title
+    })));
+    expect(titles).toEqual(expect.arrayContaining([
+      { slug: "project-a", title: "Do the thing" },
+      { slug: "project-b", title: "Project B action" }
+    ]));
+  });
+
   it("carries declared acceptance criteria onto the Action, in order", () => {
     const repo = scratch();
     writeDoc(
