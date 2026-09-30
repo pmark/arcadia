@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr816","project":"arcadia","intent":"log","desired_result":"Red alerts can now get one bounded, budget-capped diagnosis that files the Issue and drafts the fix Action (off by default, so no model spend until you flip the flag): https://github.com/pmark/arcadia/pull/816"}

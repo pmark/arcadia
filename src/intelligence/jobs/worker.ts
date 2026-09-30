@@ -112,6 +112,15 @@ export class IntelligenceWorker {
     return this.executeClaimedJob(claimed);
   }
 
+  /**
+   * Claims and executes one specific queued job, whatever else is queued.
+   * Returns undefined if that job could not be claimed (not queued, or leased).
+   */
+  public async runJob(jobId: string): Promise<IntelligenceJob | undefined> {
+    const claimed = await this._repository.claimJob(jobId, this.workerId, nowIso(), this._config.leaseDurationMs);
+    return claimed ? this.executeClaimedJob(claimed) : undefined;
+  }
+
   private resolveJobRoute(job: IntelligenceJob) {
     return resolveIntelligenceRoute(
       {

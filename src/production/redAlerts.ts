@@ -69,6 +69,20 @@ export function ensureRedAlertTables(db: Database.Database): void {
       cleared_at TEXT,
       notified_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS production_red_alert_diagnoses (
+      request_id TEXT PRIMARY KEY,
+      alert_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      token_budget INTEGER NOT NULL,
+      tokens_used INTEGER NOT NULL DEFAULT 0,
+      model_route TEXT NOT NULL,
+      issue_url TEXT,
+      ask_path TEXT,
+      gate_files TEXT,
+      note TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS production_red_alert_streaks (
       project_slug TEXT PRIMARY KEY,
       action_key TEXT NOT NULL,

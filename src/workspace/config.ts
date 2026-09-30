@@ -50,6 +50,17 @@ export function unmeteredProviderSelector(
   return named ? [named] : "all";
 }
 
+/**
+ * Red-alert diagnosis calls a model, so it is off unless the operator sets
+ * `enabled: true` here. `issueRepo` (`owner/name`) is where the bug Issue is
+ * filed and is required to enable it; `tokenBudget` caps one diagnosis.
+ */
+export interface WorkspaceRedAlertDiagnosisConfig {
+  enabled?: boolean;
+  issueRepo?: string;
+  tokenBudget?: number;
+}
+
 export interface WorkspaceArcadiaConfig {
   name?: string;
   version?: number;
@@ -57,6 +68,7 @@ export interface WorkspaceArcadiaConfig {
   database?: string;
   memory?: WorkspaceMemoryConfig;
   codingAgent?: WorkspaceCodingAgentConfig;
+  redAlertDiagnosis?: WorkspaceRedAlertDiagnosisConfig;
 }
 
 export function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -119,9 +131,10 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
   }
   const config = parsed as Record<string, unknown>;
   const codingAgent = parseCodingAgentConfig(config.codingAgent, configPath);
+  const redAlertDiagnosis = parseRedAlertDiagnosisConfig(config.redAlertDiagnosis, configPath);
   const memoryValue = config.memory;
   if (memoryValue === undefined) {
-    return { ...config, codingAgent };
+    return { ...config, codingAgent, redAlertDiagnosis };
   }
   if (!memoryValue || typeof memoryValue !== "object" || Array.isArray(memoryValue)) {
     throw validationError("Workspace memory configuration must be a JSON object.", { configPath });
@@ -139,7 +152,33 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
       enabled: memory.enabled,
       obsidianVaultPath: typeof memory.obsidianVaultPath === "string" ? memory.obsidianVaultPath : undefined
     },
-    codingAgent
+    codingAgent,
+    redAlertDiagnosis
+  };
+}
+
+function parseRedAlertDiagnosisConfig(
+  value: unknown,
+  configPath: string
+): WorkspaceRedAlertDiagnosisConfig | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw validationError("Workspace redAlertDiagnosis configuration must be a JSON object.", { configPath });
+  }
+  const raw = value as Record<string, unknown>;
+  if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") {
+    throw validationError("Workspace redAlertDiagnosis.enabled must be a boolean.", { configPath });
+  }
+  if (raw.issueRepo !== undefined && (typeof raw.issueRepo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(raw.issueRepo.trim()))) {
+    throw validationError("Workspace redAlertDiagnosis.issueRepo must be an owner/name string.", { configPath });
+  }
+  if (raw.tokenBudget !== undefined && (typeof raw.tokenBudget !== "number" || !Number.isInteger(raw.tokenBudget) || raw.tokenBudget <= 0)) {
+    throw validationError("Workspace redAlertDiagnosis.tokenBudget must be a positive integer.", { configPath });
+  }
+  return {
+    enabled: raw.enabled,
+    issueRepo: typeof raw.issueRepo === "string" ? raw.issueRepo.trim() : undefined,
+    tokenBudget: raw.tokenBudget
   };
 }
 

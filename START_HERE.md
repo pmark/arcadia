@@ -778,6 +778,30 @@ trigger, first-seen time, and an evidence file under
 failure resolves, and each new alert posts once to Discord. Alerts only
 report: they never change admission, approvals, or credentials.
 
+**Red alert diagnosis is off by default and costs nothing until you turn it
+on.** It calls a model, so it is behind an explicit flag in the workspace
+`config/arcadia.json`:
+
+```json
+"redAlertDiagnosis": { "enabled": true, "issueRepo": "pmark/arcadia", "tokenBudget": 4000 }
+```
+
+With it on, the worker starts at most one background diagnosis per open alert
+(never a retry). It makes one local-preferred call through the Intelligence
+service (LiteLLM route `text.generate`, profile `fast`, paid usage refused; no
+coding-agent Session is launched), so the cost is one small local-model call
+per alert, capped by `tokenBudget` (default 4000; a prompt over budget makes no
+call, and an answer whose reported usage is over budget is discarded). It files
+or updates one `bug` Issue in `issueRepo` through `gh`, and drafts a fix Action
+Ask under `artifacts/generated/red-alerts/.arcadia/asks/` for you to settle
+(`arcadia agent-ask settle --proposal <id>`); it edits no code and merges
+nothing. A fix touching the concurrency gate, admission policy, approval
+boundaries or credentials is marked `needs_operator` and must stop at an open
+pull request. `production status` shows each alert's diagnosis outcome, tokens
+used, route and Issue; a diagnosis that exceeds its budget or finds no cause is
+recorded on the alert, which stays open. Without `enabled: true` and
+`issueRepo`, nothing runs.
+
 Preview exactly what activation would authorize before granting it. The
 preview writes nothing and shows the included Projects and Plans, the resulting
 ordered Action scope, the permitted providers, the concurrency ceiling, which

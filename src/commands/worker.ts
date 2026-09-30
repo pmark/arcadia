@@ -32,6 +32,7 @@ import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdow
 import { renderRunSummary } from "../markdown/executionArtifacts.js";
 import { deployApprovedProjectProposal } from "../projects/stagingDeployment.js";
 import { runManagedProductionTick } from "../production/tick.js";
+import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagnosis.js";
 import { createId } from "../utils/id.js";
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
@@ -1126,6 +1127,9 @@ export function runManagedProductionIteration(
       },
       log: (message) => log(logfile, `[managed-production] ${message}`)
     });
+    // Off unless the workspace sets redAlertDiagnosis.enabled; then one
+    // bounded, non-blocking diagnosis per open red alert.
+    startRedAlertDiagnosisInBackground(workspacePath, (message) => log(logfile, `[red-alert-diagnosis] ${message}`));
   } catch (error) {
     log(logfile, `[managed-production] Tick error: ${error instanceof Error ? error.message : String(error)}`);
   }
