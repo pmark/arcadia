@@ -42,3 +42,13 @@ parks the Action in its Plan and advances the pointer to the next eligible Actio
 in the explicit queue. Until that command runs, dispatch resolution already treats
 an approved `defer` Decision as parking its Action, so the pointer no longer
 selects it (Issue #310).
+
+## Reopened 2026-09-29
+
+The deferral above stands as history: the trigger named an `opencode-cli` live
+rehearsal. The operator chose `codex-cli` for the v5 rehearsal instead, and it
+ran Actions A and B end to end unattended on 2026-09-29, both reconciled
+`accepted_completion`. That is the reason this Decision is reopened. It is not
+proof: the remaining live stages (split one Action across two Sessions, turn Off
+mid-work, restart the worker) have not run, and the proof stays provisional
+until they pass. Reversal receipt `decisionrev_9d65c3d96118420caa`.

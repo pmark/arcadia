@@ -189,9 +189,13 @@ were once marked closed on status alone, and the first real runs reopened them.
    this derivation.
 2. **Prepare-script edit** — a `-v5` codex fixture with the committed check
    (#726).
-3. **Operator:** deactivate the v3 grant, reverse Decision 0057's deferral,
-   and run `prove-two-action-unattended-production` on codex-cli per its
-   runbook. **This is where the unattended claim is earned.**
+3. **Operator:** the v3 grant is deactivated and the `-v5` fixture ran Actions
+   A and B unattended on codex-cli (2026-09-29, one clean run). Decision 0057's
+   deferral is reversed by the pull request that reopens the proof; until it
+   merges the Action stays deferred. Then run the remaining live stages of
+   `prove-two-action-unattended-production` per its runbook (split one Action
+   across two Sessions, turn Off mid-work, restart the worker). The proof stays
+   provisional until they pass. **This is where the unattended claim is earned.**
 4. `prove-multi-provider-production-recovery` (this is where #727, the Claude
    launch, becomes blocking), then `run-managed-production-live-soak`.
 
