@@ -1188,6 +1188,13 @@ updated: 2026-09-30
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-09-30 — Agent Ask pr-opened-arcadia-pr838
+
+- **Did:** Plan-amendment buttons now have mandatory runner instructions, CI checks and runtime bypass guards. Review https://github.com/pmark/arcadia/pull/838.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-09-30 — Completed arcadia/close-ask-traceability-and-cli-portability-gaps
 
 - **Did:** Completed Action arcadia/close-ask-traceability-and-cli-portability-gaps from accepted evidence (Candidate 443687912550e6934109ecc5cbe5d1209c6f9d49).

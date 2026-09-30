@@ -44,6 +44,15 @@ describe("Arcadia is adopter zero", () => {
     expect(managedRegion(own)).not.toContain("## Working-Copy Safety");
   });
 
+  it("requires Arcadia's shared runner locally without copying unavailable paths into adopters", () => {
+    const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
+    expect(own).toContain("**use the shared\n`arcadia-plan-amendment-v1` runner**");
+    expect(own).toContain("mise exec -- pnpm check:operator-scripts");
+    expect(own).toContain("src/operatorActions/libraryContract.ts");
+    expect(managedRegion(own)).not.toContain("src/operatorActions/libraryContract.ts");
+    expect(readAgentsContextBlock()).not.toContain("check:operator-scripts");
+  });
+
   it("propagates its operating principles into the managed region every adopter receives", () => {
     // These used to sit below the markers, which meant `setup-context` never
     // wrote them into adopting projects -- only this managed region is

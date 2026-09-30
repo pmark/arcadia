@@ -1,3 +1,4 @@
+import { OperatorScriptContractError, validateOperatorScriptContract } from "../../../../../src/operatorActions/libraryContract.js";
 import { constants } from "node:fs";
 import { access, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -19,19 +20,6 @@ const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const STALE_LOCK_MS = 30_000;
 
-interface OperatorScriptDescriptor {
-  schema: "arcadia-operator-script-v1";
-  id: string;
-  title: string;
-  script: string;
-  problem: string;
-  desired_effect: string;
-  authority: { does: string[]; never_does: string[] };
-  success: { effect: string; next: string };
-  failure: { effect: string; next: string };
-  repeatable?: boolean;
-}
-
 interface OperatorScriptState {
   status: "running" | "succeeded" | "failed";
   pid?: number;
@@ -41,42 +29,15 @@ interface OperatorScriptState {
   message?: string;
 }
 
-/** Return whether a value is a non-empty string after trimming whitespace. */
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-/** Return whether a value is an array containing only non-empty strings. */
-function isStringList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(isNonEmptyString);
-}
-
 /** Load and validate an operator-script descriptor and its executable path. */
-async function loadDescriptor(id: string): Promise<{ descriptor: OperatorScriptDescriptor; scriptPath: string }> {
+async function loadDescriptor(id: string): Promise<{ descriptor: ReturnType<typeof validateOperatorScriptContract>; scriptPath: string }> {
   if (!SAFE_ID.test(id)) throw new Error("Invalid operator-script id.");
   const descriptorPath = path.join(LIBRARY_PATH, `${id}.json`);
-  const descriptor = JSON.parse(await readFile(descriptorPath, "utf8")) as OperatorScriptDescriptor;
-  if (descriptor.schema !== "arcadia-operator-script-v1" || descriptor.id !== id || descriptor.script !== `${id}.sh`) {
-    throw new Error("Operator-script descriptor does not match its library entry.");
-  }
-  if (
-    !isNonEmptyString(descriptor.title) ||
-    !isNonEmptyString(descriptor.problem) ||
-    !isNonEmptyString(descriptor.desired_effect) ||
-    !isStringList(descriptor.authority?.does) ||
-    !isStringList(descriptor.authority?.never_does) ||
-    !isNonEmptyString(descriptor.success?.effect) ||
-    !isNonEmptyString(descriptor.success?.next) ||
-    !isNonEmptyString(descriptor.failure?.effect) ||
-    !isNonEmptyString(descriptor.failure?.next) ||
-    (descriptor.repeatable !== undefined && typeof descriptor.repeatable !== "boolean")
-  ) {
-    throw new Error("Operator-script descriptor is incomplete.");
-  }
-  const scriptPath = await realpath(path.join(LIBRARY_PATH, descriptor.script));
+  const scriptPath = await realpath(path.join(LIBRARY_PATH, `${id}.sh`));
   const libraryPath = await realpath(LIBRARY_PATH);
   if (path.dirname(scriptPath) !== libraryPath) throw new Error("Operator script resolves outside the library.");
   await access(scriptPath, constants.X_OK);
+  const descriptor = validateOperatorScriptContract(JSON.parse(await readFile(descriptorPath, "utf8")), id, await readFile(scriptPath, "utf8"));
   return { descriptor, scriptPath };
 }
 
@@ -220,6 +181,9 @@ export async function POST(request: Request) {
     }
     if (error instanceof Error && error.message === "OPERATOR_SCRIPT_ALREADY_CLAIMED") {
       return NextResponse.json({ error: "That operator action is already being started." }, { status: 409 });
+    }
+    if (error instanceof OperatorScriptContractError) {
+      return NextResponse.json({ error: error.message, reason: error.reason, next: error.next }, { status: 409 });
     }
     console.error(`Could not launch operator script ${id}.`, error);
     return NextResponse.json({ error: "That operator script could not be started on the host. Check the dashboard service log." }, { status: 500 });

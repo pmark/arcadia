@@ -10,6 +10,8 @@ const writeState = (value) => {
 const startedAt = new Date().toISOString();
 writeState({ status: "running", pid: process.pid, startedAt });
 const env = { ...process.env };
+env.ARCADIA_OPERATOR_SCRIPT_ID = require("node:path").basename(scriptPath, ".sh");
+env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR = scriptPath.replace(/\.sh$/, ".json");
 delete env.NODE_ENV;
 for (const key of Object.keys(env)) {
   if (key.startsWith("NEXT_") || key.startsWith("__NEXT_")) delete env[key];

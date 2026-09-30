@@ -48,6 +48,18 @@ describe("POST /api/operator-script", () => {
     expect(JSON.parse(readFileSync(state, "utf8"))).toMatchObject({ status: "failed", exitCode: 7 });
   });
 
+  it("binds inherited operator execution context to the actual detached library entry", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-operator-context-"));
+    const script = path.join(root, "example.sh");
+    const state = path.join(root, "state.json");
+    writeFileSync(script, `#!/usr/bin/env bash\n[[ "$ARCADIA_OPERATOR_SCRIPT_ID" = example && "$ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR" = "${root}/example.json" ]]\n`, { mode: 0o755 });
+    const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state], {
+      env: { ...process.env, ARCADIA_OPERATOR_SCRIPT_ID: "another-entry", ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: "/another-entry.json" }
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(readFileSync(state, "utf8"))).toMatchObject({ status: "succeeded", exitCode: 0 });
+  });
+
   it("does not leak dashboard runtime markers into operator scripts", () => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-operator-env-"));
     const script = path.join(root, "example.sh");

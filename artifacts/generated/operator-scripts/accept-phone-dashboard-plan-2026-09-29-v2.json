@@ -25,5 +25,10 @@
   "failure": {
     "effect": "A stale or changed candidate/proposal refuses. A settlement that applied before a push failure retains its receipt; retry replays the same settlement key and retries only publication.",
     "next": "Ask the agent to inspect run.log, failure-handoff.txt and settlement-receipt.json, preserve any applied record, refresh stale authority and retry only while accepting this exact inactive Plan remains intended."
+  },
+  "agentAsk": {
+    "proposal": "plan-phone-dashboard-judgment-actions-runs-2026-09-29-v2",
+    "intent": "plan",
+    "targetRef": null
   }
 }

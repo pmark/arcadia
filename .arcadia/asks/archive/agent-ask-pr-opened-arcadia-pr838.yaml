@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr838","project":"arcadia","intent":"log","desired_result":"Plan-amendment buttons now have mandatory runner instructions, CI checks and runtime bypass guards. Review https://github.com/pmark/arcadia/pull/838."}

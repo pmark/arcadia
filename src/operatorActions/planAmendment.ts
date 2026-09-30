@@ -1,8 +1,9 @@
 import Database from "better-sqlite3";
+import { equal, fieldsMatch, hash, Refusal, refuse, validatePlanAmendmentInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
+import { withinPlanAmendmentRunner } from "./operatorExecution.js";
+export type { PlanAmendmentInput } from "./planAmendmentContract.js";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { isDeepStrictEqual } from "node:util";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { buildAgentQueue } from "../dispatch/queue.js";
@@ -15,24 +16,6 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 
-/** Version 1 is deliberately one existing Action, with no activation or queue flags. */
-export interface PlanAmendmentInput {
-  schema: "arcadia-plan-amendment-v1";
-  checkout: { path: string; origin: string; branch: string; reviewedBase: string };
-  ask: { path: string; sha256: string; proposal: string };
-  settlement: { requestId: string; disposition: "accepted"; operator: true };
-  envelope: {
-    project: string;
-    plan: string;
-    action: string;
-    projectUnchanged: Record<string, unknown>;
-    planUnchanged: Record<string, unknown>;
-    actionBefore: Record<string, unknown>;
-    actionAfter: Record<string, unknown>;
-    noChange: string[];
-  };
-  publication: { remote: "origin"; branch: string };
-}
 export interface PlanAmendmentResult {
   schema: "arcadia-plan-amendment-receipt-v1";
   id: string;
@@ -45,45 +28,11 @@ export interface PlanAmendmentResult {
   descriptorSha256: string;
   settlement?: AgentAskSettlementReceipt;
 }
-class Refusal extends Error {
-  constructor(public reason: string, message: string, public next: string) { super(message); }
-}
-function refuse(reason: string, message: string, next = "Restore the named precondition and retry this same action; do not substitute another proposal."): never {
-  throw new Refusal(reason, message, next);
-}
-const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 function atomic(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.tmp-${process.pid}`;
   writeFileSync(temporary, JSON.stringify(value, null, 2) + "\n");
   renameSync(temporary, file);
-}
-function exactKeys(value: object, keys: string[], label: string): void {
-  if (!value || !isDeepStrictEqual(Object.keys(value).sort(), keys.sort())) refuse("INVALID_CONTRACT", `${label} has unsupported or missing fields.`);
-}
-function difference(actual: unknown, expected: unknown, label: string): string {
-  if (Array.isArray(actual) && Array.isArray(expected)) {
-    if (actual.length !== expected.length) return `${label}.length: expected ${expected.length}, received ${actual.length}`;
-    for (let index = 0; index < expected.length; index++) {
-      if (!isDeepStrictEqual(actual[index], expected[index])) return difference(actual[index], expected[index], `${label}[${index}]`);
-    }
-  }
-  if (actual && expected && typeof actual === "object" && typeof expected === "object") {
-    const a = actual as Record<string, unknown>;
-    const e = expected as Record<string, unknown>;
-    for (const key of [...new Set([...Object.keys(e), ...Object.keys(a)])]) {
-      if (!isDeepStrictEqual(a[key], e[key])) return difference(a[key], e[key], `${label}.${key}`);
-    }
-  }
-  const short = (value: unknown) => {
-    const text = JSON.stringify(value) ?? "missing";
-    return text.length > 200 ? `${text.slice(0, 200)}… (sha256 ${hash(text)})` : text;
-  };
-  return `${label}: expected ${short(expected)}, received ${short(actual)}`;
-}
-function equal(actual: unknown, expected: unknown, reason: string, label: string): void {
-  if (!isDeepStrictEqual(actual, expected)) refuse(reason, difference(actual, expected, label),
-    "Review the named difference and restore it, or publish a newly reviewed envelope. This click changed no unvalidated governance.");
 }
 /** Preserve unknown fields too: a new schema field is never silently discarded. */
 export function documentState(content: string): { fields: Record<string, unknown>; body: string } {
@@ -91,47 +40,11 @@ export function documentState(content: string): { fields: Record<string, unknown
   if (!match) refuse("TARGET_STATE_DRIFT", "Managed document frontmatter is missing.");
   return { fields: parseYaml(match[1]) as Record<string, unknown>, body: match[2] };
 }
-function fieldsMatch(fields: Record<string, unknown>, pinned: Record<string, unknown>, label: string): void {
-  for (const [key, value] of Object.entries(pinned)) equal(fields[key], value, "TARGET_STATE_DRIFT", `${label}.${key}`);
-}
 function targetAction(fields: Record<string, unknown>, actionId: string): Record<string, unknown> {
   const actions = fields.actions as Record<string, unknown>[];
   const matches = Array.isArray(actions) ? actions.filter((action) => action.id === actionId) : [];
   if (matches.length !== 1) refuse("TARGET_STATE_DRIFT", `Action ${actionId} is missing or duplicated.`);
   return matches[0];
-}
-function validateContract(input: PlanAmendmentInput): void {
-  exactKeys(input, ["schema", "checkout", "ask", "settlement", "envelope", "publication"], "Runner input");
-  equal(input.schema, "arcadia-plan-amendment-v1", "INVALID_CONTRACT", "Runner version");
-  exactKeys(input.checkout, ["path", "origin", "branch", "reviewedBase"], "Checkout");
-  exactKeys(input.ask, ["path", "sha256", "proposal"], "Ask");
-  exactKeys(input.settlement, ["requestId", "disposition", "operator"], "Settlement flags");
-  exactKeys(input.publication, ["remote", "branch"], "Publication");
-  exactKeys(input.envelope, ["project", "plan", "action", "projectUnchanged", "planUnchanged", "actionBefore", "actionAfter", "noChange"], "Envelope");
-  for (const value of [input.ask.proposal, input.settlement.requestId, input.envelope.project, input.envelope.plan, input.envelope.action]) {
-    if (typeof value !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) refuse("INVALID_CONTRACT", "Pinned identifiers must be lowercase slugs.");
-  }
-  equal(input.settlement.disposition, "accepted", "INVALID_CONTRACT", "Disposition");
-  equal(input.settlement.operator, true, "INVALID_CONTRACT", "Operator authority");
-  equal(input.publication.remote, "origin", "INVALID_CONTRACT", "Publication remote");
-  equal(input.publication.branch, input.checkout.branch, "INVALID_CONTRACT", "Publication branch");
-  if (!/^[a-f0-9]{40}$/.test(input.checkout.reviewedBase) || !/^[a-f0-9]{64}$/.test(input.ask.sha256)) refuse("INVALID_CONTRACT", "Reviewed base or Ask hash is invalid.");
-  const e = input.envelope;
-  fieldsMatch(e.projectUnchanged, { slug: e.project }, "Pinned Project");
-  fieldsMatch(e.planUnchanged, { slug: e.plan, project: e.project }, "Pinned Plan");
-  for (const key of ["active_plan", "current_action"]) {
-    if (!(key in e.projectUnchanged)) refuse("INVALID_CONTRACT", `Project no-change envelope omits ${key}.`);
-  }
-  for (const key of ["status", "current_action", "milestone"]) {
-    if (!(key in e.planUnchanged)) refuse("INVALID_CONTRACT", `Plan no-change envelope omits ${key}.`);
-  }
-  for (const key of ["id", "responsibility", "status", "title", "decisions", "clarification"]) {
-    if (!e.noChange.includes(key) || !(key in e.actionBefore)) refuse("INVALID_CONTRACT", `Action no-change envelope omits ${key}.`);
-  }
-  for (const key of e.noChange) equal(e.actionAfter[key], e.actionBefore[key], "INVALID_CONTRACT", `Preserved Action.${key}`);
-  equal(e.actionBefore.id, e.action, "INVALID_CONTRACT", "Action id");
-  const acceptance = e.actionAfter.acceptance_criteria;
-  if (!Array.isArray(acceptance) || !acceptance.length || !acceptance.every((item) => typeof item === "string" && item.trim())) refuse("INVALID_CONTRACT", "Acceptance replacement must contain observable criteria.");
 }
 function validateDocuments(input: PlanAmendmentInput, documents: NonNullable<AgentAskSettlementReceipt["review"]>["documents"]): void {
   const e = input.envelope;
@@ -208,7 +121,7 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     const descriptor = JSON.parse(descriptorBytes.toString()) as { schema: string; id: string; script: string; planAmendment: PlanAmendmentInput };
     equal([descriptor.schema, descriptor.id, descriptor.script], ["arcadia-operator-script-v1", id, `${id}.sh`], "INVALID_CONTRACT", "Descriptor identity");
     const input = descriptor.planAmendment;
-    validateContract(input);
+    validatePlanAmendmentInput(input);
     save();
     repo = realpathSync(input.checkout.path);
     equal(repo, realpathSync(path.resolve(library, "../../..")), "WRONG_CHECKOUT", "Library checkout");
@@ -255,7 +168,7 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     });
     const flags = { workspace, proposal: input.ask.proposal, requestId: input.settlement.requestId, disposition: input.settlement.disposition, operator: input.settlement.operator, cwd: repo };
     // Preview and apply use precisely the same flags. No publication-time fingerprint exists.
-    const preview = runAgentAskSettleCommand(flags).data.receipt;
+    const preview = withinPlanAmendmentRunner(descriptorPath, () => runAgentAskSettleCommand(flags).data.receipt);
     atomic(path.join(runDirectory, "preview.json"), preview);
     equal([preview.proposalRequestId, preview.settlementRequestId, preview.projectSlug, preview.intent, preview.disposition],
       [input.ask.proposal, input.settlement.requestId, input.envelope.project, "plan", "accepted"], "ANOTHER_PROPOSAL", "Settlement identity");
@@ -301,7 +214,7 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
         equal(queue.revision, preview.queueRevision, "TARGET_STATE_DRIFT", "Queue revision at write fence");
         equal(queue.ordered.flatMap(entry => entry.orderKey ? [entry.orderKey] : []), preview.review!.queueBefore, "UNEXPECTED_EFFECTS", "Queue at write fence");
       };
-      result.settlement = runAgentAskSettleCommand({ ...flags, preview: preview.previewFingerprint, apply: true, beforeGovernanceWrite }).data.receipt;
+      result.settlement = withinPlanAmendmentRunner(descriptorPath, () => runAgentAskSettleCommand({ ...flags, preview: preview.previewFingerprint, apply: true, beforeGovernanceWrite }).data.receipt);
     }
     atomic(path.join(runDirectory, "settlement-receipt.json"), result.settlement);
     save(); // Durable before push, including crashes and retries.

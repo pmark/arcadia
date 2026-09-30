@@ -8,6 +8,42 @@ Generated executable scripts only pass their descriptor and `run` or
 `--describe` to that shared launcher. They contain no settlement flags, parsing,
 fingerprints, or retry logic.
 
+This is required by `AGENTS.md`, not an optional example. Prepare an exact
+`planAmendment` descriptor and generate its five-line executable with
+`planAmendmentLauncher(id)` from `src/operatorActions/libraryContract.ts`.
+That pure function supplies the one accepted launcher shape. Run
+`mise exec -- pnpm check:operator-scripts` before publishing; the CI lint job
+checks **every** library pair with the same validator `/runs` uses before launch.
+Extra executable commands, cross-wired descriptors, unsupported flags and
+repeatable approvals are refused. The checker reads files only: no button,
+workspace or settlement is executed.
+
+Other Agent Ask operator scripts declare `agentAsk` with exactly `proposal`,
+`intent`, and `targetRef`. Inactive draft-Plan creation uses `intent: plan` and
+`targetRef: null`; an existing Plan target requires the shared runner instead.
+The detached dashboard runner preserves its operator execution context. The
+canonical settlement path checks the actual proposal before preview, apply or
+receipt replay, so falsely declaring draft creation cannot authorize an
+amendment. Only the shared runner's synchronous in-process scope satisfies
+that fence; there is no CLI flag or environment value granting runner authority.
+Ordinary manual/candidate settlement keeps its existing approval rules. When
+Arcadia launches a newly governed managed Session, it clears the two operator
+markers at that child-process boundary. The dispatching operator script and its
+ordinary helpers keep their markers and remain subject to the fence.
+
+For entries without `planAmendment`, detecting settlement tokens in shell text
+is only a diagnostic heuristic: a wrapper can hide those strings. The actual
+proposal check in `assertOperatorSettlementContract` is authoritative at runtime,
+including for an undeclared helper. Declared Plan amendments still require the
+exact canonical launcher in both CI and `/runs`; do not expand the token regex
+as a substitute for the runtime fence.
+
+These are deterministic guards for the supported operator-action paths, not a
+sandbox against malicious host code that deliberately strips context or rewrites
+the checker. Such bypasses are forbidden by `AGENTS.md` and remain subject to
+review. The runner still supports only its declared single-Action envelope;
+unsupported amendments need a capability proposal instead of custom logic.
+
 A descriptor's `planAmendment` pins the primary checkout, origin, branch,
 reviewed ancestor, exact Ask bytes and proposal id, settlement request id, and
 publication destination. Its envelope pins Project and Plan no-change fields,

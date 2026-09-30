@@ -1225,6 +1225,10 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
   };
 }
 
+const SESSION_OPERATOR_CONTEXT_RESET = [
+  "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR"
+];
+
 /**
  * The exact process tmux starts for one Session, with the resolved agent Git
  * identity in front of it. Running through `env` scopes GIT_AUTHOR_* and
@@ -1252,7 +1256,11 @@ function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry,
     registry
   });
   const inner = buildProviderLaunch(session, agent, workspace);
-  return { command: "env", args: [...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
+  // A newly admitted Session has its own governed authority. Its candidate
+  // settlements must not inherit the operator action that dispatched it;
+  // ordinary script helpers retain that context and remain fenced. Use env -u
+  // at the child boundary even if a long-lived tmux server retained the vars.
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
 }
 
 function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspace?: string): { command: string; args: string[] } {
@@ -1398,7 +1406,7 @@ function buildFixtureSessionLaunch(session: AgentSession, workspace?: string): {
     }
     args.push("--db", getWorkspacePaths(workspace).databaseFile);
   }
-  return { command: "node", args };
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, "node", ...args] };
 }
 
 /**
