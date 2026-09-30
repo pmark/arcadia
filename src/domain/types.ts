@@ -73,6 +73,8 @@ export interface MilestoneSummary extends Milestone {
 export interface WorkItem {
   id: string;
   project_id: string | null;
+  /** Immutable Ask capture that created this Action, when it came from an Ask. */
+  capture_id: string | null;
   milestone_id: string | null;
   title: string;
   raw_input: string;
@@ -175,6 +177,7 @@ export interface SkillDefinition {
 export interface ExecutionPlan {
   id: string;
   work_item_id: string;
+  capture_id: string | null;
   status: ExecutionPlanStatus;
   summary: string;
   created_at: string;
@@ -256,6 +259,7 @@ export interface ReviewItem {
   id: string;
   slug: string | null;
   ask_request_id: string | null;
+  capture_id: string | null;
   work_item_id: string | null;
   plan_id: string | null;
   project_id: string | null;
@@ -346,6 +350,7 @@ export interface BackBurnerItem {
   source_ref: string | null;
   facet_tags_json: string | null;
   ask_request_id: string | null;
+  capture_id: string | null;
 }
 
 export interface ApprovalGate {

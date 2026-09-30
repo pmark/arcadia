@@ -23,10 +23,10 @@ a declared Log settlement succeeds through the real path.
 
 Validation on 2026-09-30:
 
-- 112 focused tests passed in seven files: library contract, all 26 real-workspace
+- 113 focused tests passed in seven files: library contract, all 27 real-workspace
   runner cases, canonical settlement, API refusal, lifecycle and migrated action.
 - Detached runner context test: 6 passed, including the new context-binding case.
-  The combined focused set therefore contains 113 cases.
+  The combined focused set therefore contains 114 cases.
 - Instruction/adopter boundary: 22 passed; incoming base notes: 3 passed.
 - Full candidate library: 4 checked, 0 failures. Checker reads files only.
 - Core/Discord build, lint/typecheck and Dashboard build passed.
@@ -35,6 +35,9 @@ Validation on 2026-09-30:
   failure was repaired and its 22-case file passed. The two existing CLI tests
   timed out at 45 seconds under full-suite load; both passed unchanged in an
   isolated 11.23-second run. Recurrence recorded on issue #452.
+- After reconciling the traceability implementation, 176 cases passed across
+  11 files, including the undeclared-helper runtime refusal and incoming feature
+  tests. Core/Discord build and the four-entry library gate passed again.
 - Current-head CodeRabbit and full sharded CI remain integration gates.
 
 Operator QA (same procedure for end users):

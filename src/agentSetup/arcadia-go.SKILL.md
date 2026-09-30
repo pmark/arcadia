@@ -51,10 +51,12 @@ work has happened — running it right after `go` is a guaranteed
    the launcher below — check whether `node_modules` exists. If missing, run:
 
    ```sh
-   node scripts/bridge-worktree-deps.mjs
+   node "$(dirname "$(readlink __ARCADIA_CODEX_GO_BROKER__)")/scripts/bridge-worktree-deps.mjs"
    ```
 
-   This symlinks the main checkout's installed dependencies into the worktree.
+   This invokes the bridge helper shipped beside the installed broker, rather
+   than assuming the target Project is Arcadia's monorepo. It symlinks the main
+   checkout's installed dependencies into the worktree.
    Skipping this step surfaces later as a raw
    `Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'tsx'` with no pointer
    back to this fix — do not treat that error as a code defect.

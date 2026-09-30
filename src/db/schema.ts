@@ -220,6 +220,15 @@ function ensureAskTraceColumns(db: Database.Database): void {
   const backBurnerColumns = new Set(
     (db.prepare("PRAGMA table_info(back_burner_items)").all() as Array<{ name: string }>).map((column) => column.name)
   );
+  const workItemColumns = new Set(
+    (db.prepare("PRAGMA table_info(work_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const planColumns = new Set(
+    (db.prepare("PRAGMA table_info(execution_plans)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  const reviewColumns = new Set(
+    (db.prepare("PRAGMA table_info(review_items)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
   let added = false;
   if (!askColumns.has("capture_id")) {
     db.prepare("ALTER TABLE ask_requests ADD COLUMN capture_id TEXT REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL").run();
@@ -229,9 +238,19 @@ function ensureAskTraceColumns(db: Database.Database): void {
     db.prepare("ALTER TABLE back_burner_items ADD COLUMN ask_request_id TEXT REFERENCES ask_requests(id) ON DELETE SET NULL").run();
     added = true;
   }
+  for (const [table, columns] of [["work_items", workItemColumns], ["execution_plans", planColumns], ["review_items", reviewColumns], ["back_burner_items", backBurnerColumns]] as const) {
+    if (!columns.has("capture_id")) {
+      db.prepare(`ALTER TABLE ${table} ADD COLUMN capture_id TEXT REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL`).run();
+      added = true;
+    }
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_ask_requests_capture_id ON ask_requests(capture_id);
     CREATE INDEX IF NOT EXISTS idx_back_burner_items_ask_request_id ON back_burner_items(ask_request_id);
+    CREATE INDEX IF NOT EXISTS idx_work_items_capture_id ON work_items(capture_id);
+    CREATE INDEX IF NOT EXISTS idx_execution_plans_capture_id ON execution_plans(capture_id);
+    CREATE INDEX IF NOT EXISTS idx_review_items_capture_id ON review_items(capture_id);
+    CREATE INDEX IF NOT EXISTS idx_back_burner_items_capture_id ON back_burner_items(capture_id);
   `);
   if (added) backfillAskTraceLinks(db);
 }

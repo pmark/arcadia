@@ -28,6 +28,13 @@ amendment. Only the shared runner's synchronous in-process scope satisfies
 that fence; there is no CLI flag or environment value granting runner authority.
 Ordinary manual/candidate settlement keeps its existing approval rules.
 
+For entries without `planAmendment`, detecting settlement tokens in shell text
+is only a diagnostic heuristic: a wrapper can hide those strings. The actual
+proposal check in `assertOperatorSettlementContract` is authoritative at runtime,
+including for an undeclared helper. Declared Plan amendments still require the
+exact canonical launcher in both CI and `/runs`; do not expand the token regex
+as a substitute for the runtime fence.
+
 These are deterministic guards for the supported operator-action paths, not a
 sandbox against malicious host code that deliberately strips context or rewrites
 the checker. Such bypasses are forbidden by `AGENTS.md` and remain subject to

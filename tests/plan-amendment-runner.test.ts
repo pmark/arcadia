@@ -99,15 +99,15 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
     expect(f.run(env).reason).toBe("REPLAY_PUBLISHED");
     expect(f.count()).toBe(1);
   });
-  it("refuses a real CLI apply disguised as draft-Plan creation before governance mutation", () => {
+  it.each([true, false])("refuses real CLI apply from a disguised draft or undeclared helper (declared=%s)", declaresDraft => {
     const f = fixture();
     const flags = { workspace: f.workspace, proposal: "amend-first", requestId: "accept-first", disposition: "accepted" as const, cwd: f.repo };
     const preview = runAgentAskSettleCommand(flags).data.receipt;
     const d = JSON.parse(readFileSync(f.descriptor, "utf8")) as Record<string, unknown>;
     delete d.planAmendment;
-    d.agentAsk = { proposal: "amend-first", intent: "plan", targetRef: null };
+    if (declaresDraft) d.agentAsk = { proposal: "amend-first", intent: "plan", targetRef: null };
     writeFileSync(f.descriptor, JSON.stringify(d));
-    writeFileSync(f.script, '#!/bin/sh\n# agent-ask settle (deliberate bypass fixture)\nexit 99\n');
+    writeFileSync(f.script, declaresDraft ? '#!/bin/sh\n# agent-ask settle (deliberate bypass fixture)\nexit 99\n' : '#!/bin/sh\n./opaque-helper\n');
     f.commit();
     const head = f.git("rev-parse", "HEAD");
     const before = readFileSync(path.join(f.repo, "docs/plans/demo-plan.md"), "utf8");
