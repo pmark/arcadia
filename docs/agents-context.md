@@ -156,7 +156,7 @@ before handoff. A descriptor must include `schema`, `id`, `title`, `script`,
 script must be executable and expose only `run` and `--describe`.
 
 When an operator script delegates bounded authority, tag its descriptor
-`kind: "grant"`. Follow the [Grant definition](arcadia-semantics.md#grant):
+`kind: "grant"`. Follow the [Grant definition](docs/arcadia-semantics.md#grant):
 it is one-shot, pins its policy revision, names its scope and expiry, refuses
 precondition drift before mutation, records a receipt, and states what it
 never does. Do not use the tag for ordinary preparation, observation, or
