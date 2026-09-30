@@ -185,29 +185,6 @@ For example, a Decision-approval script must pin or read the exact Decision,
 answer, proposal fingerprint, and expected open state, then refuse stale or
 different state; never turn it into a blanket approval command.
 
-### Plan-amendment operator actions must use the shared runner
-
-For a generated operator action that settles an Agent Ask with `intent: plan`
-and a non-empty `target_ref` (an existing Plan), **use the shared
-`arcadia-plan-amendment-v1` runner**. Read
-[`docs/operator-plan-amendments.md`](docs/operator-plan-amendments.md) before
-preparing the button. Put pinned inputs and the immutable allowed-effect
-envelope in `planAmendment`; generate the executable with
-`planAmendmentLauncher(id)` from `src/operatorActions/libraryContract.ts`.
-Do not embed settlement commands, parsing, preview fingerprints, extra commands,
-or retry logic. Do not clear or forge operator execution context to bypass a
-refusal. Broader amendments that the runner cannot represent need a capability
-proposal, not a bespoke operator script.
-
-Run `mise exec -- pnpm check:operator-scripts` before publishing any library
-entry. CI and `/runs` share that contract check, and the canonical settlement
-path refuses a Plan-amendment operator process outside the shared runner.
-Other Agent Ask operator actions must declare `agentAsk.proposal`, `intent`,
-and `targetRef`; declaring draft-Plan creation cannot authorize amending an
-existing Plan. These checks preserve the existing operator approval boundary.
-They do not govern ordinary candidate completion evidence or grant an agent
-permission to run an approval button.
-
 ### Publishing `/runs` actions
 
 `/runs` reads the main checkout's generated-script library at
@@ -1013,6 +990,29 @@ for review, and invoke model-based diagnosis on failure rather than on every
 successful routine run. Token impact is a relative planning signal, not a
 fictional exact forecast.
 <!-- ARCADIA_CONTEXT_END -->
+
+## Plan-amendment operator actions must use the shared runner
+
+In this Arcadia repository, for a generated operator action that settles an Agent Ask with `intent: plan`
+and a non-empty `target_ref` (an existing Plan), **use the shared
+`arcadia-plan-amendment-v1` runner**. Read
+[`docs/operator-plan-amendments.md`](docs/operator-plan-amendments.md) before
+preparing the button. Put pinned inputs and the immutable allowed-effect
+envelope in `planAmendment`; generate the executable with
+`planAmendmentLauncher(id)` from `src/operatorActions/libraryContract.ts`.
+Do not embed settlement commands, parsing, preview fingerprints, extra commands,
+or retry logic. Do not clear or forge operator execution context to bypass a
+refusal. Broader amendments that the runner cannot represent need a capability
+proposal, not a bespoke operator script.
+
+Run `mise exec -- pnpm check:operator-scripts` before publishing any library
+entry. CI and `/runs` share that contract check, and the canonical settlement
+path refuses a Plan-amendment operator process outside the shared runner.
+Other Agent Ask operator actions must declare `agentAsk.proposal`, `intent`,
+and `targetRef`; declaring draft-Plan creation cannot authorize amending an
+existing Plan. These checks preserve the existing operator approval boundary.
+They do not govern ordinary candidate completion evidence or grant an agent
+permission to run an approval button.
 
 <!-- Everything outside the markers above is this repository's own and is never regenerated. -->
 

@@ -27,6 +27,7 @@ Validation on 2026-09-30:
   runner cases, canonical settlement, API refusal, lifecycle and migrated action.
 - Detached runner context test: 6 passed, including the new context-binding case.
   The combined focused set therefore contains 113 cases.
+- Instruction/adopter boundary: 22 passed; incoming base notes: 3 passed.
 - Full candidate library: 4 checked, 0 failures. Checker reads files only.
 - Core/Discord build, lint/typecheck and Dashboard build passed.
 - Preservation self-check passed (1,431 files); `git diff --check` passed.
