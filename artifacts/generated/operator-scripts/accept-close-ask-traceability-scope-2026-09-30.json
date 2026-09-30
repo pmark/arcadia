@@ -1,0 +1,29 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-close-ask-traceability-scope-2026-09-30",
+  "title": "Accept the exact Ask-traceability scope repair",
+  "script": "accept-close-ask-traceability-scope-2026-09-30.sh",
+  "repeatable": false,
+  "problem": "PR #826 proved the existing completed Action was too narrow for #591. Its implementation must not be merged while the governed Action falsely claims that traceability work is complete.",
+  "desired_effect": "Accept only the reviewed Plan amendment that keeps close-ask-traceability-and-cli-portability-gaps open and replaces its #591 criterion with the required capture_id propagation, ask-show lookup, dashboard receipt link, and objective coverage; retain the delivered #716 bridge requirement.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-close-ask-traceability-scope-2026-09-30.sh run",
+  "authority": {
+    "does": [
+      "Validate the exact Ask SHA-256, reviewed preview fingerprint, pmark/arcadia main checkout, clean synchronized origin/main, inherited reviewed base revision, project pointer, and bounded Action state",
+      "Apply only settlement accept-close-ask-traceability-scope-2026-09-30 for proposal amend-close-ask-traceability-scope-2026-09-30, then save a timestamped log and canonical settlement receipt",
+      "Push only the resulting fast-forward main settlement after Arcadia confirms the exact accepted disposition"
+    ],
+    "never_does": [
+      "Change the queue, current Action, active Plan, any other Action or Project, or any Action status beyond Arcadia's exact reviewed Plan amendment",
+      "Touch PR #826, merge or deploy, activate production, press a Grant, start or restart services, use credentials, or settle any other proposal or Decision"
+    ]
+  },
+  "success": {
+    "effect": "The reviewed Action remains open with truthful #591 scope and its deterministic #716 bridge requirement; Arcadia's settlement is committed and published on main with a durable receipt.",
+    "next": "Start a fresh isolated implementation worktree from the published main revision, reuse only #826's implementation work, and complete the expanded acceptance before opening a replacement PR."
+  },
+  "failure": {
+    "effect": "No unvalidated or broadened governance change is made. If settlement succeeded before push failed, the receipt remains durable and the same request may replay only if every pinned precondition still matches.",
+    "next": "Inspect the timestamped run log, failure handoff, and any settlement receipt. Refresh this bounded action through review if main, the Action, Ask, or preview has changed; do not hand-edit governance or substitute another proposal."
+  }
+}
