@@ -100,7 +100,7 @@ widens its scope.
 | 4 — It keeps going without help | 🟡 The v5 dependent transition is evidence, but Off/restart behavior under an already-admitted Session remains unproven live. |
 | 5 — Proof | ⬜ `prove-two-action-unattended-production` is open and is the current governed pointer. The v6 procedure is prepared, not performed. |
 | 6 — The operator surface | 🟡 `/runs` exposes bounded prepare and Grant actions, but the live operator procedure and its evidence have not been completed. |
-| B — Cross-repository concurrency | ⬜ Admission remains capped at one until the named proof Actions are done. No v6 Grant can lift that gate. |
+| B — Cross-repository concurrency | ⬜ Admission remains capped at one while either named proof Action is open, unless an unexpired rehearsal exception names `prove-concurrent-ready-set-admission`; that exception raises the cap to the configured maximum. The v6 Grant still uses concurrency one and cannot lift the gate. |
 | B′ — Same-repository pipelining | ⬜ Still follows the single-repository proof and the cross-repository gate. |
 
 A gate closes only when the live system does what it says. A passing replay,
