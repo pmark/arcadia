@@ -2680,7 +2680,7 @@ actions:
     references: []
   - id: prove-red-alert-with-injected-failures
     title: Prove the red alert and diagnosis path fire end to end by injecting failures into the hermetic rehearsal harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prove the red alert and diagnosis path fire end to end by injecting failures into the hermetic rehearsal harness.
