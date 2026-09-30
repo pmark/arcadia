@@ -1187,3 +1187,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Completed arcadia/close-ask-traceability-and-cli-portability-gaps
+
+- **Did:** Completed Action arcadia/close-ask-traceability-and-cli-portability-gaps from accepted evidence (Candidate 443687912550e6934109ecc5cbe5d1209c6f9d49).
+- **Result:** Every declared acceptance criterion was accepted as met: "#591: Every resulting Ask record carries its originating capture_id."; "#591: arcadia ask show <capture_…|request id> maps a capture or request to the Ask, back-burner item, or Action it produced."; "#591: The dashboard exposes a receipt link for each capture-to-result trace."; "#591: Objective tests cover capture_id propagation, capture/request lookup, dashboard receipt links, and every resulting record type."; "#716: The arcadia-go skill’s node_modules bridge step works on a target repo that is not Arcadia’s own monorepo.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-close-ask-traceability-and-cli-portability-gaps-v5-2026-09-30).
