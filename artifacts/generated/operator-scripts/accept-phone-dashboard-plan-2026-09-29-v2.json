@@ -9,7 +9,7 @@
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-phone-dashboard-plan-2026-09-29-v2.sh run",
   "authority": {
     "does": [
-      "Validate the exact candidate repository, clean branch and SHA-256 of the reviewed Ask input",
+      "Validate the exact candidate repository, clean branch, open PR 821 and SHA-256 of the reviewed Ask input",
       "Apply only settlement accept-phone-dashboard-plan-2026-09-29-v2 against preview 124b628b9f8e396e9e4365310ca7f82ed8f7dc601ae57639f439d647035108c5; Arcadia commits the inactive Plan on the candidate branch",
       "Push only codex/runs-information-architecture, with no force, and write a timestamped log, canonical settlement receipt and failure handoff"
     ],
