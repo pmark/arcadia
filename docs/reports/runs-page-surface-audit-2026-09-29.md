@@ -66,7 +66,7 @@ multiple CLI calls: report subprocess count and latency separately.
 | `/actions/[id]` | No page | 1 descriptor/current-state request; +1 paginated history only when opened. |
 | Script launch page | No page | 1 combined launch state/receipt/bounded output request, conditional poll while running. Launch POST precedes navigation and returns runId. |
 | `/work-queue` → `/runs/queue` | 1 queue GET | 1 queue GET; mutations keep existing preview/apply refresh flow. |
-| `/flight-deck` → Evidence | 2: queue + broad snapshot | 1 scoped queue/evidence projection; never fetch the full snapshot for five evidence sections. |
+| `/flight-deck`, standalone under More | 2: queue + broad snapshot | 1 scoped queue/evidence projection; never fetch the full snapshot for five evidence sections. |
 | More / closed sidebar | Chrome 0; sidebar +1 mission-control request | 0; drawer context loads only when displayed. |
 | `/runs/[id]` | Detail and executor-output requests (conditional) | Preserve existing behavior and URLs; no new cross-page polling. |
 
@@ -108,8 +108,27 @@ launcher yields a truthful failure handoff rather than endless Running.
 
 ## Governance handoff
 
-The placement picker is preserved in `.arcadia/asks/agent-ask-choose-runs-page-information-architecture-2026-09-29.yaml`. `draft` validated it and previewed proposal `agentask_896e65c870576c99dd`, fingerprint `896e65c870576c99dda2d579b9ceaa00e3d7025a2210d3fa2d23da3f5cee45ed`, with no Project changes. This local host has a resolvable workspace; it is not the workspace-less container described in the request. No settlement has run, no Decision has been answered, and no Plan has been activated.
+The placement picker input is preserved under `.arcadia/asks/archive/`.
+Canonical settlement created Decision 0077; the operator's answers were recorded
+with `decision approve`: keep Flight Deck standalone under More and On/Off
+visible on Runs. This host has a resolvable workspace; it is not the
+workspace-less container described in the request. No Plan has been activated,
+and the existing Project pointer and queue remain unchanged.
 
-Phase 2 of `docs/planning-process.md` takes answered Decisions as input, so the build Plan is prepared only after the two placement answers. The existing deep-link Ask is already previewed in this workspace: changing content under its request id is refused. Supersede its disposable input with a newly keyed replacement only after recording the operator choice, archive its original input, and explicitly retire the old pending proposal before settling the replacement. Keep every original deep-link and Discord formatter acceptance criterion in the replacement's first slice; the replacement has exactly three Actions. Do not settle both drafts as competing Plans.
+Phase 2 takes these answers and the operator's canonical-hierarchy clarification
+as constraints. The newly keyed `plan-phone-dashboard-judgment-actions-runs-2026-09-29-v2`
+Ask previews exactly three dependency-ordered Actions. Its first slice preserves
+all eight original Decision deep-link and Discord criteria. The old deep-link
+proposal and the intermediate pre-clarification draft are retired as superseded;
+their inputs remain archived. Acceptance preview fingerprint
+`124b628b9f8e396e9e4365310ca7f82ed8f7dc601ae57639f439d647035108c5`
+creates only an inactive draft Plan, with Agent responsibility. Acceptance is
+awaiting the operator; it grants no dispatch or queue placement.
+
+The placement settlement initially used the host Git author. Its unpushed
+candidate commit was corrected to Cody Atlas; tag
+`archive/identity-correction-95e76ea33` preserves the original SHA referenced
+by the canonical receipt. The Decision answer and all subsequent agent commits
+use the semantic agent identity.
 
 Planning proof: dashboard production build, dashboard Vitest suite, and `tests/e2e/runs-ia-baseline.spec.ts`; full functional Playwright runs and changed-page screenshots belong to each build slice, when those routes exist.

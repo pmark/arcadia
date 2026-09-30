@@ -38,6 +38,36 @@ The [verified operation map and request budgets](../reports/runs-page-surface-au
 
 ## Recommended routes and phone flow
 
+### The canonical model in the interface
+
+Use `Domain → Project → {Mission, Outcome} → Milestone → Action →
+{Artifact, Decision}; Log`. A Plan organizes a Milestone's Actions; it is a
+managed document, not an extra level of purpose. The operational breadcrumb
+is `Project → Milestone → Plan → Action`, with Mission and Outcome available
+in Project context and Domain available as the portfolio grouping/filter.
+Show an unavailable relationship explicitly rather than inferring it from a
+title, repository or queue position.
+
+Flight Deck keeps its portfolio identity: a Kanban view of Actions grouped by
+Project and Milestone, with Plan context and links to their Artifacts,
+Decisions and Project Log. Preserve its five-state projection and explicit
+unattached evidence. At 390px, select a Project and read stacked state sections;
+on desktop, scan the board. It stays read-only: queue steering belongs to
+`/runs/queue`, and judgment belongs to `/review`.
+
+Runs uses the same context for active Sessions, concrete execution Runs and
+queued Actions. A Session is a dispatch, a Run is an attempt, and neither
+claims Action acceptance. Concurrent work should be legible per Project and
+Plan without flattening two attempts into two Actions. Show existing capacity,
+lane and review-boundary facts; do not imply a worker can admit more work just
+because the interface has space for another card.
+
+Seed phone QA with concurrent Sessions in two Projects and distinct Plans,
+multiple Runs for one Action, a finished Run awaiting acceptance, an Artifact
+awaiting a Decision and an unattached record. Assert correct structural links,
+independent pending controls and truthful states. The current board already
+distinguishes Run completion from Action acceptance; retain that behavior.
+
 Five labeled primary destinations: **Today · Runs · Needs operator · Operator
 actions · More**. Labels remain visible at 390px; targets are at least 44px.
 Both chrome and sidebar share the same destinations and active-child behavior.
@@ -60,14 +90,14 @@ Sidebar contextual data loads only when the drawer is open.
 | `/runs` | Active Sessions/Runs first, then recorded production state and This push; Next push disclosure; compact counted links to judgment and operator-action attention; History and Queue secondary navigation; Flight Deck link. | Approval cards and script library. |
 | `/runs/history` | Paginated recent execution Runs, stable detail links. Loads only on navigation. | Active polling or full portfolio snapshot. |
 | `/runs/queue` | Existing Work Queue steering, with its own single payload and exact-preview/revision/undo safeguards. | Another read-only duplicate of the ordered queue. |
-| `/flight-deck` | Standalone read-only portfolio evidence under More, linked from Runs. Phone-first Project/Plan filter and stacked state sections; wide grid remains useful on desktop. | A second evidence board inside Runs. |
+| `/flight-deck` | Standalone read-only portfolio board under More, linked from Runs. Domain/Project filter, Milestone grouping, Plan context, Action cards with Artifact/Decision links and stacked state sections on the phone. | A second evidence board inside Runs. |
 
 `/work-queue` redirects to `/runs/queue`; `/flight-deck` keeps its existing URL
 and moves under More. Redirects preserve query intent and existing bookmarked
 links. `/runs/[id]` remains untouched; reserve static children in Next routing.
 Bot `ARCADIA_DASHBOARD_URL` remains the base, not a new hardcoded host. Slice 1
 supports the deep-link Ask's first Action and preserves its `/review/<ref>`
-contract; the existing Ask's Discord formatter Action remains owned there.
+contract; its Discord formatter follow-up is consolidated into this slice.
 Amend that unsettled scope through a newly keyed replacement Ask, preserving
 every original deep-link criterion in the first slice and consolidating its
 Discord follow-up there. Archive the original input and retire its pending
@@ -109,7 +139,9 @@ Fix #809 by owning pending mutation state above collapsible queue/alert
 sections. A collapse cannot remount a second switch or forget an in-flight
 POST. Disable duplicates until authoritative post-toggle status arrives;
 refuse stale GET overwrite and retain a visible failure. Test a delayed POST,
-collapse/reopen, exactly one launch, and correct terminal state. ## Slices and proof
+collapse/reopen, exactly one launch, and correct terminal state.
+
+## Slices and proof
 
 1. **Judgment home and item pages:** replace the unsettled Decision 0076 Ask
    with its expanded first Action, preserving all original deep-link and Discord
@@ -123,7 +155,8 @@ collapse/reopen, exactly one launch, and correct terminal state. ## Slices and p
    Remove script cards/poll from Runs only after this flow works.
 3. **Runs and navigation:** Active now first, This/Next push, paginated History,
    Queue tab/route, standalone Flight Deck link, visible production control
-   strip and #809 regression. Trim both navigation systems together.
+   strip and #809 regression. Apply the canonical hierarchy and concurrent
+   production proof above. Trim both navigation systems together.
 
 Each slice gets one PR with `START_HERE.md` changes in that PR, dashboard build,
 `pnpm exec vitest run apps/dashboard`, full `pnpm exec playwright test`, and
@@ -149,8 +182,8 @@ Runs** in this session on 2026-09-29. Flight Deck retains its portfolio identity
 under More; Runs links to it without duplicating the board. Start/stop remains
 immediately available beside active work, with persistent pending state fixing
 #809. The alternatives above are superseded by these answers; do not ask them
-again. Record the answers through the canonical Decision writer and reference
-that Decision in the Plan Ask.
+again. Decision 0077 records these answers through the canonical writer and is
+referenced by the Plan Ask.
 
 The build sequence remains judgment home → script flow → Runs/navigation.
 An inactive draft Plan preserves the scope without replacing the active
