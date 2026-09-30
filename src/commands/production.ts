@@ -39,6 +39,7 @@ import {
   type LaunchBlockerRecord,
   type OperatorEscalation
 } from "../production/tick.js";
+import { listOpenRedAlerts, type RedAlert } from "../production/redAlerts.js";
 
 export interface ProductionStatusOptions {
   workspace: string;
@@ -96,6 +97,8 @@ export interface ProductionStatusData {
   launchBlockers: LaunchBlockerRecord[];
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: OperatorEscalation[];
+  /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
+  redAlerts: RedAlert[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
   /** `null` only when no scope is active to gate; Off always reports `null`. */
@@ -136,6 +139,7 @@ export function runProductionStatusCommand(
       baseBranchAdvances: listRecentBaseBranchAdvances(db),
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
+      redAlerts: listOpenRedAlerts(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
       concurrencyGate:
@@ -316,7 +320,21 @@ export function renderProductionStatusSuccess(
   response: CommandSuccess<ProductionStatusData>
 ): string[] {
   const { read, display, admissions } = response.data;
-  const lines = ["Managed production", `  ${display.label}`, `  Observed: ${display.observedAt}`];
+  const lines: string[] = [];
+  const redAlerts = response.data.redAlerts ?? [];
+  if (redAlerts.length > 0) {
+    lines.push(`RED ALERTS (${redAlerts.length})`);
+    for (const alert of redAlerts) {
+      lines.push(
+        `  ${alert.id} [${alert.trigger}] ${alert.actionKey ?? alert.projectSlug}` +
+          `${alert.sessionId ? ` session ${alert.sessionId}` : ""} since ${alert.firstSeenAt} (seen ${alert.occurrences}x)`
+      );
+      lines.push(`    ${alert.detail}`);
+      lines.push(`    Evidence: ${alert.evidencePath}  Request: ${alert.requestId}`);
+    }
+    lines.push("");
+  }
+  lines.push("Managed production", `  ${display.label}`, `  Observed: ${display.observedAt}`);
 
   if (read.status === "ok") {
     const policy = read.policy;

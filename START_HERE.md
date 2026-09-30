@@ -767,6 +767,17 @@ with the noun:
 pnpm arcadia production status
 ```
 
+When managed production hits a Stop the line failure, `production status` lists
+it first under `RED ALERTS`, before every other section. The worker tick
+detects four triggers with no model call: an admission refused on consecutive
+ticks (at least 5 ticks over at least 10 minutes), a Session past its stall
+window, a failed reconcile, and a failure repeating until the repair budget is
+exhausted. Each distinct failure is one alert (Project, Action, Session id,
+trigger, first-seen time, and an evidence file under
+`artifacts/generated/red-alerts/`); a repeat updates it, it clears when the
+failure resolves, and each new alert posts once to Discord. Alerts only
+report: they never change admission, approvals, or credentials.
+
 Preview exactly what activation would authorize before granting it. The
 preview writes nothing and shows the included Projects and Plans, the resulting
 ordered Action scope, the permitted providers, the concurrency ceiling, which

@@ -125,6 +125,31 @@ Log is the canonical replacement for Mission Log unless the longer phrase is int
 
 ## Supporting Properties
 
+### Red Alert
+
+A managed-production failure that meets the Stop the line test in `AGENTS.md`:
+it blocks work unrelated to itself, its only workaround is one a person has to
+remember, or it blocks its own repair. A Red Alert is a supporting property of
+managed production, not a top-level Arcadia object and not work state: it is a
+signal with evidence, raised by the worker tick with no model call.
+
+Triggers (each is detected deterministically; the list is closed):
+
+- `admission_refused_consecutive`: an Action's admission is refused on
+  consecutive ticks, past a minimum tick count and a minimum duration.
+- `session_stalled`: a live Session is past its stall window (no pane output
+  and no Run/receipt activity for the stalled-session deadline).
+- `reconcile_failed`: reconciling a Session's exit throws.
+- `repair_budget_repeat`: the same launch failure has repeated until the
+  Action's repair budget is exhausted.
+
+One Red Alert exists per distinct failure. It records the Project, Action,
+Session id, trigger, first-seen time, and an evidence path; a repeat of the
+same failure updates the alert instead of creating another, and an alert
+clears when the failure resolves. Each new alert posts once to the configured
+notification channel, and `arcadia production status` lists open Red Alerts
+before every other section.
+
 ### Status
 
 Status describes the lifecycle state of a concept.
