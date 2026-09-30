@@ -377,7 +377,8 @@ describe("docs sync", () => {
     writeDoc(repo, "docs/plans/sample-plan.md", PLAN);
     const workspace = workspaceWithProject(repo);
     withDatabase(workspace, (db) => {
-      const project = listProjects(db)[0]!;
+      const project = listProjects(db)[0];
+      if (!project) throw new Error("Fixture Project was not created.");
       db.prepare("UPDATE projects SET status = 'paused' WHERE id = ?").run(project.id);
     });
 

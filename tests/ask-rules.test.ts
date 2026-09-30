@@ -27,7 +27,9 @@ describe("Ask rules", () => {
     withDatabase(fixture.workspace, (db) => {
       const paused = upsertProject(db, { name: "Paused destination", mission: "Stay paused.", status: "paused" });
       const registry = loadAskRuleRegistry(fixture.workspace);
-      registry.rules.push({ ...registry.rules[0]!, id: "paused-rule", prefix: "paused", destinationProject: paused.slug,
+      const baseRule = registry.rules[0];
+      if (!baseRule) throw new Error("Rule fixture requires a base rule.");
+      registry.rules.push({ ...baseRule, id: "paused-rule", prefix: "paused", destinationProject: paused.slug,
         examples: { matches: ["paused"], misses: [] } });
       const validated = validateAskRuleRegistry(fixture.workspace, db, registry);
       expect(validated.rules.map((rule) => rule.id)).not.toContain("paused-rule");
