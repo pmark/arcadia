@@ -4,7 +4,7 @@ type: decision
 id: "0077"
 slug: choose-where-flight-deck-evidence-and-the-production-on-off-control-belong-in
 project: arcadia
-status: open
+status: approved
 question: Choose where Flight Deck evidence and the Production On/Off control belong in the phone-first dashboard redesign.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -24,7 +24,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-09-30
+updated: 2026-09-29
+answer: Keep Flight Deck; On/Off visible on Runs
+decided: 2026-09-29
 ---
 
 # Decision 0077: Choose where Flight Deck evidence and the Production On/Off control belong in the phone-first dashboard redesign.
