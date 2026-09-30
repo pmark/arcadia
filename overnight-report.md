@@ -7,22 +7,22 @@ Action 0 ([PR #820](https://github.com/pmark/arcadia/pull/820)) and Action 1
 on `origin/main`. The chain stopped during Action 2 at
 [PR #825](https://github.com/pmark/arcadia/pull/825).
 
-Action 2's completion Ask,
-`complete-fix-auto-settle-eligibility-docs-2026-09-30`, previewed successfully.
-Its `settle --apply` was correctly refused because the resolved Martian Rover
-workspace would advance an unrelated live pointer. No workaround was attempted.
-That settlement is not valid from this candidate, so PR #825 remains unmerged
-awaiting a safe governance resolution.
+The original Action 2 completion Ask previewed against the configured Martian
+Rover default workspace and was not applied. Its candidate revision was later
+stale. A replacement Ask,
+`complete-fix-auto-settle-eligibility-docs-2026-09-30-v2`, was bound to the
+current candidate revision and explicitly scoped to Arcadia's own workspace.
+Its exact preview applied successfully in commit `b4a7725b`, marking Action 2
+done, archiving the v2 Ask, and advancing the governed pointer to
+`prove-two-action-unattended-production`. No refusal was bypassed or worked
+around.
 
 ## Verified state at stop
 
 - Pull request: [#825](https://github.com/pmark/arcadia/pull/825), **OPEN** and
   unmerged.
-- Required CI passed: `lint`, `unit-1`, `unit-2`, `unit-3`, `unit-4`,
-  `dashboard`, and `e2e`.
-- CodeRabbit was started for the current head and remains pending. It must
-  finish before the PR can receive a final review verdict, but this PR must not
-  merge while the completion settlement remains invalid.
+- Required CI and CodeRabbit must rerun for the settlement/report head before
+  this pull request can be considered for merge.
 
 ## Boundaries preserved
 
@@ -31,5 +31,5 @@ service restarted, credential used or changed, deployment made, or live
 rehearsal run.
 
 Actions 3–5 must not start. Starting them would violate the required
-one-at-a-time chain while Action 2 remains unmerged and its completion
-settlement has no safe resolution.
+one-at-a-time chain until PR #825 merges, `origin/main` is verified, and the
+main checkout is pulled.
