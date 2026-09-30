@@ -13,6 +13,17 @@ disagrees with this document, it is right and this document is stale.
 Last derived: **2026-09-30T19:56Z**, against `origin/main`
 `4eeac8f2a605e87f81ec7a310dc5ae2ef445d589`.
 
+**2026-09-30 supplemental blocker — [#836](https://github.com/pmark/arcadia/issues/836):**
+the installed sandbox-callable combined brief writes SQLite at its `next`
+stage, outside `arcadia-unattended`'s worktree write roots. A correctly selected
+profile and a Codex restart still leave unrelated Project continuation blocked.
+The repair candidate uses canonical read-only resolution and passed both real
+SQLite regression tests and the actual Nagel worktree invocation under the
+unchanged sandbox. The installed broker remains blocked until reviewed merge
+and the existing explicit broker reinstall action. This supplemental finding
+does not rerun the queue, grant, or gate readings below. Evidence:
+[`readonly-dispatch-brief-836.md`](reports/readonly-dispatch-brief-836.md).
+
 ---
 
 ## Executive summary

@@ -1,12 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { renderNextSuccess, runNextCommand, runNextReadyCommand } from "../src/commands/next.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
+import * as connection from "../src/db/connection.js";
+import { runGoBroker, type BriefCommandData } from "../src/goBroker.js";
 import {
   createWorkItemWithOptionalArtifact,
   createBackBurnerItem,
@@ -344,6 +346,50 @@ function readySetProjectDoc(): string {
     ""
   ].join("\n");
 }
+
+describe("sandbox-callable broker dispatch brief", () => {
+  it.each([false, true])("resolves through real read-only SQLite and retains the operator gate (blocked=%s)", (blocked) => {
+    const repo = scratch();
+    writeDoc(repo, "PROJECT.md", readySetProjectDoc());
+    writeDoc(repo, "docs/plans/sample-plan.md", chainPlan("done"));
+    writeDoc(repo, "CONSTITUTION.md", "# Constitution\n\n- Capability never grants authority.\n");
+    if (blocked) {
+      writeDoc(repo, "docs/decisions/0100-ship.md", [
+        "---", "arcadia: v1", "type: decision", "id: '0100'", "project: demo",
+        "status: open", "action: ship-it", "question: Should we ship?", "updated: 2026-09-30",
+        "options:", "  - label: Ship it", "    consequence: The fixture ships.", "---", "# Ship?", ""
+      ].join("\n"));
+    }
+    const workspace = workspaceFor(repo);
+    const canonical = runNextCommand({ workspace, project: "demo" });
+    const eventsBefore = withDatabase(workspace, (db) => listDispatchEvents(db));
+    const writable = vi.spyOn(connection, "withDatabase").mockImplementation((target, callback) =>
+      connection.withReadOnlyDatabase(target, callback));
+    try {
+      // Keep the real default next runner: mocking it hid the production bug.
+      const result = runGoBroker(
+        { source: repo, agent: "codex", operation: "brief" },
+        undefined,
+        (() => ({ ok: true, command: "advance", data: { transition: null, session: null }, artifacts: [], warnings: [] })) as never,
+        (() => ({ ok: true, command: "work.monitor", data: { snapshot: {}, attentionLines: [] }, artifacts: [], warnings: [] })) as never,
+        () => workspace
+      );
+      const data = result.data as BriefCommandData;
+      expect(data.next).toEqual(canonical.data);
+      expect(data.next.dispatchable).toBe(!blocked);
+      expect(data.dispatchBrief).toBe(renderNextSuccess(canonical).join("\n"));
+      expect(data.dispatchBrief).toContain("Capability never grants authority.");
+      expect(data.sessionTitles.working).toContain("ship-it");
+      expect(writable).not.toHaveBeenCalled();
+    } finally {
+      writable.mockRestore();
+    }
+    connection.withReadOnlyDatabase(workspace, (db) => {
+      expect(db.readonly).toBe(true);
+      expect(listDispatchEvents(db)).toEqual(eventsBefore);
+    });
+  });
+});
 
 describe("arcadia next --ready", () => {
   it("lists the dispatchable Action from a real docs-sync'd project, and journals nothing", () => {

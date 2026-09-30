@@ -127,6 +127,22 @@ Ignore it when the listed files are old, already-settled Asks: it is a false
 positive. Look only at the lines above it (`Agent Ask drafted`,
 `Previewed: fingerprint`). Expires when #592 closes.
 
+## Protected brief fails at `next` despite the correct Codex profile
+
+keys: sandbox, brief broker, arcadia-unattended, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, restart
+
+Issue #836 reproduced a mismatch in installed broker release
+`df6589f932b670960340acbda85d42f127439cb0`: `brief` called the host's journaled
+`runNextCommand`, which opened SQLite read-write and initialized schema, while
+the named sandbox excluded that shared database. Profile selection and restart
+could not repair the code path. The corrected broker uses
+`runNextReadOnlyCommand`, sharing canonical dispatch and operator gates with the
+host command while making no schema or journal writes. Reinstall the reviewed
+broker using the existing **Reinstall the protected go broker** `/runs` action.
+Do not widen permissions, copy the database, or build a replacement reader in
+the adopting Project. Shared Git writes likewise belong to host preservation.
+Regression: `tests/dispatch-journal.test.ts`, sandbox-callable broker section.
+
 ## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED
 
 keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, pnpm arcadia next, dispatch brief
