@@ -2662,7 +2662,7 @@ actions:
     references: []
   - id: diagnose-red-alerts-and-propose-the-fix
     title: Run one bounded diagnosis per red alert that files the Issue and proposes the fix Action, never merging changes to safety gates.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Run one bounded diagnosis per red alert that files the Issue and proposes the fix Action, never merging changes to safety gates.
