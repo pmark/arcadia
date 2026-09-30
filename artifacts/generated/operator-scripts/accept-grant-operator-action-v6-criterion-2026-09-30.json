@@ -1,0 +1,125 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-grant-operator-action-v6-criterion-2026-09-30",
+  "title": "Accept the v6 Grant criterion retarget",
+  "script": "accept-grant-operator-action-v6-criterion-2026-09-30.sh",
+  "repeatable": false,
+  "problem": "The Grant-pattern Action still names absent v5 and regrant descriptors, so its acceptance criteria cannot be truthfully met against the reviewed current Grant surface.",
+  "desired_effect": "Accept only the reviewed Plan amendment that replaces the stale v5/regrant criterion with the existing v6 Grant descriptor and its visible /runs Grant tag, preserving every other criterion unchanged.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-grant-operator-action-v6-criterion-2026-09-30.sh run",
+  "authority": {
+    "does": [
+      "Validate the exact Ask SHA-256, pinned semantic envelope, primary pmark/arcadia main checkout, synchronized origin/main, inherited reviewed base, and unchanged Project, Plan, pointer, queue, and Action status",
+      "Use shared arcadia-plan-amendment-v1 to preview the exact settlement at click time, validate only the v5/regrant-to-v6 criterion replacement and preserved first three criteria, then apply that fresh fingerprint and retain durable receipts",
+      "Push only Arcadia's exact accepted main-branch settlement after every pinned precondition matches"
+    ],
+    "never_does": [
+      "Run, renew, activate, or otherwise change grant-production-two-action-v6-remaining-stages-2026-09-30; recreate or change an absent v5 or regrant descriptor; or change any Action beyond the exact reviewed criterion replacement",
+      "Change the queue, pointer, active Plan, Action status, production, worker, services, credentials, PRs, or any other proposal or Decision"
+    ]
+  },
+  "success": {
+    "effect": "The Action remains open with a truthful v6-only Grant criterion and every other acceptance criterion unchanged; the exact settlement is committed and published on main with a durable receipt.",
+    "next": "Continue the reviewed Grant-pattern implementation and verify its v6 descriptor tag; this button itself does not run, renew, or activate a Grant."
+  },
+  "failure": {
+    "effect": "No unvalidated or broadened governance change is made. If settlement succeeded before push failed, the receipt remains durable and the same request can recover publication without a second settlement.",
+    "next": "Read the reason, changed field, and recovery instruction shown on /runs. Restore the named precondition and retry this exact action; do not substitute a proposal, alter the other criteria, or press the v6 Grant."
+  },
+  "planAmendment": {
+    "schema": "arcadia-plan-amendment-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "5c8c7e7556cf161c4a0c43c6eef0f80a686b33c2"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-amend-grant-operator-action-v6-criterion-2026-09-30-v2.yaml",
+      "sha256": "b714150b5b5f5c6712a855bb8ee5bad385bfbcb21d3a51bb95661bf7fd46a88a",
+      "proposal": "amend-grant-operator-action-v6-criterion-2026-09-30-v2"
+    },
+    "settlement": {
+      "requestId": "accept-grant-operator-action-v6-criterion-2026-09-30",
+      "disposition": "accepted",
+      "operator": true
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "bootstrap-managed-production-to-build-flight-deck",
+      "action": "define-grant-operator-action-pattern",
+      "projectUnchanged": {
+        "slug": "arcadia",
+        "active_plan": "bootstrap-managed-production-to-build-flight-deck",
+        "current_action": "prove-two-action-unattended-production"
+      },
+      "planUnchanged": {
+        "slug": "bootstrap-managed-production-to-build-flight-deck",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "prove-two-action-unattended-production",
+        "milestone": "Bootstrap managed production to run unattended from the GitHub board"
+      },
+      "actionBefore": {
+        "id": "define-grant-operator-action-pattern",
+        "title": "Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.",
+        "expected_artifact": "Evidence satisfying Agent Ask define-grant-operator-action-pattern",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask define-grant-pattern-and-page-2026-09-29",
+        "acceptance_criteria": [
+          "docs/arcadia-semantics.md defines Grant as a one-shot operator action that delegates bounded authority, and states what every Grant must do: pin the policy revision it was built against, cover a named scope only, carry an expiry, refuse on any precondition drift, and record a receipt.",
+          "The arcadia-operator-script-v1 descriptor contract accepts an optional kind field with the value grant; descriptors without it keep listing exactly as before, and a test proves both.",
+          "AGENTS.md operator-step guidance (via docs/agents-context.md and regeneration) tells agents to tag an authority-delegating script as kind grant and points at the semantics definition.",
+          "The existing grant-production-two-action-v5-rehearsal and regrant-production scripts are tagged kind grant, and /runs shows the tag; pnpm test and the core, Discord and Dashboard builds pass."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": []
+      },
+      "actionAfter": {
+        "id": "define-grant-operator-action-pattern",
+        "title": "Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.",
+        "expected_artifact": "Evidence satisfying Agent Ask define-grant-operator-action-pattern",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-grant-operator-action-v6-criterion-2026-09-30-v2",
+        "acceptance_criteria": [
+          "docs/arcadia-semantics.md defines Grant as a one-shot operator action that delegates bounded authority, and states what every Grant must do: pin the policy revision it was built against, cover a named scope only, carry an expiry, refuse on any precondition drift, and record a receipt.",
+          "The arcadia-operator-script-v1 descriptor contract accepts an optional kind field with the value grant; descriptors without it keep listing exactly as before, and a test proves both.",
+          "AGENTS.md operator-step guidance (via docs/agents-context.md and regeneration) tells agents to tag an authority-delegating script as kind grant and points at the semantics definition.",
+          "The existing grant-production-two-action-v6-remaining-stages-2026-09-30 descriptor is tagged kind grant and /runs shows its Grant tag; neither absent v5 nor regrant descriptor is recreated or changed; pnpm test and the core, Discord and Dashboard builds pass."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": []
+      },
+      "noChange": [
+        "id",
+        "title",
+        "status",
+        "responsibility",
+        "effort",
+        "next_action",
+        "expected_artifact",
+        "clarification",
+        "confidence",
+        "depends_on",
+        "decisions",
+        "references"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
