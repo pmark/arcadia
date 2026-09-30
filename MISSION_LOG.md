@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-29
+updated: 2026-09-30
 ---
 
 # Mission Log: Arcadia
@@ -1089,3 +1089,10 @@ updated: 2026-09-29
 - **Result:** Every declared acceptance criterion was accepted as met: "A regex catalog recognizes provider rate/usage limits, auth or scope failures, permission prompts, sandbox denials, context exhaustion, and repeated-command loops from pane text."; "A pure classifier combines process, pane, git, Run, preservation, drafted-Ask, PR and claim signals into one state from a documented closed set, each state mapped to one action."; "The classifier documents an explicit precedence order for overlapping signals, so a provider limit, auth failure, or permission prompt is never classified as a stall when pane or process signals also overlap.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/replay-real-pane-transcripts-through-classifier immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-session-signal-catalog-and-classifier-2026-09-29).
+
+## 2026-09-30 — Completed arcadia/raise-red-alert-on-stop-the-line-failures
+
+- **Did:** Completed Action arcadia/raise-red-alert-on-stop-the-line-failures from accepted evidence (Candidate fc8ddd4f30db64804f3fa35b3f26fd6112d78597).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/arcadia-semantics.md defines a red alert as a managed-production failure that meets the Stop the line test, and lists the triggers: an admission refused on consecutive ticks, a Session past its stall window, a failed reconcile, and a failure repeating after the repair budget."; "The worker tick detects each trigger with no model call and records one red alert per distinct failure, with the Project, Action, Session id, trigger, first-seen time, and the log or artifact path that shows the cause; a repeat of the same failure updates the alert instead of creating another."; "Each new red alert posts once to the configured notification channel with its request id, the Action, the trigger and a link to the evidence, and production status lists open red alerts before every other section."; "Deterministic tests cover each trigger raising exactly one alert, a repeat updating it, and an alert clearing when the failure resolves; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-raise-red-alert-on-stop-the-line-failures-2026-09-29).
