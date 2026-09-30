@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +22,18 @@ afterEach(() => {
 });
 
 describe("bridge-worktree-deps", () => {
+  it("runs from an installed broker release when the target repo has no Arcadia scripts", () => {
+    const { worktree } = createFixture();
+    const releaseHelper = path.join(path.dirname(worktree), "broker-release", "scripts", "bridge-worktree-deps.mjs");
+    mkdirSync(path.dirname(releaseHelper), { recursive: true });
+    copyFileSync(SCRIPT, releaseHelper);
+
+    const output = run(worktree, releaseHelper);
+
+    expect(output).toContain("Bridged");
+    expect(realpathSync(path.join(worktree, "apps/dashboard/node_modules/@pmark/arcadia"))).toBe(path.resolve(worktree));
+  });
+
   it("retargets a workspace self-reference at the worktree instead of the main checkout's stale dist", () => {
     const { mainCheckout, worktree } = createFixture();
 
@@ -66,8 +79,8 @@ describe("bridge-worktree-deps", () => {
   });
 });
 
-function run(worktree: string): string {
-  return execFileSync(process.execPath, [SCRIPT], { cwd: worktree, encoding: "utf8" });
+function run(worktree: string, helper: string = SCRIPT): string {
+  return execFileSync(process.execPath, [helper], { cwd: worktree, encoding: "utf8" });
 }
 
 function createFixture(): { mainCheckout: string; worktree: string } {
