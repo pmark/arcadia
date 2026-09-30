@@ -1209,9 +1209,13 @@ updated: 2026-09-30
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-harden-tidy-quarantine-safety-and-docs-2026-09-30).
 
-## 2026-09-30 — Agent Ask record-production-only-priority-2026-09-30
+## 2026-09-30 — Agent Ask pr-opened-arcadia-pr843
 
-- **Did:** Record the operator's explicit production-only priority on 2026-09-30: focus exclusively on autonomous production and blockers to it. Keep bootstrap-managed-production-to-build-flight-deck active and prove-two-action-unattended-production as the current Action; keep the accepted dashboard redesign Plan inactive. The immediate proof is the v6 same-candidate Session continuation and Off/worker-restart observation, with receipts and acceptance evidence. This priority selection grants no new production activation, Session termination, service restart, concurrency increase, or completion authority. Issue #844 records the unsupported Agent Ask deferral path and the intended account-cap reactivation trigger (before authorizing unattended concurrency above one Session); the cap remains open, not canonically deferred. Reconsider dashboard activation only on a later explicit operator direction.
+- **Did:** Grant descriptor contract and /runs badge are preserved for review in https://github.com/pmark/arcadia/pull/843; the current Plan criterion needs an operator-approved scope amendment before completion.
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Agent Ask record-production-only-priority-2026-09-30
+
+- **Did:** Record the operator's explicit production-only priority on 2026-09-30: focus exclusively on autonomous production and blockers to it. Keep bootstrap-managed-production-to-build-flight-deck active and prove-two-action-unattended-production as the current Action; keep the accepted dashboard redesign Plan inactive. The immediate proof is the v6 same-candidate Session continuation and Off/worker-restart observation, with receipts and acceptance evidence. This priority selection grants no new production activation, Session termination, service restart, concurrency increase, or completion authority. Issue #844 records the unsupported Agent Ask deferral path and the intended account-cap reactivation trigger (before authorizing unattended concurrency above one Session); the cap remains open, not canonically deferred. Reconsider dashboard activation only on a later explicit operator direction.
