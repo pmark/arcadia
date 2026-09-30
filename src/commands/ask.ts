@@ -20,6 +20,7 @@ import { withDatabase } from "../db/connection.js";
 import {
   createApprovalGate,
   createAskRequest,
+  linkAskOutcomesToCapture,
   createBackBurnerItem,
   createExecutionPlan,
   createMilestoneForProject,
@@ -353,17 +354,21 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       idea: request,
       spec: proposalSpec
     });
-    const ask = withDatabase(workspacePath, (db) => createAskRequest(db, {
-      captureId: captureEnvelope.id,
-      rawRequest: options.request,
-      resolvedIntent: intake.resolvedIntent,
-      registryVersion: registries.intents.version,
-      outputKind: "requires_review",
-      workItemId: proposal.data.workItem.id,
-      planId: proposal.data.plan.id,
-      stewardshipJson: stewardshipJson(stewardship),
-      status: "requires_review"
-    }));
+    const ask = withDatabase(workspacePath, (db) => {
+      const ask = createAskRequest(db, {
+        captureId: captureEnvelope.id,
+        rawRequest: options.request,
+        resolvedIntent: intake.resolvedIntent,
+        registryVersion: registries.intents.version,
+        outputKind: "requires_review",
+        workItemId: proposal.data.workItem.id,
+        planId: proposal.data.plan.id,
+        stewardshipJson: stewardshipJson(stewardship),
+        status: "requires_review"
+      });
+      linkAskOutcomesToCapture(db, { askRequestId: ask.id, captureId: captureEnvelope.id, workItemId: proposal.data.workItem.id, planId: proposal.data.plan.id, reviewItemId: proposal.data.decision.id });
+      return ask;
+    });
     return createSuccess({
       command: "ask",
       workspace: workspacePath,
@@ -495,8 +500,8 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       workspace: workspacePath,
       name: intake.action.projectName
     });
-    const ask = withDatabase(workspacePath, (db) =>
-      createAskRequest(db, {
+    const ask = withDatabase(workspacePath, (db) => {
+      const ask = createAskRequest(db, {
         captureId: captureEnvelope.id,
         rawRequest: options.request,
         resolvedIntent: resolved.intentId,
@@ -504,8 +509,14 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         outputKind: resolved.outputKind,
         stewardshipJson: stewardshipJson(stewardship),
         status: "planned"
-      })
-    );
+      });
+      linkAskOutcomesToCapture(db, {
+        askRequestId: ask.id,
+        captureId: captureEnvelope.id,
+        workItemId: created.data.workItem.id
+      });
+      return ask;
+    });
     const workItem = withDatabase(workspacePath, (db) => getWorkItem(db, created.data.workItem.id));
     if (!workItem) {
       throw workItemNotFound(created.data.workItem.id);
@@ -706,6 +717,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
         sourceRef: options.sourceRef,
         facetTags: options.facetTags
       });
+      linkAskOutcomesToCapture(db, { askRequestId: ask.id, captureId: captureEnvelope.id, backBurnerItemId: backBurnerItem.id });
       return { ask, backBurnerItem };
     });
 
@@ -776,6 +788,7 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
           stewardship
         }
       });
+      linkAskOutcomesToCapture(db, { askRequestId: ask.id, captureId: captureEnvelope.id, reviewItemId: reviewItem.id });
       return { ask, reviewItem };
     });
 
@@ -896,6 +909,13 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
           reason: missingRepositoryPathMessage
         }
       });
+      linkAskOutcomesToCapture(db, {
+        askRequestId: ask.id,
+        captureId: captureEnvelope.id,
+        workItemId: initial.workItem.id,
+        planId: initial.plan.id,
+        reviewItemId: reviewItem.id
+      });
 
       return {
         ask,
@@ -1010,6 +1030,14 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
           expectedArtifact: resolved.expectedArtifact ?? initial.workItem.expected_artifact ?? "Planning Artifact"
         })
       : null;
+
+    linkAskOutcomesToCapture(db, {
+      askRequestId: ask.id,
+      captureId: captureEnvelope.id,
+      workItemId: initial.workItem.id,
+      planId: initial.plan.id,
+      reviewItemId: planningDecision?.id
+    });
 
     return {
       ask,

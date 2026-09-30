@@ -363,6 +363,9 @@ describe("Phase 0 data operations", () => {
       return (schema.slice(0, start) + schema.slice(end)).replace(
         ",\n  FOREIGN KEY (parent_work_item_id) REFERENCES work_items(id) ON DELETE SET NULL",
         ""
+      ).replace(
+        ",\n  FOREIGN KEY (capture_id) REFERENCES ask_capture_envelopes(id) ON DELETE SET NULL",
+        ""
       );
     }
 

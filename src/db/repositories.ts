@@ -374,6 +374,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
   const workItem: WorkItem = {
     id: createId("workItem"),
     project_id: input.projectId ?? null,
+    capture_id: null,
     milestone_id: input.milestoneId ?? null,
     title: required(input.title || titleFromRawInput(rawInput), "Action title"),
     raw_input: rawInput,
@@ -407,12 +408,12 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
 
   db.prepare(
     `INSERT INTO work_items (
-      id, project_id, milestone_id, title, raw_input, queue, work_classification,
+      id, project_id, milestone_id, capture_id, title, raw_input, queue, work_classification,
       next_action, expected_artifact, status, effort, clarification_status, gap_type,
       open_question, clarification_source, confidence, parent_work_item_id, doc_ref,
       execution_requirement_json, acceptance_criteria_json, created_at, updated_at
     ) VALUES (
-      @id, @project_id, @milestone_id, @title, @raw_input, @queue, @work_classification,
+      @id, @project_id, @milestone_id, @capture_id, @title, @raw_input, @queue, @work_classification,
       @next_action, @expected_artifact, @status, @effort, @clarification_status, @gap_type,
       @open_question, @clarification_source, @confidence, @parent_work_item_id, @doc_ref,
       @execution_requirement_json, @acceptance_criteria_json, @created_at, @updated_at
@@ -1394,6 +1395,7 @@ export function createExecutionPlan(db: Database.Database, input: CreateExecutio
     const plan: ExecutionPlan = {
       id: createId("executionPlan"),
       work_item_id: input.workItemId,
+      capture_id: null,
       status: validateExecutionPlanStatus("planned"),
       summary: required(input.summary, "Execution plan summary"),
       created_at: timestamp,
@@ -1401,8 +1403,8 @@ export function createExecutionPlan(db: Database.Database, input: CreateExecutio
     };
 
     db.prepare(
-      `INSERT INTO execution_plans (id, work_item_id, status, summary, created_at, updated_at)
-       VALUES (@id, @work_item_id, @status, @summary, @created_at, @updated_at)`
+      `INSERT INTO execution_plans (id, work_item_id, capture_id, status, summary, created_at, updated_at)
+       VALUES (@id, @work_item_id, @capture_id, @status, @summary, @created_at, @updated_at)`
     ).run(plan);
 
     for (const [index, step] of input.steps.entries()) {
@@ -1518,12 +1520,34 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
   return created;
 }
 
+/**
+ * Copies an Ask capture onto every first-order outcome it created. The request
+ * relationship remains the traversal source; these columns make each outcome
+ * independently auditable without inferring it from matching prose or time.
+ */
+export function linkAskOutcomesToCapture(db: Database.Database, input: {
+  askRequestId: string;
+  captureId: string;
+  workItemId?: string | null;
+  planId?: string | null;
+  reviewItemId?: string | null;
+  backBurnerItemId?: string | null;
+}): void {
+  db.prepare("UPDATE work_items SET capture_id = ? WHERE id = ? AND capture_id IS NULL").run(input.captureId, input.workItemId ?? null);
+  db.prepare("UPDATE execution_plans SET capture_id = ? WHERE id = ? AND capture_id IS NULL").run(input.captureId, input.planId ?? null);
+  db.prepare("UPDATE review_items SET capture_id = ? WHERE (ask_request_id = ? OR id = ?) AND capture_id IS NULL")
+    .run(input.captureId, input.askRequestId, input.reviewItemId ?? null);
+  db.prepare("UPDATE back_burner_items SET capture_id = ? WHERE (ask_request_id = ? OR id = ?) AND capture_id IS NULL")
+    .run(input.captureId, input.askRequestId, input.backBurnerItemId ?? null);
+}
+
 export function createReviewItem(db: Database.Database, input: CreateReviewItemInput): ReviewItemSummary {
   const timestamp = nowIso();
   const reviewItem: ReviewItem = {
     id: createId("reviewItem"),
     slug: nextReviewSlug(db),
     ask_request_id: input.askRequestId ?? null,
+    capture_id: null,
     work_item_id: input.workItemId ?? null,
     plan_id: input.planId ?? null,
     project_id: input.projectId ?? null,
@@ -1553,12 +1577,12 @@ export function createReviewItem(db: Database.Database, input: CreateReviewItemI
 
   db.prepare(
     `INSERT INTO review_items (
-      id, slug, ask_request_id, work_item_id, plan_id, project_id, artifact_id, codex_invocation_id, status, decision_needed,
+      id, slug, ask_request_id, capture_id, work_item_id, plan_id, project_id, artifact_id, codex_invocation_id, status, decision_needed,
       recommendation, source_input, proposed_action, resolved_intent, confidence_label,
       confidence, missing_fields, context_json, created_at, updated_at, decided_at,
       decision_note, resulting_ask_request_id
     ) VALUES (
-      @id, @slug, @ask_request_id, @work_item_id, @plan_id, @project_id, @artifact_id, @codex_invocation_id, @status, @decision_needed,
+      @id, @slug, @ask_request_id, @capture_id, @work_item_id, @plan_id, @project_id, @artifact_id, @codex_invocation_id, @status, @decision_needed,
       @recommendation, @source_input, @proposed_action, @resolved_intent, @confidence_label,
       @confidence, @missing_fields, @context_json, @created_at, @updated_at, @decided_at,
       @decision_note, @resulting_ask_request_id
@@ -1784,7 +1808,8 @@ export function createBackBurnerItem(
     project_id: input.projectId ?? null,
     source_ref: nullable(input.sourceRef),
     facet_tags_json: JSON.stringify(facetTags),
-    ask_request_id: input.askRequestId ?? null
+    ask_request_id: input.askRequestId ?? null,
+    capture_id: null
   };
 
   db.prepare(
@@ -1792,12 +1817,12 @@ export function createBackBurnerItem(
       id, original_input, ingress_source, classification, confidence, reason, status,
       suggested_next_step, created_at, updated_at, promoted_at, promoted_work_item_id,
       surface_kind, surface_date, surface_dependency_work_item_id, surface_dependency_status,
-      surface_predicate, project_id, source_ref, facet_tags_json, ask_request_id
+      surface_predicate, project_id, source_ref, facet_tags_json, ask_request_id, capture_id
     ) VALUES (
       @id, @original_input, @ingress_source, @classification, @confidence, @reason, @status,
       @suggested_next_step, @created_at, @updated_at, @promoted_at, @promoted_work_item_id,
       @surface_kind, @surface_date, @surface_dependency_work_item_id, @surface_dependency_status,
-      @surface_predicate, @project_id, @source_ref, @facet_tags_json, @ask_request_id
+      @surface_predicate, @project_id, @source_ref, @facet_tags_json, @ask_request_id, @capture_id
     )`
   ).run(item);
 

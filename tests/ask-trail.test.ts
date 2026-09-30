@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildProgram } from "../src/cli.js";
 import { runAskCommand } from "../src/commands/ask.js";
-import { renderAskTrailSuccess, runAskTrailCommand } from "../src/commands/askTrail.js";
+import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "../src/commands/askTrail.js";
 import { runBackBurnerPromoteCommand } from "../src/commands/backBurner.js";
 import { runReviewApproveCommand } from "../src/commands/review.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -18,7 +19,7 @@ afterEach(() => {
 });
 
 // #591: the capture id the operator is handed must lead to whatever the Ask became.
-describe("arcadia ask-trail", () => {
+describe("Arcadia Ask traceability", () => {
   it("traces a planned Ask from its capture id, request id, or ask id", () => {
     const { workspace, projectId } = workspaceWithArcadia();
     const asked = runAskCommand({
@@ -30,7 +31,7 @@ describe("arcadia ask-trail", () => {
     expect(workItemId).toBeTruthy();
 
     for (const id of [capture.id, capture.requestId, asked.data.ask?.id ?? ""]) {
-      const trail = runAskTrailCommand({ workspace, id }).data;
+      const trail = runAskShowCommand({ workspace, id }).data;
       expect(trail.capture?.id, id).toBe(capture.id);
       expect(trail.asks).toHaveLength(1);
       expect(trail.asks[0].executionPath).toBe("Plan First");
@@ -40,8 +41,37 @@ describe("arcadia ask-trail", () => {
       );
     }
     expect(withDatabase(workspace, (db) =>
-      db.prepare("SELECT project_id FROM work_items WHERE id = ?").get(workItemId)
-    )).toEqual({ project_id: projectId });
+      db.prepare("SELECT project_id, capture_id FROM work_items WHERE id = ?").get(workItemId)
+    )).toEqual({ project_id: projectId, capture_id: capture.id });
+    expect(withDatabase(workspace, (db) =>
+      db.prepare("SELECT capture_id FROM execution_plans WHERE work_item_id = ?").get(workItemId)
+    )).toEqual({ capture_id: capture.id });
+
+    // Creation paths may persist their outcome directly from the capture before
+    // (or without) storing the convenience pointer on ask_requests. The receipt
+    // must remain traceable through that durable capture link.
+    withDatabase(workspace, (db) =>
+      db.prepare("UPDATE ask_requests SET work_item_id = NULL, plan_id = NULL WHERE capture_id = ?").run(capture.id)
+    );
+    const directlyLinked = runAskShowCommand({ workspace, id: capture.id }).data.asks[0].outcomes;
+    expect(directlyLinked).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "action", id: workItemId, projectName: "Arcadia" }),
+      expect.objectContaining({ kind: "plan", status: "planned" })
+    ]));
+  });
+
+  it("makes ask show the canonical CLI command while retaining ask-trail as its compatibility alias", () => {
+    const ask = buildProgram().commands.find((command) => command.name() === "ask");
+    const show = ask?.commands.find((command) => command.name() === "show");
+    expect(show?.helpInformation()).toContain("capture_… id from the receipt");
+  });
+
+  it("puts a receipt link to the read-only dashboard Ask trace beside every capture receipt", () => {
+    const pageSource = readFileSync(path.join(process.cwd(), "apps/dashboard/app/capture/page.tsx"), "utf8");
+    const routeSource = readFileSync(path.join(process.cwd(), "apps/dashboard/app/api/ask/show/route.ts"), "utf8");
+    expect(pageSource).toContain("/api/ask/show?id=");
+    expect(pageSource).toContain("Open Ask trace");
+    expect(routeSource).toContain("showAsk({ id })");
   });
 
   it("follows a shelved Ask to its Back Burner item and on to the Action it was promoted to", () => {
@@ -52,6 +82,9 @@ describe("arcadia ask-trail", () => {
 
     const shelved = runAskTrailCommand({ workspace, id: asked.data.captureEnvelope.id }).data;
     expect(shelved.asks[0].outcomes).toEqual([expect.objectContaining({ kind: "back_burner_item", id: itemId })]);
+    expect(withDatabase(workspace, (db) =>
+      db.prepare("SELECT capture_id FROM back_burner_items WHERE id = ?").get(itemId)
+    )).toEqual({ capture_id: asked.data.captureEnvelope.id });
 
     const promoted = runBackBurnerPromoteCommand({ workspace, id: itemId, project: projectId });
     const trail = runAskTrailCommand({ workspace, id: asked.data.captureEnvelope.id });
@@ -69,6 +102,9 @@ describe("arcadia ask-trail", () => {
     expect(trail.asks[0].outcomes).toContainEqual(
       expect.objectContaining({ kind: "decision", id: asked.data.reviewItemId })
     );
+    expect(withDatabase(workspace, (db) =>
+      db.prepare("SELECT capture_id FROM review_items WHERE id = ?").get(asked.data.reviewItemId)
+    )).toEqual({ capture_id: asked.data.captureEnvelope.id });
   });
 
   it("follows an approved Decision to the Action its resulting Ask created", () => {

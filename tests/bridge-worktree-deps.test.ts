@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -21,6 +22,26 @@ afterEach(() => {
 });
 
 describe("bridge-worktree-deps", () => {
+  it("does nothing when the target repository has no JavaScript package", () => {
+    const { worktree } = createFixture({ packageJson: false });
+
+    const output = run(worktree);
+
+    expect(output).toContain("No package.json; no dependency bridge is needed.");
+  });
+
+  it("runs from an installed broker release when the target repo has no Arcadia scripts", () => {
+    const { worktree } = createFixture();
+    const releaseHelper = path.join(path.dirname(worktree), "broker-release", "scripts", "bridge-worktree-deps.mjs");
+    mkdirSync(path.dirname(releaseHelper), { recursive: true });
+    copyFileSync(SCRIPT, releaseHelper);
+
+    const output = run(worktree, releaseHelper);
+
+    expect(output).toContain("Bridged");
+    expect(realpathSync(path.join(worktree, "apps/dashboard/node_modules/@pmark/arcadia"))).toBe(path.resolve(worktree));
+  });
+
   it("retargets a workspace self-reference at the worktree instead of the main checkout's stale dist", () => {
     const { mainCheckout, worktree } = createFixture();
 
@@ -66,11 +87,11 @@ describe("bridge-worktree-deps", () => {
   });
 });
 
-function run(worktree: string): string {
-  return execFileSync(process.execPath, [SCRIPT], { cwd: worktree, encoding: "utf8" });
+function run(worktree: string, helper: string = SCRIPT): string {
+  return execFileSync(process.execPath, [helper], { cwd: worktree, encoding: "utf8" });
 }
 
-function createFixture(): { mainCheckout: string; worktree: string } {
+function createFixture({ packageJson = true }: { packageJson?: boolean } = {}): { mainCheckout: string; worktree: string } {
   // realpathSync normalizes macOS's /tmp -> /private/tmp symlink so later
   // comparisons against realpathSync() results on the bridged output agree.
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-bridge-")));
@@ -83,10 +104,14 @@ function createFixture(): { mainCheckout: string; worktree: string } {
   git(mainCheckout, ["init", "--initial-branch=main"]);
   git(mainCheckout, ["config", "user.email", "test@example.com"]);
   git(mainCheckout, ["config", "user.name", "Test"]);
-  writeFileSync(path.join(mainCheckout, "package.json"), JSON.stringify({ name: "@pmark/arcadia" }));
-  writeFileSync(path.join(mainCheckout, "pnpm-workspace.yaml"), "packages:\n  - apps/dashboard\n");
+  if (packageJson) {
+    writeFileSync(path.join(mainCheckout, "package.json"), JSON.stringify({ name: "@pmark/arcadia" }));
+    writeFileSync(path.join(mainCheckout, "pnpm-workspace.yaml"), "packages:\n  - apps/dashboard\n");
+  }
   git(mainCheckout, ["add", "-A"]);
-  git(mainCheckout, ["commit", "-m", "init"]);
+  git(mainCheckout, ["commit", "--allow-empty", "-m", "init"]);
+
+  if (!packageJson) return createWorktree(mainCheckout, worktreeParent);
 
   // Root node_modules: an ordinary dependency, no self-reference.
   mkdirSync(path.join(mainCheckout, "node_modules", "left-pad"), { recursive: true });
@@ -106,9 +131,12 @@ function createFixture(): { mainCheckout: string; worktree: string } {
     path.join(mainCheckout, "apps", "dashboard", "node_modules", "@pmark", "arcadia")
   );
 
+  return createWorktree(mainCheckout, worktreeParent);
+}
+
+function createWorktree(mainCheckout: string, worktreeParent: string): { mainCheckout: string; worktree: string } {
   const worktree = path.join(worktreeParent, "arcadia");
   git(mainCheckout, ["worktree", "add", "-b", "candidate", worktree]);
-
   return { mainCheckout, worktree };
 }
 

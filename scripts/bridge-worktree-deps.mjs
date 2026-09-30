@@ -78,6 +78,12 @@ if (path.resolve(worktree) === path.resolve(mainCheckout)) {
   );
 }
 
+if (!existsSync(path.join(mainCheckout, "package.json"))) {
+  console.log(`Main checkout: ${mainCheckout}`);
+  console.log("No package.json; no dependency bridge is needed.");
+  process.exit(0);
+}
+
 /** Every `node_modules` the main checkout has, without descending into one. */
 function findTrees(directory, depth = 0) {
   const found = [];
