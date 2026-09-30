@@ -117,7 +117,8 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
   const outcomes: AskTrailOutcome[] = [];
 
   if (ask.work_item_id) outcomes.push(...actionOutcome(db, ask.work_item_id));
-  if (ask.plan_id) outcomes.push({ kind: "plan", id: ask.plan_id, status: null, summary: null, projectName: null });
+  if (ask.plan_id) outcomes.push(...planOutcome(db, ask.plan_id));
+  if (ask.capture_id) outcomes.push(...captureOutcomes(db, ask.capture_id));
 
   const decisions = db.prepare(`
     SELECT review.id, review.status, review.decision_needed, project.name AS project_name,
@@ -158,8 +159,22 @@ function traceAsk(db: Database.Database, ask: AskRow): AskTrailAsk {
     executionPath: stewardship.recommendedExecutionPath ?? null,
     reason: stewardship.classificationReason ?? null,
     projectName: stewardship.relatedProject?.name ?? null,
-    outcomes
+    outcomes: outcomes.filter((outcome, index) => outcomes.findIndex((candidate) => candidate.kind === outcome.kind && candidate.id === outcome.id) === index)
   };
+}
+
+function captureOutcomes(db: Database.Database, captureId: string): AskTrailOutcome[] {
+  const outcomes: AskTrailOutcome[] = [];
+  for (const row of db.prepare("SELECT id FROM work_items WHERE capture_id = ?").all(captureId) as Array<{ id: string }>) outcomes.push(...actionOutcome(db, row.id));
+  for (const row of db.prepare("SELECT id FROM execution_plans WHERE capture_id = ?").all(captureId) as Array<{ id: string }>) outcomes.push(...planOutcome(db, row.id));
+  for (const row of db.prepare("SELECT review.id, review.status, review.decision_needed, project.name AS project_name FROM review_items review LEFT JOIN projects project ON project.id = review.project_id WHERE review.capture_id = ?").all(captureId) as Array<{ id: string; status: string; decision_needed: string; project_name: string | null }>) outcomes.push({ kind: "decision", id: row.id, status: row.status, summary: row.decision_needed, projectName: row.project_name });
+  for (const row of db.prepare("SELECT item.id, item.status, item.classification, project.name AS project_name FROM back_burner_items item LEFT JOIN projects project ON project.id = item.project_id WHERE item.capture_id = ?").all(captureId) as Array<{ id: string; status: string; classification: string; project_name: string | null }>) outcomes.push({ kind: "back_burner_item", id: row.id, status: row.status, summary: row.classification, projectName: row.project_name });
+  return outcomes;
+}
+
+function planOutcome(db: Database.Database, planId: string): AskTrailOutcome[] {
+  const row = db.prepare("SELECT id, status, summary FROM execution_plans WHERE id = ?").get(planId) as { id: string; status: string; summary: string } | undefined;
+  return row ? [{ kind: "plan", id: row.id, status: row.status, summary: row.summary, projectName: null }] : [];
 }
 
 function actionOutcome(db: Database.Database, workItemId: string): AskTrailOutcome[] {

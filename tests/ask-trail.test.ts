@@ -46,6 +46,18 @@ describe("Arcadia Ask traceability", () => {
     expect(withDatabase(workspace, (db) =>
       db.prepare("SELECT capture_id FROM execution_plans WHERE work_item_id = ?").get(workItemId)
     )).toEqual({ capture_id: capture.id });
+
+    // Creation paths may persist their outcome directly from the capture before
+    // (or without) storing the convenience pointer on ask_requests. The receipt
+    // must remain traceable through that durable capture link.
+    withDatabase(workspace, (db) =>
+      db.prepare("UPDATE ask_requests SET work_item_id = NULL, plan_id = NULL WHERE capture_id = ?").run(capture.id)
+    );
+    const directlyLinked = runAskShowCommand({ workspace, id: capture.id }).data.asks[0].outcomes;
+    expect(directlyLinked).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "action", id: workItemId, projectName: "Arcadia" }),
+      expect.objectContaining({ kind: "plan", status: "planned" })
+    ]));
   });
 
   it("makes ask show the canonical CLI command while retaining ask-trail as its compatibility alias", () => {
