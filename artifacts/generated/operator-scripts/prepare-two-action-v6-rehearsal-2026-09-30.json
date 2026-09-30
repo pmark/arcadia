@@ -1,0 +1,16 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "prepare-two-action-v6-rehearsal-2026-09-30",
+  "title": "Prepare the v6 remaining-stages rehearsal fixture (no Grant)",
+  "script": "prepare-two-action-v6-rehearsal-2026-09-30.sh",
+  "repeatable": true,
+  "problem": "The remaining prove-two-action-unattended-production stages need a fresh, isolated fixture rather than reuse of v5 evidence or an existing live policy.",
+  "desired_effect": "Create or validate the v6 fixture, register and sync it, seed only its first build packet for codex-cli, and record the exact inactive policy revision that the separate Grant must pin. It leaves the Grant unpressed.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/prepare-two-action-v6-rehearsal-2026-09-30.sh run",
+  "authority": {
+    "does": ["Creates or reuses only ~/tmp/arcadia-two-action-rehearsal-v6", "Registers and synchronizes only the v6 fixture Project", "Seeds the first fixture Action build packet for codex-cli", "Records an inactive policy revision for the later Grant"],
+    "never_does": ["Never previews or activates production", "Never starts, stops, or restarts the worker", "Never launches, terminates, or resumes a Session", "Never presses the paired Grant, settles completion, merges, deploys, or uses credentials"]
+  },
+  "success": {"effect": "A clean v6 fixture and receipt exist; the paired Grant has a concrete revision to verify but has not run.", "next": "Review morning-runbook.md, then use the separate one-shot Grant only when ready to begin the live proof."},
+  "failure": {"effect": "No production policy, worker, or Session changed; a timestamped failure handoff identifies the failed precondition.", "next": "Correct the named local fixture or inactive-policy condition and rerun preparation."}
+}
