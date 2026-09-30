@@ -410,15 +410,14 @@ export function observeReconcileSuccess(ctx: AlertContext): void {
 export function observeRepairBudget(ctx: AlertContext, launch: ManagedProductionLaunchAttempt | null): void {
   const { db, projectSlug } = ctx;
   const open = db
-    .prepare("SELECT action_key FROM production_red_alerts WHERE project_slug = ? AND trigger = 'repair_budget_repeat' AND status = 'open'")
-    .all(projectSlug) as Array<{ action_key: string }>;
+    .prepare("SELECT id, action_key FROM production_red_alerts WHERE project_slug = ? AND trigger = 'repair_budget_repeat' AND status = 'open'")
+    .all(projectSlug) as Array<{ id: string; action_key: string }>;
   for (const row of open) {
     const attempts = db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get(row.action_key) as
       | { attempts: number }
       | undefined;
     if (!attempts || attempts.attempts < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
-      clearRedAlerts(db, { projectSlug, trigger: "repair_budget_repeat", now: ctx.now });
-      break;
+      db.prepare("UPDATE production_red_alerts SET status = 'cleared', cleared_at = ? WHERE id = ?").run(ctx.now.toISOString(), row.id);
     }
   }
   if (!launch?.actionKey || (launch.outcome !== "failed" && launch.outcome !== "repair_budget_exhausted")) return;
