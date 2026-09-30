@@ -1159,3 +1159,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Agent Ask keep-provider-cap-before-dashboard-2026-09-30
+
+- **Did:** Record the operator's priority choice: keep bootstrap-managed-production-to-build-flight-deck active and finish limit-sessions-per-provider-account first; the accepted three-slice phone dashboard Plan remains inactive. Reconsider dashboard activation after that Action is complete, through an explicit governed choice; do not auto-activate or reorder the queue.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
