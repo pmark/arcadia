@@ -65,7 +65,7 @@ function makeDeps(overrides: { finding?: unknown; tokensUsed?: number; existingI
     return { finding: overrides.finding ?? goodFinding, tokensUsed: overrides.tokensUsed ?? 900 };
   });
   const ghCalls: string[][] = [];
-  const gh: GhRunner = (args) => {
+  const gh: GhRunner = async (args) => {
     ghCalls.push(args);
     if (args[1] === "list") return { status: 0, stdout: overrides.existingIssues ?? "[]", stderr: "" };
     if (args[1] === "create") return { status: 0, stdout: "https://github.com/pmark/arcadia/issues/901\n", stderr: "" };

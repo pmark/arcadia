@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import type Database from "better-sqlite3";
 import { runAgentAskDraftCommand } from "../commands/agentAsk.js";
 import { openDatabase } from "../db/connection.js";
@@ -60,7 +60,7 @@ export interface GhResult {
   stdout: string;
   stderr: string;
 }
-export type GhRunner = (args: string[]) => GhResult;
+export type GhRunner = (args: string[]) => Promise<GhResult>;
 export type AskDrafter = (request: string) => { path: string };
 
 export interface DiagnosisDeps {
@@ -202,7 +202,7 @@ function issueMarker(alert: RedAlert): string {
 }
 
 /** File the alert's bug Issue, or comment on the one that already carries its marker. */
-function fileIssue(gh: GhRunner, repo: string, alert: RedAlert, finding: DiagnosisFinding, gateFiles: string[]): string {
+async function fileIssue(gh: GhRunner, repo: string, alert: RedAlert, finding: DiagnosisFinding, gateFiles: string[]): Promise<string> {
   const marker = issueMarker(alert);
   const body = [
     `Automated diagnosis of red alert \`${alert.id}\` (${alert.trigger}) on ${alert.actionKey ?? alert.projectSlug}.`,
@@ -218,18 +218,18 @@ function fileIssue(gh: GhRunner, repo: string, alert: RedAlert, finding: Diagnos
     `Alert evidence: ${alert.evidencePath}`,
     `<!-- ${marker} -->`
   ].join("\n");
-  const found = ghOk(gh, ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url", "--limit", "1"]);
+  const found = await ghOk(gh, ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url", "--limit", "1"]);
   const existing = (safeJson(found.stdout) as Array<{ number: number; url: string }> | null)?.[0];
   if (existing) {
-    ghOk(gh, ["issue", "comment", String(existing.number), "--repo", repo, "--body", body]);
+    await ghOk(gh, ["issue", "comment", String(existing.number), "--repo", repo, "--body", body]);
     return existing.url;
   }
-  const created = ghOk(gh, ["issue", "create", "--repo", repo, "--label", "bug", "--title", `Red alert ${alert.id}: ${finding.cause!.slice(0, 80)}`, "--body", body]);
+  const created = await ghOk(gh, ["issue", "create", "--repo", repo, "--label", "bug", "--title", `Red alert ${alert.id}: ${finding.cause!.slice(0, 80)}`, "--body", body]);
   return created.stdout.trim().split("\n").pop() ?? "";
 }
 
-function ghOk(gh: GhRunner, args: string[]): GhResult {
-  const result = gh(args);
+async function ghOk(gh: GhRunner, args: string[]): Promise<GhResult> {
+  const result = await gh(args);
   if (result.status !== 0) throw new Error(`gh ${args.slice(0, 2).join(" ")} failed: ${result.stderr.trim() || result.stdout.trim()}`);
   return result;
 }
@@ -339,7 +339,7 @@ export async function diagnoseRedAlert(
   const gateFiles = safetyGateFilesTouched(finding.proposedFix.files);
   let issueUrl: string | undefined;
   try {
-    issueUrl = fileIssue(deps.gh, settings.issueRepo!, alert, finding, gateFiles);
+    issueUrl = await fileIssue(deps.gh, settings.issueRepo!, alert, finding, gateFiles);
     const askPath = draftFixAsk(alert, finding, issueUrl, gateFiles, deps.draftAsk);
     return gateFiles.length > 0
       ? finish("needs_operator", { note: `Fix touches safety-gate files (${gateFiles.join(", ")}); stops at an open pull request for the operator and is never auto-merged.`, tokensUsed: result.tokensUsed, issueUrl, askPath, gateFiles, route })
@@ -416,8 +416,8 @@ export function createIntelligenceDiagnosisModel(db: Database.Database, workspac
         executionPolicy: { allowPaidUsage: false, maxRetries: 0 }
       };
       const { job: submitted } = await submitIntelligenceRequest(repository, request);
-      const finished = await worker.runOnce();
-      const job = finished?.id === submitted.id ? finished : await repository.findById(submitted.id);
+      const finished = await worker.runJob(submitted.id);
+      const job = finished ?? (await repository.findById(submitted.id));
       if (!job || job.status !== "completed") {
         throw new Error(`Intelligence job did not complete (${job?.status ?? "missing"}): ${job?.error?.message ?? "no detail"}`);
       }
@@ -431,10 +431,13 @@ export function createIntelligenceDiagnosisModel(db: Database.Database, workspac
   };
 }
 
-export const defaultGhRunner: GhRunner = (args) => {
-  const result = spawnSync("gh", args, { encoding: "utf8", timeout: 60_000 });
-  return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
-};
+export const defaultGhRunner: GhRunner = (args) =>
+  new Promise((resolve) => {
+    execFile("gh", args, { encoding: "utf8", timeout: 60_000 }, (error, stdout, stderr) => {
+      const code = (error as { code?: unknown } | null)?.code;
+      resolve({ status: error ? (typeof code === "number" ? code : 1) : 0, stdout, stderr: stderr || (error ? error.message : "") });
+    });
+  });
 
 /** Drafts into the workspace's own red-alerts folder, never a Project checkout, so no repository is dirtied. */
 export function createWorkspaceAskDrafter(workspacePath: string): AskDrafter {
