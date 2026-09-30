@@ -62,14 +62,14 @@ def command(args, timeout=60):
 
 def action_block(path):
     text = path.read_text()
-    marker = "  - id: close-ask-traceability-and-cli-portability-gaps\\n"
+    marker = "  - id: close-ask-traceability-and-cli-portability-gaps\n"
     if text.count(marker) != 1:
         raise RuntimeError("the reviewed Action is missing or duplicated")
-    block = text.split(marker, 1)[1].split("\\n  - id: ", 1)[0]
+    block = text.split(marker, 1)[1].split("\n  - id: ", 1)[0]
     return block
 
 def criteria(block):
-    marker = "    acceptance_criteria:\\n"
+    marker = "    acceptance_criteria:\n"
     if marker not in block:
         raise RuntimeError("the reviewed Action has no acceptance criteria")
     section = block.split(marker, 1)[1]
@@ -104,7 +104,7 @@ try:
     if "active_plan: bootstrap-managed-production-to-build-flight-deck" not in project.read_text() or "current_action: prove-two-action-unattended-production" not in project.read_text():
         raise RuntimeError("project pointer changed; do not apply this stale, bounded amendment")
     block = action_block(repo / "docs/plans/bootstrap-managed-production-to-build-flight-deck.md")
-    if "    status: open\\n" not in block or "    responsibility: agent\\n" not in block:
+    if "    status: open\n" not in block or "    responsibility: agent\n" not in block:
         raise RuntimeError("reviewed Action no longer has its expected open agent state")
     current = criteria(block)
     if current not in (original, amended):
