@@ -1,0 +1,29 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-phone-dashboard-plan-2026-09-29-v2",
+  "title": "Accept the three-slice phone dashboard draft Plan",
+  "script": "accept-phone-dashboard-plan-2026-09-29-v2.sh",
+  "repeatable": false,
+  "problem": "The architecture choices are recorded in Decision 0077, but the replacement three-Action Plan needs operator acceptance. It must remain inactive until queue placement and activation are chosen separately.",
+  "desired_effect": "Accept exactly the reviewed v2 proposal as an inactive Plan with Agent responsibility, preserve its receipt, and publish only its candidate branch for PR review.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-phone-dashboard-plan-2026-09-29-v2.sh run",
+  "authority": {
+    "does": [
+      "Validate the exact candidate repository, clean branch, open PR 821 and SHA-256 of the reviewed Ask input",
+      "Apply only settlement accept-phone-dashboard-plan-2026-09-29-v2 against preview 124b628b9f8e396e9e4365310ca7f82ed8f7dc601ae57639f439d647035108c5; Arcadia commits the inactive Plan on the candidate branch",
+      "Push only codex/runs-information-architecture, with no force, and write a timestamped log, canonical settlement receipt and failure handoff"
+    ],
+    "never_does": [
+      "Activate a Plan, change the current Action or queue order, launch production or approve another proposal or Decision",
+      "Merge a PR, deploy, push main, reconcile Git, discard changes, expand credentials or grant spend"
+    ]
+  },
+  "success": {
+    "effect": "The three-Action Plan is accepted but inactive, and its settlement is published on the candidate branch.",
+    "next": "Have the agent refresh the PR's CodeRabbit and required checks. Choose activation and queue placement separately before dispatching slice 1."
+  },
+  "failure": {
+    "effect": "A stale or changed candidate/proposal refuses. A settlement that applied before a push failure retains its receipt; retry replays the same settlement key and retries only publication.",
+    "next": "Ask the agent to inspect run.log, failure-handoff.txt and settlement-receipt.json, preserve any applied record, refresh stale authority and retry only while accepting this exact inactive Plan remains intended."
+  }
+}

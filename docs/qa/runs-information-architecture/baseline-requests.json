@@ -1,0 +1,24 @@
+{
+  "revision": "3d03d1d75",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "method": "Cold direct navigation in an isolated E2E workspace; record API requests issued before the first poll. No mutations. Source budget comparison, not live Tailscale latency.",
+  "requests": {
+    "/runs": [
+      "/api/approvals",
+      "/api/operator-script"
+    ],
+    "/review": [
+      "/api/snapshot"
+    ],
+    "/work-queue": [
+      "/api/work-queue"
+    ],
+    "/flight-deck": [
+      "/api/work-queue",
+      "/api/snapshot"
+    ]
+  }
+}

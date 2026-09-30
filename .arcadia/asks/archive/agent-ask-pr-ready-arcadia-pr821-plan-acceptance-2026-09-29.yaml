@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-ready-arcadia-pr821-plan-acceptance-2026-09-29","project":"arcadia","intent":"log","desired_result":"The phone dashboard architecture passed CodeRabbit and CI; it carries Decision 0077 and needs your merge and separate draft-Plan acceptance. The bounded acceptance button is available on Runs: https://github.com/pmark/arcadia/pull/821"}

@@ -69,6 +69,19 @@ backs off — never faster than once every two minutes — while the snapshot
 source is unreachable, always labeling the view as showing the last known
 state rather than silently going quiet.
 
+The phone dashboard redesign is a prepared three-slice draft; the new
+`/actions` and judgment item routes are not live yet. Its
+[information architecture](docs/proposals/runs-page-information-architecture.md)
+keeps Flight Deck standalone and Production On/Off visible on Runs. The
+**Accept the three-slice phone dashboard draft Plan** operator action on Runs
+accepts only that exact reviewed draft as inactive, preserves its receipt and
+pushes the candidate branch for renewed PR checks. It does not activate work,
+reorder the queue or turn production on. After acceptance, have the agent
+refresh the PR checks; choose activation and queue placement separately before
+starting the first build slice. Use this acceptance action while its planning
+PR is still open; accepting first lets the Plan itself ship in that PR after
+renewed checks. The action refuses after the PR closes.
+
 Open **Path** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/path> (on this Mac:
 <http://127.0.0.1:3020/path>) for the other question Now deliberately refuses: not
 "what do I do in the next hour?" but "what is actually left between here and the
