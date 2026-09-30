@@ -1784,6 +1784,11 @@ tip. Its reflog moves with it, so `git reflog show
 refs/arcadia/tidy/<run>/heads/<branch>` shows the branch's full history, not
 just a "created" line.
 
+Older tidy receipts may name the pre-quarantine recovery tag
+`archive/tidy/<sha>` — never `archive/<branch>`. Current tidy does not create
+archive tags: the run-scoped quarantine ref above is the authoritative restore
+location, and `arcadia tidy undo <run>` is the safe recovery command.
+
 **A worktree** is quarantined by first creating
 `refs/arcadia/tidy/<run>/worktrees/<id>` pinned at its HEAD commit — this is
 what keeps that commit alive once its admin directory moves out of the
