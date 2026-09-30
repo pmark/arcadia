@@ -2700,7 +2700,7 @@ actions:
     references: []
   - id: define-grant-operator-action-pattern
     title: Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Document the Grant pattern and add a grant tag that /runs and the script contract understand, without breaking existing descriptors.
