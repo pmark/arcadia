@@ -1,6 +1,7 @@
 {
   "schema": "arcadia-operator-script-v1",
   "id": "grant-production-two-action-v6-remaining-stages-2026-09-30",
+  "kind": "grant",
   "title": "Grant v6 remaining-stage rehearsal (split, Off, restart; 24h)",
   "script": "grant-production-two-action-v6-remaining-stages-2026-09-30.sh",
   "repeatable": false,

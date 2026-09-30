@@ -3,6 +3,8 @@ import { validatePlanAmendmentInput, type PlanAmendmentInput } from "./planAmend
 export interface OperatorScriptDescriptor {
   schema: "arcadia-operator-script-v1";
   id: string;
+  /** Optional presentation and audit tag for a bounded authority Grant. */
+  kind?: "grant";
   title: string;
   script: string;
   problem: string;
@@ -36,7 +38,8 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
   const d = value as OperatorScriptDescriptor;
   if (!slug.test(id) || d.schema !== "arcadia-operator-script-v1" || d.id !== id || d.script !== `${id}.sh` ||
       ![d.title, d.problem, d.desired_effect, d.success?.effect, d.success?.next, d.failure?.effect, d.failure?.next].every(text) ||
-      !list(d.authority?.does) || !list(d.authority?.never_does) || (d.repeatable !== undefined && typeof d.repeatable !== "boolean")) {
+      !list(d.authority?.does) || !list(d.authority?.never_does) || (d.repeatable !== undefined && typeof d.repeatable !== "boolean") ||
+      (d.kind !== undefined && d.kind !== "grant")) {
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
   if (d.planAmendment !== undefined) {
