@@ -31,7 +31,11 @@ Validation on 2026-09-30:
 - Full candidate library: 4 checked, 0 failures. Checker reads files only.
 - Core/Discord build, lint/typecheck and Dashboard build passed.
 - Preservation self-check passed (1,431 files); `git diff --check` passed.
-- Complete unit-suite and current-head CodeRabbit/CI remain integration gates.
+- Full local suite: 2,607 passed, 18 skipped, 3 failures. The instruction-placement
+  failure was repaired and its 22-case file passed. The two existing CLI tests
+  timed out at 45 seconds under full-suite load; both passed unchanged in an
+  isolated 11.23-second run. Recurrence recorded on issue #452.
+- Current-head CodeRabbit and full sharded CI remain integration gates.
 
 Operator QA (same procedure for end users):
 
