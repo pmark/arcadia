@@ -14,14 +14,19 @@ const planPath = path.join(
 );
 
 describe("Ask traceability scope-repair operator script", () => {
-  it("finds the exact current Action block and parses its acceptance criteria without running the action", () => {
+  function embeddedPython(): string {
     const script = readFileSync(scriptPath, "utf8");
     const python = script.match(/<<'PY'[^\n]*\n([\s\S]*?)\nPY\n/)?.[1];
     expect(python).toBeDefined();
+    return python!;
+  }
 
-    const definitionsEnd = python!.indexOf("\ntry:\n");
+  it("finds the exact current Action block and parses its acceptance criteria without running the action", () => {
+    const python = embeddedPython();
+
+    const definitionsEnd = python.indexOf("\ntry:\n");
     expect(definitionsEnd).toBeGreaterThan(0);
-    const validation = python!.slice(0, definitionsEnd)
+    const validation = python.slice(0, definitionsEnd)
       + "\nblock = action_block(pathlib.Path(sys.argv[3]))\n"
       + "print(json.dumps(criteria(block)))\n";
     const result = spawnSync("python3", ["-c", validation, "unused-library", "unused-run-dir", planPath], {
@@ -33,5 +38,19 @@ describe("Ask traceability scope-repair operator script", () => {
       "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced.",
       "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
     ]);
+  });
+
+  it("settles the Plan amendment without an Action-only responsibility while retaining operator apply authority", () => {
+    const settlementInvocation = embeddedPython().match(
+      /output = command\(\["mise", "exec", "--", "pnpm", "-s", "arcadia", "agent-ask", "settle",[\s\S]*?\], timeout=300\)/
+    )?.[0];
+
+    expect(settlementInvocation).toBeDefined();
+    expect(settlementInvocation).not.toContain('"--responsibility"');
+    expect(settlementInvocation).toContain('"--proposal", proposal');
+    expect(settlementInvocation).toContain('"--request-id", settlement');
+    expect(settlementInvocation).toContain('"--disposition", "accepted"');
+    expect(settlementInvocation).toContain('"--preview", fingerprint');
+    expect(settlementInvocation).toContain('"--operator", "--apply", "--json"');
   });
 });
