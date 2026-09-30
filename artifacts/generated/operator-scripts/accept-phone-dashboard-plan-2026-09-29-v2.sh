@@ -40,6 +40,10 @@ try:
         raise RuntimeError("Candidate branch changed; do not accept on another branch.")
     if command(["git", "remote", "get-url", "origin"]).strip() != "https://github.com/pmark/arcadia.git":
         raise RuntimeError("Candidate repository changed.")
+    pr = json.loads(command(["gh", "pr", "view", "821", "--repo", "pmark/arcadia",
+                            "--json", "state,headRefName"]))
+    if pr.get("state") != "OPEN" or pr.get("headRefName") != branch:
+        raise RuntimeError("PR 821 is no longer open on this candidate; ask the agent to prepare a new reviewed acceptance path.")
     if command(["git", "status", "--porcelain"]).strip():
         raise RuntimeError("Candidate is dirty; preserve and review its changes before retrying.")
     files = [root / ".arcadia/asks" / ask, root / ".arcadia/asks/archive" / ask]
@@ -88,4 +92,3 @@ PY
     exit 64
     ;;
 esac
-
