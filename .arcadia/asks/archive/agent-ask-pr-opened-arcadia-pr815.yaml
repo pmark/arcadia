@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr815","project":"arcadia","intent":"log","desired_result":"Red alerts are coming: the worker tick now raises one deduplicated alert with evidence when production hits a stop-the-line failure. https://github.com/pmark/arcadia/pull/815"}
