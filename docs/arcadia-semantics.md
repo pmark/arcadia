@@ -150,6 +150,15 @@ clears when the failure resolves. Each new alert posts once to the configured
 notification channel, and `arcadia production status` lists open Red Alerts
 before every other section.
 
+Detection makes no model call. An optional, workspace-flagged diagnosis
+(`redAlertDiagnosis.enabled`, off by default) runs at most once per alert
+episode, within a declared token budget, through the Intelligence service only:
+it files or updates one bug Issue, drafts (never settles) a fix Action Ask, and
+records its outcome (`proposed`, `needs_operator`, `budget_exceeded`,
+`no_cause`, `failed`), route and budget on the alert. It never retries, edits
+code, or merges, and a fix touching the concurrency gate, admission policy,
+approval boundaries or credentials is `needs_operator`.
+
 ### Status
 
 Status describes the lifecycle state of a concept.

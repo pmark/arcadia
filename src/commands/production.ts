@@ -40,6 +40,7 @@ import {
   type OperatorEscalation
 } from "../production/tick.js";
 import { listOpenRedAlerts, type RedAlert } from "../production/redAlerts.js";
+import { listRedAlertDiagnoses, type RedAlertDiagnosis } from "../production/redAlertDiagnosis.js";
 
 export interface ProductionStatusOptions {
   workspace: string;
@@ -99,6 +100,8 @@ export interface ProductionStatusData {
   operatorEscalations: OperatorEscalation[];
   /** Open red alerts (Stop the line failures), oldest first. Rendered before every other section. */
   redAlerts: RedAlert[];
+  /** The one bounded diagnosis per alert episode, when one ran. */
+  redAlertDiagnoses?: RedAlertDiagnosis[];
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
   /** `null` only when no scope is active to gate; Off always reports `null`. */
@@ -140,6 +143,7 @@ export function runProductionStatusCommand(
       launchBlockers: listLaunchBlockers(db),
       operatorEscalations: listOperatorEscalations(db),
       redAlerts: listOpenRedAlerts(db),
+      redAlertDiagnoses: listRedAlertDiagnoses(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
       concurrencyGate:
@@ -331,6 +335,13 @@ export function renderProductionStatusSuccess(
       );
       lines.push(`    ${alert.detail}`);
       lines.push(`    Evidence: ${alert.evidencePath}  Request: ${alert.requestId}`);
+      const diagnosis = (response.data.redAlertDiagnoses ?? []).find((entry) => entry.requestId === alert.requestId);
+      if (diagnosis) {
+        lines.push(
+          `    Diagnosis: ${diagnosis.status} (${diagnosis.tokensUsed}/${diagnosis.tokenBudget} tokens, ${diagnosis.modelRoute})` +
+            `${diagnosis.issueUrl ? ` Issue: ${diagnosis.issueUrl}` : ""}${diagnosis.note ? ` - ${diagnosis.note}` : ""}`
+        );
+      }
     }
     lines.push("");
   }
