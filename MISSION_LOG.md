@@ -1194,3 +1194,10 @@ updated: 2026-09-30
 - **Result:** Every declared acceptance criterion was accepted as met: "#591: Every resulting Ask record carries its originating capture_id."; "#591: arcadia ask show <capture_…|request id> maps a capture or request to the Ask, back-burner item, or Action it produced."; "#591: The dashboard exposes a receipt link for each capture-to-result trace."; "#591: Objective tests cover capture_id propagation, capture/request lookup, dashboard receipt links, and every resulting record type."; "#716: The arcadia-go skill’s node_modules bridge step works on a target repo that is not Arcadia’s own monorepo.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-close-ask-traceability-and-cli-portability-gaps-v5-2026-09-30).
+
+## 2026-09-30 — Completed arcadia/harden-tidy-quarantine-safety-and-docs
+
+- **Did:** Completed Action arcadia/harden-tidy-quarantine-safety-and-docs from accepted evidence (Candidate 2cb1b97a7406fc40ab5961aad15d8daeed3b6906).
+- **Result:** Every declared acceptance criterion was accepted as met: "#735: START_HERE.md states that current tidy quarantines branch refs under refs/arcadia/tidy/<run>/heads/<branch> and restores them with arcadia tidy undo <run>; it does not describe archive/<branch> as an active recovery path."; "#739: tidy does not retire a live non-Arcadia agent worktree that has not committed yet."; "#740: tidy --apply does not retire branches on preview-time verdicts, and never runs update-ref -d on a branch checked out in another worktree.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-harden-tidy-quarantine-safety-and-docs-2026-09-30).

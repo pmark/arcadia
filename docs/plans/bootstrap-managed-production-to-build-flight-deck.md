@@ -2593,7 +2593,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/555"]
   - id: harden-tidy-quarantine-safety-and-docs
     title: Fix tidy's quarantine-not-delete safety gaps found while hardening it, and correct its documented tag name.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Fix tidy quarantine safety gaps and document the current recoverable quarantine mechanism.
