@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
+import { loadOperatorScriptReceipt } from "../../../lib/operatorScriptReceipt";
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 
 export const dynamic = "force-dynamic";
@@ -134,6 +135,7 @@ export async function GET() {
       try {
         const { descriptor } = await loadDescriptor(id);
         const recorded = await loadState(id);
+        const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
         const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
           ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
           : recorded;
@@ -145,7 +147,11 @@ export async function GET() {
           desiredEffect: descriptor.desired_effect,
           authority: descriptor.authority,
           repeatable: descriptor.repeatable === true,
-          state: state ?? { status: "available" },
+          state: state?.status === "running" ? state : receipt
+            ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,
+                message: receipt.status === "running" && !processIsRunning(receipt.pid) ? "The bounded runner stopped; retry this exact action to recover its canonical receipt." : receipt.message }
+            : state ?? { status: "available" },
+          receipt,
           updatedAt
         };
       } catch (error) {
@@ -179,20 +185,22 @@ export async function POST(request: Request) {
   try {
     const { descriptor, scriptPath } = await loadDescriptor(id);
     const state = await loadState(id);
-    if (state?.status === "running" && processIsRunning(state.pid)) {
+    const receipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+    if ((state?.status === "running" && processIsRunning(state.pid)) || (receipt?.status === "running" && processIsRunning(receipt.pid))) {
       return NextResponse.json({ error: `${descriptor.title} is already running.` }, { status: 409 });
     }
-    if (state?.status === "succeeded" && descriptor.repeatable !== true) {
+    if ((state?.status === "succeeded" || receipt?.status === "succeeded") && descriptor.repeatable !== true) {
       return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
     }
     lockPath = await claimLaunch(id);
     const latestState = await loadState(id);
-    if (latestState?.status === "running" && processIsRunning(latestState.pid)) {
+    const latestReceipt = await loadOperatorScriptReceipt(LIBRARY_PATH, id);
+    if ((latestState?.status === "running" && processIsRunning(latestState.pid)) || (latestReceipt?.status === "running" && processIsRunning(latestReceipt.pid))) {
       await unlink(lockPath);
       lockPath = null;
       return NextResponse.json({ error: `${descriptor.title} is already running.` }, { status: 409 });
     }
-    if (latestState?.status === "succeeded" && descriptor.repeatable !== true) {
+    if ((latestState?.status === "succeeded" || latestReceipt?.status === "succeeded") && descriptor.repeatable !== true) {
       await unlink(lockPath);
       lockPath = null;
       return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });

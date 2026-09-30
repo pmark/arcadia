@@ -2,55 +2,28 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-
-const repositoryRoot = path.resolve(import.meta.dirname, "../../../../..");
-const scriptPath = path.join(
-  repositoryRoot,
-  "artifacts/generated/operator-scripts/accept-close-ask-traceability-scope-2026-09-30.sh"
-);
-const planPath = path.join(
-  repositoryRoot,
-  "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"
-);
-
-describe("Ask traceability scope-repair operator script", () => {
-  function embeddedPython(): string {
-    const script = readFileSync(scriptPath, "utf8");
-    const python = script.match(/<<'PY'[^\n]*\n([\s\S]*?)\nPY\n/)?.[1];
-    expect(python).toBeDefined();
-    return python!;
-  }
-
-  it("finds the exact current Action block and parses its acceptance criteria without running the action", () => {
-    const python = embeddedPython();
-
-    const definitionsEnd = python.indexOf("\ntry:\n");
-    expect(definitionsEnd).toBeGreaterThan(0);
-    const validation = python.slice(0, definitionsEnd)
-      + "\nblock = action_block(pathlib.Path(sys.argv[3]))\n"
-      + "print(json.dumps(criteria(block)))\n";
-    const result = spawnSync("python3", ["-c", validation, "unused-library", "unused-run-dir", planPath], {
-      encoding: "utf8"
-    });
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual([
-      "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced.",
-      "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
-    ]);
+import { documentState, type PlanAmendmentInput } from "../../../../../src/operatorActions/planAmendment.js";
+const root = path.resolve(import.meta.dirname, "../../../../..");
+const id = "accept-close-ask-traceability-scope-2026-09-30";
+const script = path.join(root, `artifacts/generated/operator-scripts/${id}.sh`);
+describe("Traceability action delegates to the shared Plan-amendment runner", () => {
+  it("has only declarative pinned authority and a launcher, with no bespoke protocol", () => {
+    const text = readFileSync(script, "utf8");
+    expect(text).toContain('scripts/run-plan-amendment.mjs');
+    expect(text).not.toMatch(/python|agent-ask|--preview|--responsibility|git |fingerprint/);
+    expect(text.split("\n").filter(Boolean)).toHaveLength(5);
+    const descriptor = JSON.parse(readFileSync(script.replace(/\.sh$/, ".json"), "utf8")) as { planAmendment: PlanAmendmentInput };
+    const input = descriptor.planAmendment;
+    expect(input.schema).toBe("arcadia-plan-amendment-v1");
+    expect(input.settlement).toEqual({ requestId: id, disposition: "accepted", operator: true });
+    const plan = documentState(readFileSync(path.join(root, `docs/plans/${input.envelope.plan}.md`), "utf8")).fields;
+    expect((plan.actions as Record<string, unknown>[]).find(a => a.id === input.envelope.action)).toEqual(input.envelope.actionBefore);
+    expect(input.envelope.actionAfter.responsibility).toBe(input.envelope.actionBefore.responsibility);
+    expect(input.envelope.actionAfter.status).toBe("open");
   });
-
-  it("settles the Plan amendment without an Action-only responsibility while retaining operator apply authority", () => {
-    const settlementInvocation = embeddedPython().match(
-      /output = command\(\["mise", "exec", "--", "pnpm", "-s", "arcadia", "agent-ask", "settle",[\s\S]*?\], timeout=300\)/
-    )?.[0];
-
-    expect(settlementInvocation).toBeDefined();
-    expect(settlementInvocation).not.toContain('"--responsibility"');
-    expect(settlementInvocation).toContain('"--proposal", proposal');
-    expect(settlementInvocation).toContain('"--request-id", settlement');
-    expect(settlementInvocation).toContain('"--disposition", "accepted"');
-    expect(settlementInvocation).toContain('"--preview", fingerprint');
-    expect(settlementInvocation).toContain('"--operator", "--apply", "--json"');
+  it("describes the action without executing settlement", () => {
+    const result = spawnSync(script, ["--describe"], { encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ id, planAmendment: { schema: "arcadia-plan-amendment-v1" } });
   });
 });

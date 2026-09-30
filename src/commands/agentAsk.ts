@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type Database from "better-sqlite3";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, normalizeAgentAsk, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, type AgentAskProposal } from "../ask/agentAsk.js";
 import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskDiscoveryResult } from "../ask/discovery.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
@@ -227,6 +228,7 @@ export function runAgentAskSettleCommand(options: {
   cwd?: string;
   projectionBusyTimeoutMs?: number;
   hooks?: AgentAskSettlementTestHooks;
+  beforeGovernanceWrite?: (db: Database.Database) => void;
 }): CommandSuccess<AgentAskSettleData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   if (options.disposition !== "accepted" && options.disposition !== "rejected") {
@@ -258,6 +260,7 @@ export function runAgentAskSettleCommand(options: {
     // The launcher cds into Arcadia's checkout, so process.cwd() is the runtime,
     // not the candidate worktree the operator is standing in (#468).
     cwd: options.cwd ?? invocationRoot(),
+    beforeGovernanceWrite: options.beforeGovernanceWrite,
     projectionBusyTimeoutMs: options.projectionBusyTimeoutMs
   }, options.hooks));
   return createSuccess({ command: "agent-ask.settle", workspace: workspacePath, data: { receipt } });
