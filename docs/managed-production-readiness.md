@@ -142,6 +142,8 @@ path, live-state table, and scoreboard from their results:
 
 ```bash
 grep -E "^(active_plan|current_action):" PROJECT.md
+active_plan="$(grep "^active_plan:" PROJECT.md | head -1 | cut -d " " -f2)"
+sed -n "1,220p" "docs/plans/${active_plan}.md"
 mise exec -- pnpm arcadia advance queue --json --workspace <arcadia-workspace>
 mise exec -- pnpm arcadia production status --workspace <arcadia-workspace>
 grep -l "^status: open" docs/decisions/*.md
