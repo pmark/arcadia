@@ -2562,17 +2562,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.
+    next_action: Make Ask capture ids traceable to every resulting record while preserving the delivered portable arcadia-go dependency bridge.
     expected_artifact: Evidence satisfying Agent Ask close-ask-traceability-and-cli-portability-gaps
     clarification: clarified
     confidence: high
-    source: Agent Ask batch-defect-issues-into-actions-2026-09-27
+    source: Agent Ask amend-close-ask-traceability-scope-2026-09-30
     acceptance_criteria:
-      - "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced."
-      - "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
+      - "#591: Every resulting Ask record carries its originating capture_id."
+      - "#591: arcadia ask show <capture_…|request id> maps a capture or request to the Ask, back-burner item, or Action it produced."
+      - "#591: The dashboard exposes a receipt link for each capture-to-result trace."
+      - "#591: Objective tests cover capture_id propagation, capture/request lookup, dashboard receipt links, and every resulting record type."
+      - "#716: The arcadia-go skill’s node_modules bridge step works on a target repo that is not Arcadia’s own monorepo."
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/591", "https://github.com/pmark/arcadia/issues/716"]
+    references: ["https://github.com/pmark/arcadia/issues/591", "https://github.com/pmark/arcadia/issues/716", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"]
   - id: prove-contract-20-completion-gate
     title: Give Contract-20's false-agent-completion quality gate an owning Action and proof that it holds.
     status: done
