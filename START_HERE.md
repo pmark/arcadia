@@ -54,6 +54,12 @@ this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
 loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
+Plan-amendment Operator actions validate a pinned scope with a fresh canonical
+preview on every click. A failed click shows its machine-readable reason, the
+changed field, and the exact recovery step with a durable receipt. If settlement
+committed but publication failed, retrying that same action verifies and publishes
+the existing commit without settling twice. It never changes a queue or pointer. The [shared runner contract](docs/operator-plan-amendments.md) documents pinned inputs and safe recovery.
+
 Inside Sessions and runs, **Active now** lists every prepared or running agent
 Session and every pending or running execution Run across the whole portfolio,
 independent of any recent-history limit — a Session that has been running far

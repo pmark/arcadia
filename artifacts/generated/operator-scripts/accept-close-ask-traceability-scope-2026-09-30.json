@@ -9,8 +9,8 @@
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-close-ask-traceability-scope-2026-09-30.sh run",
   "authority": {
     "does": [
-      "Validate the exact Ask SHA-256, reviewed preview fingerprint, pmark/arcadia main checkout, clean synchronized origin/main, inherited reviewed base revision, project pointer, and bounded Action state",
-      "Apply only settlement accept-close-ask-traceability-scope-2026-09-30 for proposal amend-close-ask-traceability-scope-2026-09-30, then save a timestamped log and canonical settlement receipt",
+      "Validate the exact Ask SHA-256, pinned semantic envelope, primary pmark/arcadia main checkout, synchronized origin/main, inherited reviewed base, unchanged Project pointer, Plan activation and responsibility",
+      "Use shared arcadia-plan-amendment-v1 to preview the exact settlement flags at click time, validate structured effects, then apply that same fresh fingerprint and retain durable receipts",
       "Push only the resulting fast-forward main settlement after Arcadia confirms the exact accepted disposition"
     ],
     "never_does": [
@@ -24,6 +24,105 @@
   },
   "failure": {
     "effect": "No unvalidated or broadened governance change is made. If settlement succeeded before push failed, the receipt remains durable and the same request may replay only if every pinned precondition still matches.",
-    "next": "Inspect the timestamped run log, failure handoff, and any settlement receipt. Refresh this bounded action through review if main, the Action, Ask, or preview has changed; do not hand-edit governance or substitute another proposal."
+    "next": "Read the reason, changed field, and recovery instruction shown on /runs. Restore the named precondition and retry this exact action. PUBLICATION_FAILED recovers the existing commit without a second settlement; never change the queue, pointer, or proposal."
+  },
+  "planAmendment": {
+    "schema": "arcadia-plan-amendment-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "90ddc594fc4712df95a594829a45aa9538efb1dd"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-amend-close-ask-traceability-scope-2026-09-30.yaml",
+      "sha256": "278c26b71a2779cfbc8c3e91c36ebf9bb87699ab3d7f0e12ceae05ad3abb4468",
+      "proposal": "amend-close-ask-traceability-scope-2026-09-30"
+    },
+    "settlement": {
+      "requestId": "accept-close-ask-traceability-scope-2026-09-30",
+      "disposition": "accepted",
+      "operator": true
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "bootstrap-managed-production-to-build-flight-deck",
+      "action": "close-ask-traceability-and-cli-portability-gaps",
+      "projectUnchanged": {
+        "slug": "arcadia",
+        "active_plan": "bootstrap-managed-production-to-build-flight-deck",
+        "current_action": "prove-two-action-unattended-production"
+      },
+      "planUnchanged": {
+        "slug": "bootstrap-managed-production-to-build-flight-deck",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "prove-two-action-unattended-production",
+        "milestone": "Bootstrap managed production to run unattended from the GitHub board"
+      },
+      "actionBefore": {
+        "id": "close-ask-traceability-and-cli-portability-gaps",
+        "title": "Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.",
+        "expected_artifact": "Evidence satisfying Agent Ask close-ask-traceability-and-cli-portability-gaps",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask batch-defect-issues-into-actions-2026-09-27",
+        "acceptance_criteria": [
+          "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced.",
+          "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": [
+          "https://github.com/pmark/arcadia/issues/591",
+          "https://github.com/pmark/arcadia/issues/716"
+        ]
+      },
+      "actionAfter": {
+        "id": "close-ask-traceability-and-cli-portability-gaps",
+        "title": "Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.",
+        "status": "open",
+        "responsibility": "agent",
+        "effort": "session",
+        "next_action": "Make Ask capture ids traceable to every resulting record while preserving the delivered portable arcadia-go dependency bridge.",
+        "expected_artifact": "Evidence satisfying Agent Ask close-ask-traceability-and-cli-portability-gaps",
+        "clarification": "clarified",
+        "confidence": "high",
+        "source": "Agent Ask amend-close-ask-traceability-scope-2026-09-30",
+        "acceptance_criteria": [
+          "#591: Every resulting Ask record carries its originating capture_id.",
+          "#591: arcadia ask show <capture_…|request id> maps a capture or request to the Ask, back-burner item, or Action it produced.",
+          "#591: The dashboard exposes a receipt link for each capture-to-result trace.",
+          "#591: Objective tests cover capture_id propagation, capture/request lookup, dashboard receipt links, and every resulting record type.",
+          "#716: The arcadia-go skill’s node_modules bridge step works on a target repo that is not Arcadia’s own monorepo."
+        ],
+        "depends_on": [],
+        "decisions": [],
+        "references": [
+          "https://github.com/pmark/arcadia/issues/591",
+          "https://github.com/pmark/arcadia/issues/716",
+          "docs/plans/bootstrap-managed-production-to-build-flight-deck.md"
+        ]
+      },
+      "noChange": [
+        "id",
+        "title",
+        "status",
+        "responsibility",
+        "effort",
+        "expected_artifact",
+        "clarification",
+        "confidence",
+        "decisions"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
   }
 }

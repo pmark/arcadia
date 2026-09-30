@@ -92,6 +92,12 @@ export interface AgentAskSettlementReceipt {
   projectSlug: string;
   intent: string;
   effects: string[];
+  /** Exact fingerprint-bound effects for non-apply consumers; never inferred from prose. */
+  review?: {
+    documents: { path: string; before: string | null; after: string | null }[];
+    queueBefore: string[];
+    queueAfter: string[];
+  };
   queueActionKey: string | null;
   queueActionKeys: string[];
   queuePosition: number | null;
@@ -217,6 +223,8 @@ export function settleAgentAsk(db: Database.Database, input: {
    * Tests set it low to exercise a real held lock without a 15-second wait.
    */
   projectionBusyTimeoutMs?: number;
+  /** Optional caller authority fence, rechecked under the workspace write interlock. */
+  beforeGovernanceWrite?: (db: Database.Database) => void;
 }, hooks?: AgentAskSettlementTestHooks): AgentAskSettlementReceipt {
   if (input.projectionBusyTimeoutMs !== undefined &&
       (!Number.isInteger(input.projectionBusyTimeoutMs) || input.projectionBusyTimeoutMs < 1)) {
@@ -1372,7 +1380,14 @@ export function settleAgentAsk(db: Database.Database, input: {
     notificationStatus: input.apply ? "pending" : "withheld_until_apply",
     createdAt: now
   };
-  if (!input.apply) return baseReceipt;
+  if (!input.apply) return {
+    ...baseReceipt,
+    review: {
+      documents: fileMutations.map(({ path: filePath, before, after }) => ({ path: path.relative(repoRoot, filePath), before, after })),
+      queueBefore: queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []),
+      queueAfter
+    }
+  };
 
   if (fileMutations.length > 0) {
     // Draft Ask files are bounded intake, not incidental dirt. A complete
@@ -1418,6 +1433,7 @@ export function settleAgentAsk(db: Database.Database, input: {
       // First inside the transaction, before anything is written: a settlement
       // whose claim has been superseded writes nothing at all.
       if (claimFence) assertActionClaimGeneration(db, claimFence);
+      input.beforeGovernanceWrite?.(db);
       // The PROJECT.md + Plan pair is written through the same fingerprint-checked
       // compare-and-set `arcadia advance queue make-next` uses: a concurrent
       // settlement that moved the pointer between this settlement's resolution and

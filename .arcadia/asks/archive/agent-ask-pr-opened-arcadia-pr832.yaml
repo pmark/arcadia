@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr832","project":"arcadia","intent":"log","desired_result":"PR #832 adds one deterministic Plan-amendment runner with pinned scope, fresh preview validation, durable recovery, and hermetic proof: https://github.com/pmark/arcadia/pull/832","requested_authority":"apply_if_approved"}

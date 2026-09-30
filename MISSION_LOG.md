@@ -1180,3 +1180,10 @@ updated: 2026-09-30
 - **Result:** Every declared acceptance criterion was accepted as met: "#640: docs/agents-context.md's auto-settle eligibility text states the per-criterion met requirement the code actually enforces."; "#641: docs/agents-context.md states the exact settle invocation for the no-workspace draft-only case.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-auto-settle-eligibility-docs-2026-09-30-v2).
+
+## 2026-09-30 — Agent Ask pr-opened-arcadia-pr832
+
+- **Did:** PR #832 adds one deterministic Plan-amendment runner with pinned scope, fresh preview validation, durable recovery, and hermetic proof: https://github.com/pmark/arcadia/pull/832
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

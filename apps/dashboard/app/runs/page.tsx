@@ -25,6 +25,7 @@ interface OperatorScript {
   desiredEffect: string;
   authority: { does: string[]; never_does: string[] };
   repeatable: boolean;
+  receipt?: { reason: string; message: string; next: string; runDirectory: string; settlement?: unknown } | null;
   state: {
     status: "available" | "running" | "succeeded" | "failed";
     startedAt?: string;
@@ -371,6 +372,16 @@ function OperatorScriptCard({
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           Completed{script.repeatable ? "; this reusable action remains available." : "; this one-shot action is now disabled."}
         </p>
+      ) : null}
+      {script.receipt ? (
+        <div className="mt-3 text-sm">
+          <p>{script.receipt.message}</p>
+          <p className="mt-1 text-muted">Next: {script.receipt.next}</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary>
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre>
+          </details>
+        </div>
       ) : null}
       {isArchived ? null : (
         <button
