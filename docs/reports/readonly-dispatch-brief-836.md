@@ -76,6 +76,12 @@ CodeRabbit approved the original head, but main had meanwhile refreshed the
 readiness derivation, causing a merge conflict. The candidate merges that base
 without rewriting history, preserves the newer derivation, and keeps this
 repair's supplemental blocker separate. All 87 focused tests pass again;
-the preservation self-check passes with 1,439 files inspected. Publication of
-the reconciled head requires a fresh review and CI; the earlier approval is
-not treated as approval of a later head.
+the complete build passes again, and the actual Nagel source-brief invocation
+returns `ok: true` and the same dispatchable Action. The preservation self-check
+passes with 1,439 files inspected. Main's two additional quarantine-criterion
+operator tests also pass after isolating mise's trust state in a temporary
+directory; the initial sandbox-only trust-state write failure is not counted
+as a passing run or hidden by changing the tests.
+
+Publication of the reconciled head requires a fresh review and CI; the earlier
+approval is not treated as approval of a later head.
