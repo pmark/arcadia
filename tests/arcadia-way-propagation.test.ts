@@ -97,7 +97,9 @@ describe("adopted AGENTS.md block", () => {
     // This file is propagated into every adopting repository's AGENTS.md;
     // preserve both constraints that otherwise invite a misleading shortcut.
     expect(rendered).toContain("every corresponding evidence entry recorded as `met`");
+    expect(rendered).toContain("arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json");
     expect(rendered).toContain("arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id> --disposition accepted");
+    expect(rendered).toContain("arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id> --disposition accepted --preview <fingerprint> --apply");
     expect(rendered).toContain("never by passing the file to `settle`");
   });
 
