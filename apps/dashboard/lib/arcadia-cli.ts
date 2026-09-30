@@ -49,6 +49,21 @@ export interface MissionControlReplyResponse {
   applied: boolean;
 }
 
+export interface AskTrailResponse {
+  capture: { id: string; requestId: string; originalText: string; ingressSource: string; capturedAt: string } | null;
+  asks: Array<{
+    id: string;
+    resolvedIntent: string;
+    outputKind: string;
+    status: string;
+    createdAt: string;
+    executionPath: string | null;
+    reason: string | null;
+    projectName: string | null;
+    outcomes: Array<{ kind: string; id: string; status: string | null; summary: string | null; projectName: string | null }>;
+  }>;
+}
+
 const execFileAsync = promisify(execFile);
 
 export async function loadDashboardSnapshot(): Promise<ArcadiaJsonSuccess<DashboardSnapshotResponse>> {
@@ -861,6 +876,10 @@ export async function runAsk(input: {
   ];
   if (input.requestId?.trim()) args.push("--request-id", input.requestId.trim());
   return runArcadiaCliJson<AskResponse>(args);
+}
+
+export async function showAsk(input: { id: string }): Promise<ArcadiaJsonSuccess<AskTrailResponse>> {
+  return runArcadiaCliJson<AskTrailResponse>(["ask", "show", input.id]);
 }
 
 export async function recordAskFeedback(input: {

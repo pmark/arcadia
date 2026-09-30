@@ -73,6 +73,13 @@ export function runAskTrailCommand(options: AskTrailOptions): CommandSuccess<Ask
   return createSuccess({ command: "ask-trail", workspace: workspacePath, data });
 }
 
+/** The canonical `ask show` name; `ask-trail` remains a read-only compatibility alias. */
+export function runAskShowCommand(options: AskTrailOptions): CommandSuccess<AskTrailData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const data = withDatabase(workspacePath, (db) => buildAskTrail(db, options.id.trim()));
+  return createSuccess({ command: "ask.show", workspace: workspacePath, data });
+}
+
 function buildAskTrail(db: Database.Database, id: string): AskTrailData {
   const captureById = db.prepare("SELECT * FROM ask_capture_envelopes WHERE id = ? OR request_id = ?");
   let capture = captureById.get(id, id) as CaptureRow | undefined;
