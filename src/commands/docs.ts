@@ -107,7 +107,10 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
   const lines: string[] = [];
 
   const scanned = projects.filter((project) => project.repoRoot);
-  if (scanned.length === 0) {
+  const paused = projects.filter((project) =>
+    !project.repoRoot && project.changes.some((change) => change.reason?.includes("Project is paused"))
+  );
+  if (scanned.length === 0 && paused.length === 0) {
     return ["No Projects have a repo_path recorded, so there is nothing to crawl."];
   }
 
@@ -115,11 +118,11 @@ export function renderDocsSyncSuccess(response: CommandSuccess<DocsSyncCommandDa
     const interesting = project.changes.filter((change) => change.action !== "unchanged");
     const unchanged = project.changes.length - interesting.length;
 
-    if (!project.repoRoot) {
+    if (!project.repoRoot && !paused.includes(project)) {
       continue;
     }
 
-    lines.push(`${project.projectSlug} — ${project.repoRoot}`);
+    lines.push(project.repoRoot ? `${project.projectSlug} — ${project.repoRoot}` : `${project.projectSlug} — paused`);
 
     if (interesting.length === 0 && project.errors.length === 0) {
       lines.push(`  Up to date (${unchanged} record${unchanged === 1 ? "" : "s"} already match).`);

@@ -385,6 +385,8 @@ describe("docs sync", () => {
     const explicit = runDocsSyncCommand({ workspace, project: "demo", apply: true });
     expect(all.data.projects[0]?.changes[0]?.reason).toContain("paused");
     expect(explicit.data.projects[0]?.changes[0]?.reason).toContain("paused");
+    expect(renderDocsSyncSuccess(explicit).join("\n")).toContain("demo — paused");
+    expect(renderDocsSyncSuccess(explicit).join("\n")).toContain("docs sync does not read or mutate paused Projects");
     expect(withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"))).toBeNull();
   });
 
