@@ -1117,3 +1117,10 @@ updated: 2026-09-30
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-09-30 — Completed arcadia/prove-red-alert-with-injected-failures
+
+- **Did:** Completed Action arcadia/prove-red-alert-with-injected-failures from accepted evidence (Candidate 0d52080596eb239bce374dcc7236c81495a97015).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/rehearsal-two-action.test.ts or a sibling suite injects a stalled Session, a refused admission on consecutive ticks and a failed reconcile through tests/helpers/rehearsalHarness.ts, and asserts each raises its red alert with evidence."; "The suite asserts the alert posts one notification and starts one bounded diagnosis, and that resolving the failure clears the alert."; "The suite runs in the standard pnpm test run with no live production grant and no network; pnpm test and the core, Discord and Dashboard builds pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-prove-red-alert-with-injected-failures-2026-09-29).
