@@ -2559,7 +2559,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/452", "https://github.com/pmark/arcadia/issues/480", "https://github.com/pmark/arcadia/issues/514", "https://github.com/pmark/arcadia/issues/557"]
   - id: close-ask-traceability-and-cli-portability-gaps
     title: Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make Ask capture ids traceable to what they produced, and make the arcadia-go skill's dependency bridge work outside Arcadia's own monorepo.

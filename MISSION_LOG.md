@@ -1180,3 +1180,10 @@ updated: 2026-09-30
 - **Result:** Every declared acceptance criterion was accepted as met: "#640: docs/agents-context.md's auto-settle eligibility text states the per-criterion met requirement the code actually enforces."; "#641: docs/agents-context.md states the exact settle invocation for the no-workspace draft-only case.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-auto-settle-eligibility-docs-2026-09-30-v2).
+
+## 2026-09-30 — Completed arcadia/close-ask-traceability-and-cli-portability-gaps
+
+- **Did:** Completed Action arcadia/close-ask-traceability-and-cli-portability-gaps from accepted evidence (Candidate 9937fef78bf16de472d49f17419cdede0a4521cd).
+- **Result:** Every declared acceptance criterion was accepted as met: "#591: A command maps a capture_… id to the ask, back-burner item, or Action it produced."; "#716: The arcadia-go skill's node_modules bridge step works on a target repo that is not Arcadia's own monorepo.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-close-ask-traceability-and-cli-portability-gaps-2026-09-30).
