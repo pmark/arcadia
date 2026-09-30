@@ -18,6 +18,15 @@ import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
+import {
+  ensureRedAlertTables,
+  observeAdmission,
+  observeReconcileFailure,
+  observeReconcileSuccess,
+  observeRepairBudget,
+  observeStall,
+  safelyRaiseRedAlerts
+} from "./redAlerts.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
 import { reconcileSessionExit } from "../sessions/reconciliation.js";
@@ -147,6 +156,7 @@ export function ensureProductionTickTables(db: Database.Database): void {
   `);
   ensureProductionLaunchBlockersTable(db);
   ensureProductionLaunchRefusalDedupeKeyColumn(db);
+  ensureRedAlertTables(db);
 }
 
 /**
@@ -739,9 +749,14 @@ export function runManagedProductionTick(
 
     const reconciled: Array<{ sessionId: string; outcome: string }> = [];
     let handoff: SessionHandoffResult | null = null;
+    const alertCtx = { db, workspace, projectSlug: project.slug, now };
+    // Set only once the exit-reconcile branch starts, so a throw from the
+    // live-session stall observation is never reported as a failed reconcile.
+    let alertLease: ReturnType<typeof getRepositoryLease> = null;
     try {
       const lease = getRepositoryLease(db, repoRoot);
       if (lease && !tmux.hasSession(lease.tmux_session_name)) {
+        alertLease = lease;
         // Preserve the dead Session's candidate before reconciliation marks it
         // terminal (validation runs against the still-active lease), then
         // reconcile through the canonical completion/pointer writers, then
@@ -782,6 +797,10 @@ export function runManagedProductionTick(
         handoff = { preservation, integration };
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
+        safelyRaiseRedAlerts(log, "reconcile clear", () => {
+          observeReconcileSuccess(alertCtx);
+          observeStall(alertCtx, { session: null, stalled: false, tmux });
+        });
         if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
@@ -805,6 +824,7 @@ export function runManagedProductionTick(
           }
           return observed;
         });
+        safelyRaiseRedAlerts(log, "stall", () => observeStall(alertCtx, { session: lease, stalled: activity.stalled, tmux }));
         if (activity.newlyStalled) {
           log(
             `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
@@ -813,9 +833,15 @@ export function runManagedProductionTick(
         } else if (activity.recovered) {
           log(`Session ${lease.id} for ${project.slug} resumed activity; its stalled flag is cleared.`);
         }
+      } else {
+        safelyRaiseRedAlerts(log, "stall clear", () => {
+          observeStall(alertCtx, { session: null, stalled: false, tmux });
+          observeReconcileSuccess(alertCtx);
+        });
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
+      safelyRaiseRedAlerts(log, "reconcile", () => observeReconcileFailure(alertCtx, { session: alertLease, error }));
     }
 
     let launch: ManagedProductionLaunchAttempt | null = null;
@@ -858,6 +884,8 @@ export function runManagedProductionTick(
       launch = { attempted: false, outcome: "skipped", reason: "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
     }
 
+    safelyRaiseRedAlerts(log, "admission", () => observeAdmission(alertCtx, launch));
+    safelyRaiseRedAlerts(log, "repair budget", () => observeRepairBudget(alertCtx, launch));
     options.heartbeat?.();
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, askSurfacing, reconciled, handoff, launch });
   }

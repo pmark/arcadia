@@ -1705,7 +1705,7 @@ function findCommittedSettlement(docs: ArcadiaDoc[], projectSlug: string, reques
  * operational-projection transaction) and the recovery path (#270), which
  * records the settlement even when the projection could not be rebuilt.
  */
-function insertSettlementRow(
+export function insertSettlementRow(
   db: Database.Database,
   receipt: AgentAskSettlementReceipt,
   context: {

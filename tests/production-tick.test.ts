@@ -39,7 +39,16 @@ import {
   listOperatorEscalations,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
 } from "../src/production/tick.js";
-import { listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
+import { listPendingAgentAskNotifications, listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
+import {
+  ADMISSION_REFUSAL_MIN_MS,
+  ADMISSION_REFUSAL_MIN_TICKS,
+  listOpenRedAlerts,
+  observeAdmission,
+  observeReconcileFailure,
+  observeReconcileSuccess,
+  safelyRaiseRedAlerts
+} from "../src/production/redAlerts.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -1854,6 +1863,179 @@ function recordCompetingManagedRun(workspace: string, workItemId: string): void 
     ).run(runId, workItemId, "2026-08-30T12:00:00.000Z", "2026-08-30T12:00:00.000Z");
   });
 }
+
+describe("red alerts from the worker tick", () => {
+  function tickAt(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, offsetMs: number, capacity = false) {
+    return withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: capacity ? fixtureCapacityObservation() : undefined,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+  }
+  const openAlerts = (fixture: ReturnType<typeof preparedFixture>) => withReadOnlyDatabase(fixture.workspace, (db) => listOpenRedAlerts(db));
+  const redNotices = (db: Database.Database) => listPendingAgentAskNotifications(db).filter((entry) => entry.requestId?.startsWith("red-alert-"));
+  const pendingNotices = (fixture: ReturnType<typeof preparedFixture>) => withDatabase(fixture.workspace, (db) => redNotices(db));
+
+  it("raises one repair_budget_repeat alert, updates it on repeat, posts once, and clears when the budget is reset", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    tmux.failLaunch = true;
+    activatePolicy(fixture);
+    for (let attempt = 0; attempt < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction; attempt++) {
+      tickAt(fixture, tmux, attempt * 1000, true);
+    }
+    const [alert, ...rest] = openAlerts(fixture);
+    expect(rest).toHaveLength(0);
+    expect(alert.trigger).toBe("repair_budget_repeat");
+    expect(alert.actionKey).toBe("test-project/define-contract");
+    expect(alert.projectSlug).toBe("test-project");
+    expect(alert.detail).toContain("tmux could not start");
+    expect(existsSync(alert.evidencePath)).toBe(true);
+    expect(readFileSync(alert.evidencePath, "utf8")).toContain("repair_budget_repeat");
+
+    tickAt(fixture, tmux, 10_000, true);
+    const [repeated, ...others] = openAlerts(fixture);
+    expect(others).toHaveLength(0);
+    expect(repeated.id).toBe(alert.id);
+    expect(repeated.firstSeenAt).toBe(alert.firstSeenAt);
+    expect(repeated.occurrences).toBeGreaterThan(alert.occurrences);
+
+    const notices = pendingNotices(fixture);
+    expect(notices).toHaveLength(1);
+    expect(notices[0].requestId).toBe(alert.requestId);
+    expect(notices[0].desiredResult).toContain("test-project/define-contract");
+    expect(notices[0].desiredResult).toContain("repair_budget_repeat");
+    expect(notices[0].desiredResult).toContain(alert.evidencePath);
+
+    tmux.failLaunch = false;
+    withDatabase(fixture.workspace, (db) => resetProductionRepairBudget(db, "test-project/define-contract"));
+    tickAt(fixture, tmux, 20_000, true);
+    expect(openAlerts(fixture)).toHaveLength(0);
+    expect(pendingNotices(fixture)).toHaveLength(1);
+  });
+
+  it("raises one session_stalled alert past the stall window, updates it on repeat, and clears on recovery", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    tickAt(fixture, tmux, 0, true);
+    const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.paneOutput.set(session.tmux_session_name, "$ claude is thinking...\n");
+    tickAt(fixture, tmux, 60_000);
+    expect(openAlerts(fixture)).toHaveLength(0);
+
+    const stalledAt = 60_000 + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1;
+    tickAt(fixture, tmux, stalledAt);
+    const [alert, ...rest] = openAlerts(fixture);
+    expect(rest).toHaveLength(0);
+    expect(alert.trigger).toBe("session_stalled");
+    expect(alert.sessionId).toBe(session.id);
+    expect(alert.actionKey).toBe(`test-project/${session.action_id}`);
+    expect(alert.detail).toContain("stalled");
+
+    tickAt(fixture, tmux, stalledAt + 120_000);
+    const [repeated, ...others] = openAlerts(fixture);
+    expect(others).toHaveLength(0);
+    expect(repeated.id).toBe(alert.id);
+    expect(repeated.occurrences).toBe(alert.occurrences + 1);
+    expect(pendingNotices(fixture)).toHaveLength(1);
+
+    tmux.paneOutput.set(session.tmux_session_name, "$ claude wrote a file\n");
+    tickAt(fixture, tmux, stalledAt + 180_000);
+    expect(openAlerts(fixture)).toHaveLength(0);
+  });
+
+  it("raises one reconcile_failed alert per Session, updates it on repeat, and clears once a reconcile succeeds", () => {
+    const fixture = preparedFixture();
+    const now = new Date(fixture.now.getTime());
+    const session = { id: "session-1", action_id: "define-contract" };
+    withDatabase(fixture.workspace, (db) => {
+      const ctx = { db, workspace: fixture.workspace, projectSlug: "test-project", now };
+      observeReconcileFailure(ctx, { session, error: new Error("boom") });
+      observeReconcileFailure({ ...ctx, now: new Date(now.getTime() + 2000) }, { session, error: new Error("boom") });
+      observeReconcileFailure(ctx, { session: null, error: new Error("no lease") });
+      const alerts = listOpenRedAlerts(db);
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].trigger).toBe("reconcile_failed");
+      expect(alerts[0].sessionId).toBe("session-1");
+      expect(alerts[0].occurrences).toBe(2);
+      expect(alerts[0].detail).toContain("boom");
+      expect(redNotices(db)).toHaveLength(1);
+      observeReconcileSuccess(ctx);
+      expect(listOpenRedAlerts(db)).toHaveLength(0);
+    });
+  });
+
+  it("raises one admission_refused_consecutive alert only past the minimum ticks and duration, and clears when admission succeeds", () => {
+    const fixture = preparedFixture();
+    const refused = { attempted: true, outcome: "refused" as const, reason: "capacity wait", actionKey: "test-project/define-contract" };
+    withDatabase(fixture.workspace, (db) => {
+      const at = (ms: number) => ({ db, workspace: fixture.workspace, projectSlug: "test-project", now: new Date(fixture.now.getTime() + ms) });
+      // Many ticks but too brief: no alert.
+      for (let tick = 0; tick < ADMISSION_REFUSAL_MIN_TICKS + 2; tick++) observeAdmission(at(tick * 2000), refused);
+      expect(listOpenRedAlerts(db)).toHaveLength(0);
+      // A neutral skipped tick neither breaks nor advances the streak.
+      observeAdmission(at(5000), { attempted: false, outcome: "skipped", reason: "lease", actionKey: null });
+      // Long enough now: exactly one alert, then a repeat updates it.
+      observeAdmission(at(ADMISSION_REFUSAL_MIN_MS), refused);
+      observeAdmission(at(ADMISSION_REFUSAL_MIN_MS + 2000), refused);
+      const alerts = listOpenRedAlerts(db);
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].trigger).toBe("admission_refused_consecutive");
+      expect(alerts[0].actionKey).toBe("test-project/define-contract");
+      expect(alerts[0].occurrences).toBe(2);
+      expect(redNotices(db)).toHaveLength(1);
+      observeAdmission(at(ADMISSION_REFUSAL_MIN_MS + 4000), { attempted: true, outcome: "launched", reason: "ok", actionKey: "test-project/define-contract" });
+      expect(listOpenRedAlerts(db)).toHaveLength(0);
+      // A recurrence is a new episode and posts again.
+      for (let tick = 0; tick < ADMISSION_REFUSAL_MIN_TICKS; tick++) observeAdmission(at(ADMISSION_REFUSAL_MIN_MS * 3 + tick), refused);
+      observeAdmission(at(ADMISSION_REFUSAL_MIN_MS * 4), refused);
+      expect(listOpenRedAlerts(db)).toHaveLength(1);
+      expect(redNotices(db)).toHaveLength(2);
+    });
+  });
+
+  it("logs and swallows an alerting failure instead of failing the tick", () => {
+    const logs: string[] = [];
+    expect(() => safelyRaiseRedAlerts((message) => logs.push(message), "test", () => { throw new Error("db locked"); })).not.toThrow();
+    expect(logs[0]).toContain("db locked");
+  });
+
+  it("lists open red alerts before every other section of production status", () => {
+    const fixture = preparedFixture();
+    activatePolicy(fixture);
+    const tmux = new FakeTmux();
+    tmux.failLaunch = true;
+    for (let attempt = 0; attempt < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction; attempt++) tickAt(fixture, tmux, attempt * 1000, true);
+    const lines = withReadOnlyDatabase(fixture.workspace, (db) =>
+      renderProductionStatusSuccess({
+        command: "production.status",
+        workspace: fixture.workspace,
+        data: {
+          read: { status: "ok", policy: { desiredState: "off", revision: 1, epoch: 1, scope: null } },
+          display: { state: "off", label: "Off", observedAt: "now" },
+          liveAdmissions: 0,
+          admissions: [],
+          baseBranchAdvances: [],
+          launchBlockers: [],
+          operatorEscalations: [],
+          redAlerts: listOpenRedAlerts(db),
+          offConsequence: "n/a",
+          controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
+          concurrencyGate: null
+        },
+        warnings: []
+      } as never)
+    );
+    expect(lines[0]).toBe("RED ALERTS (1)");
+    expect(lines.indexOf("Managed production")).toBeGreaterThan(0);
+  });
+});
 
 /**
  * Leaves the Action's own status untouched: `attemptAutomaticCompletion`

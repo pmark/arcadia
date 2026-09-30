@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { applyCapabilityMigrations } from "../capabilities/migrations.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
 import { ensureProductionLaunchBlockersTable } from "../production/tick.js";
+import { ensureRedAlertTables } from "../production/redAlerts.js";
 import { ensureManualPreservationTable } from "../sessions/manualPreservation.js";
 import { ensureCandidatePreservationTable } from "../sessions/candidatePreservation.js";
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
@@ -95,6 +96,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureProductionLaunchBlockersTable(db);
   ensureSchedulingTables(db);
   ensureProductionOperatorEscalationsTable(db);
+  ensureRedAlertTables(db);
   applyCapabilityMigrations(db);
 }
 
