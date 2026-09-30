@@ -96,6 +96,7 @@ describe("go broker agent setup", () => {
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.advance.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.workMonitor.codex);
     expect(readFileSync(paths.codexSkill, "utf8")).toContain(fixture.executables.brief.codex);
+    expect(readFileSync(paths.codexSkill, "utf8")).toContain(`readlink ${fixture.executables.go.codex}`);
     expect(readFileSync(paths.codexAgentAskSkill, "utf8")).toContain("Do not ask the operator for permission");
     expect(lstatSync(paths.claudeSkill).isSymbolicLink()).toBe(true);
     expect(path.resolve(path.dirname(paths.claudeSkill), readlinkSync(paths.claudeSkill))).toBe(paths.codexSkillDirectory);
@@ -720,6 +721,7 @@ function createInstalledFixture() {
   const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
   write(brokerEntrypoint, "// fixture runtime\n");
   write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
+  write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
   write(path.join(release, "broker-manifest.json"), JSON.stringify({
     schema: "arcadia-go-broker-install-v1", revision: "test-revision", brokerEntrypoint
   }));
