@@ -1,0 +1,109 @@
+{
+  "agent_ask": "v1",
+  "request_id": "ask-backed-adversarial-review-capability-2026-10-01",
+  "project": "arcadia",
+  "intent": "plan",
+  "requested_authority": "propose",
+  "desired_result": "An operator can request bounded adversarial review through Ask and receive a traceable, Mission-aware recommendation without the review changing governed state.",
+  "rationale": "Create a separate inactive draft Plan for consequential Mission, Outcome, Milestone, Plan, Action, and architecture reviews. This differs from the existing pre-PR code-review Plan. The operator's supplied brief confirms the outcome and scope; the 2026-10-01 production review is a manual precedent, not proof of reliability or cost. Keep the current production pointer and all approval boundaries untouched. Sequence the Ask contract and frozen evidence first, then bounded review execution, synthesis and receipts, and one approved end-to-end dogfood. Defer automatic routing, mandatory routine review, scoring, recursive reviewers, and new orchestration until a second high-value case demonstrates need.",
+  "references": [
+    "CONSTITUTION.md",
+    "PROJECT.md",
+    "docs/planning-process.md",
+    "docs/managed-documents.md",
+    "docs/plans/create-one-inactive-plan-for-on-demand-evidence-based-adversarial-review-of-a-se.md",
+    "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md",
+    "src/qa/prReview.ts"
+  ],
+  "actions": [
+    {
+      "id": "define-ask-review-contract",
+      "desired_result": "Define and validate one Ask-backed request and preview contract for a bounded, read-only adversarial review.",
+      "acceptance": [
+        "The live Agent Ask contract and operator Ask surfaces are documented; one compatible review request includes owning Project, planning level, question, source scope and exclusions, settled constraints, profile, explicit caps, and permission for bounded read-only checks.",
+        "Draft and preview validate the review fields, freeze the intended source revision and scope, show selected depth, estimated versus capped cost where available, and name output artifacts without launching a reviewer or changing Project state.",
+        "Paid inference is refused without an explicit Decision covering the scoped budget; missing prices are shown as unavailable, and no review request can approve a Decision, activate a Plan, or widen authority.",
+        "Deterministic tests cover valid and invalid scope, cap, Project ownership, stale preview, and unauthorized spend; the contract reuses Ask capture and preview rather than adding a separate operator entry point."
+      ],
+      "dependencies": [],
+      "references": [
+        "src/ask/agentAsk.ts",
+        "src/ask/preview.ts",
+        "src/commands/agentAsk.ts",
+        "src/commands/ask.ts",
+        "docs/managed-documents.md"
+      ]
+    },
+    {
+      "id": "freeze-adversarial-review-packet",
+      "desired_result": "Build a revision-pinned evidence packet and manifest for the approved Ask scope.",
+      "acceptance": [
+        "A deterministic packet records one source revision, owning Project Mission and active Outcome, relevant Milestone, Plan, Decisions and evidence, settled constraints, exclusions, permission and budget; denied paths and secrets are excluded.",
+        "Source changes after freezing appear only as dated addenda, and a stale or expanded scope requires a new preview rather than silently mixing revisions.",
+        "Fixtures prove reproducible packet and manifest content, bounded source counts, and no repository, managed-document, workspace-database, service, or operator-state mutation."
+      ],
+      "dependencies": [
+        "define-ask-review-contract"
+      ],
+      "references": [
+        "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md",
+        "src/ask/preview.ts",
+        ".arcadia/context-policy.json"
+      ]
+    },
+    {
+      "id": "run-bounded-adversarial-review",
+      "desired_result": "Run the selected targeted, standard, or deep review within the Ask's read-only permissions and hard caps.",
+      "acceptance": [
+        "Targeted runs one fresh independent reviewer and synthesis; standard and deep run Reviewer 1, Reviewer 2 with the same frozen packet plus Reviewer 1's report, then facilitator synthesis; no profile adds recursive reviewers or more than two reviewers by default.",
+        "Reviewer prompts test purpose, problem evidence, plausible remedies, blocking guards, replay and recovery, and untested claims; agreement is allowed and findings are capped at five.",
+        "Provider selection uses the least costly available compliant model and reasoning level; hard limits cover tokens, money when priced, elapsed time, source and tool counts, reviewer passes, and permitted test count and runtime.",
+        "Read-only enforcement and explicit test permission are checked before execution; cap exhaustion or unavailable compliant routing preserves completed work and returns a partial or refusal receipt with exact remaining work.",
+        "Stubbed-provider tests cover each profile, cap boundary, failed read-only preflight, unavailable pricing, forbidden test, provider substitution refusal, and an allowed extra pass only for a named decision-critical missing fact."
+      ],
+      "dependencies": [
+        "freeze-adversarial-review-packet"
+      ],
+      "references": [
+        "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md",
+        "src/codingAgents/providerAdapters.ts",
+        "src/qa/prReview.ts"
+      ]
+    },
+    {
+      "id": "publish-review-synthesis-and-receipt",
+      "desired_result": "Produce durable review reports, a concise Mission-aware synthesis, and an honest run receipt under the established generated-review convention.",
+      "acceptance": [
+        "The output contains the frozen brief and manifest, reviewer reports for passes actually run, synthesis, and receipt; every consequential finding distinguishes observed fact, inference, proposal, or unknown and records status, exact evidence, mechanism, guard, replay path, confidence, and missing proof.",
+        "The synthesis begins with an operator summary and gives Mission trajectory, at most five consequential findings, smallest ordered next steps with acceptance and owner or authority, recovery, real choices with consequences, and deferrals with revival triggers.",
+        "The receipt records actual model routes and reasoning levels, elapsed time, measured tokens and money or unavailable, operator interventions, tests, refusals, and budget exhaustion; it never presents estimates as actual cost.",
+        "Proposed governed changes are labelled as Agent Asks and are never automatically drafted, settled, queued, activated, or implemented by the review; tests verify the boundary and artifact links."
+      ],
+      "dependencies": [
+        "run-bounded-adversarial-review"
+      ],
+      "references": [
+        "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md",
+        "docs/planning-process.md"
+      ]
+    },
+    {
+      "id": "dogfood-ask-backed-adversarial-review",
+      "desired_result": "Prove one operator Ask produces a bounded, evidence-backed recommendation for a consequential choice.",
+      "acceptance": [
+        "One operator-submitted Ask for an approved high-value case yields a revision-pinned packet, the reports required by its profile, synthesis, and receipt, with no hidden scope expansion or Project-state mutation.",
+        "A fresh read-only verification checks citations against the frozen revision, distinguishes supported findings from untested claims, and confirms the recommendation advances the owning Mission and active Outcome.",
+        "The demonstration records actual operator interventions, elapsed time, tool and model use, measured cost or unavailable, tests, and whether the second reviewer changed a decision-critical conclusion; any paid run uses a prior explicit budget Decision.",
+        "The result names the smallest next governed Ask or a justified deferral; it does not claim that one review proves implementation reliability or make expensive review mandatory for routine work."
+      ],
+      "dependencies": [
+        "publish-review-synthesis-and-receipt"
+      ],
+      "references": [
+        "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md",
+        "docs/planning-process.md",
+        "CONSTITUTION.md"
+      ]
+    }
+  ]
+}
