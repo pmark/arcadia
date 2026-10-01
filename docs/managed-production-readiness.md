@@ -10,6 +10,38 @@ state, `arcadia advance queue`, `arcadia production status`, and the hermetic
 rehearsal replay (`tests/rehearsal-two-action.test.ts`). If one of those
 disagrees with this document, it is right and this document is stale.
 
+**Latest bounded-trial check: 2026-10-01T04:34Z (September 30 locally).**
+The operator authorized rejecting five historical proposals and retaining
+`agentask_4777d744460a9f5fc0` for later Flight Deck review. Revisit its changes
+after the bounded two-action production proof succeeds; that trigger does not
+accept the proposal or activate Flight Deck automatically. The exact instruction
+is preserved in
+[`record-five-rejections-and-deferred-flight-deck`](../.arcadia/asks/agent-ask-record-five-rejections-and-deferred-flight-deck-2026-09-30.yaml).
+
+The first authorized canonical rejection refused with
+`SQLITE_WORKSPACE_WRITE_DENIED`, including an escalation attempt. All six
+proposals remain pending. The canonical proposal contract has only accepted
+and rejected dispositions, so Flight Deck has an operator instruction to wait,
+not an applied deferred proposal state. Leaving it pending continues to block
+the Arcadia proof Action under the current Action-name gate.
+
+PRs [#849](https://github.com/pmark/arcadia/pull/849) and
+[#850](https://github.com/pmark/arcadia/pull/850) are merged. #849 adds a host
+replay to the Grant; #850 records the missing operator rejection capability.
+Neither has updated the local runtime. The fixed Go launcher still refuses the
+six pending items. Copying the reviewed Grant into this checkout would dirty
+main and fail its clean-checkout precondition.
+
+The v6 fixture was actually prepared at `2026-10-01T00:34:20Z`; its preparation
+receipt is `artifacts/generated/operator-scripts/runs/20261001T003420Z-2658/preparation-receipt.json`.
+The earlier no-fixture statements below are superseded by this evidence.
+The Grant remains unpressed, policy is Inactive at revision 23, and live
+admissions are zero. The fixture's own first Action is dispatchable, but that
+does not supply a host update or governance write path. The next required
+repair is canonical host settlement plus a supported way to retain a deferred
+proposal without blocking unrelated production. No additional rejection
+approval is required for the five named proposals.
+
 Last derived: **2026-09-30T19:56Z**, against `origin/main`
 `4eeac8f2a605e87f81ec7a310dc5ae2ef445d589`.
 
