@@ -82,7 +82,8 @@ function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
     ...proposal.effects.map((effect, index) => `Proposed effect ${index + 1}: ${effect.operation} ${effect.targetKind}${effect.targetRef ? ` ${effect.targetRef}` : ""}`),
     `Decisions required: ${proposal.requiredDecisions.length}`,
     "Queue: no entry until accepted",
-    "Project writes: 0"
+    "Project writes: 0",
+    "Workspace receipt: capture and proposal recorded"
   ];
 }
 
@@ -94,7 +95,8 @@ export interface AgentAskDraftData {
   format: "strict" | "natural";
   written: "created" | "unchanged";
   preview: { proposal: AgentAskProposal; fingerprint: string } | null;
-  workspaceStatus: "previewed" | "not_available";
+  workspaceStatus: "previewed" | "not_available" | "preview_blocked";
+  previewFailure: { code: string; message: string; cause?: string } | null;
   discovery: AgentAskDiscoveryResult;
 }
 
@@ -129,7 +131,8 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     written = "created";
   }
   let preview: { proposal: AgentAskProposal; fingerprint: string } | null = null;
-  let workspaceStatus: "previewed" | "not_available" = "not_available";
+  let workspaceStatus: AgentAskDraftData["workspaceStatus"];
+  let previewFailure: AgentAskDraftData["previewFailure"] = null;
   let discovery: AgentAskDiscoveryResult = EMPTY_AGENT_ASK_DISCOVERY;
   try {
     // Re-read the file draft just wrote (rather than passing `content`
@@ -143,25 +146,27 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     discovery = previewResult.data.discovery;
     workspaceStatus = "previewed";
   } catch (error) {
-    // Anything about *reaching* a usable workspace from here — missing,
-    // uninitialized, wrong native ABI, or a sandboxed/read-only filesystem
-    // denying the SQLite write — degrades to "not available" rather than
-    // failing the whole draft: the file is already validated and placed, and
-    // that's the part this environment can guarantee. normalizeError is the
-    // same classifier the CLI boundary uses, so this matches exactly what a
-    // bare `preview` call would have reported for the same failure. A real
-    // content problem (e.g. PROJECT_NOT_FOUND, an unexpected VALIDATION_ERROR)
-    // still throws, since that's feedback about the Ask itself, not the
-    // environment.
-    const workspaceUnreachable = [
-      "WORKSPACE_NOT_FOUND", "DATABASE_NOT_INITIALIZED", "USAGE_ERROR",
-      "SQLITE_WORKSPACE_WRITE_DENIED", "SQLITE_NATIVE_ABI_MISMATCH", "SQLITE_ERROR"
-    ].includes(normalizeError(error).code);
-    if (!workspaceUnreachable) throw error;
+    // The file remains a valid handoff when preview cannot run. Distinguish
+    // an absent workspace from one that resolved but could not record its
+    // proposal receipt; calling both "not available" sends agents looking
+    // for a different workspace and wastes retries inside the same sandbox.
+    const failure = normalizeError(error);
+    if (["WORKSPACE_NOT_FOUND", "DATABASE_NOT_INITIALIZED", "USAGE_ERROR"].includes(failure.code)) {
+      workspaceStatus = "not_available";
+    } else if (["SQLITE_WORKSPACE_WRITE_DENIED", "SQLITE_NATIVE_ABI_MISMATCH", "SQLITE_ERROR"].includes(failure.code)) {
+      workspaceStatus = "preview_blocked";
+    } else {
+      throw error;
+    }
+    previewFailure = {
+      code: failure.code,
+      message: failure.message,
+      ...(typeof failure.details.cause === "string" ? { cause: failure.details.cause } : {})
+    };
   }
   return createSuccess({
     command: "agent-ask.draft",
-    data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus, discovery }
+    data: { path: filePath, requestId: normalized.requestId, intent: normalized.intent, format: normalized.format, written, preview, workspaceStatus, previewFailure, discovery }
   });
 }
 
@@ -199,8 +204,11 @@ export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraf
   ];
   if (d.preview) {
     lines.push(`Previewed: fingerprint ${d.preview.fingerprint}`, `Decisions required: ${d.preview.proposal.requiredDecisions.length}`, "Next: arcadia agent-ask settle --proposal " + d.requestId + " ...");
+  } else if (d.workspaceStatus === "preview_blocked") {
+    lines.push(`Previewed: blocked (${d.previewFailure?.code ?? "unknown error"}) — ${d.previewFailure?.message ?? "workspace preview failed"}${d.previewFailure?.cause ? ` Cause: ${d.previewFailure.cause}` : ""}`);
+    lines.push("Next: preserve the validated Ask file for a host with workspace access. Do not guess a workspace from the Project name or retry this database write from the same sandbox.");
   } else {
-    lines.push("Previewed: not yet — no Arcadia workspace resolved here.", `Next: run \`arcadia agent-ask preview --file ${d.path}\` wherever a workspace is available.`);
+    lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path}\`.`);
   }
   lines.push(...renderAgentAskDiscovery(d.discovery));
   return lines;
@@ -419,7 +427,7 @@ export function runAgentAskContractCommand(): CommandSuccess<AgentAskContractDat
       authorityBoundary: [
         "A proposal is never self-approving; the operator settles it.",
         "Agent text cannot approve, reject, defer, answer a Decision, merge, deploy, publish, spend, use credentials, message externally, or widen a prior approval.",
-        "Preview performs zero Project writes and creates no queue entry.",
+        "Preview records a capture and proposal receipt in the workspace database; it performs zero Project writes and creates no queue entry.",
         "Replaying a request_id returns the original receipt; changed content under a used id is refused."
       ],
       completeExample: {

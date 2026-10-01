@@ -8,6 +8,13 @@ pnpm arcadia init <workspace> --profile arcadia
 
 The historical dogfood shortcuts remain available as repo-local conveniences that target `.arcadia-workspace/`. The `arcadia dogfood` commands are compatibility shortcuts over the same workspace model; they do not create a separate kind of workspace.
 
+For this operator's live installation, `martianrover` is the configured default
+and exclusive workspace for every Project, including Arcadia. The
+`.arcadia-workspace/` commands below document the historical isolated dogfood
+path; they are not the live workflow. For live Agent Ask work, let Arcadia
+resolve its configured default workspace. Never substitute a workspace named
+after the Project or switch to the repo-local shortcut when access is denied.
+
 ## Why It Is Git-Ignored
 
 Any workspace used to manage Arcadia contains operational state: local database records, generated prompts, mission logs, artifacts, status reports, and Requires Review queues. Repo-local `.arcadia-workspace/` is Git-ignored because those records are useful locally but should not become repository source.
@@ -70,7 +77,7 @@ Project outcomes are plain text results currently being pursued. Arcadia keeps t
 
 Arcadia intentionally does not add OKRs, KPIs, scorecards, or outcome analytics.
 
-## Recommended Workflow
+## Historical Isolated Dogfood Workflow
 
 1. Initialize a workspace with `pnpm arcadia init <workspace> --profile arcadia`.
 2. Issue natural-language requests with `pnpm arcadia ask --workspace <workspace> "..."`.

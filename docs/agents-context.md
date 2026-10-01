@@ -245,16 +245,24 @@ arcadia agent-ask draft '<json>'
 it to its canonical `.arcadia/asks/agent-ask-<request_id>.yaml` path —
 collision-checked, so concurrent Asks from different agents can never clobber
 each other or dirty the shared base checkout in a way that could block Arcadia
-Go's clean check — and, if a workspace is already resolvable here, previews it
+Go's clean check — and, if a writable workspace is already resolvable here, previews it
 in the same call. A validation failure reports the exact fix needed before
 anything touches disk, so the whole ceremony is one round trip on the common
 path instead of write-then-preview-then-retry.
 
-If `draft` reports no workspace was available, stop there: the committed file
-is itself the handoff, exactly like a `docs/proposals/` file, and needs no
-Arcadia install or network access to exist. Whatever environment next has a
-workspace — including a different agent, in a different session, possibly
-after `git pull` — runs the same validation by hand instead:
+`draft` reports `workspaceStatus: previewed` only when the preview receipt was
+recorded. `not_available` means no ready workspace resolved;
+`preview_blocked` means one resolved but could not record the receipt (for
+example, `SQLITE_WORKSPACE_WRITE_DENIED`). In either other state, stop at the
+validated Ask file and preserve it as the handoff, exactly like a
+`docs/proposals/` file. Do not infer the workspace path from the Project slug:
+one workspace may manage several Projects. Use the configured resolver or an
+operator-confirmed workspace path, never trial-and-error sibling directories.
+If that workspace's database write is denied, do not edit SQLite directly or
+retry the same write from the same sandbox; a host with the required workspace
+access runs the preview. The file needs no workspace or network access to
+exist. That host — including a different agent, in a different session,
+possibly after `git pull` — runs the same validation by hand instead:
 
 ```sh
 arcadia agent-ask preview --file .arcadia/asks/agent-ask-<request_id>.yaml --json
@@ -270,7 +278,9 @@ arcadia agent-ask settle --proposal <request_id> --request-id settle-<request_id
 
 The first command prints the settlement fingerprint required by the second.
 
-Preview writes nothing to the Project. It returns a proposal with a
+Preview writes a capture and proposal receipt to the workspace database, so it
+requires workspace write access. It writes nothing to the Project's managed
+documents or queue. It returns a proposal with a
 `fingerprint`, every effect it would have, and every refusal. **A proposal is
 never self-approving**: the operator settles it, and no wording in your Ask —
 however urgent, however confident — approves work, answers a Decision, grants
