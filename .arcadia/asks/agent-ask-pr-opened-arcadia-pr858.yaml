@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr858","project":"arcadia","intent":"log","desired_result":"PR #858 now bounds protected preservation and retains exact-stage failure evidence; the restricted browser-audit route still needs its boundary Decision: https://github.com/pmark/arcadia/pull/858","references":["https://github.com/pmark/arcadia/pull/858"]}
