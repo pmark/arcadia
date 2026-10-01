@@ -2801,7 +2801,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: finish-two-action-unattended-production-proof
+current_action: recover-off-completed-candidate-preservation
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
