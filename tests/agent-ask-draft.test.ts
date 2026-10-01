@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
+import { renderAgentAskDraftSuccess, runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -23,6 +23,7 @@ describe("Agent Ask draft", () => {
     const result = runAgentAskDraftCommand({ request: strictAsk("draft-no-workspace"), dir, workspace: path.join(dir, "does-not-exist") });
     expect(result.data.written).toBe("created");
     expect(result.data.workspaceStatus).toBe("not_available");
+    expect(result.data.previewFailure?.code).toBe("WORKSPACE_NOT_FOUND");
     expect(result.data.preview).toBeNull();
     const expectedPath = path.join(dir, ".arcadia", "asks", "agent-ask-draft-no-workspace.yaml");
     expect(result.data.path).toBe(expectedPath);
@@ -45,6 +46,7 @@ describe("Agent Ask draft", () => {
     initWorkspace(workspace);
     const result = runAgentAskDraftCommand({ request: strictAsk("draft-with-workspace"), dir, workspace });
     expect(result.data.workspaceStatus).toBe("previewed");
+    expect(result.data.previewFailure).toBeNull();
     expect(result.data.preview?.proposal.normalized.intent).toBe("log");
     expect(result.data.preview?.fingerprint).toBeTruthy();
   });
@@ -60,9 +62,15 @@ describe("Agent Ask draft", () => {
     try {
       const result = runAgentAskDraftCommand({ request: strictAsk("draft-write-denied"), dir, workspace });
       expect(result.data.written).toBe("created");
-      expect(result.data.workspaceStatus).toBe("not_available");
+      expect(result.data.workspaceStatus).toBe("preview_blocked");
+      expect(result.data.previewFailure?.code).toBe("SQLITE_WORKSPACE_WRITE_DENIED");
+      expect(result.data.previewFailure?.message).toContain(databaseFile);
       expect(result.data.preview).toBeNull();
       expect(existsSync(path.join(dir, ".arcadia", "asks", "agent-ask-draft-write-denied.yaml"))).toBe(true);
+      const rendered = renderAgentAskDraftSuccess(result).join("\n");
+      expect(rendered).toContain("Previewed: blocked (SQLITE_WORKSPACE_WRITE_DENIED)");
+      expect(rendered).toContain("Do not guess a workspace from the Project name");
+      expect(rendered).not.toContain("no ready Arcadia workspace resolved");
     } finally {
       chmodSync(databaseFile, 0o644);
     }
