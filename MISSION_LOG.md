@@ -1240,3 +1240,17 @@ updated: 2026-10-01
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Agent Ask pr-opened-arcadia-pr863
+
+- **Did:** PR #863 prepares isolated mobile/desktop host audit fixtures with retained denial and timeout proof; review and the explicit preparation answer remain gated: https://github.com/pmark/arcadia/pull/863
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Agent Ask pr-ready-arcadia-pr863-decision-answer-2026-10-01
+
+- **Did:** PR #863 has packaged fixture proof, 13 focused tests and CodeRabbit approval on 98cbe0d3. Decision 0078 still needs the exact operator preparation answer; latest-head CI remains unscheduled even after reopening the same PR: https://github.com/pmark/arcadia/pull/863
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

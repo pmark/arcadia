@@ -116,6 +116,26 @@ describe("manual Go preservation binding", () => {
     await expect(pending).resolves.toEqual(response);
     expect(host).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: f.candidate, workspace: f.workspace }));
   });
+  it("holds one claim until the async child finishes, keeping heartbeats serviceable", async () => {
+    const f = fixture();
+    let finish!: (result: import("../src/sessions/goRequestProtocol.js").GoTransportResult) => void;
+    const host = vi.mocked(executor.executeHostPreservation).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    const nonce = randomUUID();
+    writeFileSync(path.join(f.candidate, ".arcadia-preserve-request"), JSON.stringify({ nonce }));
+    withDatabase(f.workspace, db => {
+      processPreservationRequests(db, f.workspace);
+      processPreservationRequests(db, f.workspace);
+      expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 1 });
+    });
+    expect(host).toHaveBeenCalledTimes(1);
+    finish(goTransportFailure(new Error("bounded stage refusal")));
+    await vi.waitFor(() => {
+      withDatabase(f.workspace, db => expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 0 }));
+    });
+    const response = JSON.parse(readFileSync(path.join(f.workspace, "artifacts/preservation", host.mock.calls[0][0].attemptFile.split(path.sep).at(-2)!, `${nonce}.json`), "utf8"));
+    expect(response.ok).toBe(false);
+  });
   it("keeps the worker route responsive while the bounded host preservation job runs", async () => {
     const f = fixture();
     vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);

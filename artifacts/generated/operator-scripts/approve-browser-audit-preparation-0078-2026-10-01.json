@@ -1,0 +1,52 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "approve-browser-audit-preparation-0078-2026-10-01",
+  "title": "Approve Decision 0078: inactive browser-audit preparation",
+  "script": "approve-browser-audit-preparation-0078-2026-10-01.sh",
+  "kind": "grant",
+  "repeatable": false,
+  "problem": "The inactive host fixture route passes positive rendering, denial and timeout proof, but Decision 0078 remains open because vague delegation did not explicitly authorize its exact answer.",
+  "desired_effect": "Record only Prepare a host-owned audit route in Decision 0078 on PR #863's candidate branch and publish that canonical answer. This authorizes inactive preparation only.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/approve-browser-audit-preparation-0078-2026-10-01.sh run",
+  "policy_revision": "arcadia-host-browser-audit-preparation-v1",
+  "scope": "Decision 0078; pmark/arcadia PR #863; pinned inactive source-bound fixture preparation only",
+  "expires_at": "2026-10-04T00:00:00Z",
+  "authority": {
+    "does": [
+      "Require the exact candidate checkout, branch, open Decision hash, source hashes and green current-head CI before recording the exact offered answer through the candidate's canonical Decision writer",
+      "Commit and push only that answer to codex/restricted-host-browser-audit using the configured repository transport; retain a timestamped receipt and failure handoff"
+    ],
+    "never_does": [
+      "Merge either PR, activate an executor or dispatch, change installed permissions or credentials, access production, deploy or publish PPN, alter its files or pointers, answer another Decision, or reconcile Git",
+      "Accept arbitrary arguments, roots, URLs, commands or browser flags; create or reset a production Grant"
+    ]
+  },
+  "success": {
+    "effect": "The exact preparation answer is committed and published on PR #863; the one-shot receipt remains.",
+    "next": "Have this chat verify the new answer head. Activation and PPN measurement still require a separate exact-scope Decision/Grant after review."
+  },
+  "failure": {
+    "effect": "Drift, expiry, dirty candidate, unready CI or a changed Decision refuses before mutation. A publication failure retains the canonical answer commit and receipt.",
+    "next": "Read the timestamped failure handoff; retry only the same recorded answer if publication failed. Ask the agent to refresh a stale contract; never reset dashboard state or reconcile Git manually."
+  },
+  "candidate": "/Users/pmark/.codex/worktrees/pr863-browser-audit/arcadia",
+  "branch": "codex/restricted-host-browser-audit",
+  "decision": "docs/decisions/0078-choose-a-bounded-host-owned-loopback-headless-audit-route-for-issue-847-before.md",
+  "answer": "Prepare a host-owned audit route",
+  "pinned_decision_sha256": "896a0ed38d229c3593a46b7b7e0f5ebe134efe0be892afe180a0be72dc055e0f",
+  "pinned_proposal_fingerprint": "2d6a0611c9dd35bff2f2225d18ea820ddf4a5fa851cfe8858139353dfecc01c5",
+  "pinned_candidate_revision": "1035f056959027ae242ea0cab699527e612f73cc",
+  "pinned_ask_sha256": "832ec3244d3fc464227a6527a40ce42fc46583563a5c6ff1abb2802a722bf2f6",
+  "agentAsk": {
+    "proposal": "propose-bounded-host-browser-audit-847-2026-10-01",
+    "intent": "decision",
+    "targetRef": null
+  },
+  "pinned_source_sha256": {
+    "src/sessions/hostBrowserAudit.ts": "0762da6b7fe55013d1bbdcb2f2b80577e3b1b9777dea218c299b0b44a5f96c11",
+    "scripts/host-browser-audit-worker.mjs": "f85d187fba74d38e9d1cb5991808ae4537e1e6788886fab964e960125158e016",
+    "scripts/prove-host-browser-audit.ts": "9f02d1c2cb91620b82c4ace945a41bf043f569365171c1316e58d9dfa1fa424f",
+    "src/commands/decision.ts": "b67516bcaa9efbcf5e852ed314c035363ce422919731a99ca859cd4c61cccc2f",
+    "package.json": "ec8532468b6f92e93496f7d618d07bcdafd7b3e6ec25526ba6229093146ed340"
+  }
+}

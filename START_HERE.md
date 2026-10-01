@@ -1307,7 +1307,7 @@ its existing separate grant; otherwise the receipt names the local commit and
 its exact LOCAL ONLY recovery step. Retries return the preserved commit.
 
 Claimed preservation now runs in a separate host child, so validation and capture
-cannot stop the worker's heartbeat. An attempt is bounded to 20 minutes, with
+cannot stop the worker's heartbeat. An attempt is bounded to 22 minutes, with
 150 seconds per stage and 30 seconds per Git/capture subprocess. Checks retain
 their existing two-minute limit. A refusal names its stage, the protected
 attempt journal, and any validation receipt. Retain that evidence and retry
@@ -1325,6 +1325,17 @@ receipt under `artifacts/tmp/local-browser-audit/`, and exits nonzero when any
 required capability or denial is unproven. An offline render is not an HTTP
 audit. A bounded audit route needs the proposed operator Decision; reinstalling
 the unchanged profile is not a fix.
+
+Inactive host preparation now has a fixed synthetic proof command:
+`node --import tsx scripts/prove-host-browser-audit.ts` from an ordinary macOS
+host terminal. It reuses the host preview, renders mobile and desktop HTTP
+fixtures under a dedicated deny-default Seatbelt boundary, verifies network
+and synthetic credential denials, and deliberately stalls after Chrome starts
+to prove bounded process-group cleanup. Receipts, the exact profile, and
+screenshots are retained. This command accepts no arguments and does not audit
+a Project, install a profile, activate dispatch, or produce a Lighthouse matrix.
+Review `docs/reports/restricted-host-browser-audit-2026-10-01.md` before a
+separate source/revision-scoped activation proposal.
 
 From the host, the matching `go` executable performs canonical preview/apply
 under its separate authority. Every agent launcher rejects public arguments,

@@ -47,27 +47,13 @@ The original and renewed one-shot Grants are consumed/revoked. A future live tri
 
 The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
-## Other gates
+## Preservation and browser-audit gates
 
-The operator-directed repair of Issues #848 and #847 found two further gates
-on 2026-10-01. Protected manual preservation could block the worker synchronously
-after validation. The candidate repair moves claimed execution into a bounded
-host child with stage journals and retained validation evidence; real named-profile
-fixtures prove both manual and managed preservation. A real post-validation
-capture stall is terminated with its passing Seatbelt receipt intact. This
-repair has not yet been merged or installed, and PPN's original cause remains
-unestablished; its retained passing checks do not prove transport success.
+Merged PR #858 extends the #856 host preservation transport with stage and native-process limits, retained journals and partial validation receipts. Its real named-profile fixtures passed for manual and managed preservation, including a post-validation capture stall that retained passing Seatbelt evidence. This is candidate evidence: the repair has not been installed, and the cause of PPN's original stall remains unestablished. PR #863 carries a follow-up 22-minute total bound to fit ten declared two-minute checks and preservation. The proof and limits are recorded in [the preservation and browser-audit report](reports/bounded-preservation-and-browser-audit-2026-10-01.md).
 
-The actual installed `arcadia-unattended` browser probe denies loopback HTTP
-with EPERM and aborts headless Chrome even with a debugging pipe. Synthetic
-credential reads and external sockets are also denied. The candidate adds a
-pre-dispatch capability refusal. A supported positive browser-audit path still
-needs the operator's boundary choice, fixture proof and separate scoped
-activation. PPN's final comparable mobile/desktop Lighthouse matrix remains
-unmeasured and its verification Action remains open. The prepared Ask and
-measured evidence are in `docs/reports/bounded-preservation-and-browser-audit-2026-10-01.md`.
+The installed `arcadia-unattended` profile still denies loopback HTTP and aborts headless Chrome; synthetic credential reads and external sockets are also denied. The merged repair retains a pre-dispatch capability refusal. No fresh PPN capture or comparable mobile/desktop Lighthouse matrix is claimed, and its verification Action remains open.
 
-The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions completing unattended. Board-surface and historical integration results were not rerun by this derivation. The remaining parent proof stays open. Cross-repository concurrency and same-repository pipelining remain later gates; the v6 trial kept concurrency one.
+PR #863 prepares an inactive host-owned alternative. Its fixed synthetic fixture rendered mobile and desktop HTTP pages while denying external, private and other-loopback TCP, unrelated Unix sockets, synthetic credential-file reads and external browser navigation. A deliberate post-launch stall stopped the supervised browser group without changing the fixture source. A separate probe found that native detached children can escape that group; the fixture's `ready` result does not establish containment for a live route. The named profile and production dispatch remain unchanged. [The host-browser report](reports/restricted-host-browser-audit-2026-10-01.md) retains the proof and limits, including platform-service review, broker integration, exact source/revision/expiry authority and the open preparation Decision 0078. Live activation and PPN Lighthouse measurement remain separate gates.
 
 ## Refresh contract
 
