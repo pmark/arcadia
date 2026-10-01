@@ -29,7 +29,7 @@ import {
 } from "./redAlerts.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
-import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
@@ -690,7 +690,10 @@ export function runManagedProductionTick(
   let schedulingError: string | null = null;
   if (active) {
     try {
-      scheduling = runSchedulingPass(db, { now, log, boardFactory: options.boardFactory });
+      scheduling = runSchedulingPass(db, {
+        now, log, boardFactory: options.boardFactory,
+        projectSlugs: policyRead.status === "ok" ? policyRead.policy.scope?.projects ?? [] : []
+      });
     } catch (error) {
       schedulingError = error instanceof Error ? error.message : String(error);
       log(`Scheduling pass failed: ${schedulingError}`);
@@ -771,11 +774,31 @@ export function runManagedProductionTick(
         // receipt's outcome exactly what the evidence says (still
         // `incomplete_resumable` when the candidate has real changes) while
         // stopping it from being offered to `prepareSession`'s resumption path.
+        const continuation = getSessionContinuation(db, lease);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot,
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
-            : undefined
+            : undefined,
+          // Keep retry accounting atomic with the terminal Session/receipt.
+          // A worker crash cannot commit one without the other; replay is a no-op.
+          onReceiptWrite: continuation ? (receipt) => {
+            const actionKey = `${project.slug}/${lease.action_id}`;
+            const unchanged = receipt.outcome === "incomplete_resumable"
+              && receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
+              && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
+            if (unchanged) {
+              recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
+              const attempts = getRepairAttempts(db, actionKey);
+              if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+                recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
+                  lastError: attempts.lastError, now, log });
+              }
+            } else if (receipt.outcome === "accepted_completion"
+              || (receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
+              resetRepairAttempts(db, actionKey);
+            }
+          } : undefined
         });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
@@ -1047,7 +1070,7 @@ function attemptProjectLaunch(
       // `arcadia production status` still telling the operator to sign in.
       onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
     });
-    resetRepairAttempts(db, actionKey);
+    if (!getSessionContinuation(db, result.session)) resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
     clearLaunchRefusal(db, actionKey);

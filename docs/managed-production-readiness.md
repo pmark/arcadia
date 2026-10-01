@@ -1,205 +1,61 @@
 # Managed production readiness
 
-**The one question this document answers:** how far is Arcadia from running
-software production unattended, steered from a GitHub Project board?
+This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-This is a *derived* document, not a source of authority. Its inputs are
-`PROJECT.md`, `docs/plans/bootstrap-managed-production-to-build-flight-deck.md`,
-the relevant Decisions and Mission Log entries, the live worker/workspace
-state, `arcadia advance queue`, `arcadia production status`, and the hermetic
-rehearsal replay (`tests/rehearsal-two-action.test.ts`). If one of those
-disagrees with this document, it is right and this document is stale.
+Latest derivation: **2026-10-01**, after the first live v6 attempt and the operator's stop.
 
-**Latest bounded-trial check: 2026-10-01T04:34Z (September 30 locally).**
-The operator authorized rejecting five historical proposals and retaining
-`agentask_4777d744460a9f5fc0` for later Flight Deck review. Revisit its changes
-after the bounded two-action production proof succeeds; that trigger does not
-accept the proposal or activate Flight Deck automatically. The exact instruction
-is preserved in
-[`record-five-rejections-and-deferred-flight-deck`](../.arcadia/asks/agent-ask-record-five-rejections-and-deferred-flight-deck-2026-09-30.yaml).
+## Current answer
 
-The first authorized canonical rejection refused with
-`SQLITE_WORKSPACE_WRITE_DENIED`, including an escalation attempt. All six
-proposals remain pending. The canonical proposal contract has only accepted
-and rejected dispositions, so Flight Deck has an operator instruction to wait,
-not an applied deferred proposal state. Leaving it pending continues to block
-the Arcadia proof Action under the current Action-name gate.
+The host passed the full hermetic rehearsal replay (17 tests), activated the bounded v6 Grant, launched a real coding-agent Session, and automatically resumed its incomplete candidate in the same worktree and branch. That proves the handoff reaches a provider and preserves candidate identity across Sessions.
 
-PRs [#849](https://github.com/pmark/arcadia/pull/849) and
-[#850](https://github.com/pmark/arcadia/pull/850) are merged. #849 adds a host
-replay to the Grant; #850 records the missing operator rejection capability.
-Neither has updated the local runtime. The fixed Go launcher still refuses the
-six pending items. Copying the reviewed Grant into this checkout would dirty
-main and fail its clean-checkout precondition.
+The attempt did **not** complete the first Action. Six Sessions left only the first marker line. The operator turned production Off to stop the retry loop. Policy is now **Inactive at revision 25, with zero live admissions**. The dependent Action's Off/restart proof remains unperformed. Production is not ready to leave unattended.
 
-The v6 fixture was actually prepared at `2026-10-01T00:34:20Z`; its preparation
-receipt is `artifacts/generated/operator-scripts/runs/20261001T003420Z-2658/preparation-receipt.json`.
-The earlier no-fixture statements below are superseded by this evidence.
-The Grant remains unpressed, policy is Inactive at revision 23, and live
-admissions are zero. The fixture's own first Action is dispatchable, but that
-does not supply a host update or governance write path. The next required
-repair is canonical host settlement plus a supported way to retain a deferred
-proposal without blocking unrelated production. No additional rejection
-approval is required for the five named proposals.
+## Vital few repairs
 
-Last derived: **2026-09-30T19:56Z**, against `origin/main`
-`4eeac8f2a605e87f81ec7a310dc5ae2ef445d589`.
+1. Keep scheduling within the active Grant's Project scope. A fixture-only Grant nevertheless ran portfolio-wide scheduling and moved Arcadia's unrelated pointer. [PR #855](https://github.com/pmark/arcadia/pull/855) fixes this by passing the existing scheduler its Project allowlist. Its regression reproduced the incorrect pointer commit before the fix.
+2. Tell a resumed Session that it is continuing prior work. The launch brief previously repeated the first-Session instruction without its canonical predecessor receipt. Render continuation context from the existing consumed handoff, scoped to the same Project, Plan, Action, worktree, and branch.
+3. Bound unchanged resumptions. A successful process launch previously reset the repair budget even when the next exit made no candidate progress. Count a clean unchanged resumed exit against the existing two-attempt repair budget; retain its candidate and surface the existing escalation. Reset that count when candidate progress or completion is observed.
 
-**2026-09-30 supplemental blocker — [#836](https://github.com/pmark/arcadia/issues/836):**
-the installed sandbox-callable combined brief writes SQLite at its `next`
-stage, outside `arcadia-unattended`'s worktree write roots. A correctly selected
-profile and a Codex restart still leave unrelated Project continuation blocked.
-The repair candidate uses canonical read-only resolution and passed both real
-SQLite regression tests and the actual Nagel worktree invocation under the
-unchanged sandbox. The installed broker remains blocked until reviewed merge
-and the existing explicit broker reinstall action. This supplemental finding
-does not rerun the queue, grant, or gate readings below. Evidence:
-[`readonly-dispatch-brief-836.md`](reports/readonly-dispatch-brief-836.md).
+These are implementation defects found by the trial. Neither relaxing approval boundaries nor activating the full portfolio fixes them.
 
----
+## What the evidence proves
 
-## Executive summary
-
-Arcadia has evidence that the earlier codex-cli v5 rehearsal ran two dependent
-Actions unattended; Decision 0057 was reopened on that basis. That is not yet
-the complete live proof. The remaining proof stages are deliberately separate:
-
-1. one Action must resume across two managed Sessions in the same candidate;
-2. an already-admitted dependent Action must survive an observed Off and worker
-   restart without a later admission, duplicate, or reactivation; and
-3. the resulting live receipts, Session identities, fixture history, and
-   operator interventions must be retained as the proof evidence.
-
-Production is currently **Inactive · Idle**. No live rehearsal is running and
-no live authority is implied by this document. The v6 preparation and bounded
-Grant actions are available on `/runs`, but neither has been pressed or run;
-there is no v6 fixture receipt, active v6 policy, Session, or proof result to
-claim.
-
-The short path is therefore operational rather than another implementation
-project: use the reviewed v6 procedure when the operator is ready, preserve
-the evidence, and assess the proof honestly. The current implementation Action
-`close-ask-traceability-and-cli-portability-gaps` is separately open in a
-candidate; its scope amendment was operator-settled and published, but it is
-not complete and does not count as production-proof evidence.
-
----
-
-## Evidence that changed this derivation
-
-| Evidence | What it establishes | What it does **not** establish |
-| --- | --- | --- |
-| Decision 0057, reopened 2026-09-29 | The codex-cli v5 rehearsal ran its two Actions end to end unattended, both reconciled `accepted_completion`. | The split-session, Off, and restart stages. |
-| PR #820 | The reviewed, versioned v6 prepare action, one-shot bounded Grant, and `morning-runbook.md` are on main. | That preparation, activation, a fixture, a Session, Off, or restart has happened. |
-| PR #825 | The auto-settle eligibility documentation now states the actual candidate/evidence constraints. | Any new live completion. |
-| PRs #827–#829 and #832 | `/runs` Plan-amendment settlement now uses one shared runner with fresh preview, semantic envelope checks, durable receipts, recovery, and real-workspace tests. | A production Grant or the live rehearsal. |
-| Settlement `asksettle_3366f84237344e8d9d` at `4eeac8f2` | The exact traceability Action amendment was accepted and published without changing the Plan activation, pointer, or queue position. | Completion of that Action or any production transition. |
-
-The hermetic replay remains necessary before each live rehearsal. It proves
-many component and cross-stage behaviors but cannot substitute for observing a
-real provider process, an actual Off/restart, or the live evidence chain.
-
----
-
-## Before the remaining live rehearsal
-
-The executable procedure is
-[`artifacts/generated/operator-scripts/morning-runbook.md`](../artifacts/generated/operator-scripts/morning-runbook.md).
-It is intentionally sequenced and bounded:
-
-1. Verify the checkout is current and clean, the worker is healthy, and
-   production remains Inactive.
-2. Run **Prepare the v6 remaining-stages rehearsal fixture (no Grant)** from
-   `/runs`; inspect its receipt and pinned inactive policy revision.
-3. Review and press **Grant v6 remaining-stage rehearsal (split, Off, restart;
-   24h)** once. It refuses drift and grants only the v6 fixture's two Actions,
-   `codex-cli`, and effective concurrency one.
-4. Observe the split Action's first Session exit incomplete after its first
-   marker, then the worker resume it in the same candidate/worktree/branch.
-   Preserve the concurrent-candidate refusal.
-5. While the dependent Action is already admitted, turn production Off through
-   the supported control and restart the worker through the supported service
-   control. Leave policy Off and prove the absence of a later admission,
-   duplicate, or reactivation.
-6. Preserve the run directory, receipts, fixture Git history, worker-log slice,
-   policy revisions/epochs, Action and Session identities, candidate paths, and
-   every operator intervention. Only then settle the proof criteria that the
-   evidence actually satisfies.
-
-Do not adapt the scripts by hand when they refuse. Their failure handoff names
-the safe recovery route. The Grant itself never starts a Session, turns
-production Off, restarts a worker, merges, deploys, changes credentials, or
-widens its scope.
-
----
-
-## Gates
-
-| Gate | Current state |
+| Stage | Live result |
 | --- | --- |
-| 1 — The board is the surface | ✅ Previously closed; this derivation did not re-run board reconciliation. |
-| 2 — Work reaches an agent with no operator | 🟡 Demonstrated by the earlier v5 codex-cli rehearsal; the remaining split-session observation is still live-proof work. |
-| 3 — A finished Session lands with no operator | 🟡 Demonstrated in the earlier v5 path and hermetic replay; the resumed-session path remains to be observed live. |
-| 4 — It keeps going without help | 🟡 The v5 dependent transition is evidence, but Off/restart behavior under an already-admitted Session remains unproven live. |
-| 5 — Proof | ⬜ `prove-two-action-unattended-production` is open and is the current governed pointer. The v6 procedure is prepared, not performed. |
-| 6 — The operator surface | 🟡 `/runs` exposes bounded prepare and Grant actions, but the live operator procedure and its evidence have not been completed. |
-| B — Cross-repository concurrency | ⬜ Admission remains capped at one while either named proof Action is open, unless an unexpired rehearsal exception names `prove-concurrent-ready-set-admission`; that exception raises the cap to the configured maximum. The v6 Grant still uses concurrency one and cannot lift the gate. |
-| B′ — Same-repository pipelining | ⬜ Still follows the single-repository proof and the cross-repository gate. |
+| Host replay before Grant | Passed: 17 tests. |
+| Bounded v6 activation | Applied, then revoked by the operator. |
+| First Session exits incomplete with one marker | Observed. |
+| Second Session reuses the exact candidate and branch | Observed. |
+| Resumed Session appends the second marker and completes | Not achieved; repeated first-marker exits instead. |
+| Competing candidate refused while the first is live | A preview was retained; no actual competing launch was attempted. This does not establish the full refusal criterion. |
+| Dependent Action admitted before Off | Not reached. |
+| Existing dependent Session survives Off and worker restart | Not performed. |
+| No admission or reactivation after the actual stop | Policy Off and zero live admissions confirmed; longer observation remains part of the next bounded trial. |
 
-A gate closes only when the live system does what it says. A passing replay,
-an available script, a drafted fixture, or an unpressed Grant is not closure.
+Live run logs, policy receipts, marker observations, Session identities, and candidate paths remain in the local generated operator-script run evidence. They must be retained and assessed before settling any proof criterion. An exit code or a passing hermetic replay cannot stand in for missing live evidence.
 
----
+## Governed and operator state
 
-## Live state at derivation
+The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The scheduler moved its pointer to `limit-sessions-per-provider-account` during the faulty scope pass. This document does not repair that authoritative pointer or claim that `prove-two-action-unattended-production` is complete.
 
-| Signal | Reading at 2026-09-30T19:56Z |
-| --- | --- |
-| Managed production | **Inactive · Idle.** Desired state `inactive`; revision **23**; epoch **16**; revoked **2026-09-30T06:03Z**. |
-| v3 approval | Still requires an operator, but is fenced by `production_off`; it cannot create a live launch while policy is inactive. |
-| Current Plan pointer | `bootstrap-managed-production-to-build-flight-deck` / `prove-two-action-unattended-production`. |
-| Current proof Action | `open`, `agent`, and `clarified`; it requires the live split-session and Off/restart stages described above. |
-| v6 fixture and Grant | Scripts/descriptors and runbook are present on main. Neither prepare nor Grant has run, so there is no prepared fixture or active v6 authorization. |
-| Traceability Action | `close-ask-traceability-and-cli-portability-gaps` remains open in an isolated candidate. Its exact scope amendment is published at `4eeac8f2`; no completion is claimed. |
+The operator rejected the five historical proposals through the existing host approval surface. Their earlier write-path blocker is superseded. The retained Flight Deck proposal `agentask_4777d744460a9f5fc0` waits for later review, revived only after the bounded production proof succeeds. Retention grants neither acceptance nor Plan activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
----
+The original revision-23 Grant has been consumed. Its receipt must remain intact. A further trial needs a fresh request id, the current inactive revision, the same exact two-Action/provider/concurrency scope, and fresh canonical preview. Do not reset an old button or replay its activation receipt as new authority.
 
-## Scoreboard
+## Shortest path
 
-| Measure | Count / state |
-| --- | --- |
-| Actions in the active Plan | 147 |
-| Done | 113 |
-| Open | 34 |
-| Remaining live proof Action at the governed pointer | 1 — `prove-two-action-unattended-production` |
-| Prepared-but-unexecuted v6 operator actions | 2 — repeatable prepare and one-shot Grant |
-| Active live v6 policy / v6 Sessions | 0 / 0 |
-| Effective admission concurrency before both named proofs close | 1 |
+1. Review, merge, and install the scope and continuation repairs; verify their actual merged revisions and file content.
+2. Keep production Off while checking worker health, fixture/candidate state, retained evidence, and fresh revision-pinned authority.
+3. Run the smallest renewed bounded trial using the supported host path. Reuse the incomplete candidate and continue the remaining acceptance criteria.
+4. Observe the dependent Action's already-admitted Session through Off and worker restart, retaining every receipt and operator intervention.
+5. Settle only criteria supported by the resulting live evidence, then assess wider production authority separately.
 
----
+The operator should use the existing dashboard approval/control surfaces or a single bounded generated host action. No terminal command, database inspection, pasted receipt, or manual relay should be necessary. Flight Deck UI work remains deferred until this proof succeeds.
 
-## Refreshing this document
+## Other gates
 
-Run these read-only checks, then revise the executive summary, gates, critical
-path, live-state table, and scoreboard from their results:
+The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions completing unattended. Board-surface and historical integration results were not rerun by this derivation. The remaining split-completion and Off/restart stages keep the live proof open. Cross-repository concurrency and same-repository pipelining remain later gates; the v6 trial keeps concurrency one.
 
-```bash
-grep -E "^(active_plan|current_action):" PROJECT.md
-active_plan="$(grep "^active_plan:" PROJECT.md | head -1 | cut -d " " -f2)"
-sed -n "1,220p" "docs/plans/${active_plan}.md"
-mise exec -- pnpm arcadia advance queue --json --workspace <arcadia-workspace>
-mise exec -- pnpm arcadia production status --workspace <arcadia-workspace>
-grep -l "^status: open" docs/decisions/*.md
-tail -80 MISSION_LOG.md
-grep -E "Launched Session|Reconciled Session|Recovered hung worker|Escalated" <workspace>/.arcadia/worker.log | tail -30
-gh issue list --label bug --state open
-# Run from a plain terminal because Seatbelt cannot nest.
-ARCADIA_PRESERVATION_HOST_TEST=1 mise exec -- pnpm exec vitest run tests/rehearsal-two-action.test.ts
-```
+## Refresh contract
 
-Run the replay before every live rehearsal and add a scenario for every live
-failure it could have predicted. Count Plan Actions by pairing each top-level
-`- id:` with its following `status:`; do not grep every `status:` string in the
-file. Refresh this document whenever a critical-path Action completes, a live
-run happens, a Plan is activated, a Grant changes policy, or a new blocker is
-found.
+Refresh this document whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is discovered. Read the Project pointer and active Plan, canonical queue and production status, relevant open Decisions and Mission Log, worker/Session receipts, and bug/review state. Run the host hermetic rehearsal before each new live Grant. Separate observations from unperformed criteria; preserve the previous receipts rather than replacing failure with a success claim.
