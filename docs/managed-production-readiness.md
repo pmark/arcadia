@@ -78,3 +78,10 @@ The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions com
 ## Refresh contract
 
 Refresh this document whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is discovered. Read the Project pointer and active Plan, canonical queue and production status, relevant open Decisions and Mission Log, worker/Session receipts, and bug/review state. Run the host hermetic rehearsal before each new live Grant. Separate observations from unperformed criteria; preserve the previous receipts rather than replacing failure with a success claim.
+
+The 2026-10-01 repair follow-up was reconciled with landed PR #856: its host-only
+static preview and async admission/claim-expiry behavior remain intact. PR #858
+adds retained stage/evidence diagnostics, stage/native process limits and real
+post-validation stall proof on that base. Both managed/manual installed-profile
+fixtures passed after rebuilding. This is not a supported named-profile headless
+audit executor, a fresh PPN capture, or a comparable PPN Lighthouse matrix.

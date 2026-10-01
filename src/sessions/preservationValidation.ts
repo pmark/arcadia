@@ -62,9 +62,11 @@ export function validatePreservationCandidate(db: Database.Database, workspace: 
   });
 }
 
-export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; base: string; commands: string[] }, binding: T, assertBinding: () => void) {
+export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; base: string; commands: string[] }, binding: T, assertBinding: () => void, onStage?: (stage: string) => void) {
+  onStage?.("validation-authority-check");
   preservationStage("validation.binding");
   assertBinding();
+  onStage?.("validation-candidate-capture");
   preservationStage("validation.snapshot");
   const tree = snapshotCandidate(candidate.worktree);
   // Refuse before executing anything: a check the candidate rewrote cannot judge it.
@@ -84,6 +86,7 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   mkdirSync(source); mkdirSync(scratch);
   const evidenceRef = path.join(evidenceDirectory, "validation.json");
   try {
+    onStage?.("seatbelt-validation");
     preservationStage("validation.materialize", { evidenceRef, executionRoot: root });
     materializeCandidateTree(candidate.worktree, tree, source);
     const quote = (s: string) => JSON.stringify(s);
@@ -122,8 +125,11 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
         ? { command: r.command, status: "skipped" as const, skipReason: r.error ?? `terminated by signal ${r.signal}` }
         : { command: r.command, status: "failed" as const, exitStatus: r.exitStatus });
     if (checks.length) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef, checks });
+    onStage?.("seatbelt-checks-passed");
+    onStage?.("post-validation-authority-recheck");
     preservationStage("validation.recheck-binding", { evidenceRef });
     assertBinding();
+    onStage?.("post-validation-candidate-recapture");
     preservationStage("validation.recheck-snapshot", { evidenceRef });
     if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, checkDefinition, binding };

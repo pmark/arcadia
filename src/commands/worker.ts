@@ -1000,7 +1000,11 @@ export function runWorkerIteration(
    */
   progress?: () => void
 ): ReturnType<typeof getExecutionRun> {
-  if (!process.env.CODEX_SANDBOX) processPreservationRequests(db, workspacePath);
+  // A protected preservation job must finish before this worker admits more
+  // work. Its fixed child process keeps heartbeats responsive; pausing this
+  // iteration preserves the old serialization with production admission and
+  // prevents a new Session from invalidating the handoff's reservation.
+  if (!process.env.CODEX_SANDBOX && processPreservationRequests(db, workspacePath)) return null;
   recoverOrphanedRuns(db, logfile);
   runManagedProductionIteration(db, workspacePath, logfile, progress);
   const run = claimNextPendingRun(db, pid);

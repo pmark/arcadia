@@ -79,6 +79,7 @@ async function proveScenario(mode: "session" | "manual") {
   }
   let worker: ReturnType<typeof spawn> | undefined;
   let workerOutput = "";
+  let passed = false;
   // A launched Session owns a live tmux session. The fixture registers a
   // `prepared` Session, so the proof must give it that live transport: without
   // it the worker's managed-production iteration reconciles the Session as an
@@ -144,6 +145,7 @@ console.log('candidate edits allowed; common Git, host evidence and launcher wri
     assert.ok(validations.some(v => v.tree === receipt.candidateFingerprint && v.results.every(r => r.exitStatus === 0)));
     assert.match(readFileSync(path.join(f.repo, "PROJECT.md"), "utf8"), /current_action: write-marker/);
     assert.match(readFileSync(path.join(f.repo, "docs/plans/proof.md"), "utf8"), /status: open/);
+    passed = true;
     return {
       mode: `${mode} preservation`,
       kind: mode === "manual" ? "manual handoff" : "managed Session",
@@ -156,6 +158,14 @@ console.log('candidate edits allowed; common Git, host evidence and launcher wri
       validations,
       workerOutput
     };
+  } catch (error) {
+    const proofDirectory = path.resolve("artifacts/tmp/protected-preservation");
+    mkdirSync(proofDirectory, { recursive: true });
+    const failure = path.join(proofDirectory, `failure-${mode}-${Date.now()}-${process.pid}.json`);
+    writeFileSync(failure, JSON.stringify({ mode, protectedRoot, candidate: f.candidate, runtimeSha256,
+      error: String(error), commands, workerOutput: workerOutput.slice(-60000) }, null, 2));
+    process.stderr.write(`Protected boundary proof failed; fixture and diagnostics retained: ${failure}\n`);
+    throw error;
   } finally {
     if (worker && worker.exitCode === null) {
       worker.kill("SIGTERM");
@@ -163,7 +173,7 @@ console.log('candidate edits allowed; common Git, host evidence and launcher wri
     }
     if (tmuxSessionName && tmuxHas(tmuxSessionName)) { execFileSync("tmux", ["kill-session", "-t", `=${tmuxSessionName}`], { stdio: "ignore" }); }
     // Only the fixture's own temporary repositories and runtime are retired.
-    rmSync(f.candidate, { recursive: true, force: true }); rmSync(protectedRoot, { recursive: true, force: true });
+    if (passed) { rmSync(f.candidate, { recursive: true, force: true }); rmSync(protectedRoot, { recursive: true, force: true }); }
   }
 }
 

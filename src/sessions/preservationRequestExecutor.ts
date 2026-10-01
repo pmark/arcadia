@@ -6,7 +6,7 @@ import { normalizeError, validationError } from "../cli/errors.js";
 import { goTransportFailure } from "./goRequestExecutor.js";
 import type { GoTransportResult } from "./goRequestProtocol.js";
 
-export const PRESERVATION_EXECUTION_TIMEOUT_MS = 1_200_000;
+export const PRESERVATION_EXECUTION_TIMEOUT_MS = 1_320_000;
 export const PRESERVATION_STAGE_TIMEOUT_MS = 150_000;
 
 export interface PreservationAttempt {

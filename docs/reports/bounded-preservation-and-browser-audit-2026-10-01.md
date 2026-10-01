@@ -8,13 +8,13 @@ No Project/Plan pointer, PPN candidate file, claim, production policy or install
 permission profile was manually changed by this repair.
 
 The initial worktree HEAD `fb8ee4b10` already included local-main integration
-and canonical settlement history that remote main did not yet contain. PR #858
-therefore also includes inherited changes to `PROJECT.md`, Decision 0057 and
+and canonical settlement history that remote main did not yet contain. The first version of PR #858
+therefore included inherited changes to `PROJECT.md`, Decision 0057 and
 the bootstrap Plan: the pointer targets `limit-sessions-per-provider-account`,
 and Decision 0057 keeps the two-Action proof dispatchable. This repair did not
 write or reverse those records. Their provenance is the initial local history,
-including `6beb51ef6`, `eb4309523` and `e5ccdd2cf`; the operator must review
-them as part of this candidate before any merge. The pointer transition was
+including `6beb51ef6`, `eb4309523` and `e5ccdd2cf`; those records were called out for review. Main subsequently gained the same
+records through PR #856; this reconciled PR leaves them unchanged. The pointer transition was
 written by `arcadia advance queue make-next --apply`, receipt
 `qpointer_8d0d526f7631442f94`, in operator-authored commit `e5ccdd2cf`. It
 did not claim the unfinished proof was complete.
@@ -29,11 +29,11 @@ The consumer previously called synchronous preservation on the worker thread.
 The repaired consumer runs the same host-owned writer and real validator in a
 supervised child, transfers claim ownership to its PID, and releases only its
 own token after terminal handling. Other ticks and heartbeat refreshes remain
-serviceable. A parent crash leaves a live child protected by its claim. The
+serviceable. After PID transfer, a parent crash leaves a live child protected by its claim. The
 caller still supplies only a nonce in its registered worktree, never commands,
 paths, evidence, flags or authority.
 
-An attempt has a 20-minute ceiling and 150-second stage ceiling; Git/capture
+An attempt retains the landed 22-minute ceiling and 150-second stage ceiling; Git/capture
 subprocesses have 30-second native limits. Each declared check keeps its existing
 120-second limit. The supervisor kills the attempt's process group on timeout,
 waits for exit, retains its last-stage journal, bounded stderr and terminal
@@ -66,7 +66,7 @@ The private named-profile proof receipt from this session is retained under
 `artifacts/tmp/protected-preservation/fixture-2026-10-01T15-34-37-129Z-15521.json`.
 The original PPN diagnostics and recovery bundle remain intact outside this
 repository. Their local paths and identifiers are deliberately not copied into
-this public report. Installing a reviewed repair and making a fresh protected
+this public report. Installing the reviewed additional diagnostics and making a fresh protected
 capture are still required before claiming PPN preservation succeeded.
 
 ## #847: measured missing capability, still open
@@ -166,3 +166,28 @@ Decision-opening button additionally has three offline publication-recovery
 regressions: an applied receipt without preview-only documents can retry;
 changed Decision state and unrelated local history refuse before push. Every
 Git/CLI subprocess in those tests is intercepted; the live action was not run.
+
+## Reconciliation with landed PR #856
+
+While this PR was in its final review, main gained PR #856's async transport,
+expiry recovery, admission pause and host-only static preview. The candidate
+was merged with that base and keeps those contracts, using one supervised
+writer with PID-owned claims, retained stage/evidence journals and group-exit
+ordering. Its total bound is now the landed 22 minutes, preserving the maximum
+ten 120-second validation checks plus two minutes for preservation; the caller
+retains the 30-second response margin. Stage and native subprocess bounds remain
+150 and 30 seconds. Token cleanup uses a fresh database connection after exit.
+
+The existing host-preview command remains available for an explicit host-owned
+static server. It does not demonstrate named-profile headless rendering or a
+confined browser executor. The proposed Decision now concerns that remaining
+executor; its implementation should reuse the landed preview where possible.
+No route was installed or activated on PPN. The reconciled focused group passed
+45 tests (two host cases skipped there), and the separate real host group passed
+19. A prematurely run named-profile proof used the prior compiled runtime after
+lint stopped its rebuild; that invocation failed and is not counted as proof.
+The rebuilt named-profile proof passed both scenarios; its receipt is
+`artifacts/tmp/protected-preservation/fixture-2026-10-01T16-49-33-996Z-21275.json`.
+The separate reconciled worker/transport group passed 85 tests (two skipped).
+Failed proof invocations
+now retain their synthetic fixtures and a timestamped failure receipt.

@@ -10,6 +10,7 @@ let evidenceRef: unknown;
 let currentStage = "host.start";
 let result: GoTransportResult;
 try {
+  if (process.env.CODEX_SANDBOX) throw new Error("Protected preservation must run on the host controller.");
   result = withPreservationProgress((stage, details) => {
     currentStage = stage;
     evidenceRef = details?.evidenceRef ?? evidenceRef;
