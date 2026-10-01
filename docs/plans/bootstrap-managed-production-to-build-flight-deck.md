@@ -2763,6 +2763,23 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: recover-terminal-integration-after-reconcile
+    title: Rediscover a terminal completed candidate from canonical receipts and integrate it exactly once under fresh exact authority.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Rediscover a terminal completed candidate from canonical receipts and integrate it exactly once under fresh exact authority.
+    expected_artifact: Evidence satisfying Agent Ask recover-terminal-integration-after-reconcile
+    clarification: clarified
+    confidence: high
+    source: Agent Ask recover-terminal-integration-after-reconcile-2026-10-01
+    acceptance_criteria:
+      - A later worker tick rediscovers a canonically completed, validated and preserved terminal candidate after an injected integration failure, integrates its unchanged settlement HEAD through the existing fast-forward path exactly once, and launches no replacement coding Session.
+      - Production Off, expired or drifted exact Grant or scope, missing validation or preservation, changed candidate HEAD or branch, and divergent base each refuse integration while preserving a recoverable handoff receipt.
+      - Focused fault and refusal tests pass, followed by the required full test and build checks; the reviewed change states the installed revision and remaining live-proof boundary.
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/adversarial-review/2026-10-01-production/recovery-probe/result.md", "src/production/tick.ts", "src/production/sessionHandoff.ts", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
