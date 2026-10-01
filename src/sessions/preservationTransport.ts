@@ -7,7 +7,8 @@ import type { GoBrokerAgent } from "../goBroker.js";
 import { git } from "../git/worktrees.js";
 import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
 import { GO_REQUEST_FILE, GO_RESPONSE_TIMEOUT_MS, type GoTransportResult } from "./goRequestProtocol.js";
-import { runPreserveCommand } from "../commands/preserve.js";
+import { withDatabase } from "../db/connection.js";
+import { executeHostPreservation, readPreservationAttempt, PRESERVATION_EXECUTION_TIMEOUT_MS } from "./preservationRequestExecutor.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
@@ -198,7 +199,7 @@ export async function requestCandidatePreservation(source: string) {
   const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
   try { writeFileSync(fd, JSON.stringify({ nonce })); } finally { closeSync(fd); }
   const response = responsePath(workspace, lease.id, nonce);
-  const deadline = Date.now() + 1_230_000; // ten bounded two-minute checks plus transport margin
+  const deadline = Date.now() + PRESERVATION_EXECUTION_TIMEOUT_MS + 30_000; // ten bounded two-minute checks plus transport margin
   try {
     while (Date.now() < deadline) {
       if (existsSync(response)) {
@@ -208,7 +209,10 @@ export async function requestCandidatePreservation(source: string) {
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    throw validationError("Protected preservation response timed out; retain candidate and inspect the host worker. Retry is safe.");
+    const attemptRef = path.join(path.dirname(response), `${nonce}.attempt.json`);
+    throw validationError("Protected preservation response timed out; retain candidate and inspect the host worker. Retry is safe.", {
+      ...readPreservationAttempt(attemptRef), attemptRef, heartbeat: transportHeartbeatDiagnostic(workspace, "preservation")
+    });
   } finally {
     // Remove only this caller's untracked request on every exit path, never
     // another caller's or a tracked file, matching requestAgentGo. A hard kill
@@ -349,20 +353,23 @@ export function processPreservationRequests(db: Database.Database, workspace: st
       return true;
     }).immediate();
     if (!claimed) continue;
-    try {
-      let result;
-      try { result = { ok: true, response: runPreserveCommand({ source: lease.worktree_path, workspace, db }) }; }
-      // The structured shape the go route already writes, not a flattened
-      // message: the failing check's command, status and skip reason live in
-      // the error details, and a message-only response strands them in the
-      // host-only evidence file the sandboxed caller cannot read (#717).
-      catch (error) { result = goTransportFailure(error); }
-      mkdirSync(path.dirname(response), { recursive: true });
-      writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-      renameSync(`${response}.tmp`, response);
-    } finally {
-      db.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
-    }
+    const attemptFile = path.join(path.dirname(response), `${nonce}.attempt.json`);
+    // The claim belongs to this host worker, but its synchronous work runs in a
+    // bounded child. Never reuse the tick's DB connection after the tick returns.
+    void executeHostPreservation({ source: lease.worktree_path, workspace, attemptFile,
+      onSpawn: pid => {
+        db.prepare("UPDATE candidate_preservation_claims SET pid = ? WHERE session_id = ? AND token = ?").run(pid, lease.id, token);
+      }
+    })
+      .catch(goTransportFailure)
+      .then(result => writeGoResponse(response, result))
+      .catch(error => { process.stderr.write(`Could not write preservation response: ${String(error)}\n`); })
+      .finally(() => {
+        withDatabase(workspace, current => {
+          current.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
+        });
+      })
+      .catch(error => { process.stderr.write(`Could not release preservation claim: ${String(error)}\n`); });
   }
 }
 

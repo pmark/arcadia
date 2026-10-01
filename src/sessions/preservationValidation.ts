@@ -1,3 +1,4 @@
+import { preservationStage, preservationStageFailure } from "./preservationStages.js";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -62,9 +63,12 @@ export function validatePreservationCandidate(db: Database.Database, workspace: 
 }
 
 export function validateBoundCandidate<T>(workspace: string, candidate: { id: string; repository: string; worktree: string; base: string; commands: string[] }, binding: T, assertBinding: () => void) {
+  preservationStage("validation.binding");
   assertBinding();
+  preservationStage("validation.snapshot");
   const tree = snapshotCandidate(candidate.worktree);
   // Refuse before executing anything: a check the candidate rewrote cannot judge it.
+  preservationStage("validation.check-definitions");
   const checkDefinition = bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
   if (process.platform !== "darwin") throw validationError("Protected preservation validation currently requires the macOS Seatbelt host.");
   const evidenceRoot = path.join(workspace, "artifacts", "preservation", candidate.id);
@@ -80,21 +84,32 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   mkdirSync(source); mkdirSync(scratch);
   const evidenceRef = path.join(evidenceDirectory, "validation.json");
   try {
+    preservationStage("validation.materialize", { evidenceRef, executionRoot: root });
     materializeCandidateTree(candidate.worktree, tree, source);
     const quote = (s: string) => JSON.stringify(s);
     // Default read visibility matches the coding sandbox; write/process/network
     // capabilities are restricted separately. Secrets are not passed in env.
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(candidate.repository))})) (require-not (subpath ${quote(realpathSync(candidate.worktree))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    const results = candidate.commands.map(command => {
+    type CheckResult = { command: string; exitStatus: number | null; signal: NodeJS.Signals | null; error: string | null; stdout: string | null; stderr: string | null };
+    const results: CheckResult[] = [];
+    const writeEvidence = (runningCommand?: string) => writeFileSync(evidenceRef, JSON.stringify({
+      producer: "arcadia-host-seatbelt-v1", binding, tree, checkDefinition, results, sandboxProfile: profile,
+      runtime: process.execPath, node: process.version, createdAt: new Date().toISOString(),
+      complete: runningCommand === undefined, runningCommand
+    }, null, 2), { mode: 0o600 });
+    for (const command of candidate.commands) {
+      writeEvidence(command);
+      preservationStage("validation.check", { command, evidenceRef });
       const run = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
         cwd: source, env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: process.env.NODE_ENV ?? "" },
         encoding: "utf8", timeout: 120_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
       });
-      return { command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
-        stdout: run.stdout, stderr: run.stderr };
-    });
-    const evidence = { producer: "arcadia-host-seatbelt-v1", binding, tree, checkDefinition, results, sandboxProfile: profile, runtime: process.execPath, node: process.version, createdAt: new Date().toISOString() };
-    writeFileSync(evidenceRef, JSON.stringify(evidence, null, 2), { mode: 0o600 });
+      results.push({ command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
+        stdout: run.stdout, stderr: run.stderr });
+      writeEvidence(command);
+    }
+    preservationStage("validation.evidence", { evidenceRef });
+    writeEvidence();
     // "Skipped" means the check never produced its own exit status -- it
     // errored before running (e.g. ENOENT) or was terminated by a signal
     // (e.g. the 120s timeout's SIGKILL) -- as distinct from "failed", which
@@ -107,11 +122,16 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
         ? { command: r.command, status: "skipped" as const, skipReason: r.error ?? `terminated by signal ${r.signal}` }
         : { command: r.command, status: "failed" as const, exitStatus: r.exitStatus });
     if (checks.length) throw validationError("Declared preservation validation failed or was skipped.", { evidenceRef, checks });
+    preservationStage("validation.recheck-binding", { evidenceRef });
     assertBinding();
+    preservationStage("validation.recheck-snapshot", { evidenceRef });
     if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, checkDefinition, binding };
+  } catch (error) {
+    throw preservationStageFailure(error);
   } finally {
     // Retain proof, remove only the producer's own disposable execution paths.
+    preservationStage("validation.cleanup", { evidenceRef });
     rmSync(root, { recursive: true, force: true });
   }
 }

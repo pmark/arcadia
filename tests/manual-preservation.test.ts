@@ -12,6 +12,8 @@ import { bindManualPreservation, assertManualPreservationBinding } from "../src/
 import { processPreservationRequests, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
 import * as validation from "../src/sessions/preservationValidation.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
+import * as executor from "../src/sessions/preservationRequestExecutor.js";
+import { goTransportFailure } from "../src/sessions/goRequestExecutor.js";
 import * as preserve from "../src/commands/preserve.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
@@ -30,7 +32,13 @@ function bind(f: ReturnType<typeof fixture>) {
     repository: f.repo, worktree: f.candidate, baseBranch: "main", projectSlug: "preservation-fixture"
   }));
 }
-beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
+beforeEach(() => {
+  vi.stubEnv("CODEX_SANDBOX", "");
+  vi.spyOn(executor, "executeHostPreservation").mockImplementation(input => {
+    try { return Promise.resolve({ ok: true, response: preserve.runPreserveCommand({ source: input.source, workspace: input.workspace }) }); }
+    catch (error) { return Promise.resolve(goTransportFailure(error)); }
+  });
+});
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -53,6 +61,17 @@ describe("manual Go preservation binding", () => {
       expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 0 });
       expect(db.prepare("SELECT desired_state FROM production_policy").get()).toEqual({ desired_state: "inactive" });
     });
+  });
+  it("refuses a declared browser measurement before preparing another manual candidate", () => {
+    const f = fixture();
+    const plan = path.join(f.repo, "docs/plans/proof.md");
+    writeFileSync(plan, readFileSync(plan, "utf8").replace("Marker is ready.", "Mobile Lighthouse results are recorded."));
+    fixtureGit(f.repo, ["add", "docs/plans/proof.md"]);
+    fixtureGit(f.repo, ["commit", "-m", "declare browser requirement"]);
+    const before = fixtureGit(f.repo, ["worktree", "list", "--porcelain"]);
+    expect(() => runGoCommand({ repo: f.repo, apply: true, agent: "codex", workspace: f.workspace,
+      agentWorktreeRoot: path.join(f.root, "handoffs") })).toThrow(/local_browser_audit_unavailable/);
+    expect(fixtureGit(f.repo, ["worktree", "list", "--porcelain"])).toBe(before);
   });
   it("wires manual validation to one local commit and replay without a remote call", () => {
     const f = fixture();
@@ -93,6 +112,26 @@ describe("manual Go preservation binding", () => {
     withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
     await expect(pending).resolves.toEqual(response);
     expect(host).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: f.candidate, workspace: f.workspace }));
+  });
+  it("holds one claim until the async child finishes, keeping heartbeats serviceable", async () => {
+    const f = fixture();
+    let finish!: (result: import("../src/sessions/goRequestProtocol.js").GoTransportResult) => void;
+    const host = vi.mocked(executor.executeHostPreservation).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    const nonce = randomUUID();
+    writeFileSync(path.join(f.candidate, ".arcadia-preserve-request"), JSON.stringify({ nonce }));
+    withDatabase(f.workspace, db => {
+      processPreservationRequests(db, f.workspace);
+      processPreservationRequests(db, f.workspace);
+      expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 1 });
+    });
+    expect(host).toHaveBeenCalledTimes(1);
+    finish(goTransportFailure(new Error("bounded stage refusal")));
+    await vi.waitFor(() => {
+      withDatabase(f.workspace, db => expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 0 }));
+    });
+    const response = JSON.parse(readFileSync(path.join(f.workspace, "artifacts/preservation", host.mock.calls[0][0].attemptFile.split(path.sep).at(-2)!, `${nonce}.json`), "utf8"));
+    expect(response.ok).toBe(false);
   });
   describe("the preservation request marker is cleaned up by its own requester", () => {
     const marker = (f: ReturnType<typeof fixture>) => path.join(f.candidate, ".arcadia-preserve-request");

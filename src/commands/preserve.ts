@@ -1,3 +1,4 @@
+import { preservationStage } from "../sessions/preservationStages.js";
 import type Database from "better-sqlite3";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
@@ -44,6 +45,7 @@ export interface PreserveCommandOptions {
  * agent never needs write access to shared Git metadata.
  */
 export function runPreserveCommand(options: PreserveCommandOptions): CommandSuccess<PreserveCommandData> {
+  preservationStage("binding.resolve");
   const source = existingDirectory(options.source, "candidate worktree");
   const worktrees = parseWorktrees(git(source, ["worktree", "list", "--porcelain"]));
   const controlWorktree = worktrees[0].path;
@@ -62,6 +64,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
     if (!lease) {
       const projectSlug = resolveDispatch(controlWorktree).context?.projectSlug;
       if (!projectSlug) throw validationError("Manual preservation cannot resolve its Project.");
+      preservationStage("binding.manual");
       const binding = bindManualPreservation(db, { repository: controlWorktree, worktree: source, baseBranch, projectSlug });
       const assertBinding = () => assertManualPreservationBinding(db, binding);
       // No managed Session exists for a manual handoff (Decision: `arcadia go`'s
@@ -91,6 +94,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       });
     }
 
+    preservationStage("binding.session");
     const policy = readProductionPolicy(db);
     const actionKey = `${lease.project_slug}/${lease.action_id}`;
     const remotePreservation: RemotePreservationAuthorization =

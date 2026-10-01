@@ -1,3 +1,4 @@
+import { preservationStage, preservationProcessLimits } from "./preservationStages.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -315,6 +316,7 @@ export function preserveCandidate(
 ): CandidatePreservationReceipt {
   const hooks = deps.hooks ?? {};
   const now = request.now ?? new Date();
+  preservationStage("preserve.preconditions", { evidenceRef: request.validation?.evidenceRef });
   const repositoryPath = canonical(request.repositoryPath);
   const candidateWorktreePath = canonical(request.candidateWorktreePath);
 
@@ -408,6 +410,7 @@ export function preserveCandidate(
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
+  preservationStage("preserve.snapshot");
   hooks.beforeStage?.();
   const candidateFingerprint = stageAndFingerprint(candidateWorktreePath);
   hooks.afterStage?.();
@@ -416,6 +419,7 @@ export function preserveCandidate(
   }
 
   // --- Idempotent replay by request id (AC3) -------------------------------
+  preservationStage("preserve.replay");
   const priorReceipt = loadReceipt(db, request.requestId);
   if (priorReceipt) {
     assertReplayBindingsMatch(priorReceipt, request, candidateFingerprint);
@@ -440,10 +444,13 @@ export function preserveCandidate(
     // Preserve the existing commit rather than creating an empty one.
     commitSha = git(candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
   } else {
+    preservationStage("preserve.recheck-snapshot");
     if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
       throw validationError("Candidate changed between validation and preservation.");
     }
+    preservationStage("preserve.recheck-binding");
     hooks.beforeCommit?.();
+    preservationStage("preserve.commit");
     commitSha = commitCandidate({
       candidateWorktreePath,
       actionId: request.actionId,
@@ -490,6 +497,7 @@ export function preserveCandidate(
     });
 
   if (!request.remotePreservation.authorized) {
+    preservationStage("preserve.receipt");
     return localOnly(`remote preservation not authorized: ${request.remotePreservation.reason}`);
   }
 
@@ -499,10 +507,12 @@ export function preserveCandidate(
   }
 
   // --- Remote preservation (AC4) -------------------------------------------
+  preservationStage("preserve.push");
   hooks.beforePush?.();
   const { remote: remoteName } = remote.push({ repositoryPath, branch: request.branch });
   hooks.afterPush?.();
 
+  preservationStage("preserve.pull-request");
   const existing = remote.findPullRequest({ repositoryPath, branch: request.branch });
   hooks.beforePullRequestReceipt?.();
   const pullRequest = remote.upsertDraftPullRequest({
@@ -537,6 +547,7 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   findPullRequest({ repositoryPath, branch }) {
     try {
       const output = execFileSync("gh", ["pr", "view", branch, "--json", "number,url"], {
+        ...preservationProcessLimits(),
         cwd: repositoryPath,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"]
@@ -550,6 +561,7 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   upsertDraftPullRequest({ repositoryPath, branch, baseBranch, title, body, existing }) {
     if (existing) {
       execFileSync("gh", ["pr", "edit", String(existing.number), "--body", body], {
+        ...preservationProcessLimits(),
         cwd: repositoryPath,
         stdio: ["ignore", "ignore", "pipe"]
       });
@@ -558,7 +570,7 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
     const output = execFileSync(
       "gh",
       ["pr", "create", "--draft", "--base", baseBranch, "--head", branch, "--title", title, "--body", body],
-      { cwd: repositoryPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      { ...preservationProcessLimits(), cwd: repositoryPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
     ).trim();
     const number = Number.parseInt(output.match(/\/pull\/(\d+)/)?.[1] ?? "0", 10);
     return { number, url: output };

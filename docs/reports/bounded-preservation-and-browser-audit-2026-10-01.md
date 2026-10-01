@@ -1,0 +1,130 @@
+# Protected preservation and browser-audit repair evidence
+
+The operator requested an isolated repair of #848 first, then #847. This is
+stop-the-line repair work for the unattended managed-production milestone,
+not completion of `limit-sessions-per-provider-account`. Its scope was previewed
+through Agent Ask `repair-preservation-browser-boundaries-2026-10-01`.
+No Project/Plan pointer, PPN candidate file, claim, production policy or installed
+permission profile was manually changed.
+
+## #848: bounded claimed execution
+
+The retained real-host PPN receipt contains three passing Node 22.23.1 Seatbelt
+checks. The original post-validation stall is not diagnosed by that receipt.
+Reinstalling unchanged preservation sources does not demonstrate a repair.
+
+The consumer previously called synchronous preservation on the worker thread.
+The repaired consumer runs the same host-owned writer and real validator in a
+supervised child, transfers claim ownership to its PID, and releases only its
+own token after terminal handling. Other ticks and heartbeat refreshes remain
+serviceable. A parent crash leaves a live child protected by its claim. The
+caller still supplies only a nonce in its registered worktree, never commands,
+paths, evidence, flags or authority.
+
+An attempt has a 20-minute ceiling and 150-second stage ceiling; Git/capture
+subprocesses have 30-second native limits. Each declared check keeps its existing
+120-second limit. The supervisor kills the attempt's process group on timeout,
+waits for exit, retains its last-stage journal, bounded stderr and terminal
+result, and returns the stage plus any validation evidence reference. The child
+also keeps an append-only event journal. Validation writes partial receipts
+before checks and preserves completed check results. Partial receipts do not
+authorize preservation. Ordinary refusals preserve their original failure stage
+rather than mislabelling it as later cleanup.
+
+Capture now uses nonblocking no-follow descriptors: replacing a tracked regular
+file with a FIFO is rejected without waiting for a writer. Git ignores untracked
+FIFOs; this is a capture hardening test, not a claim that PPN contained one.
+Snapshots, command binding, immutable check definitions, source containment,
+reservation/lease guards and commit-trailer recovery remain enforced.
+
+Demonstrated on real macOS fixtures:
+
+- Managed and manual sandbox requests through the **actual installed** named
+  profile reach the existing worker, fail bad checks, preserve one local commit,
+  replay without another commit, and leave the Action open. The new proof writes
+  timestamped receipts rather than replacing earlier proof artifacts.
+- A real host Git shim stalls only after a genuine passing Seatbelt receipt.
+  The supervisor terminates that process group, returns
+  `validation.recheck-snapshot`, retains the passing receipt and leaves the
+  fixture candidate files and HEAD intact.
+- Real validator refusal, post-validation mutation refusal, source-write denial,
+  changed-check denial, binding/refusal budgets and commit replay pass.
+
+The private named-profile proof receipt from this session is retained under
+`artifacts/tmp/protected-preservation/fixture-2026-10-01T15-34-37-129Z-15521.json`.
+The original PPN diagnostics and recovery bundle remain intact outside this
+repository. Their local paths and identifiers are deliberately not copied into
+this public report. Installing a reviewed repair and making a fresh protected
+capture are still required before claiming PPN preservation succeeded.
+
+## #847: measured missing capability, still open
+
+`node scripts/probe-local-browser-audit.mjs` runs a synthetic fixture through
+`codex sandbox -P arcadia-unattended --include-managed-config`, with no model,
+no permission overrides, an isolated Chrome profile and no real credentials.
+The intended server binds only an ephemeral port on 127.0.0.1. The external
+probe uses an RFC 5737 documentation-only destination; only EPERM/EACCES count
+as denial, never a timeout. The credential probe reads a synthetic `.env`
+sentinel, never a real credential. Process execution is bounded to 30 seconds.
+
+Actual installed-profile result on 2026-10-01:
+
+| Requirement | Observed |
+| --- | --- |
+| Loopback HTTP | EPERM at listen; no server |
+| Headless browser | Chrome abort, SIGABRT, including remote-debugging-pipe |
+| External socket denial | EPERM |
+| Synthetic credential-file denial | EPERM |
+| Comparable browser/Lighthouse matrix | Unperformed |
+
+The private receipt is retained under
+`artifacts/tmp/local-browser-audit/probe-NuYYMB/receipt.json`. The probe exits 2;
+this is failure evidence, not a supported audit route. Preparing an Action or
+Session for declared browser measurements now refuses with
+`local_browser_audit_unavailable` before new candidate/Session creation.
+Existing criteria are conservatively recognized; an explicit
+`capability/local-browser-audit` reference removes prose ambiguity. Other
+providers' capability is not inferred from Codex's denial.
+
+The proposed boundary choice is committed as Agent Ask
+`propose-bounded-host-browser-audit-847-2026-10-01`. Recommendation: prepare an
+inactive host-owned static-site audit executor with one disposable loopback
+origin, a separate restricted Seatbelt boundary, isolated browser profile,
+denied external/private destinations and credentials, bounded execution and
+source-bound receipts. Fixture proof and a separate scoped activation grant
+must precede use on PPN. Alternative: retain the current denial until native
+named-profile support demonstrates every positive and negative requirement.
+Neither proposal acceptance nor PR merge activates browser authority.
+
+The relevant [official permission documentation](https://learn.chatgpt.com/docs/permissions)
+says domain rules require an active network proxy and distinguishes exact local
+targets from broader local/private access. Those configuration fields alone do
+not prove Chrome works on this host. No network key was enabled here.
+
+## QA procedure
+
+This is host CLI/worker behavior; no persistent HTTP demo or production endpoint
+is provided. The operator procedure is also the end-user procedure.
+
+1. Build the candidate, then run the real boundary proof from an ordinary host
+   terminal: `pnpm build` followed by
+   `node --import tsx scripts/prove-protected-preservation.ts`.
+   Expected: both synthetic preservation scenarios pass through the installed
+   named profile; a new timestamped receipt is printed. No real Project is
+   activated, completed, published or integrated.
+2. Run `ARCADIA_PRESERVATION_HOST_TEST=1 pnpm exec vitest run
+   tests/preservation-request-host.test.ts tests/preservation-validation.test.ts
+   --maxWorkers 1`.
+   Expected: real Seatbelt evidence, bounded post-validation-stall refusal and
+   unchanged fixture candidate; partial or failed proof never authorizes a commit.
+3. Run `node scripts/probe-local-browser-audit.mjs` on the host.
+   Expected on the currently installed profile: exit 2 and retained loopback,
+   browser and denial evidence. Exit 0 is permitted only if all four requirements
+   are actually met. A new supported route requires its separate Decision and proof.
+
+No operator button is needed for deterministic proof. The boundary choice uses
+an exact-proposal operator action; that action opens an unresolved Decision and
+never grants browser or production authority. PPN needs a fresh final capture
+once preservation transport is installed: its two evidence notes changed after
+the previous snapshot. Its accepted mobile layout and verification Action remain
+as the operator left them.
