@@ -1289,3 +1289,10 @@ updated: 2026-10-01
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Completed arcadia/recover-off-completed-candidate-preservation
+
+- **Did:** Completed Action arcadia/recover-off-completed-candidate-preservation from accepted evidence (Candidate eb959d54d66063580f402aded406225f61d888e0).
+- **Result:** Every declared acceptance criterion was accepted as met: "A later worker tick, under a fresh exact Active policy and integration Grant, validates and preserves the unchanged completed v6-style candidate whose prior Off state withheld preservation, then integrates its settlement HEAD exactly once without another coding Session."; "Off, expired or drifted exact authority, missing accepted completion or passing validation, changed candidate HEAD or branch, conflicting live lease, and divergent base each refuse before integration and leave the candidate and canonical receipts recoverable."; "Focused fault and refusal tests pass, followed by the required full test and build checks; the reviewed change identifies its installed revision, the v6 live-proof boundary and the separate operator approval needed for a fresh Grant.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-off-terminal-preservation-recovery-2026-10-01).
