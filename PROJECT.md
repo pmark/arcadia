@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Bootstrap managed production to run unattended from the GitHub board
 active_plan: bootstrap-managed-production-to-build-flight-deck
 current_action: limit-sessions-per-provider-account
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # Arcadia
