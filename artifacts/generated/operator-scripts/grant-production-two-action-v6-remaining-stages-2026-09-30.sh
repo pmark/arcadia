@@ -35,9 +35,17 @@ if (process.env.CODEX_SANDBOX) {
   console.error("REFUSED: run this Grant through the host operator-action library.");
   process.exit(1);
 }
+// The hermetic replay creates its own temporary Projects and settlements.
+// The live Grant's descriptor cannot authorize those test fixtures. Isolate
+// only this test child; the parent retains its operator context for activation.
+const {
+  ARCADIA_OPERATOR_SCRIPT_ID: liveOperatorId,
+  ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: liveOperatorDescriptor,
+  ...rehearsalEnv
+} = process.env;
 const result = spawnSync("pnpm", ["exec", "vitest", "run", "--dir", "tests", "rehearsal-two-action.test.ts"], {
   cwd: process.argv[2],
-  env: { ...process.env, ARCADIA_PRESERVATION_HOST_TEST: "1" },
+  env: { ...rehearsalEnv, ARCADIA_PRESERVATION_HOST_TEST: "1" },
   stdio: "inherit",
   timeout: 300_000
 });
