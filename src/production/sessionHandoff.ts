@@ -46,7 +46,7 @@ export interface PreserveSessionDeps {
 
 export interface IntegrateSessionDeps {
   /** Injected for deterministic fixtures; defaults to a real `git merge --ff-only`. */
-  fastForward?: (input: { repoRoot: string; branch: string }) => void;
+  fastForward?: (input: { repoRoot: string; branch: string; commitSha: string }) => void;
 }
 
 export interface SessionHandoffInput {
@@ -55,6 +55,8 @@ export interface SessionHandoffInput {
   repoRoot: string;
   session: AgentSession;
   now: Date;
+  /** A recovered terminal handoff may integrate only the settled candidate it inspected. */
+  expectedCandidateHead?: string;
 }
 
 function actionKey(session: AgentSession): string {
@@ -200,7 +202,7 @@ export function integrateSessionCandidate(
   input: SessionHandoffInput,
   deps: IntegrateSessionDeps = {}
 ): IntegrationStep {
-  const { db, repoRoot, session, now } = input;
+  const { db, repoRoot, session, now, expectedCandidateHead } = input;
   const branch = session.branch;
   let baseBranch: string;
   try {
@@ -249,6 +251,14 @@ export function integrateSessionCandidate(
     return refusal(`The integration grant expired at ${grant.expiresAt}.`, merge);
   }
 
+  if (expectedCandidateHead) {
+    const branchHead = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}`])?.trim();
+    const worktreeHead = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim();
+    if (branchHead !== expectedCandidateHead || worktreeHead !== expectedCandidateHead) {
+      return refusal("The terminal candidate changed after its completion settlement was checked.", merge);
+    }
+  }
+
   const kind = integrationKind(repoRoot, baseBranch, branch);
   if (kind === null) {
     return refusal(`The candidate branch ${branch} cannot fast-forward the governed base branch ${baseBranch}.`, merge);
@@ -260,10 +270,11 @@ export function integrateSessionCandidate(
     return { kind: "already_integrated", baseBranch };
   }
 
-  const commits = countCommits(repoRoot, baseBranch, branch);
+  const commitSha = expectedCandidateHead ?? branch;
+  const commits = countCommits(repoRoot, baseBranch, commitSha);
   try {
-    if (deps.fastForward) deps.fastForward({ repoRoot, branch });
-    else git(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", branch]);
+    if (deps.fastForward) deps.fastForward({ repoRoot, branch, commitSha });
+    else git(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", commitSha]);
   } catch (error) {
     return refusal(error instanceof Error ? error.message : String(error), merge);
   }

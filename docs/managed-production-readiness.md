@@ -2,20 +2,22 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-01**, after the renewed v6 trial and adversarial architecture review.
+Latest derivation: **2026-10-01**, after the renewed v6 trial, merged #860 and the retained terminal-recovery probe.
 
 ## Current answer
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
-Production is **Inactive at revision 27, with zero live admissions**. The dependent Action's completed candidate has not been integrated into the fixture base after Off. This is a distinct stage: candidate completion is observed; final base integration and parent proof settlement are not claimed. Off correctly withholds integration authority.
+Production is **Inactive at revision 27, with zero live admissions**. The dependent Action's completed candidate has not been integrated into the fixture base after Off. This is a distinct stage: candidate completion is observed; final base integration is not claimed. Off correctly withholds integration authority. Arcadia settled a `split` Ask against the original parent proof: exactly three of seven criteria are recorded met, while the remaining four are a new open remainder Action. This does not claim the whole proof is complete.
 
-The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six-Session failure remains retained evidence, not overwritten by the later success.
+The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
+
+PR #860 merged at `953e41590b33f3437acf57a80168e9a5f8dcbdda` and is present in checkout HEAD `1f7d4a6a57111844e9a8173235142fd95d0e6970`. The supported service restart completed at 13:16 PDT; the new worker PID 44138 started from that checkout at 13:16:58 PDT and its status resolved `martianrover`. #860 is therefore installed in the running worker. The optional Go-broker ensure refused on uncommitted evidence/Ask files, so broker currency needs a clean-checkout recheck before another managed Session. No new Grant is claimed here.
 
 ## Vital few next steps
 
-1. Remove unsupported completion inference. New temporary-repository regressions reproduced a false acceptance: a completed generic Run or even a running Run caused an unproven criterion to be recorded met under a scoped Grant. A reviewed repair must use canonical settlements or drafted criterion-level completion evidence, retaining Decision 0062's automatic proof-based path. The proposed repair is not yet installed by this derivation.
-2. Prove durable terminal integration recovery. A temporary-fixture probe now reproduced the source gap: after preservation and canonical terminal completion, an injected fast-forward failure was not rediscovered on the next tick despite an unchanged valid Grant. The next repair should reuse existing receipts and recheck the exact candidate and current authority. This is a simulated integration-failure experiment, not a live crash; the current Off trial remains a separate observation.
+1. Keep installed #860 and production Off while the terminal recovery Candidate receives review and CI. The worker has been refreshed from the merged checkout, but the new repair is not installed and no new live run is authorized. Go-broker currency remains to be rechecked on a clean checkout.
+2. Review and land the governed terminal integration repair. The reproduced source gap was followed by an accepted narrow Agent Ask and a pointer transition to `recover-terminal-integration-after-reconcile`; the inactive four-slice hardening proposal was not activated. The Candidate reuses existing exit, preservation and completion settlement receipts, pins the unchanged settlement commit for fast-forward, and rechecks current exact authority. Focused tests passed 20/20, including Off, expiry/scope drift, absent validation, changed candidate and divergent base. The full isolated suite passed 2672 tests (21 skipped), and the core build passed. This is deterministic fixture evidence, not installed or live recovery proof.
 3. Validate separate Project rules under one operator, then address any demonstrated qualified-target gate inconsistency. Reuse existing approval, packet, scope and receipt machinery.
 4. Reassess the existing parent two-Action proof against all live evidence and independently required validation. Missing authority remains one genuine bounded approval; do not ask the operator to relay a receipt or inspect a database.
 
@@ -31,15 +33,15 @@ The scope repair (#855) and continuation/retry repair (#857) were merged and ins
 | Off and supported worker restart during dependent work | Performed by the bounded host action; no duplicate or reactivation in its recorded observation window. |
 | Dependent candidate completion after Off | Canonical accepted completion observed. |
 | Final dependent candidate integration | Pending; Inactive policy supplies no integration authority. |
-| Entire parent proof settled | Not claimed. |
+| Original parent proof split | Three supported criteria settled through Arcadia's canonical split path; four remain open under `finish-two-action-unattended-production-proof`. |
 
 Exact identities, revisions, host/provider, receipts, refusal evidence and every operator intervention remain in the local generated-script run evidence. Tests and source analysis are separate from live proof. Neither process exit nor a passing generic check proves arbitrary acceptance criteria.
 
 ## Governed state and deferrals
 
-The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. Its pointer remains `limit-sessions-per-provider-account`, moved by the earlier faulty scope pass. This document does not repair that pointer or mark the parent proof done.
+The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The governed pointer now names `recover-terminal-integration-after-reconcile`, ahead of the deferred concurrency work. The split settlement, narrow Action settlement, queue repair and pointer transition were committed and pushed through canonical commands; no Plan was activated by inference.
 
-The canonical active Plan contains **147 Actions: 116 done and 31 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`; it agrees between the reviewed Plan and the installed canonical Plan. These totals do not settle the parent proof.
+The canonical active Plan contains **149 Actions: 117 done and 32 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The `done` original proof Action names only its three narrowed criteria; its open remainder retains the other four and 19 dependents were rewired to wait for that remainder.
 
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 

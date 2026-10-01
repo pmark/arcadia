@@ -22,7 +22,7 @@ import {
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
-import { activateProduction, fingerprintProductionScope, normalizeIntegrationGrant, normalizeProductionScope, type ProductionScope } from "../src/production/policy.js";
+import { activateProduction, deactivateProduction, fingerprintProductionScope, normalizeIntegrationGrant, normalizeProductionScope, type ProductionScope } from "../src/production/policy.js";
 import { integrateSessionCandidate, preserveSessionCandidate } from "../src/production/sessionHandoff.js";
 import { runManagedProductionTick } from "../src/production/tick.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
@@ -137,7 +137,144 @@ function finishCandidate(fixture: Fixture, tmux: FakeTmux, session: { worktree_p
   tmux.live.delete(session.tmux_session_name);
 }
 
+function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z") {
+  const fixture = preparedFixture();
+  const tmux = new FakeTmux();
+  activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt, actions: [] }));
+  const session = launchFirstSession(fixture, tmux);
+  finishCandidate(fixture, tmux, session);
+  const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+  const first = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+    profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+    capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+    handoff: { preserve: { validate: fixtureValidator(true) }, integrate: { fastForward: () => {
+      throw new Error("injected interruption before integration");
+    } } }
+  }));
+  expect(first.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
+  expect(first.projects[0]?.handoff?.integration.kind).toBe("refused");
+  expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  return { fixture, tmux, session, baseBefore };
+}
+
+function retryHandoff(fixture: Fixture, tmux: FakeTmux) {
+  return withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+    profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000),
+    capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+    handoff: { integrate: { fastForward: ({ repoRoot, commitSha }) => git(repoRoot, ["merge", "--ff-only", commitSha]) } }
+  })).projects[0];
+}
+
 describe("preserve-on-exit and integrate", () => {
+  it("recovers an unchanged completed candidate after an interrupted integration without another Session", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    finishCandidate(fixture, tmux, session);
+    let integrations = 0;
+    const first = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      handoff: { preserve: { validate: fixtureValidator(true) }, integrate: { fastForward: () => {
+        integrations += 1;
+        throw new Error("injected interruption before integration");
+      } } }
+    }));
+    expect(first.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(first.projects[0]?.handoff?.integration.kind).toBe("refused");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+    expect(integrations).toBe(1);
+    const retry = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      handoff: { integrate: { fastForward: ({ repoRoot, commitSha }) => {
+        integrations += 1;
+        git(repoRoot, ["merge", "--ff-only", commitSha]);
+      } } }
+    }));
+    expect(retry.projects[0]?.handoff?.integration.kind).toBe("integrated");
+    expect(integrations).toBe(2);
+    expect(retry.projects[0]?.launch?.actionKey).toBe("test-project/second-action");
+    expect(tmux.launches).toHaveLength(2);
+    const baseAfter = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    const repeat = retryHandoff(fixture, tmux);
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseAfter);
+    expect(repeat.handoff).toBeNull();
+    expect(tmux.launches).toHaveLength(2);
+  });
+
+  it("refuses terminal recovery while production is Off", () => {
+    const { fixture, tmux, baseBefore } = interruptedHandoff();
+    withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "off-before-recovery", now: new Date(fixture.now.getTime() + 90_000) }));
+    const retry = retryHandoff(fixture, tmux);
+    expect(retry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/Inactive/) });
+    expect(retry.launch).toBeNull();
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses terminal recovery after the exact Grant expires or its Action scope drifts", () => {
+    const expiring = interruptedHandoff(new Date(Date.parse("2026-08-30T12:34:56.000Z") + 90_000).toISOString());
+    const expired = retryHandoff(expiring.fixture, expiring.tmux);
+    expect(expired.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/expired/) });
+    expect(git(expiring.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(expiring.baseBefore);
+
+    const drifted = interruptedHandoff();
+    withDatabase(drifted.fixture.workspace, (db) => {
+      deactivateProduction(db, { requestId: "off-before-scope-drift", now: new Date(drifted.fixture.now.getTime() + 90_000) });
+    });
+    const narrowed = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"],
+      integrationGrant: { decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: ["test-project/second-action"] }
+    });
+    activatePolicy(drifted.fixture, narrowed, "narrowed-grant");
+    const refused = retryHandoff(drifted.fixture, drifted.tmux);
+    expect(refused.handoff?.integration.kind).toBe("refused");
+    expect(git(drifted.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(drifted.baseBefore);
+    expect(drifted.tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses recovery without its preservation validation receipt", () => {
+    const { fixture, tmux, session, baseBefore } = interruptedHandoff();
+    withDatabase(fixture.workspace, (db) => db.prepare("DELETE FROM candidate_preservation_receipts WHERE request_id = ?")
+      .run(`worker-tick-preserve-${session.id}`));
+    const retry = retryHandoff(fixture, tmux);
+    expect(retry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/preservation.*validation/i) });
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses a changed candidate HEAD or branch after terminal completion", () => {
+    const changed = interruptedHandoff();
+    writeFileSync(path.join(changed.session.worktree_path, "CHANGED.md"), "after settlement\n");
+    git(changed.session.worktree_path, ["add", "CHANGED.md"]);
+    git(changed.session.worktree_path, ["commit", "-m", "change completed candidate"]);
+    const changedRetry = retryHandoff(changed.fixture, changed.tmux);
+    expect(changedRetry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/differs.*settlement/) });
+    expect(git(changed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(changed.baseBefore);
+
+    const switched = interruptedHandoff();
+    git(switched.session.worktree_path, ["switch", "-c", "codex/changed-candidate-branch"]);
+    const switchedRetry = retryHandoff(switched.fixture, switched.tmux);
+    expect(switchedRetry.handoff?.integration.kind).toBe("refused");
+    expect(git(switched.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(switched.baseBefore);
+  });
+
+  it("refuses recovery when the governed base diverges after settlement", () => {
+    const { fixture, tmux } = interruptedHandoff();
+    writeFileSync(path.join(fixture.repo, "DIVERGED.md"), "separate base work\n");
+    git(fixture.repo, ["add", "DIVERGED.md"]);
+    git(fixture.repo, ["commit", "-m", "diverge base"]);
+    const baseAfter = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    const retry = retryHandoff(fixture, tmux);
+    expect(retry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/cannot fast-forward/) });
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseAfter);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
   it("preserves, integrates under a valid grant, completes, and admits the next Action in the same tick", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

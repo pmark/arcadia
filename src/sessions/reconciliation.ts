@@ -280,8 +280,12 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
  * `candidate_revision` is an ancestor of (or equal to) the candidate's HEAD.
  * A hand-edited `status: done` has no settlement row, so it never passes.
  */
-function findCandidateSettledCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe): string | null {
-  if (!evidence.worktreeExists || !evidence.candidateRevision) return null;
+export function findCandidateSettledCompletion(
+  db: Database.Database,
+  session: AgentSession,
+  candidateRevision: string | null
+): { id: string; documentsCommit: string } | null {
+  if (!existsSync(session.worktree_path) || !candidateRevision) return null;
   const worktree = session.worktree_path;
   try {
     if (git(worktree, ["status", "--porcelain"]).trim().length > 0) return null;
@@ -306,17 +310,17 @@ function findCandidateSettledCompletion(db: Database.Database, session: AgentSes
       const normalized = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null; candidateRevision?: string | null } }).normalized;
       if (!receipt.applied || receipt.recovery?.documentsCommitted === false || !receipt.documentsCommit) continue;
       if (!normalized?.targetRef || !targets.has(normalized.targetRef) || !normalized.candidateRevision) continue;
-      git(worktree, ["merge-base", "--is-ancestor", normalized.candidateRevision, evidence.candidateRevision]);
+      git(worktree, ["merge-base", "--is-ancestor", normalized.candidateRevision, candidateRevision]);
       // The settlement's own commit must be on this candidate: a settlement
       // recorded on another branch never vouches for this one.
-      git(worktree, ["merge-base", "--is-ancestor", receipt.documentsCommit, evidence.candidateRevision]);
+      git(worktree, ["merge-base", "--is-ancestor", receipt.documentsCommit, candidateRevision]);
       // The evidence judged the work at `candidate_revision`. Anything the
       // candidate carries after it may only be the settlement's own managed
       // records -- never a change to the work that was accepted.
-      const changedSince = git(worktree, ["diff", "--name-only", normalized.candidateRevision, evidence.candidateRevision])
+      const changedSince = git(worktree, ["diff", "--name-only", normalized.candidateRevision, candidateRevision])
         .split("\n").map((line) => line.trim()).filter(Boolean);
       if (changedSince.some((file) => !isSettlementRecordPath(file))) continue;
-      return row.id;
+      return { id: row.id, documentsCommit: receipt.documentsCommit };
     } catch {
       continue;
     }
@@ -482,10 +486,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   // other outcome keeps reading `repoRoot` exactly as before.
   let nextMoveRepoRoot = repoRoot;
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
-    const settled = findCandidateSettledCompletion(db, session, evidence);
+    const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence);
     const attempt = settled
-      ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled}).` }
+      ? { completed: true, reason: `The Session settled its own governed completion on its candidate (settlement ${settled.id}).` }
       : drafted
         ? { completed: true, reason: `Settled the Session's drafted complete Ask on its candidate (settlement ${drafted}).` }
         : { completed: false, reason: "Completion requires a canonical settlement or a drafted complete Ask with criterion-level evidence; a Run alone does not prove acceptance." };
