@@ -50,6 +50,7 @@ import {
   safelyRaiseRedAlerts
 } from "../src/production/redAlerts.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
+import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -196,6 +197,102 @@ describe("runManagedProductionTick", () => {
     expect(project.launch?.actionKey).toBe("test-project/define-contract");
     expect(tmux.launches).toHaveLength(1);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).not.toBeNull();
+  });
+
+  it("stops unchanged resumed Sessions at the existing repair budget, preserving their candidate", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step only\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial first Session"]);
+    const revision = git(first.worktree_path, ["rev-parse", "HEAD"]).trim();
+    tmux.live.delete(first.tmux_session_name);
+    tick();
+    for (let attempt = 0; attempt < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction; attempt++) {
+      expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+      const resumed = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+      expect(resumed.worktree_path).toBe(first.worktree_path);
+      tmux.live.delete(resumed.tmux_session_name);
+      tick();
+    }
+    const result = tick();
+    expect(result.projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("repair_budget_exhausted");
+    expect(tmux.launches).toHaveLength(1 + PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+    expect(git(first.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(revision);
+    expect(readFileSync(path.join(first.worktree_path, "partial.txt"), "utf8")).toBe("first step only\n");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)))
+      .toEqual(expect.arrayContaining([expect.objectContaining({kind: "repair_budget_exhausted"})]));
+    // Further ticks neither spend another Session nor lose the retained candidate.
+    tick();
+    expect(tmux.launches).toHaveLength(1 + PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+  });
+
+  it("rolls terminal reconciliation back if retry accounting fails, then records the exit exactly once", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial progress"]);
+    tmux.live.delete(first.tmux_session_name); tick(); tick();
+    const resumed = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.live.delete(resumed.tmux_session_name);
+    withDatabase(fixture.workspace, (db) => db.exec(`CREATE TRIGGER fail_retry_accounting
+      BEFORE INSERT ON production_repair_attempts BEGIN SELECT RAISE(ABORT, 'simulated accounting failure'); END`));
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))?.id).toBe(resumed.id);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, resumed.id))).toBeNull();
+    withDatabase(fixture.workspace, (db) => db.exec("DROP TRIGGER fail_retry_accounting"));
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, resumed.id))?.outcome).toBe("incomplete_resumable");
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?")
+        .get("test-project/define-contract"))).toEqual({attempts: 1});
+  });
+
+  it("clears the no-progress retry count when a resumed candidate actually advances", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    const exit = (progress?: string) => {
+      const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+      if (progress) {
+        writeFileSync(path.join(session.worktree_path, "partial.txt"), progress);
+        git(session.worktree_path, ["add", "partial.txt"]);
+        git(session.worktree_path, ["commit", "-m", "Partial progress"]);
+      }
+      tmux.live.delete(session.tmux_session_name);
+      tick();
+    };
+    const attempts = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?")
+        .get("test-project/define-contract") as {attempts: number} | undefined)?.attempts ?? 0);
+    tick(); exit("first step\n");
+    tick(); exit(); expect(attempts()).toBe(1);
+    tick(); exit("first step\nsecond step\n"); expect(attempts()).toBe(0);
+    tick(); exit(); expect(attempts()).toBe(1);
+    expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
   });
 
   it("settles a drafted complete Ask for the pointer instead of launching a Session, when its evidence already covers the Action", () => {

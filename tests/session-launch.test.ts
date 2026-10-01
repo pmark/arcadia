@@ -31,7 +31,7 @@ import {
 import { getRepositoryLease, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
-import { getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -1000,6 +1000,17 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(second.session.status).toBe("running");
     expect(tmux.launches).toHaveLength(2);
     expect(tmux.launches[1].cwd).toBe(worktreePath);
+    const resumedBrief = tmux.launches[1].args.at(-1)!;
+    expect(tmux.launches[0].args.at(-1)).not.toContain("Continuation —");
+    expect(resumedBrief).toContain("Continuation — this is a resumed Session");
+    expect(resumedBrief).toContain(`Previous Session: ${first.session.id}`);
+    expect(resumedBrief).toContain(reconciled.receipt.candidate_revision!);
+    expect(resumedBrief).toContain("do not repeat a deliberate first-Session partial exit");
+    expect(resumedBrief).toContain("The contract exists.");
+    expect(() => withReadOnlyDatabase(fixture.workspace, (db) => getSessionContinuation(db,
+      { ...second.session, action_id: "another-action" }))).toThrow(/does not match its candidate and Action/);
+
+
 
     // The resumed worktree's prior commit must survive untouched.
     expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
