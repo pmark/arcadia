@@ -39,6 +39,8 @@ Exact identities, revisions, host/provider, receipts, refusal evidence and every
 
 The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. Its pointer remains `limit-sessions-per-provider-account`, moved by the earlier faulty scope pass. This document does not repair that pointer or mark the parent proof done.
 
+The canonical active Plan contains **147 Actions: 116 done and 31 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`; it agrees between the reviewed Plan and the installed canonical Plan. These totals do not settle the parent proof.
+
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
 The original and renewed one-shot Grants are consumed/revoked. A future live trial or integration requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation.
@@ -47,6 +49,6 @@ The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired 
 
 ## Refresh contract
 
-Refresh whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is found. Read canonical Project/Plan state, policy, queue, relevant Decisions, Session receipts and retained run evidence. Run the hermetic rehearsal before a new live Grant. Separate observed stages from unperformed criteria and preserve earlier failures.
+Refresh whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is found. Read canonical Project/Plan state, policy, queue, relevant Decisions, Session receipts and retained run evidence. Run the hermetic rehearsal before every live rehearsal, including rehearsals under an existing Grant, and before each new live Grant. Separate observed stages from unperformed criteria and preserve earlier failures.
 
 The operator contract remains: Arcadia progresses deterministically, presents one genuine bounded decision through the existing operator surface, or reports a concrete external blocker. No terminal command, database inspection, receipt copy/paste or manual relay should be required.
