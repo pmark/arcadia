@@ -135,12 +135,16 @@ activate the route.
 
 ## Follow-up boundary experiments, 2026-10-01
 
-The unchanged host fixture passed again from the new native worktree:
-`proof-YszB7e/` returned `ready: true`, `timeoutProven: true`, and
-`sourceUnchanged: true`. The separate `processGroupEscape.denied` observation
-remained false. The named-profile fixture `probe-C74jfj/` reproduced loopback
-EPERM and Chrome SIGABRT while external TCP and the synthetic credential read
-were denied.
+The two fixtures measure different boundaries:
+
+| Fixture | Positive and negative observations |
+| --- | --- |
+| Dedicated host boundary, `proof-YszB7e/` | HTTP render, direct external/private/other-loopback TCP denial, unrelated Unix-socket and synthetic credential-file denial, browser external-navigation denial, timeout cleanup, and unchanged source passed. Its separate `processGroupEscape.denied` observation remained false. |
+| Installed `arcadia-unattended` profile, `probe-C74jfj/` | Loopback listen returned EPERM and Chrome aborted with SIGABRT; external TCP and the synthetic credential read returned EPERM. It did not produce an HTTP/browser audit. |
+
+The proposal-only Agent Ask's “host-owned browser fixture” refers to
+`proof-YszB7e/` alone. It does not combine that host proof with the installed
+profile's separate refusal.
 
 Two temporary policy experiments were reverted after their negative results:
 
