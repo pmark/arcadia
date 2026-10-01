@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, closeSync, opendirSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, closeSync, opendirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,6 +102,8 @@ export async function proveHostBrowserAudit(options: { source: string; receiptDi
   const root = realpathSync(options.receiptDirectory);
   // macOS Unix socket paths have a small fixed limit; checkout paths do not.
   const scratch = mkdtempSync("/private/tmp/ahba-");
+  let receiptPersisted = false;
+  try {
   const snapshot = path.join(root, "site");
   const sourceHash = snapshotAuditSite(options.source, snapshot);
   const require = createRequire(import.meta.url);
@@ -132,6 +134,7 @@ export async function proveHostBrowserAudit(options: { source: string; receiptDi
       const temporary = `${receipt}.${process.pid}.tmp`;
       writeFileSync(temporary, JSON.stringify(journal, null, 2), { mode: 0o600 });
       renameSync(temporary, receipt);
+      receiptPersisted = true;
     };
     persist();
     try {
@@ -187,4 +190,13 @@ export async function proveHostBrowserAudit(options: { source: string; receiptDi
       throw error;
     }
   } finally { await preview.close(); }
+  } catch (error) {
+    // Once a receipt names scratch, its input, browser profile and proof artifacts
+    // belong to that retained evidence. Only an unreceipted setup failure is disposable.
+    if (!receiptPersisted) {
+      try { rmSync(scratch, { recursive: true, force: true }); }
+      catch (cleanupError) { throw new Error(`audit.host: setup failed: ${String(error)}; scratch cleanup failed`, { cause: cleanupError }); }
+    }
+    throw error;
+  }
 }
