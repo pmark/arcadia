@@ -1268,3 +1268,10 @@ updated: 2026-10-01
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Agent Ask correct-pr-opened-arcadia-pr865-off-gate-2026-10-01
+
+- **Did:** Correct the PR #865 opening log: terminal recovery preserves the completed candidate while production is Off; its fast-forward resumes only after a current Active policy and exact in-scope, unexpired integration Grant authorize it. https://github.com/pmark/arcadia/pull/865
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
