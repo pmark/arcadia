@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-09-30
+updated: 2026-10-01
 ---
 
 # Mission Log: Arcadia
@@ -1226,3 +1226,10 @@ updated: 2026-09-30
 - **Result:** Every declared acceptance criterion was accepted as met: "docs/arcadia-semantics.md defines Grant as a one-shot operator action that delegates bounded authority, and states what every Grant must do: pin the policy revision it was built against, cover a named scope only, carry an expiry, refuse on any precondition drift, and record a receipt."; "The arcadia-operator-script-v1 descriptor contract accepts an optional kind field with the value grant; descriptors without it keep listing exactly as before, and a test proves both."; "AGENTS.md operator-step guidance (via docs/agents-context.md and regeneration) tells agents to tag an authority-delegating script as kind grant and points at the semantics definition."; "The existing grant-production-two-action-v6-remaining-stages-2026-09-30 descriptor is tagged kind grant and /runs shows its Grant tag; neither absent v5 nor regrant descriptor is recreated or changed; pnpm test and the core, Discord and Dashboard builds pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-define-grant-operator-action-pattern-2026-09-30).
+
+## 2026-10-01 — Agent Ask pr-opened-arcadia-pr858
+
+- **Did:** PR #858 now bounds protected preservation and retains exact-stage failure evidence; the restricted browser-audit route still needs its boundary Decision: https://github.com/pmark/arcadia/pull/858
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
