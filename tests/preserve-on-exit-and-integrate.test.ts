@@ -118,6 +118,14 @@ function launchFirstSession(fixture: Fixture, tmux: FakeTmux) {
 
 function finishCandidate(fixture: Fixture, tmux: FakeTmux, session: { worktree_path: string; work_item_id: string; tmux_session_name: string }) {
   writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nBounded and real.\n");
+  mkdirSync(path.join(session.worktree_path, ".arcadia", "asks"), { recursive: true });
+  writeFileSync(path.join(session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), JSON.stringify({
+    agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",
+    target_ref: "action/define-contract", desired_result: "Record criterion-level completion.",
+    candidate_revision: git(session.worktree_path, ["rev-parse", "HEAD"]).trim(),
+    evidence: [{ criterion: "The contract exists.", status: "met", note: "docs/contract.md was produced." }],
+    requested_authority: "apply_if_approved"
+  }) + "\n");
   git(session.worktree_path, ["add", "."]);
   git(session.worktree_path, ["commit", "-m", "complete define-contract"]);
   withDatabase(fixture.workspace, (db) => {
