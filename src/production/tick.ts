@@ -158,6 +158,7 @@ function recoverTerminalHandoff(
         .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined
     : undefined;
   let preserved: CandidatePreservationReceipt | null = null;
+  let terminalPreservedThisTick = false;
   try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { /* refuse below */ }
   let preservation: SessionHandoffResult["preservation"] = preserved
     ? { kind: "preserved", receiptId: preserved.id, commitSha: preserved.commitSha,
@@ -185,6 +186,7 @@ function recoverTerminalHandoff(
     if (!isAncestor(repoRoot, baseBranch, session.branch)) return refused("The terminal candidate cannot fast-forward the governed base.");
     preservation = preserveSessionCandidate({ db, workspace, repoRoot, session, now, terminalRecovery: true }, preserveDeps);
     if (preservation.kind !== "preserved") return refused(`Terminal validation or preservation refused: ${preservation.reason}`);
+    terminalPreservedThisTick = true;
     preservedRow = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
       .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
     try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { preserved = null; }
@@ -195,7 +197,9 @@ function recoverTerminalHandoff(
     || canonicalPath(preserved.candidateWorktreePath) !== canonicalPath(session.worktree_path)
     || preserved.branch !== session.branch || preserved.baseBranch !== baseBranch
     || preserved.baseRevision !== session.base_revision || preserved.actionId !== session.action_id
-    || (preserved.terminalSessionId !== undefined && preserved.terminalSessionId !== session.id)
+    || (terminalPreservedThisTick
+      ? preserved.terminalSessionId !== session.id
+      : preserved.terminalSessionId !== undefined && preserved.terminalSessionId !== session.id)
     || preserved.packetSha256 !== session.packet_sha256) {
     return refused("The terminal candidate lacks matching preservation and passing validation evidence.");
   }

@@ -442,6 +442,9 @@ export function preserveCandidate(
   if (candidateFingerprint !== request.validation.candidateFingerprint) {
     throw validationError("Candidate content differs from the validated snapshot.", { evidenceRef: request.validation.evidenceRef });
   }
+  if (acceptedTerminal && tryGit(candidateWorktreePath, ["rev-parse", "HEAD"])?.trim() !== acceptedTerminal.candidateHead) {
+    throw validationError("The terminal candidate HEAD changed after its completion settlement was bound.");
+  }
 
   // --- Idempotent replay by request id (AC3) -------------------------------
   preservationStage("preserve.replay");
@@ -487,6 +490,9 @@ export function preserveCandidate(
       expectedParent: baseAdvanceCheckedParent
     });
     hooks.afterCommit?.();
+  }
+  if (acceptedTerminal && commitSha !== acceptedTerminal.candidateHead) {
+    throw validationError("Terminal preservation must retain the exact completion settlement commit.");
   }
 
   const base: Omit<CandidatePreservationReceipt, "preservationState" | "pushedRemote" | "pullRequestNumber" | "pullRequestUrl" | "retryAction"> = {
