@@ -450,8 +450,9 @@ Disposable fixture plan.
    * worktree, so it cannot commit (a linked worktree's commits write the main
    * repository's Git common directory) and cannot settle (settlement writes
    * the workspace database). What it can do is draft its `complete` Ask as a
-   * file -- `agent-ask draft` degrades to "no workspace" by design -- and exit.
-   * Everything after that is the host's job.
+   * file and exit. This fixture passes a deliberately missing workspace and
+   * expects `not_available`; a real resolved-but-read-only workspace instead
+   * reports `preview_blocked`. Everything after that is the host's job.
    */
   agentFinishSandboxed(session: AgentSession, criteria: string[]): string {
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();

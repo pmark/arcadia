@@ -8,7 +8,7 @@ import { git } from "../git/worktrees.js";
 import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
 import { GO_REQUEST_FILE, GO_RESPONSE_TIMEOUT_MS, type GoTransportResult } from "./goRequestProtocol.js";
 import { withDatabase } from "../db/connection.js";
-import { executeHostPreservation, readPreservationAttempt, PRESERVATION_EXECUTION_TIMEOUT_MS, PRESERVATION_STAGE_TIMEOUT_MS } from "./preservationRequestExecutor.js";
+import { executeHostPreservation as executeBoundedHostPreservation, readPreservationAttempt, PRESERVATION_EXECUTION_TIMEOUT_MS } from "./preservationRequestExecutor.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
@@ -215,11 +215,12 @@ export async function requestCandidatePreservation(source: string) {
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    const attemptRef = path.join(path.dirname(response), nonce + ".attempt.json");
+    const attemptRef = path.join(path.dirname(response), `${nonce}.attempt.json`);
     throw validationError(`Protected preservation response timed out after ${PRESERVATION_RESPONSE_TIMEOUT_MS}ms; retain candidate and inspect the host worker. Retry is safe.`, {
+      timeoutMs: PRESERVATION_RESPONSE_TIMEOUT_MS,
+      response,
       ...readPreservationAttempt(attemptRef), attemptRef,
-      heartbeat: transportHeartbeatDiagnostic(workspace, "preservation"),
-      timeoutMs: PRESERVATION_RESPONSE_TIMEOUT_MS, response
+      heartbeat: transportHeartbeatDiagnostic(workspace, "preservation")
     });
   } finally {
     // Remove only this caller's untracked request on every exit path, never
@@ -382,43 +383,31 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     }
     preservationInFlight = true;
     runningPreservationRequests.add(requestKey);
+    const attemptFile = path.join(path.dirname(response), `${nonce}.attempt.json`);
     let hostOperation: Promise<GoTransportResult>;
     try {
-      const attemptFile = path.join(path.dirname(response), `${nonce}.attempt.json`);
       hostOperation = deps.executeHostPreservation
         ? deps.executeHostPreservation(lease.worktree_path, workspace, PRESERVATION_JOB_TIMEOUT_MS)
-        : executeHostPreservation({ source: lease.worktree_path, workspace, attemptFile,
-          onSpawn: pid => {
-            db.prepare("UPDATE candidate_preservation_claims SET pid = ? WHERE session_id = ? AND token = ?").run(pid, lease.id, token);
-          }
-        }, { total: PRESERVATION_JOB_TIMEOUT_MS, stage: PRESERVATION_STAGE_TIMEOUT_MS });
+        : executeBoundedHostPreservation({
+            source: lease.worktree_path, workspace, attemptFile,
+            onSpawn: pid => {
+              db.prepare("UPDATE candidate_preservation_claims SET pid = ? WHERE session_id = ? AND token = ?").run(pid, lease.id, token);
+            }
+          });
     } catch (error) {
       hostOperation = Promise.resolve(goTransportFailure(error));
     }
-    hostOperation
-      .then(result => {
-        mkdirSync(path.dirname(response), { recursive: true });
-        writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-        renameSync(`${response}.tmp`, response);
-      })
-      .catch(error => {
-        const result = goTransportFailure(error);
-        try {
-          mkdirSync(path.dirname(response), { recursive: true });
-          writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-          renameSync(`${response}.tmp`, response);
-        } catch (writeError) {
-          process.stderr.write(`Could not write protected preservation response: ${String(writeError)}\n`);
-        }
-      })
+    void hostOperation
+      .catch(goTransportFailure)
+      .then(result => writeGoResponse(response, result))
+      .catch(error => { process.stderr.write(`Could not write preservation response: ${String(error)}\n`); })
       .finally(() => {
+        runningPreservationRequests.delete(requestKey);
         try {
           withDatabase(workspace, current => {
             current.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
           });
-        }
-        catch (error) { process.stderr.write(`Could not release preservation request claim: ${String(error)}\n`); }
-        runningPreservationRequests.delete(requestKey);
+        } catch (error) { process.stderr.write(`Could not release preservation claim: ${String(error)}\n`); }
       });
   }
   return preservationInFlight;

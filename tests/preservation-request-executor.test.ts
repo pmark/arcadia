@@ -6,9 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
-import { executeHostPreservation, writePreservationAttempt } from "../src/sessions/preservationRequestExecutor.js";
+import { executeHostPreservation, writePreservationAttempt, PRESERVATION_EXECUTION_TIMEOUT_MS } from "../src/sessions/preservationRequestExecutor.js";
 
 describe("bounded protected preservation child", () => {
+  it("allows ten two-minute checks plus preservation before the total bound", () => {
+    expect(PRESERVATION_EXECUTION_TIMEOUT_MS).toBeGreaterThanOrEqual(10 * 120_000 + 120_000);
+  });
   let root: string;
   let child: EventEmitter & { pid: number; stderr: EventEmitter };
   const input = () => ({ source: root, workspace: root, attemptFile: path.join(root, "attempt.json") });
