@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-09-30
+updated: 2026-10-01
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -263,22 +263,22 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Prove two dependent Actions run from one activation using any reachable existing production control (the CLI production commands satisfy this; a dashboard control is not required for this proof), with one Action continued across two Sessions in the same candidate.
+    next_action: Prove two dependent Actions run from one activation using the existing Work Queue production control.
     expected_artifact: Evidence satisfying Agent Ask prove-two-action-unattended-production
     clarification: clarified
     confidence: high
-    source: Agent Ask add-opencode-production-provider-2026-09-15-v2
+    source: Agent Ask attempt-undefer-prove-two-action-unattended-production-2026-09-25
     acceptance_criteria:
       - Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution.
       - "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."
-      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A's changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
+      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
       - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
       - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     depends_on: [feed-and-supervise-managed-production, add-opencode-production-provider]
     decisions: []
-    references: ["docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/proposals/host-owned-agent-workspace-contract.md", "docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "docs/operator-demo-and-release-contract.md", "docs/plans/idea-to-managed-build.md"]
+    references: []
   - id: prove-multi-provider-production-recovery
     title: Prove continuous production across configured providers, independent Plans and capacity recovery.
     status: open
