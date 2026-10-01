@@ -1,3 +1,4 @@
+import { preservationProcessLimits } from "../sessions/preservationStages.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -109,7 +110,7 @@ export function countCommits(cwd: string, base: string, source: string): number 
 }
 
 export function isAncestor(cwd: string, ancestor: string, descendant: string): boolean {
-  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd }).status === 0;
+  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { ...preservationProcessLimits(), cwd }).status === 0;
 }
 
 /**
@@ -196,7 +197,7 @@ export function refExists(cwd: string, ref: string): boolean {
  */
 export function mergesCleanly(cwd: string, branch: string, newBase: string): boolean {
   const result = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", branch, newBase], {
-    cwd,
+    ...preservationProcessLimits(), cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -221,7 +222,7 @@ export function upstreamRef(cwd: string, branch: string): string | null {
 
 export function git(cwd: string, args: string[]): string {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync("git", args, { ...preservationProcessLimits(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
     const detail = error as { stderr?: Buffer | string; message?: string };
     throw validationError(`Git command failed: git ${args.join(" ")}`, {
@@ -232,7 +233,7 @@ export function git(cwd: string, args: string[]): string {
 }
 
 export function tryGit(cwd: string, args: string[]): string | null {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const result = spawnSync("git", args, { ...preservationProcessLimits(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 

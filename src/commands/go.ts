@@ -1,3 +1,4 @@
+import { assertLocalBrowserAuditReady, localBrowserAuditBlocker } from "../sessions/localBrowserAuditReadiness.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -682,6 +683,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           // launch, applied before any worktree is prepared or resumed: a
           // pending Decision or unsettled Agent Ask naming this Action stops
           // preparation itself, not only the reported status (Issue #621).
+          const capabilityDispatch = resolveDispatch(fallbackDispatchRoot(), projectSlug, { actionId: attemptActionId });
+          if (capabilityDispatch.context) {
+            if (attemptActionId !== actionId && localBrowserAuditBlocker(options.agent!, capabilityDispatch.context.action)) continue;
+            assertLocalBrowserAuditReady(options.agent!, capabilityDispatch.context.action);
+          }
+
           const gate = resolveOperatorGate({
             db,
             repoRoot: fallbackDispatchRoot(),

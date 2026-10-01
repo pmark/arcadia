@@ -47,6 +47,28 @@ The original and renewed one-shot Grants are consumed/revoked. A future live tri
 
 The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
+## Other gates
+
+The operator-directed repair of Issues #848 and #847 found two further gates
+on 2026-10-01. Protected manual preservation could block the worker synchronously
+after validation. The candidate repair moves claimed execution into a bounded
+host child with stage journals and retained validation evidence; real named-profile
+fixtures prove both manual and managed preservation. A real post-validation
+capture stall is terminated with its passing Seatbelt receipt intact. This
+repair has not yet been merged or installed, and PPN's original cause remains
+unestablished; its retained passing checks do not prove transport success.
+
+The actual installed `arcadia-unattended` browser probe denies loopback HTTP
+with EPERM and aborts headless Chrome even with a debugging pipe. Synthetic
+credential reads and external sockets are also denied. The candidate adds a
+pre-dispatch capability refusal. A supported positive browser-audit path still
+needs the operator's boundary choice, fixture proof and separate scoped
+activation. PPN's final comparable mobile/desktop Lighthouse matrix remains
+unmeasured and its verification Action remains open. The prepared Ask and
+measured evidence are in `docs/reports/bounded-preservation-and-browser-audit-2026-10-01.md`.
+
+The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions completing unattended. Board-surface and historical integration results were not rerun by this derivation. The remaining parent proof stays open. Cross-repository concurrency and same-repository pipelining remain later gates; the v6 trial kept concurrency one.
+
 ## Refresh contract
 
 Refresh whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is found. Read canonical Project/Plan state, policy, queue, relevant Decisions, Session receipts and retained run evidence. Run the applicable read-only checks, then revise the executive summary, gates, critical path, live-state table and Plan Action scoreboard from their results. For every live failure the replay could have predicted, add a hermetic replay scenario that reproduces the failure and passes after repair. Run the hermetic rehearsal before every live rehearsal, including rehearsals under an existing Grant, and before each new live Grant. Separate observed stages from unperformed criteria and preserve earlier failures.

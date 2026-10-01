@@ -22,6 +22,9 @@ mkdirSync(hostParent, { recursive: true });
 const runtimeHashFiles = [
   "scripts/arcadia-go-broker.js",
   "src/sessions/preservationTransport.js",
+  "src/sessions/preservationRequestExecutor.js",
+  "src/sessions/preservationRequestWorker.js",
+  "src/sessions/preservationStages.js",
   "src/sessions/preservationValidation.js",
   "src/sessions/manualPreservation.js",
   "src/sessions/candidateSnapshot.js",
@@ -166,7 +169,9 @@ console.log('candidate edits allowed; common Git, host evidence and launcher wri
 
 const session = await proveScenario("session");
 const handoff = await proveScenario("manual");
-const output = path.resolve("docs/reports/protected-preservation-fixture.json");
+const proofDirectory = path.resolve("artifacts/tmp/protected-preservation");
+mkdirSync(proofDirectory, { recursive: true });
+const output = path.join(proofDirectory, `fixture-${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${process.pid}.json`);
 // Top-level fields stay the managed-Session scenario for continuity with the
 // prior Artifact; `scenarios` carries both boundaries side by side.
 writeFileSync(output, JSON.stringify({

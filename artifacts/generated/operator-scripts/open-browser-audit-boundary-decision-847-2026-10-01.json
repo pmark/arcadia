@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "open-browser-audit-boundary-decision-847-2026-10-01",
+  "title": "Open the restricted browser-audit route Decision (#847)",
+  "script": "open-browser-audit-boundary-decision-847-2026-10-01.sh",
+  "repeatable": false,
+  "problem": "The measured installed profile denies loopback HTTP and aborts headless Chrome. The audit security boundary requires operator judgment before implementation or activation.",
+  "desired_effect": "After the reviewed repair reaches main, accept only the exact proposed Decision Ask, commit and publish its unresolved Decision through Arcadia. This does not answer that Decision or grant audit authority.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/open-browser-audit-boundary-decision-847-2026-10-01.sh run",
+  "authority": {
+    "does": [
+      "Require the clean primary pmark/arcadia main checkout, the exact committed Ask SHA-256 and unchanged pinned settlement preview",
+      "Create only the unresolved browser-audit boundary Decision and archive its exact Ask using the canonical Agent Ask writer",
+      "Publish only that canonical settlement on the already synchronized main branch using its configured repository transport; retain the receipt and failure handoff"
+    ],
+    "never_does": [
+      "Answer a Decision, approve a browser route, enable networking or credentials, change PPN files or pointers, clear a claim, activate production, run an audit, start or restart services",
+      "Merge a PR, deploy, publish PPN, settle another proposal, widen permission profiles, or reconcile Git manually"
+    ]
+  },
+  "success": {
+    "effect": "The exact unresolved browser-audit Decision is committed and published with its canonical settlement receipt.",
+    "next": "Choose its prepared option through Arcadia\u2019s existing Decision surface. Only an explicit answer can authorize preparing the inactive audit executor; fixture proof and a separate scoped activation grant remain required."
+  },
+  "failure": {
+    "effect": "Stale source, changed preview, unmerged code, dirty main or remote drift refuses before mutation. If a push fails after settlement, its durable receipt and local commit remain recoverable.",
+    "next": "Read the timestamped failure handoff. Have an agent refresh this exact button after reviewed state changes; retry only a publication failure using the same settlement receipt. Never clear claims, reset the one-shot dashboard state, or enable network permissions."
+  },
+  "agentAsk": {
+    "proposal": "propose-bounded-host-browser-audit-847-2026-10-01",
+    "intent": "decision",
+    "targetRef": null
+  },
+  "pinnedAskSha256": "832ec3244d3fc464227a6527a40ce42fc46583563a5c6ff1abb2802a722bf2f6",
+  "pinnedPreview": "2d6a0611c9dd35bff2f2225d18ea820ddf4a5fa851cfe8858139353dfecc01c5",
+  "pinnedDecisionPath": "docs/decisions/0078-choose-a-bounded-host-owned-loopback-headless-audit-route-for-issue-847-before.md",
+  "pinnedDecisionSha256": "896a0ed38d229c3593a46b7b7e0f5ebe134efe0be892afe180a0be72dc055e0f"
+}

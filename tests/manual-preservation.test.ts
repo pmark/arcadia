@@ -13,6 +13,7 @@ import { PRESERVATION_JOB_TIMEOUT_MS, PRESERVATION_RESPONSE_TIMEOUT_MS, processP
 import { goTransportFailure } from "../src/sessions/goRequestExecutor.js";
 import * as validation from "../src/sessions/preservationValidation.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
+import * as executor from "../src/sessions/preservationRequestExecutor.js";
 import * as preserve from "../src/commands/preserve.js";
 import { runPreserveCommand } from "../src/commands/preserve.js";
 
@@ -31,7 +32,13 @@ function bind(f: ReturnType<typeof fixture>) {
     repository: f.repo, worktree: f.candidate, baseBranch: "main", projectSlug: "preservation-fixture"
   }));
 }
-beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
+beforeEach(() => {
+  vi.stubEnv("CODEX_SANDBOX", "");
+  vi.spyOn(executor, "executeHostPreservation").mockImplementation(input => {
+    try { return Promise.resolve({ ok: true, response: preserve.runPreserveCommand({ source: input.source, workspace: input.workspace }) }); }
+    catch (error) { return Promise.resolve(goTransportFailure(error)); }
+  });
+});
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -54,6 +61,17 @@ describe("manual Go preservation binding", () => {
       expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 0 });
       expect(db.prepare("SELECT desired_state FROM production_policy").get()).toEqual({ desired_state: "inactive" });
     });
+  });
+  it("refuses a declared browser measurement before preparing another manual candidate", () => {
+    const f = fixture();
+    const plan = path.join(f.repo, "docs/plans/proof.md");
+    writeFileSync(plan, readFileSync(plan, "utf8").replace("Marker is ready.", "Mobile Lighthouse results are recorded."));
+    fixtureGit(f.repo, ["add", "docs/plans/proof.md"]);
+    fixtureGit(f.repo, ["commit", "-m", "declare browser requirement"]);
+    const before = fixtureGit(f.repo, ["worktree", "list", "--porcelain"]);
+    expect(() => runGoCommand({ repo: f.repo, apply: true, agent: "codex", workspace: f.workspace,
+      agentWorktreeRoot: path.join(f.root, "handoffs") })).toThrow(/local_browser_audit_unavailable/);
+    expect(fixtureGit(f.repo, ["worktree", "list", "--porcelain"])).toBe(before);
   });
   it("wires manual validation to one local commit and replay without a remote call", () => {
     const f = fixture();

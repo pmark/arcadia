@@ -1306,6 +1306,26 @@ integrate, complete, or advance the Action. Remote preservation still requires
 its existing separate grant; otherwise the receipt names the local commit and
 its exact LOCAL ONLY recovery step. Retries return the preserved commit.
 
+Claimed preservation now runs in a separate host child, so validation and capture
+cannot stop the worker's heartbeat. An attempt is bounded to 20 minutes, with
+150 seconds per stage and 30 seconds per Git/capture subprocess. Checks retain
+their existing two-minute limit. A refusal names its stage, the protected
+attempt journal, and any validation receipt. Retain that evidence and retry
+through the fixed preservation launcher; never clear a live claim or replace
+protected validation with a manual Git commit. A timeout after commit is
+recoverable through the existing commit trailer and receipt replay.
+
+The installed `arcadia-unattended` profile currently lacks a demonstrated
+loopback/headless browser audit capability. Codex preparation refuses declared
+Lighthouse results, rendered audits, headless browser audits, or the explicit
+`capability/local-browser-audit` reference before launching them. The host-only
+fixture probe `node scripts/probe-local-browser-audit.mjs` measures the actual
+named profile without configuration overrides or credentials, retains its
+receipt under `artifacts/tmp/local-browser-audit/`, and exits nonzero when any
+required capability or denial is unproven. An offline render is not an HTTP
+audit. A bounded audit route needs the proposed operator Decision; reinstalling
+the unchanged profile is not a fix.
+
 From the host, the matching `go` executable performs canonical preview/apply
 under its separate authority. Every agent launcher rejects public arguments,
 including workspace, repository, command and evidence overrides. The managed

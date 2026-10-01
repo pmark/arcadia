@@ -38,6 +38,18 @@ const profiles: CodingAgentProfile[] = [
 ];
 
 describe("buildLaunchPreview", () => {
+  it("reports the missing browser audit capability before launching an existing Codex packet", () => {
+    const fixture = preparedFixture({ provider: "codex-cli", model: "gpt-6-sol" });
+    const plan = path.join(fixture.repo, "docs/plans/copy-proof.md");
+    writeFileSync(plan, planDocument.replace("The contract exists.", "Mobile Lighthouse results are recorded."));
+    const preview = withReadOnlyDatabase(fixture.workspace, db => buildLaunchPreview({
+      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project",
+      requestId: "browser-preflight", profiles, adapters: defaultAdapters as ProviderAdapterRegistry
+    }));
+    expect(preview.ready).toBe(false);
+    expect(preview.prerequisites.some(reason => reason.includes("local_browser_audit_unavailable"))).toBe(true);
+    withReadOnlyDatabase(fixture.workspace, db => expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 0 }));
+  });
   it("is ready, starts no process, and mutates nothing when the packet and its authority are current", () => {
     const fixture = preparedFixture();
     const before = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get() as { n: number });
