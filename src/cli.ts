@@ -20,6 +20,7 @@ import {
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
+import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
 import {
   renderAgentAskContractSuccess,
@@ -524,6 +525,16 @@ export function buildProgram(): Command {
     .configureOutput({
       writeErr() {}
     });
+
+  addJsonOption(
+    program.command("audit").description("Run bounded host-owned local audits without widening agent sandbox access")
+      .command("host-preview")
+      .description("Serve a built static site read-only on loopback for a browser/Lighthouse audit; run from a host terminal")
+      .requiredOption("--root <directory>", "Built static site directory")
+      .option("--seconds <seconds>", "Bounded preview lifetime (60–1800)", "900")
+  ).action((options: { root: string; seconds: string; json?: boolean }) =>
+    runCliAction("audit.host-preview", options, () => runHostAuditPreviewCommand({ root: options.root, seconds: Number(options.seconds) }), renderHostAuditPreviewSuccess)
+  );
 
   addJsonOption(
     program
@@ -4775,6 +4786,8 @@ async function runCliAction<TData>(
 function commandNameFromArgv(argv: string[]): string {
   const parts = argv.slice(2).filter((part) => part !== "--json" && !part.startsWith("-"));
   const [first, second] = parts;
+
+  if (first === "audit" && second === "host-preview") return "audit.host-preview";
 
   if (first === "project" && second === "list") {
     return "project.list";
