@@ -2780,6 +2780,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/adversarial-review/2026-10-01-production/recovery-probe/result.md", "src/production/tick.ts", "src/production/sessionHandoff.ts", "docs/managed-production-readiness.md"]
+  - id: recover-off-completed-candidate-preservation
+    title: Bind the accepted terminal exit and completion settlement to the unchanged candidate, validate and preserve it under current exact authority, then integrate it through the existing receipt and fast-forward path.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Bind the accepted terminal exit and completion settlement to the unchanged candidate, validate and preserve it under current exact authority, then integrate it through the existing receipt and fast-forward path.
+    expected_artifact: Evidence satisfying Agent Ask recover-off-completed-candidate-preservation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask recover-completed-candidate-unpreserved-after-off-2026-10-01
+    acceptance_criteria:
+      - A later worker tick, under a fresh exact Active policy and integration Grant, validates and preserves the unchanged completed v6-style candidate whose prior Off state withheld preservation, then integrates its settlement HEAD exactly once without another coding Session.
+      - Off, expired or drifted exact authority, missing accepted completion or passing validation, changed candidate HEAD or branch, conflicting live lease, and divergent base each refuse before integration and leave the candidate and canonical receipts recoverable.
+      - Focused fault and refusal tests pass, followed by the required full test and build checks; the reviewed change identifies its installed revision, the v6 live-proof boundary and the separate operator approval needed for a fresh Grant.
+    depends_on: []
+    decisions: []
+    references: ["src/production/tick.ts", "src/production/sessionHandoff.ts", "src/sessions/candidatePreservation.ts", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
