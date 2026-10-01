@@ -1261,3 +1261,24 @@ updated: 2026-10-01
 - **Result:** Every declared acceptance criterion was accepted as met: "Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution."; "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."; "Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/finish-two-action-unattended-production-proof immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-v6-two-action-proof-supported-criteria-2026-10-01).
+
+## 2026-10-01 — Agent Ask pr-opened-arcadia-pr865
+
+- **Did:** PR #865 opens the governed terminal recovery: a completed candidate can resume its exact fast-forward after an interrupted handoff while production remains Off. https://github.com/pmark/arcadia/pull/865
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Agent Ask correct-pr-opened-arcadia-pr865-off-gate-2026-10-01
+
+- **Did:** Correct the PR #865 opening log: terminal recovery preserves the completed candidate while production is Off; its fast-forward resumes only after a current Active policy and exact in-scope, unexpired integration Grant authorize it. https://github.com/pmark/arcadia/pull/865
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-01 — Completed arcadia/recover-terminal-integration-after-reconcile
+
+- **Did:** Completed Action arcadia/recover-terminal-integration-after-reconcile from accepted evidence (Candidate 1274e73c576c0565c9ff1979d50d2f303287b312).
+- **Result:** Every declared acceptance criterion was accepted as met: "A later worker tick rediscovers a canonically completed, validated and preserved terminal candidate after an injected integration failure, integrates its unchanged settlement HEAD through the existing fast-forward path exactly once, and launches no replacement coding Session."; "Production Off, expired or drifted exact Grant or scope, missing validation or preservation, changed candidate HEAD or branch, and divergent base each refuse integration while preserving a recoverable handoff receipt."; "Focused fault and refusal tests pass, followed by the required full test and build checks; the reviewed change states the installed revision and remaining live-proof boundary.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-recover-terminal-integration-after-reconcile-2026-10-01).

@@ -2765,7 +2765,7 @@ actions:
     references: []
   - id: recover-terminal-integration-after-reconcile
     title: Rediscover a terminal completed candidate from canonical receipts and integrate it exactly once under fresh exact authority.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Rediscover a terminal completed candidate from canonical receipts and integrate it exactly once under fresh exact authority.
@@ -2784,7 +2784,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: recover-terminal-integration-after-reconcile
+current_action: limit-sessions-per-provider-account
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

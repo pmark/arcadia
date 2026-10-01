@@ -13,7 +13,7 @@ import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRe
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
-import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, isPatchEquivalent, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
@@ -27,9 +27,11 @@ import {
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
-import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
+import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
-import { getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { findCandidateSettledCompletion, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
+import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
@@ -106,6 +108,85 @@ export interface ManagedProductionTickProjectResult {
   reconciled: Array<{ sessionId: string; outcome: string }>;
   handoff: SessionHandoffResult | null;
   launch: ManagedProductionLaunchAttempt | null;
+}
+
+/**
+ * A terminal Session no longer holds the repository lease. Rediscover its
+ * unfinished handoff from the existing exit, preservation and settlement
+ * receipts, without creating a replacement Session or a second retry store.
+ * A refusal remains visible on every tick until the exact candidate and a
+ * current integration Grant allow the existing fast-forward path to finish.
+ */
+function recoverTerminalHandoff(
+  db: Database.Database,
+  workspace: string,
+  repoRoot: string,
+  projectSlug: string,
+  now: Date,
+  integrateDeps: IntegrateSessionDeps
+): SessionHandoffResult | null {
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
+    .all() as Array<{ name: string }>;
+  if (!tables.some((table) => table.name === "session_exit_receipts")) return null;
+  const hasPreservationTable = tables.some((table) => table.name === "candidate_preservation_receipts");
+  const exits = db.prepare(`SELECT r.session_id FROM session_exit_receipts r
+    JOIN agent_sessions s ON s.id = r.session_id
+    WHERE s.repository_path = ? AND s.project_slug = ? AND r.outcome = 'accepted_completion'
+      AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
+    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug) as Array<{ session_id: string }>;
+  if (exits.length === 0) return null;
+
+  let baseBranch: string;
+  try { baseBranch = resolveBaseBranch(repoRoot); } catch { return null; }
+  const basePlans = discoverDocs(repoRoot).docs.filter((doc) => doc.type === "plan");
+  const pending: AgentSession[] = [];
+  for (const exit of exits) {
+    const session = getSession(db, exit.session_id);
+    if (!session) continue;
+    const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
+    if (plan?.type === "plan" && plan.actions.find((action) => action.id === session.action_id)?.status === "done") continue;
+    if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
+    pending.push(session);
+  }
+  if (pending.length === 0) return null;
+
+  const session = pending[0];
+  const merge = operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
+  const preservedRow = hasPreservationTable
+    ? db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+        .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined
+    : undefined;
+  let preserved: CandidatePreservationReceipt | null = null;
+  try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { /* refuse below */ }
+  const preservation: SessionHandoffResult["preservation"] = preserved
+    ? { kind: "preserved", receiptId: preserved.id, commitSha: preserved.commitSha,
+        state: preserved.preservationState, replayed: true, baseBranch: preserved.baseBranch }
+    : { kind: "refused", reason: "No canonical worker preservation and validation receipt exists for the terminal Session." };
+  const refused = (reason: string): SessionHandoffResult => ({
+    preservation,
+    integration: { kind: "refused", reason, operatorMergeCommand: merge }
+  });
+  if (pending.length !== 1) return refused("Multiple unfinished terminal candidates claim this repository; integration is ambiguous.");
+  if (!preserved || !preserved.validationEvidenceRef || !preserved.candidateFingerprint
+    || preserved.requestId !== `worker-tick-preserve-${session.id}`
+    || canonicalPath(preserved.repositoryPath) !== canonicalPath(repoRoot)
+    || canonicalPath(preserved.candidateWorktreePath) !== canonicalPath(session.worktree_path)
+    || preserved.branch !== session.branch || preserved.baseBranch !== baseBranch
+    || preserved.baseRevision !== session.base_revision || preserved.actionId !== session.action_id
+    || preserved.packetSha256 !== session.packet_sha256) {
+    return refused("The terminal candidate lacks matching preservation and passing validation evidence.");
+  }
+  const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
+  const status = tryGit(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
+  if (!head || status === null || status.trim()) return refused("The terminal candidate worktree is missing or changed.");
+  const settlement = findCandidateSettledCompletion(db, session, head);
+  if (!settlement || head !== settlement.documentsCommit || !isAncestor(session.worktree_path, preserved.commitSha, head)) {
+    return refused("The terminal candidate differs from its exact canonical completion settlement.");
+  }
+  return {
+    preservation,
+    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head }, integrateDeps)
+  };
 }
 
 export interface ManagedProductionTickResult {
@@ -861,6 +942,7 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
+        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.integrate ?? {});
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -883,13 +965,13 @@ export function runManagedProductionTick(
         reason: "Project is outside the standing production policy scope; production does not launch here.",
         actionKey: null
       };
-    } else if (mayLaunch && reconciled.length === 0) {
-      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
     } else if (mayLaunch && handoff !== null && handoffIntegrated(handoff)) {
       // The candidate is preserved and its exact branch is now on the governed
       // base branch, carrying the completion and pointer settlement. Admit the
       // next eligible Action in this same tick -- no operator command, no
       // one-tick wait.
+      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
+    } else if (mayLaunch && handoff === null && reconciled.length === 0) {
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
