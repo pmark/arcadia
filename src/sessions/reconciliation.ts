@@ -328,6 +328,29 @@ export function findCandidateSettledCompletion(
   return null;
 }
 
+/** A completed worker Session whose exact settled candidate still exists. */
+export function findAcceptedTerminalCompletion(
+  db: Database.Database,
+  session: AgentSession
+): { exitId: string; candidateHead: string; settlementId: string } | null {
+  const current = getSession(db, session.id);
+  if (!current || current.status !== "completed" || current.worktree_path !== session.worktree_path
+    || current.branch !== session.branch || current.packet_sha256 !== session.packet_sha256) return null;
+  const exit = db.prepare(`SELECT id, candidate_revision FROM session_exit_receipts
+    WHERE session_id = ? AND request_id = ? AND outcome = 'accepted_completion'`)
+    .get(session.id, `worker-tick-reconcile-${session.id}`) as { id: string; candidate_revision: string | null } | undefined;
+  if (!exit?.candidate_revision) return null;
+  let candidateHead: string;
+  try {
+    candidateHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    git(session.worktree_path, ["merge-base", "--is-ancestor", exit.candidate_revision, candidateHead]);
+    if (git(session.worktree_path, ["symbolic-ref", "--short", "HEAD"]).trim() !== session.branch) return null;
+  } catch { return null; }
+  const settlement = findCandidateSettledCompletion(db, session, candidateHead);
+  if (!settlement || settlement.documentsCommit !== candidateHead) return null;
+  return { exitId: exit.id, candidateHead, settlementId: settlement.id };
+}
+
 /** The managed records a `complete` settlement writes and commits. */
 function isSettlementRecordPath(file: string): boolean {
   return file === "PROJECT.md"

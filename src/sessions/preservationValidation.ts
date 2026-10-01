@@ -13,11 +13,14 @@ import { findPromotionDecision, type AgentSession } from "./index.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
 import { dependencyRequiringPreservationCheck } from "./preservationChecks.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
+import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 
-export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession) {
+export function preservationAuthority(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false) {
   const current = db.prepare("SELECT * FROM agent_sessions WHERE id = ?").get(lease.id) as AgentSession | undefined;
   const fields = ["project_id", "project_slug", "repository_path", "worktree_path", "branch", "base_revision", "action_id", "plan_slug", "packet_id", "packet_path", "packet_sha256", "authorizing_decisions_json"] as const;
-  if (!current || !["prepared", "running"].includes(current.status) || fields.some(field => current[field] !== lease[field])) {
+  const terminal = terminalRecovery ? findAcceptedTerminalCompletion(db, lease) : null;
+  if (!current || (terminalRecovery ? !terminal : !["prepared", "running"].includes(current.status))
+    || fields.some(field => current[field] !== lease[field])) {
     throw validationError("Preservation Session binding is stale.");
   }
   const packet = readFileSync(path.join(workspace, lease.packet_path), "utf8");
@@ -47,7 +50,8 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
       !scope.mechanicalTransitions.includes("validation")) {
     throw validationError("Preservation validation requires current scoped production validation authority.");
   }
-  return { session: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, branch: lease.branch,
+  return { session: lease.id, terminalExit: terminal?.exitId ?? null, settlement: terminal?.settlementId ?? null,
+    candidateHead: terminal?.candidateHead ?? null, repository: lease.repository_path, worktree: lease.worktree_path, branch: lease.branch,
     base: lease.base_revision, project: lease.project_slug, action: lease.action_id, packetHash, decision,
     commands: commands as string[], actionDefinition: readiness.action, policy };
 }
@@ -55,10 +59,10 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
 /** Host-owned producer. Candidate checks execute under Seatbelt with an immutable
  * source tree, private scratch, no network and no writes to Git/workspace/source.
  * Unsupported hosts fail closed; this is not a general command execution API. */
-export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession) {
-  const binding = preservationAuthority(db, workspace, lease);
+export function validatePreservationCandidate(db: Database.Database, workspace: string, lease: AgentSession, terminalRecovery = false) {
+  const binding = preservationAuthority(db, workspace, lease, terminalRecovery);
   return validateBoundCandidate(workspace, { id: lease.id, repository: lease.repository_path, worktree: lease.worktree_path, base: lease.base_revision, commands: binding.commands }, binding, () => {
-    if (JSON.stringify(preservationAuthority(db, workspace, lease)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
+    if (JSON.stringify(preservationAuthority(db, workspace, lease, terminalRecovery)) !== JSON.stringify(binding)) throw validationError("Preservation authority changed.");
   });
 }
 
