@@ -14,7 +14,7 @@ import datetime, hashlib, json, os, pathlib, signal, subprocess
 descriptor_path = pathlib.Path(os.environ['ARCADIA_PREPARATION_DESCRIPTOR'])
 descriptor = json.loads(descriptor_path.read_text())
 out = pathlib.Path(os.environ['ARCADIA_PREPARATION_RUN_DIR'])
-root = pathlib.Path('/Users/pmark/.codex/worktrees/4e4e/arcadia')
+root = pathlib.Path('/Users/pmark/.codex/worktrees/pr863-browser-audit/arcadia')
 branch = 'codex/restricted-host-browser-audit'
 answer = 'Prepare a host-owned audit route'
 decision = root / 'docs/decisions/0078-choose-a-bounded-host-owned-loopback-headless-audit-route-for-issue-847-before.md'

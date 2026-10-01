@@ -23,7 +23,7 @@ if mode == 'retry':
     (prior/'receipt.json').write_text(json.dumps({'id':identifier,'descriptor_sha256':hashlib.sha256(descriptor_file.read_bytes()).hexdigest(),'approved_head':'after','decision_sha256':hashlib.sha256(after.encode()).hexdigest()}))
 shell = (library/(identifier+'.sh')).read_text()
 embedded = shell.split("<<'PYTHON' >\"$run_dir/run.log\" 2>&1\n")[1].split('\nPYTHON\n')[0]
-source = embedded.replace("root = pathlib.Path('/Users/pmark/.codex/worktrees/4e4e/arcadia')", 'root = pathlib.Path('+repr(str(root))+')')
+source = embedded.replace('root = pathlib.Path('+repr(descriptor['candidate'])+')', 'root = pathlib.Path('+repr(str(root))+')')
 assert source != embedded
 class Child:
     def __init__(self,args,**kwargs):
