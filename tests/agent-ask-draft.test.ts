@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderAgentAskDraftSuccess, runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
+import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -74,6 +75,25 @@ describe("Agent Ask draft", () => {
     } finally {
       chmodSync(databaseFile, 0o644);
     }
+  });
+
+  it("retains the SQLite cause when a resolved workspace rejects the preview receipt", () => {
+    const dir = scratchRepo();
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-agent-ask-draft-sqlite-"));
+    roots.push(workspace);
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => db.exec(`CREATE TRIGGER reject_agent_ask_preview
+      BEFORE INSERT ON agent_ask_proposals
+      BEGIN SELECT RAISE(ABORT, 'simulated preview failure'); END;`));
+
+    const result = runAgentAskDraftCommand({ request: strictAsk("draft-sqlite-failure"), dir, workspace });
+    expect(result.data.workspaceStatus).toBe("preview_blocked");
+    expect(result.data.previewFailure).toEqual({
+      code: "SQLITE_ERROR",
+      message: "SQLite operation failed.",
+      cause: "simulated preview failure"
+    });
+    expect(renderAgentAskDraftSuccess(result).join("\n")).toContain("Cause: simulated preview failure");
   });
 
   it("is idempotent when the identical content is drafted twice", () => {
