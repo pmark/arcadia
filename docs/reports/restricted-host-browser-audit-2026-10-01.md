@@ -58,7 +58,9 @@ profile and not a reinstall of the existing broker.
 
 The retained preparation run `artifacts/tmp/host-browser-audit/proof-4ReByk/`
 returned `ready: true`, `timeoutProven: true`, and `sourceUnchanged: true`.
-The final committed-code rerun is recorded in the PR validation evidence.
+The packaged committed-code rerun `proof-vBEdUl/` also returned all three
+values true. It validates `node dist/scripts/prove-host-browser-audit.js`,
+including the built executor and copied worker.
 
 | Observation | Actual result |
 | --- | --- |
@@ -101,7 +103,11 @@ Only then can a scoped run measure PPN's comparable four-route Lighthouse
 matrix. Its accepted candidate remains
 `579878edd09f8274a2f5b9a9e8ac53e4dbc54769`.
 
-The old Decision-opening operator action from PR #858 is superseded by the
-canonical preparation answer carried in this candidate; do not run it as an
-activation action. Its original fail-closed checks refuse changed/answered
-Decision state. Production remains outside this preparation's authority.
+Arcadia created open Decision 0078 through the original Ask settlement in this
+candidate. Automatic approval review refused recording its recommended answer:
+the operator's delegation was not explicit authorization of that exact Decision
+answer. Decision 0078 therefore remains open; no answer or activation is claimed.
+The old Decision-opening action from PR #858 is not an activation action and
+must not be rerun to create a duplicate. Its canonical settlement receipt now
+refers to this candidate's open Decision. Production remains outside this
+preparation's authority.
