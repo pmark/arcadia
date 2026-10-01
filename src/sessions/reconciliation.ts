@@ -137,6 +137,10 @@ export function getSessionContinuation(db: Database.Database, session: AgentSess
   const receipt = rows[0];
   if (!receipt) return null;
   const previous = getSession(db, receipt.session_id);
+  // Supersession also records replacement of a missing/invalid candidate.
+  // That fresh worktree has no prior work to continue; preparation already
+  // proved the old candidate unusable before allocating the replacement.
+  if (previous && previous.worktree_path !== session.worktree_path) return null;
   if (!previous || previous.repository_path !== session.repository_path || previous.worktree_path !== session.worktree_path
     || previous.branch !== session.branch || previous.project_id !== session.project_id
     || previous.plan_slug !== session.plan_slug || previous.action_id !== session.action_id) {
