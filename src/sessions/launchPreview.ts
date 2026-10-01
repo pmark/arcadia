@@ -1,3 +1,4 @@
+import { localBrowserAuditBlocker } from "./localBrowserAuditReadiness.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -249,6 +250,11 @@ export function buildLaunchPreview(input: {
         }
       }
     }
+  }
+
+  if (context && selection) {
+    const capability = localBrowserAuditBlocker(selection.provider, context.action);
+    if (capability) prerequisites.push(capability);
   }
 
   // The selected or packet-bound provider must still be permitted by the

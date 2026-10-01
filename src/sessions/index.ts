@@ -1,3 +1,4 @@
+import { assertLocalBrowserAuditReady } from "./localBrowserAuditReadiness.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -477,6 +478,7 @@ export function prepareSession(input: {
 }): AgentSession {
   const context = input.dispatch.context;
   if (!context || !isDispatchable(input.dispatch)) throw validationError("Session launch requires one dispatchable Action.");
+  assertLocalBrowserAuditReady(input.agent, context.action);
   const project = getProjectBySlug(input.db, context.projectSlug);
   const workItem = getWorkItemByDocRef(input.db, `plan/${context.activePlan}#${context.action.id}`);
   if (!project || !workItem || workItem.project_id !== project.id) {

@@ -1,3 +1,4 @@
+import { preservationProcessLimits } from "./preservationStages.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -12,17 +13,17 @@ export const PRESERVATION_REQUEST_FILE = ".arcadia-preserve-request";
  * candidate hooks, clean filters, export attributes or sharing a worktree index. */
 export function snapshotCandidate(candidate: string): string {
   const root = realpathSync(candidate);
-  const common = execFileSync("git", ["rev-parse", "--git-common-dir"], { cwd: root, encoding: "utf8" }).trim();
+  const common = execFileSync("git", ["rev-parse", "--git-common-dir"], { ...preservationProcessLimits(), cwd: root, encoding: "utf8" }).trim();
   const scratch = mkdtempSync(path.join(path.resolve(root, common), "arcadia-index-"));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
   const git = (args: string[], input?: Buffer | string) => execFileSync("git", args, {
-    cwd: root, env, input, maxBuffer: 64 * 1024 * 1024
+    ...preservationProcessLimits(), cwd: root, env, input, maxBuffer: 64 * 1024 * 1024
   });
   try {
-    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root }).toString().split("\0");
+    const tracked = execFileSync("git", ["ls-files", "-z"], { ...preservationProcessLimits(), cwd: root }).toString().split("\0");
     if (tracked.includes(PRESERVATION_REQUEST_FILE)) throw validationError("The preservation transport file must not be tracked.");
     if (tracked.includes(GO_REQUEST_FILE)) throw validationError("The go transport file must not be tracked.");
-    const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root })
+    const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { ...preservationProcessLimits(), cwd: root })
       .toString().split("\0").filter(Boolean))].sort();
     const selected = files.filter(file => file !== PRESERVATION_REQUEST_FILE && file !== GO_REQUEST_FILE);
     // Node has no openat API. The system Python helper uses only stdlib and
@@ -31,7 +32,7 @@ export function snapshotCandidate(candidate: string): string {
     let captured: Array<{ path: string; mode: number; bytes: string }>;
     try {
       captured = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
-        input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
+        ...preservationProcessLimits(), input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
       }));
     } catch (error) {
       // Never include stdout: successful capture output contains file bytes.
@@ -71,7 +72,7 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
     "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
     "commit-tree", tree, "-p", parent, "-m", message
   ], {
-    cwd: repository,
+    ...preservationProcessLimits(), cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -113,7 +114,7 @@ export function snapshotCandidateCommit(repository: string, candidate: string, p
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */
 export function materializeCandidateTree(repository: string, tree: string, destination: string): void {
-  const entries = execFileSync("git", ["ls-tree", "-rz", tree], { cwd: repository }).toString().split("\0").filter(Boolean);
+  const entries = execFileSync("git", ["ls-tree", "-rz", tree], { ...preservationProcessLimits(), cwd: repository }).toString().split("\0").filter(Boolean);
   for (const entry of entries) {
     const match = /^(100644|100755) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
     if (!match) throw validationError("Validated snapshot contains an unsupported Git entry.");
@@ -121,14 +122,14 @@ export function materializeCandidateTree(repository: string, tree: string, desti
     const target = path.resolve(destination, name);
     if (!target.startsWith(`${destination}${path.sep}`)) throw validationError("Snapshot path escaped its root.");
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, execFileSync("git", ["cat-file", "blob", hash], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }), { mode: mode === "100755" ? 0o555 : 0o444 });
+    writeFileSync(target, execFileSync("git", ["cat-file", "blob", hash], { ...preservationProcessLimits(), cwd: repository, maxBuffer: 64 * 1024 * 1024 }), { mode: mode === "100755" ? 0o555 : 0o444 });
   }
 }
 
 // Isolated system interpreter; neither PYTHONPATH nor candidate modules load.
 const CAPTURE_FILES = String.raw`
 import os, sys, json, stat, base64
-flags = os.O_RDONLY | os.O_NOFOLLOW
+flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
 root = os.open("/", flags | os.O_DIRECTORY)
 for component in sys.argv[1].split("/"):
     if component:

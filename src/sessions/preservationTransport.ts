@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { fork, type ChildProcess } from "node:child_process";
 import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -8,6 +7,8 @@ import type { GoBrokerAgent } from "../goBroker.js";
 import { git } from "../git/worktrees.js";
 import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
 import { GO_REQUEST_FILE, GO_RESPONSE_TIMEOUT_MS, type GoTransportResult } from "./goRequestProtocol.js";
+import { withDatabase } from "../db/connection.js";
+import { executeHostPreservation as executeBoundedHostPreservation, readPreservationAttempt, PRESERVATION_EXECUTION_TIMEOUT_MS } from "./preservationRequestExecutor.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
@@ -30,7 +31,7 @@ export const TRANSPORT_FRESHNESS_MS = 15_000;
 /** Ten configured checks may each use the validator's 120s ceiling. Give the
  * host preservation stage a separate two-minute ceiling, then leave 30s for
  * response persistence and delivery. */
-export const PRESERVATION_JOB_TIMEOUT_MS = 22 * 60_000;
+export const PRESERVATION_JOB_TIMEOUT_MS = PRESERVATION_EXECUTION_TIMEOUT_MS;
 export const PRESERVATION_RESPONSE_TIMEOUT_MS = PRESERVATION_JOB_TIMEOUT_MS + 30_000;
 const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
@@ -214,9 +215,12 @@ export async function requestCandidatePreservation(source: string) {
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
+    const attemptRef = path.join(path.dirname(response), `${nonce}.attempt.json`);
     throw validationError(`Protected preservation response timed out after ${PRESERVATION_RESPONSE_TIMEOUT_MS}ms; retain candidate and inspect the host worker. Retry is safe.`, {
       timeoutMs: PRESERVATION_RESPONSE_TIMEOUT_MS,
-      response
+      response,
+      ...readPreservationAttempt(attemptRef), attemptRef,
+      heartbeat: transportHeartbeatDiagnostic(workspace, "preservation")
     });
   } finally {
     // Remove only this caller's untracked request on every exit path, never
@@ -379,94 +383,34 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     }
     preservationInFlight = true;
     runningPreservationRequests.add(requestKey);
+    const attemptFile = path.join(path.dirname(response), `${nonce}.attempt.json`);
     let hostOperation: Promise<GoTransportResult>;
     try {
-      hostOperation = (deps.executeHostPreservation ?? executeHostPreservation)(lease.worktree_path, workspace, PRESERVATION_JOB_TIMEOUT_MS);
+      hostOperation = deps.executeHostPreservation
+        ? deps.executeHostPreservation(lease.worktree_path, workspace, PRESERVATION_JOB_TIMEOUT_MS)
+        : executeBoundedHostPreservation({
+            source: lease.worktree_path, workspace, attemptFile,
+            onSpawn: pid => {
+              db.prepare("UPDATE candidate_preservation_claims SET pid = ? WHERE session_id = ? AND token = ?").run(pid, lease.id, token);
+            }
+          });
     } catch (error) {
       hostOperation = Promise.resolve(goTransportFailure(error));
     }
-    hostOperation
-      .then(result => {
-        mkdirSync(path.dirname(response), { recursive: true });
-        writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-        renameSync(`${response}.tmp`, response);
-      })
-      .catch(error => {
-        const result = goTransportFailure(error);
-        try {
-          mkdirSync(path.dirname(response), { recursive: true });
-          writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-          renameSync(`${response}.tmp`, response);
-        } catch (writeError) {
-          process.stderr.write(`Could not write protected preservation response: ${String(writeError)}\n`);
-        }
-      })
+    void hostOperation
+      .catch(goTransportFailure)
+      .then(result => writeGoResponse(response, result))
+      .catch(error => { process.stderr.write(`Could not write preservation response: ${String(error)}\n`); })
       .finally(() => {
-        try {
-          if (db.open) db.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
-        }
-        catch (error) { process.stderr.write(`Could not release preservation request claim: ${String(error)}\n`); }
         runningPreservationRequests.delete(requestKey);
+        try {
+          withDatabase(workspace, current => {
+            current.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
+          });
+        } catch (error) { process.stderr.write(`Could not release preservation claim: ${String(error)}\n`); }
       });
   }
   return preservationInFlight;
-}
-
-/** Run all validation and Git work in an isolated host process. The fixed child
- * module accepts only paths already derived from the host's registered route;
- * the request file itself still contains only a nonce. */
-function executeHostPreservation(source: string, workspace: string, timeoutMs: number): Promise<GoTransportResult> {
-  if (process.env.CODEX_SANDBOX) throw validationError("Protected preservation must be dispatched by the host worker.");
-  const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
-  return new Promise(resolve => {
-    const child: ChildProcess = fork(new URL(`./preservationRequestWorker.${extension}`, import.meta.url), [source, workspace], {
-      execArgv: extension === "ts" ? ["--import", import.meta.resolve("tsx")] : [],
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
-      timeout: timeoutMs
-    });
-    let settled = false;
-    let exited = false;
-    let disconnected = false;
-    let exitCode: number | null = null;
-    let exitSignal: NodeJS.Signals | null = null;
-    let lastStage = "host-preservation-startup";
-    const finish = (value: GoTransportResult) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    child.on("message", (message: unknown) => {
-      if (!message || typeof message !== "object") return;
-      const value = message as { type?: unknown; stage?: unknown; result?: GoTransportResult };
-      if (value.type === "stage" && typeof value.stage === "string") {
-        lastStage = value.stage;
-        process.stderr.write(`[preservation] ${path.basename(source)}: ${lastStage}\n`);
-      } else if (value.type === "result" && value.result) finish(value.result);
-    });
-    child.once("error", error => finish(goTransportFailure(validationError(
-      "Could not start the protected host preservation worker.", { source, lastStage, cause: error.message }
-    ))));
-    const finishAfterShutdown = () => {
-      if (!exited || !disconnected || settled) return;
-      const timedOut = exitCode === null && exitSignal === "SIGTERM";
-      finish(goTransportFailure(validationError(
-        timedOut
-          ? `Protected preservation exceeded its ${timeoutMs}ms host job bound during ${lastStage}.`
-          : `Protected preservation worker exited without a result during ${lastStage}.`,
-        { source, timeoutMs, stage: lastStage, code: exitCode, signal: exitSignal, remedy: "Keep the candidate intact. Inspect the named host stage and retry through the protected preservation route; the request id makes a completed preservation replay-safe." }
-      )));
-    };
-    child.once("exit", (code, signal) => {
-      exited = true;
-      exitCode = code;
-      exitSignal = signal;
-      finishAfterShutdown();
-    });
-    child.once("disconnect", () => {
-      disconnected = true;
-      finishAfterShutdown();
-    });
-  });
 }
 
 function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent } | undefined {

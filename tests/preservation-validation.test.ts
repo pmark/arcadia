@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -46,6 +46,16 @@ describe("preservation authority and content", () => {
     expect(snapshotCandidate(f.candidate)).toBe(tree);
     symlinkSync(path.join(f.root, "workspace"), path.join(f.candidate, "escape"));
     expect(() => snapshotCandidate(f.candidate)).toThrow(/regular candidate files/);
+  });
+  it("refuses a FIFO without waiting for a writer before its regular-file check", () => {
+    const f = fixture();
+    // Git does not select untracked FIFOs; replace a tracked regular file.
+    rmSync(path.join(f.candidate, "check.mjs"));
+    execFileSync("mkfifo", [path.join(f.candidate, "check.mjs")]);
+    const started = Date.now();
+    expect(() => snapshotCandidate(f.candidate)).toThrow(/regular candidate files/);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(fixtureGit(f.candidate, ["rev-parse", "HEAD"])).toBe(f.base);
   });
   it("refuses a tracked go request instead of preserving transport as candidate content", () => {
     const f = fixture();
@@ -136,7 +146,19 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
   });
   it("refuses worktree mutation during validation even though the immutable snapshot passes", () => {
     const f = fixture("sleep 1; node check.mjs");
-    const mutator = spawn(process.execPath, ["-e", "setTimeout(()=>require('fs').writeFileSync(process.argv[1],'altered\\n'),400)", path.join(f.candidate, "marker.txt")], { stdio: "ignore" });
+    const mutator = spawn(process.execPath, ["-e", `
+      const fs = require('node:fs'), path = require('node:path');
+      const timer = setInterval(() => {
+        try {
+          for (const dir of fs.readdirSync(process.argv[2])) {
+            const receipt = JSON.parse(fs.readFileSync(path.join(process.argv[2], dir, 'validation.json'), 'utf8'));
+            if (receipt.runningCommand) {
+              fs.writeFileSync(process.argv[1], 'altered\\n'); clearInterval(timer); return;
+            }
+          }
+        } catch { /* Wait until the immutable source has been materialized. */ }
+      }, 20);
+    `, path.join(f.candidate, "marker.txt"), path.join(f.workspace, "artifacts/preservation", f.lease.id)], { stdio: "ignore" });
     try {
       expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(/changed during validation/);
       expect(fixtureGit(f.candidate, ["rev-parse", "HEAD"])).toBe(f.base);
