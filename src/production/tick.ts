@@ -690,7 +690,10 @@ export function runManagedProductionTick(
   let schedulingError: string | null = null;
   if (active) {
     try {
-      scheduling = runSchedulingPass(db, { now, log, boardFactory: options.boardFactory });
+      scheduling = runSchedulingPass(db, {
+        now, log, boardFactory: options.boardFactory,
+        projectSlugs: policyRead.status === "ok" ? policyRead.policy.scope?.projects ?? [] : []
+      });
     } catch (error) {
       schedulingError = error instanceof Error ? error.message : String(error);
       log(`Scheduling pass failed: ${schedulingError}`);
