@@ -10,6 +10,12 @@ describe("local browser measurement preflight", () => {
   it("supports an explicit capability reference without interpreting prose", () => {
     expect(localBrowserAuditBlocker("codex", { acceptanceCriteria: ["Render all routes."], references: ["capability/local-browser-audit"] })).toContain("#847");
   });
+  it.each(["Rendered audit is recorded.", "Rendered audits are recorded.",
+    "A headless browser audit is recorded.", "Headless browser audits are recorded."])(
+    "refuses singular and plural measurement criteria: %s", criterion => {
+      const action = { acceptanceCriteria: [criterion], references: [] };
+      expect(() => assertLocalBrowserAuditReady("codex", action)).toThrow(/local_browser_audit_unavailable/);
+    });
   it("leaves static checks, audit implementation tests and other providers alone", () => {
     expect(localBrowserAuditBlocker("codex", { acceptanceCriteria: ["The Lighthouse parser rejects malformed fixtures."], references: [] })).toBeNull();
     expect(localBrowserAuditBlocker("claude", { acceptanceCriteria: ["Lighthouse results are recorded."], references: [] })).toBeNull();
