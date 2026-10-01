@@ -136,8 +136,9 @@ It does not merge or activate anything. Eight offline operator-action tests
 intercept every Git/GitHub/CLI subprocess; five snapshot/preview tests also pass.
 The action itself has not been executed.
 
-After reconciling this stacked PR with #858's updated head, the candidate
-descriptor pins that reconciliation commit. Its reviewed source and open
+After reconciling this stacked PR with #858's updated head and repairing
+unreceipted setup cleanup, the candidate descriptor pins the reviewed code.
+Its reviewed source and open
 Decision hashes still match. The previously published host copy of the
 descriptor pins an earlier revision and must be synchronized with the pushed
 candidate before the `/runs` button can pass its drift guard. The stale copy
