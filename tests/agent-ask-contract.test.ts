@@ -35,6 +35,7 @@ describe("agent-ask contract", () => {
     const rendered = renderAgentAskContractSuccess(runAgentAskContractCommand()).join("\n");
     expect(rendered).toContain("never self-approving");
     expect(rendered).toContain("propose | apply_if_approved");
+    expect(rendered).toContain("Preview records a capture and proposal receipt in the workspace database");
     for (const intent of AGENT_ASK_INTENTS) expect(rendered).toContain(intent);
   });
 
