@@ -34,6 +34,8 @@ export interface PreserveCommandOptions {
   db?: Database.Database;
   deps?: CandidatePreservationDeps;
   now?: Date;
+  /** Host transport progress only; never supplied by the sandbox request. */
+  onStage?: (stage: string) => void;
 }
 
 /**
@@ -72,7 +74,8 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       const validation = guardPreservationRefusal(db, binding.reservationId, options.now ?? new Date(), () =>
         validateBoundCandidate(options.workspace, {
           id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
-        }, binding, assertBinding));
+        }, binding, assertBinding, options.onStage));
+      options.onStage?.("post-validation-preserve-candidate");
       return preserveCandidate(db, {
         requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
         candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
@@ -80,7 +83,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
         authorityKind: "manual_handoff", policyEpoch: 0, policyRevision: 0, validation,
         remotePreservation: { authorized: false, reason: "Manual Go authorizes local candidate preservation only; remote preservation requires separate authority." },
         now: options.now
-      }, { ...options.deps, hooks: { ...options.deps?.hooks, beforeCommit: () => {
+      }, { ...options.deps, hooks: { ...options.deps?.hooks, onStage: options.onStage, beforeCommit: () => {
         options.deps?.hooks?.beforeCommit?.(); assertBinding();
       } } });
     }

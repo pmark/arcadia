@@ -57,6 +57,9 @@ export interface CandidatePreservationRequest {
 
 /** Deterministic fault-injection boundaries, one per irreversible step. */
 export interface CandidatePreservationHooks {
+  /** Stage observer used by the protected host transport for bounded failure
+   * handoff. It is observational only and cannot affect authorization. */
+  onStage?(stage: string): void;
   beforeStage?(): void;
   afterStage?(): void;
   beforeCommit?(): void;
@@ -317,6 +320,7 @@ export function preserveCandidate(
   const now = request.now ?? new Date();
   const repositoryPath = canonical(request.repositoryPath);
   const candidateWorktreePath = canonical(request.candidateWorktreePath);
+  hooks.onStage?.("preservation-authority-check");
 
   // --- Refusals that need no staging (AC6) ---------------------------------
   if (!request.validation?.passed || !request.validation.candidateFingerprint) {
@@ -408,6 +412,7 @@ export function preserveCandidate(
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
+  hooks.onStage?.("candidate-stage-and-fingerprint");
   hooks.beforeStage?.();
   const candidateFingerprint = stageAndFingerprint(candidateWorktreePath);
   hooks.afterStage?.();
@@ -443,6 +448,7 @@ export function preserveCandidate(
     if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
       throw validationError("Candidate changed between validation and preservation.");
     }
+    hooks.onStage?.("candidate-commit");
     hooks.beforeCommit?.();
     commitSha = commitCandidate({
       candidateWorktreePath,
@@ -477,8 +483,9 @@ export function preserveCandidate(
   };
 
   // --- Local-only fallback (AC5) -------------------------------------------
-  const localOnly = (reason: string): CandidatePreservationReceipt =>
-    persistReceipt(db, {
+  const localOnly = (reason: string): CandidatePreservationReceipt => {
+    hooks.onStage?.("preservation-receipt");
+    return persistReceipt(db, {
       ...base,
       preservationState: "LOCAL ONLY",
       pushedRemote: null,
@@ -488,6 +495,7 @@ export function preserveCandidate(
         `Commit ${commitSha.slice(0, 12)} is preserved only on this machine (${reason}). ` +
         `Push branch ${request.branch} and open a draft pull request to make it remote-recoverable.`
     });
+  };
 
   if (!request.remotePreservation.authorized) {
     return localOnly(`remote preservation not authorized: ${request.remotePreservation.reason}`);
