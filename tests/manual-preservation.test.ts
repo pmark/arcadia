@@ -4,12 +4,13 @@ import path from "node:path";
 import YAML from "yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
-import { withDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { uncommittedChanges } from "../src/git/worktrees.js";
 import { runAdvanceCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { bindManualPreservation, assertManualPreservationBinding } from "../src/sessions/manualPreservation.js";
-import { processPreservationRequests, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
+import { PRESERVATION_JOB_TIMEOUT_MS, PRESERVATION_RESPONSE_TIMEOUT_MS, processPreservationRequests, refreshPreservationHeartbeat, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
+import { goTransportFailure } from "../src/sessions/goRequestExecutor.js";
 import * as validation from "../src/sessions/preservationValidation.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import * as preserve from "../src/commands/preserve.js";
@@ -90,18 +91,70 @@ describe("manual Go preservation binding", () => {
     const host = vi.spyOn(preserve, "runPreserveCommand").mockReturnValue(response as never);
     withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
     const pending = requestCandidatePreservation(f.candidate);
-    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation: async source => {
+      try { return { ok: true, response: preserve.runPreserveCommand({ source, workspace: f.workspace }) }; }
+      catch (error) { return goTransportFailure(error); }
+    } }));
     await expect(pending).resolves.toEqual(response);
     expect(host).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ source: f.candidate, workspace: f.workspace }));
   });
+  it("keeps the worker route responsive while the bounded host preservation job runs", async () => {
+    const f = fixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    let finish!: (result: { ok: true; response: unknown }) => void;
+    const executeHostPreservation = vi.fn((_source: string, _workspace: string, timeoutMs: number) => {
+      expect(timeoutMs).toBe(PRESERVATION_JOB_TIMEOUT_MS);
+      return new Promise<{ ok: true; response: unknown }>(resolve => { finish = resolve; });
+    });
+    const pending = requestCandidatePreservation(f.candidate);
+    const active = withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation }));
+    expect(active).toBe(true);
+    expect(executeHostPreservation).toHaveBeenCalledOnce();
+
+    // The async host child leaves this process free to refresh its projection,
+    // and the live claim prevents a second preservation attempt on the next tick.
+    expect(refreshPreservationHeartbeat(f.workspace, Date.now() + 20_000)).toBe(true);
+    expect(withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation }))).toBe(true);
+    expect(executeHostPreservation).toHaveBeenCalledOnce();
+
+    finish({ ok: true, response: { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } } });
+    await expect(pending).resolves.toMatchObject({ data: { receipt: { commitSha: "fixture-only" } } });
+  });
+  it("recovers an expired claim even when its recorded owner PID is still alive", async () => {
+    const f = fixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    const pending = requestCandidatePreservation(f.candidate);
+    const handoffId = withDatabase(f.workspace, db => (db.prepare(
+      "SELECT id FROM agent_worktree_reservations WHERE worktree_path = ?"
+    ).get(f.candidate) as { id: string }).id);
+    const originalToken = randomUUID();
+    withDatabase(f.workspace, db => db.prepare(
+      "INSERT OR REPLACE INTO candidate_preservation_claims (session_id, pid, token, claimed_at) VALUES (?, ?, ?, ?)"
+    ).run(handoffId, process.pid, originalToken, Date.now() - PRESERVATION_RESPONSE_TIMEOUT_MS - 1));
+    let finish!: (result: { ok: true; response: unknown }) => void;
+    const executeHostPreservation = vi.fn(() => new Promise<{ ok: true; response: unknown }>(resolve => { finish = resolve; }));
+
+    expect(withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation }))).toBe(true);
+    expect(executeHostPreservation).toHaveBeenCalledOnce();
+    withDatabase(f.workspace, db => expect(db.prepare("SELECT token FROM candidate_preservation_claims WHERE session_id = ?").get(handoffId)).not.toEqual({ token: originalToken }));
+
+    finish({ ok: true, response: { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } } });
+    await expect(pending).resolves.toMatchObject({ data: { receipt: { commitSha: "fixture-only" } } });
+  });
   describe("the preservation request marker is cleaned up by its own requester", () => {
     const marker = (f: ReturnType<typeof fixture>) => path.join(f.candidate, ".arcadia-preserve-request");
+    const execute = (f: ReturnType<typeof fixture>) => async (source: string) => {
+      try { return { ok: true as const, response: preserve.runPreserveCommand({ source, workspace: f.workspace }) }; }
+      catch (error) { return goTransportFailure(error); }
+    };
     const ready = (f: ReturnType<typeof fixture>) => {
       vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
-      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation: execute(f) }));
     };
     const service = (f: ReturnType<typeof fixture>) =>
-      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+      withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation: execute(f) }));
 
     it("clears the marker after a successful response, and it never trips a cleanliness check while pending", async () => {
       const f = fixture(); ready(f);
@@ -130,8 +183,11 @@ describe("manual Go preservation binding", () => {
       try {
         const f = fixture(); ready(f);
         const first = requestCandidatePreservation(f.candidate);
-        const rejected = expect(first).rejects.toThrow("timed out");
-        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        const rejected = expect(first).rejects.toMatchObject({
+          message: expect.stringContaining("timed out"),
+          details: { timeoutMs: PRESERVATION_RESPONSE_TIMEOUT_MS }
+        });
+        await vi.advanceTimersByTimeAsync(PRESERVATION_RESPONSE_TIMEOUT_MS + 500);
         await rejected;
         expect(existsSync(marker(f))).toBe(false);
 
@@ -155,7 +211,7 @@ describe("manual Go preservation binding", () => {
         const pending = requestCandidatePreservation(f.candidate);
         const rejected = expect(pending).rejects.toThrow("timed out");
         writeFileSync(marker(f), JSON.stringify({ nonce: randomUUID() }));
-        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        await vi.advanceTimersByTimeAsync(PRESERVATION_RESPONSE_TIMEOUT_MS + 500);
         await rejected;
         expect(existsSync(marker(f))).toBe(true);
       } finally { vi.useRealTimers(); }
@@ -170,7 +226,7 @@ describe("manual Go preservation binding", () => {
         fixtureGit(f.candidate, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "track marker"]);
         const pending = requestCandidatePreservation(f.candidate);
         const rejected = expect(pending).rejects.toThrow("timed out");
-        await vi.advanceTimersByTimeAsync(1_230_000 + 500);
+        await vi.advanceTimersByTimeAsync(PRESERVATION_RESPONSE_TIMEOUT_MS + 500);
         await rejected;
         expect(existsSync(marker(f))).toBe(true);
       } finally { vi.useRealTimers(); }
@@ -326,5 +382,22 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("manual pres
     expect(runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt.commitSha).toBe(result.commitSha);
     writeFileSync(path.join(f.candidate, "marker.txt"), "broken\n");
     expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace })).toThrow(/validation failed/);
+  });
+
+  it("services a manual broker request in a bounded host child and returns its committed receipt", async () => {
+    const f = fixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
+    const db = openDatabase(f.workspace);
+    try {
+      processPreservationRequests(db, f.workspace);
+      const pending = requestCandidatePreservation(f.candidate);
+      processPreservationRequests(db, f.workspace);
+      const response = await pending;
+      const receipt = (response as { data: { receipt: { commitSha: string; candidateFingerprint: string; authorityKind: string } } }).data.receipt;
+      expect(receipt.authorityKind).toBe("manual_handoff");
+      expect(fixtureGit(f.candidate, ["rev-parse", `${receipt.commitSha}^{tree}`])).toBe(receipt.candidateFingerprint);
+      expect(fixtureGit(f.candidate, ["rev-list", "--count", "main..HEAD"])).toBe("1");
+      expect(db.prepare("SELECT count(*) AS n FROM candidate_preservation_claims").get()).toEqual({ n: 0 });
+    } finally { db.close(); }
   });
 });

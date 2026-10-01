@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fork, type ChildProcess } from "node:child_process";
 import { constants, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -7,7 +8,6 @@ import type { GoBrokerAgent } from "../goBroker.js";
 import { git } from "../git/worktrees.js";
 import { executeHostGo, goTransportFailure } from "./goRequestExecutor.js";
 import { GO_REQUEST_FILE, GO_RESPONSE_TIMEOUT_MS, type GoTransportResult } from "./goRequestProtocol.js";
-import { runPreserveCommand } from "../commands/preserve.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
@@ -15,6 +15,7 @@ import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 const runningGoSources = new Set<string>();
+const runningPreservationRequests = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
 /**
  * How long a published route projection is trusted before it is stale.
@@ -26,6 +27,11 @@ const NONCE = /^[a-f0-9-]{36}$/;
  * `arcadia-preserve-broker-*` refuses it, on the same evidence.
  */
 export const TRANSPORT_FRESHNESS_MS = 15_000;
+/** Ten configured checks may each use the validator's 120s ceiling. Give the
+ * host preservation stage a separate two-minute ceiling, then leave 30s for
+ * response persistence and delivery. */
+export const PRESERVATION_JOB_TIMEOUT_MS = 22 * 60_000;
+export const PRESERVATION_RESPONSE_TIMEOUT_MS = PRESERVATION_JOB_TIMEOUT_MS + 30_000;
 const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
 const goResponsePath = (workspace: string, nonce: string) =>
@@ -198,7 +204,7 @@ export async function requestCandidatePreservation(source: string) {
   const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o600);
   try { writeFileSync(fd, JSON.stringify({ nonce })); } finally { closeSync(fd); }
   const response = responsePath(workspace, lease.id, nonce);
-  const deadline = Date.now() + 1_230_000; // ten bounded two-minute checks plus transport margin
+  const deadline = Date.now() + PRESERVATION_RESPONSE_TIMEOUT_MS;
   try {
     while (Date.now() < deadline) {
       if (existsSync(response)) {
@@ -208,7 +214,10 @@ export async function requestCandidatePreservation(source: string) {
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
-    throw validationError("Protected preservation response timed out; retain candidate and inspect the host worker. Retry is safe.");
+    throw validationError(`Protected preservation response timed out after ${PRESERVATION_RESPONSE_TIMEOUT_MS}ms; retain candidate and inspect the host worker. Retry is safe.`, {
+      timeoutMs: PRESERVATION_RESPONSE_TIMEOUT_MS,
+      response
+    });
   } finally {
     // Remove only this caller's untracked request on every exit path, never
     // another caller's or a tracked file, matching requestAgentGo. A hard kill
@@ -302,7 +311,13 @@ function assertUntrackedGoRequest(source: string): void {
 
 /** Called by the existing worker, on its host, before ordinary Run admission.
  * The workspace and candidate paths come from registered leases, not requests. */
-export function processPreservationRequests(db: Database.Database, workspace: string): void {
+export interface PreservationTransportDeps {
+  /** Test seam for a deterministic host-operation fixture. Production always
+   * launches the fixed host child below. */
+  executeHostPreservation?: (source: string, workspace: string, timeoutMs: number) => Promise<GoTransportResult>;
+}
+
+export function processPreservationRequests(db: Database.Database, workspace: string, deps: PreservationTransportDeps = {}): boolean {
   if (process.env.CODEX_SANDBOX) throw validationError("The preservation consumer must run on the host.");
   mkdirSync(path.join(workspace, ".arcadia"), { recursive: true });
   const leases = db.prepare("SELECT * FROM agent_sessions WHERE status IN ('prepared','running')").all() as AgentSession[];
@@ -328,6 +343,7 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   latestPreservationRoutes.set(workspace, routes);
   writePreservationHeartbeat(workspace, routes, at);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
+  let preservationInFlight = false;
   for (const lease of [...leases, ...handoffs]) {
     processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
@@ -336,34 +352,121 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     if (!nonce) continue;
     const response = responsePath(workspace, lease.id, nonce);
     if (existsSync(response)) continue;
+    const requestKey = `${workspace}\0${lease.id}\0${nonce}`;
+    if (runningPreservationRequests.has(requestKey)) {
+      preservationInFlight = true;
+      continue;
+    }
     // Brief ownership transaction only. Never hold a workspace write lock while
     // running checks: Off and other Projects must remain responsive.
     const token = randomUUID();
     const claimed = db.transaction(() => {
-      const owner = db.prepare("SELECT pid FROM candidate_preservation_claims WHERE session_id = ?").get(lease.id) as { pid: number } | undefined;
+      const owner = db.prepare("SELECT pid, claimed_at FROM candidate_preservation_claims WHERE session_id = ?").get(lease.id) as { pid: number; claimed_at: number } | undefined;
       if (owner) {
-        try { process.kill(owner.pid, 0); return false; }
+        try {
+          process.kill(owner.pid, 0);
+          if (owner.claimed_at > Date.now() - PRESERVATION_RESPONSE_TIMEOUT_MS) return false;
+        }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false; }
       }
-      db.prepare("INSERT OR REPLACE INTO candidate_preservation_claims VALUES (?, ?, ?)").run(lease.id, process.pid, token);
+      db.prepare("INSERT OR REPLACE INTO candidate_preservation_claims (session_id, pid, token, claimed_at) VALUES (?, ?, ?, ?)")
+        .run(lease.id, process.pid, token, Date.now());
       return true;
     }).immediate();
-    if (!claimed) continue;
-    try {
-      let result;
-      try { result = { ok: true, response: runPreserveCommand({ source: lease.worktree_path, workspace, db }) }; }
-      // The structured shape the go route already writes, not a flattened
-      // message: the failing check's command, status and skip reason live in
-      // the error details, and a message-only response strands them in the
-      // host-only evidence file the sandboxed caller cannot read (#717).
-      catch (error) { result = goTransportFailure(error); }
-      mkdirSync(path.dirname(response), { recursive: true });
-      writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
-      renameSync(`${response}.tmp`, response);
-    } finally {
-      db.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
+    if (!claimed) {
+      preservationInFlight = true;
+      continue;
     }
+    preservationInFlight = true;
+    runningPreservationRequests.add(requestKey);
+    let hostOperation: Promise<GoTransportResult>;
+    try {
+      hostOperation = (deps.executeHostPreservation ?? executeHostPreservation)(lease.worktree_path, workspace, PRESERVATION_JOB_TIMEOUT_MS);
+    } catch (error) {
+      hostOperation = Promise.resolve(goTransportFailure(error));
+    }
+    hostOperation
+      .then(result => {
+        mkdirSync(path.dirname(response), { recursive: true });
+        writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
+        renameSync(`${response}.tmp`, response);
+      })
+      .catch(error => {
+        const result = goTransportFailure(error);
+        try {
+          mkdirSync(path.dirname(response), { recursive: true });
+          writeFileSync(`${response}.tmp`, JSON.stringify(result), { mode: 0o600 });
+          renameSync(`${response}.tmp`, response);
+        } catch (writeError) {
+          process.stderr.write(`Could not write protected preservation response: ${String(writeError)}\n`);
+        }
+      })
+      .finally(() => {
+        try {
+          if (db.open) db.prepare("DELETE FROM candidate_preservation_claims WHERE session_id = ? AND token = ?").run(lease.id, token);
+        }
+        catch (error) { process.stderr.write(`Could not release preservation request claim: ${String(error)}\n`); }
+        runningPreservationRequests.delete(requestKey);
+      });
   }
+  return preservationInFlight;
+}
+
+/** Run all validation and Git work in an isolated host process. The fixed child
+ * module accepts only paths already derived from the host's registered route;
+ * the request file itself still contains only a nonce. */
+function executeHostPreservation(source: string, workspace: string, timeoutMs: number): Promise<GoTransportResult> {
+  if (process.env.CODEX_SANDBOX) throw validationError("Protected preservation must be dispatched by the host worker.");
+  const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
+  return new Promise(resolve => {
+    const child: ChildProcess = fork(new URL(`./preservationRequestWorker.${extension}`, import.meta.url), [source, workspace], {
+      execArgv: extension === "ts" ? ["--import", import.meta.resolve("tsx")] : [],
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      timeout: timeoutMs
+    });
+    let settled = false;
+    let exited = false;
+    let disconnected = false;
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+    let lastStage = "host-preservation-startup";
+    const finish = (value: GoTransportResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    child.on("message", (message: unknown) => {
+      if (!message || typeof message !== "object") return;
+      const value = message as { type?: unknown; stage?: unknown; result?: GoTransportResult };
+      if (value.type === "stage" && typeof value.stage === "string") {
+        lastStage = value.stage;
+        process.stderr.write(`[preservation] ${path.basename(source)}: ${lastStage}\n`);
+      } else if (value.type === "result" && value.result) finish(value.result);
+    });
+    child.once("error", error => finish(goTransportFailure(validationError(
+      "Could not start the protected host preservation worker.", { source, lastStage, cause: error.message }
+    ))));
+    const finishAfterShutdown = () => {
+      if (!exited || !disconnected || settled) return;
+      const timedOut = exitCode === null && exitSignal === "SIGTERM";
+      finish(goTransportFailure(validationError(
+        timedOut
+          ? `Protected preservation exceeded its ${timeoutMs}ms host job bound during ${lastStage}.`
+          : `Protected preservation worker exited without a result during ${lastStage}.`,
+        { source, timeoutMs, stage: lastStage, code: exitCode, signal: exitSignal, remedy: "Keep the candidate intact. Inspect the named host stage and retry through the protected preservation route; the request id makes a completed preservation replay-safe." }
+      )));
+    };
+    child.once("exit", (code, signal) => {
+      exited = true;
+      exitCode = code;
+      exitSignal = signal;
+      finishAfterShutdown();
+    });
+    child.once("disconnect", () => {
+      disconnected = true;
+      finishAfterShutdown();
+    });
+  });
 }
 
 function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent } | undefined {

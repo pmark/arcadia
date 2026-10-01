@@ -57,6 +57,9 @@ export interface CandidatePreservationRequest {
 
 /** Deterministic fault-injection boundaries, one per irreversible step. */
 export interface CandidatePreservationHooks {
+  /** Stage observer used by the protected host transport for bounded failure
+   * handoff. It is observational only and cannot affect authorization. */
+  onStage?(stage: string): void;
   beforeStage?(): void;
   afterStage?(): void;
   beforeCommit?(): void;
@@ -145,11 +148,16 @@ export function ensureCandidatePreservationTable(db: Database.Database): void {
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS candidate_preservation_claims (
-      session_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, token TEXT NOT NULL
+      session_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, token TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_candidate_preservation_branch
       ON candidate_preservation_receipts(repository_path, branch);
   `);
+  const claimColumns = db.pragma("table_info(candidate_preservation_claims)") as Array<{ name: string }>;
+  if (!claimColumns.some(column => column.name === "claimed_at")) {
+    db.exec("ALTER TABLE candidate_preservation_claims ADD COLUMN claimed_at INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 function canonical(value: string): string {
@@ -317,6 +325,7 @@ export function preserveCandidate(
   const now = request.now ?? new Date();
   const repositoryPath = canonical(request.repositoryPath);
   const candidateWorktreePath = canonical(request.candidateWorktreePath);
+  hooks.onStage?.("preservation-authority-check");
 
   // --- Refusals that need no staging (AC6) ---------------------------------
   if (!request.validation?.passed || !request.validation.candidateFingerprint) {
@@ -408,6 +417,7 @@ export function preserveCandidate(
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
+  hooks.onStage?.("candidate-stage-and-fingerprint");
   hooks.beforeStage?.();
   const candidateFingerprint = stageAndFingerprint(candidateWorktreePath);
   hooks.afterStage?.();
@@ -443,6 +453,7 @@ export function preserveCandidate(
     if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
       throw validationError("Candidate changed between validation and preservation.");
     }
+    hooks.onStage?.("candidate-commit");
     hooks.beforeCommit?.();
     commitSha = commitCandidate({
       candidateWorktreePath,
@@ -477,8 +488,9 @@ export function preserveCandidate(
   };
 
   // --- Local-only fallback (AC5) -------------------------------------------
-  const localOnly = (reason: string): CandidatePreservationReceipt =>
-    persistReceipt(db, {
+  const localOnly = (reason: string): CandidatePreservationReceipt => {
+    hooks.onStage?.("preservation-receipt");
+    return persistReceipt(db, {
       ...base,
       preservationState: "LOCAL ONLY",
       pushedRemote: null,
@@ -488,6 +500,7 @@ export function preserveCandidate(
         `Commit ${commitSha.slice(0, 12)} is preserved only on this machine (${reason}). ` +
         `Push branch ${request.branch} and open a draft pull request to make it remote-recoverable.`
     });
+  };
 
   if (!request.remotePreservation.authorized) {
     return localOnly(`remote preservation not authorized: ${request.remotePreservation.reason}`);

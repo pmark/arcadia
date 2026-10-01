@@ -1662,6 +1662,28 @@ public argument is refused. No launcher can request
 `--launch`, choose a model or effort, override the workspace, or redirect the
 repository. Its success output is canonical JSON; a refusal is JSON on stderr.
 
+Protected `preserve` requests also run in a fixed host child process. The worker
+keeps its event loop and route heartbeat responsive while Seatbelt validation
+and candidate Git work run, while pausing new Run and managed-Session admission
+until the handoff settles. A job is bounded to 22 minutes (the maximum ten
+120-second checks plus a two-minute preservation margin); the caller waits up
+to 22 minutes 30 seconds for the structured result. If the host child reaches
+its limit or exits without a result, the refusal names its last reported stage
+and leaves the candidate intact.
+
+For browser or Lighthouse checks when `arcadia-unattended` denies local
+listeners, serve a built static site from a **plain host terminal**:
+
+```sh
+pnpm arcadia audit host-preview --root <built-site-directory> --seconds 900
+```
+
+The command refuses `CODEX_SANDBOX`, binds only `127.0.0.1`, serves regular
+files from the selected build root with `GET` and `HEAD`, and stops within the
+requested 60–1800 second lifetime. It does not change the named profile, enable
+agent networking, or pass credentials to the server. Open its printed URL in a
+host browser and run the desired local audit while it is available.
+
 Verify the complete installed chain without changing it:
 
 ```sh
