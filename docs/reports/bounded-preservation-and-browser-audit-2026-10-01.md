@@ -33,7 +33,7 @@ serviceable. A parent crash leaves a live child protected by its claim. The
 caller still supplies only a nonce in its registered worktree, never commands,
 paths, evidence, flags or authority.
 
-An attempt has a 20-minute ceiling and 150-second stage ceiling; Git/capture
+An attempt has a 22-minute ceiling and 150-second stage ceiling; Git/capture
 subprocesses have 30-second native limits. Each declared check keeps its existing
 120-second limit. The supervisor kills the attempt's process group on timeout,
 waits for exit, retains its last-stage journal, bounded stderr and terminal

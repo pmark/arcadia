@@ -1307,7 +1307,7 @@ its existing separate grant; otherwise the receipt names the local commit and
 its exact LOCAL ONLY recovery step. Retries return the preserved commit.
 
 Claimed preservation now runs in a separate host child, so validation and capture
-cannot stop the worker's heartbeat. An attempt is bounded to 20 minutes, with
+cannot stop the worker's heartbeat. An attempt is bounded to 22 minutes, with
 150 seconds per stage and 30 seconds per Git/capture subprocess. Checks retain
 their existing two-minute limit. A refusal names its stage, the protected
 attempt journal, and any validation receipt. Retain that evidence and retry
