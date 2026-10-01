@@ -19,6 +19,14 @@ Drop `--narrate` for the deterministic pass, which makes no model calls and retu
 
 Open **Flight Deck** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/flight-deck> (on this Mac: <http://127.0.0.1:3020/flight-deck>) for a read-only portfolio board. It groups the existing Work Queue and dashboard snapshot into Project and Plan lanes, with the same five dispatch gates: Needs You, Ready to dispatch, Running, Proving, and Landed. An object whose Plan cannot be derived is shown in that Project's **Unattached** lane rather than being hidden. Refreshing and browsing this board never changes Arcadia state.
 
+For the bounded v6 production trial, use the existing **Grant v6 remaining-stage
+rehearsal (split, Off, restart; 24h)** operator action after fixture preparation.
+It runs the host-only hermetic replay before activation and refuses on failure
+or its five-minute process timeout. The replay log and failure handoff stay with
+the action; you do not need a terminal or to paste a receipt. Follow
+[`morning-runbook.md`](artifacts/generated/operator-scripts/morning-runbook.md)
+for the live split and Off/restart observations.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every
