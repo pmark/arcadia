@@ -57,6 +57,8 @@ export interface SessionHandoffInput {
   now: Date;
   /** A recovered terminal handoff may integrate only the settled candidate it inspected. */
   expectedCandidateHead?: string;
+  /** Recover a worker-accepted terminal completion after Off withheld preservation. */
+  terminalRecovery?: boolean;
 }
 
 function actionKey(session: AgentSession): string {
@@ -132,12 +134,18 @@ export function preserveSessionCandidate(
     // identical-refusal count with any prior `arcadia preserve` calls the
     // agent itself made from inside the Session before its tmux died -- one
     // repository-wide budget per Session, whichever path checks it.
-    validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session));
+    validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session, input.terminalRecovery === true));
   } catch (error) {
     const detail = (error as { details?: unknown }).details;
     const identicalRefusalLimitReached =
       !!detail && typeof detail === "object" && (detail as { identicalRefusalLimitReached?: unknown }).identicalRefusalLimitReached === true;
     return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
+  }
+
+  const currentPolicy = readProductionPolicySafely(db);
+  if (currentPolicy.status !== "ok" || currentPolicy.policy.desiredState !== "active"
+    || currentPolicy.policy.epoch !== policy.epoch || currentPolicy.policy.revision !== policy.revision) {
+    return { kind: "refused", reason: "Production authority changed during host validation; preservation is withheld." };
   }
 
   const remotePreservation: RemotePreservationAuthorization =
@@ -158,6 +166,7 @@ export function preserveSessionCandidate(
         baseRevision: session.base_revision,
         actionId: session.action_id,
         packetSha256: session.packet_sha256,
+        ...(input.terminalRecovery ? { terminalSessionId: session.id } : {}),
         policyEpoch: policy.epoch,
         policyRevision: policy.revision,
         validation,

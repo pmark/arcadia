@@ -7,7 +7,8 @@ import { validationError } from "../cli/errors.js";
 import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
-import { getActiveWorktreeReservation, getRepositoryLease } from "./index.js";
+import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
+import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 
 /**
  * Preserve a completed candidate worktree without ever handing the coding agent
@@ -48,6 +49,8 @@ export interface CandidatePreservationRequest {
   /** Immutable managed packet hash, or manual handoff binding hash. */
   packetSha256: string;
   authorityKind?: "manual_handoff";
+  /** Exact accepted worker exit authorizing recovery after its lease ended. */
+  terminalSessionId?: string;
   policyEpoch: number;
   policyRevision: number;
   /** Proven validation of the candidate. Absent or failed validation refuses. */
@@ -106,6 +109,7 @@ export interface CandidatePreservationReceipt {
   /** Immutable managed packet hash, or manual handoff binding hash. */
   packetSha256: string;
   authorityKind?: "manual_handoff";
+  terminalSessionId?: string;
   policyEpoch: number;
   policyRevision: number;
   candidateFingerprint: string;
@@ -305,6 +309,7 @@ function assertReplayBindingsMatch(
   check("actionId", receipt.actionId, request.actionId);
   check("packetSha256", receipt.packetSha256, request.packetSha256);
   check("authorityKind", receipt.authorityKind, request.authorityKind);
+  check("terminalSessionId", receipt.terminalSessionId, request.terminalSessionId);
   check("policyEpoch", receipt.policyEpoch, request.policyEpoch);
   check("policyRevision", receipt.policyRevision, request.policyRevision);
   check("candidateFingerprint", receipt.candidateFingerprint, candidateFingerprint);
@@ -363,14 +368,24 @@ export function preserveCandidate(
   // Confirm the candidate is actually reserved and not conflicting with a
   // managed Session's lease first, so a stale or unauthorized request never
   // reaches that mutating work.
-  const reservation = getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
-  if (!reservation) {
+  const terminal = request.terminalSessionId ? getSession(db, request.terminalSessionId) : null;
+  const acceptedTerminal = terminal ? findAcceptedTerminalCompletion(db, terminal) : null;
+  if (request.terminalSessionId && (!terminal || !acceptedTerminal
+    || canonical(terminal.repository_path) !== repositoryPath
+    || canonical(terminal.worktree_path) !== candidateWorktreePath
+    || terminal.branch !== request.branch || terminal.base_revision !== request.baseRevision
+    || terminal.action_id !== request.actionId || terminal.packet_sha256 !== request.packetSha256
+    || tryGit(candidateWorktreePath, ["rev-parse", "HEAD"])?.trim() !== acceptedTerminal.candidateHead)) {
+    throw validationError("The terminal preservation request lacks an unchanged accepted completion binding.");
+  }
+  const reservation = request.terminalSessionId ? null : getActiveWorktreeReservation(db, repositoryPath, candidateWorktreePath, now);
+  if (!request.terminalSessionId && !reservation) {
     throw validationError("The candidate worktree has no active reservation; refusing a stale preservation.", {
       candidateWorktreePath,
       remedy: "Preserve within the reservation window, or re-prepare the worktree."
     });
   }
-  if (reservation.branch !== request.branch) {
+  if (reservation && reservation.branch !== request.branch) {
     throw validationError("The candidate reservation names a different branch.", {
       reservedBranch: reservation.branch,
       requestedBranch: request.branch
@@ -378,7 +393,7 @@ export function preserveCandidate(
   }
 
   const lease = getRepositoryLease(db, repositoryPath);
-  if (lease && canonical(lease.worktree_path) !== candidateWorktreePath) {
+  if (lease && (request.terminalSessionId || canonical(lease.worktree_path) !== candidateWorktreePath)) {
     throw validationError("Another Session holds this repository's lease; refusing a conflicting preservation.", {
       conflictingSessionId: lease.id,
       conflictingWorktree: lease.worktree_path,
@@ -427,6 +442,12 @@ export function preserveCandidate(
   if (candidateFingerprint !== request.validation.candidateFingerprint) {
     throw validationError("Candidate content differs from the validated snapshot.", { evidenceRef: request.validation.evidenceRef });
   }
+  if (acceptedTerminal && tryGit(candidateWorktreePath, ["rev-parse", "HEAD"])?.trim() !== acceptedTerminal.candidateHead) {
+    throw validationError("The terminal candidate HEAD changed after its completion settlement was bound.");
+  }
+  if (acceptedTerminal && headTree(candidateWorktreePath) !== candidateFingerprint) {
+    throw validationError("Terminal preservation must retain the exact completion settlement tree.");
+  }
 
   // --- Idempotent replay by request id (AC3) -------------------------------
   preservationStage("preserve.replay");
@@ -473,6 +494,9 @@ export function preserveCandidate(
     });
     hooks.afterCommit?.();
   }
+  if (acceptedTerminal && commitSha !== acceptedTerminal.candidateHead) {
+    throw validationError("Terminal preservation must retain the exact completion settlement commit.");
+  }
 
   const base: Omit<CandidatePreservationReceipt, "preservationState" | "pushedRemote" | "pullRequestNumber" | "pullRequestUrl" | "retryAction"> = {
     id: createId("preservationReceipt"),
@@ -485,6 +509,7 @@ export function preserveCandidate(
     actionId: request.actionId,
     packetSha256: request.packetSha256,
     ...(request.authorityKind ? { authorityKind: request.authorityKind } : {}),
+    ...(request.terminalSessionId ? { terminalSessionId: request.terminalSessionId } : {}),
     policyEpoch: request.policyEpoch,
     policyRevision: request.policyRevision,
     candidateFingerprint,

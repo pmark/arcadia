@@ -2782,7 +2782,7 @@ actions:
     references: ["artifacts/generated/adversarial-review/2026-10-01-production/recovery-probe/result.md", "src/production/tick.ts", "src/production/sessionHandoff.ts", "docs/managed-production-readiness.md"]
   - id: recover-off-completed-candidate-preservation
     title: Bind the accepted terminal exit and completion settlement to the unchanged candidate, validate and preserve it under current exact authority, then integrate it through the existing receipt and fast-forward path.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Bind the accepted terminal exit and completion settlement to the unchanged candidate, validate and preserve it under current exact authority, then integrate it through the existing receipt and fast-forward path.
@@ -2801,7 +2801,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: recover-off-completed-candidate-preservation
+current_action: finish-two-action-unattended-production-proof
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

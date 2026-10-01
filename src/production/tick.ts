@@ -29,7 +29,7 @@ import {
 } from "./redAlerts.js";
 import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
-import { findCandidateSettledCompletion, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -123,6 +123,7 @@ function recoverTerminalHandoff(
   repoRoot: string,
   projectSlug: string,
   now: Date,
+  preserveDeps: PreserveSessionDeps,
   integrateDeps: IntegrateSessionDeps
 ): SessionHandoffResult | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
@@ -152,13 +153,14 @@ function recoverTerminalHandoff(
 
   const session = pending[0];
   const merge = operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
-  const preservedRow = hasPreservationTable
+  let preservedRow = hasPreservationTable
     ? db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
         .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined
     : undefined;
   let preserved: CandidatePreservationReceipt | null = null;
+  let terminalPreservedThisTick = false;
   try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { /* refuse below */ }
-  const preservation: SessionHandoffResult["preservation"] = preserved
+  let preservation: SessionHandoffResult["preservation"] = preserved
     ? { kind: "preserved", receiptId: preserved.id, commitSha: preserved.commitSha,
         state: preserved.preservationState, replayed: true, baseBranch: preserved.baseBranch }
     : { kind: "refused", reason: "No canonical worker preservation and validation receipt exists for the terminal Session." };
@@ -167,12 +169,37 @@ function recoverTerminalHandoff(
     integration: { kind: "refused", reason, operatorMergeCommand: merge }
   });
   if (pending.length !== 1) return refused("Multiple unfinished terminal candidates claim this repository; integration is ambiguous.");
+  if (!preserved) {
+    const policyRead = readProductionPolicySafely(db);
+    const policy = policyRead.status === "ok" ? policyRead.policy : null;
+    const scope = policy?.scope;
+    const grant = scope?.integrationGrant;
+    const actionKey = `${session.project_slug}/${session.action_id}`;
+    if (!policy || policy.desiredState !== "active" || !scope) return refused("Managed production is Inactive; terminal validation and integration are withheld.");
+    if (!scope.projects.includes(session.project_slug) || !scope.plans.includes(`${session.project_slug}/${session.plan_slug}`)
+      || !scope.actions.includes(actionKey) || !scope.mechanicalTransitions.includes("validation")
+      || !grant || !(grant.actions.length ? grant.actions : scope.actions).includes(actionKey)
+      || Number.isNaN(Date.parse(grant.expiresAt)) || Date.parse(grant.expiresAt) <= now.getTime()) {
+      return refused("No current exact validation and integration Grant authorizes terminal recovery.");
+    }
+    if (!findAcceptedTerminalCompletion(db, session)) return refused("The terminal candidate lacks an unchanged accepted completion settlement.");
+    if (!isAncestor(repoRoot, baseBranch, session.branch)) return refused("The terminal candidate cannot fast-forward the governed base.");
+    preservation = preserveSessionCandidate({ db, workspace, repoRoot, session, now, terminalRecovery: true }, preserveDeps);
+    if (preservation.kind !== "preserved") return refused(`Terminal validation or preservation refused: ${preservation.reason}`);
+    terminalPreservedThisTick = true;
+    preservedRow = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+      .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
+    try { preserved = preservedRow ? JSON.parse(preservedRow.receipt_json) as CandidatePreservationReceipt : null; } catch { preserved = null; }
+  }
   if (!preserved || !preserved.validationEvidenceRef || !preserved.candidateFingerprint
     || preserved.requestId !== `worker-tick-preserve-${session.id}`
     || canonicalPath(preserved.repositoryPath) !== canonicalPath(repoRoot)
     || canonicalPath(preserved.candidateWorktreePath) !== canonicalPath(session.worktree_path)
     || preserved.branch !== session.branch || preserved.baseBranch !== baseBranch
     || preserved.baseRevision !== session.base_revision || preserved.actionId !== session.action_id
+    || (terminalPreservedThisTick
+      ? preserved.terminalSessionId !== session.id
+      : preserved.terminalSessionId !== undefined && preserved.terminalSessionId !== session.id)
     || preserved.packetSha256 !== session.packet_sha256) {
     return refused("The terminal candidate lacks matching preservation and passing validation evidence.");
   }
@@ -942,7 +969,7 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
-        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.integrate ?? {});
+        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {});
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
