@@ -157,15 +157,123 @@ function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z") {
   return { fixture, tmux, session, baseBefore };
 }
 
-function retryHandoff(fixture: Fixture, tmux: FakeTmux) {
+function retryHandoff(fixture: Fixture, tmux: FakeTmux, validationPassed = true) {
   return withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
     profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 120_000),
     capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
-    handoff: { integrate: { fastForward: ({ repoRoot, commitSha }) => git(repoRoot, ["merge", "--ff-only", commitSha]) } }
+    handoff: { preserve: { validate: fixtureValidator(validationPassed) },
+      integrate: { fastForward: ({ repoRoot, commitSha }) => git(repoRoot, ["merge", "--ff-only", commitSha]) } }
   })).projects[0];
 }
 
+function completedWhileOff() {
+  const fixture = preparedFixture();
+  const tmux = new FakeTmux();
+  activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+  const session = launchFirstSession(fixture, tmux);
+  finishCandidate(fixture, tmux, session);
+  const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+  withDatabase(fixture.workspace, (db) => deactivateProduction(db, {
+    requestId: "off-before-terminal-preservation", now: new Date(fixture.now.getTime() + 30_000)
+  }));
+  const offTick = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+    profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+    capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+    handoff: { preserve: { validate: fixtureValidator(true) } }
+  }));
+  expect(offTick.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
+  expect(offTick.projects[0]?.handoff?.preservation.kind).toBe("refused");
+  expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  return { fixture, tmux, session, baseBefore };
+}
+
 describe("preserve-on-exit and integrate", () => {
+  it("validates and preserves an Off-completed terminal candidate only after a fresh exact Grant, then integrates it once", () => {
+    const { fixture, tmux, session, baseBefore } = completedWhileOff();
+    const stillOff = retryHandoff(fixture, tmux);
+    expect(stillOff.handoff?.integration.kind).toBe("refused");
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-terminal-grant");
+    const recovered = retryHandoff(fixture, tmux);
+    expect(recovered.handoff?.preservation.kind).toBe("preserved");
+    expect(recovered.handoff?.integration.kind).toBe("integrated");
+    expect(recovered.launch?.actionKey).toBe("test-project/second-action");
+    expect(tmux.launches).toHaveLength(2);
+    const receipt = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+      "SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?"
+    ).get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined);
+    expect(receipt).toBeDefined();
+    expect(JSON.parse(receipt!.receipt_json)).toMatchObject({ terminalSessionId: session.id });
+    const integratedHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    expect(retryHandoff(fixture, tmux).handoff).toBeNull();
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(integratedHead);
+    expect(tmux.launches).toHaveLength(2);
+  });
+
+  it("refuses an Off-completed candidate if host validation fails or the candidate changed", () => {
+    const failed = completedWhileOff();
+    activatePolicy(failed.fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-failed-validation");
+    const validation = withDatabase(failed.fixture.workspace, (db) => runManagedProductionTick(db, failed.fixture.workspace, {
+      profiles, adapters, tmux: failed.tmux, now: new Date(failed.fixture.now.getTime() + 120_000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: failed.fixture.agentWorktreeRoot,
+      handoff: { preserve: { validate: fixtureValidator(false) } }
+    })).projects[0];
+    expect(validation.handoff?.integration.kind).toBe("refused");
+    expect(git(failed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(failed.baseBefore);
+    expect(failed.tmux.launches).toHaveLength(1);
+
+    const changed = completedWhileOff();
+    activatePolicy(changed.fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-changed-candidate");
+    writeFileSync(path.join(changed.session.worktree_path, "CHANGED.md"), "after terminal settlement\n");
+    git(changed.session.worktree_path, ["add", "CHANGED.md"]);
+    git(changed.session.worktree_path, ["commit", "-m", "change terminal candidate"]);
+    const drift = retryHandoff(changed.fixture, changed.tmux);
+    expect(drift.handoff?.integration.kind).toBe("refused");
+    expect(git(changed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(changed.baseBefore);
+    expect(changed.tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses terminal preservation before committing when the validated tree differs from the settlement tree", () => {
+    const { fixture, tmux, session, baseBefore } = completedWhileOff();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-dirty-candidate");
+    const terminalHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(path.join(session.worktree_path, "CHANGED.md"), "uncommitted after settlement\n");
+    const retry = retryHandoff(fixture, tmux);
+    expect(retry.handoff?.integration.kind).toBe("refused");
+    expect(git(session.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(terminalHead);
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("refuses unpreserved terminal recovery when the fresh Grant expires or narrows", () => {
+    const expired = completedWhileOff();
+    activatePolicy(expired.fixture, scopeWith({ decisionRef: "0058", expiresAt: new Date(expired.fixture.now.getTime() + 90_000).toISOString(), actions: [] }), "expired-terminal-grant");
+    expect(retryHandoff(expired.fixture, expired.tmux).handoff?.integration.kind).toBe("refused");
+    expect(git(expired.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(expired.baseBefore);
+
+    const narrowed = completedWhileOff();
+    const scope = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"],
+      integrationGrant: { decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: ["test-project/second-action"] }
+    });
+    activatePolicy(narrowed.fixture, scope, "narrowed-terminal-grant");
+    expect(retryHandoff(narrowed.fixture, narrowed.tmux).handoff?.integration.kind).toBe("refused");
+    expect(git(narrowed.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(narrowed.baseBefore);
+  });
+
+  it("refuses an unpreserved terminal candidate after its base diverges", () => {
+    const { fixture, tmux } = completedWhileOff();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-divergent-grant");
+    writeFileSync(path.join(fixture.repo, "DIVERGED.md"), "base changed independently\n");
+    git(fixture.repo, ["add", "DIVERGED.md"]);
+    git(fixture.repo, ["commit", "-m", "diverge before terminal recovery"]);
+    const divergentHead = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    expect(retryHandoff(fixture, tmux).handoff?.integration.kind).toBe("refused");
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(divergentHead);
+    expect(tmux.launches).toHaveLength(1);
+  });
   it("recovers an unchanged completed candidate after an interrupted integration without another Session", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -237,12 +345,12 @@ describe("preserve-on-exit and integrate", () => {
     expect(drifted.tmux.launches).toHaveLength(1);
   });
 
-  it("refuses recovery without its preservation validation receipt", () => {
+  it("refuses recovery without a preservation receipt when renewed host validation fails", () => {
     const { fixture, tmux, session, baseBefore } = interruptedHandoff();
     withDatabase(fixture.workspace, (db) => db.prepare("DELETE FROM candidate_preservation_receipts WHERE request_id = ?")
       .run(`worker-tick-preserve-${session.id}`));
-    const retry = retryHandoff(fixture, tmux);
-    expect(retry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/preservation.*validation/i) });
+    const retry = retryHandoff(fixture, tmux, false);
+    expect(retry.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/validation/i) });
     expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
     expect(tmux.launches).toHaveLength(1);
   });

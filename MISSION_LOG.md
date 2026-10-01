@@ -1282,3 +1282,10 @@ updated: 2026-10-01
 - **Result:** Every declared acceptance criterion was accepted as met: "A later worker tick rediscovers a canonically completed, validated and preserved terminal candidate after an injected integration failure, integrates its unchanged settlement HEAD through the existing fast-forward path exactly once, and launches no replacement coding Session."; "Production Off, expired or drifted exact Grant or scope, missing validation or preservation, changed candidate HEAD or branch, and divergent base each refuse integration while preserving a recoverable handoff receipt."; "Focused fault and refusal tests pass, followed by the required full test and build checks; the reviewed change states the installed revision and remaining live-proof boundary.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-recover-terminal-integration-after-reconcile-2026-10-01).
+
+## 2026-10-01 — Agent Ask pr-opened-arcadia-pr866
+
+- **Did:** PR #866 opens the governed repair for the v6 candidate completed while production was Off: after separate exact approval, host validation and preservation can precede its existing integration path. https://github.com/pmark/arcadia/pull/866
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
