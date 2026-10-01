@@ -2784,7 +2784,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: limit-sessions-per-provider-account
+current_action: finish-two-action-unattended-production-proof
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
