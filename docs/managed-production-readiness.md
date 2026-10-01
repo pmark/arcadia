@@ -2,60 +2,51 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-01**, after the first live v6 attempt and the operator's stop.
+Latest derivation: **2026-10-01**, after the renewed v6 trial and adversarial architecture review.
 
 ## Current answer
 
-The host passed the full hermetic rehearsal replay (17 tests), activated the bounded v6 Grant, launched a real coding-agent Session, and automatically resumed its incomplete candidate in the same worktree and branch. That proves the handoff reaches a provider and preserves candidate identity across Sessions.
+The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
-The attempt did **not** complete the first Action. Six Sessions left only the first marker line. The operator turned production Off to stop the retry loop. Policy is now **Inactive at revision 25, with zero live admissions**. The dependent Action's Off/restart proof remains unperformed. Production is not ready to leave unattended.
+Production is **Inactive at revision 27, with zero live admissions**. The dependent Action's completed candidate has not been integrated into the fixture base after Off. This is a distinct stage: candidate completion is observed; final base integration and parent proof settlement are not claimed. Off correctly withholds integration authority.
 
-## Vital few repairs
+The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six-Session failure remains retained evidence, not overwritten by the later success.
 
-1. Keep scheduling within the active Grant's Project scope. A fixture-only Grant nevertheless ran portfolio-wide scheduling and moved Arcadia's unrelated pointer. [PR #855](https://github.com/pmark/arcadia/pull/855) fixes this by passing the existing scheduler its Project allowlist. Its regression reproduced the incorrect pointer commit before the fix.
-2. Tell a resumed Session that it is continuing prior work. The launch brief previously repeated the first-Session instruction without its canonical predecessor receipt. Render continuation context from the existing consumed handoff, scoped to the same Project, Plan, Action, worktree, and branch.
-3. Bound unchanged resumptions. A successful process launch previously reset the repair budget even when the next exit made no candidate progress. Count a clean unchanged resumed exit against the existing two-attempt repair budget; retain its candidate and surface the existing escalation. Reset that count when candidate progress or completion is observed.
+## Vital few next steps
 
-These are implementation defects found by the trial. Neither relaxing approval boundaries nor activating the full portfolio fixes them.
+1. Remove unsupported completion inference. New temporary-repository regressions reproduced a false acceptance: a completed generic Run or even a running Run caused an unproven criterion to be recorded met under a scoped Grant. A reviewed repair must use canonical settlements or drafted criterion-level completion evidence, retaining Decision 0062's automatic proof-based path. The proposed repair is not yet installed by this derivation.
+2. Prove durable terminal integration recovery. Source inspection found that reconciliation releases the live lease before integration, while later ticks discover live leases. Inject a failure at that seam before implementing the smallest receipt-based recovery. The current Off trial does not demonstrate a crash defect.
+3. Validate separate Project rules under one operator, then address any demonstrated qualified-target gate inconsistency. Reuse existing approval, packet, scope and receipt machinery.
+4. Reassess the existing parent two-Action proof against all live evidence and independently required validation. Missing authority remains one genuine bounded approval; do not ask the operator to relay a receipt or inspect a database.
 
 ## What the evidence proves
 
-| Stage | Live result |
+| Stage | Renewed live result |
 | --- | --- |
-| Host replay before Grant | Passed: 17 tests. |
-| Bounded v6 activation | Applied, then revoked by the operator. |
-| First Session exits incomplete with one marker | Observed. |
-| Second Session reuses the exact candidate and branch | Observed. |
-| Resumed Session appends the second marker and completes | Not achieved; repeated first-marker exits instead. |
-| Competing candidate refused while the first is live | A preview was retained; no actual competing launch was attempted. This does not establish the full refusal criterion. |
-| Dependent Action admitted before Off | Not reached. |
-| Existing dependent Session survives Off and worker restart | Not performed. |
-| No admission or reactivation after the actual stop | Policy Off and zero live admissions confirmed; longer observation remains part of the next bounded trial. |
+| Host replay before Grant | Passed: 17 hermetic tests. |
+| Exact resumed candidate and branch | Reused the prior split candidate. |
+| Resumed Action completion | Canonical accepted completion observed. |
+| Concurrent candidate protection | Canonical competing preparation actually refused while the Session lease was live. |
+| Dependent Action | Admitted automatically after first candidate integration, with a fresh candidate. |
+| Off and supported worker restart during dependent work | Performed by the bounded host action; no duplicate or reactivation in its recorded observation window. |
+| Dependent candidate completion after Off | Canonical accepted completion observed. |
+| Final dependent candidate integration | Pending; Inactive policy supplies no integration authority. |
+| Entire parent proof settled | Not claimed. |
 
-Live run logs, policy receipts, marker observations, Session identities, and candidate paths remain in the local generated operator-script run evidence. They must be retained and assessed before settling any proof criterion. An exit code or a passing hermetic replay cannot stand in for missing live evidence.
+Exact identities, revisions, host/provider, receipts, refusal evidence and every operator intervention remain in the local generated-script run evidence. Tests and source analysis are separate from live proof. Neither process exit nor a passing generic check proves arbitrary acceptance criteria.
 
-## Governed and operator state
+## Governed state and deferrals
 
-The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The scheduler moved its pointer to `limit-sessions-per-provider-account` during the faulty scope pass. This document does not repair that authoritative pointer or claim that `prove-two-action-unattended-production` is complete.
+The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. Its pointer remains `limit-sessions-per-provider-account`, moved by the earlier faulty scope pass. This document does not repair that pointer or mark the parent proof done.
 
-The operator rejected the five historical proposals through the existing host approval surface. Their earlier write-path blocker is superseded. The retained Flight Deck proposal `agentask_4777d744460a9f5fc0` waits for later review, revived only after the bounded production proof succeeds. Retention grants neither acceptance nor Plan activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
+The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
-The original revision-23 Grant has been consumed. Its receipt must remain intact. A further trial needs a fresh request id, the current inactive revision, the same exact two-Action/provider/concurrency scope, and fresh canonical preview. Do not reset an old button or replay its activation receipt as new authority.
+The original and renewed one-shot Grants are consumed/revoked. A future live trial or integration requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation.
 
-## Shortest path
-
-1. Review, merge, and install the scope and continuation repairs; verify their actual merged revisions and file content.
-2. Keep production Off while checking worker health, fixture/candidate state, retained evidence, and fresh revision-pinned authority.
-3. Run the smallest renewed bounded trial using the supported host path. Reuse the incomplete candidate and continue the remaining acceptance criteria.
-4. Observe the dependent Action's already-admitted Session through Off and worker restart, retaining every receipt and operator intervention.
-5. Settle only criteria supported by the resulting live evidence, then assess wider production authority separately.
-
-The operator should use the existing dashboard approval/control surfaces or a single bounded generated host action. No terminal command, database inspection, pasted receipt, or manual relay should be necessary. Flight Deck UI work remains deferred until this proof succeeds.
-
-## Other gates
-
-The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions completing unattended. Board-surface and historical integration results were not rerun by this derivation. The remaining split-completion and Off/restart stages keep the live proof open. Cross-repository concurrency and same-repository pipelining remain later gates; the v6 trial keeps concurrency one.
+The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
 ## Refresh contract
 
-Refresh this document whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is discovered. Read the Project pointer and active Plan, canonical queue and production status, relevant open Decisions and Mission Log, worker/Session receipts, and bug/review state. Run the host hermetic rehearsal before each new live Grant. Separate observations from unperformed criteria; preserve the previous receipts rather than replacing failure with a success claim.
+Refresh whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is found. Read canonical Project/Plan state, policy, queue, relevant Decisions, Session receipts and retained run evidence. Run the hermetic rehearsal before a new live Grant. Separate observed stages from unperformed criteria and preserve earlier failures.
+
+The operator contract remains: Arcadia progresses deterministically, presents one genuine bounded decision through the existing operator surface, or reports a concrete external blocker. No terminal command, database inspection, receipt copy/paste or manual relay should be required.
