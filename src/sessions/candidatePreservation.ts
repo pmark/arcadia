@@ -419,7 +419,6 @@ export function preserveCandidate(
   }
 
   // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
-  preservationStage("preserve.snapshot");
   hooks.onStage?.("candidate-stage-and-fingerprint");
   preservationStage("preserve.snapshot");
   hooks.beforeStage?.();

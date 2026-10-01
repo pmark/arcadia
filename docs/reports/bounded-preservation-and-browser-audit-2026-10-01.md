@@ -33,7 +33,7 @@ serviceable. After PID transfer, a parent crash leaves a live child protected by
 caller still supplies only a nonce in its registered worktree, never commands,
 paths, evidence, flags or authority.
 
-An attempt retains the landed 22-minute ceiling and 150-second stage ceiling; Git/capture
+The PR #863 follow-up raises the merged 20-minute attempt ceiling to 22 minutes and 150-second stage ceiling; Git/capture
 subprocesses have 30-second native limits. Each declared check keeps its existing
 120-second limit. The supervisor kills the attempt's process group on timeout,
 waits for exit, retains its last-stage journal, bounded stderr and terminal
@@ -173,7 +173,7 @@ While this PR was in its final review, main gained PR #856's async transport,
 expiry recovery, admission pause and host-only static preview. The candidate
 was merged with that base and keeps those contracts, using one supervised
 writer with PID-owned claims, retained stage/evidence journals and group-exit
-ordering. Its total bound is now the landed 22 minutes, preserving the maximum
+ordering. The PR #863 follow-up makes its total bound 22 minutes, preserving the maximum
 ten 120-second validation checks plus two minutes for preservation; the caller
 retains the 30-second response margin. Stage and native subprocess bounds remain
 150 and 30 seconds. Token cleanup uses a fresh database connection after exit.
