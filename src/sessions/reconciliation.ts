@@ -560,6 +560,9 @@ export interface ReconcileSessionExitInput {
    * `incomplete_resumable`, which was never resumable to begin with.
    */
   suppressLeaseHandoff?: { reason: string };
+  /** Extra receipt accounting, committed atomically with terminal state and the receipt.
+   * Called once for a new receipt inside its SQLite transaction; never on replay. */
+  onReceiptWrite?: (receipt: SessionExitReceipt) => void;
 }
 
 export interface ReconcileSessionExitResult {
@@ -674,6 +677,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, is_simulated, created_at, updated_at)
       VALUES (@id, @session_id, @request_id, @outcome, @reason, @run_id, @artifact_id, @decision_id, @candidate_revision, @evidence_json, @next_action_json, @lease_handoff, @superseded_by_session_id, @is_simulated, @created_at, @updated_at)`
     ).run(row);
+    input.onReceiptWrite?.(row);
   });
   write();
 
