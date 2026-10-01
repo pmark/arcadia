@@ -29,7 +29,7 @@ import {
 } from "./redAlerts.js";
 import { getRepositoryLease, resolveProjectTransition, systemTmux, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
-import { reconcileSessionExit } from "../sessions/reconciliation.js";
+import { getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
@@ -780,6 +780,27 @@ export function runManagedProductionTick(
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
             : undefined
         });
+        // A reused candidate is not progress by itself. A clean resumed Session
+        // that returned the same revision consumes the existing finite repair
+        // budget; successful process launch must not erase those observations.
+        const continuation = getSessionContinuation(db, lease);
+        if (result.created && continuation) {
+          const actionKey = `${project.slug}/${lease.action_id}`;
+          const unchanged = result.receipt.outcome === "incomplete_resumable"
+            && result.receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
+            && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
+          if (unchanged) {
+            recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
+            const attempts = getRepairAttempts(db, actionKey);
+            if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+              recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
+                lastError: attempts.lastError, now, log });
+            }
+          } else if (result.receipt.outcome === "accepted_completion"
+            || (result.receipt.outcome === "incomplete_resumable" && result.receipt.candidate_revision !== continuation.candidate_revision)) {
+            resetRepairAttempts(db, actionKey);
+          }
+        }
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
         // agent's work on the base branch while the pointer still names the same
@@ -1050,7 +1071,7 @@ function attemptProjectLaunch(
       // `arcadia production status` still telling the operator to sign in.
       onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
     });
-    resetRepairAttempts(db, actionKey);
+    if (!getSessionContinuation(db, result.session)) resetRepairAttempts(db, actionKey);
     clearLaunchBlocker(db, input.projectSlug);
     clearOperatorEscalation(db, actionKey);
     clearLaunchRefusal(db, actionKey);
