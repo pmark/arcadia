@@ -96,7 +96,7 @@ export interface AgentAskDraftData {
   written: "created" | "unchanged";
   preview: { proposal: AgentAskProposal; fingerprint: string } | null;
   workspaceStatus: "previewed" | "not_available" | "preview_blocked";
-  previewFailure: { code: string; message: string } | null;
+  previewFailure: { code: string; message: string; cause?: string } | null;
   discovery: AgentAskDiscoveryResult;
 }
 
@@ -158,7 +158,11 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     } else {
       throw error;
     }
-    previewFailure = { code: failure.code, message: failure.message };
+    previewFailure = {
+      code: failure.code,
+      message: failure.message,
+      ...(typeof failure.details.cause === "string" ? { cause: failure.details.cause } : {})
+    };
   }
   return createSuccess({
     command: "agent-ask.draft",
@@ -201,7 +205,7 @@ export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraf
   if (d.preview) {
     lines.push(`Previewed: fingerprint ${d.preview.fingerprint}`, `Decisions required: ${d.preview.proposal.requiredDecisions.length}`, "Next: arcadia agent-ask settle --proposal " + d.requestId + " ...");
   } else if (d.workspaceStatus === "preview_blocked") {
-    lines.push(`Previewed: blocked (${d.previewFailure?.code ?? "unknown error"}) — ${d.previewFailure?.message ?? "workspace preview failed"}`);
+    lines.push(`Previewed: blocked (${d.previewFailure?.code ?? "unknown error"}) — ${d.previewFailure?.message ?? "workspace preview failed"}${d.previewFailure?.cause ? ` Cause: ${d.previewFailure.cause}` : ""}`);
     lines.push("Next: preserve the validated Ask file for a host with workspace access. Do not guess a workspace from the Project name or retry this database write from the same sandbox.");
   } else {
     lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path}\`.`);
