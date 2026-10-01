@@ -66,11 +66,17 @@ unestablished; its retained passing checks do not prove transport success.
 The actual installed `arcadia-unattended` browser probe denies loopback HTTP
 with EPERM and aborts headless Chrome even with a debugging pipe. Synthetic
 credential reads and external sockets are also denied. The candidate adds a
-pre-dispatch capability refusal. A supported positive browser-audit path still
-needs the operator's boundary choice, fixture proof and separate scoped
-activation. PPN's final comparable mobile/desktop Lighthouse matrix remains
+pre-dispatch capability refusal. On operator direction to finish the recommended
+preparation, the inactive host route now proves mobile/desktop HTTP rendering,
+external/private/other-loopback and unrelated Unix-socket denial, synthetic
+credential denial, and bounded post-launch stall cleanup on real host fixtures.
+That preparation does not change the installed named profile or admit browser
+measurement Actions. Reviewed integration and a separate scoped activation
+remain required. PPN's final comparable mobile/desktop Lighthouse matrix remains
 unmeasured and its verification Action remains open. The prepared Ask and
 measured evidence are in `docs/reports/bounded-preservation-and-browser-audit-2026-10-01.md`.
+The inactive host proof is in `docs/reports/restricted-host-browser-audit-2026-10-01.md`;
+the other production observations above were not re-measured by this fixture run.
 
 
 The earlier v5 rehearsal remains evidence of two dependent codex-cli Actions completing unattended. Board-surface and historical integration results were not rerun by this derivation. The remaining split-completion and Off/restart stages keep the live proof open. Cross-repository concurrency and same-repository pipelining remain later gates; the v6 trial keeps concurrency one.

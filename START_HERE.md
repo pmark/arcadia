@@ -1326,6 +1326,17 @@ required capability or denial is unproven. An offline render is not an HTTP
 audit. A bounded audit route needs the proposed operator Decision; reinstalling
 the unchanged profile is not a fix.
 
+Inactive host preparation now has a fixed synthetic proof command:
+`node --import tsx scripts/prove-host-browser-audit.ts` from an ordinary macOS
+host terminal. It reuses the host preview, renders mobile and desktop HTTP
+fixtures under a dedicated deny-default Seatbelt boundary, verifies network
+and synthetic credential denials, and deliberately stalls after Chrome starts
+to prove bounded process-group cleanup. Receipts, the exact profile, and
+screenshots are retained. This command accepts no arguments and does not audit
+a Project, install a profile, activate dispatch, or produce a Lighthouse matrix.
+Review `docs/reports/restricted-host-browser-audit-2026-10-01.md` before a
+separate source/revision-scoped activation proposal.
+
 From the host, the matching `go` executable performs canonical preview/apply
 under its separate authority. Every agent launcher rejects public arguments,
 including workspace, repository, command and evidence overrides. The managed
