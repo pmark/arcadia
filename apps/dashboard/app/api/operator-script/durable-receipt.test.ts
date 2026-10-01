@@ -5,6 +5,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 describe("Operator endpoint projects shared runner receipts", () => {
+  it("accepts an optional grant kind while descriptors without it list unchanged", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-script-kind-")); roots.push(root);
+    const base = { schema: "arcadia-operator-script-v1", title: "Example", problem: "Example problem", desired_effect: "Example effect", authority: { does: ["One action"], never_does: ["Broaden scope"] }, success: { effect: "Done", next: "Keep receipt" }, failure: { effect: "Refused", next: "Retry exact action" } };
+    for (const [id, kind] of [["ordinary", undefined], ["grant", "grant"]] as const) {
+      writeFileSync(path.join(root, `${id}.sh`), "#!/bin/sh\\nexit 0\\n", { mode: 0o755 });
+      writeFileSync(path.join(root, `${id}.json`), JSON.stringify({ ...base, id, script: `${id}.sh`, ...(kind ? { kind } : {}) }));
+    }
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_LIBRARY", root); vi.resetModules();
+    const { GET } = await import("./route");
+    const listing = await (await GET()).json() as { scripts: Array<{ id: string; kind?: string }> };
+    expect(listing.scripts.find((script) => script.id === "ordinary")).not.toHaveProperty("kind");
+    expect(listing.scripts.find((script) => script.id === "grant")).toMatchObject({ kind: "grant" });
+  });
+
   it("shows the canonical receipt and refuses a completed one-shot without any dashboard launcher state", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-receipt-endpoint-")); roots.push(root);
     mkdirSync(path.join(root, "runs/receipts"), { recursive: true });

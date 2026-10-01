@@ -21,6 +21,7 @@ function CardSkeletons() {
 
 interface OperatorScript {
   id: string;
+  kind?: "grant";
   title: string;
   desiredEffect: string;
   authority: { does: string[]; never_does: string[] };
@@ -355,8 +356,11 @@ function OperatorScriptCard({
       className={`rounded-md border p-4 shadow-soft ${emphasized ? "border-clay/60 bg-clay/5" : "border-line bg-panel"}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold">{script.title}</h3>
-        <span className={`rounded-full px-2 py-1 text-xs font-semibold ${operatorStateClass(script.state.status)}`}>
+        <div className="min-w-0">
+          <h3 className="font-semibold">{script.title}</h3>
+          {script.kind === "grant" ? <span className="mt-1 inline-flex rounded-full bg-gold/10 px-2 py-1 text-xs font-semibold text-gold">Grant</span> : null}
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${operatorStateClass(script.state.status)}`}>
           {operatorStateLabel(script.state.status)}
         </span>
       </div>

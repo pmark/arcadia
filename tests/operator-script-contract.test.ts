@@ -36,6 +36,11 @@ describe("Every applicable generated action must use the shared runner", () => {
     expect(() => validateOperatorScriptContract(d, d.id, "agent-ask settle")).not.toThrow();
     delete d.agentAsk; expect(() => validateOperatorScriptContract(d, d.id, "#!/bin/sh\nexit 0\n")).not.toThrow();
   });
+  it("requires a Grant descriptor to remain one-shot", () => {
+    const d = descriptor(); delete d.planAmendment;
+    d.kind = "grant"; d.repeatable = true;
+    expect(() => validateOperatorScriptContract(d, d.id, "#!/bin/sh\nexit 0\n")).toThrow("incomplete");
+  });
   it("checks the entire real library without executing any action", () => {
     const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts")], { encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({ failures: 0 });

@@ -159,6 +159,20 @@ records its outcome (`proposed`, `needs_operator`, `budget_exceeded`,
 code, or merges, and a fix touching the concurrency gate, admission policy,
 approval boundaries or credentials is `needs_operator`.
 
+### Grant
+
+A **Grant** is a one-shot operator action that delegates bounded authority to
+Arcadia. It is not a standing permission, a production state, or a Session
+launch: the operator presses the specific action, and only its declared scope
+may change.
+
+Every Grant pins the policy revision it was built against, names the exact
+scope it covers, carries an expiry, refuses before mutation when any
+precondition has drifted, and records a durable receipt. A Grant also states
+plainly what it never does. A descriptor identifies one with optional
+`kind: "grant"`; descriptors that omit `kind` remain ordinary operator actions
+for compatibility.
+
 ### Status
 
 Status describes the lifecycle state of a concept.

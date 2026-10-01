@@ -104,6 +104,7 @@ export async function GET() {
         const updatedAt = state?.finishedAt ?? state?.startedAt ?? descriptorMtime;
         return {
           id: descriptor.id,
+          kind: descriptor.kind,
           title: descriptor.title,
           desiredEffect: descriptor.desired_effect,
           authority: descriptor.authority,
