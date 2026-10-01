@@ -38,6 +38,16 @@ Always identify:
 - Work classification
 - Required artifacts
 
+## Workspace for this installation
+
+`martianrover` is the operator's default and exclusive live Arcadia workspace,
+including for the Arcadia Project. Let Arcadia resolve that configured default;
+never derive a workspace name or path from a Project slug. Do not use the
+repo-local `.arcadia-workspace/` dogfood shortcut for live Project work. If the
+configured workspace cannot be resolved or written from an agent's sandbox,
+preserve the validated Ask and report the exact boundary instead of trying a
+different workspace or editing its database.
+
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
 
