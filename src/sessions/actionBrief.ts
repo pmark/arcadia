@@ -34,6 +34,8 @@ export interface ActionBriefInput {
    * longer matches it cannot launch.
    */
   baseRevision: string;
+  /** The canonical incomplete handoff consumed by this Session, when resuming. */
+  continuation?: { sessionId: string; candidateRevision: string | null };
 }
 
 /**
@@ -93,6 +95,17 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
     "branches, or edit the Project pointer; those remain operator gates."
   ];
+  if (input.continuation) {
+    lines.push(
+      "", "Continuation — this is a resumed Session, not the first Session for this Action:",
+      `Previous Session: ${input.continuation.sessionId} (incomplete_resumable).`,
+      `Previous preserved candidate revision: ${input.continuation.candidateRevision ?? "unavailable"}.`,
+      "The host reused that Session's candidate worktree and branch. Inspect its existing work before editing.",
+      "First-Session-only instructions apply to the prior Session where the candidate evidence confirms them.",
+      "Continue the remaining acceptance criteria; do not repeat a deliberate first-Session partial exit.",
+      "This handoff proves neither completion nor additional authority. The Plan and approval boundaries still bind."
+    );
+  }
   if (pinned) {
     lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }
