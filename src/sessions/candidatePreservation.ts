@@ -445,6 +445,9 @@ export function preserveCandidate(
   if (acceptedTerminal && tryGit(candidateWorktreePath, ["rev-parse", "HEAD"])?.trim() !== acceptedTerminal.candidateHead) {
     throw validationError("The terminal candidate HEAD changed after its completion settlement was bound.");
   }
+  if (acceptedTerminal && headTree(candidateWorktreePath) !== candidateFingerprint) {
+    throw validationError("Terminal preservation must retain the exact completion settlement tree.");
+  }
 
   // --- Idempotent replay by request id (AC3) -------------------------------
   preservationStage("preserve.replay");

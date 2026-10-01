@@ -233,6 +233,18 @@ describe("preserve-on-exit and integrate", () => {
     expect(changed.tmux.launches).toHaveLength(1);
   });
 
+  it("refuses terminal preservation before committing when the validated tree differs from the settlement tree", () => {
+    const { fixture, tmux, session, baseBefore } = completedWhileOff();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-dirty-candidate");
+    const terminalHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    writeFileSync(path.join(session.worktree_path, "CHANGED.md"), "uncommitted after settlement\n");
+    const retry = retryHandoff(fixture, tmux);
+    expect(retry.handoff?.integration.kind).toBe("refused");
+    expect(git(session.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(terminalHead);
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    expect(tmux.launches).toHaveLength(1);
+  });
+
   it("refuses unpreserved terminal recovery when the fresh Grant expires or narrows", () => {
     const expired = completedWhileOff();
     activatePolicy(expired.fixture, scopeWith({ decisionRef: "0058", expiresAt: new Date(expired.fixture.now.getTime() + 90_000).toISOString(), actions: [] }), "expired-terminal-grant");
