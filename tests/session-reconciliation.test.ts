@@ -17,8 +17,9 @@ import { activateProduction, countLiveAdmissions, fingerprintProductionScope, is
 import { previewAgentAskRequest } from "../src/ask/preview.js";
 import { settleAgentAsk } from "../src/ask/settlement.js";
 import { getActiveActionClaim, getActiveWorktreeReservation, getSession, prepareSession, resolveProjectTransition, type TmuxAdapter } from "../src/sessions/index.js";
+import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
-import { attemptAutomaticCompletion, getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -340,61 +341,82 @@ describe("reconcileSessionExit releases a committed production admission (Issue 
 });
 
 describe("reconcileSessionExit automatic production completion", () => {
-  it("settles a complete Agent Ask on the candidate and advances the pointer when standing policy delegates mechanical acceptance", () => {
-    const fixture = preparedFixture({ responsibility: "agent" });
+  it.each(["completed", "running"] as const)("does not invent criterion evidence from a %s Run under an acceptance Grant", (runStatus) => {
+    const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [
+      "The contract exists.", "The contract documents the recovery procedure."
+    ] });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
-    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
-    git(worktreePath, ["add", "contract.md"]);
-    git(worktreePath, ["commit", "-m", "define the contract"]);
-
+    // This Run predates the candidate change; a running Run has not passed.
+    // Neither supplies evidence of the missing recovery text.
     withDatabase(fixture.workspace, (db) => {
       const session = getSession(db, sessionId)!;
       const run = createReviewExecutionRun(db, {
-        reviewItemId: fixture.approvalId, executorName: "test", workItemId: session.work_item_id, summary: "Build passed."
+        reviewItemId: fixture.approvalId, executorName: "test", workItemId: session.work_item_id, summary: "Unrelated build."
       });
-      updateExecutionRunStatus(db, run.id, "completed", { summary: "Build passed." });
-      activateProduction(db, {
-        requestId: "grant-auto-complete",
-        scope: productionScope(),
-        scopeFingerprint: fingerprintProductionScope(productionScope()),
-        grantedBy: "operator"
-      });
+      updateExecutionRunStatus(db, run.id, runStatus, { summary: "Unrelated build." });
+      const scope = productionScope();
+      activateProduction(db, { requestId: "grant-no-invented-evidence", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
     });
-
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    git(worktreePath, ["add", "contract.md"]);
+    git(worktreePath, ["commit", "-m", "contract without recovery procedure"]);
+    const before = git(worktreePath, ["rev-parse", "HEAD"]).trim();
     const result = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-auto-1", repoRoot: fixture.repo })
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-no-invented-evidence", repoRoot: fixture.repo })
     );
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+    expect(git(worktreePath, ["rev-parse", "HEAD"]).trim()).toBe(before);
+    expect(discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof"))
+      .toMatchObject({ status: "active", currentAction: "define-contract" });
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements").get()))
+      .toEqual({ count: 0 });
+  });
 
+  it("settles real drafted criterion evidence under an acceptance Grant and replays the same receipt", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    draftCompleteInWorktree(worktreePath, "The contract exists.");
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "preserve contract and criterion evidence"]);
+    withDatabase(fixture.workspace, (db) => {
+      const scope = productionScope();
+      activateProduction(db, { requestId: "grant-drafted-completion", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant", repoRoot: fixture.repo })
+    );
     expect(result.receipt.outcome).toBe("accepted_completion");
-    expect(result.receipt.reason).toContain("standing production policy");
-    const automaticSettlement = withReadOnlyDatabase(fixture.workspace, (db) =>
-      db.prepare("SELECT receipt_json FROM agent_ask_settlements WHERE request_id = ?")
-        .get(`auto-complete-${sessionId.replaceAll("_", "-")}`) as { receipt_json: string }
-    );
-    expect(JSON.parse(automaticSettlement.receipt_json).authority.kind).toBe("deterministic_proof");
-    const plan = discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof");
-    expect(plan).toMatchObject({ status: "complete" });
-    expect(execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath, encoding: "utf8" })).toBe("");
-
-    // Idempotent: reconciling again (a different request id, e.g. a retry
-    // after a crash) returns the same receipt and settles nothing twice.
+    expect(result.receipt.reason).toContain("drafted complete Ask");
+    expect(result.receipt.run_id).toBeNull();
+    expect(discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof"))
+      .toMatchObject({ status: "complete" });
+    const receipts = withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT receipt_json FROM agent_ask_settlements").all()) as { receipt_json: string }[];
+    expect(receipts).toHaveLength(1);
+    expect(JSON.parse(receipts[0].receipt_json).authority.kind).toBe("deterministic_proof");
+    expect(git(worktreePath, ["status", "--porcelain"])).toBe("");
     const replay = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-auto-1-retry", repoRoot: fixture.repo })
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant-retry", repoRoot: fixture.repo })
     );
     expect(replay.receipt.id).toBe(result.receipt.id);
     expect(replay.created).toBe(false);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS count FROM agent_ask_settlements").get())).toEqual({ count: 1 });
   });
 
   it("accepts a completion the Session settled on its own candidate by the brief's protocol, with no Run recorded", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -414,9 +436,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("settles the drafted complete Ask a sandboxed Session left on its preserved candidate, with no Run recorded", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     draftCompleteInWorktree(worktreePath, "The contract exists.");
@@ -437,15 +459,23 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("leaves a drafted complete Ask whose evidence does not cover the criteria unsettled", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     draftCompleteInWorktree(worktreePath, "Something else was done.");
     git(worktreePath, ["add", "."]);
     git(worktreePath, ["commit", "-m", "preserve candidate"]);
 
+    // A generic passing Run must not override the canonical draft's refusal.
+    withDatabase(fixture.workspace, (db) => {
+      const session = getSession(db, sessionId)!;
+      const run = createReviewExecutionRun(db, { reviewItemId: fixture.approvalId, executorName: "test", workItemId: session.work_item_id, summary: "Build passed." });
+      updateExecutionRunStatus(db, run.id, "completed", { summary: "Build passed." });
+      const scope = productionScope();
+      activateProduction(db, { requestId: "grant-invalid-draft", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
     const result = withDatabase(fixture.workspace, (db) =>
       reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-wrong", repoRoot: fixture.repo })
     );
@@ -460,9 +490,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("refuses a drafted complete Ask whose verbatim met evidence is false because the declared Artifact was never produced (contract 20, #555)", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     draftCompleteInWorktree(worktreePath, "The contract exists.");
     git(worktreePath, ["add", "."]);
@@ -481,8 +511,8 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("refuses to settle a self-completion whose verbatim met evidence is false because the declared Artifact is missing (contract 20, #555)", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
 
     expect(() => settleCompleteFromWorktree(fixture, worktreePath, "false-self-settle")).toThrow();
@@ -492,9 +522,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("never accepts a candidate whose Plan claims done without a settlement behind it", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     const planPath = path.join(worktreePath, "docs", "plans", "copy-proof.md");
     writeFileSync(planPath, readFileSync(planPath, "utf8").replace(/(- id: define-contract[\s\S]*?status: )open/, "$1done"));
@@ -511,9 +541,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("never accepts a self-settled completion when the work changed after the settled revision", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -533,9 +563,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("never accepts a settlement whose own commit is not on this candidate, even when the candidate claims done", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -560,9 +590,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("never accepts a settlement whose candidate_revision is not in this candidate's history", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -571,7 +601,7 @@ describe("reconcileSessionExit automatic production completion", () => {
     // Rewrite the candidate so the settled revision is no longer its ancestor,
     // keeping the Plan's done status (a candidate that replaced the evidence).
     const plan = readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8");
-    const baseRevision = launched.data.session!.base_revision;
+    const baseRevision = launched.data.session.base_revision;
     git(worktreePath, ["reset", "-q", "--hard", baseRevision]);
     writeFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), plan);
     writeFileSync(path.join(worktreePath, "contract.md"), "A different contract.\n");
@@ -588,9 +618,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("releases the Action claim of a Session that exited with nothing to resume, so the same Action can be dispatched again", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getActiveActionClaim(db, fixture.repo, "test-project", "define-contract", fixture.now))).not.toBeNull();
 
@@ -607,9 +637,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("keeps the Action claim of a Session whose candidate can be resumed", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
 
@@ -624,9 +654,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("leaves the Session incomplete_resumable when no standing production policy delegates mechanical acceptance", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -652,9 +682,9 @@ describe("reconcileSessionExit automatic production completion", () => {
   it("leaves the Session incomplete_resumable when the Action is outside the policy's declared scope", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     git(worktreePath, ["add", "contract.md"]);
@@ -682,37 +712,7 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.receipt.outcome).toBe("incomplete_resumable");
   });
 
-  it("refuses automatic completion when the candidate revision no longer matches the worktree HEAD, invalidating stale evidence", () => {
-    const fixture = preparedFixture({ responsibility: "agent" });
-    const tmux = new FakeTmux();
-    const launched = launch(fixture, tmux);
-    const sessionId = launched.data.session!.id;
-    const worktreePath = launched.data.session!.worktree_path;
-    tmux.live = false;
-    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
-    git(worktreePath, ["add", "contract.md"]);
-    git(worktreePath, ["commit", "-m", "define the contract"]);
 
-    const attempt = withDatabase(fixture.workspace, (db) => {
-      const session = getSession(db, sessionId)!;
-      const run = createReviewExecutionRun(db, {
-        reviewItemId: fixture.approvalId, executorName: "test", workItemId: session.work_item_id, summary: "Build passed."
-      });
-      updateExecutionRunStatus(db, run.id, "completed", { summary: "Build passed." });
-      const scope = productionScope();
-      activateProduction(db, { requestId: "grant-stale", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
-      return attemptAutomaticCompletion(db, session, {
-        actionDoneInPlan: false, worktreeExists: true, candidateHasChanges: true,
-        candidateRevision: "0".repeat(40), runId: run.id, runFailed: false, artifactId: null, decisionId: null
-      });
-    });
-
-    expect(attempt.attempted).toBe(true);
-    expect(attempt.completed).toBe(false);
-    expect(attempt.reason).toContain("candidate revision changed");
-    const plan = discoverDocs(worktreePath).docs.find((doc) => doc.type === "plan" && doc.slug === "copy-proof");
-    expect(plan).toMatchObject({ status: "active" });
-  });
 });
 
 describe("arcadia go — candidate continuation (Decision 0051)", () => {
@@ -979,7 +979,19 @@ function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suf
   });
 }
 
-function preparedFixture(options: { responsibility?: string } = {}) {
+// Completion regressions exercise the canonical launch directly in temporary
+// repositories, without invoking the sandbox-protected Go handoff command.
+function launchCompletionFixture(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux) {
+  const profiles: CodingAgentProfile[] = [{ name: "claude_build", provider: "claude-code-cli", package: "@anthropic-ai/claude-code", command: "claude", purpose: "build", sandbox: "workspace-write", args: [] }];
+  const session = withDatabase(fixture.workspace, (db) => {
+    const input = { db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "completion-launch", profiles, adapters: defaultAdapters as ProviderAdapterRegistry, now: fixture.now, tmux };
+    const preview = buildLaunchPreview(input);
+    return launchGuardedHostSession({ ...input, previewFingerprint: preview.previewFingerprint, agentWorktreeRoot: path.join(fixture.root, "completion-launch") }).session;
+  });
+  return { data: { session } };
+}
+
+function preparedFixture(options: { responsibility?: string; acceptanceCriteria?: string[] } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-reconcile-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -987,8 +999,11 @@ function preparedFixture(options: { responsibility?: string } = {}) {
   mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
   mkdirSync(path.join(repo, "docs", "decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
-  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"),
-    options.responsibility ? planDocument.replace("responsibility: codex", `responsibility: ${options.responsibility}`) : planDocument);
+  let fixturePlan = options.responsibility ? planDocument.replace("responsibility: codex", `responsibility: ${options.responsibility}`) : planDocument;
+  if (options.acceptanceCriteria) {
+    fixturePlan = fixturePlan.replace("      - The contract exists.", options.acceptanceCriteria.map((criterion) => `      - ${criterion}`).join("\n"));
+  }
+  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), fixturePlan);
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.email", "arcadia@example.test"]);

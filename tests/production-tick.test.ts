@@ -1309,11 +1309,21 @@ describe("runManagedProductionTick", () => {
     expect(firstLaunch.launch?.outcome).toBe("launched");
     const session = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
 
-    // The candidate makes real, evidenced progress: a passing Run recorded
-    // against the Session's own worktree, and the tmux Session exiting (dying)
+    // The candidate records criterion-level evidence in a complete Ask, plus
+    // an audit Run, and the tmux Session exits (dies)
     // without ever calling `session reconcile` itself -- the exact situation
     // this Action's continuation loop must notice on its own.
     completeActionInWorktree(session.worktree_path, "define-contract");
+    mkdirSync(path.join(session.worktree_path, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), JSON.stringify({
+      agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",
+      target_ref: "action/define-contract", desired_result: "Record the contract's proven completion.",
+      candidate_revision: git(session.worktree_path, ["rev-parse", "HEAD"]).trim(),
+      evidence: [{ criterion: "The contract exists.", status: "met", note: "docs/contract.md was produced." }],
+      requested_authority: "apply_if_approved"
+    }) + "\n");
+    git(session.worktree_path, ["add", ".arcadia/asks"]);
+    git(session.worktree_path, ["commit", "-m", "draft criterion-level completion evidence"]);
     recordPassingRun(fixture.workspace, session.work_item_id);
     tmux.live.delete(session.tmux_session_name);
 
