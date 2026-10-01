@@ -1261,3 +1261,10 @@ updated: 2026-10-01
 - **Result:** Every declared acceptance criterion was accepted as met: "Provide a disposable or explicitly approved real Project with two small dependent Actions and a reachable existing production control (CLI or dashboard) before requesting live execution."; "Under bounded rehearsal authority activate once: Action A launches, validates, records canonical completion/pointer, and B launches without manual session setup or launch confirmation in between."; "Complete this vertical proof before broad rail, capture, navigation polish or default-home cutover; reuse existing review/proof specialists as needed.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/finish-two-action-unattended-production-proof immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask split-v6-two-action-proof-supported-criteria-2026-10-01).
+
+## 2026-10-01 — Agent Ask pr-opened-arcadia-pr865
+
+- **Did:** PR #865 opens the governed terminal recovery: a completed candidate can resume its exact fast-forward after an interrupted handoff while production remains Off. https://github.com/pmark/arcadia/pull/865
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

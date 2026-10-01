@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr865","project":"arcadia","intent":"log","desired_result":"PR #865 opens the governed terminal recovery: a completed candidate can resume its exact fast-forward after an interrupted handoff while production remains Off. https://github.com/pmark/arcadia/pull/865","requested_authority":"apply_if_approved"}
