@@ -18,6 +18,7 @@ function fixture() {
   mkdirSync(path.join(site, "contact"), { recursive: true });
   writeFileSync(path.join(site, "index.html"), "<!doctype html><title>Audit</title>\n");
   writeFileSync(path.join(site, "contact", "index.html"), "<h1>Contact</h1>\n");
+  writeFileSync(path.join(site, "contact", "local.css"), "h1 { color: green; }\n");
   writeFileSync(path.join(root, "secret.txt"), "not for serving\n");
   return { root, site, secret: path.join(root, "secret.txt") };
 }
@@ -37,6 +38,12 @@ describe("host-owned audit preview", () => {
       const route = await fetch(new URL("contact/", preview.url));
       expect(route.status).toBe(200);
       expect(await route.text()).toContain("<h1>Contact</h1>");
+      const redirect = await fetch(new URL("contact?mode=preview", preview.url), { redirect: "manual" });
+      expect(redirect.status).toBe(308);
+      expect(redirect.headers.get("location")).toBe("/contact/?mode=preview");
+      const asset = await fetch(new URL("contact/local.css", preview.url));
+      expect(asset.status).toBe(200);
+      expect(await asset.text()).toContain("color: green");
       expect((await fetch(preview.url, { method: "HEAD" })).status).toBe(200);
       expect((await fetch(preview.url, { method: "POST" })).status).toBe(405);
       expect([403, 404]).toContain((await fetch(`${preview.url}%2e%2e/secret.txt`)).status);

@@ -36,8 +36,12 @@ export async function startHostAuditPreview(rootInput: string, seconds: number):
       response.writeHead(405, { Allow: "GET, HEAD", "Cache-Control": "no-store" }).end();
       return;
     }
+    let requestUrl: URL;
     let pathname: string;
-    try { pathname = decodeURIComponent(new URL(request.url ?? "/", `http://${HOST}`).pathname); }
+    try {
+      requestUrl = new URL(request.url ?? "/", `http://${HOST}`);
+      pathname = decodeURIComponent(requestUrl.pathname);
+    }
     catch { response.writeHead(400, { "Cache-Control": "no-store" }).end(); return; }
     if (pathname.includes("\\") || pathname.includes("\0")) {
       response.writeHead(400, { "Cache-Control": "no-store" }).end();
@@ -56,7 +60,16 @@ export async function startHostAuditPreview(rootInput: string, seconds: number):
         if (real !== root && !real.startsWith(`${root}${path.sep}`)) throw new Error("outside root");
         target = real;
       }
-      if (statSync(target).isDirectory()) target = path.join(target, "index.html");
+      if (statSync(target).isDirectory()) {
+        if (!pathname.endsWith("/")) {
+          response.writeHead(308, {
+            Location: `${requestUrl.pathname}/${requestUrl.search}`,
+            "Cache-Control": "no-store"
+          }).end();
+          return;
+        }
+        target = path.join(target, "index.html");
+      }
       if (!existsSync(target)) throw new Error("missing index");
       const realTarget = realpathSync(target);
       if (!realTarget.startsWith(`${root}${path.sep}`) || !statSync(realTarget).isFile()) throw new Error("not a regular file");
@@ -69,7 +82,12 @@ export async function startHostAuditPreview(rootInput: string, seconds: number):
         "X-Content-Type-Options": "nosniff"
       });
       if (request.method === "HEAD") response.end();
-      else createReadStream(realTarget).pipe(response);
+      else {
+        const stream = createReadStream(realTarget);
+        stream.once("error", () => response.destroy());
+        response.once("close", () => stream.destroy());
+        stream.pipe(response);
+      }
     } catch {
       response.writeHead(404, { "Cache-Control": "no-store" }).end();
     }
@@ -88,7 +106,10 @@ export async function startHostAuditPreview(rootInput: string, seconds: number):
     throw validationError("The loopback audit preview did not receive a TCP address.");
   }
   const expiresAt = new Date(Date.now() + seconds * 1000).toISOString();
-  const expiry = setTimeout(() => { void new Promise<void>(resolve => server.close(() => resolve())); }, seconds * 1000);
+  const expiry = setTimeout(() => {
+    server.close();
+    server.closeAllConnections();
+  }, seconds * 1000);
   expiry.unref();
   return {
     url: `http://${HOST}:${address.port}/`,

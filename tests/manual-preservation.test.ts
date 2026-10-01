@@ -121,6 +121,28 @@ describe("manual Go preservation binding", () => {
     finish({ ok: true, response: { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } } });
     await expect(pending).resolves.toMatchObject({ data: { receipt: { commitSha: "fixture-only" } } });
   });
+  it("recovers an expired claim even when its recorded owner PID is still alive", async () => {
+    const f = fixture();
+    vi.stubEnv("ARCADIA_WORKSPACE", f.workspace);
+    withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace));
+    const pending = requestCandidatePreservation(f.candidate);
+    const handoffId = withDatabase(f.workspace, db => (db.prepare(
+      "SELECT id FROM agent_worktree_reservations WHERE worktree_path = ?"
+    ).get(f.candidate) as { id: string }).id);
+    const originalToken = randomUUID();
+    withDatabase(f.workspace, db => db.prepare(
+      "INSERT OR REPLACE INTO candidate_preservation_claims (session_id, pid, token, claimed_at) VALUES (?, ?, ?, ?)"
+    ).run(handoffId, process.pid, originalToken, Date.now() - PRESERVATION_RESPONSE_TIMEOUT_MS - 1));
+    let finish!: (result: { ok: true; response: unknown }) => void;
+    const executeHostPreservation = vi.fn(() => new Promise<{ ok: true; response: unknown }>(resolve => { finish = resolve; }));
+
+    expect(withDatabase(f.workspace, db => processPreservationRequests(db, f.workspace, { executeHostPreservation }))).toBe(true);
+    expect(executeHostPreservation).toHaveBeenCalledOnce();
+    withDatabase(f.workspace, db => expect(db.prepare("SELECT token FROM candidate_preservation_claims WHERE session_id = ?").get(handoffId)).not.toEqual({ token: originalToken }));
+
+    finish({ ok: true, response: { ok: true, command: "preserve", data: { receipt: { commitSha: "fixture-only" } } } });
+    await expect(pending).resolves.toMatchObject({ data: { receipt: { commitSha: "fixture-only" } } });
+  });
   describe("the preservation request marker is cleaned up by its own requester", () => {
     const marker = (f: ReturnType<typeof fixture>) => path.join(f.candidate, ".arcadia-preserve-request");
     const execute = (f: ReturnType<typeof fixture>) => async (source: string) => {

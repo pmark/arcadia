@@ -361,12 +361,16 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     // running checks: Off and other Projects must remain responsive.
     const token = randomUUID();
     const claimed = db.transaction(() => {
-      const owner = db.prepare("SELECT pid FROM candidate_preservation_claims WHERE session_id = ?").get(lease.id) as { pid: number } | undefined;
+      const owner = db.prepare("SELECT pid, claimed_at FROM candidate_preservation_claims WHERE session_id = ?").get(lease.id) as { pid: number; claimed_at: number } | undefined;
       if (owner) {
-        try { process.kill(owner.pid, 0); return false; }
+        try {
+          process.kill(owner.pid, 0);
+          if (owner.claimed_at > Date.now() - PRESERVATION_RESPONSE_TIMEOUT_MS) return false;
+        }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false; }
       }
-      db.prepare("INSERT OR REPLACE INTO candidate_preservation_claims VALUES (?, ?, ?)").run(lease.id, process.pid, token);
+      db.prepare("INSERT OR REPLACE INTO candidate_preservation_claims (session_id, pid, token, claimed_at) VALUES (?, ?, ?, ?)")
+        .run(lease.id, process.pid, token, Date.now());
       return true;
     }).immediate();
     if (!claimed) {
@@ -421,7 +425,10 @@ function executeHostPreservation(source: string, workspace: string, timeoutMs: n
       timeout: timeoutMs
     });
     let settled = false;
-    let result: GoTransportResult | undefined;
+    let exited = false;
+    let disconnected = false;
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
     let lastStage = "host-preservation-startup";
     const finish = (value: GoTransportResult) => {
       if (settled) return;
@@ -434,20 +441,30 @@ function executeHostPreservation(source: string, workspace: string, timeoutMs: n
       if (value.type === "stage" && typeof value.stage === "string") {
         lastStage = value.stage;
         process.stderr.write(`[preservation] ${path.basename(source)}: ${lastStage}\n`);
-      } else if (value.type === "result" && value.result) result = value.result;
+      } else if (value.type === "result" && value.result) finish(value.result);
     });
     child.once("error", error => finish(goTransportFailure(validationError(
       "Could not start the protected host preservation worker.", { source, lastStage, cause: error.message }
     ))));
-    child.once("exit", (code, signal) => {
-      if (result) return finish(result);
-      const timedOut = code === null && signal === "SIGTERM";
+    const finishAfterShutdown = () => {
+      if (!exited || !disconnected || settled) return;
+      const timedOut = exitCode === null && exitSignal === "SIGTERM";
       finish(goTransportFailure(validationError(
         timedOut
           ? `Protected preservation exceeded its ${timeoutMs}ms host job bound during ${lastStage}.`
           : `Protected preservation worker exited without a result during ${lastStage}.`,
-        { source, timeoutMs, stage: lastStage, code, signal, remedy: "Keep the candidate intact. Inspect the named host stage and retry through the protected preservation route; the request id makes a completed preservation replay-safe." }
+        { source, timeoutMs, stage: lastStage, code: exitCode, signal: exitSignal, remedy: "Keep the candidate intact. Inspect the named host stage and retry through the protected preservation route; the request id makes a completed preservation replay-safe." }
       )));
+    };
+    child.once("exit", (code, signal) => {
+      exited = true;
+      exitCode = code;
+      exitSignal = signal;
+      finishAfterShutdown();
+    });
+    child.once("disconnect", () => {
+      disconnected = true;
+      finishAfterShutdown();
     });
   });
 }

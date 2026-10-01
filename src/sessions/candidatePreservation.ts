@@ -148,11 +148,16 @@ export function ensureCandidatePreservationTable(db: Database.Database): void {
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS candidate_preservation_claims (
-      session_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, token TEXT NOT NULL
+      session_id TEXT PRIMARY KEY, pid INTEGER NOT NULL, token TEXT NOT NULL,
+      claimed_at INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_candidate_preservation_branch
       ON candidate_preservation_receipts(repository_path, branch);
   `);
+  const claimColumns = db.pragma("table_info(candidate_preservation_claims)") as Array<{ name: string }>;
+  if (!claimColumns.some(column => column.name === "claimed_at")) {
+    db.exec("ALTER TABLE candidate_preservation_claims ADD COLUMN claimed_at INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 function canonical(value: string): string {
