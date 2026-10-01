@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr863","project":"arcadia","intent":"log","desired_result":"PR #863 prepares isolated mobile/desktop host audit fixtures with retained denial and timeout proof; review and the explicit preparation answer remain gated: https://github.com/pmark/arcadia/pull/863","references":["https://github.com/pmark/arcadia/pull/863"]}

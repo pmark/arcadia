@@ -61,6 +61,10 @@ returned `ready: true`, `timeoutProven: true`, and `sourceUnchanged: true`.
 The packaged committed-code rerun `proof-vBEdUl/` also returned all three
 values true. It validates `node dist/scripts/prove-host-browser-audit.js`,
 including the built executor and copied worker.
+After retaining the native-child observation, the final packaged run
+`proof-Qus42z/` again passed rendering, all six file/socket denials, fixed-worker
+timeout cleanup and source identity. Its separate detached-child result is
+`denied: false`, preserving the live-activation blocker.
 
 | Observation | Actual result |
 | --- | --- |
@@ -122,3 +126,12 @@ The old Decision-opening action from PR #858 is not an activation action and
 must not be rerun to create a duplicate. Its canonical settlement receipt now
 refers to this candidate's open Decision. Production remains outside this
 preparation's authority.
+
+The prepared one-shot `/runs` action is
+`approve-browser-audit-preparation-0078-2026-10-01`. It pins the open Decision,
+original proposal, candidate/code bytes, exact offered answer and expiry;
+requires synchronized clean Git and green CI; records only the preparation
+answer in PR #863; and can retry only its own retained publication receipt.
+It does not merge or activate anything. Eight offline operator-action tests
+intercept every Git/GitHub/CLI subprocess; five snapshot/preview tests also pass.
+The action itself has not been executed.
