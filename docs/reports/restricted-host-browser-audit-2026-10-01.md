@@ -74,6 +74,7 @@ including the built executor and copied worker.
 | External browser navigation | ERR_ACCESS_DENIED |
 | Static fixture source | Unchanged |
 | Deliberate stall after real Chrome launch | SIGKILL at `browser.fault.stall`; no live group members |
+| Native detached child creation | Allowed; not an OS-enforced group-containment boundary |
 
 The worker keeps Chrome in its supervised process group instead of Playwright's
 default detached group. The normal budget is 120 seconds, followed by at most
@@ -86,6 +87,15 @@ group membership. A secondary signal can return EPERM while killed children
 are briefly launchd-owned zombies; that error remains recorded and is not
 silently equated with successful cleanup.
 
+The additional detached-child probe succeeded even when a prototype denied
+`SYS_setsid`/`SYS_setpgid`; that ineffective restriction was removed. The fixed
+host-owned worker keeps its actual browser launch in the supervised group and
+its real stall proof stops that group. This does not establish containment of
+arbitrary or compromised native code that deliberately creates another group.
+That negative finding is retained separately from the six passing file/socket
+denials. A live route must contain/observe such descendants before activation;
+the current fixture `ready` value is not dispatch readiness or that proof.
+
 Earlier failed prototype/proof receipts remain retained. They exposed the
 dyld root-open requirement, Chrome's profile/socket and IOKit requirements,
 the Playwright module import shape, and the zombie signal race. Neither a
@@ -94,7 +104,8 @@ timeout nor ENOENT/connection-refused was accepted as denial proof.
 ## Remaining boundary
 
 There is no live broker/dispatch integration and no Lighthouse scoring here.
-The pre-dispatch refusal remains active. Activation must pin the reviewed code
+The pre-dispatch refusal remains active. Native descendant containment is an
+additional activation blocker. Activation must pin the reviewed code
 and policy, exact Project/source revision, allowed routes/viewports, expiry,
 and receipt destination, and refuse drift. A separately reviewed host-request
 path must preserve this restriction instead of exposing arbitrary URLs,

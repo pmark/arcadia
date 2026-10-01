@@ -1,16 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 function retry(mode: string) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-button-retry-"));
+  const activeAsk = path.resolve(".arcadia/asks/agent-ask-propose-bounded-host-browser-audit-847-2026-10-01.yaml");
+  const ask = existsSync(activeAsk) ? activeAsk : path.resolve(".arcadia/asks/archive/agent-ask-propose-bounded-host-browser-audit-847-2026-10-01.yaml");
   try {
     return spawnSync("python3", [
       path.resolve("tests/fixtures/browserAuditOperatorRetry.py"),
       root, path.resolve("artifacts/generated/operator-scripts"),
-      path.resolve(".arcadia/asks/agent-ask-propose-bounded-host-browser-audit-847-2026-10-01.yaml"), mode
+      ask, mode
     ], { encoding: "utf8" });
   } finally { rmSync(root, { recursive: true, force: true }); }
 }

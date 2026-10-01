@@ -36,6 +36,10 @@ try {
   result.denials.privateNetwork = await socketDenied({ host: '10.255.255.1', port: 9 });
   result.denials.otherLoopback = await socketDenied({ host: '127.0.0.1', port: 9 });
   result.denials.unrelatedUnix = await socketDenied({ path: input.socketSentinel });
+  const escape = childProcess.spawnSync(process.execPath, ['-e', 'process.exit(0)'], { detached: true, timeout: 2000, env: process.env });
+  // Observe this separately: fixed-worker group cleanup is proven below, but
+  // native detached child creation is not an OS-enforced containment boundary.
+  result.processGroupEscape = { denied: !!escape.error && denied(escape.error), error: escape.error?.code ?? `exit ${escape.status}` };
   stage('browser.launch');
   const { chromium } = (await import(pathToFileURL(input.playwrightEntry).href)).default;
   browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, timeout: 15000,
