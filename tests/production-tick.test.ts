@@ -1101,6 +1101,27 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listLaunchBlockers(db))).toHaveLength(0);
   });
 
+  it("does not schedule or commit a pointer outside the active production scope", () => {
+    const fixture = preparedFixture({ secondAction: true });
+    const projectPath = path.join(fixture.repo, "PROJECT.md");
+    writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract", "current_action: second-action"));
+    git(fixture.repo, ["add", "PROJECT.md"]);
+    git(fixture.repo, ["commit", "-m", "fixture pointer needs alignment"]);
+    const before = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    const narrowed = normalizeProductionScope({ ...productionScope, projects: ["another-project"] });
+    withDatabase(fixture.workspace, (db) => activateProduction(db, {
+      requestId: "out-of-scope-scheduling", scope: narrowed,
+      scopeFingerprint: fingerprintProductionScope(narrowed), grantedBy: "operator"
+    }));
+    const result = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux: new FakeTmux(), now: fixture.now,
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    expect(result.scheduling?.projects).toEqual([]);
+    expect(readFileSync(projectPath, "utf8")).toContain("current_action: second-action");
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(before);
+  });
+
   it("never previews or refuses a launch for a Project outside the active policy scope, while still reconciling its live Session", () => {
     const fixture = preparedFixture({ secondAction: true });
     const tmux = new FakeTmux();
