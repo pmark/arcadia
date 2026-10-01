@@ -126,6 +126,25 @@ export function getResumableLeaseHandoff(
   return { receipt: row, session };
 }
 
+/** Read the canonical handoff consumed by this Session, scoped to its exact candidate. */
+export function getSessionContinuation(db: Database.Database, session: AgentSession): SessionExitReceipt | null {
+  if (!hasReceiptTable(db)) return null;
+  const rows = db.prepare(`
+    SELECT * FROM session_exit_receipts
+    WHERE superseded_by_session_id = ? AND outcome = 'incomplete_resumable' AND lease_handoff = 1
+  `).all(session.id) as SessionExitReceipt[];
+  if (rows.length > 1) throw validationError("The Session has ambiguous continuation receipts.", { sessionId: session.id });
+  const receipt = rows[0];
+  if (!receipt) return null;
+  const previous = getSession(db, receipt.session_id);
+  if (!previous || previous.repository_path !== session.repository_path || previous.worktree_path !== session.worktree_path
+    || previous.branch !== session.branch || previous.project_id !== session.project_id
+    || previous.plan_slug !== session.plan_slug || previous.action_id !== session.action_id) {
+    throw validationError("The Session continuation receipt does not match its candidate and Action.", { sessionId: session.id });
+  }
+  return receipt;
+}
+
 /** Marks a prior resumable handoff as taken over by the newly prepared Session. */
 export function supersedeLeaseHandoff(db: Database.Database, receiptId: string, newSessionId: string): void {
   db.prepare("UPDATE session_exit_receipts SET superseded_by_session_id = ?, updated_at = ? WHERE id = ?")
