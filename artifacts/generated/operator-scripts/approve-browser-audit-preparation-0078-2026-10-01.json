@@ -35,7 +35,7 @@
   "answer": "Prepare a host-owned audit route",
   "pinned_decision_sha256": "896a0ed38d229c3593a46b7b7e0f5ebe134efe0be892afe180a0be72dc055e0f",
   "pinned_proposal_fingerprint": "2d6a0611c9dd35bff2f2225d18ea820ddf4a5fa851cfe8858139353dfecc01c5",
-  "pinned_candidate_revision": "edb31a9d2472a062e4a216188f0e793ebd509fab",
+  "pinned_candidate_revision": "1035f056959027ae242ea0cab699527e612f73cc",
   "pinned_ask_sha256": "832ec3244d3fc464227a6527a40ce42fc46583563a5c6ff1abb2802a722bf2f6",
   "agentAsk": {
     "proposal": "propose-bounded-host-browser-audit-847-2026-10-01",
