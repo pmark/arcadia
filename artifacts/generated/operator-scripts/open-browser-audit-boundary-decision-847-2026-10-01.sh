@@ -54,7 +54,14 @@ try:
         raise RuntimeError('Canonical Decision preview did not match this proposal.')
     if receipt.get('previewFingerprint') != descriptor['pinnedPreview']:
         raise RuntimeError('Settlement preview changed; ask an agent to refresh the exact reviewed button. No broader effect is accepted.')
+    documents = receipt.get('review',{}).get('documents',[])
+    decision = next((doc for doc in documents if doc.get('path') == descriptor['pinnedDecisionPath']), None)
+    if not decision or hashlib.sha256((decision.get('after') or '').encode()).hexdigest() != descriptor['pinnedDecisionSha256']:
+        raise RuntimeError('Canonical preview no longer describes the exact unresolved Decision.')
     if receipt.get('applied'):
+        if not (root/descriptor['pinnedDecisionPath']).is_file() or hashlib.sha256((root/descriptor['pinnedDecisionPath']).read_bytes()).hexdigest() != descriptor['pinnedDecisionSha256']:
+            raise RuntimeError('Decision state changed after settlement; this one-shot action is no longer live.')
+        command(['git','merge-base','--is-ancestor',remote,'HEAD'])
         # Only recover the existing exact settlement commit. Refuse unrelated
         # local commits rather than pushing a mixed branch on a retry.
         subjects = command(['git','log','--format=%s',remote+'..HEAD']).splitlines()
@@ -64,6 +71,11 @@ try:
         applied = json.loads(command(cli + ['--apply','--preview',descriptor['pinnedPreview']], timeout=120))
     (out/'settlement-receipt.json').write_text(json.dumps(applied,indent=2)+'\n')
     if not applied.get('ok') or not applied.get('data',{}).get('receipt',{}).get('applied'): raise RuntimeError('No applied canonical receipt returned.')
+    decision_file = root/descriptor['pinnedDecisionPath']
+    if not decision_file.is_file() or hashlib.sha256(decision_file.read_bytes()).hexdigest() != descriptor['pinnedDecisionSha256']:
+        raise RuntimeError('Applied Decision differs from its reviewed unresolved state; publication withheld.')
+    if not (root/archive).is_file() or hashlib.sha256((root/archive).read_bytes()).hexdigest() != descriptor['pinnedAskSha256']:
+        raise RuntimeError('Archived Ask changed; publication withheld.')
     if command(['git','status','--porcelain']).strip(): raise RuntimeError('Settlement left recovery files; publication withheld.')
     print(command(['git','push','origin','HEAD:refs/heads/main'], timeout=120),flush=True)
     print('Unresolved browser-audit Decision opened and published. No Decision was answered and no audit authority was granted.',flush=True)

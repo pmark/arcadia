@@ -5,7 +5,19 @@ stop-the-line repair work for the unattended managed-production milestone,
 not completion of `limit-sessions-per-provider-account`. Its scope was previewed
 through Agent Ask `repair-preservation-browser-boundaries-2026-10-01`.
 No Project/Plan pointer, PPN candidate file, claim, production policy or installed
-permission profile was manually changed.
+permission profile was manually changed by this repair.
+
+The initial worktree HEAD `fb8ee4b10` already included local-main integration
+and canonical settlement history that remote main did not yet contain. PR #858
+therefore also includes inherited changes to `PROJECT.md`, Decision 0057 and
+the bootstrap Plan: the pointer targets `limit-sessions-per-provider-account`,
+and Decision 0057 keeps the two-Action proof dispatchable. This repair did not
+write or reverse those records. Their provenance is the initial local history,
+including `6beb51ef6`, `eb4309523` and `e5ccdd2cf`; the operator must review
+them as part of this candidate before any merge. The pointer transition was
+written by `arcadia advance queue make-next --apply`, receipt
+`qpointer_8d0d526f7631442f94`, in operator-authored commit `e5ccdd2cf`. It
+did not claim the unfinished proof was complete.
 
 ## #848: bounded claimed execution
 
@@ -128,3 +140,23 @@ never grants browser or production authority. PPN needs a fresh final capture
 once preservation transport is installed: its two evidence notes changed after
 the previous snapshot. Its accepted mobile layout and verification Action remain
 as the operator left them.
+
+## Validation results
+
+The host core/Discord build, dashboard production build, lint, type checking,
+operator-script contract and actual named-profile preservation proof passed.
+The focused supervisor/browser/launch group passed 46 tests (one opt-in host
+case skipped there); the separate real Seatbelt/stalled-process group passed
+19 tests. The complete host run passed 2642 tests and skipped 20, with one
+pre-existing fixture-path collision in `tests/tidy-command.test.ts:389`.
+That test passed in an isolated temporary root. The shared-path defect is
+tracked as [#859](https://github.com/pmark/arcadia/issues/859); this report does
+not describe the complete host run as green. CI and CodeRabbit are tracked
+on [PR #858](https://github.com/pmark/arcadia/pull/858).
+
+CodeRabbit round one identified a valid queue-walk regression in the new browser
+preflight: an unavailable fallback stopped later ready work. The guard now skips
+that fallback and retains the named refusal for the pointer itself; its real
+Git/workspace integration regression passed. The inherited pointer finding was
+declined with the original operator transition receipt. All seven GitHub CI
+jobs passed on the initial repair head; the updated head will rerun review/CI.

@@ -169,6 +169,28 @@ describe("arcadia go — one ready Action per concurrent session", () => {
     expect(refusal.message).toContain("already holds uncommitted changes");
   });
 
+  it("skips unavailable browser-measurement fallbacks and claims the next executable Action", () => {
+    const fixture = createFixture();
+    const plan = path.join(fixture.main, "docs/plans/parallel-plan.md");
+    writeFileSync(plan, readFileSync(plan, "utf8").replace("The third Action is done.", "Comparable Lighthouse scores are recorded."));
+    git(fixture.main, ["add", "docs/plans/parallel-plan.md"]);
+    git(fixture.main, ["commit", "-qm", "require browser measurement for gamma"]);
+    dispatch(fixture, 0);
+
+    const next = runGoCommand({ repo: fixture.main, source: fixture.main, apply: true,
+      agent: "codex", model: "gpt-6.1-sol", workspace: fixture.workspace,
+      agentWorktreeRoot: fixture.agentRoot, now: new Date(START.getTime() + 2 * 60_000) }).data;
+
+    expect(next.dispatch.context?.action.id).toBe("delta");
+    expect(next.queueFallback).toMatchObject({ pointerActionId: "alpha", actionId: "delta" });
+    expect(readPointer(fixture)).toBe("current_action: alpha");
+    withDatabase(fixture.workspace, db => {
+      expect(getActiveActionClaim(db, fixture.main, "parallel-project", "gamma", START)).toBeNull();
+      expect(getActiveActionClaim(db, fixture.main, "parallel-project", "delta", START)?.worktree_path)
+        .toBe(realpathSync(next.nextWorktree!.path));
+    });
+  });
+
   it("skips a fallback candidate's own unresolved worktree instead of stopping the walk on it", () => {
     const fixture = createFixture();
     // gamma was prepared by hand, abandoned with uncommitted changes, and holds
