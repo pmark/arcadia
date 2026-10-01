@@ -160,3 +160,9 @@ that fallback and retains the named refusal for the pointer itself; its real
 Git/workspace integration regression passed. The inherited pointer finding was
 declined with the original operator transition receipt. All seven GitHub CI
 jobs passed on the initial repair head; the updated head will rerun review/CI.
+
+CodeRabbit approved head `54dd0d1eb`, with all seven CI jobs green. The
+Decision-opening button additionally has three offline publication-recovery
+regressions: an applied receipt without preview-only documents can retry;
+changed Decision state and unrelated local history refuse before push. Every
+Git/CLI subprocess in those tests is intercepted; the live action was not run.
