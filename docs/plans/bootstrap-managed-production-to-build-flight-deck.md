@@ -2784,7 +2784,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: limit-sessions-per-provider-account
+current_action: recover-terminal-integration-after-reconcile
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
