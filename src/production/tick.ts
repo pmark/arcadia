@@ -774,33 +774,32 @@ export function runManagedProductionTick(
         // receipt's outcome exactly what the evidence says (still
         // `incomplete_resumable` when the candidate has real changes) while
         // stopping it from being offered to `prepareSession`'s resumption path.
+        const continuation = getSessionContinuation(db, lease);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot,
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
-            : undefined
-        });
-        // A reused candidate is not progress by itself. A clean resumed Session
-        // that returned the same revision consumes the existing finite repair
-        // budget; successful process launch must not erase those observations.
-        const continuation = getSessionContinuation(db, lease);
-        if (result.created && continuation) {
-          const actionKey = `${project.slug}/${lease.action_id}`;
-          const unchanged = result.receipt.outcome === "incomplete_resumable"
-            && result.receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
-            && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
-          if (unchanged) {
-            recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
-            const attempts = getRepairAttempts(db, actionKey);
-            if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
-              recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
-                lastError: attempts.lastError, now, log });
+            : undefined,
+          // Keep retry accounting atomic with the terminal Session/receipt.
+          // A worker crash cannot commit one without the other; replay is a no-op.
+          onReceiptWrite: continuation ? (receipt) => {
+            const actionKey = `${project.slug}/${lease.action_id}`;
+            const unchanged = receipt.outcome === "incomplete_resumable"
+              && receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
+              && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
+            if (unchanged) {
+              recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
+              const attempts = getRepairAttempts(db, actionKey);
+              if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+                recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
+                  lastError: attempts.lastError, now, log });
+              }
+            } else if (receipt.outcome === "accepted_completion"
+              || (receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
+              resetRepairAttempts(db, actionKey);
             }
-          } else if (result.receipt.outcome === "accepted_completion"
-            || (result.receipt.outcome === "incomplete_resumable" && result.receipt.candidate_revision !== continuation.candidate_revision)) {
-            resetRepairAttempts(db, actionKey);
-          }
-        }
+          } : undefined
+        });
         // Integrate only a candidate whose governed completion actually settled
         // this tick. Without that, fast-forwarding the branch would land the
         // agent's work on the base branch while the pointer still names the same
