@@ -24,7 +24,7 @@ import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
 import { renderActionBrief } from "./actionBrief.js";
-import { getResumableLeaseHandoff, supersedeLeaseHandoff } from "./reconciliation.js";
+import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
 
@@ -714,7 +714,7 @@ export function launchPreparedSession(
   }
   let launch: { command: string; args: string[] };
   try {
-    launch = buildSessionLaunch(session, registry, workspace);
+    launch = buildSessionLaunch(db, session, registry, workspace);
   } catch (error) {
     // An unresolvable agent identity is a launch refusal, not a silent fall
     // back to the operator's Git identity: mark the prepared Session failed so
@@ -1236,7 +1236,7 @@ const SESSION_OPERATOR_CONTEXT_RESET = [
  * never has to choose an identity and the operator's global Git configuration
  * is never touched.
  */
-function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
+function buildSessionLaunch(db: Database.Database, session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
   // The fixture provider is not a real coding agent: it never needs an Action
   // brief prompt, and the Git identity it commits under is fixed and always
   // visibly non-attributable to any real platform/tier -- resolving through
@@ -1255,7 +1255,7 @@ function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry,
     effort: session.effort,
     registry
   });
-  const inner = buildProviderLaunch(session, agent, workspace);
+  const inner = buildProviderLaunch(db, session, agent, workspace);
   // A newly admitted Session has its own governed authority. Its candidate
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
@@ -1263,7 +1263,8 @@ function buildSessionLaunch(session: AgentSession, registry?: ModelTierRegistry,
   return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
 }
 
-function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspace?: string): { command: string; args: string[] } {
+function buildProviderLaunch(db: Database.Database, session: AgentSession, agent: SessionAgent, workspace?: string): { command: string; args: string[] } {
+  const continuation = getSessionContinuation(db, session);
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,
     projectSlug: session.project_slug,
@@ -1272,7 +1273,8 @@ function buildProviderLaunch(session: AgentSession, agent: SessionAgent, workspa
     worktreePath: session.worktree_path,
     branch: session.branch,
     agent,
-    baseRevision: session.base_revision
+    baseRevision: session.base_revision,
+    continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision } : undefined
   });
   if (session.provider === "codex-cli") {
     // A Session launched under a standing-policy admission has no operator at
