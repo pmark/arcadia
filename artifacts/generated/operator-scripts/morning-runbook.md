@@ -52,7 +52,11 @@ review the new receipt rather than editing or reusing the Grant.
 2. Run the repeatable prepare action from `/runs`, inspect its receipt, and
    confirm the fixture's manifest names exactly the v6 Project, two Actions,
    `codex-cli`, and an inactive policy revision.
-3. Review the Grant descriptor and press it once. Save its preview,
+3. Review the Grant descriptor and press it once. The host first runs the
+   hermetic rehearsal with discovery restricted to `tests/` and a five-minute
+   process timeout. Failure, timeout, or an agent-sandbox invocation refuses
+   activation and preserves the failure handoff; no terminal command or pasted
+   test output is required. Save its replay log, preview,
    activation, and receipt paths. If it refuses, stop at its handoff; do not
    widen scope or retry against a changed revision.
 4. Observe the first admitted split Session. Once `MARKER.md` contains exactly

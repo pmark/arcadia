@@ -26,6 +26,24 @@ STATUS="$(arcadia production status --json)"; REVISION="$(jq -r '.data.read.poli
 if [[ "$REQUEST" == "$SCRIPT_ID" ]]; then echo "Already granted by this exact request id at policy revision $REVISION."; else
   [[ "$STATE" == inactive ]] || fail "production is $STATE, not inactive"
   [[ "$REVISION" == "$EXPECTED" ]] || fail "policy revision drifted from prepared $EXPECTED to $REVISION; re-run prepare and review the new scope"
+  STAGE=host_rehearsal_preflight
+  # The replay's preservation consumer must run on the host. Keep this check
+  # inside the Grant so the operator never needs a separate terminal step.
+  mise exec -- node --input-type=module - "$ARCADIA_REPO" <<'PREFLIGHT'
+import { spawnSync } from "node:child_process";
+if (process.env.CODEX_SANDBOX) {
+  console.error("REFUSED: run this Grant through the host operator-action library.");
+  process.exit(1);
+}
+const result = spawnSync("pnpm", ["exec", "vitest", "run", "--dir", "tests", "rehearsal-two-action.test.ts"], {
+  cwd: process.argv[2],
+  env: { ...process.env, ARCADIA_PRESERVATION_HOST_TEST: "1" },
+  stdio: "inherit",
+  timeout: 300_000
+});
+if (result.error) console.error(`Rehearsal preflight failed: ${result.error.message}`);
+process.exit(result.status ?? 1);
+PREFLIGHT
   EXPIRES="$(date -u -v+24H +%Y-%m-%dT%H:%M:%SZ)"
   ARGS=(--project "$PROJECT" --plan "$PROJECT/$PLAN" --provider "$PROVIDER" --concurrency 1 --transitions validation,acceptance,pointer,packet_approval --packet-approval-expires-at "$EXPIRES" --integration-grant-decision 0058 --integration-grant-expires-at "$EXPIRES" --integration-grant-action "$PROJECT/$SPLIT" --integration-grant-action "$PROJECT/$OFF" --intent 'Bounded v6 rehearsal: split one Action across two Sessions, then prove Off and worker restart during existing work.')
   STAGE=preview
