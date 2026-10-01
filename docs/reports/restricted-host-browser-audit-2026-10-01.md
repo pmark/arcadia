@@ -1,10 +1,11 @@
 # Restricted host browser audit preparation
 
-The operator replied “I don't know, just get it done” to the choice between
-preparing an inactive host-owned route and waiting for native named-profile
-capability. This candidate takes the recommended preparation route. It does
-not grant activation, change the installed `arcadia-unattended` profile, merge
-PR #858, touch the accepted PPN candidate, or claim its release audit complete.
+The operator chose “Prepare a host-owned audit route” for Decision 0078 on
+2026-10-01. The canonical `arcadia decision approve` writer recorded that
+answer in the Issue #847 candidate worktree (receipt
+`decisionanswer_a3db8b5a04974c4e9e`). This approves inactive preparation. It
+does not grant activation, change the installed `arcadia-unattended` profile,
+touch the accepted PPN candidate, or claim its release audit complete.
 
 Current milestone: bootstrap managed production to run unattended. Work
 classification: explicit Issue #847 capability repair, outside the unchanged
@@ -118,28 +119,47 @@ Only then can a scoped run measure PPN's comparable four-route Lighthouse
 matrix. Its accepted candidate remains
 `579878edd09f8274a2f5b9a9e8ac53e4dbc54769`.
 
-Arcadia created open Decision 0078 through the original Ask settlement in this
-candidate. Automatic approval review refused recording its recommended answer:
-the operator's delegation was not explicit authorization of that exact Decision
-answer. Decision 0078 therefore remains open; no answer or activation is claimed.
-The old Decision-opening action from PR #858 is not an activation action and
-must not be rerun to create a duplicate. Its canonical settlement receipt now
-refers to this candidate's open Decision. Production remains outside this
+Arcadia created Decision 0078 through the original Ask settlement. Earlier
+automatic approval review correctly refused a vague delegation. The operator
+subsequently selected its exact preparation option in this session, and the
+canonical answer is on the new candidate branch. The old Decision-opening
+action from PR #858 must not be rerun. Production remains outside this
 preparation's authority.
 
-The prepared one-shot `/runs` action is
-`approve-browser-audit-preparation-0078-2026-10-01`. It pins the open Decision,
-original proposal, candidate/code bytes, exact offered answer and expiry;
-requires synchronized clean Git and green CI; records only the preparation
-answer in PR #863; and can retry only its own retained publication receipt.
-It does not merge or activate anything. Eight offline operator-action tests
-intercept every Git/GitHub/CLI subprocess; five snapshot/preview tests also pass.
-The action itself has not been executed.
+The earlier one-shot `/runs` action
+`approve-browser-audit-preparation-0078-2026-10-01` was never executed.
+PR #863 has merged, while that action's descriptor still requires PR #863 to
+be open on its original candidate branch. It is a stale historical artifact;
+do not run or reset it to record this already answered Decision. It cannot
+activate the route.
 
-After reconciling this stacked PR with #858's updated head and repairing
-unreceipted setup cleanup, the candidate descriptor pins the reviewed code.
-Its reviewed source and open
-Decision hashes still match. The previously published host copy of the
-descriptor pins an earlier revision and must be synchronized with the pushed
-candidate before the `/runs` button can pass its drift guard. The stale copy
-fails closed; no Decision answer, merge or activation is claimed.
+## Follow-up boundary experiments, 2026-10-01
+
+The unchanged host fixture passed again from the new native worktree:
+`proof-YszB7e/` returned `ready: true`, `timeoutProven: true`, and
+`sourceUnchanged: true`. The separate `processGroupEscape.denied` observation
+remained false. The named-profile fixture `probe-C74jfj/` reproduced loopback
+EPERM and Chrome SIGABRT while external TCP and the synthetic credential read
+were denied.
+
+Two temporary policy experiments were reverted after their negative results:
+
+- Removing `process-fork` from the dedicated Seatbelt policy denied the native
+  detached-child probe with EPERM, but also denied Playwright's Chrome launch
+  with `spawn EPERM`. `--single-process`, `--no-zygote`, and disabled crash
+  reporting did not recover the render; receipts are in `proof-86BWj6/`.
+- Enabling Playwright's `chromiumSandbox` under the dedicated policy made Chrome
+  fail during its sandbox setup (`sandbox_parameters_mac.mm`, input/output
+  error); receipts are in `proof-kHqwc2/`. No renderer or timeout proof passed.
+
+A temporary, **uninstalled** Codex profile override with the network proxy,
+only the literal `127.0.0.1` allowed, and `allow_local_binding = true` served
+loopback HTTP and retained external TCP and synthetic credential denial. Chrome
+still aborted with SIGABRT, so the complete named-profile integration check
+failed. With `allow_local_binding = false`, the same exact allowlist could not
+bind loopback. No change to the installed profile is proposed from this result.
+
+These experiments do not remove the native-descendant containment blocker.
+The host route remains fixture-only; broker integration, exact authority, and
+Lighthouse acquisition remain unperformed. The pre-dispatch refusal must stay
+active until a separately reviewed route satisfies those conditions.
