@@ -50,6 +50,7 @@ import {
   safelyRaiseRedAlerts
 } from "../src/production/redAlerts.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
+import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -232,6 +233,37 @@ describe("runManagedProductionTick", () => {
     // Further ticks neither spend another Session nor lose the retained candidate.
     tick();
     expect(tmux.launches).toHaveLength(1 + PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction);
+  });
+
+  it("rolls terminal reconciliation back if retry accounting fails, then records the exit exactly once", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial progress"]);
+    tmux.live.delete(first.tmux_session_name); tick(); tick();
+    const resumed = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    tmux.live.delete(resumed.tmux_session_name);
+    withDatabase(fixture.workspace, (db) => db.exec(`CREATE TRIGGER fail_retry_accounting
+      BEFORE INSERT ON production_repair_attempts BEGIN SELECT RAISE(ABORT, 'simulated accounting failure'); END`));
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))?.id).toBe(resumed.id);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, resumed.id))).toBeNull();
+    withDatabase(fixture.workspace, (db) => db.exec("DROP TRIGGER fail_retry_accounting"));
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, resumed.id))?.outcome).toBe("incomplete_resumable");
+    tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?")
+        .get("test-project/define-contract"))).toEqual({attempts: 1});
   });
 
   it("clears the no-progress retry count when a resumed candidate actually advances", () => {
