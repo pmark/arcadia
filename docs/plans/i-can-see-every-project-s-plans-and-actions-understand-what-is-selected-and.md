@@ -15,7 +15,7 @@ actions:
     responsibility: autonomous
     effort: session
     next_action: Establish a read-only Project → Plan → Action tree data contract derived only from existing canonical records.
-    expected_artifact: Evidence satisfying Agent Ask define-flight-deck-tree-data-contract
+    expected_artifact: apps/dashboard/lib/flight-deck-tree.ts (typed read-only contract + builder) and its unit tests
     clarification: clarified
     confidence: high
     source: Agent Ask plan-flight-deck-execution-tree-2026-10-01
@@ -33,7 +33,7 @@ actions:
     responsibility: autonomous
     effort: session
     next_action: Build the expandable Project → Plan → Action tree on Flight Deck using existing Flight Deck components.
-    expected_artifact: Evidence satisfying Agent Ask build-flight-deck-execution-tree
+    expected_artifact: Expandable Project → Plan → Action tree on /flight-deck with Selected, Running, and Needs operator indicators, filters, and refreshed/stale/conflict display
     clarification: clarified
     confidence: high
     source: Agent Ask plan-flight-deck-execution-tree-2026-10-01
@@ -51,7 +51,7 @@ actions:
     responsibility: autonomous
     effort: session
     next_action: Validate the Flight Deck tree against real Arcadia and PPN state.
-    expected_artifact: Evidence satisfying Agent Ask validate-flight-deck-tree-on-real-state
+    expected_artifact: Validation Artifact under artifacts/ with screenshots of the live tree against real Arcadia and PPN state
     clarification: clarified
     confidence: high
     source: Agent Ask plan-flight-deck-execution-tree-2026-10-01
