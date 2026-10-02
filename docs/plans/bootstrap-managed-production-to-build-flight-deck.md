@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-01
+updated: 2026-10-02
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -255,7 +255,7 @@ actions:
       - Extract the concrete production control as a reusable unit rather than building a second controller or state store; the GitHub board shows state and cannot hold an Off switch, an approval or a capacity reading, so this control is the only place those live.
       - Preserve a runnable QA Artifact naming exact URL, host, revision and recovery command.
       - Measure durable Off acknowledgment within two seconds on the recorded healthy local host under stalled execution/provider reads; persistence failure is visible within five seconds without false confirmation.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/plans/mission-control-view/17-managed-production-contract.md", "docs/plans/mission-control-view/18-bootstrap-then-dogfood.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md", "apps/dashboard/app/work-queue/page.tsx", "apps/dashboard/app/api/work-queue/route.ts"]
   - id: prove-two-action-unattended-production
@@ -292,7 +292,7 @@ actions:
       - "Defer the dual-provider concurrent soak proof (100 reproducible interleavings per race scenario; ten-Action live soak across two Projects and both providers) with an explicit trigger: reactivate when single-provider single-repository production (prove-two-action-unattended-production and its hardening) has run cleanly in real operator use, or when a real workload actually requires concurrent multi-provider execution."
       - Publish live/fixture evidence for each proven boundary and name the exact deferred gap so it is not mistaken for completed proof; distinguish simulated provider or capacity behavior from real proof.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: []
   - id: freeze-production-runtime-and-handoff-flight-deck
@@ -313,7 +313,7 @@ actions:
       - After bootstrap acceptance and approved Plan transition, the canonical pointer selects the first workload and production admits its first Action; no repeated human Session setup is required.
       - If the first workload cannot advance without a merge or subjective acceptance, show that exact approval in the existing review surface. Never weaken a gate to manufacture uninterrupted progress.
       - Publish the contract 20 release evidence index; every required proof is passed at the accepted revision, blocking findings are resolved, and independent status/Off plus recovery are exercised before unattended handoff of the first workload.
-    depends_on: [prove-two-action-unattended-production, expose-bootstrap-production-controls, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, expose-bootstrap-production-controls, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: []
   - id: repair-codex-worktree-configuration
@@ -1458,7 +1458,7 @@ actions:
       - Both configured providers complete real bounded Actions, with capacity failure/reset tests naming which evidence is real and which is simulated.
       - "A bounded real soak completes: at least ten accepted small Actions across at least two Projects and both providers, across two worker restarts, an Off/reactivation, and one injected recoverable failure, with zero duplicate launches, lost outputs, unauthorized transitions, falsely accepted results, or manual Session relays."
       - docs/evidence/managed-production-release-evidence-index.md maps each live stage to pass/fail/unproven, revision, artifact, and reproduction procedure.
-    depends_on: [prove-fault-matrix-remaining-boundaries, prove-two-action-unattended-production, prove-multi-provider-production-recovery, finish-two-action-unattended-production-proof]
+    depends_on: [prove-fault-matrix-remaining-boundaries, prove-two-action-unattended-production, prove-multi-provider-production-recovery, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/evidence/managed-production-release-evidence-index.md", "docs/plans/mission-control-view/20-production-quality-and-reliability.md"]
   - id: add-segment-queue-arrange
@@ -1477,7 +1477,7 @@ actions:
       - "`agent-ask settle` with --top, --before, or --after inserts newly created Actions without changing the relative order of the active Plan's existing positioned rows, placing each new Action immediately after its latest dependency when no anchor is given."
       - Deterministic tests cover the segment move, the dependency refusal, idempotent replay, a stale-revision refusal, and a settle insertion that leaves existing Plan order unchanged.
       - START_HERE.md or docs/COMMANDS.md documents the command with one example.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["src/ask/settlement.ts", "src/commands/advance.ts", "docs/COMMANDS.md"]
   - id: settle-commit-survives-gitignored-asks
@@ -1496,7 +1496,7 @@ actions:
       - A deterministic test settles an Ask in a repository whose `.gitignore` excludes `.arcadia/asks/` and asserts the managed documents are committed with a clean working tree.
       - A second test covers the tracked case and asserts the archived file is committed.
       - "`pnpm test` and the core, Discord and Dashboard builds pass."
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/512", "src/ask/settlement.ts"]
   - id: serialize-decision-deferral-pointer-write
@@ -1514,7 +1514,7 @@ actions:
       - A compare-and-set failure, where the base changed since the Plan was resolved, refuses or retries against fresh state instead of overwriting the concurrent pointer move; the two documents never end up pointing at different `current_action` values.
       - A regression test races a deferral apply against a concurrent settlement or pointer move and asserts one final `current_action` in both documents and no silently lost move.
       - Existing deferral, reversal and `--dry-run` behavior is unchanged; `pnpm test` and the core, Discord and Dashboard builds pass.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/505", "src/dispatch/decisionDeferral.ts", "src/ask/settlement.ts"]
   - id: guard-go-fallback-against-claimed-actions
@@ -1607,7 +1607,7 @@ actions:
       - "`docs/managed-documents.md` states how `status: blocked` relates to `responsibility: blocked` and to dispatch readiness."
       - "A regression test reproduces the fixture (`status: blocked`, `responsibility: agent`) and asserts not dispatchable, while an unblocked Action stays dispatchable."
       - "`pnpm test` and the core, Discord and Dashboard builds pass."
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/494", "src/docs/dispatch.ts", "src/scheduling/schedule.ts"]
   - id: honor-policy-providers-at-launch
@@ -1645,7 +1645,7 @@ actions:
       - Merge, deployment, publication, spending, credentials, messaging, production access, destructive changes, operator judgment, and any authority not already granted remain gated; automation reports the exact gate instead of treating urgency as permission.
       - Deterministic tests cover periodic budget exhaustion, worker restart, stale or unknown capacity, Action promotion, safe repair, a refused consequential repair, and immediate stop-the-line escalation.
       - The operator-facing QA plan includes the worker/recovery command, Back Burner and queue inspection steps, observable expected results, and whether the procedure is also the end-user procedure.
-    depends_on: [build-autonomous-defect-loop, prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [build-autonomous-defect-loop, prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md", "docs/plans/provider-capacity-harvesting.md", "src/commands/worker.ts", "src/codingAgents/capacity.ts", "src/defect/signal.ts", "src/db/repositories.ts"]
   - id: preflight-provider-signin-before-launch
@@ -1739,7 +1739,7 @@ actions:
       - Scrolling to the end of the list fetches and appends the next page of past or future Actions, with no duplicates or gaps.
       - The list API accepts a page cursor and limit and is covered by tests for first, middle, and last pages.
       - The section still shows its loading, empty, and error states.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: []
   - id: tab-runs-page-concerns
@@ -1790,7 +1790,7 @@ actions:
       - Each renamed file's frontmatter id field is updated to match its new filename, and the file records a docs-sync-visible migration note pointing back to its original id so the rename is traceable in history.
       - Every inbound reference to a renamed file's old id or its old id+slug pair (Mission Log entries, other Decisions' decision frontmatter links, other documents' prose or cross-references) is found by repository-wide search and updated to the new id.
       - arcadia docs sync reports zero duplicate-id issues for these two pairs afterward, and pnpm test and the core, Discord, and Dashboard builds pass.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: []
   - id: repoint-r195-to-fresh-decision
@@ -1933,7 +1933,7 @@ actions:
       - A script failure writes a timestamped, immutable failure handoff and complete run log beneath that script's generated directory; /runs exposes both as the exact input for a coding agent to diagnose the first failed command and propose a narrower follow-up script.
       - The /runs execute control sends only the selected fingerprinted script descriptor to the host-side service controller; it records output and a durable receipt, refuses when that controller is unavailable or the descriptor is stale, and never lets a browser execute an arbitrary command.
       - Regression tests cover prioritization, minimal-versus-expanded rendering, stale-preview refusal, successful operator settlement, generated-script integrity, failure-handoff generation, unavailable-host refusal, and successful host-mediated execution.
-    depends_on: [surface-terminal-operator-approvals-in-runs, prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [surface-terminal-operator-approvals-in-runs, prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["apps/dashboard/app/api/approvals", "apps/dashboard/components/approval-queue.tsx", "apps/dashboard/app/api/operator-script", "artifacts/generated/operator-scripts"]
   - id: gate-dispatch-on-blocking-operator-items
@@ -1972,7 +1972,7 @@ actions:
       - A Project NORTH_STAR.md that fails to parse is reported as a named validation issue for that Project only, and does not break the portfolio view or other Projects.
       - Deterministic tests cover a Project file, a missing Project file, a malformed Project file, and an unchanged workspace-only setup; pnpm test and the core, Discord and Dashboard builds pass.
       - START_HERE.md documents where each NORTH_STAR lives and which view reads it.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["src/northStar/document.ts", "src/northStar/compute.ts", "src/northStar/path.ts", "apps/dashboard/app/now/page.tsx", "apps/dashboard/app/path/page.tsx", "NORTH_STAR.md"]
   - id: notify-operator-on-agent-blockers
@@ -1991,7 +1991,7 @@ actions:
       - It works from any Project repository and any coding-agent provider, including a managed-production Session; where no workspace resolves, the command fails with a named remedy rather than silently succeeding.
       - docs/agents-context.md's 'CI failures are fixed immediately' step 4 is updated to use the command instead of the log-Ask interim, and AGENTS.md is regenerated.
       - Deterministic tests cover recording, idempotent replay, Discord relay of the full text exactly once, and the no-workspace refusal; pnpm test and the core, Discord and Dashboard builds pass.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/agents-context.md", "apps/discord-bot/src/notifications/poller.ts", "src/ask/settlement.ts"]
   - id: settle-squash-merged-completion-drafts
@@ -2007,7 +2007,7 @@ actions:
     acceptance_criteria:
       - attemptAutoSettlePendingCompletion accepts a drafted complete Ask whose candidate_revision is not an ancestor of HEAD when merging that revision into HEAD changes no file (the git merge-tree --write-tree result equals HEAD's tree), and still refuses, with a named reason, a candidate whose changes are not fully contained in HEAD.
       - Deterministic tests cover a squash-merged candidate that settles, a merge-committed candidate that settles, and a candidate with unmerged changes that is refused; pnpm test and the core, Discord and Dashboard builds pass.
-    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md"]
   - id: sweep-merged-completions-before-dispatch
@@ -2025,7 +2025,7 @@ actions:
       - The settlement commit is pushed or left LOCAL ONLY exactly as Decision 0070's answer grants, and a LOCAL ONLY result is reported in arcadia work monitor.
       - docs/agents-context.md (regenerated into AGENTS.md) tells a session to commit its drafted complete Ask in its PR instead of running settle --apply in the candidate, and START_HERE.md describes the post-merge settlement.
       - Deterministic tests cover two merged completions settling in merge order with the pointer on the correct next Action, and an unmerged candidate's Ask left pending; pnpm test and the core, Discord and Dashboard builds pass.
-    depends_on: [settle-squash-merged-completion-drafts, prove-two-action-unattended-production, finish-two-action-unattended-production-proof]
+    depends_on: [settle-squash-merged-completion-drafts, prove-two-action-unattended-production, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/production/tick.ts", "src/commands/advance.ts", "src/commands/go.ts", "docs/agents-context.md", "START_HERE.md"]
   - id: fix-decision-approve-missing-commit
@@ -2079,7 +2079,7 @@ actions:
       - A read-only status surface reports one wait reason per in-scope Action that did not launch this tick (dependency, dependency_unresolved, claimed, host_full, needs_operator, ...), recomputed every tick and never stored as truth.
       - A Session flagged stalled is named in the host_full wait reason of every Action it keeps from launching, so a stalled Session holding a host slot is visible instead of silently starving other repositories.
       - "Deterministic tests cover: two ready Actions in different repositories launching in the same tick, an Action correctly excluded by a live claim, current_action reflecting the highest-priority claim with no settlement write, a projection computed before a later settlement being refused, and the #505/#507 race scenarios each closed; pnpm test and the core, Discord and Dashboard builds pass."
-    depends_on: [resolve-cross-plan-dependency-ids, enforce-concurrency-gate-at-admission, rewire-dependents-on-split, prove-two-action-unattended-production, sweep-merged-completions-before-dispatch, finish-two-action-unattended-production-proof]
+    depends_on: [resolve-cross-plan-dependency-ids, enforce-concurrency-gate-at-admission, rewire-dependents-on-split, prove-two-action-unattended-production, sweep-merged-completions-before-dispatch, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0070-decide-whether-an-action-s-completion-settles-after-its-pr-merges-applied.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/scheduling/scheduler.ts", "src/scheduling/order.ts", "src/production/policy.ts", "docs/proposals/portfolio-parallel-execution.md"]
   - id: pipeline-independent-actions-while-pr-unmerged
@@ -2119,7 +2119,7 @@ actions:
       - Turn the standing policy Off while both Sessions are in flight; prove no new launch occurs, both in-flight Sessions reconcile visibly, and no duplicate or reactivated Session appears after Off.
       - Record exact revisions, hosts, providers, Action/Session identities, and receipts for both repositories; missing real authorization or input remains one precise review, never fixture-as-live success, and any deferred gap (same-repository pipelining, provider-account slots, review headroom) is named rather than implied proven.
       - "This proof activates only once prove-two-action-unattended-production is status: done and admit-ready-set-across-repositories has shipped; preserve deterministic integration evidence and an exact operator procedure/target in the PR."
-    depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production, soak-ready-set-admission-with-fixture-provider, finish-two-action-unattended-production-proof]
+    depends_on: [admit-ready-set-across-repositories, prove-two-action-unattended-production, soak-ready-set-admission-with-fixture-provider, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["docs/proposals/portfolio-parallel-execution.md", "docs/decisions/0071-decide-whether-to-reopen-decision-0023-and-adopt-ready-set-admission-for.md", "docs/decisions/0066-record-when-arcadia-should-widen-beyond-one-coding-agent-session-per-repository.md", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/operator-demo-and-release-contract.md", "src/production/tick.ts", "src/ask/settlement.ts", "src/production/policy.ts", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: enforce-concurrency-gate-at-admission
@@ -2275,7 +2275,7 @@ actions:
       - The Action is left resumable in the same candidate under Decision 0051, and a second stall recovery for the same Action records an operator escalation instead of relaunching.
       - Recovery runs only while a production policy is active and the Session is inside its scope, and records a receipt naming the Session, the stall duration and the preserved candidate.
       - Deterministic tests, using the fixture provider stalled outcome, cover recovery freeing the lease and slot, resumption in the same candidate, and escalation on the second stall; pnpm test and the core, Discord and Dashboard builds pass.
-    depends_on: [prove-two-action-unattended-production, add-fixture-coding-agent-provider, finish-two-action-unattended-production-proof]
+    depends_on: [prove-two-action-unattended-production, add-fixture-coding-agent-provider, finish-two-action-unattended-production-proof, prove-literal-split-browser-and-ledger]
     decisions: []
     references: ["src/production/stallDetection.ts", "src/production/tick.ts", "src/sessions/reconciliation.ts", "docs/decisions/0051-decide-whether-sequential-coding-agent-sessions-for-the-same-governed-action-may.md", "docs/reviews/2026-09-25-ready-set-admission-adversarial-review.md"]
   - id: limit-unmerged-candidates-per-repository
@@ -2747,20 +2747,18 @@ actions:
     references: []
   - id: finish-two-action-unattended-production-proof
     title: Finish the exact split Session, Off/restart, evidence ledger and integration proof that retained v6 evidence has not yet established.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Finish the exact split Session, Off/restart, evidence ledger and integration proof that retained v6 evidence has not yet established.
+    next_action: "Record only the exact integration-evidence criterion proven by retained v6 B recovery and merged PR #870; keep the other three criteria open."
     expected_artifact: Evidence satisfying Agent Ask finish-two-action-unattended-production-proof
     clarification: clarified
     confidence: high
-    source: Agent Ask split-v6-two-action-proof-supported-criteria-2026-10-01
+    source: Agent Ask split-v6-b-recovery-evidenced-slice-2026-10-01
     acceptance_criteria:
-      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
-      - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
-      - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
       - Preserve deterministic integration evidence and an exact operator procedure/target in the PR; distinguish simulated provider or capacity behavior from real proof.
     depends_on: []
+    split_into: [prove-literal-split-browser-and-ledger]
     decisions: []
     references: []
   - id: recover-terminal-integration-after-reconcile
@@ -2797,11 +2795,28 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/tick.ts", "src/production/sessionHandoff.ts", "src/sessions/candidatePreservation.ts", "docs/managed-production-readiness.md"]
+  - id: prove-literal-split-browser-and-ledger
+    title: Prove the literal two-Session continuation, browser-close/Off restart behavior, and exhaustive operator-intervention ledger still missing from the v6 proof.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove the literal two-Session continuation, browser-close/Off restart behavior, and exhaustive operator-intervention ledger still missing from the v6 proof.
+    expected_artifact: Evidence satisfying Agent Ask prove-literal-split-browser-and-ledger
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-v6-b-recovery-evidenced-slice-2026-10-01
+    acceptance_criteria:
+      - "Per Decision 0051, deliberately split one Action across Sessions: Session A edits the candidate and exits incomplete without Git common-directory writes; Session B launches in the same worktree and branch, sees Session A changes and finishes; a concurrent second live execution against that candidate is refused; the next Action receives a fresh candidate from the new governed base; no operator branch, worktree, commit, stash, rebase or cleanup step occurs."
+      - Turn Off during work; prove no later launch, preserved current output and visible terminal reconciliation. Close browser/restart worker and prove no duplicate or reactivation after Off.
+      - Record exact revision, host, provider, Action/Session identities, receipts and every operator intervention; missing real authorization/input remains one precise review, never fixture-as-live success.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/v6-two-action-evidence-assessment-2026-10-01.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: finish-two-action-unattended-production-proof
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
