@@ -1,0 +1,100 @@
+# Operator actions
+
+Read before preparing a bounded operator choice or publishing its /runs action.
+The compact bootstrap and CONSTITUTION.md still bind; a button grants no authority.
+
+### Make operator steps executable
+
+Whenever the operator must provide input or perform one or more steps after an
+agent handoff — approving a Decision, selecting a prepared choice, merging a
+pull request, installing or restarting local software, running a credentialed
+command, completing manual QA, or carrying out any other operator-only action
+— **do not leave that input or those steps as prose commands alone.** When the
+input can be represented as a bounded executable choice, give the operator a
+button for it in the `/runs` operator-action library.
+Create or update a paired generated operator script and descriptor under
+`artifacts/generated/operator-scripts/`, following the format already present
+there:
+
+- an executable `<id>.sh` with only `run` and `--describe` entrypoints;
+- an `arcadia-operator-script-v1` `<id>.json` descriptor naming the problem,
+  desired effect, exact operator command, authority, success, and failure;
+- `repeatable: true` only when repeating the completed operation is safe and
+  useful; omit it or set it to `false` for approvals and other one-shot input;
+- bounded waits, fail-closed preconditions, an idempotent retry story, and a
+  timestamped `runs/<timestamp-pid>/` log plus failure handoff; and
+- one command for the operator to run that performs every safe, automatable
+  step in order and prints the resulting receipt or exact remaining blocker.
+
+That directory is the dashboard's execution path. A valid pair appears
+automatically on `/runs`; the browser never supplies a command or filesystem
+path. Put every custom executable operator action there so the operator can
+run it from the phone. Prefer reusing or safely generalizing an existing
+library entry over creating a near-duplicate. Build common recurring actions
+as reusable scripts when their target and current authority can be discovered
+and validated at run time. Keep one-off scripts when the authority is specific.
+For example, a Decision-approval script must pin or read the exact Decision,
+answer, proposal fingerprint, and expected open state, then refuse stale or
+different state; never turn it into a blanket approval command.
+
+### Publishing `/runs` actions
+
+`/runs` reads the main checkout's generated-script library at
+`artifacts/generated/operator-scripts/`; it does not discover candidate
+worktree files. Publish the executable `<id>.sh` and descriptor `<id>.json`
+there, then verify the live `/api/operator-script` response lists the action
+before handoff. A descriptor must include `schema`, `id`, `title`, `script`,
+`problem`, `desired_effect`, `authority.does`, `authority.never_does`,
+`success.effect`, `success.next`, `failure.effect`, and `failure.next`; its
+script must be executable and expose only `run` and `--describe`.
+
+When an operator script delegates bounded authority, tag its descriptor
+`kind: "grant"`. Follow the [Grant definition](../arcadia-semantics.md#grant):
+it is one-shot, pins its policy revision, names its scope and expiry, refuses
+precondition drift before mutation, records a receipt, and states what it
+never does. Do not use the tag for ordinary preparation, observation, or
+deterministic completion evidence.
+
+One-shot actions (`repeatable: false`) never delete themselves: `/runs` keeps
+their disabled succeeded state and receipt as the durable audit trail. Keep a
+reusable action repeatable only when rerunning is safe and useful. Do not add
+operator actions for deterministic completion evidence: the agent validates,
+preserves, and settles it automatically. Buttons are for genuine external or
+irreversible authority only.
+
+The dashboard records each launch as available, running, succeeded, or failed.
+It polls while work runs, exposes failure instead of treating process launch as
+completion, and disables a successful one-shot action. A reusable action stays
+available after success. Do not work around that lifecycle with background
+wrappers or by resetting its state merely to make a stale button clickable;
+repair the script or descriptor, preserve the failure receipt, and retry only
+when the represented operator action is still live.
+
+Before adding a script, inspect the existing descriptors for the same desired
+effect. Reuse an exact match. If extending a reusable entry, preserve its
+current callers and safety boundaries and update its descriptor. Do not delete
+an old library entry merely because the immediate handoff is over: repeatable
+operations are the beginning of the shared script library. If the operator's
+input is genuinely free-form and cannot yet be represented safely by the
+button contract, ask for that value directly, then generate the narrow script
+that validates and applies it; do not smuggle arbitrary arguments, shell text,
+or paths through the dashboard endpoint.
+
+Generating a script does not widen authority: a merge, deployment, approval,
+credential use, or other operator gate stays gated until the operator runs the
+script. The script must state those effects plainly and must never hide manual
+Git reconciliation, governance settlement, or another unsupported shortcut
+inside automation.
+
+If a load-bearing detail is unclear — repository, pull request, workspace,
+merge method, service target, credential boundary, desired effect, or recovery
+route — ask the operator before generating the script. In a continuation where
+a previous agent established the setup, inspect its generated descriptor,
+run/failure handoff, and thread first; if the needed detail is still absent,
+ask that previous agent or the operator rather than guessing. Do not finish the
+handoff until the script and descriptor match the final reviewed state.
+
+`docs/agent-continuation-protocol.md` carries these rules with the reasoning
+behind each. It is a reference, not a prerequisite: everything you must do is
+stated above.
+

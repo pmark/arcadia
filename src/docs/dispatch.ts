@@ -1,3 +1,4 @@
+import { hasWayGuidance, inspectGuidanceDelivery } from "../projects/agentGuidance.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -327,6 +328,14 @@ export function resolveDispatch(
   // running anything. Checked here so it refuses at the same place every other
   // control-document defect does.
   blockers.push(...checkCapabilityRegistry(repoRoot));
+
+  if (hasWayGuidance(repoRoot)) {
+    const delivery = inspectGuidanceDelivery(repoRoot, { globalInstructions: "" });
+    blockers.push(...delivery.problems.map((message) => ({
+      relativePath: "AGENTS.md", field: "guidance_delivery", message,
+      remedy: "Repair the instruction budget or refresh the indexed guidance through authorized setup-context; do not bypass the gate."
+    })));
+  }
 
   const context: DispatchContext = {
     repoRoot,

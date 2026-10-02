@@ -1,3 +1,4 @@
+import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import path from "node:path";
 
 import { projectNotFound, validationError } from "../cli/errors.js";
@@ -288,6 +289,10 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
   if (context.constitution) {
     lines.push("", `Standing constraints (CONSTITUTION.md, sha256 ${context.constitution.sha256.slice(0, 12)}) — these bind this action:`);
     lines.push(...constraints.map((line) => (line ? `  ${line}` : "")));
+  }
+
+  if (!blockers.some((blocker) => blocker.field === "guidance_delivery")) {
+    lines.push(...renderGuidanceRetrieval(context.repoRoot, undefined, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
   }
 
   if (blockers.length > 0) {

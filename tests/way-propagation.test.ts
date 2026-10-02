@@ -1,15 +1,10 @@
+import { setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  CONTINUATION_PROTOCOL_FILE,
-  adoptContinuationProtocol,
-  thinClaudeWrapper,
-  updateAgentsMarkdown
-} from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan, declinesAutomaticUpgrades, readUpgradePolicy } from "../src/projects/wayPropagation.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -33,12 +28,7 @@ function tempRepo(): string {
 
 /** Writes a repository whose adopted files exactly match Arcadia's own canonical text. */
 function writeCurrentAdoption(repo: string): void {
-  writeFileSync(path.join(repo, "CONSTITUTION.md"), canonicalConstitution, "utf8");
-  writeFileSync(path.join(repo, "AGENTS.md"), updateAgentsMarkdown(null), "utf8");
-  writeFileSync(path.join(repo, "CLAUDE.md"), thinClaudeWrapper(null)!, "utf8");
-  mkdirSync(path.join(repo, "docs"), { recursive: true });
-  const protocolSource = readFileSync(path.join(repoRoot, CONTINUATION_PROTOCOL_FILE), "utf8");
-  writeFileSync(path.join(repo, CONTINUATION_PROTOCOL_FILE), adoptContinuationProtocol(protocolSource, null, null), "utf8");
+  setupArcadiaProjectContext({ repoPath: repo });
 }
 
 describe("computeWayPropagationPlan", () => {
@@ -216,6 +206,43 @@ describe("runWayPropagation", () => {
     expect(summary.results).toHaveLength(1);
     expect(summary.results[0].status).toBe("current");
     expect(calls.some((call) => call.command === "gh")).toBe(false);
+  });
+
+  it("refuses a feature checkout whose current library masks missing resources on base", () => {
+    const { repo } = initGitRepo();
+    rmSync(path.join(repo, "docs/agent-guidance/index.json"));
+    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "missing library on base"]);
+    git(repo, ["checkout", "-b", "feature/current-library"]);
+    writeCurrentAdoption(repo);
+    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "repair feature only"]);
+    expect(computeWayPropagationPlan(repo).changes).toEqual([]);
+    const workspace = tempWorkspace(); seedProject(workspace, repo);
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, runCommand: fakeGhRunner(calls) }));
+    expect(summary.results[0].status).toBe("error");
+    expect(summary.results[0].detail).toContain("requires the base checkout on main");
+    expect(git(repo, ["branch", "--show-current"]).trim()).toBe("feature/current-library");
+    expect(calls.some((call) => call.command === "gh" || call.args[0] === "checkout")).toBe(false);
+  });
+
+  it("refuses destination ownership drift after checkout without overwriting or publishing it", () => {
+    const { repo } = initGitRepo();
+    writeFileSync(path.join(repo, "AGENTS.md"), "# AGENTS\n\nstale\n");
+    git(repo, ["add", "-A"]); git(repo, ["commit", "-m", "bootstrap drift"]);
+    const workspace = tempWorkspace(); seedProject(workspace, repo);
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runner = fakeGhRunner(calls);
+    const foreign = '{"schema":"project-owned"}';
+    const summary = withDatabase(workspace, (db) => runWayPropagation({ db, now: () => "20260101000000", runCommand: (cwd, command, args) => {
+      const result = runner(cwd, command, args);
+      if (command === "git" && args[0] === "checkout" && args[1] === "-b") writeFileSync(path.join(repo, "docs/agent-guidance/index.json"), foreign);
+      return result;
+    } }));
+    expect(summary.results[0].status).toBe("error");
+    expect(summary.results[0].detail).toContain("adoption changed after checkout");
+    expect(readFileSync(path.join(repo, "docs/agent-guidance/index.json"), "utf8")).toBe(foreign);
+    expect(readFileSync(path.join(repo, "AGENTS.md"), "utf8")).toBe("# AGENTS\n\nstale\n");
+    expect(calls.some((call) => call.command === "gh" || call.args[0] === "push" || call.args[0] === "commit")).toBe(false);
   });
 
   it("merges a mechanical-only change without leaving it for review", () => {

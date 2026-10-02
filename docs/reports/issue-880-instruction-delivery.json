@@ -1,0 +1,69 @@
+{
+  "schema": "arcadia-guidance-delivery-evidence-v1",
+  "evidence": [
+    {
+      "cwd": ".",
+      "agent": "codex",
+      "sources": [
+        {
+          "path": "~/.codex/AGENTS.md",
+          "bytes": 490,
+          "sha256": "1b4c6002369d56396944736dc6d176ada9f5557774e884a6e8070eaee33d6b67"
+        },
+        {
+          "path": "AGENTS.md",
+          "bytes": 7549,
+          "sha256": "08527f134342b958edded26010b6ef4e79443b2eeb84bd030ef1da52b2a6a2a7"
+        }
+      ],
+      "projectBytes": 7549,
+      "combinedBytes": 8041,
+      "problems": []
+    },
+    {
+      "cwd": ".",
+      "agent": "claude",
+      "sources": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 7549,
+          "sha256": "08527f134342b958edded26010b6ef4e79443b2eeb84bd030ef1da52b2a6a2a7"
+        },
+        {
+          "path": "CLAUDE.md",
+          "bytes": 378,
+          "sha256": "f59354aef057dca0afc2a7aa5eba9ceba878829ff86685a985d89e9ea93eae61"
+        }
+      ],
+      "projectBytes": 7929,
+      "combinedBytes": 7929,
+      "problems": []
+    },
+    {
+      "cwd": ".",
+      "agent": "opencode",
+      "sources": [
+        {
+          "path": "AGENTS.md",
+          "bytes": 7549,
+          "sha256": "08527f134342b958edded26010b6ef4e79443b2eeb84bd030ef1da52b2a6a2a7"
+        }
+      ],
+      "projectBytes": 7549,
+      "combinedBytes": 7549,
+      "problems": []
+    }
+  ],
+  "scope": "Default-file audit and deterministic repository retrieval, not a native provider prompt capture or behavioral proof.",
+  "baseline_revision": "f1149da5c4433790cabccd926ecb47c3a033e6d3",
+  "baseline": {
+    "AGENTS.md": 71630,
+    "docs/agents-context.md": 55969,
+    "CLAUDE.md": 6076
+  },
+  "result": {
+    "AGENTS.md": 7549,
+    "docs/agents-context.md": 6262,
+    "CLAUDE.md": 378
+  }
+}

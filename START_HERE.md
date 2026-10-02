@@ -2030,3 +2030,21 @@ Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
 `package.json`. The restart script installs and validates that toolchain, then
 writes every managed LaunchAgent to start through `mise exec`; login-shell PATH
 state cannot select a different Node ABI.
+
+## Compact agent instructions
+
+`arcadia project setup-context --repo <repository>` installs the compact Way
+bootstrap and its searchable `docs/agent-guidance/index.json`, preserving
+project additions outside generated regions. Agents read indexed procedures
+before their operation and search the Project's Notes To Self before commands
+or new failures. No procedural manual is automatically imported.
+
+`arcadia way` reports missing/stale resources and instruction delivery problems.
+`pnpm check:agent-guidance` in Arcadia checks canonical bytes and defaults at
+root and every checked-in nested instruction directory. The generated bootstrap
+has an 8 KiB limit, root 12 KiB, project chain 24 KiB and conservative combined
+chain 32 KiB, leaving 8 KiB for global instructions. Oversized adopter additions
+are reported rather than discarded. Custom provider profiles, fallback names
+or extra imports require separate effective-load evidence; passing the default
+file audit does not prove agent understanding. See
+`docs/reports/issue-880-context-delivery.md` for evidence and fresh-session QA.

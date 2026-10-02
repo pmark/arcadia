@@ -475,6 +475,7 @@ export interface ProjectSetupContextCommandData {
   files: SetupProjectContextResult["files"];
   controlDocuments: SetupProjectContextResult["controlDocuments"];
   context: SetupProjectContextResult["context"];
+  guidance: SetupProjectContextResult["guidance"];
 }
 
 export interface ProjectSetupContextAllResult {
@@ -773,7 +774,8 @@ export function runProjectSetupContextCommand(options: {
       project: setup.project,
       files: setup.files,
       controlDocuments: setup.controlDocuments,
-      context: setup.context
+      context: setup.context,
+      guidance: setup.guidance
     },
     // A null entry means setup deliberately did not write that file -- an
     // unreadable source Constitution, or a CLAUDE.md holding project-authored
@@ -957,6 +959,8 @@ export function renderProjectSetupContextSuccess(response: CommandSuccess<Projec
     `Repo context: ${response.data.files.repoContext}`,
     `Context policy: ${response.data.files.contextPolicy}`,
     `AGENTS.md: ${response.data.files.agents}`,
+    `Agent guidance: docs/agent-guidance/index.json; project ${response.data.guidance.projectBytes} bytes, combined ${response.data.guidance.combinedBytes} bytes.`,
+    ...response.data.guidance.problems.map((problem) => `Guidance delivery problem: ${problem}`),
     `CONSTITUTION.md: ${response.data.files.constitution ?? "Not written — the adopted CONSTITUTION.md could not be read."}`,
     `Continuation protocol: ${response.data.files.continuationProtocol ?? "Not written — the adopted protocol could not be read."}`,
     // A declined CLAUDE.md must be said out loud. Setup leaving a file alone and

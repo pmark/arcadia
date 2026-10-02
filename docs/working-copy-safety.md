@@ -175,8 +175,8 @@ Never silently leave dirty files on `main` or a detached HEAD.
 Settling an Agent Ask (`arcadia agent-ask settle --apply`) is a second,
 easy-to-miss way to land in `LOCAL ONLY` state on a branch nobody was actively
 committing to — it writes and commits the managed documents its effects
-describe, but by design never pushes them. See the shared `AGENTS.md` region's
-"Settling commits locally and never pushes" for why, and push before this rule
+describe, but by design never pushes them. See the indexed [Agent Ask publication procedure](agent-guidance/agent-asks.md#settling-commits-locally-and-never-pushes)
+for why, and publish through the authorized candidate/PR or operator handoff before this rule
 lets the session stop.
 
 ## Recovery playbook
