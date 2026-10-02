@@ -143,8 +143,17 @@ Operator and end-user QA are the same for this developer tooling. There is no
 changed web demo target or HTTP URL. The immediately runnable local proof is
 `mise exec -- pnpm check:agent-guidance` plus
 `mise exec -- pnpm exec vitest run tests/agent-guidance.test.ts` in the candidate.
-Native fresh-session QA requires explicit authorization to launch fresh agents
-and the confirmed provider/profile. That is separate from deterministic checks.
+The operator authorized bounded read-only Codex/Claude rehearsals using their
+configured defaults. Four disposable root/manual and nested/managed adopters
+were then prepared with the real adoption and brief generators. Neither native
+agent started: automatic approval review rejected the launch because transmitting
+automatically loaded global instructions was not specifically authorized, and
+Claude's proposed `cat`/`rg` permissions could reach files outside the fixtures.
+No retry or workaround was attempted. The remaining operator question is whether
+to authorize that instruction/file transmission to the configured model services
+or hold native QA. The prepared fixtures and prompts remain under
+`/private/tmp/issue880-native/`; they are temporary preparation, not behavioral
+acceptance evidence. No real Project or workspace was changed.
 
 ## Friction and prevention
 
