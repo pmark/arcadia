@@ -103,3 +103,13 @@ The protected preservation launcher refused this inherited candidate with
 `No active Arcadia Session or manual handoff registers this preservation worktree.`
 The PR branch preserves the commits remotely. No registry entry was fabricated
 and no unrelated Project pointer was changed.
+
+
+Merge readiness is conditional on CodeRabbit approval and every required CI job
+passing for the **current PR #873 head**, not a revision cited in a historical
+Log. The live PR description identifies that head. The published
+`merge-container-audit-pr873` action pins it, checks literal exact-head approval,
+all seven CI jobs and a clean merge state, and uses `--match-head-commit`.
+Merging this preparation does not answer Decision 0079. The separate
+`approve-scoped-container-audit-847-2026-10-02` action requires reviewed installed
+source/runtime and the current-head gates before approving its one-shot scope.
