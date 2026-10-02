@@ -13,7 +13,7 @@
       "trigger": "governance, complete, split, draft, preview, settle, workspace, database denied",
       "path": "docs/agent-guidance/agent-asks.md",
       "read_before": "Before proposing or changing Project state; preserve a blocked validated Ask.",
-      "sha256": "bc4eb9850986e57f1333daa8e4bfdc5baa08f20330b594db098f975d9d5a2017"
+      "sha256": "46091f9c1ad1f2744fa2c7a151e2eee943afed3aebac2816a0e0687cdc8180a0"
     },
     {
       "id": "operator-actions",
@@ -55,7 +55,7 @@
       "trigger": "commit, comment, signature, author, critic, builder",
       "path": "docs/agent-guidance/git-identity.md",
       "read_before": "Before every agent commit or posted comment; resolve identity for the current model.",
-      "sha256": "44b76848dec66ceadbfe49de4e6ead60535575c6acd89969970827776a6bda07"
+      "sha256": "7c35626759cea67ce61f7f2e07217c349da6c19b41faf77ebfcf5bff5bf81f43"
     },
     {
       "id": "managed-documents",
@@ -76,7 +76,7 @@
       "trigger": "worktree, branch, preserve, detached, conflict, local only",
       "path": "docs/working-copy-safety.md",
       "read_before": "Before editing code or reconciling Git, and before stopping.",
-      "sha256": "5e50373035cf650966e9326840013f154ad22e6daa5ca3e5bb59c4e336eed820"
+      "sha256": "4c3b063d0707fa96eaee807c13afcd51f5b9da6ddead75ede045a696ebfbd4d9"
     }
   ]
 }

@@ -291,7 +291,9 @@ export function renderDispatchResolution(data: DispatchRenderInput): string[] {
     lines.push(...constraints.map((line) => (line ? `  ${line}` : "")));
   }
 
-  lines.push(...renderGuidanceRetrieval(context.repoRoot, undefined, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
+  if (!blockers.some((blocker) => blocker.field === "guidance_delivery")) {
+    lines.push(...renderGuidanceRetrieval(context.repoRoot, undefined, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
+  }
 
   if (blockers.length > 0) {
     lines.push("", "Blockers:", ...renderBlockers(blockers));

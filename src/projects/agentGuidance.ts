@@ -213,7 +213,10 @@ export function renderGuidanceRetrieval(repoRoot: string, agent: "codex" | "clau
   if (delivery.problems.length) throw validationError(`Agent guidance delivery refused: ${delivery.problems.join(" ")}`, { delivery });
   const entries = guidanceEntries(readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8"));
   const relevant = entries.filter((entry) => ["continuation", "learning", "working-copy"].includes(entry.id) ||
-    entry.trigger.split(",").some((trigger) => operation.toLowerCase().includes(trigger.trim().toLowerCase())));
+    entry.trigger.split(",").some((trigger) => {
+      const phrase = trigger.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return phrase.length > 0 && new RegExp(`(?:^|\\W)${phrase}(?=$|\\W)`, "i").test(operation);
+    }));
   return [
     "", "Mandatory guidance retrieval before the next operation:",
     `Read ${GUIDANCE_INDEX}; match the task/failure trigger and read its authoritative procedure before acting.`,

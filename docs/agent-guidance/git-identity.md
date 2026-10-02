@@ -25,8 +25,11 @@ finding.
 
 A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` are set on that one process tree before the agent ever
-runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so it needs no
-action from the agent. That launch path always binds the `builder` role;
+runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so unchanged-tier
+builder work needs no additional action from the agent. After any model-tier
+change, re-resolve and apply the current identity before the next commit or
+posted comment; the inherited launch environment no longer identifies that
+model. That launch path always binds the `builder` role;
 there is no launched "critique Session" yet, so a launched agent producing
 a code review or a plan critique still resolves its own `critic` identity by
 hand, the same way an interactive session does for everything. An

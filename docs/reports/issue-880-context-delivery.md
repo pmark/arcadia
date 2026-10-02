@@ -81,10 +81,13 @@ UTF-8 overflow, preservation/idempotency, and mandatory late-rule visibility.
 ## Validation
 
 - Focused delivery/adoption/dispatch suites: 99 tests passed; the final new
-  guidance suite contains 15 regression scenarios.
+  guidance suite contains 16 regression scenarios.
+- CodeRabbit round one: four verified findings repaired; human dispatch
+  refusals and whole-word trigger matching have regression coverage. Four
+  focused suites passed 57 tests and the refreshed guidance audit passed.
 - Final containment/preservation checks: 68 tests passed across six adoption,
   propagation and delivery suites; the build passed.
-- Linux portability repair: the 15-scenario suite passed with both ordinary
+- Linux portability repair: the then-15-scenario suite passed with both ordinary
   PATH and a restricted PATH containing Git/grep but no ripgrep; lint passed.
 - `mise exec -- pnpm build`: passed (lint, TypeScript, core and Discord builds).
 - `mise exec -- pnpm check:agent-guidance`: passed; file receipts are attached.

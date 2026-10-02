@@ -234,11 +234,14 @@ until something pushes it. Nothing currently reminds anyone to, which is how it
 was found — a settled Log entry sat as `LOCAL ONLY` until the next session
 noticed the divergence.
 
-**Push before ending a session in which you settled anything.** Treat it the
-same as any other `LOCAL ONLY` state under Working-Copy Safety: check
-`arcadia work monitor`, or simply push the branch settlement just committed to.
-An Agent Ask you only previewed needs nothing further — this applies to
-`settle --apply`, not `preview`.
+**Publish candidate settlements before ending the session.** Check
+`arcadia work monitor`, then push the candidate branch and open/update its PR.
+A settlement made in the main checkout stays `LOCAL ONLY` until it follows the
+authorized preservation/publication handoff in [Working-Copy Safety](../working-copy-safety.md#stop-session-rule):
+preserve the commit, arrange its reviewed candidate/PR or explicit operator
+publication, and report the exact boundary. Do not initiate a direct push to a
+shared base branch. This requirement applies to `settle --apply`; an Ask that
+was only previewed needs no publication of a settlement.
 
 ### One session completes one Action
 

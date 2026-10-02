@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BOOTSTRAP_MARKER, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, inspectGuidanceDelivery, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
 import { readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan } from "../src/projects/wayPropagation.js";
+import { renderDispatchResolution } from "../src/commands/next.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
 import { renderActionBrief } from "../src/sessions/actionBrief.js";
 
@@ -145,6 +146,7 @@ describe("compact Way instruction delivery", () => {
     const resolution = resolveDispatch(root);
     expect(resolution.blockers).toEqual([]);
     expect(resolution.context?.action.id).toBe("repair");
+    expect(renderDispatchResolution(resolution).join("\n")).toContain("Mandatory guidance retrieval");
     // Real repository reads and command outputs; deterministic delivery/retrieval evidence, not a model comprehension claim.
     let lookup: string;
     try { lookup = execFileSync("rg", ["-n", "settle|workspace", "docs/notes-to-self.md"], { cwd: root, encoding: "utf8" }); }
@@ -168,7 +170,11 @@ describe("compact Way instruction delivery", () => {
     expect(brief).not.toContain("### Three shapes");
     expect(brief).toContain("sha256");
     rmSync(path.join(root, identity.path));
-    expect(resolveDispatch(root).blockers).toContainEqual(expect.objectContaining({ field: "guidance_delivery", message: expect.stringContaining(identity.path) }));
+    const refused = resolveDispatch(root);
+    expect(refused.blockers).toContainEqual(expect.objectContaining({ field: "guidance_delivery", message: expect.stringContaining(identity.path) }));
+    const humanRefusal = renderDispatchResolution(refused).join("\n");
+    expect(humanRefusal).toContain(identity.path);
+    expect(humanRefusal).toContain("Not dispatchable: repair the blockers above first.");
     expect(() => renderActionBrief({ repoRoot: root, projectSlug: "sample", planSlug: "fix", actionId: "repair", worktreePath: root, branch: "codex/proof", agent: "codex", baseRevision })).toThrow(/guidance delivery refused/);
   });
 
@@ -222,6 +228,16 @@ describe("compact Way instruction delivery", () => {
     rmSync(path.join(root, "CLAUDE.local.md"));
     put(root, "CLAUDE.md", "@AGENTS.md\nRead @docs/agent-guidance/agent-asks.md before work\n");
     expect(inspectGuidanceDelivery(root, { agent: "claude", globalInstructions: "" }).problems).toContainEqual(expect.stringContaining("Unsupported automatic import"));
+  });
+
+  it("matches complete trigger words and phrases without selecting unrelated procedural context", () => {
+    const root = adopted();
+    const unrelated = renderGuidanceRetrieval(root, undefined, "Fix JavaScript Projectiles").join("\n");
+    expect(unrelated).not.toContain("Read docs/agent-guidance/operator-actions.md:");
+    expect(unrelated).not.toContain("Read docs/managed-documents.md:");
+    const relevant = renderGuidanceRetrieval(root, undefined, "PREVIEW GOVERNANCE, then a PULL REQUEST").join("\n");
+    expect(relevant).toContain("Read docs/agent-guidance/agent-asks.md:");
+    expect(relevant).toContain("Read docs/agent-guidance/pull-requests.md:");
   });
 
   it("keeps a new bootstrap and its resource installation together in the governing propagation tier", () => {
