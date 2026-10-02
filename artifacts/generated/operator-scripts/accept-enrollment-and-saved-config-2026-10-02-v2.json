@@ -1,0 +1,39 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "accept-enrollment-and-saved-config-2026-10-02-v2",
+  "title": "Accept helper enrollment and saved production configuration work",
+  "script": "accept-enrollment-and-saved-config-2026-10-02-v2.sh",
+  "repeatable": false,
+  "problem": "A helper cannot currently enroll through one protected request, and Off erases the scope required by the Runs On switch.",
+  "desired_effect": "Accept the exact two implementation Actions and insert them before Arcadia's current proof Action, without changing that pointer or activating production.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-enrollment-and-saved-config-2026-10-02-v2.sh run",
+  "agentAsk": {
+    "proposal": "enroll-any-session-and-preserve-production-config-2026-10-02-v2",
+    "intent": "action",
+    "targetRef": null
+  },
+  "authority": {
+    "does": [
+      "Validate the pinned repository, main branch, reviewed base lineage, exact Ask SHA-256, queue revision 180, and exact settlement fingerprint",
+      "Commit and track only this reviewed script and descriptor, including these two normally ignored generated files, refusing unrelated local or staged changes",
+      "Use canonical Agent Ask settlement to add exactly enroll-session-through-governed-host-request and persist-inactive-production-configuration with agent responsibility before prove-literal-split-browser-and-ledger",
+      "Retain bounded command logs and canonical receipts, and publish only the reviewed local main commits with a normal non-force push"
+    ],
+    "never_does": [
+      "Activate production, revive an old Grant, launch or adopt a worker, change provider permissions or spend policy, or answer another Decision",
+      "Change the current pointer, complete or amend existing Actions, merge, deploy, delete branches or worktrees, reset or rebase Git, or stage arbitrary changes"
+    ]
+  },
+  "success": {
+    "effect": "Both implementation Actions are accepted and queued; the canonical settlement and this operator action are published on main. Production remains Off and the current proof pointer is unchanged.",
+    "next": "The scheduled follow-up can inspect the accepted work and prepare the canonical execution handoff. Starting production and any changed On authority semantics remain separate explicit gates."
+  },
+  "failure": {
+    "effect": "A stale or broadened precondition refuses. A script-only commit or applied settlement remains recoverable if a later command fails; nothing is discarded.",
+    "next": "Have the follow-up inspect the timestamped log and receipts. Retry this same action only for its unchanged operation or failed publication; moved queue, Ask or reviewed scope needs a fresh preview and refreshed action."
+  },
+  "reviewedBase": "fdafca81cc3843f3355e883cfe92d057c01fa609",
+  "askSha256": "d097ab1e6b42e0bb6fb4312db982733e6cc95e5906aa4ebbcf943f456d898e74",
+  "settlementFingerprint": "46b22ffc37626a52b33ab66ebff899f85a77e5179eda0a0272683c1b687b5f19",
+  "reviewedScriptSha256": "3f9f2e4abac2e0f9e0be5a1accd39a3523f426ce338187a5d2b08ac51616a487"
+}
