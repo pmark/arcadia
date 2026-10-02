@@ -41,7 +41,7 @@ export function manualBindingFingerprint(binding: ManualPreservationBinding): st
  * a revised tree gets a new identity without allowing a caller to choose one.
  */
 export function manualPreservationRequestId(binding: ManualPreservationBinding, candidateFingerprint: string): string {
-  if (!/^[0-9a-f]{40}$/.test(candidateFingerprint)) {
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(candidateFingerprint)) {
     throw validationError("Manual preservation requires an immutable validated candidate fingerprint.");
   }
   return `preserve:${binding.reservationId}:${candidateFingerprint}`;

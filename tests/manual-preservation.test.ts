@@ -134,6 +134,26 @@ describe("manual Go preservation binding", () => {
     });
     expect(fixtureGit(f.candidate, ["rev-list", "--count", "main..HEAD"])).toBe("1");
   });
+  it("derives snapshot identities from SHA-1 and SHA-256 Git trees only", () => {
+    const f = fixture();
+    const binding = bind(f);
+    const sha1Tree = snapshotCandidate(f.candidate);
+    expect(sha1Tree).toMatch(/^[0-9a-f]{40}$/);
+    expect(manualPreservationRequestId(binding, sha1Tree)).toBe(`preserve:${binding.reservationId}:${sha1Tree}`);
+
+    const sha256 = path.join(f.root, "sha256-tree");
+    fixtureGit(f.root, ["init", "--object-format=sha256", "-b", "main", sha256]);
+    writeFileSync(path.join(sha256, "snapshot.txt"), "sha256 tree\n");
+    fixtureGit(sha256, ["add", "snapshot.txt"]);
+    fixtureGit(sha256, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "sha256 fixture"]);
+    const sha256Tree = fixtureGit(sha256, ["rev-parse", "HEAD^{tree}"]);
+    expect(sha256Tree).toMatch(/^[0-9a-f]{64}$/);
+    expect(manualPreservationRequestId(binding, sha256Tree)).toBe(`preserve:${binding.reservationId}:${sha256Tree}`);
+
+    for (const oid of ["a".repeat(39), "a".repeat(41), "a".repeat(63), "a".repeat(65), "A".repeat(40), "g".repeat(40)]) {
+      expect(() => manualPreservationRequestId(binding, oid)).toThrow("immutable validated candidate fingerprint");
+    }
+  });
   it("recovers an existing reservation once and replays the same binding", () => {
     const f = fixture(); const before = readFileSync(path.join(f.repo, "PROJECT.md"));
     const first = bind(f); expect(bind(f)).toEqual(first);
