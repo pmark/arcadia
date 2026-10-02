@@ -1317,3 +1317,10 @@ updated: 2026-10-02
 - **Result:** Records Issue #847 evidence and its proposed named-profile wording reconciliation through open Decision 0079. The retained receipts and exact scope are concrete; this notification grants no approval or activation. The protected preservation launcher refused the inherited worktree because no active Session or manual handoff registers it; the reviewed branch is pushed and that refusal is retained in the report.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-ready-arcadia-pr873-review-cap-2026-10-02
+
+- **Did:** The Docker route passes real synthetic proof and 52 focused tests, but PR #873 is blocked at CodeRabbit’s three-round cap. Choose the one-shot /runs action “Authorize one additional bounded #847 review pass” to withdraw stale scope previews and finish current-host review; merging, activation, PPN audits and production remain gated. https://github.com/pmark/arcadia/pull/873
+- **Result:** Records the precise operator question required by the review cap, not consent to another pass. Stale Ask inputs are tracked in #875; the fixed-host socket portability finding is left for operator judgment. The protected preservation launcher also refuses this unregistered inherited worktree; the branch and proof are retained remotely.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
