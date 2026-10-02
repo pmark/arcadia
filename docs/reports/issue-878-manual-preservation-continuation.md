@@ -71,3 +71,18 @@ result are retained in the main checkout's ignored evidence folder
 `artifacts/generated/operator-scripts/runs/repair-878-authorized-preparation-20261002/`.
 This proves the candidate and launcher contract; it does not claim the live
 worker has the repaired implementation.
+
+The recovered candidate passed 53 tests with two existing skips, Notes
+validation, lint, TypeScript and the core build. The literal fixed launcher
+subsequently passed restricted host validation for tree
+`ac159db5e706169d6fa3d821fb69b01ae508c9b0`
+(`check-6W9y2U/validation.json`, producer `arcadia-host-seatbelt-v1`). Its final
+commit step correctly refused at `preserve.replay`: the **older installed**
+runtime reused `preserve:wtres_8c762d6463db4665bd` for the new tree. Attempt
+`45966052-7d52-4ef0-aa91-465e70623a4e` retains that refusal. No fresh request
+identity was supplied by the caller, no receipt was overwritten, and no new
+protected preservation receipt is claimed. Original protected code receipt
+`presv_a47d71b5cf6740669c` remains immutable; subsequent narrative custody and
+reconciliation were performed under the operator's recorded host exception.
+The installed-runtime limitation is the repair's separately gated installation
+follow-up, not a passing preservation claim.

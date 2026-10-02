@@ -39,6 +39,12 @@ at `86853e2e5`; canonical Log `log-pr888-bounded-host-recovery-authority-2026-10
 records that direct instruction. Merge `26fa3c333` retains both original
 histories and both canonical Mission Log append sets. PR #888 still requires
 review and exact-head checks before the separate reviewed-installation gate.
+The reconciled candidate passed 53 tests (two existing skips), lint, TypeScript
+and the core build. Restricted validation captured tree `ac159db5e706169d6fa3d821fb69b01ae508c9b0`,
+but the older installed runtime refused its reservation-only request ID at
+`preserve.replay`. The original protected receipt remains intact; subsequent
+document preservation and reconciliation used the explicit host exception.
+No new protected receipt or live installation is claimed.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 
