@@ -14,7 +14,8 @@
     "does": [
       "Require merged PR #873, exact-head CodeRabbit approval and all CI jobs green; verify source, protected packaged runtime and loaded-consumer identities before authority writes",
       "Approve only the pinned canonical Decision answer, publish only its canonical answer commit, install the exact protected one-shot Grant, submit one nonce-only request and retain its completed receipt",
-      "Recover only the same published approval or already-consumed receipt; refuse expiry, drift, dirty or divergent main, unrelated history and a different Grant"
+      "Recover only the same published approval or already-consumed receipt; refuse expiry, drift, dirty or divergent main, unrelated history and a different Grant",
+      "Before reporting success, require the exact consumed Grant, protected nonce receipt path and identical receipt authority; reject stale or cross-scope replay responses"
     ],
     "never_does": [
       "Merge PRs or reconcile Git, alter the installed network/credential profile, activate managed production, deploy or publish PPN, mutate PPN source or mark its release Action complete",

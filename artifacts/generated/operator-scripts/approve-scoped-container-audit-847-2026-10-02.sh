@@ -10,7 +10,7 @@ case "$1" in
     export ARCADIA_CONTAINER_OPERATOR_DESCRIPTOR="$library_dir/approve-scoped-container-audit-847-2026-10-02.json"
     export ARCADIA_CONTAINER_OPERATOR_RUN="$run_dir"
     if python3 - <<'PY' >"$run_dir/run.log" 2>&1
-import datetime, hashlib, json, os, pathlib, signal, subprocess, sys, time
+import datetime, hashlib, json, os, pathlib, signal, subprocess, sys, time, uuid
 d = json.loads(pathlib.Path(os.environ['ARCADIA_CONTAINER_OPERATOR_DESCRIPTOR']).read_text())
 out = pathlib.Path(os.environ['ARCADIA_CONTAINER_OPERATOR_RUN'])
 root = pathlib.Path('/Users/pmark/Dev/MR/Arcadia/arcadia')
@@ -25,6 +25,15 @@ def command(argv, cwd=root, timeout=30):
     if child.returncode: raise RuntimeError('Command refused: '+argv[0]+' '+stderr[-2000:])
     return stdout
 def sha(file): return hashlib.sha256(pathlib.Path(file).read_bytes()).hexdigest()
+def validate_scoped_result(result, grant, active, workspace):
+    nonce=result.get('nonce')
+    if not isinstance(nonce,str) or str(uuid.UUID(nonce)) != nonce: raise RuntimeError('Invalid receipt nonce; no success recorded.')
+    consumed=active.parent/(active.name+'.'+nonce+'.consumed')
+    if not consumed.is_file() or json.loads(consumed.read_text()) != grant: raise RuntimeError('Exact Grant was not consumed for this response; retain the pending request and Grant.')
+    expected=workspace/'artifacts/container-audits'/nonce/'receipt.json'
+    if pathlib.Path(result.get('receipt','')).resolve() != expected.resolve(): raise RuntimeError('Response receipt path does not match its protected nonce.')
+    receipt=json.loads(expected.read_text())
+    if receipt.get('authority') != grant['authority'] or receipt.get('ready') is not True or receipt.get('removed') is not True: raise RuntimeError('Receipt authority or completion differs from this exact Grant; no success recorded.')
 try:
     grant = d['grant']
     expiry = datetime.datetime.fromisoformat(grant['authority']['expiresAt'].replace('Z','+00:00'))
@@ -95,6 +104,7 @@ try:
         result=json.loads(command(['mise','exec','--','node',str(release/'dist/scripts/request-container-browser-audit.js')],cwd=pathlib.Path(grant['repository']),timeout=450))
     (out/'audit-response.json').write_text(json.dumps(result,indent=2)+'\n')
     if not result.get('ok') or not result.get('ready'): raise RuntimeError('Scoped audit failed; retain its consumed Grant and receipt. A retry requires review, not a reset.')
+    validate_scoped_result(result,grant,active,workspace)
     print(json.dumps(result,indent=2))
     print('One baseline audit completed. Chromium-version non-comparability remains explicit. No production or PPN release completion authority was granted.')
 except Exception as error:

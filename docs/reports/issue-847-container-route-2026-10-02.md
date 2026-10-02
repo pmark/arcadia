@@ -113,3 +113,30 @@ all seven CI jobs and a clean merge state, and uses `--match-head-commit`.
 Merging this preparation does not answer Decision 0079. The separate
 `approve-scoped-container-audit-847-2026-10-02` action requires reviewed installed
 source/runtime and the current-head gates before approving its one-shot scope.
+
+
+The one-shot operator action also verifies that the returned nonce consumed this
+exact Grant and that its protected receipt has identical authority, successful
+readiness and confirmed removal. A prior protected response cannot be credited
+to another scope. Its dormant validator is tested without running the authority
+entrypoint: missing consumption, all eight authority changes, source drift and a
+different receipt path each refuse.
+
+
+## Review-cap blocker
+
+The full review at `763043b87f59d42f7d5ba08a3952540a64f8b00d` returned
+`cap`, fixRound 4 / maximum 3. No merge approval is claimed. The remaining
+stale-input finding is tracked in #875; the two old activation Asks still need
+canonical withdrawal/archive. The other finding concerns the fixed
+`/Users/pmark/.docker/run/docker.sock` endpoint on another account/host. This
+scope is the tested current host; the child sets HOME to its receipt directory,
+so substituting homedir() there would not identify the daemon owner. Portability
+and any changed executor/Grant require separate scope/evidence; they are not
+silently applied at the cap.
+
+The operator question is whether to authorize one additional bounded pass to
+withdraw the old inputs, retain this tested host scope, and finish exact-head
+review/CI. Its permission-record action is one-shot and records only that choice;
+it does not launch work, merge or activate the audit. Without that input the
+automatic repair loop stops. Decision 0079 stays open and unanswered.
