@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 
 const SAFE_RUN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_OUTPUT_BYTES = 64 * 1024;
+const STALE_RUNNING_MS = 30_000;
 
 async function readTail(file: string): Promise<string> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
@@ -58,7 +59,10 @@ export async function GET(
       repeatable?: boolean;
     };
 
-    const stale = run.status === "running" && run.pid !== undefined && !processIsRunning(run.pid);
+    const stale = run.status === "running" && (
+      (run.pid !== undefined && !processIsRunning(run.pid)) ||
+      (run.pid === undefined && Date.now() - Date.parse(run.startedAt) > STALE_RUNNING_MS)
+    );
     const visibleRun = stale
       ? { ...run, status: "failed" as const, finishedAt: run.finishedAt ?? new Date().toISOString(), exitCode: run.exitCode ?? null, message: "The launcher stopped before recording a terminal result." }
       : run;
