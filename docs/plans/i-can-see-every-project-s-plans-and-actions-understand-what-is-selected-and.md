@@ -25,7 +25,7 @@ actions:
       - The contract carries a refreshed-at timestamp and explicit stale and conflicting flags, and introduces no stored status field, table, or scheduler.
       - Unit tests cover simultaneous Sessions, a selected-but-blocked Action, completed work awaiting integration, and a pointer/Session conflict.
     depends_on: []
-    decisions: []
+    decisions: ["0079"]
     references: ["apps/dashboard/app/flight-deck/page.tsx", "apps/dashboard/lib/flight-deck.ts", "apps/dashboard/lib/work-queue-types.ts", "apps/dashboard/components/plans-list.tsx", "docs/decisions/0077-choose-where-flight-deck-evidence-and-the-production-on-off-control-belong-in.md"]
   - id: build-flight-deck-execution-tree
     title: Build the expandable Project → Plan → Action tree on Flight Deck using existing Flight Deck components.
@@ -43,7 +43,7 @@ actions:
       - The view shows the last refreshed time and renders stale or conflicting state explicitly rather than hiding it.
       - The default view shows active work, and filters reveal completed and inactive Plans.
     depends_on: [define-flight-deck-tree-data-contract]
-    decisions: []
+    decisions: ["0079"]
     references: ["apps/dashboard/app/flight-deck/page.tsx", "apps/dashboard/lib/flight-deck.ts", "apps/dashboard/lib/work-queue-types.ts", "apps/dashboard/components/plans-list.tsx", "docs/decisions/0077-choose-where-flight-deck-evidence-and-the-production-on-off-control-belong-in.md", "apps/dashboard/components/dashboard-ui.tsx"]
   - id: validate-flight-deck-tree-on-real-state
     title: Validate the Flight Deck tree against real Arcadia and PPN state.
