@@ -138,6 +138,14 @@ function propagateOneProject(
     };
   }
 
+  let baseBranch: string;
+  try { baseBranch = resolveBaseBranch(repoPath); }
+  catch (error) { return { ...base, repoPath, status: "error", detail: error instanceof Error ? error.message : String(error) }; }
+  const currentBranch = tryRunCommand(context.runCommand, repoPath, "git", ["branch", "--show-current"]);
+  if (currentBranch !== baseBranch) {
+    return { ...base, repoPath, status: "error", detail: `Guidance propagation requires the base checkout on ${baseBranch}; found ${currentBranch || "detached or unreadable HEAD"}. Preserve this checkout and use the authorized base checkout; propagation will not switch another branch.` };
+  }
+
   const plan = computeWayPropagationPlan(repoPath, project.slug);
   const writable = plan.changes.filter((change) => change.action === "write");
   const unmanageable = plan.unmanageable.map((change) => change.path);
@@ -164,7 +172,7 @@ function propagateOneProject(
     };
   }
 
-  return applyPropagation(repoPath, plan, writable, unmanageable, context, base);
+  return applyPropagation(repoPath, plan, writable, unmanageable, context, base, project.slug);
 }
 
 function applyPropagation(
@@ -173,7 +181,8 @@ function applyPropagation(
   writable: WayPropagationPlan["changes"],
   unmanageable: string[],
   context: { now: () => string; runCommand: CommandRunner },
-  base: Omit<WayPropagationResult, "status" | "detail">
+  base: Omit<WayPropagationResult, "status" | "detail">,
+  projectSlug: string | null
 ): WayPropagationResult {
   const dirty = uncommittedChanges(repoPath);
   if (dirty.length > 0) {
@@ -205,7 +214,10 @@ function applyPropagation(
     runOrThrow(context.runCommand, repoPath, "git", ["checkout", baseBranch]);
     runOrThrow(context.runCommand, repoPath, "git", ["checkout", "-b", branch]);
 
-    // The checked-out base can differ from the branch inspected above.
+    const destinationPlan = computeWayPropagationPlan(repoPath, projectSlug);
+    if (JSON.stringify(destinationPlan.changes) !== JSON.stringify(plan.changes)) {
+      throw new Error("Guidance adoption changed after checkout; preserve the destination and rerun planning before any publication.");
+    }
     for (const change of writable) assertGuidanceTarget(repoPath, change.path);
     for (const change of writable) {
       const target = path.join(repoPath, change.path);

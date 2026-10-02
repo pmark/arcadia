@@ -62,7 +62,9 @@ Setup checks canonical resources and budgets before writing, preserves Markdown
 and root additions outside managed regions, refuses foreign JSON indexes and
 escaping paths (including dangling symlinks), and installs every referenced
 shared resource. Propagation refuses all planned writes if its reference-library
-installation is blocked, so it cannot publish a partial bootstrap/library pair. Propagation uses
+installation is blocked, so it cannot publish a partial bootstrap/library pair. It refuses feature or
+detached target checkouts and revalidates destination ownership/the entire plan
+after checkout before any write. Propagation uses
 the same adopter and keeps initial bootstrap/resource installation in the
 **governing** tier together. Way status detects missing/stale resources and
 budget problems. JSON dispatch and managed launches refuse unsafe delivery.
@@ -82,6 +84,10 @@ UTF-8 overflow, preservation/idempotency, and mandatory late-rule visibility.
 
 - Focused delivery/adoption/dispatch suites: 99 tests passed; the final new
   guidance suite contains 16 regression scenarios.
+- The security review also identified destination drift across checkout.
+  Regressions cover a feature-only repaired library and foreign ownership
+  introduced after checkout; neither can be overwritten or published. Three
+  relevant suites passed 52 tests and the final build passed.
 - CodeRabbit round one: four verified findings repaired; human dispatch
   refusals and whole-word trigger matching have regression coverage. Four
   focused suites passed 57 tests and the refreshed guidance audit passed.
@@ -95,8 +101,18 @@ UTF-8 overflow, preservation/idempotency, and mandatory late-rule visibility.
   2,701 tests passed, 21 skipped. Final guidance suite and lint reruns passed
   after the last override-preflight adjustment.
 
+## Review gate
+
+CodeRabbit round one identified four actionable findings; they were repaired
+and its second loop reported no unresolved threads. The second review was
+**rate limited**, with **no approval on that head**. This is not merge approval.
+The security-summary destination-drift concern was also repaired and validated.
+CI and review must be checked on the final published head; do not infer approval
+from a green rate-limit status.
+
 ## Fresh-provider acceptance still outstanding
 
+Version-only checks found Codex CLI 0.157.1 and Claude Code 2.1.267 installed.
 No new native coding-agent process or paid provider request was launched for a
 behavioral rehearsal. The current session began with the prior instruction
 context, so its reads cannot honestly prove compact automatic startup. The file
