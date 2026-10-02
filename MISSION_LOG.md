@@ -1310,3 +1310,10 @@ updated: 2026-10-02
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-ready-arcadia-pr869-decision-answer-2026-10-01
+
+- **Did:** 🟢 Flight Deck tree Plan is CodeRabbit-approved and green — it needs your answer on Decision 0079 (Selected vs Running indicators) and your merge; nothing runs until you approve the Plan: https://github.com/pmark/arcadia/pull/869
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
