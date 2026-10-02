@@ -4,7 +4,7 @@ type: decision
 id: "0078"
 slug: choose-a-bounded-host-owned-loopback-headless-audit-route-for-issue-847-before
 project: arcadia
-status: open
+status: approved
 question: "Choose a bounded host-owned loopback/headless audit route for Issue #847 before any network or credential permission change. The installed arcadia-unattended profile has been measured: loopback EPERM, Chrome SIGABRT, external socket and synthetic credential reads denied. The PPN measurement remains unperformed."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-01
+answer: Prepare a host-owned audit route
+decided: 2026-10-01
 ---
 
 # Decision 0078: Choose a bounded host-owned loopback/headless audit route for Issue #847 before any network or credential permission change. The installed arcadia-unattended profile has been measured: loopback EPERM, Chrome SIGABRT, external socket and synthetic credential reads denied. The PPN measurement remains unperformed.
