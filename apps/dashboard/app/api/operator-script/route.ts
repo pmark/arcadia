@@ -1,6 +1,7 @@
 import { OperatorScriptContractError, validateOperatorScriptContract } from "../../../../../src/operatorActions/libraryContract.js";
 import { constants } from "node:fs";
 import { access, mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -13,24 +14,47 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // /runs reads the main checkout's library, never a worktree's copy.
-const LIBRARY_PATH =
+export const LIBRARY_PATH =
   process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY?.trim() ||
   path.join(os.homedir(), "Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts");
 const STATE_PATH = path.join(LIBRARY_PATH, "runs", "state");
-const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const LAUNCHES_PATH = path.join(LIBRARY_PATH, "runs", "operator");
+export const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const STALE_LOCK_MS = 30_000;
 
-interface OperatorScriptState {
+export interface OperatorScriptState {
   status: "running" | "succeeded" | "failed";
   pid?: number;
   startedAt?: string;
   finishedAt?: string;
   exitCode?: number | null;
   message?: string;
+  runId?: string;
+}
+
+export interface OperatorScriptRun {
+  schema: "arcadia-operator-script-run-v1";
+  runId: string;
+  scriptId: string;
+  status: "running" | "succeeded" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  exitCode?: number | null;
+  message?: string;
+  runDirectory: string;
+  descriptor: {
+    title: string;
+    problem: string;
+    desiredEffect: string;
+    authority: { does: string[]; never_does: string[] };
+    success: { effect: string; next: string };
+    failure: { effect: string; next: string };
+  };
+  files: { stdout: string; stderr: string; descriptor: string; state: string };
 }
 
 /** Load and validate an operator-script descriptor and its executable path. */
-async function loadDescriptor(id: string): Promise<{ descriptor: ReturnType<typeof validateOperatorScriptContract>; scriptPath: string }> {
+export async function loadDescriptor(id: string): Promise<{ descriptor: ReturnType<typeof validateOperatorScriptContract>; scriptPath: string }> {
   if (!SAFE_ID.test(id)) throw new Error("Invalid operator-script id.");
   const descriptorPath = path.join(LIBRARY_PATH, `${id}.json`);
   const scriptPath = await realpath(path.join(LIBRARY_PATH, `${id}.sh`));
@@ -41,7 +65,7 @@ async function loadDescriptor(id: string): Promise<{ descriptor: ReturnType<type
   return { descriptor, scriptPath };
 }
 
-async function loadState(id: string): Promise<OperatorScriptState | null> {
+export async function loadState(id: string): Promise<OperatorScriptState | null> {
   try {
     return JSON.parse(await readFile(path.join(STATE_PATH, `${id}.json`), "utf8")) as OperatorScriptState;
   } catch (error) {
@@ -57,7 +81,7 @@ async function writeStateAtomically(id: string, state: OperatorScriptState): Pro
   await rename(temporary, destination);
 }
 
-function processIsRunning(pid: number | undefined): boolean {
+export function processIsRunning(pid: number | undefined): boolean {
   if (!pid) return false;
   try {
     process.kill(pid, 0);
@@ -100,28 +124,32 @@ export async function GET() {
         const state = recorded?.status === "running" && !processIsRunning(recorded.pid)
           ? { ...recorded, status: "failed" as const, message: "The launcher stopped before recording a result." }
           : recorded;
-        const descriptorMtime = (await stat(path.join(LIBRARY_PATH, `${id}.json`))).mtime.toISOString();
-        const updatedAt = state?.finishedAt ?? state?.startedAt ?? descriptorMtime;
+        const scriptMtime = (await stat(path.join(LIBRARY_PATH, `${id}.sh`))).mtime.toISOString();
+        const updatedAt = state?.finishedAt ?? state?.startedAt ?? scriptMtime;
         return {
           id: descriptor.id,
           kind: descriptor.kind,
           title: descriptor.title,
+          problem: descriptor.problem,
           desiredEffect: descriptor.desired_effect,
           authority: descriptor.authority,
+          success: descriptor.success,
+          failure: descriptor.failure,
           repeatable: descriptor.repeatable === true,
           state: state?.status === "running" ? state : receipt
             ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,
                 message: receipt.status === "running" && !processIsRunning(receipt.pid) ? "The bounded runner stopped; retry this exact action to recover its canonical receipt." : receipt.message }
             : state ?? { status: "available" },
           receipt,
-          updatedAt
+          updatedAt,
+          modifiedAt: scriptMtime
         };
       } catch (error) {
         console.error(`Ignoring invalid operator-script library entry ${id}.`, error);
         return null;
       }
     }));
-    return NextResponse.json({ scripts: scripts.filter((entry) => entry !== null) });
+    return NextResponse.json({ scripts: scripts.filter((entry): entry is NonNullable<typeof entry> => entry !== null).sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt)) });
   } catch (error) {
     console.error("Could not read the operator-script library.", error);
     return NextResponse.json({ error: "The operator-script library is unavailable." }, { status: 500 });
@@ -167,14 +195,41 @@ export async function POST(request: Request) {
       lockPath = null;
       return NextResponse.json({ error: `${descriptor.title} already completed and is no longer executable.` }, { status: 409 });
     }
+    const runId = `${new Date().toISOString().replace(/[-:.TZ]/g, "").toLowerCase()}-${randomUUID()}`;
+    const runDirectory = path.join(LAUNCHES_PATH, id, runId);
+    await mkdir(runDirectory, { recursive: true });
+    const descriptorSnapshotPath = path.join(runDirectory, "descriptor.json");
+    const runRecordPath = path.join(runDirectory, "run.json");
     const scriptStatePath = path.join(STATE_PATH, `${id}.json`);
-    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, scriptStatePath, lockPath], { detached: true, stdio: "ignore" });
+    const relativeRunDirectory = path.relative(LIBRARY_PATH, runDirectory);
+    const descriptorSnapshot = {
+      title: descriptor.title,
+      problem: descriptor.problem,
+      desiredEffect: descriptor.desired_effect,
+      authority: descriptor.authority,
+      success: descriptor.success,
+      failure: descriptor.failure
+    };
+    const startedAt = new Date().toISOString();
+    const initialRun: OperatorScriptRun = {
+      schema: "arcadia-operator-script-run-v1",
+      runId,
+      scriptId: id,
+      status: "running",
+      startedAt,
+      runDirectory: relativeRunDirectory,
+      descriptor: descriptorSnapshot,
+      files: { stdout: `${relativeRunDirectory}/stdout.log`, stderr: `${relativeRunDirectory}/stderr.log`, descriptor: `${relativeRunDirectory}/descriptor.json`, state: `${relativeRunDirectory}/run.json` }
+    };
+    await writeFile(descriptorSnapshotPath, JSON.stringify({ ...descriptor, authority: descriptor.authority }, null, 2) + "\n");
+    await writeFile(runRecordPath, JSON.stringify(initialRun, null, 2) + "\n");
+    const child = spawn(process.execPath, ["-e", operatorScriptRunnerSource, scriptPath, runRecordPath, scriptStatePath, lockPath, runDirectory, runId, descriptorSnapshotPath], { detached: true, stdio: "ignore" });
     await new Promise<void>((resolve, reject) => {
       child.once("spawn", resolve);
       child.once("error", reject);
     });
     child.unref();
-    return NextResponse.json({ message: `${descriptor.title} started. Progress is recorded in the operator-script runs folder.` }, { status: 202 });
+    return NextResponse.json({ runId, scriptId: id, status: "running", message: `${descriptor.title} started.` }, { status: 202 });
   } catch (error) {
     if (lockPath) {
       await writeStateAtomically(id, { status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." });

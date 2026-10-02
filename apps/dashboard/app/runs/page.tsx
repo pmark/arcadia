@@ -1,7 +1,8 @@
 "use client";
 
-import { CheckCircle2, CircleAlert, Loader2, Play } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { TerminalSquare } from "lucide-react";
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
 import { ApprovalQueue } from "../../components/approval-queue";
 import { DashboardChrome } from "../../components/chrome";
 import { EmptyState, ErrorState, RunCard, SessionCard } from "../../components/dashboard-ui";
@@ -10,262 +11,34 @@ import { useProductionControl } from "../../hooks/use-production-control";
 import { useRuns } from "../../hooks/use-runs";
 
 function CardSkeletons() {
-  return (
-    <div className="grid min-w-0 gap-3 md:grid-cols-2" aria-hidden="true">
-      {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className="h-28 animate-pulse rounded-md border border-line bg-panel" />
-      ))}
-    </div>
-  );
+  return <div className="grid min-w-0 gap-3 md:grid-cols-2" aria-hidden="true">{Array.from({ length: 2 }).map((_, index) => <div key={index} className="h-28 animate-pulse rounded-md border border-line bg-panel" />)}</div>;
 }
 
-interface OperatorScript {
-  id: string;
-  kind?: "grant";
-  title: string;
-  desiredEffect: string;
-  authority: { does: string[]; never_does: string[] };
-  repeatable: boolean;
-  receipt?: { reason: string; message: string; next: string; runDirectory: string; settlement?: unknown } | null;
-  state: {
-    status: "available" | "running" | "succeeded" | "failed";
-    startedAt?: string;
-    finishedAt?: string;
-    exitCode?: number | null;
-    message?: string;
-  };
-  updatedAt: string;
-}
-
-// Ready-but-unactioned scripts older than this are worth hiding by default;
-// anything running, failed, or freshly added should stay in front of the operator.
-const RECENT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-
-// Module-scoped, not a hook value, so a function that reads it can still be
-// forwarded through props without React Compiler's ref/immutability rules
-// treating that as an unsafe render-time read. Guards the single RunsPage
-// instance against an earlier poll response overwriting a later one.
-let operatorRefreshSequence = 0;
-
-/**
- * /runs leads with the buttons the operator comes here to press: the
- * Accept/Reject approval queue, then the operator actions that need
- * attention. Everything else (production control, live sessions and runs,
- * history, older actions) is collapsed and only mounts, fetches and polls
- * once it is opened.
- */
+/** Runs owns active work, production control and judgment; scripts live at /actions. */
 export default function RunsPage() {
   const [approvalRefreshSignal, setApprovalRefreshSignal] = useState(0);
-  const [scriptsRefreshing, setScriptsRefreshing] = useState(false);
-  const [scriptsLoadedAt, setScriptsLoadedAt] = useState<Date | null>(null);
-  const [operatorScripts, setOperatorScripts] = useState<OperatorScript[]>([]);
-  const [operatorScriptError, setOperatorScriptError] = useState<string | null>(null);
-  const [pendingScriptId, setPendingScriptId] = useState<string | null>(null);
-  const [operatorMessage, setOperatorMessage] = useState<string | null>(null);
-  const [olderReadyOpen, setOlderReadyOpen] = useState(false);
-  const [completedOpen, setCompletedOpen] = useState(false);
-
-  const refreshOperatorScripts = useCallback(async () => {
-    const requested = ++operatorRefreshSequence;
-    setScriptsRefreshing(true);
-    await fetch("/api/operator-script", { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
-        if (!response.ok) throw new Error(body.error ?? "Could not load operator scripts.");
-        if (requested === operatorRefreshSequence) {
-          setOperatorScripts(body.scripts ?? []);
-          setOperatorScriptError(null);
-          setScriptsLoadedAt(new Date());
-        }
-      })
-      .catch((error) => {
-        if (requested === operatorRefreshSequence) {
-          setOperatorScriptError(error instanceof Error ? error.message : String(error));
-        }
-      })
-      .finally(() => {
-        if (requested === operatorRefreshSequence) setScriptsRefreshing(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    void refreshOperatorScripts();
-    const interval = setInterval(() => void refreshOperatorScripts(), 3_000);
-    return () => clearInterval(interval);
-  }, [refreshOperatorScripts]);
-
-  const runScript = useCallback(async (script: OperatorScript) => {
-    setPendingScriptId(script.id);
-    setOperatorMessage(null);
-    setOperatorScriptError(null);
-    try {
-      const response = await fetch("/api/operator-script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: script.id })
-      });
-      const body = await response.json() as { message?: string; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Could not start the operator action.");
-      setOperatorMessage(body.message ?? `${script.title} started.`);
-      await refreshOperatorScripts();
-    } catch (error) {
-      setOperatorScriptError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPendingScriptId(null);
-    }
-  }, [refreshOperatorScripts]);
-
   return (
-    <DashboardChrome
-      title="Runs"
-      refreshing={scriptsRefreshing}
-      lastLoadedAt={scriptsLoadedAt}
-      onRefresh={() => {
-        setApprovalRefreshSignal((signal) => signal + 1);
-        void refreshOperatorScripts();
-      }}
-    >
+    <DashboardChrome title="Runs" refreshing={false} lastLoadedAt={null} onRefresh={() => setApprovalRefreshSignal((signal) => signal + 1)}>
       <ApprovalQueue refreshSignal={approvalRefreshSignal} />
-      {operatorScripts.length > 0 || operatorScriptError ? (
-        (() => {
-          const needsAttention = operatorScripts
-            .filter((script) => script.state.status === "running" || script.state.status === "failed")
-            .sort((a, b) => (a.state.status === b.state.status ? b.updatedAt.localeCompare(a.updatedAt) : a.state.status === "failed" ? -1 : 1));
-          const ready = operatorScripts
-            .filter((script) => script.state.status === "available" || (script.state.status === "succeeded" && script.repeatable))
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-          const now = Date.now();
-          const recentReady = ready.filter((script) => now - Date.parse(script.updatedAt) <= RECENT_WINDOW_MS);
-          const olderReady = ready.filter((script) => now - Date.parse(script.updatedAt) > RECENT_WINDOW_MS);
-          const completed = operatorScripts
-            .filter((script) => script.state.status === "succeeded" && !script.repeatable)
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-          return (
-            <section className="mb-6" aria-label="Operator script library">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Operator actions</h2>
-              {needsAttention.length > 0 ? (
-                <div className="mb-4 grid gap-3 md:grid-cols-2">
-                  {needsAttention.map((script) => (
-                    <OperatorScriptCard
-                      key={script.id}
-                      script={script}
-                      emphasized
-                      pending={pendingScriptId === script.id}
-                      disabled={pendingScriptId !== null}
-                      onRun={() => void runScript(script)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {recentReady.length > 0 ? (
-                <div className="mb-4 grid gap-3 md:grid-cols-2">
-                  {recentReady.map((script) => (
-                    <OperatorScriptCard
-                      key={script.id}
-                      script={script}
-                      pending={pendingScriptId === script.id}
-                      disabled={pendingScriptId !== null}
-                      onRun={() => void runScript(script)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {olderReady.length > 0 ? (
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    aria-expanded={olderReadyOpen}
-                    onClick={() => setOlderReadyOpen((open) => !open)}
-                    className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
-                  >
-                    {olderReadyOpen ? "▾" : "▸"} Older actions ({olderReady.length})
-                  </button>
-                  {olderReadyOpen ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {olderReady.map((script) => (
-                        <OperatorScriptCard
-                          key={script.id}
-                          script={script}
-                          pending={pendingScriptId === script.id}
-                          disabled={pendingScriptId !== null}
-                          onRun={() => void runScript(script)}
-                        />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {completed.length > 0 ? (
-                <div>
-                  <button
-                    type="button"
-                    aria-expanded={completedOpen}
-                    onClick={() => setCompletedOpen((open) => !open)}
-                    className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
-                  >
-                    {completedOpen ? "▾" : "▸"} Completed ({completed.length})
-                  </button>
-                  {completedOpen ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {completed.map((script) => (
-                        <OperatorScriptCard key={script.id} script={script} pending={false} disabled onRun={() => undefined} />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {operatorMessage ? <p className="mt-3 text-sm text-moss">{operatorMessage}</p> : null}
-              {operatorScriptError ? <p className="mt-3 text-sm text-clay">{operatorScriptError}</p> : null}
-            </section>
-          );
-        })()
-      ) : null}
-      <OnDemandSection label="Production control">
-        <ProductionControlSection />
-      </OnDemandSection>
-      <OnDemandSection label="Sessions and runs">
-        <SessionsAndRunsSection />
-      </OnDemandSection>
+      <Link href="/actions" className="mb-6 flex items-center justify-between rounded-md border border-line bg-panel p-4 shadow-soft transition hover:border-steel">
+        <span><span className="block font-semibold">Operator actions</span><span className="mt-1 block text-sm text-muted">Run a bounded script and stay on its result page.</span></span>
+        <TerminalSquare className="h-5 w-5 shrink-0 text-steel" aria-hidden="true" />
+      </Link>
+      <OnDemandSection label="Production control"><ProductionControlSection /></OnDemandSection>
+      <OnDemandSection label="Sessions and runs"><SessionsAndRunsSection /></OnDemandSection>
     </DashboardChrome>
   );
 }
 
-/** A collapsed disclosure whose children mount -- and so fetch and poll -- only once opened. */
 function OnDemandSection({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  return (
-    <section aria-label={label} className="mb-6">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="mb-3 inline-flex min-h-11 items-center text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
-      >
-        {open ? "▾" : "▸"} {label}
-      </button>
-      {open ? children : null}
-    </section>
-  );
+  return <section aria-label={label} className="mb-6"><button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="mb-3 inline-flex min-h-11 items-center text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink">{open ? "▾" : "▸"} {label}</button>{open ? children : null}</section>;
 }
 
 function ProductionControlSection() {
   const control = useProductionControl();
   const [nextPushOpen, setNextPushOpen] = useState(false);
-  return (
-    <ProductionControlPanel
-      core={control.core}
-      queue={control.queue}
-      alerts={control.alerts}
-      error={control.error}
-      queueError={control.queueError}
-      alertsError={control.alertsError}
-      toggling={control.toggling}
-      onToggle={control.toggle}
-      nextPushOpen={nextPushOpen}
-      onToggleNextPush={() => setNextPushOpen((open) => !open)}
-    />
-  );
+  return <ProductionControlPanel core={control.core} queue={control.queue} alerts={control.alerts} error={control.error} queueError={control.queueError} alertsError={control.alertsError} toggling={control.toggling} onToggle={control.toggle} nextPushOpen={nextPushOpen} onToggleNextPush={() => setNextPushOpen((open) => !open)} />;
 }
 
 function SessionsAndRunsSection() {
@@ -273,131 +46,15 @@ function SessionsAndRunsSection() {
   const runs = useRuns(historyOpen);
   const activeSessions = runs.data?.activeAgentSessions ?? [];
   const activeRuns = runs.data?.activeExecutionRuns ?? [];
-  return (
-    <>
-      {runs.error ? (
-        <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} />
-      ) : null}
-
-      <div aria-label="Active now" aria-busy={runs.loading} className="mb-6">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Active now</h3>
-        {runs.loading && !runs.data ? (
-          <CardSkeletons />
-        ) : activeSessions.length === 0 && activeRuns.length === 0 ? (
-          <EmptyState text="Nothing is currently prepared or running." />
-        ) : (
-          <div className="grid min-w-0 gap-3 md:grid-cols-2">
-            {activeSessions.map((session) => (
-              <SessionCard key={session.id} session={session} />
-            ))}
-            {activeRuns
-              .filter((run) => !activeSessions.some((session) => session.actionId === run.workItemId))
-              .map((run) => (
-                <RunCard key={run.id} run={run} />
-              ))}
-          </div>
-        )}
-      </div>
-
-      <div aria-label="Recent history">
-        <button
-          type="button"
-          aria-expanded={historyOpen}
-          onClick={() => setHistoryOpen((open) => !open)}
-          className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink"
-        >
-          {historyOpen ? "▾" : "▸"} Recent history
-        </button>
-        {historyOpen ? (
-          !runs.historyLoaded ? (
-            <CardSkeletons />
-          ) : runs.data && runs.data.recentRuns.length > 0 ? (
-            <div className="grid min-w-0 gap-3 md:grid-cols-2">
-              {runs.data.recentRuns.map((run) => (
-                <RunCard key={run.id} run={run} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No runs yet." />
-          )
-        ) : null}
-      </div>
-    </>
-  );
-}
-
-function operatorStateLabel(status: OperatorScript["state"]["status"]): string {
-  return status === "available" ? "Ready" : status === "running" ? "Running" : status === "succeeded" ? "Completed" : "Failed";
-}
-
-function operatorStateClass(status: OperatorScript["state"]["status"]): string {
-  if (status === "running") return "bg-steel/10 text-steel";
-  if (status === "succeeded") return "bg-moss/10 text-moss";
-  if (status === "failed") return "bg-clay/10 text-clay";
-  return "bg-line text-muted";
-}
-
-function OperatorScriptCard({
-  script,
-  emphasized = false,
-  pending,
-  disabled,
-  onRun
-}: {
-  script: OperatorScript;
-  emphasized?: boolean;
-  pending: boolean;
-  disabled: boolean;
-  onRun: () => void;
-}) {
-  const isArchived = script.state.status === "succeeded" && !script.repeatable;
-  return (
-    <article
-      className={`rounded-md border p-4 shadow-soft ${emphasized ? "border-clay/60 bg-clay/5" : "border-line bg-panel"}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-semibold">{script.title}</h3>
-          {script.kind === "grant" ? <span className="mt-1 inline-flex rounded-full bg-gold/10 px-2 py-1 text-xs font-semibold text-gold">Grant</span> : null}
-        </div>
-        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${operatorStateClass(script.state.status)}`}>
-          {operatorStateLabel(script.state.status)}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-muted">{script.desiredEffect}</p>
-      {script.state.status === "failed" ? (
-        <p className="mt-3 flex items-start gap-2 text-sm text-clay">
-          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {script.state.message ?? `The last attempt failed${script.state.exitCode == null ? "." : ` with exit code ${script.state.exitCode}.`}`}
-        </p>
-      ) : null}
-      {script.state.status === "succeeded" ? (
-        <p className="mt-3 flex items-start gap-2 text-sm text-moss">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          Completed{script.repeatable ? "; this reusable action remains available." : "; this one-shot action is now disabled."}
-        </p>
-      ) : null}
-      {script.receipt ? (
-        <div className="mt-3 text-sm">
-          <p>{script.receipt.message}</p>
-          <p className="mt-1 text-muted">Next: {script.receipt.next}</p>
-          <details className="mt-2">
-            <summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary>
-            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre>
-          </details>
-        </div>
-      ) : null}
-      {isArchived ? null : (
-        <button
-          type="button"
-          disabled={disabled || script.state.status === "running"}
-          onClick={onRun}
-          className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
-        >
-          {pending || script.state.status === "running" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
-          {pending ? "Starting…" : script.state.status === "running" ? "Running…" : script.state.status === "failed" ? "Retry" : "Run"}
-        </button>
-      )}
-    </article>
-  );
+  return <>
+    {runs.error ? <ErrorState title="Runs unavailable" message={runs.stale ? `${runs.error} Showing the last known state.` : runs.error} /> : null}
+    <div aria-label="Active now" aria-busy={runs.loading} className="mb-6">
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">Active now</h3>
+      {runs.loading && !runs.data ? <CardSkeletons /> : activeSessions.length === 0 && activeRuns.length === 0 ? <EmptyState text="Nothing is currently prepared or running." /> : <div className="grid min-w-0 gap-3 md:grid-cols-2">{activeSessions.map((session) => <SessionCard key={session.id} session={session} />)}{activeRuns.filter((run) => !activeSessions.some((session) => session.actionId === run.workItemId)).map((run) => <RunCard key={run.id} run={run} />)}</div>}
+    </div>
+    <div aria-label="Recent history">
+      <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)} className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted hover:text-ink">{historyOpen ? "▾" : "▸"} Recent history</button>
+      {historyOpen ? !runs.historyLoaded ? <CardSkeletons /> : runs.data && runs.data.recentRuns.length > 0 ? <div className="grid min-w-0 gap-3 md:grid-cols-2">{runs.data.recentRuns.map((run) => <RunCard key={run.id} run={run} />)}</div> : <EmptyState text="No runs yet." /> : null}
+    </div>
+  </>;
 }

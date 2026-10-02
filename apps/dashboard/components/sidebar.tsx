@@ -15,6 +15,7 @@ import {
   Radar,
   Route,
   Target,
+  TerminalSquare,
   X,
   type LucideIcon
 } from "lucide-react";
@@ -35,6 +36,7 @@ const PRIMARY_NAV = [
   { href: "/reports", label: "Reports", icon: NotebookText },
   { href: "/admin/pull-requests", label: "Pull Requests", icon: GitPullRequest },
   { href: "/review", label: "Decisions", icon: Eye },
+  { href: "/actions", label: "Operator actions", icon: TerminalSquare },
   { href: "/qa", label: "QA", icon: ListChecks },
   { href: "/dashboard", label: "Full Dashboard", icon: LayoutGrid }
 ];
@@ -117,7 +119,7 @@ export function Sidebar() {
                 <nav className="grid gap-1">
                   {PRIMARY_NAV.map((item) => {
                     const Icon = item.icon;
-                    const active = pathname === item.href;
+                    const active = pathname === item.href || (item.href === "/actions" && pathname.startsWith("/actions/"));
                     return (
                       <Link
                         key={item.href}
