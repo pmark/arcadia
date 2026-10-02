@@ -5,6 +5,7 @@ import { parseDoc } from "../docs/parse.js";
 import { validateContainerAuditAuthority, type ContainerAuditAuthority } from "./containerBrowserAudit.js";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 
 export const CONTAINER_AUDIT_REQUEST = ".arcadia/container-audit.request";
@@ -71,7 +72,7 @@ export function processContainerAuditRequest(workspace: string, repository: stri
     validateContainerAuditAuthority(grant.authority);
     const decision = parseDoc(path.basename(grant.decisionPath), grant.decisionPath, readFileSync(grant.decisionPath, "utf8"));
     if (decision.errors.length || decision.doc?.type !== "decision" || decision.doc.status !== "approved" || decision.doc.answer !== containerAuditGrantAnswer(grant)) throw new Error("audit.grant: exact canonical Decision is not approved");
-    worker = proof?.workerEntrypoint ?? path.join(path.dirname(realpathSync("/Users/pmark/.local/bin/arcadia-go-broker-codex")), "dist", "scripts", "container-audit-host-worker.js");
+    worker = proof?.workerEntrypoint ?? path.join(path.dirname(realpathSync(path.join(homedir(), ".local", "bin", "arcadia-go-broker-codex"))), "dist", "scripts", "container-audit-host-worker.js");
     const executor = path.join(path.dirname(worker), "..", "src", "sessions", "containerBrowserAudit.js");
     if (!existsSync(worker) || createHash("sha256").update(readFileSync(executor)).digest("hex") !== grant.authority.executorHash) throw new Error("audit.grant: reviewed packaged host runtime is not installed");
     // One-shot: retries with this nonce recover its receipt, never re-execute.
@@ -80,21 +81,26 @@ export function processContainerAuditRequest(workspace: string, repository: stri
   } catch (error) { respond({ok: false, error: String(error)}); return; }
   inFlight.add(repository);
   const receiptDirectory = path.join(workspace, "artifacts", "container-audits", nonce);
-  mkdirSync(receiptDirectory, {recursive: true, mode: 0o700});
-  const child = fork(worker, [`${grantFile}.${nonce}.consumed`, receiptDirectory], {cwd: receiptDirectory, execArgv: [], env: {PATH: "/usr/local/bin:/usr/bin:/bin", HOME: receiptDirectory}, stdio: ["ignore", "ignore", "ignore", "ipc"]});
+  let timer: NodeJS.Timeout | undefined;
   let finished = false;
   const fail = (error: unknown) => {
     if (finished) return;
     finished = true;
     clearTimeout(timer);
     inFlight.delete(repository);
+    try {
       mkdirSync(receiptDirectory, {recursive: true, mode: 0o700});
       const failure = path.join(receiptDirectory, "failure.json");
       writeFileSync(failure, JSON.stringify({nonce, authority: grant.authority, error: String(error), at: new Date().toISOString()}), {mode: 0o600});
       respond({ok: false, error: String(error), receipt: failure});
+    } catch (writeError) { process.stderr.write(`Container audit failure receipt unavailable: ${String(writeError)}\n`); }
   };
-  const timer = setTimeout(() => { child.kill("SIGTERM"); fail("audit.host: worker response timeout; retain consumed Grant and inspect its named container receipt"); }, 420000);
-  child.once("message", result => { if (finished) return; finished = true; clearTimeout(timer); inFlight.delete(repository); respond(result as object); });
-  child.once("error", fail);
-  child.once("exit", code => { if (!finished) fail(`audit.host: worker exited without receipt (${code})`); });
+  try {
+    mkdirSync(receiptDirectory, {recursive: true, mode: 0o700});
+    const child = fork(worker, [`${grantFile}.${nonce}.consumed`, receiptDirectory], {cwd: receiptDirectory, execArgv: [], env: {PATH: "/usr/local/bin:/usr/bin:/bin", HOME: receiptDirectory}, stdio: ["ignore", "ignore", "ignore", "ipc"]});
+    timer = setTimeout(() => { child.kill("SIGTERM"); fail("audit.host: worker response timeout; retain consumed Grant and inspect its named container receipt"); }, 420000);
+    child.once("message", result => { if (finished) return; finished = true; clearTimeout(timer); inFlight.delete(repository); try { respond(result as object); } catch (error) { process.stderr.write(`Container audit response unavailable: ${String(error)}\n`); } });
+    child.once("error", fail);
+    child.once("exit", code => { if (!finished) fail(`audit.host: worker exited without receipt (${code})`); });
+  } catch (error) { fail(error); }
 }

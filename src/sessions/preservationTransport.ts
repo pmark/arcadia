@@ -351,10 +351,14 @@ export function processPreservationRequests(db: Database.Database, workspace: st
   latestPreservationRoutes.set(workspace, routes);
   writePreservationHeartbeat(workspace, routes, at);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
-  for (const repository of repositories) processContainerAuditRequest(workspace, repository.path);
+  for (const repository of repositories) {
+    try { processContainerAuditRequest(workspace, repository.path); }
+    catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
+  }
   let preservationInFlight = false;
   for (const lease of [...leases, ...handoffs]) {
-    processContainerAuditRequest(workspace, lease.worktree_path);
+    try { processContainerAuditRequest(workspace, lease.worktree_path); }
+    catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
     processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;

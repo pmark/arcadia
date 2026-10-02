@@ -1,0 +1,97 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "approve-scoped-container-audit-847-2026-10-02",
+  "title": "Approve one bounded PPN baseline Docker audit \u2014 after reviewed installation",
+  "script": "approve-scoped-container-audit-847-2026-10-02.sh",
+  "kind": "grant",
+  "repeatable": false,
+  "problem": "The installed unattended profile blocks browser measurements. The synthetic Docker route passes acquisition, denial, containment, timeout and exact-authority proofs, but is inactive.",
+  "desired_effect": "Record the exact scoped Decision answer and run exactly one preserved-baseline matrix after PR #873 is merged and its reviewed protected runtime is installed. Retain the Chromium-version non-comparability; do not complete release verification.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/approve-scoped-container-audit-847-2026-10-02.sh run",
+  "expires_at": "2026-10-02T18:45:00.000Z",
+  "scope": "PPN baseline 579878edd09f8274a2f5b9a9e8ac53e4dbc54769; four routes; 390\u00d7844 and 1440\u00d7900; one execution",
+  "authority": {
+    "does": [
+      "Require merged PR #873, exact-head CodeRabbit approval and all CI jobs green; verify source, protected packaged runtime and loaded-consumer identities before authority writes",
+      "Approve only the pinned canonical Decision answer, publish only its canonical answer commit, install the exact protected one-shot Grant, submit one nonce-only request and retain its completed receipt",
+      "Recover only the same published approval or already-consumed receipt; refuse expiry, drift, dirty or divergent main, unrelated history and a different Grant"
+    ],
+    "never_does": [
+      "Merge PRs or reconcile Git, alter the installed network/credential profile, activate managed production, deploy or publish PPN, mutate PPN source or mark its release Action complete",
+      "Read real credentials into the container, expose the Docker socket, substitute a mutable image or arbitrary commands/URLs/roots/flags, reset a consumed Grant or dashboard lifecycle"
+    ]
+  },
+  "success": {
+    "effect": "One baseline matrix has a host receipt; the one-shot action remains disabled with its durable receipt.",
+    "next": "Review the actual reports and Chromium 149 versus historical Chrome 154 non-comparability. Resume arcadia go in a new session for separately governed final-release work."
+  },
+  "failure": {
+    "effect": "No broader authority is installed. Approval publication failures retain the canonical commit; consumed Grants and host failure receipts remain preserved.",
+    "next": "Read the timestamped failure handoff. If code is not installed, operator-merge #873 then use the existing Recover Arcadia host services and protected transport action. Refresh an expired or changed scope through Arcadia; never reset or manually reconcile."
+  },
+  "decisionId": "0079",
+  "decisionPath": "docs/decisions/0079-decide-whether-to-activate-exactly-one-bounded-docker-host-audit-of-the.md",
+  "answer": "Authorize one bounded container audit 6ba40cb873552467cdc317d85c2786524b42f0f2f296e568c57b9e9e37cf56e0",
+  "openDecisionHash": "2482adbb87dc66903f8f5503bfd7fa0c1b0f737f8a53ce84ade7b548a3c884c2",
+  "approvalCommitSubject": "chore(arcadia): answer Decision 0079",
+  "agentAsk": {
+    "proposal": "activate-scoped-container-audit-847-2026-10-02-v3",
+    "intent": "decision",
+    "targetRef": null
+  },
+  "grant": {
+    "schema": "arcadia-container-audit-grant-v1",
+    "repository": "/Users/pmark/Dev/PrivatePracticeNow/platform",
+    "source": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/container-audit-preparation/nagel-baseline-579878/site",
+    "decisionPath": "/Users/pmark/Dev/MR/Arcadia/arcadia/docs/decisions/0079-decide-whether-to-activate-exactly-one-bounded-docker-host-audit-of-the.md",
+    "authority": {
+      "schema": "arcadia-container-audit-authority-v1",
+      "project": "private-practice-now",
+      "revision": "579878edd09f8274a2f5b9a9e8ac53e4dbc54769",
+      "image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+      "executorHash": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
+      "snapshotHash": "17502e95d3e51f64218a880fd18c80557ef3e60ddb62d761028ac0a5d05c4b6a",
+      "routes": [
+        "/",
+        "/specialties/parent-counseling",
+        "/specialties/teen-therapy",
+        "/contact"
+      ],
+      "viewports": [
+        {
+          "width": 390,
+          "height": 844
+        },
+        {
+          "width": 1440,
+          "height": 900
+        }
+      ],
+      "expiresAt": "2026-10-02T18:45:00.000Z"
+    }
+  },
+  "sourcePins": {
+    "src/sessions/containerBrowserAudit.ts": "f3c73aa751ce79cb426f99c924170a395f78f479c229fc217dbdc7ecb105e45c",
+    "src/sessions/containerAuditTransport.ts": "2de9187ff669f4418277c19000ba460fd969e85f83e01a50cc846eed75cd9bb0",
+    "src/sessions/hostBrowserAudit.ts": "0762da6b7fe55013d1bbdcb2f2b80577e3b1b9777dea218c299b0b44a5f96c11",
+    "src/sessions/preservationTransport.ts": "c6351ce2e48c6439f5066ab119390f78d374cffacaa3bc5d892d8333f53d8baa",
+    "src/commands/goBrokerInstall.ts": "ea6c34562ed5beaca98b8720c225955c400ea627f6d119e3be1f9cbb4b77f07d",
+    "scripts/container-audit-host-worker.ts": "d62d855d3db4ccda62f6e80950c4f8ba3313d91e9d82b91eaee183f3f9b130cf",
+    "scripts/request-container-browser-audit.ts": "5d1725c336f3baa04d3b275953f529c47c8e589795f3d1f51aa7006a536bd318",
+    "scripts/browser-audit-image/worker.mjs": "bf66bbea97647d3b4306e289964ae0b538d2a021bd59483004a860ccb21be3f3",
+    "scripts/browser-audit-image/Dockerfile": "6a9338716161690fdf5b0503a93e126732b93df493afe1bf72b1a77a3509bd2f",
+    "scripts/browser-audit-image/package-lock.json": "28fbb60fd6b95a222c7a5d784708861a40bc8318c2df96333c7e131c490007c3",
+    "scripts/browser-audit-image/identity.json": "ad0755dc912c9d4b0ef4cc088f0f1fe3f87c2d9758ee98d5fc6bd28d4037b7ba",
+    "package.json": "220978f97432b284eb8c8d24b5ae70a1631864b61a67df8e510f697cdcb68d2f"
+  },
+  "runtimePins": {
+    "dist/src/sessions/containerBrowserAudit.js": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
+    "dist/src/sessions/containerAuditTransport.js": "6d2c5013b7d90767fe103df9ea016b904e99387bf1621cbeb22fc618baa81a2b",
+    "dist/scripts/container-audit-host-worker.js": "8e9c394b4b514b4410b3d351faf963b810145ec54b2265d09e7a5deedfc3b65a",
+    "dist/scripts/request-container-browser-audit.js": "4387da12ffb755caae0d66185591cc294f38dafe9887d564f2d47a3438124610"
+  },
+  "loadedTransportHashes": [
+    "2de9187ff669f4418277c19000ba460fd969e85f83e01a50cc846eed75cd9bb0",
+    "6d2c5013b7d90767fe103df9ea016b904e99387bf1621cbeb22fc618baa81a2b"
+  ]
+}

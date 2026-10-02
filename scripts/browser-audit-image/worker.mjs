@@ -24,7 +24,7 @@ const server = http.createServer((req, res) => {
     let route = decodeURIComponent(url.pathname);
     if (route.endsWith('/')) route += 'index.html';
     else if (!path.extname(route)) route += '/index.html';
-    const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
+    const mime = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
     res.setHeader('Content-Type', mime[path.extname(route)] ?? 'application/octet-stream');
     res.end(readSite(route));
   } catch { res.writeHead(404); res.end('Not found'); }
@@ -64,7 +64,7 @@ try {
   for (const route of input.routes) for (const viewport of input.viewports) {
     const page = await browser.newPage({ viewport });
     const response = await page.goto(origin + route, { waitUntil: 'networkidle', timeout: 15000 });
-    results.renders.push({ route, viewport, status: response.status(), title: await page.title(), h1: await page.locator('h1').count() });
+    results.renders.push({ route, viewport, status: response.status(), title: await page.title(), h1: await page.locator('h1').count(), moduleMarker: await page.locator('body').getAttribute('data-module-ready') });
     await page.close();
     stage('lighthouse.acquire');
     const desktop = viewport.width >= 1000;

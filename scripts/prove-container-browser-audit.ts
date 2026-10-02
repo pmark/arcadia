@@ -12,7 +12,9 @@ const image = JSON.parse(readFileSync(new URL("./browser-audit-image/identity.js
 const root = mkdtempSync("/private/tmp/arcadia-container-proof-");
 const source = path.join(root, "source");
 mkdirSync(source);
-writeFileSync(path.join(source, "index.html"), '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Synthetic bounded browser fixture"><title>Bounded audit fixture</title></head><body><main><h1>Bounded audit fixture</h1><p>Static synthetic fixture served only inside the container.</p></main></body></html>');
+writeFileSync(path.join(source, "index.html"), '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Synthetic bounded browser fixture"><title>Bounded audit fixture</title></head><body><main><h1>Bounded audit fixture</h1><p>Static synthetic fixture served only inside the container.</p></main><script type="module" src="/ready.mjs"></script></body></html>');
+writeFileSync(path.join(source, "ready.mjs"), 'const r=await fetch("/fixture.json");if(r.headers.get("content-type")==="application/json"&&(await r.json()).ready)document.body.dataset.moduleReady="true";');
+writeFileSync(path.join(source, "fixture.json"), '{"ready":true}');
 const snapshotHash = snapshotAuditSite(source, path.join(root, "baseline"));
 const authority: ContainerAuditAuthority = { schema: "arcadia-container-audit-authority-v1", project: "browser-audit-fixture", revision: "001ee17263b27d5c8c8698c20a6e6d2dc2eb4f03", image, executorHash: containerAuditExecutorHash(), snapshotHash, routes: ["/"], viewports: [{ width: 390, height: 844 }, { width: 1440, height: 900 }], expiresAt: new Date(Date.now() + 600000).toISOString() };
 const normal = await runContainerBrowserAudit({ authority, source, receiptDirectory: path.join(root, "normal"), proof: "normal" });
@@ -41,7 +43,13 @@ const nonce = "12345678-1234-1234-1234-123456789abc";
 writeFileSync(path.join(repository, CONTAINER_AUDIT_REQUEST), JSON.stringify({nonce}));
 processContainerAuditRequest(workspace, repository, {workerEntrypoint: fileURLToPath(new URL("./container-audit-host-worker.js", import.meta.url))});
 let broker: {ok?: boolean; receipt?: string; error?: string} = {};
-for (let i=0; i<260; i++) { try { broker = JSON.parse(readFileSync(containerAuditResponsePath(workspace, nonce), "utf8")); break; } catch { await new Promise(resolve => setTimeout(resolve, 1000)); } }
+for (let i=0; i<430; i++) { try { broker = JSON.parse(readFileSync(containerAuditResponsePath(workspace, nonce), "utf8")); break; } catch { await new Promise(resolve => setTimeout(resolve, 1000)); } }
+if (typeof broker.ok !== "boolean") {
+  const summary = {schema: "arcadia-container-browser-proof-v1", root, ready: false, normal, stalled, broker: {ok: false, error: "Host broker response unavailable after bounded wait"}, timeoutProven: Boolean(timeoutProven), detachedGroupProven, sourceUnchanged, authority};
+  writeFileSync(path.join(root, "summary.json"), JSON.stringify(summary, null, 2));
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  process.exitCode = 2;
+} else {
 const authorityDenials: Record<string, boolean> = {};
 for (const [field, change] of Object.entries({project: "different-project", revision: "a".repeat(40), image: `sha256:${"a".repeat(64)}`, executorHash: "a".repeat(64), snapshotHash: "a".repeat(64), routes: ["/other/"], viewports: [{width: 400, height: 850}], expiresAt: new Date(Date.now()+300000).toISOString()})) {
   const altered = {...grant, authority: {...grant.authority, [field]: change}};
@@ -52,7 +60,9 @@ for (const [field, change] of Object.entries({project: "different-project", revi
   const response = JSON.parse(readFileSync(containerAuditResponsePath(workspace, driftNonce), "utf8"));
   authorityDenials[field] = response.ok === false && /audit\.(?:grant|authority)/.test(response.error);
 }
-const summary = { schema: "arcadia-container-browser-proof-v1", root, ready: ready && broker.ok === true && Object.values(authorityDenials).every(Boolean), normal, stalled, broker, authorityDenials, timeoutProven: Boolean(timeoutProven), detachedGroupProven, sourceUnchanged, authority };
+const brokerModuleRendered = Boolean(broker.receipt && JSON.parse(readFileSync(broker.receipt, "utf8")).result?.renders.every((r: {moduleMarker?: string}) => r.moduleMarker === "true"));
+const summary = { schema: "arcadia-container-browser-proof-v1", root, ready: ready && broker.ok === true && brokerModuleRendered && Object.values(authorityDenials).every(Boolean), normal, stalled, broker, brokerModuleRendered, authorityDenials, timeoutProven: Boolean(timeoutProven), detachedGroupProven, sourceUnchanged, authority };
 writeFileSync(path.join(root, "summary.json"), JSON.stringify(summary, null, 2));
 process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 process.exitCode = summary.ready ? 0 : 2;
+}

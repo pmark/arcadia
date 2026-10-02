@@ -63,7 +63,7 @@ export async function runContainerBrowserAudit(binding: { authority: ContainerAu
   const image = docker(["image", "inspect", binding.authority.image, "--format", "{{.Id}}"]);
   if (image.status !== 0 || image.stdout.trim() !== binding.authority.image) throw new Error("audit.image: reviewed immutable local image unavailable");
   const receipt = path.join(root, "receipt.json");
-  const journal = { schema: "arcadia-container-audit-receipt-v1", authority: binding.authority, name, createdAt: new Date().toISOString(), stage: "container.create", timedOut: false, removed: false, ready: false, exit: null as number | null, stdout: "", stderr: "", inspection: null as unknown, processes: "", result: null as null | { renders: Array<{status: number}>; reports: Array<{lhr: {runtimeError?: unknown}}> ; denials: Record<string,string>; detachedChild: number | null }, cleanupError: "" };
+  const journal = { schema: "arcadia-container-audit-receipt-v1", authority: binding.authority, name, createdAt: new Date().toISOString(), stage: "container.create", timedOut: false, removed: false, ready: false, exit: null as number | null, stdout: "", stderr: "", inspection: null as unknown, processes: "", result: null as null | { renders: Array<{status: number; moduleMarker?: string}>; reports: Array<{lhr: {runtimeError?: unknown}}> ; denials: Record<string,string>; detachedChild: number | null }, cleanupError: "" };
   const persist = () => { writeFileSync(`${receipt}.tmp`, JSON.stringify(journal, null, 2), { mode: 0o600 }); renameSync(`${receipt}.tmp`, receipt); };
   persist();
   try {
@@ -99,7 +99,7 @@ export async function runContainerBrowserAudit(binding: { authority: ContainerAu
     const result = journal.result;
     const acquired = result && result.reports.length === binding.authority.routes.length * binding.authority.viewports.length && result.renders.every(r => r.status === 200) && result.reports.every(r => !r.lhr.runtimeError);
     const denied = result && ["external", "private", "hostGateway"].every(key => ["ENETUNREACH", "EHOSTUNREACH", "EACCES", "EPERM"].includes(result.denials[key])) && result.denials.credentials === "EACCES" && result.denials.dockerSocket === "ENOENT" && result.denials.browserExternal === "NETWORK_DENIED";
-    journal.ready = Boolean(!journal.timedOut && journal.exit === 0 && journal.removed && acquired && (!binding.proof || (denied && result?.detachedChild)));
+    journal.ready = Boolean(!journal.timedOut && journal.exit === 0 && journal.removed && acquired && (!binding.proof || (denied && result?.detachedChild && result.renders.every(r => r.moduleMarker === "true"))));
     if (journal.ready) journal.stage = "complete";
     persist();
     return { ready: journal.ready, receipt };
