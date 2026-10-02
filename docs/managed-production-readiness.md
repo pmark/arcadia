@@ -2,13 +2,13 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-01**, after the renewed v6 trial, installed #860, #865 and #866 repairs, and the Issue #847 host-boundary experiments.
+Latest derivation: **2026-10-02**, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
 
 ## Current answer
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
-Production is **Inactive at revision 27, with zero live admissions**. The dependent Action's completed candidate has not been integrated into the fixture base after Off. Its terminal exit has accepted completion and its candidate is clean at settlement commit `c6b4c4e`, but no host preservation receipt exists because Off preceded reconciliation. Installed #866 adds exact terminal validation and preservation under a fresh Grant before #865's integration path; that path is test-proven but has not run on the retained live v6 candidate. Arcadia settled a `split` Ask against the original parent proof: exactly three of seven criteria are recorded met, while four remain open. This does not claim the whole proof is complete.
+Production is **Inactive at revision 29, with zero live admissions**. The operator pressed the fresh exact `/runs` Grant for the retained B candidate. Host validation passed, preservation receipt `presv_af1defad33604b5893` binds terminal Session `session_b82d2b412265419482` to the unchanged candidate, and the fixture base advanced exactly once from `a6b539d` to settlement commit `c6b4c4e`. The eight-Session set remained unchanged; no replacement coding Session launched. Off was restored at revision 29. The preservation receipt is `LOCAL ONLY`, so this fixture commit is recoverable on this host but not claimed as remotely published. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) and retained `/runs` receipt separate this live result from the original seven-Session A sequence.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 
@@ -20,10 +20,10 @@ PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approve
 
 ## Vital few next steps
 
-1. Publish a fresh, one-shot `/runs` Grant for only the retained v6 dependent candidate. Its own exact operator approval is required before activation; do not reuse the consumed v6 button. After approval, observe the smallest bounded installed recovery, return policy to Off, and assess the four remaining v6 criteria. A new provider trial is justified only for an exact criterion still lacking proof, especially the literal two-Session split completion.
-2. Keep the completed terminal repair distinct from live evidence. #866 binds the accepted exit and exact settlement, revalidates the unchanged candidate under current policy, creates the canonical preservation receipt without reviving a Session, then uses #865's pinned integration path. Its installation and test receipts do not claim B has already integrated.
+1. Keep B's completed recovery closed: the exact Grant was consumed, the candidate integrated once, and production is Off. Reassess the remaining parent criteria without repeating B or reusing the succeeded button. The literal two-Session A completion remains unproven; browser closure and a complete operator-intervention ledger are also not established by current receipts.
+2. Preserve the completed terminal repair and live evidence separately. #866 bound the accepted exit and exact settlement, validated the unchanged candidate, and created the canonical preservation receipt without reviving a Session; #865's pinned path integrated it. The recorded validation command exited 0, fixture main and candidate both resolve to `c6b4c4e`, and the one base-advance receipt records the transition.
 3. Keep the present single-Project scope. The concrete restriction in `tests/production-tick.test.ts` passed in the full suite: a Project removed from the active policy receives no scheduling, pointer commit or new launch, even while its prior terminal Session is reconciled. This is fixture proof of that restriction, not authority or evidence to widen the live Grant to multiple Projects. Address any qualified-target gate inconsistency only if full-dispatch impact reproduces.
-4. Reassess the existing parent two-Action proof against all live evidence and independently required validation. Missing authority remains one genuine bounded approval; do not ask the operator to relay a receipt or inspect a database.
+4. Keep every unproven parent criterion open through the governed Ask path. A fresh live trial is warranted only for the exact literal split or other still-missing criterion, with its own hermetic replay and exact Grant. Do not ask the operator to relay a receipt or inspect a database.
 
 ## What the evidence proves
 
@@ -36,7 +36,7 @@ PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approve
 | Dependent Action | Admitted automatically after first candidate integration, with a fresh candidate. |
 | Off and supported worker restart during dependent work | Performed by the bounded host action; no duplicate or reactivation in its recorded observation window. |
 | Dependent candidate completion after Off | Canonical accepted completion observed. |
-| Dependent candidate preservation and final integration | Pending; Off withheld host validation and preservation, and Inactive policy supplies no integration authority. |
+| Dependent candidate preservation and final integration | Passed under the fresh one-shot Grant: host validation exited 0; `presv_af1defad33604b5893` pins the terminal candidate; fixture base advanced `a6b539d` → `c6b4c4e` once; no new Session; Off revision 29, zero live admissions. |
 | Original parent proof split | Three supported criteria settled through Arcadia's canonical split path; four remain open under `finish-two-action-unattended-production-proof`. |
 
 Exact identities, revisions, host/provider, receipts, refusal evidence and every operator intervention remain in the local generated-script run evidence. Tests and source analysis are separate from live proof. Neither process exit nor a passing generic check proves arbitrary acceptance criteria.
@@ -49,7 +49,7 @@ The active Plan contains **150 Actions: 119 done and 31 open**, with zero Action
 
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
-The original and renewed one-shot Grants are consumed/revoked. A future live trial or integration requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation. A Grant never starts a Session, turns production Off, restarts a worker, merges, deploys, changes credentials, or widens its scope.
+The original, renewed, and exact B-recovery one-shot Grants are consumed/revoked. A future live trial requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation. The B-recovery operator action itself returned its own Grant to Off, as its reviewed descriptor specified; the Grant did not start a Session, restart a worker, merge, deploy, change credentials, or widen its scope.
 
 The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
