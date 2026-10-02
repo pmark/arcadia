@@ -1349,3 +1349,10 @@ updated: 2026-10-02
 - **Result:** The operator selected the concrete exception after protected preservation refused incompatible base drift and fixed Go refused a second candidate while narratives were dirty. This Log records the human authorization; it neither substitutes for it nor grants new authority. Canonical application waits until the authorized documentation preservation makes the candidate clean.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-opened-arcadia-pr888
+
+- **Did:** Manual preservation snapshot identity repair is published for review in draft PR https://github.com/pmark/arcadia/pull/888; protected final narrative preservation is blocked by base drift.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
