@@ -196,3 +196,30 @@ shortcut for a new proof. `/runs` reads only the main-checkout library, so a
 fresh Grant needs a reviewed merged pair, a new fixture/candidate, hermetic
 replay, and a current-revision preview. The CLI-only control has no browser
 close event; do not relabel worker restart as literal browser proof.
+
+## Accept a draft Plan before activating it
+
+keys: editor, draft Plan, acceptance, activation, --activate, responsibility, target_ref
+
+Untargeted `intent: plan` creation accepts an **inactive draft**; it cannot activate that Plan in the same settlement.
+Then draft a separate `intent: plan` Ask with `target_ref: plan/<slug>` and no Action amendments.
+Preview activation with `--activate --action <id> --model <model> --effort <level> --top`; omit `--responsibility`, which makes activation refuse as an amendment.
+Apply only with operator authority and that exact preview fingerprint; preserve unfinished work in the previous Plan.
+
+## Check the operational queue after settlement commits
+
+keys: activation, operational sync, Batch order, database locked, orderValid, unpositionedCount
+
+`applied: true` and `documentsCommit` prove the managed documents landed, even when operational sync subsequently fails; retain the receipt rather than accepting or activating again.
+Run `arcadia docs sync --project <slug> --apply --json`; a transient database lock warrants a bounded retry of that same command.
+Inspect `arcadia advance queue --json`: require `orderValid: true`, `unpositionedCount: 0`, and the intended selected Action and positions.
+If batch repair is needed, preview/apply canonical `advance queue arrange` at the current revision, retaining every approved key and every other Project's relative order; never edit SQLite or infer success from exit code alone.
+
+## Recover a primary checkout without guessing authority
+
+keys: primary checkout, beta branch, recovery Ask, non-agent-owned, merge conflict, hooks, prepared worktree
+
+Check the clean primary branch, worktree inventory, and local-only commits first: protected Go refuses an ordinary beta branch, and an ad hoc reviewed worktree may have no registered host route.
+An `intent: proposal` recovery Ask preserves evidence; accepting it does not execute recovery. Use protected Go first; any manual exception requires explicit operator authority and preservation of every history.
+For the authorized PPN overlap, the merged Plan already contained the beta Action marked done: retain both histories and take the exact landed records, rather than writing new completion state or resetting away commits.
+Keep normal Git hooks enabled. Verify the recovered tree against the landed commit, publish authorized settlements, then rerun protected Go; hand off its exact returned path with `arcadia advance`, model, effort, and required profile.
