@@ -2,7 +2,7 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
+Latest derivation: **2026-10-02**, including verified prerequisite publication and the subsequent bounded scope/custody preparation, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
 
 ## Current answer
 
@@ -45,7 +45,7 @@ Exact identities, revisions, host/provider, receipts and refusal evidence remain
 
 The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The first repair's canonical completion settlement marked `recover-terminal-integration-after-reconcile` done. After #865 merged, queue reorder revision 176 and pointer commit `f28fb2868` selected `finish-two-action-unattended-production-proof`. Discovery of B's missing preservation receipt led to accepted Agent Ask `recover-completed-candidate-unpreserved-after-off-2026-10-01`; queue revision 177 placed its Action first and pointer commit `eec7cf657` selected it. After #866 was installed, completion settlement commit `33c4dfb8e` marked that repair done and returned the pointer to `finish-two-action-unattended-production-proof`. After PR #870 merged, settlement commit `532691fb8` narrowed that Action to the proven integration-evidence criterion, marked it done, created `prove-literal-split-browser-and-ledger`, rewired 19 dependents and moved the pointer there. Provider concurrency remains deferred; no Plan was activated by inference.
 
-The active Plan contains **151 Actions: 120 done and 31 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The original proof Action names its three proven criteria; its first remainder names the proven integration-evidence criterion; the new open remainder retains the other three and 19 dependents now wait for it.
+The active Plan contains **153 Actions: 120 done and 33 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The original proof Action names its three proven criteria; its first remainder names the proven integration-evidence criterion; the new open remainder retains the other three and 19 dependents now wait for it.
 
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
@@ -78,6 +78,70 @@ Merged PR #858 extends the #856 host preservation transport with stage and nativ
 The installed `arcadia-unattended` profile still denies loopback HTTP and aborts headless Chrome; synthetic credential reads and external sockets are also denied. The merged repair retains a pre-dispatch capability refusal. No fresh PPN capture or comparable mobile/desktop Lighthouse matrix is claimed, and its verification Action remains open.
 
 Merged PR #863 prepared an inactive host-owned alternative. Its fixed synthetic fixture rendered mobile and desktop HTTP pages while denying external, private and other-loopback TCP, unrelated Unix sockets, synthetic credential-file reads and external browser navigation. A deliberate post-launch stall stopped the supervised browser group without changing the fixture source. A separate probe found that native detached children can escape that group; the fixture's `ready` result does not establish containment for a live route. The operator selected Decision 0078's inactive preparation option; its canonical answer is committed on the new Issue #847 candidate branch, not yet integrated. Follow-up host experiments found that denying process creation also prevents Chrome launch, enabling Chrome's own sandbox fails during setup, and a temporary exact-loopback Codex profile override still aborts Chrome. The installed profile and production dispatch remain unchanged. [The host-browser report](reports/restricted-host-browser-audit-2026-10-01.md) retains the proof and limits, including platform-service review, broker integration, exact source/revision/expiry authority and native-descendant containment. Live activation and PPN Lighthouse measurement remain separate gates.
+
+## Three-Action rehearsal preparation — 2026-10-02
+
+The prerequisite settlement `asksettle_92f59561766c40079e` confirms
+`applied:true` and commit `a5a6844e751a6441576871b8b20ae8ccf2ab9d6e`.
+Run `20261002T164449Z-98726/publication.json` now proves publication of that
+settlement and `ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64`, with
+`settlementReapplied:false`. Remote main independently matched the settlement
+commit. The live one-shot button is succeeded and must not be offered again.
+Both accepted prerequisite Actions remain unproved; the canonical pointer is
+still `prove-literal-split-browser-and-ledger`. The retained run's
+`production-before.json` observes Inactive revision 29, epoch 19, zero live
+admissions. Publication grants no production or pointer authority.
+
+The original publication refusal compared an untracked source Ask's canonical
+before-image with a parent Git blob that did not exist. Plan before/after bytes
+matched, and the tracked archive preserved the source Ask's exact SHA-256.
+The reviewed publication-only retry passed twelve original and seven additional
+narrative-custody/refusal cases, retained every failed run, and published only
+the original two commits. It left the revised pair, Notes, derived readiness
+and other preparation unpublished.
+
+Read-only planning and adversarial helpers identified the smallest honest
+three-record scope: keep saved configuration unchanged, append durable serial
+execution to the existing enrollment identity while preserving its six criteria,
+and add one installed-host rehearsal Action. The finite revised design uses an
+actual disposable GitHub repository, CodeRabbit's actor/reviewed head and existing
+independent PR QA rather than a new local reviewer supervisor. With that route,
+the adversary judges the combined enrollment/durability slice plausibly one
+heavy/high session; this is an estimate, not completion evidence. Draft-to-ready
+PR waiting, five fixed-role attempt lineage, host-derived QA identity and exact
+integration fencing remain missing behavior. Repository publication, PR readiness
+and bounded integration require the later fresh exact Grant. Verify CodeRabbit
+installation and required checks before live dispatch.
+
+Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
+all twelve accepted prerequisite criteria. They are validated inputs, not
+accepted scope. Optional preview is blocked by configured `martianrover`
+workspace-write access; no alternate workspace, repeated same-proposal write or
+direct database editing was used. The shared one-existing-Action Plan-amendment
+runner, separate ordinary Action Ask and fingerprinted `advance queue make-next`
+are the existing governed writers. None may infer authority from queue order or
+silently rebind an immutable packet.
+
+The first remaining preparation gate is custody of mixed dirty main. Protected
+Go refuses the modified library pair, readiness, AGENTS/Notes and narrative
+reports; its narrow Ask exemptions do not evacuate them. Preservation needs an
+already registered candidate and the shared amendment runner requires entirely
+clean primary state. The documented operator recovery playbook can preserve the
+exact understood preparation on a recovery branch and publish its review PR;
+it is operator-owned recovery, not a fabricated broker reservation or a new
+implementation Action. Preserve the learning contribution and validated Log
+Ask with that handoff. The five pre-existing unrelated library-contract failures
+remain recorded; isolated valid pairs do not make the whole library green.
+
+[The bounded scope/custody design](reports/three-action-managed-production-scope-design-2026-10-02.md)
+records exact identities, coverage, seams, required external setup and writer
+boundaries. After preparation is reviewed, obtain exact scope acceptance and
+pointer transition, then use one protected candidate/Session per implementation
+Action with compliant immutable provider/model/effort, deterministic checks,
+independent exact-head verdicts, same-candidate completion, PR/check/merge and
+installed-service evidence. Prepare/pass the hermetic three-Action rehearsal
+before requesting its fresh exact Grant. No installed-host autonomous rehearsal
+has run here, and the older literal split/browser/ledger Action stays open.
 
 ## Refresh contract
 

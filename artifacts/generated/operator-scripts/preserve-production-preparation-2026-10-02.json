@@ -1,0 +1,120 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "preserve-production-preparation-2026-10-02",
+  "title": "Preserve exact production preparation in a recovery PR",
+  "script": "preserve-production-preparation-2026-10-02.sh",
+  "repeatable": false,
+  "problem": "Prerequisites are accepted and published, but mixed local preparation blocks protected Go and the clean primary-checkout scope-amendment runner. Existing broker operations cannot evacuate this state.",
+  "desired_effect": "Execute the disclosed operator recovery playbook: preserve only the exact hash-pinned preparation as one commit on codex/preserve-production-preparation-20261002, publish only that branch and open its draft recovery PR. Keep main ref/history and every failed receipt unchanged; leave the checkout on the preserved recovery branch.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/preserve-production-preparation-2026-10-02.sh run",
+  "authority": {
+    "does": [
+      "Validate exact published main a5a6844e751a6441576871b8b20ae8ccf2ab9d6e, origin, complete dirty-path/status and byte manifest, no unrelated staging, and this immutable local recovery transaction",
+      "Perform documented operator-owned branch creation and exact-file staging/commit; expose these Git effects explicitly rather than calling them protected broker custody",
+      "Use the semantic agent author identity, publish only the exact recovery snapshot with a normal non-force branch push and create/reuse its exact draft PR within four minutes plus at most twenty seconds of timeout cleanup",
+      "Retain original and refreshed Asks, AGENTS/Notes/friction lessons, derived readiness and scope design, the succeeded publication-only pair, this recovery pair and all prior run history; return the exact commit/PR receipt"
+    ],
+    "never_does": [
+      "Settle or approve an Ask, answer a Decision, complete an Action, change PROJECT/Plan/queue/policy, claim a broker reservation/Session/admission or silently rebind an immutable packet",
+      "Push main, merge, force-push, fetch/reconcile, reset, rebase, switch back to main, delete files/branches/worktrees, broaden staging to unknown paths, clear one-shot state or revive a Grant",
+      "Install or restart services, create the disposable live repository, activate production, launch an agent/reviewer/QA process or claim rehearsal success"
+    ]
+  },
+  "success": {
+    "effect": "Exact preparation is recoverable in one published recovery commit and its draft PR; primary checkout is clean on that recovery branch, main ref is unchanged, governance and production authority are untouched.",
+    "next": "Continue this recovery session to attach/validate the exact PR, report the known five unrelated library-check failures and run the review loop when ready. AGENTS guidance changes require operator merge review. After reviewed integration, use protected continuation; separately approve the three-record scope, create rehearsal and make-next. Never close the old literal proof by implication."
+  },
+  "failure": {
+    "effect": "Precondition drift refuses. An interrupted local commit or publication retains the branch/index/input manifest/transaction and named failure; it never claims launch or partial progress as completion.",
+    "next": "Inspect this exact timestamped receipt and transaction. Retry only the same pinned request after resolving the named condition; never reset, stage unrelated work, remove a live lock, repeat acceptance or fabricate a broker binding."
+  },
+  "preparationRecovery": {
+    "checkout": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+    "base": "a5a6844e751a6441576871b8b20ae8ccf2ab9d6e",
+    "recoveryBranch": "codex/preserve-production-preparation-20261002",
+    "scriptSha256": "e9448ad11d9b217bda27a4ad3e68b8c8b5d69b2d02b5dc62487d258f780308c8",
+    "files": {
+      "AGENTS.md": {
+        "sha256": "01b9436b8e42b9fe884987f91b887a0f97e782973d9b4897c75b37cf0303bd25",
+        "status": " M"
+      },
+      "artifacts/generated/operator-scripts/accept-enrollment-and-saved-config-2026-10-02-v2.json": {
+        "sha256": "74c5a07860242b88fbba498e6160b3d82cc9258853354fd31b277ad929431a8e",
+        "status": " M"
+      },
+      "artifacts/generated/operator-scripts/accept-enrollment-and-saved-config-2026-10-02-v2.sh": {
+        "sha256": "78846f801914f421d7904f33525fcb11ee255b8043c9335bf7b2116b192ee878",
+        "status": " M"
+      },
+      "docs/managed-production-readiness.md": {
+        "sha256": "2249776d0733517ffdba6b32e966c8501590311a50d0beda4471b7374fba3103",
+        "status": " M"
+      },
+      "docs/notes-to-self.md": {
+        "sha256": "e6a0e5c7e59c61fe44beb4ab9c9583dc9c70c102015a1ecd71ba323490567ab0",
+        "status": " M"
+      },
+      ".arcadia/asks/agent-ask-add-installed-three-action-autonomous-rehearsal-2026-10-02-v2.yaml": {
+        "sha256": "7f012fcb5acb09cbe6ffb431949e994a7909dd29dac1581deae289c491d30704",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-decide-literal-browser-close-proof-route-2026-10-02.yaml": {
+        "sha256": "bd6e09db99c97929900999d768adb12d7e512f4d70682dfe16922f8ab0296678",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-draft-go-role-orchestration-review-2026-10-02.yaml": {
+        "sha256": "e206aa8db25f5808f5490184c11e537f60058837b8f54bed3203a170785b7d53",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-enroll-any-session-and-preserve-production-config-2026-10-02.yaml": {
+        "sha256": "72d5f677b9a3ffc2b4cb12dec2903ba792583e368e707709f202c585f4795502",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-go-role-orchestration-independent-verdict-2026-10-02-v2.yaml": {
+        "sha256": "eee51da3f40cd3a3639b5693d15506ef2bddc0e49e0df05e9a08c350f9a3d5c0",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-installed-host-evidence-success-session-prompt-2026-10-02.yaml": {
+        "sha256": "12ee70a36d7762266c5e0f82f5d1d927e62322d2ea82697ffe43cf844ce43fb1",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-log-minimal-orchestration-friction-lessons-2026-10-02.yaml": {
+        "sha256": "c1ba4f369506925cb00985623f9f71ebc3a994bab5f5fe85d82c0461fbcdfd90",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-minimal-autonomous-managed-production-critical-path-2026-10-02.yaml": {
+        "sha256": "5d1cc5aa8ef72a106037ea725fda552d0af0fe77c62deb92c1caaa5e3f8bd35b",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-minimal-three-action-orchestration-preflight-2026-10-02.yaml": {
+        "sha256": "0278cb6ed7a36a8c56460578490e6657353169c76cb1b7711a6e12372c8bbbe4",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-regroup-enrollment-with-durable-serial-execution-2026-10-02-v2.yaml": {
+        "sha256": "b867999a50b07da2e675a3922c4f2447187e7074690ad96fb9bcd3d842bea825",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-regroup-enrollment-with-durable-serial-execution-2026-10-02.yaml": {
+        "sha256": "bbfb678a7d0f065b6f02bbeea7aee554a9ef2c12736c0f744b99f36d516e2eb9",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-revised-go-role-orchestration-review-2026-10-02-v2.yaml": {
+        "sha256": "7a40c3576eb41a7bdb166f885d58fc205fadc0203eb6ae29912110cbaa59469d",
+        "status": "??"
+      },
+      ".arcadia/asks/agent-ask-serial-go-orchestrator-capability-audit-2026-10-02.yaml": {
+        "sha256": "b0c42d0d49c2b1043e7617e9d031985ec42972959d32a53ce5fc113336858fda",
+        "status": "??"
+      },
+      "docs/reports/autonomous-production-session-friction-2026-10-02.md": {
+        "sha256": "4e1ebf94ed9c6213061659e46262e714be7ee13aeb4e6cc63a4de8b18bddfd41",
+        "status": "??"
+      },
+      "docs/reports/three-action-managed-production-scope-design-2026-10-02.md": {
+        "sha256": "e88306203d65f3a60eee5d246611bcf0154b1af0abd208f4f2c4402a353acf77",
+        "status": "??"
+      }
+    },
+    "prBody": "The enrollment/saved-configuration prerequisite settlement is already accepted and published. This recovery PR preserves the exact reviewed local operator-retry preparation, scope input drafts and learning documents that otherwise block clean-checkout continuation. It completes no governed Action and leaves the older literal split/browser/ledger proof open.\n\nThe proposed scope uses three actual implementation records: unchanged saved configuration, existing enrollment identity extended with durable execution, and installed-host rehearsal. The finite design reuses GitHub PR review/QA instead of a local reviewer supervisor. Both v2 Asks are validated but optional workspace previews were write-blocked; no scope acceptance, packet rebinding, pointer move or production activation is claimed.\n\nOperator QA: inspect the pinned custody manifest and confirm the snapshot contains only the named files; verify PROJECT.md, the active Plan, main ref and production authority are unchanged. Review the updated AGENTS Orientation and Notes/friction report. Check the disposable-plan IDs and preserved prerequisite criteria in the v2 inputs.\n\nValidation: publication recovery passed 19 hermetic cases and independent exact-hash review. Notes validation passed in its source task. The full operator library has five pre-existing unrelated UNDECLARED_OPERATOR_SETTLEMENT failures; this is an unresolved baseline, not a green-library claim. The recovery action must pass its focused custody/replay/refusal harness and direct shared contract before launch.\n\nIntegration and the three-record scope still require their exact review/authority gates; this draft is a preservation artifact, not readiness or autonomous rehearsal proof.\n"
+  }
+}

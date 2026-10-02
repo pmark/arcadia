@@ -10,161 +10,170 @@ case "$1" in
     mkdir -p "$run_dir"
     export ARCADIA_ENROLLMENT_REVIEW_RUN_DIR="$run_dir"
     if python3 - <<'PY' >"$run_dir/run.log" 2>&1
-import hashlib, json, os, pathlib, signal, subprocess, sys
+import hashlib, json, os, pathlib, signal, subprocess, sys, time
 
 root = pathlib.Path('/Users/pmark/Dev/MR/Arcadia/arcadia')
 out = pathlib.Path(os.environ['ARCADIA_ENROLLMENT_REVIEW_RUN_DIR'])
 action_id = 'accept-enrollment-and-saved-config-2026-10-02-v2'
 proposal = 'enroll-any-session-and-preserve-production-config-2026-10-02-v2'
 base = 'fdafca81cc3843f3355e883cfe92d057c01fa609'
+preparation = 'ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64'
+target = 'a5a6844e751a6441576871b8b20ae8ccf2ab9d6e'
 fingerprint = '46b22ffc37626a52b33ab66ebff899f85a77e5179eda0a0272683c1b687b5f19'
 ask_sha = 'd097ab1e6b42e0bb6fb4312db982733e6cc95e5906aa4ebbcf943f456d898e74'
+library = root / 'artifacts/generated/operator-scripts'
 pair = [f'artifacts/generated/operator-scripts/{action_id}.{ext}' for ext in ('sh', 'json')]
 ask_path = f'.arcadia/asks/agent-ask-{proposal}.yaml'
 archive_path = f'.arcadia/asks/archive/agent-ask-{proposal}.yaml'
+plan_path = 'docs/plans/bootstrap-managed-production-to-build-flight-deck.md'
+retained = {
+ '20261002T151612Z-53615/settlement-preview.json': 'bf24d6befcc5e82e779e5f01e63da5263bd4eb53e2d28172fbc40b3f82fdcb67',
+ '20261002T151612Z-53615/settlement-receipt.json': '2d15009f5f65cbf97ef83786e580a3744c008526af10ffb22d5931de09398c11',
+ '20261002-orchestration-refresh-preview/settlement-preview.json': 'bd88f149c24ebc8c269f2fbfd4e92ebecead950c856583bbe23137ec035a541b',
+}
 keys = ['arcadia/enroll-session-through-governed-host-request', 'arcadia/persist-inactive-production-configuration']
+lock = library / 'runs' / (action_id + '.publication-lock')
+owned_lock = False
+deadline = time.monotonic() + 240
 
-def command(args, timeout=120):
-    child = subprocess.Popen(args, cwd=root, text=True, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, start_new_session=True)
+def require(condition, message):
+    if not condition: raise RuntimeError(message)
+
+def digest(data): return hashlib.sha256(data).hexdigest()
+
+def command(args, timeout=30):
+    remaining = deadline - time.monotonic()
+    require(remaining > 0, 'Four-minute publication budget exhausted; preserve all receipts.')
+    timeout = min(timeout, remaining)
+    print('COMMAND ' + json.dumps(args), flush=True)
+    child = subprocess.Popen(args, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     try:
-        output, _ = child.communicate(timeout=timeout)
+        stdout, stderr = child.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(child.pid, signal.SIGTERM)
-        try: output, _ = child.communicate(timeout=10)
+        try: stdout, stderr = child.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             os.killpg(child.pid, signal.SIGKILL)
-            output, _ = child.communicate()
-        print(output, flush=True)
+            stdout, stderr = child.communicate(timeout=10)
+        (out / 'timed-out-command.json').write_text(json.dumps({'command': args, 'stdout': stdout.decode(errors='replace')[-8000:], 'stderr': stderr.decode(errors='replace')[-8000:]}, indent=2) + '\n')
         raise RuntimeError('Bounded command timed out: ' + ' '.join(args[:3]))
-    if child.returncode:
-        print(output, flush=True)
-        raise RuntimeError('Command refused: ' + ' '.join(args[:3]))
-    return output
+    require(child.returncode == 0, 'Command refused: ' + ' '.join(args[:3]) + '\n' + stderr.decode(errors='replace')[:2000])
+    return stdout
 
-def canonical(args, name):
-    output = command(args)
-    value = json.loads(output[output.index('{'):])
-    (out / name).write_text(json.dumps(value, indent=2) + '\n')
-    if not value.get('ok'): raise RuntimeError('Canonical command did not confirm success.')
-    return value
+def git(*args): return command(['git', *args])
 
-def validate_history(receipt):
-    head = command(['git', 'rev-parse', 'HEAD'], 30).strip()
-    commits = command(['git', 'rev-list', '--reverse', f'{base}..{head}'], 30).splitlines()
-    if len(commits) > 2: raise RuntimeError('Unreviewed commits entered main; publication refuses.')
-    parent = base
-    for index, sha in enumerate(commits):
-        parents = command(['git', 'rev-list', '--parents', '-n', '1', sha], 30).split()[1:]
-        if parents != [parent]: raise RuntimeError('Main history differs from the exact reviewed lineage.')
-        subject = command(['git', 'show', '-s', '--format=%s', sha], 30).strip()
-        paths = set(command(['git', 'diff', '--name-only', parent, sha], 30).splitlines())
-        if index == 0:
-            if subject != 'chore: preserve reviewed enrollment operator action' or paths != set(pair):
-                raise RuntimeError('Only the exact library-pair commit may follow the reviewed base.')
-            for path in pair:
-                if command(['git', 'show', f'{sha}:{path}'], 30) != (root / path).read_text():
-                    raise RuntimeError('The committed library pair differs from the reviewed live pair.')
+def at(sha, path):
+    if not git('ls-tree', '--name-only', sha, '--', path).strip(): return None
+    return git('show', f'{sha}:{path}')
+
+def canonical(args, filename):
+    data = command(args, 60).decode()
+    result = json.loads(data[data.index('{'):])
+    (out / filename).write_text(json.dumps(result, indent=2) + '\n')
+    require(result.get('ok') is True, 'Canonical observation refused; no publication attempted.')
+    return result['data']
+
+def validate_local():
+    require(git('rev-parse', '--show-toplevel').decode().strip() == str(root), 'Wrong primary checkout.')
+    require(git('branch', '--show-current').strip() == b'main', 'Wrong branch.')
+    require(git('remote', 'get-url', 'origin').strip() == b'https://github.com/pmark/arcadia.git', 'Wrong origin.')
+    require(git('rev-parse', 'HEAD').decode().strip() == target, 'HEAD drift: only the exact already-applied settlement may publish.')
+    require(git('rev-list', '--reverse', f'{base}..{target}').decode().splitlines() == [preparation, target], 'Exact two-commit lineage drift.')
+    for sha, parent in [(preparation, base), (target, preparation)]:
+        require(git('rev-list', '--parents', '-n', '1', sha).decode().split()[1:] == [parent], 'Commit parent drift.')
+    require(git('show', '-s', '--format=%s', preparation).decode().strip() == 'chore: preserve reviewed enrollment operator action', 'Preparation subject drift.')
+    require(set(git('diff', '--name-only', base, preparation).decode().splitlines()) == set(pair), 'Preparation contains unreviewed paths.')
+    original_descriptor = json.loads(at(preparation, pair[1]))
+    require(digest(at(preparation, pair[0])) == original_descriptor['reviewedScriptSha256'] == '3f9f2e4abac2e0f9e0be5a1accd39a3523f426ce338187a5d2b08ac51616a487', 'Original script digest drift.')
+    require(original_descriptor['reviewedBase'] == base and original_descriptor['askSha256'] == ask_sha and original_descriptor['settlementFingerprint'] == fingerprint, 'Original publication authority drift.')
+    descriptor = json.loads((root / pair[1]).read_bytes())
+    require(descriptor['reviewedScriptSha256'] == digest((root / pair[0]).read_bytes()), 'Live retry script digest drift.')
+    require(descriptor['recovery']['commits'] == [preparation, target] and descriptor['recovery']['base'] == base and descriptor['recovery']['retained'] == retained, 'Live retry envelope drift.')
+    preparation_files = descriptor['recovery'].get('preparationFiles', {})
+    require(set(preparation_files) == {'docs/managed-production-readiness.md', 'docs/notes-to-self.md', 'docs/reports/autonomous-production-session-friction-2026-10-02.md'}, 'Pinned narrative preparation path envelope drift.')
+    for path, sha in preparation_files.items():
+        prepared_file = root / path
+        require(prepared_file.is_file() and not prepared_file.is_symlink() and prepared_file.resolve().is_relative_to(root), 'Preparation document missing, symlinked or outside repository: ' + path)
+        require(digest(prepared_file.read_bytes()) == sha, 'Preparation document drift: ' + path)
+    require(not git('diff', '--cached', '--name-only').strip(), 'Existing staged changes refuse publication.')
+    for entry in filter(None, git('status', '--porcelain', '-z').decode().split('\0')):
+        state, path = entry[:2], entry[3:]
+        if state == '??' and path.startswith('.arcadia/asks/'): continue
+        if state == ' M' and path in pair: continue
+        if state in (' M', '??') and path in preparation_files:
+            require((root/path).is_file() and not (root/path).is_symlink(), 'Preparation document must remain a regular file.')
+            require(digest((root/path).read_bytes()) == preparation_files[path], 'Preparation document drift.')
+            continue
+        raise RuntimeError('Unrelated changed path refuses publication: ' + path)
+    receipts = {}
+    for name, sha in retained.items():
+        data = (library/'runs'/name).read_bytes()
+        require(digest(data) == sha, 'Retained receipt changed: ' + name)
+        receipts[name] = json.loads(data)['data']['receipt']
+    original = receipts['20261002T151612Z-53615/settlement-preview.json']
+    refreshed = receipts['20261002-orchestration-refresh-preview/settlement-preview.json']
+    applied = receipts['20261002T151612Z-53615/settlement-receipt.json']
+    require(not original['applied'] and not refreshed['applied'], 'Preview is no longer the retained before-image.')
+    require(original['review']['documents'] == refreshed['review']['documents'], 'Original and refreshed document effects differ.')
+    require(all(r['previewFingerprint'] == fingerprint for r in (original, refreshed, applied)), 'Fingerprint drift.')
+    require(applied['applied'] is True and applied['documentsCommit'] == target and applied['queueActionKeys'] == keys and applied['authority']['kind'] == 'operator_acceptance', 'Exact accepted settlement is missing.')
+    require(git('show', '-s', '--format=%s', target).decode().strip() == f'chore(arcadia): settle {proposal}', 'Settlement subject drift.')
+    documents = original['review']['documents']
+    require(len(documents) == 3 and {d['path'] for d in documents} == {plan_path, ask_path, archive_path}, 'Document envelope drift.')
+    expected_paths = set()
+    for document in documents:
+        path = document['path']
+        before = None if document['before'] is None else document['before'].encode()
+        after = None if document['after'] is None else document['after'].encode()
+        parent_bytes = at(preparation, path)
+        if path == ask_path:
+            # The canonical before-image describes an untracked input. Its
+            # archived exact bytes, not a fictitious parent blob, prove custody.
+            require(parent_bytes is None and before is not None and digest(before) == ask_sha and after is None, 'Untracked Ask archive precondition drift.')
+            require(at(target, archive_path) == before, 'Ask archival lost or changed original input bytes.')
         else:
-            if not receipt.get('applied') or subject != f'chore(arcadia): settle {proposal}':
-                raise RuntimeError('Only the confirmed canonical settlement may follow the library-pair commit.')
-            previews = []
-            for prior in out.parent.glob('*/settlement-preview.json'):
-                try:
-                    candidate = json.loads(prior.read_text())['data']['receipt']
-                    if candidate.get('previewFingerprint') == fingerprint and candidate.get('review', {}).get('documents'):
-                        previews.append(candidate)
-                except (ValueError, KeyError): continue
-            documents = next((v['review']['documents'] for v in previews if not v.get('applied')), None)
-            if documents is None: raise RuntimeError('The pinned original document preview is missing; preserve and refresh the action.')
-            changes = {}
-            for document in documents:
-                path = document['path']
-                if path in changes:
-                    raise RuntimeError('The reviewed settlement preview names a path more than once.')
-                changes[path] = (document['before'], document['after'])
-            expected_paths = set()
-            for path, (reviewed_before, after) in changes.items():
-                present_before = path in command(['git', 'ls-tree', '--name-only', parent, '--', path], 30).splitlines()
-                before = command(['git', 'show', f'{parent}:{path}'], 30) if present_before else None
-                if before != reviewed_before:
-                    raise RuntimeError('The settlement parent no longer matches its exact reviewed document preview.')
-                if reviewed_before != after: expected_paths.add(path)
-                if after is None:
-                    if path in command(['git', 'ls-tree', '--name-only', sha, '--', path], 30).splitlines():
-                        raise RuntimeError('A canonically removed path still exists in the settlement tree.')
-                elif command(['git', 'show', f'{sha}:{path}'], 30) != after:
-                    raise RuntimeError('The settlement tree differs from its exact reviewed document effects.')
-            if paths != expected_paths: raise RuntimeError('Settlement history omits or adds reviewed document changes.')
-        parent = sha
-    if receipt.get('applied') and len(commits) != 2:
-        raise RuntimeError('Applied receipt lacks the exact two-commit publication lineage; preserve and refresh.')
-    return head
+            require(parent_bytes == before, 'Tracked document parent differs from exact preview: ' + path)
+        require(at(target, path) == after, 'Settlement after-image differs: ' + path)
+        if parent_bytes != after: expected_paths.add(path)
+    require(set(git('diff', '--name-only', preparation, target).decode().splitlines()) == expected_paths == {plan_path, archive_path}, 'Settlement adds or omits reviewed paths.')
+    require((root/archive_path).read_bytes() == at(target, archive_path), 'Archived Ask working copy drift.')
+    require((root/plan_path).read_bytes() == at(target, plan_path), 'Canonical Plan working copy drift.')
+    return applied
 
 try:
-    if command(['git', 'rev-parse', '--show-toplevel'], 30).strip() != str(root):
-        raise RuntimeError('The reviewed main checkout is not available.')
-    if command(['git', 'branch', '--show-current'], 30).strip() != 'main':
-        raise RuntimeError('This action is pinned to main.')
-    if command(['git', 'remote', 'get-url', 'origin'], 30).strip() != 'https://github.com/pmark/arcadia.git':
-        raise RuntimeError('Origin differs from the reviewed repository.')
-    command(['git', 'merge-base', '--is-ancestor', base, 'HEAD'], 30)
-    dirty = command(['git', 'status', '--porcelain', '-z'], 30).split('\0')
-    for entry in filter(None, dirty):
-        state, path = entry[:2], entry[3:]
-        if state == '??' and (path in pair or path.startswith('.arcadia/asks/')): continue
-        raise RuntimeError('Unrelated local or staged changes must be preserved before acceptance.')
-    staged = set(command(['git', 'diff', '--cached', '--name-only'], 30).splitlines())
-    if staged: raise RuntimeError('Existing staged changes refuse acceptance, including changes to this library pair.')
-    descriptor = json.loads((root / pair[1]).read_text())
-    if (descriptor.get('reviewedBase') != base or descriptor.get('askSha256') != ask_sha or
-        descriptor.get('settlementFingerprint') != fingerprint or descriptor.get('agentAsk') !=
-        {'proposal': proposal, 'intent': 'action', 'targetRef': None} or
-        descriptor.get('reviewedScriptSha256') != hashlib.sha256((root / pair[0]).read_bytes()).hexdigest()):
-        raise RuntimeError('The library pair differs from its reviewed contract or script digest.')
-    source = root / ask_path
-    if not source.exists(): source = root / archive_path
-    if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != ask_sha:
-        raise RuntimeError('The exact reviewed Ask is missing or changed.')
-    args = ['arcadia', 'agent-ask', 'settle', '--proposal', proposal, '--request-id', 'refresh-accept-enrollment-and-saved-config-2026-10-02-v2',
-            '--disposition', 'accepted', '--responsibility', 'agent',
-            '--before', 'arcadia/prove-literal-split-browser-and-ledger', '--revision', '180', '--json']
-    receipt = canonical(args, 'settlement-preview.json')['data']['receipt']
-    if receipt.get('previewFingerprint') != fingerprint or receipt.get('queueActionKeys') != keys or receipt.get('queuePosition') != 1:
-        raise RuntimeError('The settlement differs from the exact reviewed two-Action insertion.')
-    validate_history(receipt)
-    if not receipt.get('applied'):
-        # Publishing the reviewed library pair is explicit in this action's
-        # descriptor. This is no Git reconciliation and stages nothing else.
-        # The generated library is normally ignored. Only these two exact
-        # reviewed files are explicitly preserved, never the whole directory.
-        command(['git', 'add', '-f', '--', *pair], 30)
-        if command(['git', 'diff', '--cached', '--name-only'], 30).strip():
-            command(['git', 'commit', '-m', 'chore: preserve reviewed enrollment operator action'], 60)
-        (out / 'preparation.json').write_text(json.dumps({'head': validate_history(receipt)}) + '\n')
-        receipt = canonical(args + ['--preview', fingerprint, '--operator', '--apply'], 'settlement-receipt.json')['data']['receipt']
-    else:
-        (out / 'settlement-receipt.json').write_text(json.dumps({'receipt': receipt}, indent=2) + '\n')
-    if not receipt.get('applied') or receipt.get('previewFingerprint') != fingerprint or receipt.get('queueActionKeys') != keys:
-        raise RuntimeError('Arcadia did not confirm the exact accepted settlement.')
-    if command(['git', 'diff', 'HEAD', '--', *pair], 30).strip():
-        raise RuntimeError('The operator library pair changed after settlement; publication refuses.')
-    for path in pair: command(['git', 'ls-files', '--error-unmatch', path], 30)
-    published_sha = validate_history(receipt)
-    command(['git', 'push', 'origin', f'{published_sha}:refs/heads/main'], 120)
-    (out / 'publication.json').write_text(json.dumps({'publishedSha': published_sha}) + '\n')
-    print('Two Actions accepted and published. Production remains Off; current proof pointer is unchanged.')
-    print('Next: scheduled follow-up prepares the canonical execution handoff; activation stays separately gated.')
+    lock.mkdir()
+    owned_lock = True
+    (lock/'owner.json').write_text(json.dumps({'pid': os.getpid(), 'run': str(out)}) + '\n')
+    applied = validate_local()
+    # Observe the existing idempotent receipt only. Never repeat --apply.
+    observed = canonical(['arcadia', 'agent-ask', 'settle', '--proposal', proposal, '--request-id', 'refresh-accept-enrollment-and-saved-config-2026-10-02-v2', '--disposition', 'accepted', '--responsibility', 'agent', '--before', 'arcadia/prove-literal-split-browser-and-ledger', '--revision', '180', '--json'], 'canonical-applied-observation.json')['receipt']
+    for field in ('id', 'proposalId', 'proposalRequestId', 'settlementRequestId', 'disposition', 'projectSlug', 'intent', 'effects', 'queueActionKeys', 'queuePosition', 'nextActionKey', 'previewFingerprint', 'queueRevision', 'applied', 'authority', 'documentsCommit'):
+        require(observed.get(field) == applied.get(field), 'Canonical applied receipt drift at ' + field)
+    policy = canonical(['arcadia', 'production', 'status', '--json'], 'production-before.json')
+    p = policy['read']['policy']
+    require(p['desiredState'] == 'inactive' and p['revision'] == 29 and p['epoch'] == 19 and p['scope'] is None and p['authority'] is None and policy['liveAdmissions'] == 0, 'Production state drift; retry grants no activation.')
+    before_remote = git('ls-remote', '--exit-code', 'origin', 'refs/heads/main').decode().split()[0]
+    require(before_remote in (base, target), 'Remote main diverged; preserve both local commits for protected recovery.')
+    (out/'validated-publication.json').write_text(json.dumps({'appliedReceipt': applied['id'], 'commits': [preparation, target], 'remoteBefore': before_remote, 'target': target, 'untrackedAskArchiveValidated': True}, indent=2) + '\n')
+    validate_local()
+    if before_remote != target:
+        command(['git', 'push', 'origin', f'{target}:refs/heads/main'], 120)
+    after_remote = git('ls-remote', '--exit-code', 'origin', 'refs/heads/main').decode().split()[0]
+    require(after_remote == target, 'Exact remote publication not confirmed; preserve validation and inspect the remote before any retry.')
+    (out/'publication.json').write_text(json.dumps({'publishedSha': target, 'commits': [preparation, target], 'alreadyPublished': before_remote == target, 'settlementReapplied': False}, indent=2) + '\n')
+    print('Exact accepted settlement published; acceptance was not repeated. Off was observed before publication; this action does not activate production or change the older proof pointer.')
+    print('Next: inspect the prepared three-record scope resolution, then obtain its separate exact governed approval and pointer transition.')
 except Exception as error:
-    message = ('Acceptance stopped: ' + str(error) + '\n'
-               'Next: inspect this run log and retained receipts. Preserve any local commit or applied settlement. '
-               'Retry unchanged failed publication with the same action; moved scope or queue requires a fresh review. '
-               'Do not reset main, delete candidates, or manually change governance.\n')
-    (out / 'failure-handoff.txt').write_text(message)
+    message = ('Publication retry stopped: ' + str(error) + '\nNext: preserve this run and every prior failed receipt, both local commits, all Asks and the reviewed retry pair. Resolve only the named precondition; never repeat acceptance, reset/rebase Git, force-push, or revive a Grant. A stale lock requires proof its recorded process is terminal before operator recovery.\n')
+    (out/'failure-handoff.txt').write_text(message)
     print(message, file=sys.stderr, flush=True)
     sys.exit(1)
+finally:
+    if owned_lock:
+        (lock/'owner.json').unlink()
+        lock.rmdir()
 PY
-    then cat "$run_dir/run.log"; printf 'Receipt: %s/settlement-receipt.json\n' "$run_dir"
+    then cat "$run_dir/run.log"; printf 'Publication receipt: %s/publication.json\n' "$run_dir"
     else cat "$run_dir/run.log" >&2; printf 'Failure handoff: %s/failure-handoff.txt\n' "$run_dir" >&2; exit 1
     fi
     ;;
