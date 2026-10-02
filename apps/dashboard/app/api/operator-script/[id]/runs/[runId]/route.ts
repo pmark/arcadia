@@ -1,7 +1,7 @@
-import { access, open, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { access, open, readFile, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { LIBRARY_PATH, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
+import { claimLaunch, LIBRARY_PATH, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -9,6 +9,19 @@ export const runtime = "nodejs";
 const SAFE_RUN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 const STALE_RUNNING_MS = 30_000;
+
+function isStaleRunning(run: OperatorScriptRun & { pid?: number }): boolean {
+  return run.status === "running" && (
+    (run.pid !== undefined && !processIsRunning(run.pid)) ||
+    (run.pid === undefined && Date.now() - Date.parse(run.startedAt) > STALE_RUNNING_MS)
+  );
+}
+
+async function writeRunAtomically(file: string, run: OperatorScriptRun & { pid?: number }): Promise<void> {
+  const temporary = `${file}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporary, JSON.stringify(run, null, 2) + "\n");
+  await rename(temporary, file);
+}
 
 async function readTail(file: string): Promise<string> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
@@ -59,15 +72,23 @@ export async function GET(
       repeatable?: boolean;
     };
 
-    const stale = run.status === "running" && (
-      (run.pid !== undefined && !processIsRunning(run.pid)) ||
-      (run.pid === undefined && Date.now() - Date.parse(run.startedAt) > STALE_RUNNING_MS)
-    );
-    const visibleRun = stale
-      ? { ...run, status: "failed" as const, finishedAt: run.finishedAt ?? new Date().toISOString(), exitCode: run.exitCode ?? null, message: "The launcher stopped before recording a terminal result." }
-      : run;
-    if (stale) {
-      await writeFile(path.join(resolvedRunDirectory, "run.json"), JSON.stringify(visibleRun, null, 2) + "\n");
+    let visibleRun: OperatorScriptRun & { pid?: number } = run;
+    if (isStaleRunning(run)) {
+      let lockPath: string | null = null;
+      try {
+        lockPath = await claimLaunch(id);
+        const current = JSON.parse(await readFile(path.join(resolvedRunDirectory, "run.json"), "utf8")) as OperatorScriptRun & { pid?: number };
+        if (isStaleRunning(current)) {
+          visibleRun = { ...current, status: "failed", finishedAt: current.finishedAt ?? new Date().toISOString(), exitCode: current.exitCode ?? null, message: "The launcher stopped before recording a terminal result." };
+          await writeRunAtomically(path.join(resolvedRunDirectory, "run.json"), visibleRun);
+        } else {
+          visibleRun = current;
+        }
+      } catch (error) {
+        if (!(error instanceof Error && error.message === "OPERATOR_SCRIPT_ALREADY_CLAIMED")) throw error;
+      } finally {
+        if (lockPath) await unlink(lockPath).catch(() => undefined);
+      }
     }
     return NextResponse.json({
       script: {

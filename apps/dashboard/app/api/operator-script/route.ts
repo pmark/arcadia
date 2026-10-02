@@ -91,7 +91,7 @@ export function processIsRunning(pid: number | undefined): boolean {
   }
 }
 
-async function claimLaunch(id: string): Promise<string> {
+export async function claimLaunch(id: string): Promise<string> {
   await mkdir(STATE_PATH, { recursive: true });
   const lockPath = path.join(STATE_PATH, `${id}.lock`);
   try {
