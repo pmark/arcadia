@@ -146,7 +146,12 @@ describe("compact Way instruction delivery", () => {
     expect(resolution.blockers).toEqual([]);
     expect(resolution.context?.action.id).toBe("repair");
     // Real repository reads and command outputs; deterministic delivery/retrieval evidence, not a model comprehension claim.
-    const lookup = execFileSync("rg", ["-n", "settle|workspace", "docs/notes-to-self.md"], { cwd: root, encoding: "utf8" });
+    let lookup: string;
+    try { lookup = execFileSync("rg", ["-n", "settle|workspace", "docs/notes-to-self.md"], { cwd: root, encoding: "utf8" }); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      lookup = execFileSync("grep", ["-nE", "settle|workspace", "docs/notes-to-self.md"], { cwd: root, encoding: "utf8" });
+    }
     expect(lookup).toContain("Use settle --proposal, not --file");
     const entries = guidanceEntries(file(root, GUIDANCE_INDEX));
     const identity = entries.find((entry) => entry.id === "git-identity")!;

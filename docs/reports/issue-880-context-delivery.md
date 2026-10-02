@@ -68,8 +68,8 @@ Existing briefs carry relevant exact reference paths and file receipts, rather
 than automatically importing the procedural library.
 
 The deterministic fixture resolves `sample/fix#repair` through the real dispatch
-reader, invokes real `rg` on a verified settle lesson before reading the Ask
-procedure, reads the identity reference, renders the real managed brief, and
+reader, invokes a real targeted search (`rg`, or `grep` when `rg` is absent)
+on a verified settle lesson before reading the Ask procedure, reads the identity reference, renders the real managed brief, and
 proves that deleting the identity reference refuses both dispatch and launch.
 These are executed file/command checks, not an agent acknowledgement. Fixtures
 cover Arcadia/adopters, default root/global/nested combinations, Codex overrides,
@@ -80,6 +80,8 @@ UTF-8 overflow, preservation/idempotency, and mandatory late-rule visibility.
 
 - Focused delivery/adoption/dispatch suites: 99 tests passed; the final new
   guidance suite contains 15 regression scenarios.
+- Linux portability repair: the 15-scenario suite passed with both ordinary
+  PATH and a restricted PATH containing Git/grep but no ripgrep; lint passed.
 - `mise exec -- pnpm build`: passed (lint, TypeScript, core and Discord builds).
 - `mise exec -- pnpm check:agent-guidance`: passed; file receipts are attached.
 - Full suite with an isolated TMPDIR: 247 test files passed, 3 skipped;
@@ -129,6 +131,7 @@ and the confirmed provider/profile. That is separate from deterministic checks.
 | Pinned runtime validation | mise could not write its worktree trust registration from the sandbox | Ran the pinned validation through scoped host execution; no profile/permission widening. |
 | Initial typecheck | setup command projection omitted the new guidance field | Added the typed projection and reran typecheck/build. |
 | Early focused checks | Existing text-location assertions still expected the whole manual in AGENTS.md; one fixture lacked Project goal/date | Preserved assertions in the indexed canonical homes and corrected fixture fields. |
+| Linux CI retrieval fixture | Runner lacks `rg` (`ENOENT`) | Use real `grep` only for missing `rg`; keep search failures and lesson assertions binding. |
 | Initial lint | Replaced adoption fixtures left unused imports | Removed imports; lint/build passed. |
 | Full-suite tidy test | Fixed shared `publisher` clone path already existed | Reproduced and linked existing [#859](https://github.com/pmark/arcadia/issues/859); preserve the unknown old directory and use an isolated TMPDIR for proof. |
 | One full-suite run overlapped final source edits | The early test worker retained prior module code while new tests had already landed | Freeze code before final run; use fresh workers and retain the prior failed output. |
