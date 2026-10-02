@@ -1335,3 +1335,10 @@ updated: 2026-10-02
 - **Result:** Records the precise operator question required by the review cap, not consent to another pass. Stale Ask inputs are tracked in #875; the fixed-host socket portability finding is left for operator judgment. The protected preservation launcher also refuses this unregistered inherited worktree; the branch and proof are retained remotely.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-opened-arcadia-pr882
+
+- **Did:** Compact Way startup and indexed delivery guards are ready for review in https://github.com/pmark/arcadia/pull/882; fresh native-agent acceptance traces remain outstanding.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
