@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # Mission Log: Arcadia
@@ -1300,6 +1300,13 @@ updated: 2026-10-01
 ## 2026-10-01 — Agent Ask pr-opened-arcadia-pr868
 
 - **Did:** The installed terminal recovery is now canonically settled, and PR #868 carries its readiness record and the exact remaining v6 live-proof boundary: https://github.com/pmark/arcadia/pull/868
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-opened-arcadia-pr869
+
+- **Did:** 🧭 Drafted the Flight Deck execution-tree Plan (Selected vs Running vs Needs-you, three Actions, nothing runs until you approve) plus Decision 0079 on pointer-vs-running: https://github.com/pmark/arcadia/pull/869
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
