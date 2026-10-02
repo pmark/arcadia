@@ -1,15 +1,10 @@
+import { setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  CONTINUATION_PROTOCOL_FILE,
-  adoptContinuationProtocol,
-  thinClaudeWrapper,
-  updateAgentsMarkdown
-} from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan, declinesAutomaticUpgrades, readUpgradePolicy } from "../src/projects/wayPropagation.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -33,12 +28,7 @@ function tempRepo(): string {
 
 /** Writes a repository whose adopted files exactly match Arcadia's own canonical text. */
 function writeCurrentAdoption(repo: string): void {
-  writeFileSync(path.join(repo, "CONSTITUTION.md"), canonicalConstitution, "utf8");
-  writeFileSync(path.join(repo, "AGENTS.md"), updateAgentsMarkdown(null), "utf8");
-  writeFileSync(path.join(repo, "CLAUDE.md"), thinClaudeWrapper(null)!, "utf8");
-  mkdirSync(path.join(repo, "docs"), { recursive: true });
-  const protocolSource = readFileSync(path.join(repoRoot, CONTINUATION_PROTOCOL_FILE), "utf8");
-  writeFileSync(path.join(repo, CONTINUATION_PROTOCOL_FILE), adoptContinuationProtocol(protocolSource, null, null), "utf8");
+  setupArcadiaProjectContext({ repoPath: repo });
 }
 
 describe("computeWayPropagationPlan", () => {

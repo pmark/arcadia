@@ -10,7 +10,7 @@ at all, by pasting the relevant role prompt below.
 It invents no new document type. It produces only Agent Asks against
 Arcadia's existing intents (`outcome`, `milestone`, `decision`, `plan`,
 `action`), settled the normal way, through the normal approval gates. See
-[`AGENTS.md`](../AGENTS.md) for what those intents do and
+[`docs/agent-guidance/agent-asks.md`](agent-guidance/agent-asks.md) for what those intents do and
 [`docs/arcadia-semantics.md`](arcadia-semantics.md) for the vocabulary
 (Outcome, Milestone, Decision) both phases use.
 

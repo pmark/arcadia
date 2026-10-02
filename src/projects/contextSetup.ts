@@ -26,6 +26,8 @@ import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { nowIso } from "../utils/time.js";
 import { seedControlDocuments, type SeedControlDocumentsResult } from "./controlDocuments.js";
 
+import { assertBootstrapBudget, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+
 export const ARCADIA_CONTEXT_DIR = ".arcadia";
 export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
 export const REPO_CONTEXT_FILE = "repo-context.md";
@@ -155,6 +157,7 @@ export interface SetupProjectContextResult {
    */
   controlDocuments: SeedControlDocumentsResult;
   context: RepoContextSummary;
+  guidance: ReturnType<typeof inspectGuidanceDelivery>;
 }
 
 export function setupArcadiaProjectContext(input: {
@@ -164,6 +167,20 @@ export function setupArcadiaProjectContext(input: {
 }): SetupProjectContextResult {
   const resolved = resolveSetupTarget(input);
   const context = inspectRepository(resolved.repoPath, resolved.metadata);
+  const resources = guidanceResources(readAdoptedFile);
+  const preparedResources = resources.map((resource) => {
+    const target = path.join(resolved.repoPath, resource.path);
+    let existingParent = target;
+    while (!existsSync(existingParent)) existingParent = path.dirname(existingParent);
+    const realRoot = realpathSync(resolved.repoPath);
+    const realParent = realpathSync(existingParent);
+    if (realParent !== realRoot && !realParent.startsWith(`${realRoot}${path.sep}`)) throw validationError(`Guidance target escapes repository: ${resource.path}.`);
+    return { ...resource, content: adoptGuidanceResource(resource, existsSync(target) ? readFileSync(target, "utf8") : null) };
+  });
+  const desiredAgents = updateAgentsMarkdown(existsSync(path.join(resolved.repoPath, "AGENTS.md")) ? readFileSync(path.join(resolved.repoPath, "AGENTS.md"), "utf8") : null);
+  const preflight = inspectGuidanceDelivery(resolved.repoPath, { rootInstructions: desiredAgents });
+  const budgetProblems = preflight.problems.filter((problem) => /exceed|omit|Missing mandatory bootstrap rule|Missing mandatory retrieval reference/.test(problem));
+  if (budgetProblems.length) throw validationError(`Agent guidance adoption refused: ${budgetProblems.join(" ")}`, { delivery: preflight });
   const arcadiaDir = path.join(resolved.repoPath, ARCADIA_CONTEXT_DIR);
   mkdirSync(arcadiaDir, { recursive: true });
 
@@ -177,7 +194,12 @@ export function setupArcadiaProjectContext(input: {
   writeFileSync(agentPolicyPath, renderAgentContextPolicy(), "utf8");
   writeFileSync(repoContextPath, renderRepoContextPreservingUnchanged(repoContextPath, renderRepoContext(context)), "utf8");
   writeFileSync(contextPolicyPath, `${JSON.stringify(contextPolicyFromSummary(context), null, 2)}\n`, "utf8");
-  writeFileSync(agentsPath, updateAgentsMarkdown(existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null), "utf8");
+  writeFileSync(agentsPath, desiredAgents, "utf8");
+  for (const resource of preparedResources) {
+    const target = path.join(resolved.repoPath, resource.path);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, resource.content, "utf8");
+  }
 
   // The adopted Constitution, so `arcadia next` has standing constraints to
   // print in this repository. Written verbatim from Arcadia's own copy: an
@@ -189,9 +211,8 @@ export function setupArcadiaProjectContext(input: {
   }
 
   // The continuation protocol: how an agent starts, and what it owes before it
-  // stops. Its operative rules are also inlined into the AGENTS.md block above,
-  // because a linked document is not a loaded one; this copy carries the
-  // reasoning behind them.
+  // stops. Essential constraints stay in the bootstrap; indexed procedures
+  // must be retrieved before their operation, without auto-loading this manual.
   const protocolSource = readAdoptedFile(CONTINUATION_PROTOCOL_FILE);
   const protocolPath = path.join(resolved.repoPath, CONTINUATION_PROTOCOL_FILE);
   const protocolWritten = protocolSource !== null;
@@ -240,7 +261,8 @@ export function setupArcadiaProjectContext(input: {
       serviceScript: serviceScript.written ? serviceScript.path : null
     },
     controlDocuments,
-    context
+    context,
+    guidance: inspectGuidanceDelivery(resolved.repoPath)
   };
 }
 
@@ -543,10 +565,12 @@ export function readAgentsContextBlock(): string {
       `Missing ${AGENTS_CONTEXT_FILE}. The shared AGENTS.md region is read from Arcadia's own copy of it, never invented here.`
     );
   }
+  assertBootstrapBudget(text);
   return text.trim();
 }
 
 export function updateAgentsMarkdown(existing: string | null, canonical = readAgentsContextBlock()): string {
+  assertBootstrapBudget(canonical);
   const managedSection = [AGENTS_SECTION_START, canonical, AGENTS_SECTION_END].join("\n");
   if (!existing?.trim()) {
     return ["# AGENTS", "", managedSection, ""].join("\n");
@@ -963,4 +987,18 @@ function normalizeReference(value: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Preserve project-owned additions; JSON is the generated index, not a user data store. */
+export function adoptGuidanceResource(resource: { path: string; content: string }, existing: string | null): string {
+  if (resource.path.endsWith(".json")) {
+    if (existing?.trim()) {
+      try {
+        const value = JSON.parse(existing) as { schema?: unknown };
+        if (value.schema !== "arcadia-agent-guidance-v1") throw new Error("foreign index");
+      } catch { throw validationError(`Cannot overwrite project-owned ${resource.path}; relocate it before adoption.`); }
+    }
+    return resource.content;
+  }
+  return adoptContinuationProtocol(resource.content, existing, null);
 }

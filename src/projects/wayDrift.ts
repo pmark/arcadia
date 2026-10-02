@@ -1,3 +1,4 @@
+import { guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -5,11 +6,13 @@ import type { Project } from "../domain/types.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import {
   adoptContinuationProtocol,
+  adoptGuidanceResource,
   CONTINUATION_PROTOCOL_FILE,
   readAdoptedConstitution,
   readAdoptedFile,
   updateAgentsMarkdown
 } from "./contextSetup.js";
+
 
 const ADOPTION_FILE = ".arcadia/arcadia-way/adoption.json";
 
@@ -25,6 +28,8 @@ export interface WayDriftReport {
     constitution: WayFileDriftStatus;
     agentsRegion: WayFileDriftStatus;
     continuationProtocol: WayFileDriftStatus;
+    guidanceResources: WayFileDriftStatus;
+    instructionBudget: WayFileDriftStatus;
   };
   upgradePolicy: string | null;
 }
@@ -65,7 +70,7 @@ function buildDriftReport(
       projectName: project.name,
       repoPath,
       status: "unknown",
-      files: { constitution: "unknown", agentsRegion: "unknown", continuationProtocol: "unknown" },
+      files: { constitution: "unknown", agentsRegion: "unknown", continuationProtocol: "unknown", guidanceResources: "unknown", instructionBudget: "unknown" },
       upgradePolicy: null
     };
   }
@@ -73,7 +78,9 @@ function buildDriftReport(
   const files = {
     constitution: compareConstitution(repoPath, canonicalConstitution),
     agentsRegion: compareAgentsRegion(repoPath),
-    continuationProtocol: compareContinuationProtocol(repoPath, canonicalProtocolSource)
+    continuationProtocol: compareContinuationProtocol(repoPath, canonicalProtocolSource),
+    guidanceResources: compareGuidanceResources(repoPath),
+    instructionBudget: inspectGuidanceDelivery(repoPath).problems.length ? "differs" as const : "match" as const
   };
   const stale = Object.values(files).some((status) => status !== "match");
 
@@ -132,4 +139,16 @@ function readIfExists(filePath: string): string | null {
   } catch {
     return null;
   }
+}
+
+function compareGuidanceResources(repoPath: string): WayFileDriftStatus {
+  try {
+    let status: WayFileDriftStatus = "match";
+    for (const resource of guidanceResources(readAdoptedFile)) {
+      const actual = readIfExists(path.join(repoPath, resource.path));
+      if (actual === null) return "missing";
+      if (adoptGuidanceResource(resource, actual) !== actual) status = "differs";
+    }
+    return status;
+  } catch { return "unknown"; }
 }

@@ -1,7 +1,9 @@
+import { guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   CONTINUATION_PROTOCOL_FILE,
+  adoptGuidanceResource,
   adoptContinuationProtocol,
   readAdoptedConstitution,
   readAdoptedFile,
@@ -36,6 +38,7 @@ export interface WayPropagationPlan {
   hasGoverningChanges: boolean;
   unmanageable: WayFileChange[];
 }
+
 
 const ADOPTION_FILE = ".arcadia/arcadia-way/adoption.json";
 
@@ -110,6 +113,31 @@ export function computeWayPropagationPlan(repoPath: string, projectSlug: string 
     if (desiredProtocol !== existingProtocol) {
       changes.push({ path: CONTINUATION_PROTOCOL_FILE, tier: "governing", action: "write", content: desiredProtocol });
     }
+  }
+
+  for (const resource of guidanceResources(readAdoptedFile)) {
+    const existing = readIfExists(path.join(repoPath, resource.path));
+    try {
+      const desired = adoptGuidanceResource(resource, existing);
+      if (desired !== existing) changes.push({ path: resource.path, tier: "governing", action: "write", content: desired });
+    } catch (error) {
+      changes.push({ path: resource.path, tier: "governing", action: "unmanageable", content: null, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  if (changes.some((change) => change.path.startsWith("docs/") && change.path !== CONTINUATION_PROTOCOL_FILE)) {
+    const bootstrap = changes.find((change) => change.path === "AGENTS.md");
+    if (bootstrap) bootstrap.tier = "governing";
+  }
+  const delivery = inspectGuidanceDelivery(repoPath, { rootInstructions: desiredAgents });
+  const budgetProblems = delivery.problems.filter((problem) => /exceed|omit|Missing mandatory bootstrap rule|Missing mandatory retrieval reference/.test(problem));
+  if (budgetProblems.length) {
+    // Report without discarding adopter additions or publishing an unsafe bootstrap.
+    for (const change of changes) {
+      change.action = "unmanageable";
+      change.content = null;
+      change.reason = budgetProblems.join(" ");
+    }
+    if (!changes.length) changes.push({ path: "AGENTS.md", tier: "governing", action: "unmanageable", content: null, reason: budgetProblems.join(" ") });
   }
 
   const writable = changes.filter((change) => change.action === "write");

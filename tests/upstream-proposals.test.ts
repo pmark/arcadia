@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -185,7 +185,8 @@ type: proposal
   });
 
   it("states the file-a-proposal rule in the shared AGENTS.md region", () => {
-    const block = readAgentsContextBlock();
+    expect(readAgentsContextBlock()).toContain("missing capabilities as proposals");
+    const block = readFileSync(path.join(path.resolve(import.meta.dirname, ".."), "docs/agent-guidance/proposals.md"), "utf8");
     expect(block).toContain("file a\nproposal and continue without it");
     expect(block).toContain("Do not implement Arcadia commands, parsers,");
     expect(block).toContain("docs/proposals/<slug>.md");
