@@ -2855,6 +2855,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/policy.ts", "src/production/tick.ts", "apps/dashboard/app/api/production-control/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/managed-production-policy.test.ts", "tests/production-tick.test.ts", "docs/decisions/0072-decide-whether-the-standing-managed-production-grant-may-approve-the-build.md"]
+  - id: repair-manual-preservation-snapshot-identity
+    title: Bind manual preservation request identity to each immutable candidate snapshot while retaining idempotent unchanged retries and all exact authority and validation checks.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Bind manual preservation request identity to each immutable candidate snapshot while retaining idempotent unchanged retries and all exact authority and validation checks.
+    expected_artifact: Evidence satisfying Agent Ask repair-manual-preservation-snapshot-identity
+    clarification: clarified
+    confidence: high
+    source: Agent Ask repair-manual-preservation-snapshot-identity-878-2026-10-02-v2
+    acceptance_criteria:
+      - The fixed no-argument protected preservation launcher successfully captures an initial manual candidate, then captures a revised candidate after a canonical governance commit plus documentation changes in the same reservation with a distinct request id and a distinct immutable preservation receipt.
+      - An unchanged retry of either captured snapshot reuses that snapshot's request id and returns its original preservation outcome without creating a duplicate preservation commit or overwriting the earlier receipt.
+      - Changed consequential inputs under a reused request id still refuse; reservation, Action, repository, branch, base, policy, validation-command and exact validated-tree bindings remain enforced, with no caller-supplied success assertion or preservation bypass.
+      - Deterministic regression tests reproduce the two-capture failure sequence and cover identical retries, replay drift refusal, and recoverable failure or interrupted-attempt retry using the existing manual and candidate preservation architecture.
+      - "The repair preserves manual local-only authority and the no-public-arguments launcher contract; it starts no managed Run and does not accept, integrate, complete or advance the interrupted PPN Action, alter PR #207's draft state, discard its pending files or mark Nagel verification complete."
+      - Objective validation evidence covers the repair and regression tests, protected preservation records the final tested candidate, and a runnable handoff states the exact reviewed broker installation and same-worktree PPN resume procedure without exercising those downstream authority gates.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/878", "src/sessions/manualPreservation.ts", "src/sessions/candidatePreservation.ts", "tests/manual-preservation.test.ts", "tests/candidate-preservation.test.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
