@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createE2EWorkspace } from "./fixtures/workspace.js";
 
-test("Runs explains a durable Plan-amendment refusal and exposes its canonical receipt", async ({ page }) => {
+test("Operator actions explains a durable Plan-amendment refusal and exposes its canonical receipt", async ({ page }) => {
   const arcadia = await createE2EWorkspace();
   let launches = 0;
   try {
@@ -17,7 +17,7 @@ test("Runs explains a durable Plan-amendment refusal and exposes its canonical r
           settlement: { applied: true, documentsCommit: "fixture-exact-commit", proposalRequestId: "fixture-proposal" } }
       }] } });
     });
-    await page.goto(`${arcadia.url}/runs`);
+    await page.goto(`${arcadia.url}/actions`);
     await expect(page.getByText("Settlement is committed locally; origin refused publication.", { exact: true })).toBeVisible();
     await expect(page.getByText("Next: Restore origin and retry this same action without a second settlement.")).toBeVisible();
     await page.getByText("Receipt: PUBLICATION_FAILED", { exact: true }).click();

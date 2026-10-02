@@ -15,6 +15,7 @@ interface OperatorScript {
   desiredEffect: string;
   authority: { does: string[]; never_does: string[] };
   repeatable: boolean;
+  receipt?: { reason: string; message: string; next: string; runDirectory: string; settlement?: unknown } | null;
   state: { status: ScriptStatus; startedAt?: string; finishedAt?: string; exitCode?: number | null; message?: string; runId?: string };
   modifiedAt: string;
 }
@@ -147,6 +148,7 @@ function OperatorActionCard({ script, launching, onLaunch }: { script: OperatorS
       </details>
 
       {script.state.message ? <p className={`mt-3 text-sm ${script.state.status === "failed" ? "text-clay" : "text-muted"}`}>{script.state.message}</p> : null}
+      {script.receipt ? <div className="mt-3 text-sm"><p>{script.receipt.message}</p><p className="mt-1 text-muted">Next: {script.receipt.next}</p><details className="mt-2"><summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre></details></div> : null}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canRun ? (
           <button type="button" onClick={onLaunch} disabled={launching} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">

@@ -9,7 +9,7 @@ test('record the current information-architecture request baseline', async ({ pa
   const qa = path.join(arcadia.repo, 'docs/qa/runs-information-architecture');
   mkdirSync(qa, { recursive: true });
   try {
-    for (const route of ['/runs', '/review', '/work-queue', '/flight-deck']) {
+    for (const route of ['/runs', '/actions', '/review', '/work-queue', '/flight-deck']) {
       const requests: string[] = [];
       const capture = (request: { url(): string }) => {
         const url = new URL(request.url());
@@ -18,8 +18,8 @@ test('record the current information-architecture request baseline', async ({ pa
       page.on('request', capture);
       await page.goto(arcadia.url + route);
       await expect.poll(() => requests.length).toBeGreaterThan(0);
-      // Stop well before the first script-library poll (3 seconds). This
-      // records requested work, even when a slow CLI response has not finished.
+      // Stop before any follow-up poll. This records requested work, even when
+      // a slow CLI response has not finished.
       await page.waitForTimeout(500);
       page.off('request', capture);
       records[route] = requests;
@@ -30,8 +30,8 @@ test('record the current information-architecture request baseline', async ({ pa
       method: 'Cold direct navigation in an isolated E2E workspace; record API requests issued before the first poll. No mutations. Source budget comparison, not live Tailscale latency.',
       requests: records
     }, null, 2) + '\n');
-    expect(records['/runs']).toEqual(expect.arrayContaining(['/api/approvals', '/api/operator-script']));
-    expect(records['/runs']).toHaveLength(2);
+    expect(records['/runs']).toEqual(['/api/approvals']);
+    expect(records['/actions']).toEqual(['/api/operator-script']);
     expect(records['/review']).toEqual(['/api/snapshot']);
     expect(records['/work-queue']).toEqual(['/api/work-queue']);
     expect(records['/flight-deck']).toEqual(expect.arrayContaining(['/api/work-queue', '/api/snapshot']));
@@ -41,7 +41,7 @@ test('record the current information-architecture request baseline', async ({ pa
   }
 });
 
-test('preserve a seeded phone-width baseline of the overloaded Runs page', async ({ page }) => {
+test('preserve a seeded phone-width baseline of the focused Operator actions page', async ({ page }) => {
   const arcadia = await createE2EWorkspace();
   try {
     // Fixture data illustrates the existing controls; no host action launches.
@@ -60,11 +60,11 @@ test('preserve a seeded phone-width baseline of the overloaded Runs page', async
       repeatable: true, state: { status: 'failed', exitCode: 1, message: 'The worker heartbeat was unavailable.' },
       updatedAt: '2026-09-29T12:00:00Z'
     }] } }));
-    await page.goto(arcadia.url + '/runs');
+    await page.goto(arcadia.url + '/actions');
     await expect(page.getByText('The worker heartbeat was unavailable.')).toBeVisible();
     const qa = path.join(arcadia.repo, 'docs/qa/runs-information-architecture');
     mkdirSync(qa, { recursive: true });
-    await page.screenshot({ path: path.join(qa, 'runs-before-seeded-390.png') });
+    await page.screenshot({ path: path.join(qa, 'actions-seeded-390.png') });
   } finally {
     await arcadia.stop(false);
   }

@@ -7,7 +7,9 @@
   "method": "Cold direct navigation in an isolated E2E workspace; record API requests issued before the first poll. No mutations. Source budget comparison, not live Tailscale latency.",
   "requests": {
     "/runs": [
-      "/api/approvals",
+      "/api/approvals"
+    ],
+    "/actions": [
       "/api/operator-script"
     ],
     "/review": [
