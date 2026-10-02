@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-ready-arcadia-pr869-decision-answer-2026-10-01","project":"arcadia","intent":"log","desired_result":"🟢 Flight Deck tree Plan is CodeRabbit-approved and green — it needs your answer on Decision 0079 (Selected vs Running indicators) and your merge; nothing runs until you approve the Plan: https://github.com/pmark/arcadia/pull/869"}
