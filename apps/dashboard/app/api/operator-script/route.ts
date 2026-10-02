@@ -163,6 +163,8 @@ export async function POST(request: Request) {
   }
   let body: { id?: unknown };
   let lockPath: string | null = null;
+  let runRecordPath: string | null = null;
+  let initialRun: OperatorScriptRun | null = null;
   try {
     body = await request.json() as { id?: unknown };
   } catch {
@@ -199,7 +201,7 @@ export async function POST(request: Request) {
     const runDirectory = path.join(LAUNCHES_PATH, id, runId);
     await mkdir(runDirectory, { recursive: true });
     const descriptorSnapshotPath = path.join(runDirectory, "descriptor.json");
-    const runRecordPath = path.join(runDirectory, "run.json");
+    runRecordPath = path.join(runDirectory, "run.json");
     const scriptStatePath = path.join(STATE_PATH, `${id}.json`);
     const relativeRunDirectory = path.relative(LIBRARY_PATH, runDirectory);
     const descriptorSnapshot = {
@@ -211,7 +213,7 @@ export async function POST(request: Request) {
       failure: descriptor.failure
     };
     const startedAt = new Date().toISOString();
-    const initialRun: OperatorScriptRun = {
+    initialRun = {
       schema: "arcadia-operator-script-run-v1",
       runId,
       scriptId: id,
@@ -231,6 +233,9 @@ export async function POST(request: Request) {
     child.unref();
     return NextResponse.json({ runId, scriptId: id, status: "running", message: `${descriptor.title} started.` }, { status: 202 });
   } catch (error) {
+    if (runRecordPath && initialRun) {
+      await writeFile(runRecordPath, JSON.stringify({ ...initialRun, status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." }, null, 2) + "\n").catch(() => undefined);
+    }
     if (lockPath) {
       await writeStateAtomically(id, { status: "failed", finishedAt: new Date().toISOString(), exitCode: null, message: "The launcher could not start." });
       await unlink(lockPath).catch(() => undefined);

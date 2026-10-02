@@ -1,7 +1,7 @@
-import { access, readFile, realpath } from "node:fs/promises";
+import { access, open, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { LIBRARY_PATH, loadDescriptor, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
+import { LIBRARY_PATH, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -10,12 +10,19 @@ const SAFE_RUN_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 
 async function readTail(file: string): Promise<string> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    const value = await readFile(file, "utf8");
-    return value.length > MAX_OUTPUT_BYTES ? `…${value.slice(-MAX_OUTPUT_BYTES)}` : value;
+    const size = (await stat(file)).size;
+    const start = Math.max(0, size - MAX_OUTPUT_BYTES);
+    handle = await open(file, "r");
+    const buffer = Buffer.alloc(size - start);
+    await handle.read(buffer, 0, buffer.length, start);
+    return `${start > 0 ? "…" : ""}${buffer.toString("utf8")}`;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
     throw error;
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -29,7 +36,6 @@ export async function GET(
       return NextResponse.json({ error: "A valid operator-script and run id are required." }, { status: 400 });
     }
 
-    const { descriptor } = await loadDescriptor(id);
     const library = await realpath(LIBRARY_PATH);
     const runDirectory = path.join(LIBRARY_PATH, "runs", "operator", id, runId);
     const resolvedRunDirectory = await realpath(runDirectory);
@@ -41,6 +47,16 @@ export async function GET(
     if (run.schema !== "arcadia-operator-script-run-v1" || run.scriptId !== id || run.runId !== runId) {
       return NextResponse.json({ error: "The operator-script run record is invalid." }, { status: 500 });
     }
+    const descriptor = JSON.parse(await readFile(path.join(resolvedRunDirectory, "descriptor.json"), "utf8")) as {
+      id?: string;
+      title: string;
+      problem: string;
+      desired_effect: string;
+      authority: { does: string[]; never_does: string[] };
+      success: { effect: string; next: string };
+      failure: { effect: string; next: string };
+      repeatable?: boolean;
+    };
 
     const stale = run.status === "running" && run.pid !== undefined && !processIsRunning(run.pid);
     const visibleRun = stale
@@ -48,7 +64,7 @@ export async function GET(
       : run;
     return NextResponse.json({
       script: {
-        id: descriptor.id,
+        id: descriptor.id ?? id,
         title: descriptor.title,
         problem: descriptor.problem,
         desiredEffect: descriptor.desired_effect,

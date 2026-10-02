@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, Play, Search, TerminalSquare } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
 
 type ScriptStatus = "available" | "running" | "succeeded" | "failed";
@@ -27,21 +27,26 @@ export default function OperatorActionsPage() {
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launching, setLaunching] = useState<string | null>(null);
+  const refreshSequence = useRef(0);
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     setRefreshing(true);
     try {
       const response = await fetch("/api/operator-script", { cache: "no-store" });
       const body = await response.json() as { scripts?: OperatorScript[]; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Operator actions are unavailable.");
+      if (sequence !== refreshSequence.current) return;
       setScripts(body.scripts ?? []);
       setError(null);
       setLoadedAt(new Date());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (sequence === refreshSequence.current) setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (sequence === refreshSequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 

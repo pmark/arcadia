@@ -3,7 +3,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardChrome } from "../../../../../components/chrome";
 
 type RunStatus = "running" | "succeeded" | "failed";
@@ -29,9 +29,12 @@ export default function OperatorActionRunPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const refreshInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!id || !runId) return;
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     setRefreshing(true);
     try {
       const response = await fetch(`/api/operator-script/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
@@ -45,6 +48,7 @@ export default function OperatorActionRunPage() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      refreshInFlight.current = false;
     }
   }, [id, runId]);
 
