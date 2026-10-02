@@ -10,7 +10,7 @@ import {
   resolveBaseBranch,
   samePath
 } from "../git/worktrees.js";
-import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint } from "../sessions/manualPreservation.js";
+import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint, manualPreservationRequestId } from "../sessions/manualPreservation.js";
 import { resolveDispatch } from "../docs/dispatch.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
@@ -80,7 +80,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
         }, binding, assertBinding, options.onStage));
       options.onStage?.("post-validation-preserve-candidate");
       return preserveCandidate(db, {
-        requestId: `preserve:${binding.reservationId}`, repositoryPath: controlWorktree,
+        requestId: manualPreservationRequestId(binding, validation.candidateFingerprint), repositoryPath: controlWorktree,
         candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
         actionId: binding.actionId, packetSha256: manualBindingFingerprint(binding),
         authorityKind: "manual_handoff", policyEpoch: 0, policyRevision: 0, validation,
