@@ -230,6 +230,12 @@ export async function POST(request: Request) {
       child.once("spawn", resolve);
       child.once("error", reject);
     });
+    if (child.pid) {
+      const currentRun = JSON.parse(await readFile(runRecordPath, "utf8")) as OperatorScriptRun & { pid?: number };
+      if (currentRun.status === "running") {
+        await writeFile(runRecordPath, JSON.stringify({ ...currentRun, pid: child.pid }, null, 2) + "\n");
+      }
+    }
     child.unref();
     return NextResponse.json({ runId, scriptId: id, status: "running", message: `${descriptor.title} started.` }, { status: 202 });
   } catch (error) {

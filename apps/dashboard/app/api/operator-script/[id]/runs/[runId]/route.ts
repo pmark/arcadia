@@ -1,4 +1,4 @@
-import { access, open, readFile, realpath, stat } from "node:fs/promises";
+import { access, open, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { LIBRARY_PATH, processIsRunning, SAFE_ID, type OperatorScriptRun } from "../../../route";
@@ -60,8 +60,11 @@ export async function GET(
 
     const stale = run.status === "running" && run.pid !== undefined && !processIsRunning(run.pid);
     const visibleRun = stale
-      ? { ...run, status: "failed" as const, message: "The launcher stopped before recording a terminal result." }
+      ? { ...run, status: "failed" as const, finishedAt: run.finishedAt ?? new Date().toISOString(), exitCode: run.exitCode ?? null, message: "The launcher stopped before recording a terminal result." }
       : run;
+    if (stale) {
+      await writeFile(path.join(resolvedRunDirectory, "run.json"), JSON.stringify(visibleRun, null, 2) + "\n");
+    }
     return NextResponse.json({
       script: {
         id: descriptor.id ?? id,
