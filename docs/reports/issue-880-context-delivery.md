@@ -60,7 +60,9 @@ startup does not load the operator action manual.
 
 Setup checks canonical resources and budgets before writing, preserves Markdown
 and root additions outside managed regions, refuses foreign JSON indexes and
-escaping paths, and installs every referenced shared resource. Propagation uses
+escaping paths (including dangling symlinks), and installs every referenced
+shared resource. Propagation refuses all planned writes if its reference-library
+installation is blocked, so it cannot publish a partial bootstrap/library pair. Propagation uses
 the same adopter and keeps initial bootstrap/resource installation in the
 **governing** tier together. Way status detects missing/stale resources and
 budget problems. JSON dispatch and managed launches refuse unsafe delivery.
@@ -80,6 +82,8 @@ UTF-8 overflow, preservation/idempotency, and mandatory late-rule visibility.
 
 - Focused delivery/adoption/dispatch suites: 99 tests passed; the final new
   guidance suite contains 15 regression scenarios.
+- Final containment/preservation checks: 68 tests passed across six adoption,
+  propagation and delivery suites; the build passed.
 - Linux portability repair: the 15-scenario suite passed with both ordinary
   PATH and a restricted PATH containing Git/grep but no ripgrep; lint passed.
 - `mise exec -- pnpm build`: passed (lint, TypeScript, core and Discord builds).

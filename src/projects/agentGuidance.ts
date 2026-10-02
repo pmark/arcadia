@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -67,6 +67,26 @@ export function guidanceResources(readSource: (file: string) => string | null): 
 export function guidanceFingerprint(text: string): string {
   const body = /<!-- ARCADIA_CONTEXT_START -->\n([\s\S]*?)\n<!-- ARCADIA_CONTEXT_END -->/.exec(text)?.[1] ?? text;
   return createHash("sha256").update(body.trim()).digest("hex");
+}
+
+/** Validate planned writes without following an adopter symlink outside its checkout. */
+export function assertGuidanceTarget(repoRoot: string, relativePath: string): void {
+  const root = path.resolve(repoRoot);
+  const target = path.resolve(root, relativePath);
+  if (!target.startsWith(`${root}${path.sep}`)) throw validationError(`Guidance target escapes repository: ${relativePath}.`);
+  let existing = target;
+  for (;;) {
+    try { lstatSync(existing); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      existing = path.dirname(existing);
+    }
+  }
+  let realTarget: string;
+  try { realTarget = realpathSync(existing); }
+  catch { throw validationError(`Guidance target cannot be resolved safely: ${relativePath}.`); }
+  const realRoot = realpathSync(root);
+  if (realTarget !== realRoot && !realTarget.startsWith(`${realRoot}${path.sep}`)) throw validationError(`Guidance target escapes repository: ${relativePath}.`);
 }
 
 export function assertBootstrapBudget(text: string): void {

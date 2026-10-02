@@ -1,4 +1,4 @@
-import { guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+import { assertGuidanceTarget, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -140,6 +140,24 @@ export function computeWayPropagationPlan(repoPath: string, projectSlug: string 
     if (!changes.length) changes.push({ path: "AGENTS.md", tier: "governing", action: "unmanageable", content: null, reason: budgetProblems.join(" ") });
   }
 
+  for (const change of changes) {
+    if (change.action !== "write") continue;
+    try { assertGuidanceTarget(repoPath, change.path); }
+    catch (error) {
+      change.action = "unmanageable";
+      change.content = null;
+      change.reason = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const blockedLibrary = changes.find((change) => change.action === "unmanageable" && change.path.startsWith("docs/"));
+  if (blockedLibrary) {
+    for (const change of changes) {
+      if (change.action !== "write") continue;
+      change.action = "unmanageable";
+      change.content = null;
+      change.reason = `Guidance library installation is blocked by ${blockedLibrary.path}: ${blockedLibrary.reason}`;
+    }
+  }
   const writable = changes.filter((change) => change.action === "write");
   return {
     repoPath,

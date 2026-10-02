@@ -26,7 +26,7 @@ import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { nowIso } from "../utils/time.js";
 import { seedControlDocuments, type SeedControlDocumentsResult } from "./controlDocuments.js";
 
-import { assertBootstrapBudget, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+import { assertBootstrapBudget, assertGuidanceTarget, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
 
 export const ARCADIA_CONTEXT_DIR = ".arcadia";
 export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
@@ -170,11 +170,7 @@ export function setupArcadiaProjectContext(input: {
   const resources = guidanceResources(readAdoptedFile);
   const preparedResources = resources.map((resource) => {
     const target = path.join(resolved.repoPath, resource.path);
-    let existingParent = target;
-    while (!existsSync(existingParent)) existingParent = path.dirname(existingParent);
-    const realRoot = realpathSync(resolved.repoPath);
-    const realParent = realpathSync(existingParent);
-    if (realParent !== realRoot && !realParent.startsWith(`${realRoot}${path.sep}`)) throw validationError(`Guidance target escapes repository: ${resource.path}.`);
+    assertGuidanceTarget(resolved.repoPath, resource.path);
     return { ...resource, content: adoptGuidanceResource(resource, existsSync(target) ? readFileSync(target, "utf8") : null) };
   });
   const desiredAgents = updateAgentsMarkdown(existsSync(path.join(resolved.repoPath, "AGENTS.md")) ? readFileSync(path.join(resolved.repoPath, "AGENTS.md"), "utf8") : null);

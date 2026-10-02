@@ -185,10 +185,19 @@ describe("compact Way instruction delivery", () => {
     put(root, GUIDANCE_INDEX, '{"schema":"project-owned"}');
     expect(() => setupArcadiaProjectContext({ repoPath: root })).toThrow(/Cannot overwrite project-owned/);
     expect(file(root, "AGENTS.md")).toBe("# Keep local rules");
+    expect(computeWayPropagationPlan(root).changes.some((change) => change.action === "write")).toBe(false);
     const other = scratch(); put(other, "AGENTS.md", "# Keep local rules");
     const outside = scratch(); symlinkSync(outside, path.join(other, "docs"));
     expect(() => setupArcadiaProjectContext({ repoPath: other })).toThrow(/target escapes repository/);
     expect(file(other, "AGENTS.md")).toBe("# Keep local rules");
+    const plan = computeWayPropagationPlan(other);
+    expect(plan.unmanageable).toContainEqual(expect.objectContaining({ path: GUIDANCE_INDEX, reason: expect.stringContaining("target escapes repository") }));
+    expect(plan.changes.some((change) => change.action === "write")).toBe(false);
+    expect(existsSync(path.join(outside, "agent-guidance"))).toBe(false);
+    rmSync(path.join(other, "docs"));
+    symlinkSync(path.join(outside, "absent"), path.join(other, "docs"));
+    expect(() => setupArcadiaProjectContext({ repoPath: other })).toThrow(/cannot be resolved safely/);
+    expect(computeWayPropagationPlan(other).unmanageable).toContainEqual(expect.objectContaining({ path: GUIDANCE_INDEX, reason: expect.stringContaining("cannot be resolved safely") }));
   });
 
   it("loads a relevant nested Codex override beside the root bootstrap without duplicating it", () => {

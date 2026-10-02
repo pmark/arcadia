@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { getProject } from "../db/repositories.js";
 import { listMonitoredProjects } from "../commands/workMonitor.js";
 import { parseGithubSlug, resolveBaseBranch, uncommittedChanges } from "../git/worktrees.js";
+import { assertGuidanceTarget } from "./agentGuidance.js";
 import { arcadiaRepoRoot } from "./contextSetup.js";
 import { computeWayPropagationPlan, declinesAutomaticUpgrades, readUpgradePolicy, type WayPropagationPlan } from "./wayPropagation.js";
 
@@ -141,6 +142,9 @@ function propagateOneProject(
   const writable = plan.changes.filter((change) => change.action === "write");
   const unmanageable = plan.unmanageable.map((change) => change.path);
 
+  if (writable.length === 0 && plan.unmanageable.some((change) => change.path !== "CLAUDE.md")) {
+    return { ...base, repoPath, status: "error", detail: `Guidance delivery is blocked: ${plan.unmanageable.map((change) => `${change.path}: ${change.reason}`).join(" ")}`, unmanageable };
+  }
   if (writable.length === 0) {
     return { ...base, repoPath, status: "current", detail: "Already current.", unmanageable };
   }
@@ -201,6 +205,8 @@ function applyPropagation(
     runOrThrow(context.runCommand, repoPath, "git", ["checkout", baseBranch]);
     runOrThrow(context.runCommand, repoPath, "git", ["checkout", "-b", branch]);
 
+    // The checked-out base can differ from the branch inspected above.
+    for (const change of writable) assertGuidanceTarget(repoPath, change.path);
     for (const change of writable) {
       const target = path.join(repoPath, change.path);
       mkdirSync(path.dirname(target), { recursive: true });
