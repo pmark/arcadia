@@ -55,7 +55,7 @@ keys: 878, manual preservation, snapshot identity, fixed launcher, replay, LOCAL
 
 Run only `/Users/pmark/.local/bin/arcadia-preserve-broker-codex` with no arguments from the registered candidate; a revised validated tree must get a distinct `preserve:<reservation>:<tree>` identity and an unchanged retry reuses its receipt.
 Gotcha: if an older installed runtime returns the reservation-only identity or refuses the revised candidate, retain that exact receipt/refusal; do not raw-commit, install, restart, or alter production/PPN to work around it.
-The hermetic fixed-launcher proof is `/tmp/878-fixed-launcher-replay-result.json`; expires when #878 closes.
+The hermetic fixed-launcher proof is retained with the host receipts; an explicit operator recovery exception may preserve exact pending docs and reconcile canonical Log appends, retaining both histories. See `docs/reports/issue-878-manual-preservation-continuation.md`; this older-runtime workaround expires after the reviewed repair is installed.
 
 ## Where is the live workspace and its database?
 

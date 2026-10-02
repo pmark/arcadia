@@ -2,7 +2,7 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, including the completed-but-unpublished #878 manual-preservation repair candidate, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
+Latest derivation: **2026-10-02**, including the published #878 manual-preservation repair candidate in PR #888, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
 
 ## Current answer
 
@@ -32,9 +32,13 @@ Sessions.
 This is evidence for the **candidate** repair and its installed-launcher
 interface, not evidence that the reviewed repair is installed in the live
 worker. It does not authorize installation, a service restart, production,
-PPN execution, or publication. The repair still needs its final candidate
-preservation, pull-request review, and exact-head checks before the existing
-reviewed-installation gate may be used.
+PPN execution, or publication. The operator explicitly authorized bounded host recovery after protected
+preservation refused an incompatible main advance and fixed Go refused a
+second dirty manual candidate. Exact pending narrative bytes were preserved
+at `86853e2e5`; canonical Log `log-pr888-bounded-host-recovery-authority-2026-10-02`
+records that direct instruction. Merge `26fa3c333` retains both original
+histories and both canonical Mission Log append sets. PR #888 still requires
+review and exact-head checks before the separate reviewed-installation gate.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 
