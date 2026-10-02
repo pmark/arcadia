@@ -2857,7 +2857,7 @@ actions:
     references: ["src/production/policy.ts", "src/production/tick.ts", "apps/dashboard/app/api/production-control/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/managed-production-policy.test.ts", "tests/production-tick.test.ts", "docs/decisions/0072-decide-whether-the-standing-managed-production-grant-may-approve-the-build.md"]
   - id: repair-manual-preservation-snapshot-identity
     title: Bind manual preservation request identity to each immutable candidate snapshot while retaining idempotent unchanged retries and all exact authority and validation checks.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Bind manual preservation request identity to each immutable candidate snapshot while retaining idempotent unchanged retries and all exact authority and validation checks.
@@ -2879,7 +2879,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: repair-manual-preservation-snapshot-identity
+current_action: persist-inactive-production-configuration
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

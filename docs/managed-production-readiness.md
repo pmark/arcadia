@@ -2,13 +2,49 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, including verified prerequisite publication and the subsequent bounded scope/custody preparation, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
+Latest derivation: **2026-10-02**, including the published #878 manual-preservation repair candidate in PR #888, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
 
 ## Current answer
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
 Production is **Inactive at revision 29, with zero live admissions**. The operator pressed the fresh exact `/runs` Grant for the retained B candidate. Host validation passed, preservation receipt `presv_af1defad33604b5893` binds terminal Session `session_b82d2b412265419482` to the unchanged candidate, and the fixture base advanced exactly once from `a6b539d` to settlement commit `c6b4c4e`. The eight-Session set remained unchanged; no replacement coding Session launched. Off was restored at revision 29. The preservation receipt is `LOCAL ONLY`, so this fixture commit is recoverable on this host but not claimed as remotely published. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) and retained `/runs` receipt separate this live result from the original seven-Session A sequence.
+
+## Issue #878 manual-preservation repair — candidate versus installed state
+
+Candidate commit `d45b2fb922438d3cca3bc00f7b305a05838ee037` was protected as
+manual-local-only receipt `presv_a47d71b5cf6740669c`; its host validation ran
+`node scripts/preservation-self-check.mjs`. The host then settled the repair's
+six criterion-exact completion Ask in this candidate at `1db14018c` (receipt
+`asksettle_5cd514e1fee94d4097`), selecting
+`persist-inactive-production-configuration` as the next governed Action.
+
+Host validation separately passed the repair's full test set (50 passed, 2
+skipped), lint, TypeScript, and the retained hermetic replay at
+`/tmp/878-fixed-launcher-replay-result.json`. That replay invoked the literal
+installed no-argument preservation launcher against a disposable manual
+reservation, captured an initial snapshot and retry, made a canonical Log
+settlement plus candidate documentation revision, then captured the revised
+snapshot and retry. It retained distinct snapshot request/receipt identities,
+unchanged original receipt bytes, `LOCAL ONLY` outcomes, and zero managed
+Sessions.
+
+This is evidence for the **candidate** repair and its installed-launcher
+interface, not evidence that the reviewed repair is installed in the live
+worker. It does not authorize installation, a service restart, production,
+PPN execution, or publication. The operator explicitly authorized bounded host recovery after protected
+preservation refused an incompatible main advance and fixed Go refused a
+second dirty manual candidate. Exact pending narrative bytes were preserved
+at `86853e2e5`; canonical Log `log-pr888-bounded-host-recovery-authority-2026-10-02`
+records that direct instruction. Merge `26fa3c333` retains both original
+histories and both canonical Mission Log append sets. PR #888 still requires
+review and exact-head checks before the separate reviewed-installation gate.
+The reconciled candidate passed 53 tests (two existing skips), lint, TypeScript
+and the core build. Restricted validation captured tree `ac159db5e706169d6fa3d821fb69b01ae508c9b0`,
+but the older installed runtime refused its reservation-only request ID at
+`preserve.replay`. The original protected receipt remains intact; subsequent
+document preservation and reconciliation used the explicit host exception.
+No new protected receipt or live installation is claimed.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 
@@ -45,7 +81,7 @@ Exact identities, revisions, host/provider, receipts and refusal evidence remain
 
 The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The first repair's canonical completion settlement marked `recover-terminal-integration-after-reconcile` done. After #865 merged, queue reorder revision 176 and pointer commit `f28fb2868` selected `finish-two-action-unattended-production-proof`. Discovery of B's missing preservation receipt led to accepted Agent Ask `recover-completed-candidate-unpreserved-after-off-2026-10-01`; queue revision 177 placed its Action first and pointer commit `eec7cf657` selected it. After #866 was installed, completion settlement commit `33c4dfb8e` marked that repair done and returned the pointer to `finish-two-action-unattended-production-proof`. After PR #870 merged, settlement commit `532691fb8` narrowed that Action to the proven integration-evidence criterion, marked it done, created `prove-literal-split-browser-and-ledger`, rewired 19 dependents and moved the pointer there. Provider concurrency remains deferred; no Plan was activated by inference.
 
-The active Plan contains **153 Actions: 120 done and 33 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The original proof Action names its three proven criteria; its first remainder names the proven integration-evidence criterion; the new open remainder retains the other three and 19 dependents now wait for it.
+The active Plan contains **154 Actions: 121 done and 33 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The original proof Action names its three proven criteria; its first remainder names the proven integration-evidence criterion; the new open remainder retains the other three and 19 dependents now wait for it.
 
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 

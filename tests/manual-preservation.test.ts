@@ -8,7 +8,7 @@ import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { uncommittedChanges } from "../src/git/worktrees.js";
 import { runAdvanceCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
-import { bindManualPreservation, assertManualPreservationBinding } from "../src/sessions/manualPreservation.js";
+import { bindManualPreservation, assertManualPreservationBinding, manualPreservationRequestId } from "../src/sessions/manualPreservation.js";
 import { PRESERVATION_JOB_TIMEOUT_MS, PRESERVATION_RESPONSE_TIMEOUT_MS, processPreservationRequests, refreshPreservationHeartbeat, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
 import { goTransportFailure } from "../src/sessions/goRequestExecutor.js";
 import * as validation from "../src/sessions/preservationValidation.js";
@@ -87,6 +87,72 @@ describe("manual Go preservation binding", () => {
     expect(fixtureGit(f.candidate, ["rev-list", "--count", "main..HEAD"])).toBe("1");
     expect(validator).toHaveBeenCalledTimes(2);
     expect(remote.hasRemote).not.toHaveBeenCalled();
+  });
+  it("gives each validated manual snapshot its own identity while retries retain their receipt", () => {
+    const f = fixture();
+    const validator = vi.spyOn(validation, "validateBoundCandidate").mockImplementation((_workspace, candidate, binding, assertBinding) => {
+      assertBinding();
+      return { passed: true, evidenceRef: "fixture-validation-only", candidateFingerprint: snapshotCandidate(candidate.worktree), binding };
+    });
+
+    const initial = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;
+    const initialRetry = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;
+    expect(initialRetry).toMatchObject({ requestId: initial.requestId, commitSha: initial.commitSha, replayed: true });
+
+    // This is a canonical managed-document commit on the base followed by a
+    // candidate documentation revision in the same manual reservation.
+    const project = path.join(f.repo, "PROJECT.md");
+    writeFileSync(project, readFileSync(project, "utf8").replace("updated: 2026-09-12", "updated: 2026-09-13"));
+    fixtureGit(f.repo, ["add", "PROJECT.md"]);
+    fixtureGit(f.repo, ["commit", "-m", "chore(arcadia): record fixture governance revision"]);
+    mkdirSync(path.join(f.candidate, "docs"), { recursive: true });
+    writeFileSync(path.join(f.candidate, "docs", "manual-preservation-evidence.md"), "revised candidate\n");
+
+    const revised = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;
+    const revisedRetry = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;
+    expect(revised.requestId).not.toBe(initial.requestId);
+    expect(revised.commitSha).not.toBe(initial.commitSha);
+    expect(revised).toMatchObject({ authorityKind: "manual_handoff", preservationState: "LOCAL ONLY", replayed: false });
+    expect(revisedRetry).toMatchObject({ requestId: revised.requestId, commitSha: revised.commitSha, replayed: true });
+    expect(fixtureGit(f.candidate, ["rev-list", "--count", "main..HEAD"])).toBe("2");
+    expect(validator).toHaveBeenCalledTimes(4);
+  });
+  it("recovers an interrupted manual capture with the same snapshot identity", () => {
+    const f = fixture();
+    vi.spyOn(validation, "validateBoundCandidate").mockImplementation((_workspace, candidate, binding, assertBinding) => {
+      assertBinding();
+      return { passed: true, evidenceRef: "fixture-validation-only", candidateFingerprint: snapshotCandidate(candidate.worktree), binding };
+    });
+    expect(() => runPreserveCommand({ source: f.candidate, workspace: f.workspace, deps: {
+      hooks: { afterCommit: () => { throw new Error("interrupted after commit"); } }
+    } })).toThrow("interrupted after commit");
+    const recovered = runPreserveCommand({ source: f.candidate, workspace: f.workspace }).data.receipt;
+    const binding = bind(f);
+    expect(recovered).toMatchObject({
+      requestId: manualPreservationRequestId(binding, recovered.candidateFingerprint),
+      preservationState: "LOCAL ONLY"
+    });
+    expect(fixtureGit(f.candidate, ["rev-list", "--count", "main..HEAD"])).toBe("1");
+  });
+  it("derives snapshot identities from SHA-1 and SHA-256 Git trees only", () => {
+    const f = fixture();
+    const binding = bind(f);
+    const sha1Tree = snapshotCandidate(f.candidate);
+    expect(sha1Tree).toMatch(/^[0-9a-f]{40}$/);
+    expect(manualPreservationRequestId(binding, sha1Tree)).toBe(`preserve:${binding.reservationId}:${sha1Tree}`);
+
+    const sha256 = path.join(f.root, "sha256-tree");
+    fixtureGit(f.root, ["init", "--object-format=sha256", "-b", "main", sha256]);
+    writeFileSync(path.join(sha256, "snapshot.txt"), "sha256 tree\n");
+    fixtureGit(sha256, ["add", "snapshot.txt"]);
+    fixtureGit(sha256, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "sha256 fixture"]);
+    const sha256Tree = fixtureGit(sha256, ["rev-parse", "HEAD^{tree}"]);
+    expect(sha256Tree).toMatch(/^[0-9a-f]{64}$/);
+    expect(manualPreservationRequestId(binding, sha256Tree)).toBe(`preserve:${binding.reservationId}:${sha256Tree}`);
+
+    for (const oid of ["a".repeat(39), "a".repeat(41), "a".repeat(63), "a".repeat(65), "A".repeat(40), "g".repeat(40)]) {
+      expect(() => manualPreservationRequestId(binding, oid)).toThrow("immutable validated candidate fingerprint");
+    }
   });
   it("recovers an existing reservation once and replays the same binding", () => {
     const f = fixture(); const before = readFileSync(path.join(f.repo, "PROJECT.md"));

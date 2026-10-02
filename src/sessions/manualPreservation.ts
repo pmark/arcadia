@@ -34,6 +34,19 @@ export function manualBindingFingerprint(binding: ManualPreservationBinding): st
   return createHash("sha256").update(JSON.stringify(binding)).digest("hex");
 }
 
+/**
+ * A manual launcher has no public request-id argument. Its request identity is
+ * therefore derived only after host validation has captured the exact candidate
+ * tree. The same reservation and immutable tree replay the original receipt;
+ * a revised tree gets a new identity without allowing a caller to choose one.
+ */
+export function manualPreservationRequestId(binding: ManualPreservationBinding, candidateFingerprint: string): string {
+  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(candidateFingerprint)) {
+    throw validationError("Manual preservation requires an immutable validated candidate fingerprint.");
+  }
+  return `preserve:${binding.reservationId}:${candidateFingerprint}`;
+}
+
 /** The host freezes only its existing reservation and authoritative Project
  * state. Requests cannot supply commands, branch identities or passing evidence.
  * This grants local candidate preservation only, never managed production. */
