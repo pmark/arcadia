@@ -1,0 +1,31 @@
+{
+  "schema": "arcadia-container-audit-grant-v1",
+  "repository": "/Users/pmark/Dev/PrivatePracticeNow/platform",
+  "source": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/container-audit-preparation/nagel-baseline-579878/site",
+  "decisionPath": "/Users/pmark/Dev/MR/Arcadia/arcadia/docs/decisions/0079-decide-whether-to-activate-exactly-one-bounded-docker-host-audit-of-the.md",
+  "authority": {
+    "schema": "arcadia-container-audit-authority-v1",
+    "project": "private-practice-now",
+    "revision": "579878edd09f8274a2f5b9a9e8ac53e4dbc54769",
+    "image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+    "executorHash": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
+    "snapshotHash": "17502e95d3e51f64218a880fd18c80557ef3e60ddb62d761028ac0a5d05c4b6a",
+    "routes": [
+      "/",
+      "/specialties/parent-counseling",
+      "/specialties/teen-therapy",
+      "/contact"
+    ],
+    "viewports": [
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 1440,
+        "height": 900
+      }
+    ],
+    "expiresAt": "2026-10-02T18:45:00.000Z"
+  }
+}

@@ -1,0 +1,289 @@
+{
+  "schema": "arcadia-container-audit-receipt-v1",
+  "authority": {
+    "schema": "arcadia-container-audit-authority-v1",
+    "project": "browser-audit-fixture",
+    "revision": "001ee17263b27d5c8c8698c20a6e6d2dc2eb4f03",
+    "image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+    "executorHash": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
+    "snapshotHash": "f14bac7dfb8d658ed836abdf5e5a4e50821317e8080a7ec1ec3b75b06bd2db19",
+    "routes": [
+      "/"
+    ],
+    "viewports": [
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 1440,
+        "height": 900
+      }
+    ],
+    "expiresAt": "2026-10-02T11:36:20.888Z"
+  },
+  "name": "arcadia-audit-31217979-44d4-484a-aa91-2f2722798b7f",
+  "createdAt": "2026-10-02T11:26:39.225Z",
+  "stage": "browser.stall",
+  "timedOut": true,
+  "removed": true,
+  "ready": false,
+  "exit": 137,
+  "stdout": "{\"schema\":\"arcadia-container-browser-result-v1\",\"renders\":[],\"reports\":[],\"denials\":{\"external\":\"ENETUNREACH\",\"private\":\"ENETUNREACH\",\"hostGateway\":\"ENETUNREACH\",\"credentials\":\"EACCES\",\"dockerSocket\":\"ENOENT\"},\"detachedChild\":15}\n",
+  "stderr": "ARCADIA_CONTAINER_STAGE preview.ready\nARCADIA_CONTAINER_STAGE detached.started\nARCADIA_CONTAINER_STAGE browser.ready\nARCADIA_CONTAINER_STAGE browser.stall\n",
+  "inspection": [
+    {
+      "Id": "1e682899a9f99d0e700cc7463c7bff6bda23d54673cb62c56e8d0f24aee55791",
+      "Created": "2026-10-02T11:26:39.279351126Z",
+      "Path": "node",
+      "Args": [
+        "/audit/worker.mjs"
+      ],
+      "State": {
+        "Status": "created",
+        "Running": false,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 0,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "0001-01-01T00:00:00Z",
+        "FinishedAt": "0001-01-01T00:00:00Z"
+      },
+      "Image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+      "ResolvConfPath": "",
+      "HostnamePath": "",
+      "HostsPath": "",
+      "LogPath": "",
+      "Name": "/arcadia-audit-31217979-44d4-484a-aa91-2f2722798b7f",
+      "RestartCount": 0,
+      "Driver": "overlayfs",
+      "Platform": "linux",
+      "MountLabel": "",
+      "ProcessLabel": "",
+      "AppArmorProfile": "",
+      "ExecIDs": null,
+      "HostConfig": {
+        "Binds": null,
+        "ContainerIDFile": "",
+        "LogConfig": {
+          "Type": "json-file",
+          "Config": {}
+        },
+        "NetworkMode": "none",
+        "PortBindings": {},
+        "RestartPolicy": {
+          "Name": "no",
+          "MaximumRetryCount": 0
+        },
+        "AutoRemove": false,
+        "VolumeDriver": "",
+        "VolumesFrom": null,
+        "ConsoleSize": [
+          0,
+          0
+        ],
+        "CapAdd": null,
+        "CapDrop": [
+          "ALL"
+        ],
+        "CgroupnsMode": "private",
+        "Dns": null,
+        "DnsOptions": [],
+        "DnsSearch": [],
+        "ExtraHosts": null,
+        "GroupAdd": null,
+        "IpcMode": "private",
+        "Cgroup": "",
+        "Links": null,
+        "OomScoreAdj": 0,
+        "PidMode": "",
+        "Privileged": false,
+        "PublishAllPorts": false,
+        "ReadonlyRootfs": true,
+        "SecurityOpt": [
+          "no-new-privileges"
+        ],
+        "Tmpfs": {
+          "/tmp": "rw,nosuid,nodev,size=512m,mode=1777"
+        },
+        "UTSMode": "",
+        "UsernsMode": "",
+        "ShmSize": 134217728,
+        "Runtime": "runc",
+        "Isolation": "",
+        "CpuShares": 0,
+        "Memory": 2147483648,
+        "NanoCpus": 2000000000,
+        "CgroupParent": "",
+        "BlkioWeight": 0,
+        "BlkioWeightDevice": [],
+        "BlkioDeviceReadBps": [],
+        "BlkioDeviceWriteBps": [],
+        "BlkioDeviceReadIOps": [],
+        "BlkioDeviceWriteIOps": [],
+        "CpuPeriod": 0,
+        "CpuQuota": 0,
+        "CpuRealtimePeriod": 0,
+        "CpuRealtimeRuntime": 0,
+        "CpusetCpus": "",
+        "CpusetMems": "",
+        "Devices": [],
+        "DeviceCgroupRules": null,
+        "DeviceRequests": null,
+        "MemoryReservation": 0,
+        "MemorySwap": 4294967296,
+        "MemorySwappiness": null,
+        "OomKillDisable": false,
+        "PidsLimit": 256,
+        "Ulimits": [],
+        "CpuCount": 0,
+        "CpuPercent": 0,
+        "IOMaximumIOps": 0,
+        "IOMaximumBandwidth": 0,
+        "Mounts": [
+          {
+            "Type": "bind",
+            "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/site",
+            "Target": "/site",
+            "ReadOnly": true
+          },
+          {
+            "Type": "bind",
+            "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/input",
+            "Target": "/input",
+            "ReadOnly": true
+          }
+        ],
+        "MaskedPaths": [
+          "/proc/acpi",
+          "/proc/asound",
+          "/proc/interrupts",
+          "/proc/kcore",
+          "/proc/keys",
+          "/proc/latency_stats",
+          "/proc/sched_debug",
+          "/proc/scsi",
+          "/proc/timer_list",
+          "/proc/timer_stats",
+          "/sys/devices/virtual/powercap",
+          "/sys/firmware"
+        ],
+        "ReadonlyPaths": [
+          "/proc/bus",
+          "/proc/fs",
+          "/proc/irq",
+          "/proc/sys",
+          "/proc/sysrq-trigger"
+        ],
+        "Init": true
+      },
+      "Storage": {
+        "RootFS": {
+          "Snapshot": {
+            "Name": "overlayfs"
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/site",
+          "Destination": "/site",
+          "Mode": "",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/input",
+          "Destination": "/input",
+          "Mode": "",
+          "RW": false,
+          "Propagation": "rprivate"
+        }
+      ],
+      "Config": {
+        "Hostname": "1e682899a9f9",
+        "Domainname": "",
+        "User": "1000:1000",
+        "AttachStdin": false,
+        "AttachStdout": true,
+        "AttachStderr": true,
+        "Tty": false,
+        "OpenStdin": false,
+        "StdinOnce": false,
+        "Env": [
+          "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          "LANG=C.UTF-8",
+          "LC_ALL=C.UTF-8",
+          "PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+          "HOME=/tmp/home",
+          "TMPDIR=/tmp"
+        ],
+        "Cmd": null,
+        "Image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+        "Volumes": null,
+        "WorkingDir": "/audit",
+        "Entrypoint": [
+          "node",
+          "/audit/worker.mjs"
+        ],
+        "Labels": {
+          "org.opencontainers.image.version": "24.04"
+        },
+        "StopTimeout": 1
+      },
+      "NetworkSettings": {
+        "SandboxID": "",
+        "SandboxKey": "",
+        "Ports": {},
+        "Networks": {
+          "none": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "",
+            "EndpointID": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "MacAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "ImageManifestDescriptor": {
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "digest": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+        "size": 2089,
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux"
+        }
+      }
+    }
+  ],
+  "processes": "PID                 PPID                PGID                COMMAND             COMMAND\n78517               78494               78517               docker-init         /sbin/docker-init -- node /audit/worker.mjs\n78532               78517               78532               MainThread          node /audit/worker.mjs\n78541               78517               78541               sleep               /bin/sleep 300\n78605               78532               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --disable-dev-shm-usage --remote-debugging-port=43124 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/playwright_chromiumdev_profile-HQr9Yi --remote-debugging-pipe --no-startup-window\n78607               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-zygote-sandbox --no-sandbox --headless\n78608               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-sandbox --headless\n78622               78607               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=gpu-process --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=UAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAYAAAAAAAAABgAAAAAAAAAAAAAAA\n78641               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US@posix --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,15003731884244051409,14147131701193075011,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AutoDeElevate,AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,OptimizationHints,PaintHolding,RenderDocument,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,3787401209262791375,4480811217655322474,4 --trace-process-track-uuid=3190708989122997041\n",
+  "result": {
+    "schema": "arcadia-container-browser-result-v1",
+    "renders": [],
+    "reports": [],
+    "denials": {
+      "external": "ENETUNREACH",
+      "private": "ENETUNREACH",
+      "hostGateway": "ENETUNREACH",
+      "credentials": "EACCES",
+      "dockerSocket": "ENOENT"
+    },
+    "detachedChild": 15
+  },
+  "cleanupError": ""
+}

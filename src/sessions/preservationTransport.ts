@@ -13,6 +13,7 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
 import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js";
+import { CONTAINER_AUDIT_TRANSPORT_HASH, processContainerAuditRequest } from "./containerAuditTransport.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 const runningGoSources = new Set<string>();
@@ -52,6 +53,8 @@ interface TransportHeartbeat {
    * claim go serviceability it is not delivering.
    */
   goRequestsAt?: number;
+  /** Loaded host handler identity, never an activation or dispatch Grant. */
+  containerAuditRequests?: { at: number; transportHash: string };
 }
 
 type PreservationHeartbeatRoutes = Omit<TransportHeartbeat, "schema" | "at">;
@@ -342,13 +345,20 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     repositories,
     handoffs: handoffs.map(h => ({ id: h.id, worktree: h.worktree_path })),
     goRequests: true,
-    goRequestsAt: at
+    goRequestsAt: at,
+    containerAuditRequests: {at, transportHash: CONTAINER_AUDIT_TRANSPORT_HASH}
   };
   latestPreservationRoutes.set(workspace, routes);
   writePreservationHeartbeat(workspace, routes, at);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
+  for (const repository of repositories) {
+    try { processContainerAuditRequest(workspace, repository.path); }
+    catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
+  }
   let preservationInFlight = false;
   for (const lease of [...leases, ...handoffs]) {
+    try { processContainerAuditRequest(workspace, lease.worktree_path); }
+    catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
     processGoRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;

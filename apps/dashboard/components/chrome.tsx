@@ -14,7 +14,8 @@ import {
   RefreshCw,
   Route,
   ScrollText,
-  Sparkles
+  Sparkles,
+  TerminalSquare
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/qa", label: "QA", icon: ListChecks },
   { href: "/back-burner", label: "Back Burner", icon: Archive },
   { href: "/runs", label: "Runs", icon: History },
+  { href: "/actions", label: "Operator actions", icon: TerminalSquare },
   { href: "/admin/intelligence", label: "Intelligence", icon: Sparkles },
   { href: "/admin/dispatch-journal", label: "Journal", icon: ScrollText },
   { href: "/admin/pull-requests", label: "PRs", icon: GitPullRequest },
@@ -75,7 +77,7 @@ export function DashboardChrome({
         <nav className="mx-auto grid max-w-6xl grid-cols-5 border-t border-line px-2 sm:grid-cols-9 sm:px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = pathname === item.href || (item.href === "/actions" && pathname.startsWith("/actions/"));
             return (
               <Link
                 key={item.href}

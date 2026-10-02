@@ -2,28 +2,28 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-01**, after the renewed v6 trial and installed #860, #865 and #866 repairs.
+Latest derivation: **2026-10-02**, including verified prerequisite publication and the subsequent bounded scope/custody preparation, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
 
 ## Current answer
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
-Production is **Inactive at revision 27, with zero live admissions**. The dependent Action's completed candidate has not been integrated into the fixture base after Off. Its terminal exit has accepted completion and its candidate is clean at settlement commit `c6b4c4e`, but no host preservation receipt exists because Off preceded reconciliation. Installed #866 adds exact terminal validation and preservation under a fresh Grant before #865's integration path; that path is test-proven but has not run on the retained live v6 candidate. Arcadia settled a `split` Ask against the original parent proof: exactly three of seven criteria are recorded met, while four remain open. This does not claim the whole proof is complete.
+Production is **Inactive at revision 29, with zero live admissions**. The operator pressed the fresh exact `/runs` Grant for the retained B candidate. Host validation passed, preservation receipt `presv_af1defad33604b5893` binds terminal Session `session_b82d2b412265419482` to the unchanged candidate, and the fixture base advanced exactly once from `a6b539d` to settlement commit `c6b4c4e`. The eight-Session set remained unchanged; no replacement coding Session launched. Off was restored at revision 29. The preservation receipt is `LOCAL ONLY`, so this fixture commit is recoverable on this host but not claimed as remotely published. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) and retained `/runs` receipt separate this live result from the original seven-Session A sequence.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 
 PR #860 merged at `953e41590b33f3437acf57a80168e9a5f8dcbdda` and is present in checkout HEAD `1f7d4a6a57111844e9a8173235142fd95d0e6970`. The supported service restart completed at 13:16 PDT; the new worker PID 44138 started from that checkout at 13:16:58 PDT and its status resolved `martianrover`. #860 is therefore installed in the running worker. `arcadia go-broker ensure` subsequently passed from the clean main checkout, including its host probe, candidate build, dashboard build and Vitest checks. No new Grant is claimed here.
 
-PR #865 merged at `650fc23e339fdf541090f5dd58788b52ee09a824`. The supported restart completed after that merge; worker PID 56539 runs the merged checkout's `src/cli.ts`, and intelligence, dashboard and Discord services passed readiness. Policy read after restart still shows Inactive revision 27, epoch 18. The recovery repair is installed, but no live terminal integration has run under it.
+PR #865 merged at `650fc23e339fdf541090f5dd58788b52ee09a824`. The supported restart completed after that merge; worker PID 56539 ran the merged checkout's `src/cli.ts`, and intelligence, dashboard and Discord services passed readiness. Policy read after that restart showed Inactive revision 27, epoch 18. The later exact B recovery exercised this installed integration path.
 
-PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approved head `185f54aa0`; all required lint, dashboard, four unit shards and e2e checks passed. Focused terminal recovery/refusal tests passed 25/25 and the core build passed. The supported restart installed #866 in worker PID 67663; all four services passed readiness. Policy remained Inactive revision 27, epoch 18 with zero live admissions. The repair Action's three criteria were settled through Agent Ask `complete-off-terminal-preservation-recovery-2026-10-01`; live B integration and the parent proof remain open.
+PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approved head `185f54aa0`; all required lint, dashboard, four unit shards and e2e checks passed. Focused terminal recovery/refusal tests passed 25/25 and the core build passed. The supported restart installed #866 in worker PID 67663; all four services passed readiness. At that point policy remained Inactive revision 27, epoch 18 with zero live admissions. The repair Action's three criteria were settled through Agent Ask `complete-off-terminal-preservation-recovery-2026-10-01`; the later exact B recovery exercised the installed repair.
 
 ## Vital few next steps
 
-1. Publish a fresh, one-shot `/runs` Grant for only the retained v6 dependent candidate. Its own exact operator approval is required before activation; do not reuse the consumed v6 button. After approval, observe the smallest bounded installed recovery, return policy to Off, and assess the four remaining v6 criteria. A new provider trial is justified only for an exact criterion still lacking proof, especially the literal two-Session split completion.
-2. Keep the completed terminal repair distinct from live evidence. #866 binds the accepted exit and exact settlement, revalidates the unchanged candidate under current policy, creates the canonical preservation receipt without reviving a Session, then uses #865's pinned integration path. Its installation and test receipts do not claim B has already integrated.
+1. Keep B's completed recovery closed: the exact Grant was consumed, the candidate integrated once, and production is Off. Reassess the remaining parent criteria without repeating B or reusing the succeeded button. The literal two-Session A completion remains unproven; browser closure and a complete operator-intervention ledger are also not established by current receipts.
+2. Preserve the completed terminal repair and live evidence separately. #866 bound the accepted exit and exact settlement, validated the unchanged candidate, and created the canonical preservation receipt without reviving a Session; #865's pinned path integrated it. The recorded validation command exited 0, fixture main and candidate both resolve to `c6b4c4e`, and the one base-advance receipt records the transition.
 3. Keep the present single-Project scope. The concrete restriction in `tests/production-tick.test.ts` passed in the full suite: a Project removed from the active policy receives no scheduling, pointer commit or new launch, even while its prior terminal Session is reconciled. This is fixture proof of that restriction, not authority or evidence to widen the live Grant to multiple Projects. Address any qualified-target gate inconsistency only if full-dispatch impact reproduces.
-4. Reassess the existing parent two-Action proof against all live evidence and independently required validation. Missing authority remains one genuine bounded approval; do not ask the operator to relay a receipt or inspect a database.
+4. The governed `split-v6-b-recovery-evidenced-slice-2026-10-01` settlement marked only the integration-evidence criterion done and selected `prove-literal-split-browser-and-ledger` for the other three. A fresh live trial is warranted only for an exact still-missing criterion, with its own hermetic replay and exact Grant. Do not ask the operator to relay a receipt or inspect a database.
 
 ## What the evidence proves
 
@@ -36,30 +36,112 @@ PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approve
 | Dependent Action | Admitted automatically after first candidate integration, with a fresh candidate. |
 | Off and supported worker restart during dependent work | Performed by the bounded host action; no duplicate or reactivation in its recorded observation window. |
 | Dependent candidate completion after Off | Canonical accepted completion observed. |
-| Dependent candidate preservation and final integration | Pending; Off withheld host validation and preservation, and Inactive policy supplies no integration authority. |
-| Original parent proof split | Three supported criteria settled through Arcadia's canonical split path; four remain open under `finish-two-action-unattended-production-proof`. |
+| Dependent candidate preservation and final integration | Passed under the fresh one-shot Grant: host validation exited 0; `presv_af1defad33604b5893` pins the terminal candidate; fixture base advanced `a6b539d` → `c6b4c4e` once; no new Session; Off revision 29, zero live admissions. |
+| Original parent proof split | The first split settled three criteria. The second settled only live integration evidence after PR #870; the literal split, browser/Off proof and exhaustive ledger remain open under `prove-literal-split-browser-and-ledger`. |
 
-Exact identities, revisions, host/provider, receipts, refusal evidence and every operator intervention remain in the local generated-script run evidence. Tests and source analysis are separate from live proof. Neither process exit nor a passing generic check proves arbitrary acceptance criteria.
+Exact identities, revisions, host/provider, receipts and refusal evidence remain in the local generated-script run evidence. A complete ledger of every earlier operator intervention has not been verified. Tests and source analysis are separate from live proof. Neither process exit nor a passing generic check proves arbitrary acceptance criteria.
 
 ## Governed state and deferrals
 
-The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The first repair's canonical completion settlement marked `recover-terminal-integration-after-reconcile` done. After #865 merged, queue reorder revision 176 and pointer commit `f28fb2868` selected `finish-two-action-unattended-production-proof`. Discovery of B's missing preservation receipt led to accepted Agent Ask `recover-completed-candidate-unpreserved-after-off-2026-10-01`; queue revision 177 placed its Action first and pointer commit `eec7cf657` selected it. After #866 was installed, completion settlement commit `33c4dfb8e` marked that repair done and returned the pointer to `finish-two-action-unattended-production-proof`. Provider concurrency remains deferred; no Plan was activated by inference.
+The active Plan remains `bootstrap-managed-production-to-build-flight-deck`. The first repair's canonical completion settlement marked `recover-terminal-integration-after-reconcile` done. After #865 merged, queue reorder revision 176 and pointer commit `f28fb2868` selected `finish-two-action-unattended-production-proof`. Discovery of B's missing preservation receipt led to accepted Agent Ask `recover-completed-candidate-unpreserved-after-off-2026-10-01`; queue revision 177 placed its Action first and pointer commit `eec7cf657` selected it. After #866 was installed, completion settlement commit `33c4dfb8e` marked that repair done and returned the pointer to `finish-two-action-unattended-production-proof`. After PR #870 merged, settlement commit `532691fb8` narrowed that Action to the proven integration-evidence criterion, marked it done, created `prove-literal-split-browser-and-ledger`, rewired 19 dependents and moved the pointer there. Provider concurrency remains deferred; no Plan was activated by inference.
 
-The active Plan contains **150 Actions: 119 done and 31 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The `done` original proof Action names only its three narrowed criteria; its open remainder retains the other four and 19 dependents were rewired to wait for that remainder.
+The active Plan contains **153 Actions: 120 done and 33 open**, with zero Actions in other statuses at this derivation. This scoreboard counts each top-level `- id:` entry paired with its following `status:`. The original proof Action names its three proven criteria; its first remainder names the proven integration-evidence criterion; the new open remainder retains the other three and 19 dependents now wait for it.
 
 The five historical proposals were rejected through the existing host approval surface. The retained Flight Deck proposal waits for later review after the narrow production proof succeeds. Retention grants neither acceptance nor activation. [Issue #852](https://github.com/pmark/arcadia/issues/852) records the operator UX improvement.
 
-The original and renewed one-shot Grants are consumed/revoked. A future live trial or integration requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation. A Grant never starts a Session, turns production Off, restarts a worker, merges, deploys, changes credentials, or widens its scope.
+The original, renewed, and exact B-recovery one-shot Grants are consumed/revoked. A future live trial requires a fresh exact request and current revision preview under the existing authority contract; never reset an old succeeded button or treat its receipt as a new activation. The B-recovery operator action itself returned its own Grant to Off, as its reviewed descriptor specified; the Grant did not start a Session, restart a worker, merge, deploy, change credentials, or widen its scope.
 
 The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
+## Literal-split receipt audit — 2026-10-02
+
+The retained v6 B recovery is closed and was not replayed. A direct receipt
+audit leaves all three criteria of `prove-literal-split-browser-and-ledger`
+open: the split history contains seven A Sessions rather than a literal A1/A2
+continuation; the retained Off/restart observation has no actual browser-close
+event; and the receipt set identifies known interventions without proving an
+exhaustive chronological operator ledger. Production remains **Inactive at
+revision 29 with zero live admissions**.
+
+Any new proof must use a fresh disposable single-Project fixture and a fresh
+one-shot Grant. The Grant has to run its hermetic replay first and preview the
+new fixture's exact candidate against the current inactive policy revision;
+the succeeded v6 buttons and B candidate are consumed evidence, not reusable
+authority. The present CLI-only production control does not emit a browser
+close event, so a literal browser-close proof requires a supported reviewed
+observation route before the conjunctive Off/browser criterion can close.
+
 ## Preservation and browser-audit gates
 
-Merged PR #858 extends the #856 host preservation transport with stage and native-process limits, retained journals and partial validation receipts. Its real named-profile fixtures passed for manual and managed preservation, including a post-validation capture stall that retained passing Seatbelt evidence. This is candidate evidence: the repair has not been installed, and the cause of PPN's original stall remains unestablished. PR #863 carries a follow-up 22-minute total bound to fit ten declared two-minute checks and preservation. The proof and limits are recorded in [the preservation and browser-audit report](reports/bounded-preservation-and-browser-audit-2026-10-01.md).
+Merged PR #858 extends the #856 host preservation transport with stage and native-process limits, retained journals and partial validation receipts. Its real named-profile fixtures passed for manual and managed preservation, including a post-validation capture stall that retained passing Seatbelt evidence. This is candidate evidence: the repair has not been installed, and the cause of PPN's original stall remains unestablished. Merged PR #863 carries a follow-up 22-minute total bound to fit ten declared two-minute checks and preservation. The proof and limits are recorded in [the preservation and browser-audit report](reports/bounded-preservation-and-browser-audit-2026-10-01.md).
 
 The installed `arcadia-unattended` profile still denies loopback HTTP and aborts headless Chrome; synthetic credential reads and external sockets are also denied. The merged repair retains a pre-dispatch capability refusal. No fresh PPN capture or comparable mobile/desktop Lighthouse matrix is claimed, and its verification Action remains open.
 
-PR #863 prepares an inactive host-owned alternative. Its fixed synthetic fixture rendered mobile and desktop HTTP pages while denying external, private and other-loopback TCP, unrelated Unix sockets, synthetic credential-file reads and external browser navigation. A deliberate post-launch stall stopped the supervised browser group without changing the fixture source. A separate probe found that native detached children can escape that group; the fixture's `ready` result does not establish containment for a live route. The named profile and production dispatch remain unchanged. [The host-browser report](reports/restricted-host-browser-audit-2026-10-01.md) retains the proof and limits, including platform-service review, broker integration, exact source/revision/expiry authority and the open preparation Decision 0078. Live activation and PPN Lighthouse measurement remain separate gates.
+Merged PR #863 prepared an inactive host-owned alternative. Its fixed synthetic fixture rendered mobile and desktop HTTP pages while denying external, private and other-loopback TCP, unrelated Unix sockets, synthetic credential-file reads and external browser navigation. A deliberate post-launch stall stopped the supervised browser group without changing the fixture source. A separate probe found that native detached children can escape that group; the fixture's `ready` result does not establish containment for a live route. The operator selected Decision 0078's inactive preparation option; its canonical answer is committed on the new Issue #847 candidate branch, not yet integrated. Follow-up host experiments found that denying process creation also prevents Chrome launch, enabling Chrome's own sandbox fails during setup, and a temporary exact-loopback Codex profile override still aborts Chrome. The installed profile and production dispatch remain unchanged. [The host-browser report](reports/restricted-host-browser-audit-2026-10-01.md) retains the proof and limits, including platform-service review, broker integration, exact source/revision/expiry authority and native-descendant containment. Live activation and PPN Lighthouse measurement remain separate gates.
+
+## Three-Action rehearsal preparation — 2026-10-02
+
+The prerequisite settlement `asksettle_92f59561766c40079e` confirms
+`applied:true` and commit `a5a6844e751a6441576871b8b20ae8ccf2ab9d6e`.
+Run `20261002T164449Z-98726/publication.json` now proves publication of that
+settlement and `ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64`, with
+`settlementReapplied:false`. Remote main independently matched the settlement
+commit. The live one-shot button is succeeded and must not be offered again.
+Both accepted prerequisite Actions remain unproved; the canonical pointer is
+still `prove-literal-split-browser-and-ledger`. The retained run's
+`production-before.json` observes Inactive revision 29, epoch 19, zero live
+admissions. Publication grants no production or pointer authority.
+
+The original publication refusal compared an untracked source Ask's canonical
+before-image with a parent Git blob that did not exist. Plan before/after bytes
+matched, and the tracked archive preserved the source Ask's exact SHA-256.
+The reviewed publication-only retry passed twelve original and seven additional
+narrative-custody/refusal cases, retained every failed run, and published only
+the original two commits. It left the revised pair, Notes, derived readiness
+and other preparation unpublished.
+
+Read-only planning and adversarial helpers identified the smallest honest
+three-record scope: keep saved configuration unchanged, append durable serial
+execution to the existing enrollment identity while preserving its six criteria,
+and add one installed-host rehearsal Action. The finite revised design uses an
+actual disposable GitHub repository, CodeRabbit's actor/reviewed head and existing
+independent PR QA rather than a new local reviewer supervisor. With that route,
+the adversary judges the combined enrollment/durability slice plausibly one
+heavy/high session; this is an estimate, not completion evidence. Draft-to-ready
+PR waiting, five fixed-role attempt lineage, host-derived QA identity and exact
+integration fencing remain missing behavior. Repository publication, PR readiness
+and bounded integration require the later fresh exact Grant. Verify CodeRabbit
+installation and required checks before live dispatch.
+
+Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
+all twelve accepted prerequisite criteria. They are validated inputs, not
+accepted scope. Optional preview is blocked by configured `martianrover`
+workspace-write access; no alternate workspace, repeated same-proposal write or
+direct database editing was used. The shared one-existing-Action Plan-amendment
+runner, separate ordinary Action Ask and fingerprinted `advance queue make-next`
+are the existing governed writers. None may infer authority from queue order or
+silently rebind an immutable packet.
+
+The first remaining preparation gate is custody of mixed dirty main. Protected
+Go refuses the modified library pair, readiness, AGENTS/Notes and narrative
+reports; its narrow Ask exemptions do not evacuate them. Preservation needs an
+already registered candidate and the shared amendment runner requires entirely
+clean primary state. The documented operator recovery playbook can preserve the
+exact understood preparation on a recovery branch and publish its review PR;
+it is operator-owned recovery, not a fabricated broker reservation or a new
+implementation Action. Preserve the learning contribution and validated Log
+Ask with that handoff. The five pre-existing unrelated library-contract failures
+remain recorded; isolated valid pairs do not make the whole library green.
+
+[The bounded scope/custody design](reports/three-action-managed-production-scope-design-2026-10-02.md)
+records exact identities, coverage, seams, required external setup and writer
+boundaries. After preparation is reviewed, obtain exact scope acceptance and
+pointer transition, then use one protected candidate/Session per implementation
+Action with compliant immutable provider/model/effort, deterministic checks,
+independent exact-head verdicts, same-candidate completion, PR/check/merge and
+installed-service evidence. Prepare/pass the hermetic three-Action rehearsal
+before requesting its fresh exact Grant. No installed-host autonomous rehearsal
+has run here, and the older literal split/browser/ledger Action stays open.
 
 ## Refresh contract
 
