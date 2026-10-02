@@ -142,9 +142,10 @@ The two fixtures measure different boundaries:
 | Dedicated host boundary, `proof-YszB7e/` | HTTP render, direct external/private/other-loopback TCP denial, unrelated Unix-socket and synthetic credential-file denial, browser external-navigation denial, timeout cleanup, and unchanged source passed. Its separate `processGroupEscape.denied` observation remained false. |
 | Installed `arcadia-unattended` profile, `probe-C74jfj/` | Loopback listen returned EPERM and Chrome aborted with SIGABRT; external TCP and the synthetic credential read returned EPERM. It did not produce an HTTP/browser audit. |
 
-The proposal-only Agent Ask's “host-owned browser fixture” refers to
-`proof-YszB7e/` alone. It does not combine that host proof with the installed
-profile's separate refusal.
+The revised proposal-only Agent Ask names both fixtures and their distinct
+results. It supersedes the earlier unsettled preview
+`host-browser-native-containment-gap-847-2026-10-01`; that preview remains a
+historical receipt, and neither proposal grants activation authority.
 
 Two temporary policy experiments were reverted after their negative results:
 
