@@ -2,13 +2,39 @@
 
 This derived document answers how far Arcadia is from running software production unattended. It grants no authority. Checked-in Plans and Decisions, canonical policy and Session receipts, and live evidence take precedence.
 
-Latest derivation: **2026-10-02**, including verified prerequisite publication and the subsequent bounded scope/custody preparation, after the retained v6 B terminal recovery under the fresh exact Grant. The renewed trial, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain the earlier evidence.
+Latest derivation: **2026-10-02**, including the completed-but-unpublished #878 manual-preservation repair candidate, verified prerequisite publication, and the subsequent bounded scope/custody preparation. The retained v6 B terminal recovery, installed #860, #865 and #866 repairs, and Issue #847 host-boundary experiments remain earlier evidence.
 
 ## Current answer
 
 The renewed bounded v6 trial completed both candidate Actions. Canonical Session exit receipts record accepted completion for the resumed split Action and its dependent Off/restart Action. The candidate Plan records both done. The first Action integrated before the dependent Session launched automatically. During that dependent Session, the host action turned production Off and restarted services; the admitted Session finished afterward.
 
 Production is **Inactive at revision 29, with zero live admissions**. The operator pressed the fresh exact `/runs` Grant for the retained B candidate. Host validation passed, preservation receipt `presv_af1defad33604b5893` binds terminal Session `session_b82d2b412265419482` to the unchanged candidate, and the fixture base advanced exactly once from `a6b539d` to settlement commit `c6b4c4e`. The eight-Session set remained unchanged; no replacement coding Session launched. Off was restored at revision 29. The preservation receipt is `LOCAL ONLY`, so this fixture commit is recoverable on this host but not claimed as remotely published. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) and retained `/runs` receipt separate this live result from the original seven-Session A sequence.
+
+## Issue #878 manual-preservation repair — candidate versus installed state
+
+Candidate commit `d45b2fb922438d3cca3bc00f7b305a05838ee037` was protected as
+manual-local-only receipt `presv_a47d71b5cf6740669c`; its host validation ran
+`node scripts/preservation-self-check.mjs`. The host then settled the repair's
+six criterion-exact completion Ask in this candidate at `1db14018c` (receipt
+`asksettle_5cd514e1fee94d4097`), selecting
+`persist-inactive-production-configuration` as the next governed Action.
+
+Host validation separately passed the repair's full test set (50 passed, 2
+skipped), lint, TypeScript, and the retained hermetic replay at
+`/tmp/878-fixed-launcher-replay-result.json`. That replay invoked the literal
+installed no-argument preservation launcher against a disposable manual
+reservation, captured an initial snapshot and retry, made a canonical Log
+settlement plus candidate documentation revision, then captured the revised
+snapshot and retry. It retained distinct snapshot request/receipt identities,
+unchanged original receipt bytes, `LOCAL ONLY` outcomes, and zero managed
+Sessions.
+
+This is evidence for the **candidate** repair and its installed-launcher
+interface, not evidence that the reviewed repair is installed in the live
+worker. It does not authorize installation, a service restart, production,
+PPN execution, or publication. The repair still needs its final candidate
+preservation, pull-request review, and exact-head checks before the existing
+reviewed-installation gate may be used.
 
 The scope repair (#855) and continuation/retry repair (#857) were merged and installed before the renewed trial. The original six incomplete split Sessions preceded a seventh that completed in the same candidate; this proves eventual continuation but not the fixture's literal second-Session completion. The [criterion assessment](reports/v6-two-action-evidence-assessment-2026-10-01.md) identifies the supported and missing parent-proof stages.
 

@@ -49,6 +49,14 @@ From the host: `docker --config "$(mktemp -d)" --host "unix://$HOME/.docker/run/
 Gotcha: the default config can stall in `docker-credential-desktop get` even for public MCR images; the fresh empty config avoids it without reading credentials.
 Runtime must use the reviewed local SHA256 image ID with `--pull never`. See `docs/reports/issue-847-container-route-2026-10-02.md`; expires when #847 closes.
 
+## How do I preserve a revised manual candidate without widening authority?
+
+keys: 878, manual preservation, snapshot identity, fixed launcher, replay, LOCAL ONLY
+
+Run only `/Users/pmark/.local/bin/arcadia-preserve-broker-codex` with no arguments from the registered candidate; a revised validated tree must get a distinct `preserve:<reservation>:<tree>` identity and an unchanged retry reuses its receipt.
+Gotcha: if an older installed runtime returns the reservation-only identity or refuses the revised candidate, retain that exact receipt/refusal; do not raw-commit, install, restart, or alter production/PPN to work around it.
+The hermetic fixed-launcher proof is `/tmp/878-fixed-launcher-replay-result.json`; expires when #878 closes.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config

@@ -30,10 +30,13 @@ rebase it, reset it, or touch its pending files:
 
 ```sh
 cd /Users/pmark/.codex/worktrees/establish-editor-production-contract-20261002T180616605Z/platform
-arcadia advance
+/Users/pmark/.local/bin/arcadia-brief-broker-codex
 ```
 
-The continuation must use that command's returned protected worktree/brief,
+The launcher takes no arguments. Paste its returned `data.dispatchBrief`
+literally into the continuation session before any PPN work, and proceed only
+if it resolves the retained PPN Action in this exact worktree. Do **not** run
+mutable `arcadia advance` as a substitute. Only then may the continuation
 revalidate the candidate's actual final tree, request protected preservation,
 and settle PPN's criterion-exact completion Ask in that candidate before its
 push. It may then update PPN PR #207 and pass its independent review/check
