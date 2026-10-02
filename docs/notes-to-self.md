@@ -41,6 +41,14 @@ of these first happens:
 
 ---
 
+## Why does a public Docker image pull hang?
+
+keys: Docker, pull, credential-desktop, Chromium, Lighthouse, 847
+
+Inspect the exact pull's child: `docker-credential-desktop get` can stall even for public MCR images.
+Use a separate empty Docker config with the explicit Desktop endpoint for anonymous acquisition; do not read credentials or change the default config.
+Runtime must use the reviewed local SHA256 image ID with `--pull never`. See `docs/reports/issue-847-container-route-2026-10-02.md`; expires when #847 closes.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config

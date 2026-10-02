@@ -1,0 +1,31 @@
+{
+  "schema": "arcadia-container-audit-grant-v1",
+  "repository": "/Users/pmark/Dev/PrivatePracticeNow/platform",
+  "source": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/container-audit-preparation/nagel-baseline-579878/site",
+  "decisionPath": "UNASSIGNED-CANONICAL-DECISION",
+  "authority": {
+    "schema": "arcadia-container-audit-authority-v1",
+    "project": "private-practice-now",
+    "revision": "579878edd09f8274a2f5b9a9e8ac53e4dbc54769",
+    "image": "sha256:43e30fb20f8e3b58cd9dab0e384ceaf74288f2355959037cacdb3d9c792b7338",
+    "executorHash": "7a196681cabd1cdbd15b88ba3d69bf113d9a3d32872a6a532ab27783805cfef5",
+    "snapshotHash": "17502e95d3e51f64218a880fd18c80557ef3e60ddb62d761028ac0a5d05c4b6a",
+    "routes": [
+      "/",
+      "/specialties/parent-counseling",
+      "/specialties/teen-therapy",
+      "/contact"
+    ],
+    "viewports": [
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 1440,
+        "height": 900
+      }
+    ],
+    "expiresAt": "2026-10-02T18:45:00.000Z"
+  }
+}

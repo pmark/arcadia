@@ -1,5 +1,11 @@
 # Arcadia: Start Here
 
+Local browser measurements currently fail closed under `arcadia-unattended`.
+The [inactive Docker audit preparation](docs/reports/issue-847-container-route-2026-10-02.md)
+has real synthetic Lighthouse and containment evidence. Installation does not
+activate it: a separate exact-scope, one-shot Decision/Grant is required.
+No Docker socket or broad networking is made available to coding agents.
+
 Installing Arcadia on a new machine, especially to make sense of an existing
 AI-built project? Give your coding agent
 [`INSTALL_WITH_A_CODING_AGENT.md`](INSTALL_WITH_A_CODING_AGENT.md). It covers

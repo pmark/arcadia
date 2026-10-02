@@ -1,0 +1,8 @@
+{
+  "image": "sha256:43e30fb20f8e3b58cd9dab0e384ceaf74288f2355959037cacdb3d9c792b7338",
+  "base": "mcr.microsoft.com/playwright@sha256:824f1a789072e648c62541c2cfa4479c4061a290d5c27766d67dc1dcbc19b321",
+  "lighthouse": "13.4.0",
+  "playwrightCore": "1.61.1",
+  "architecture": "arm64",
+  "activation": "inactive"
+}

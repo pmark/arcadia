@@ -170,6 +170,16 @@ export function runGoBrokerInstallCommand(
         path.join(repository, "dist", "scripts", "arcadia-go-broker.js"),
         path.join(stagedRelease, "dist", "scripts", "arcadia-go-broker.js")
       );
+      // Staged but never activated here. This entrypoint only submits a nonce;
+      // the host worker alone can consume a separately approved one-shot Grant.
+      copyFileSync(
+        path.join(repository, "dist", "scripts", "request-container-browser-audit.js"),
+        path.join(stagedRelease, "dist", "scripts", "request-container-browser-audit.js")
+      );
+      copyFileSync(
+        path.join(repository, "dist", "scripts", "container-audit-host-worker.js"),
+        path.join(stagedRelease, "dist", "scripts", "container-audit-host-worker.js")
+      );
       mkdirSync(path.join(stagedRelease, "scripts"), { recursive: true });
       copyFileSync(
         path.join(repository, "scripts", "bridge-worktree-deps.mjs"),

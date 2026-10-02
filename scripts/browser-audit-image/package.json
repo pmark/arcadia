@@ -1,0 +1,9 @@
+{
+  "name": "arcadia-browser-audit-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "lighthouse": "13.4.0",
+    "playwright-core": "1.61.1"
+  }
+}
