@@ -40,3 +40,28 @@ The preservation receipt says `LOCAL ONLY`: remote preservation was outside this
 - **Integration evidence and PR procedure:** this report and its PR provide the deterministic integration evidence. The exact operator target was the one-shot `/runs` action **Grant exact v6 B terminal recovery (30 minutes; returns Off)**, not a terminal command; its preview required policy revision 27 and only the retained B Action. Its result is the run directory above and Off revision 29. The existing button is succeeded and must not be reset or pressed again. Any further live proof requires a separately reviewed exact Grant.
 
 No provider or capacity simulation is counted as this live recovery. The remaining literal split and browser-close questions do not justify repeating B integration.
+
+## Receipt audit — 2026-10-02
+
+This audit read the retained live receipts; it did not start a provider Session,
+press a Grant, reset an operator action, or alter the v6 fixture.
+
+| Current Action criterion | Direct retained observation | Exact missing observation |
+| --- | --- | --- |
+| Literal two-Session continuation | `collection-result.json` names seven split Sessions on the same worktree and branch: six `needs_input` Sessions followed by `session_28e2cbd28d8f4a0bb4`, which completed. The concurrent-preparation refusal and B's fresh governed-base candidate are retained. | A first Session that leaves the partial marker and exits incomplete, followed immediately by a second (not seventh) managed Session that sees it and completes. The receipt must also identify the host-owned handoff and prove no operator Git lifecycle step occurred. |
+| Browser-close/Off/restart | `off-receipt.json` records Off during B; the collector performed the supported worker restart and retained a two-minute no-new-Session observation. The later recovery records terminal reconciliation, preservation, one integration, and Off at revision 29. | An actual browser closure. The v6 control was CLI-only, and neither the collector nor the recovery receipt records a browser client, its close event, or a post-close observation. The conjunctive criterion remains open even though the Off/restart portion is retained. |
+| Complete intervention ledger | The retained evidence identifies the original Grant press, the collector's canonical Off and supported restart, and the later B-recovery Grant press. It also pins revisions, fixture/candidate paths, provider, Session ids, validation, preservation and integration. | A single verified chronological ledger covering every operator intervention in the original run and recovery. The generic receipts and snapshots cannot establish that no other intervention occurred. |
+
+The required recovery is a **new** disposable, single-Project rehearsal and a
+new one-shot `/runs` Grant. It must first create and validate its own exact
+candidate, run the hermetic replay, preview against the then-current inactive
+policy revision, and bind only that Project, provider, transitions, expiry and
+recovery route. No existing v6 Grant or B candidate may be reused. A new Grant
+cannot be honestly previewed from this audit alone: production is already Off
+at revision 29, while the fresh fixture and its candidate identity do not yet
+exist. Publishing that Grant also requires a reviewed merged library entry,
+because `/runs` deliberately reads the main checkout rather than this
+worktree. Browser closure remains an explicit product-observation boundary;
+the existing CLI-only control has no literal browser event to record. Keep
+production Off with zero admissions until that boundary has a supported,
+reviewed route.

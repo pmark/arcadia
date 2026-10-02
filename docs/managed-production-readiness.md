@@ -53,6 +53,24 @@ The original, renewed, and exact B-recovery one-shot Grants are consumed/revoked
 
 The [hardening proposal](reviews/2026-10-01-production-hardening.md) and paired Agent Ask are a draft, not activated work or widened authority. Provider concurrency, independent approvers and Flight Deck expansion remain deferred under their recorded triggers.
 
+## Literal-split receipt audit — 2026-10-02
+
+The retained v6 B recovery is closed and was not replayed. A direct receipt
+audit leaves all three criteria of `prove-literal-split-browser-and-ledger`
+open: the split history contains seven A Sessions rather than a literal A1/A2
+continuation; the retained Off/restart observation has no actual browser-close
+event; and the receipt set identifies known interventions without proving an
+exhaustive chronological operator ledger. Production remains **Inactive at
+revision 29 with zero live admissions**.
+
+Any new proof must use a fresh disposable single-Project fixture and a fresh
+one-shot Grant. The Grant has to run its hermetic replay first and preview the
+new fixture's exact candidate against the current inactive policy revision;
+the succeeded v6 buttons and B candidate are consumed evidence, not reusable
+authority. The present CLI-only production control does not emit a browser
+close event, so a literal browser-close proof requires a supported reviewed
+observation route before the conjunctive Off/browser criterion can close.
+
 ## Preservation and browser-audit gates
 
 Merged PR #858 extends the #856 host preservation transport with stage and native-process limits, retained journals and partial validation receipts. Its real named-profile fixtures passed for manual and managed preservation, including a post-validation capture stall that retained passing Seatbelt evidence. This is candidate evidence: the repair has not been installed, and the cause of PPN's original stall remains unestablished. Merged PR #863 carries a follow-up 22-minute total bound to fit ten declared two-minute checks and preservation. The proof and limits are recorded in [the preservation and browser-audit report](reports/bounded-preservation-and-browser-audit-2026-10-01.md).

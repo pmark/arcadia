@@ -186,3 +186,13 @@ keys: runs, this push, next push, dashboard, production control panel
 `apps/dashboard/app/runs/page.tsx` (sections: Operator actions, Active now,
 Recent history) and `apps/dashboard/components/production-control-panel.tsx`
 ("This push" lanes and "Next push").
+
+## Do not reuse a succeeded rehearsal Grant
+
+keys: v6, Grant, recovery, rehearsal, literal split, browser close, ledger
+
+The succeeded v6 recovery Grant and B candidate are consumed evidence, not a
+shortcut for a new proof. `/runs` reads only the main-checkout library, so a
+fresh Grant needs a reviewed merged pair, a new fixture/candidate, hermetic
+replay, and a current-revision preview. The CLI-only control has no browser
+close event; do not relabel worker restart as literal browser proof.
