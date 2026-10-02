@@ -2812,6 +2812,46 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/reports/v6-two-action-evidence-assessment-2026-10-01.md"]
+  - id: enroll-session-through-governed-host-request
+    title: Add an idempotent protected enrollment request so any preliminary helper can obtain governed preparation or launch an assigned managed worker.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add an idempotent protected enrollment request so any preliminary helper can obtain governed preparation or launch an assigned managed worker.
+    expected_artifact: Evidence satisfying Agent Ask enroll-session-through-governed-host-request
+    clarification: clarified
+    confidence: high
+    source: Agent Ask enroll-any-session-and-preserve-production-config-2026-10-02-v2
+    acceptance_criteria:
+      - A fixed host enrollment request resolves the configured workspace and exact governed Project/Plan/Action, canonical brief, required operator gates, packet provider/model/effort, and existing worktree claim; the request accepts no caller-supplied executable or arbitrary shell command.
+      - An exact request replay returns its original prepared-principal or managed-Session receipt; changed Action, caller identity or mode under the same request id refuses before mutation.
+      - Preparation returns the canonical candidate and fenced ownership receipt; a production launch reuses issueAdmission, commitAdmission and launchGuardedHostSession. Preliminary helper execution and prompt text establish no ownership, completion or production authority.
+      - Concurrent enrollment, Off, stale policy epoch, unavailable capacity, missing packet approval and transport refusal leave no duplicate principal or orphan admission, claim or candidate; existing pending work remains recoverable.
+      - Native durable adoption refuses with native_runtime_not_supervisable unless a host-observable adapter verifies stable identity, liveness, terminal outcome and recovery; the refusal supplies the supported managed-worker launch route.
+      - Focused enrollment, admission and claim refusal/replay tests pass, followed by the repository's required checks; the operator guide and portable skill instructions explain how an unleased helper requests enrollment and proves success.
+    depends_on: []
+    decisions: []
+    references: ["src/goBroker.ts", "src/sessions/goRequestExecutor.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/sessions/actionBrief.ts", "src/production/policy.ts", "docs/managed-production-readiness.md"]
+  - id: persist-inactive-production-configuration
+    title: Persist exact inactive production configuration separately from revoked authority so /runs can preview a safe fresh activation after Off.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Persist exact inactive production configuration separately from revoked authority so /runs can preview a safe fresh activation after Off.
+    expected_artifact: Evidence satisfying Agent Ask persist-inactive-production-configuration
+    clarification: clarified
+    confidence: high
+    source: Agent Ask enroll-any-session-and-preserve-production-config-2026-10-02-v2
+    acceptance_criteria:
+      - Off atomically revokes active authority and fences pending admissions while retaining separately labelled DB-owned configuration across worker and dashboard restart; a migration and named revision/fingerprint preserve its provenance.
+      - The /runs On path previews the saved exact Project/Plan/Action/provider bounds and current effective concurrency, refuses stale policy/configuration revisions, and never re-derives scope.actions from a moved queue or pointer.
+      - An authorized On transition records fresh activation authority and epoch; old fenced admissions stay fenced, committed work remains identifiable, and restart or duplicate toggles never launch a duplicate worker.
+      - Consumed or expired integration Grants, rehearsal exceptions and packet delegation never revive. Missing current authority returns the exact actionable gate; any changed On delegation semantics remain inactive pending the required explicit Decision.
+      - Effective production-worker concurrency remains one until the existing concurrency proof gate permits more; native helpers cannot bypass principal ownership or admission accounting.
+      - Deterministic policy and dashboard tests cover absent configuration, migration, Off/On, consumed/expired grants, moved pointers, concurrent toggles, restart and in-flight work; required checks pass and the operator guide describes saved configuration separately from active permission.
+    depends_on: []
+    decisions: []
+    references: ["src/production/policy.ts", "src/production/tick.ts", "apps/dashboard/app/api/production-control/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "tests/managed-production-policy.test.ts", "tests/production-tick.test.ts", "docs/decisions/0072-decide-whether-the-standing-managed-production-grant-may-approve-the-build.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
