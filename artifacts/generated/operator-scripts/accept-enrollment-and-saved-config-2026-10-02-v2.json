@@ -1,11 +1,11 @@
 {
   "schema": "arcadia-operator-script-v1",
   "id": "accept-enrollment-and-saved-config-2026-10-02-v2",
-  "title": "Accept helper enrollment and saved production configuration work",
+  "title": "Publish the already-accepted enrollment prerequisites (exact retry)",
   "script": "accept-enrollment-and-saved-config-2026-10-02-v2.sh",
   "repeatable": false,
-  "problem": "A helper cannot currently enroll through one protected request, and Off erases the scope required by the Runs On switch.",
-  "desired_effect": "Accept the exact two implementation Actions and insert them before Arcadia's current proof Action, without changing that pointer or activating production.",
+  "problem": "Acceptance already applied in a5a6844e7. Publication validation confused the untracked Ask before-image with a tracked parent blob; two exact authorized commits remain local.",
+  "desired_effect": "Validate the retained applied settlement, exact tracked document effects and byte-identical untracked Ask archival; publish only ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64 and a5a6844e751a6441576871b8b20ae8ccf2ab9d6e through a normal non-force main push.",
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/accept-enrollment-and-saved-config-2026-10-02-v2.sh run",
   "agentAsk": {
     "proposal": "enroll-any-session-and-preserve-production-config-2026-10-02-v2",
@@ -14,26 +14,43 @@
   },
   "authority": {
     "does": [
-      "Validate the pinned repository, main branch, reviewed base lineage, exact Ask SHA-256, queue revision 180, and exact settlement fingerprint",
-      "Commit and track only this reviewed script and descriptor, including these two normally ignored generated files, refusing unrelated local or staged changes",
-      "Use canonical Agent Ask settlement to add exactly enroll-session-through-governed-host-request and persist-inactive-production-configuration with agent responsibility before prove-literal-split-browser-and-ledger",
-      "Retain bounded command logs and canonical receipts, and publish only the reviewed local main commits with a normal non-force push"
+      "Validate the exact repository, main HEAD, original publication authority, retained previews and applied receipt, both exact commits, exact Plan before/after images and byte-identical Ask archive; retain only the three hash-pinned regular narrative preparation files locally",
+      "Read the canonical already-applied receipt without --apply; refuse changed receipt, source, remote lineage, production state, staged changes or unrelated changed paths",
+      "Publish only the two previously authorized commits to origin/main with a normal push within a four-minute total command budget plus at most thirty seconds of termination cleanup; if the exact target is already remote, confirm it without pushing again",
+      "Retain new timestamped validation and publication receipts, all failed runs and the repaired local library pair"
     ],
     "never_does": [
-      "Activate production, revive an old Grant, launch or adopt a worker, change provider permissions or spend policy, or answer another Decision",
-      "Change the current pointer, complete or amend existing Actions, merge, deploy, delete branches or worktrees, reset or rebase Git, or stage arbitrary changes"
+      "Repeat acceptance or call settlement --apply; commit, stage, reset, rebase, force-push, fetch/reconcile shared Git, delete work or change governance",
+      "Publish the repaired library pair, prepared scope Asks or any extra commit; activate production, consume/revive a Grant, launch/adopt a Session, change pointer/queue or silently rebind an immutable packet; publish Notes to Self or the friction report"
     ]
   },
   "success": {
-    "effect": "Both implementation Actions are accepted and queued; the canonical settlement and this operator action are published on main. Production remains Off and the current proof pointer is unchanged.",
-    "next": "The scheduled follow-up can inspect the accepted work and prepare the canonical execution handoff. Starting production and any changed On authority semantics remain separate explicit gates."
+    "effect": "The exact two authorized commits are confirmed at origin/main. Acceptance is untouched; Off was observed before publication, and this action activates nothing or changes any pointer.",
+    "next": "Continue this recovery session to inspect the prepared exact three-record regrouping. Approving changed scope, its canonical pointer transition and a later fresh rehearsal Grant are separate gates. Preserve this repaired pair locally until protected candidate publication."
   },
   "failure": {
-    "effect": "A stale or broadened precondition refuses. A script-only commit or applied settlement remains recoverable if a later command fails; nothing is discarded.",
-    "next": "Have the follow-up inspect the timestamped log and receipts. Retry this same action only for its unchanged operation or failed publication; moved queue, Ask or reviewed scope needs a fresh preview and refreshed action."
+    "effect": "A changed precondition refuses before publication. A timed-out or unconfirmed push preserves every candidate, commit and receipt; it never implies completion.",
+    "next": "Inspect the named timestamped failure and retained receipts, prove current remote state, then retry only this exact publication if still live. Remote divergence needs protected host reconciliation; never reset, reapply acceptance or clear dashboard state."
   },
   "reviewedBase": "fdafca81cc3843f3355e883cfe92d057c01fa609",
   "askSha256": "d097ab1e6b42e0bb6fb4312db982733e6cc95e5906aa4ebbcf943f456d898e74",
   "settlementFingerprint": "46b22ffc37626a52b33ab66ebff899f85a77e5179eda0a0272683c1b687b5f19",
-  "reviewedScriptSha256": "3f9f2e4abac2e0f9e0be5a1accd39a3523f426ce338187a5d2b08ac51616a487"
+  "reviewedScriptSha256": "78846f801914f421d7904f33525fcb11ee255b8043c9335bf7b2116b192ee878",
+  "recovery": {
+    "base": "fdafca81cc3843f3355e883cfe92d057c01fa609",
+    "commits": [
+      "ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64",
+      "a5a6844e751a6441576871b8b20ae8ccf2ab9d6e"
+    ],
+    "retained": {
+      "20261002T151612Z-53615/settlement-preview.json": "bf24d6befcc5e82e779e5f01e63da5263bd4eb53e2d28172fbc40b3f82fdcb67",
+      "20261002T151612Z-53615/settlement-receipt.json": "2d15009f5f65cbf97ef83786e580a3744c008526af10ffb22d5931de09398c11",
+      "20261002-orchestration-refresh-preview/settlement-preview.json": "bd88f149c24ebc8c269f2fbfd4e92ebecead950c856583bbe23137ec035a541b"
+    },
+    "preparationFiles": {
+      "docs/managed-production-readiness.md": "bf7713623454ed60908bef18c16d3d99c0eadf5d16a76f8907735b05a147d4d5",
+      "docs/notes-to-self.md": "346d7c70de58d8c1f9de81e1ae3c33e152b5c6e187d359017b3027cf7ccbeb4e",
+      "docs/reports/autonomous-production-session-friction-2026-10-02.md": "4e1ebf94ed9c6213061659e46262e714be7ee13aeb4e6cc63a4de8b18bddfd41"
+    }
+  }
 }

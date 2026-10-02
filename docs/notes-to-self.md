@@ -111,13 +111,27 @@ guess the flag set instead of passing all three from the start.
 
 keys: operator script, runs, agent-ask, settlement, fingerprint, plan amendment, retry
 
-Treat the action as production code: use the shared settlement runner, never
-bespoke shell/Python parsing or hand-assembled CLI flags. Its click path must
-fresh-preview and semantically validate the pinned effect envelope, then apply
-with that same fingerprint; a PR-time fingerprint is stale after `main` moves.
-Test the real preview→apply contract in a temporary workspace before publish.
-After one failure, stop retries until that contract—not just the symptom—is fixed.
-Expires when #830 closes.
+Use the shared settlement runner; fresh-preview and validate the pinned effects before applying the same fingerprint.
+After a failure, reproduce the entire preview → apply → commit → publication path in a disposable workspace before offering a retry; shell syntax and descriptor checks are insufficient.
+Include an untracked Ask archival case: preview `before` content can exist on disk without existing in the Git parent; validate its pinned bytes separately from tracked parent documents.
+Changing only a stale queue revision/fingerprint does not repair the transaction. Expires when #830 closes.
+
+## Operator action failed after settlement: was the work accepted?
+
+keys: applied true, accepted, publication, LOCAL ONLY, failure handoff, operator script, process launch
+
+Read the run's settlement receipt, failure handoff, publication receipt, and Git history separately: `applied: true` proves local acceptance, not publication or pointer advancement.
+An absent publication receipt after an applied settlement is an unresolved publication stage; verify current remote state before claiming it is local only.
+Preserve the accepted commit and failed run; recovery must validate the exact existing result rather than reapply acceptance or reset the button.
+See `docs/reports/autonomous-production-session-friction-2026-10-02.md` for the untracked-Ask failure and exact retained receipts.
+
+## Preserve exact generated-script preparation
+
+keys: dirty main, recovery, ignored, generated script, force add, custody, test shim
+
+Inspect `git status --porcelain`, `git ls-files` and `git check-ignore`: new generated pairs can be ignored while older pairs are tracked; normal explicit `git add` can refuse the ignored directory. Stage only named tracked paths with `-u`, and force-add only the reviewed new pair.
+Preserve unrelated runtime receipts with exact hashes in ignored custody; inspect private metadata before choosing what a public recovery PR may contain.
+Hermetic Git shims must pass through `-c` options unchanged; stripping `core.hooksPath` invalidates the hook-isolation test. See `docs/reports/three-action-managed-production-scope-design-2026-10-02.md` for the disclosed operator recovery boundary.
 
 ## `agent-ask draft` printed "Failed to auto-discover N files"
 
@@ -186,6 +200,13 @@ keys: runs, this push, next push, dashboard, production control panel
 `apps/dashboard/app/runs/page.tsx` (sections: Operator actions, Active now,
 Recent history) and `apps/dashboard/components/production-control-panel.tsx`
 ("This push" lanes and "Next push").
+
+## Run one Vitest file without launching the whole suite
+
+keys: vitest, focused test, pnpm test, double dash, whole suite
+
+Use `pnpm exec vitest run tests/notes-to-self.test.ts` for this document's checks.
+Here, `pnpm test -- tests/notes-to-self.test.ts` launched unrelated tests; avoid the extra `--` on this pnpm installation.
 
 ## Do not reuse a succeeded rehearsal Grant
 

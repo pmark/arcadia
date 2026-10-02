@@ -1053,10 +1053,34 @@ regenerates this file's copy.
 
 ## Orientation
 
-Before searching for a path, command, flag, id, or database, grep
-[`docs/notes-to-self.md`](docs/notes-to-self.md): indexed answers to what
-agents here keep re-deriving. Anything that cost you more than two failed
-tool calls to learn goes there in the same change (its rules say how).
+Before the first tool call for an Action's implementation, repair, validation,
+or handoff, use a targeted `rg` lookup in
+[`docs/notes-to-self.md`](docs/notes-to-self.md) for its commands, subsystem,
+and known failure symptoms. Read the matching entries and their relevant
+evidence before trying commands or repeating an experiment. Repeat that lookup
+when a new failure appears. Use the indexed answers instead of rediscovering
+paths, flags, workspace boundaries, or recovery procedures.
+
+Log every friction event in the session's evidence report as it occurs: the
+operation, observed failure or wasted work, exact evidence, recovery outcome,
+and prevention. Link repeated instances to the existing incident rather than
+duplicating its explanation. Preserve failed receipts. Separate a verified cause
+from a hypothesis, and correct earlier advice when new evidence disproves it.
+Canonical Project Log entries and any follow-up work still go through Agent Asks.
+Before handoff, add or correct reusable prevention advice in Notes To Self,
+following its entry, capacity, and expiry rules; do not fill that hot cache
+with every transient incident. Share the exact changed paths with the receiving
+session so the lessons ship with the reviewed work. Never change files pinned
+by another live operator action without coordinating its refreshed validation.
+
+Optimize cost, speed, and quality together: reuse current receipts and verified
+commands, batch independent bounded reads, and run deterministic readiness and
+focused checks before model review. Use the least-cost configured model and
+effort that meets the Action's requirements; escalate only for a named unmet
+requirement or observed failure, preserving immutable packet bindings. Do not
+repeat an unchanged failed operation or expand testing without a new reason.
+Turn recurring friction into a source fix or meaningful regression check under
+the existing governed scope, then retire the workaround when the fix is proved.
 
 Before working on the database, the Intelligence service, or the Discord bot, read:
 
