@@ -1,17 +1,12 @@
+import { setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { adoptContinuationProtocol, CONTINUATION_PROTOCOL_FILE, updateAgentsMarkdown } from "../src/projects/contextSetup.js";
 import { reportWayDrift } from "../src/projects/wayDrift.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const canonicalConstitution = readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8");
-const canonicalProtocolSource = readFileSync(path.join(repoRoot, CONTINUATION_PROTOCOL_FILE), "utf8");
 
 const roots: string[] = [];
 
@@ -36,11 +31,7 @@ function tempRepo(): string {
 
 /** Writes a repository whose adopted files exactly match Arcadia's own canonical text. */
 function writeCurrentAdoption(repo: string): void {
-  writeFileSync(path.join(repo, "CONSTITUTION.md"), canonicalConstitution, "utf8");
-  writeFileSync(path.join(repo, "AGENTS.md"), updateAgentsMarkdown(null), "utf8");
-  const protocolPath = path.join(repo, CONTINUATION_PROTOCOL_FILE);
-  mkdirSync(path.dirname(protocolPath), { recursive: true });
-  writeFileSync(protocolPath, adoptContinuationProtocol(canonicalProtocolSource, null, null), "utf8");
+  setupArcadiaProjectContext({ repoPath: repo });
 }
 
 function writeAdoptionPolicy(repo: string, upgradePolicy: string): void {
@@ -60,7 +51,7 @@ describe("reportWayDrift", () => {
 
     expect(report.status).toBe("unknown");
     expect(report.repoPath).toBeNull();
-    expect(report.files).toEqual({ constitution: "unknown", agentsRegion: "unknown", continuationProtocol: "unknown" });
+    expect(report.files).toEqual({ constitution: "unknown", agentsRegion: "unknown", continuationProtocol: "unknown", guidanceResources: "unknown", instructionBudget: "unknown" });
     expect(report.upgradePolicy).toBeNull();
   });
 
@@ -114,7 +105,7 @@ describe("reportWayDrift", () => {
     const [report] = withDatabase(workspace, (db) => reportWayDrift(db));
 
     expect(report.status).toBe("current");
-    expect(report.files).toEqual({ constitution: "match", agentsRegion: "match", continuationProtocol: "match" });
+    expect(report.files).toEqual({ constitution: "match", agentsRegion: "match", continuationProtocol: "match", guidanceResources: "match", instructionBudget: "match" });
     expect(report.upgradePolicy).toBe("explicit-only");
   });
 
@@ -161,7 +152,7 @@ describe("reportWayDrift", () => {
     const [report] = withDatabase(workspace, (db) => reportWayDrift(db));
 
     expect(report.status).toBe("stale");
-    expect(report.files).toEqual({ constitution: "missing", agentsRegion: "missing", continuationProtocol: "missing" });
+    expect(report.files).toEqual({ constitution: "missing", agentsRegion: "missing", continuationProtocol: "missing", guidanceResources: "missing", instructionBudget: "differs" });
     expect(report.upgradePolicy).toBeNull();
   });
 

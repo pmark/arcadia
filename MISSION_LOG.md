@@ -1336,6 +1336,20 @@ updated: 2026-10-02
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
+## 2026-10-02 — Agent Ask pr-opened-arcadia-pr882
+
+- **Did:** Compact Way startup and indexed delivery guards are ready for review in https://github.com/pmark/arcadia/pull/882; fresh native-agent acceptance traces remain outstanding.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-02 — Agent Ask pr-ready-arcadia-pr882-fresh-agent-qa-2026-10-02
+
+- **Did:** PR #882 has compact Way startup and validated delivery guards; the remaining fresh Codex/Claude QA needs explicit launch/profile authorization, and CodeRabbit approval is rate limited: https://github.com/pmark/arcadia/pull/882
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-02 — Completed arcadia/repair-manual-preservation-snapshot-identity
 
 - **Did:** Completed Action arcadia/repair-manual-preservation-snapshot-identity from accepted evidence (Candidate d45b2fb922438d3cca3bc00f7b305a05838ee037).

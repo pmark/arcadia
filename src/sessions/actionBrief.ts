@@ -3,6 +3,7 @@ import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
+import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import type { SessionAgent } from "./index.js";
 
 /**
@@ -109,6 +110,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
   if (pinned) {
     lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }
+  lines.push(...renderGuidanceRetrieval(input.repoRoot, input.agent, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
   lines.push(
     "",
     "Completion protocol — finish by:",

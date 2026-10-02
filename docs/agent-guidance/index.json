@@ -1,0 +1,82 @@
+{
+  "schema": "arcadia-agent-guidance-v1",
+  "entries": [
+    {
+      "id": "continuation",
+      "trigger": "start, continue, go, pointer, title, handoff, stop",
+      "path": "docs/agent-guidance/continuation.md",
+      "read_before": "Before starting or handing off any Action.",
+      "sha256": "ec398594ce2789e99f1d9b9ed43c1c4a150f7ab45a455648eb799f116d23c4b4"
+    },
+    {
+      "id": "agent-asks",
+      "trigger": "governance, complete, split, draft, preview, settle, workspace, database denied",
+      "path": "docs/agent-guidance/agent-asks.md",
+      "read_before": "Before proposing or changing Project state; preserve a blocked validated Ask.",
+      "sha256": "46091f9c1ad1f2744fa2c7a151e2eee943afed3aebac2816a0e0687cdc8180a0"
+    },
+    {
+      "id": "operator-actions",
+      "trigger": "operator, picker, runs, grant, approval, script, publish",
+      "path": "docs/agent-guidance/operator-actions.md",
+      "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
+      "sha256": "172719323cfeacb781bbd89079ebc062b122e1a735a2d0517e9ceb76f3d4a941"
+    },
+    {
+      "id": "proposals",
+      "trigger": "missing capability, unsupported command, Way gap",
+      "path": "docs/agent-guidance/proposals.md",
+      "read_before": "Before building a local substitute for Arcadia machinery.",
+      "sha256": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62"
+    },
+    {
+      "id": "principles",
+      "trigger": "scope, Pareto, YAGNI, decompose, defer, blocker, defect, issue",
+      "path": "docs/agent-guidance/principles.md",
+      "read_before": "Before choosing scope, deferring work, or capturing a new defect.",
+      "sha256": "799a20c84463dce7e6bf1ac66b5b830f6d396370091952d518525e10faecbc9c"
+    },
+    {
+      "id": "pull-requests",
+      "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
+      "path": "docs/agent-guidance/pull-requests.md",
+      "read_before": "Before any PR operation; retain exact-head review and approval gates.",
+      "sha256": "789da1686eb88881a6dc9de3736bf0284123b0d63a9f783917552781ad0e77eb"
+    },
+    {
+      "id": "learning",
+      "trigger": "first tool, command, subsystem, failure, retry, friction, notes",
+      "path": "docs/agent-guidance/learning.md",
+      "read_before": "Before implementation, repair, validation or handoff and again on a new failure; search Project notes first.",
+      "sha256": "a417f0a3fad627ddb8fadd1e8a6ce001a2a4c8a34d617237e97f608ad0d2ef5a"
+    },
+    {
+      "id": "git-identity",
+      "trigger": "commit, comment, signature, author, critic, builder",
+      "path": "docs/agent-guidance/git-identity.md",
+      "read_before": "Before every agent commit or posted comment; resolve identity for the current model.",
+      "sha256": "7c35626759cea67ce61f7f2e07217c349da6c19b41faf77ebfcf5bff5bf81f43"
+    },
+    {
+      "id": "managed-documents",
+      "trigger": "Project, Plan, Action, Decision, status, acceptance",
+      "path": "docs/managed-documents.md",
+      "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
+      "sha256": "3c598ee001c089ab5d706de824bf83686ee2f273119d7bafeedf20f3b95c9252"
+    },
+    {
+      "id": "planning",
+      "trigger": "new planning cycle, raw outcome, interview, architect",
+      "path": "docs/planning-process.md",
+      "read_before": "Before starting a new planning cycle, rather than continuing an Action.",
+      "sha256": "90a794689df6fb3f71e13d3fee4f82d24e25ceee05106b55564b6ce27937f6cb"
+    },
+    {
+      "id": "working-copy",
+      "trigger": "worktree, branch, preserve, detached, conflict, local only",
+      "path": "docs/working-copy-safety.md",
+      "read_before": "Before editing code or reconciling Git, and before stopping.",
+      "sha256": "4c3b063d0707fa96eaee807c13afcd51f5b9da6ddead75ede045a696ebfbd4d9"
+    }
+  ]
+}

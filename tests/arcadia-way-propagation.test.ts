@@ -40,15 +40,18 @@ describe("Arcadia is adopter zero", () => {
     // (docs/operator-demo-and-release-contract.md, START_HERE.md) that are
     // specific to this repository's own procedures, not generic operating
     // principles, so it stays local rather than propagating.
-    expect(own).toContain("## Working-Copy Safety");
+    expect(own).toContain("Working-Copy\nSafety");
+    expect(readFileSync(path.join(repoRoot, "docs/agent-guidance/arcadia-repository.md"), "utf8")).toContain("## Working-Copy Safety");
     expect(managedRegion(own)).not.toContain("## Working-Copy Safety");
   });
 
   it("requires Arcadia's shared runner locally without copying unavailable paths into adopters", () => {
     const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
-    expect(own).toContain("**use the shared\n`arcadia-plan-amendment-v1` runner**");
-    expect(own).toContain("mise exec -- pnpm check:operator-scripts");
-    expect(own).toContain("src/operatorActions/libraryContract.ts");
+    expect(own).toContain("Plan-amendment operator actions (shared runner)");
+    const details = readFileSync(path.join(repoRoot, "docs/agent-guidance/arcadia-repository.md"), "utf8");
+    expect(details).toContain("**use the shared\n`arcadia-plan-amendment-v1` runner**");
+    expect(details).toContain("mise exec -- pnpm check:operator-scripts");
+    expect(details).toContain("src/operatorActions/libraryContract.ts");
     expect(managedRegion(own)).not.toContain("src/operatorActions/libraryContract.ts");
     expect(readAgentsContextBlock()).not.toContain("check:operator-scripts");
   });
@@ -60,10 +63,12 @@ describe("Arcadia is adopter zero", () => {
     // procedure, so they belong here rather than with Working-Copy Safety.
     const own = readFileSync(path.join(repoRoot, "AGENTS.md"), "utf8");
 
-    expect(own).toContain("## The 80/20 rule");
-    expect(managedRegion(own)).toContain("## The 80/20 rule");
-    expect(managedRegion(own)).toContain("## YAGNI");
-    expect(managedRegion(own)).toContain("## Divide and conquer");
+    expect(managedRegion(own)).toContain("find the vital few first");
+    expect(managedRegion(own)).toContain("docs/agent-guidance/index.json");
+    const principles = readFileSync(path.join(repoRoot, "docs/agent-guidance/principles.md"), "utf8");
+    expect(principles).toContain("## The 80/20 rule");
+    expect(principles).toContain("## YAGNI");
+    expect(principles).toContain("## Divide and conquer");
   });
 
   it("writes adopters the same bytes, from the file rather than a literal", () => {
@@ -83,7 +88,7 @@ describe("adopted AGENTS.md block", () => {
 
     expect(rendered).toContain("CONSTITUTION.md");
     expect(rendered).toContain("PROJECT.md");
-    expect(rendered).toContain("nouns read state, verbs may mutate");
+    expect(rendered).toContain("Noun commands read; verbs may mutate");
   });
 
   it("states the stopping contract inline rather than only linking to it", () => {
@@ -91,17 +96,19 @@ describe("adopted AGENTS.md block", () => {
 
     // The whole point: this block is loaded automatically, a linked document is
     // not. An agent that reads only this must still know what it owes.
-    expect(rendered).toContain("exactly two valid terminals: a pull request or an");
-    expect(rendered).toContain("actionable picker");
-    expect(rendered).toContain("A one-option picker is still a picker");
-    expect(rendered).toContain("record one precise operator question");
-    expect(rendered).toContain("is itself a stopping condition");
-    expect(rendered).toContain("docs/agent-continuation-protocol.md");
-    expect(rendered).toContain("reference, not a prerequisite");
+    expect(rendered).toContain("The only stopping terminals are a PR or a");
+    expect(rendered).toContain("actionable numbered picker");
+    expect(rendered).toContain("each live choice states its");
+    expect(rendered).toContain("session end/restart and sufficient model/effort");
+    const procedure = readFileSync(path.join(repoRoot, "docs/agent-guidance/continuation.md"), "utf8");
+    expect(procedure).toContain("A one-option picker is still a picker");
+    expect(procedure).toContain("record one precise operator question");
+    expect(procedure).toContain("is itself a stopping condition");
   });
 
   it("documents the strict auto-settle and no-workspace settlement contracts", () => {
-    const rendered = updateAgentsMarkdown(null);
+    const rendered = readFileSync(path.join(repoRoot, "docs/agent-guidance/agent-asks.md"), "utf8");
+    expect(updateAgentsMarkdown(null)).toContain("Use an Agent Ask; previews never");
 
     // This file is propagated into every adopting repository's AGENTS.md;
     // preserve both constraints that otherwise invite a misleading shortcut.

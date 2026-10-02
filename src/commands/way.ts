@@ -36,6 +36,8 @@ export function runWayStatusCommand(options: { workspace: string }): CommandSucc
 const FILE_LABELS: Record<keyof WayDriftReport["files"], string> = {
   constitution: "CONSTITUTION.md",
   agentsRegion: "AGENTS.md region",
+  guidanceResources: "Indexed agent guidance",
+  instructionBudget: "Instruction delivery budget",
   continuationProtocol: "docs/agent-continuation-protocol.md"
 };
 

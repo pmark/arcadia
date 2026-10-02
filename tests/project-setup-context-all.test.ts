@@ -67,7 +67,7 @@ describe("runProjectSetupContextAllCommand", () => {
     expect(updated?.status).toBe("updated");
     expect(updated?.repoPath).toBe(withRepo);
     expect(existsSync(path.join(withRepo, "AGENTS.md"))).toBe(true);
-    expect(readFileSync(path.join(withRepo, "AGENTS.md"), "utf8")).toContain("## Divide and conquer");
+    expect(readFileSync(path.join(withRepo, "docs/agent-guidance/principles.md"), "utf8")).toContain("## Divide and conquer");
 
     const skipped = response.data.results.find((result) => result.projectName === "Unconfigured Project");
     expect(skipped?.status).toBe("skipped");
