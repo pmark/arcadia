@@ -41,6 +41,14 @@ of these first happens:
 
 ---
 
+## Why does a public Docker image pull hang?
+
+keys: Docker, pull, credential-desktop, Chromium, Lighthouse, 847
+
+From the host: `docker --config "$(mktemp -d)" --host "unix://$HOME/.docker/run/docker.sock" pull mcr.microsoft.com/playwright:v1.61.1-noble` prints layer progress and an immutable digest.
+Gotcha: the default config can stall in `docker-credential-desktop get` even for public MCR images; the fresh empty config avoids it without reading credentials.
+Runtime must use the reviewed local SHA256 image ID with `--pull never`. See `docs/reports/issue-847-container-route-2026-10-02.md`; expires when #847 closes.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config

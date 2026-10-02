@@ -1,0 +1,55 @@
+{
+  "schema": "arcadia-container-browser-proof-v1",
+  "root": "/private/tmp/arcadia-container-proof-hONfJ5",
+  "ready": true,
+  "normal": {
+    "ready": true,
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/normal/receipt.json"
+  },
+  "stalled": {
+    "ready": false,
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/stall/receipt.json"
+  },
+  "broker": {
+    "nonce": "12345678-1234-1234-1234-123456789abc",
+    "ok": true,
+    "ready": true,
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/workspace-fixture/artifacts/container-audits/12345678-1234-1234-1234-123456789abc/receipt.json"
+  },
+  "brokerModuleRendered": true,
+  "authorityDenials": {
+    "project": true,
+    "revision": true,
+    "image": true,
+    "executorHash": true,
+    "snapshotHash": true,
+    "routes": true,
+    "viewports": true,
+    "expiresAt": true
+  },
+  "timeoutProven": true,
+  "detachedGroupProven": true,
+  "sourceUnchanged": true,
+  "authority": {
+    "schema": "arcadia-container-audit-authority-v1",
+    "project": "browser-audit-fixture",
+    "revision": "001ee17263b27d5c8c8698c20a6e6d2dc2eb4f03",
+    "image": "sha256:fa465721bd83298dc18b63628d67fccea73b34903cf3cc4b2cb86f4ee4cf60ca",
+    "executorHash": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
+    "snapshotHash": "f14bac7dfb8d658ed836abdf5e5a4e50821317e8080a7ec1ec3b75b06bd2db19",
+    "routes": [
+      "/"
+    ],
+    "viewports": [
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 1440,
+        "height": 900
+      }
+    ],
+    "expiresAt": "2026-10-02T11:36:20.888Z"
+  }
+}
