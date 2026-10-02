@@ -2817,11 +2817,11 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Add an idempotent protected enrollment request so any preliminary helper can obtain governed preparation or launch an assigned managed worker.
+    next_action: Implement protected enrollment with durable requirement/input identity, bounded attempts, one mutation owner, serial integration and independent exact-head review/QA.
     expected_artifact: Evidence satisfying Agent Ask enroll-session-through-governed-host-request
     clarification: clarified
     confidence: high
-    source: Agent Ask enroll-any-session-and-preserve-production-config-2026-10-02-v2
+    source: Agent Ask regroup-enrollment-with-durable-serial-execution-2026-10-02-v2
     acceptance_criteria:
       - A fixed host enrollment request resolves the configured workspace and exact governed Project/Plan/Action, canonical brief, required operator gates, packet provider/model/effort, and existing worktree claim; the request accepts no caller-supplied executable or arbitrary shell command.
       - An exact request replay returns its original prepared-principal or managed-Session receipt; changed Action, caller identity or mode under the same request id refuses before mutation.
@@ -2829,9 +2829,12 @@ actions:
       - Concurrent enrollment, Off, stale policy epoch, unavailable capacity, missing packet approval and transport refusal leave no duplicate principal or orphan admission, claim or candidate; existing pending work remains recoverable.
       - Native durable adoption refuses with native_runtime_not_supervisable unless a host-observable adapter verifies stable identity, liveness, terminal outcome and recovery; the refusal supplies the supported managed-worker launch route.
       - Focused enrollment, admission and claim refusal/replay tests pass, followed by the repository's required checks; the operator guide and portable skill instructions explain how an unleased helper requests enrollment and proves success.
-    depends_on: []
+      - Persist a requirement identity/input revision and distinct attempt ordinal/request ID for planner, critique, development, exact-head code review and independent QA. Transport replay returns the same receipt; an explicitly authorized retry after terminal failure atomically allocates the next bounded ordinal.
+      - Route only one mutation-owning principal; helpers are separately identified and read-only. Deterministic readiness precedes inference, and push/criteria/evidence changes invalidate dependent verdicts.
+      - A three-Action Plan always selects only its next dependency-ready Action; restart resumes or reconciles its current attempt without duplication; Off fences a between-Action launch; independent review/QA cannot be supplied by the developer; focused migration/race/replay/restart/Off tests pass.
+    depends_on: [persist-inactive-production-configuration]
     decisions: []
-    references: ["src/goBroker.ts", "src/sessions/goRequestExecutor.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/sessions/actionBrief.ts", "src/production/policy.ts", "docs/managed-production-readiness.md"]
+    references: ["src/goBroker.ts", "src/sessions/goRequestExecutor.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/sessions/actionBrief.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", ".arcadia/asks/archive/agent-ask-enroll-any-session-and-preserve-production-config-2026-10-02-v2.yaml", ".arcadia/asks/agent-ask-minimal-autonomous-managed-production-critical-path-2026-10-02.yaml", "src/production/tick.ts", "src/sessions/reconciliation.ts", "src/qa/prReview.ts", "src/sessions/candidatePreservation.ts", "src/production/sessionHandoff.ts", "docs/reports/three-action-managed-production-scope-design-2026-10-02.md"]
   - id: persist-inactive-production-configuration
     title: Persist exact inactive production configuration separately from revoked authority so /runs can preview a safe fresh activation after Off.
     status: open
