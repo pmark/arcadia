@@ -72,7 +72,7 @@
   },
   "sourcePins": {
     "src/sessions/containerBrowserAudit.ts": "f3c73aa751ce79cb426f99c924170a395f78f479c229fc217dbdc7ecb105e45c",
-    "src/sessions/containerAuditTransport.ts": "2de9187ff669f4418277c19000ba460fd969e85f83e01a50cc846eed75cd9bb0",
+    "src/sessions/containerAuditTransport.ts": "b38a71a19fc806b750ed929880d8d150ee5314b51832d82f8d7aac9a38764082",
     "src/sessions/hostBrowserAudit.ts": "0762da6b7fe55013d1bbdcb2f2b80577e3b1b9777dea218c299b0b44a5f96c11",
     "src/sessions/preservationTransport.ts": "c6351ce2e48c6439f5066ab119390f78d374cffacaa3bc5d892d8333f53d8baa",
     "src/commands/goBrokerInstall.ts": "ea6c34562ed5beaca98b8720c225955c400ea627f6d119e3be1f9cbb4b77f07d",
@@ -86,12 +86,12 @@
   },
   "runtimePins": {
     "dist/src/sessions/containerBrowserAudit.js": "247ecb48eb5a723e0a22dd879b47cbc8cd96959b9b8e58781f896ae7985c5691",
-    "dist/src/sessions/containerAuditTransport.js": "6d2c5013b7d90767fe103df9ea016b904e99387bf1621cbeb22fc618baa81a2b",
+    "dist/src/sessions/containerAuditTransport.js": "e6a0248e859a22a33c09f2a896d9a42e26a768c3618088b1073c8a91b7a0e9ec",
     "dist/scripts/container-audit-host-worker.js": "8e9c394b4b514b4410b3d351faf963b810145ec54b2265d09e7a5deedfc3b65a",
     "dist/scripts/request-container-browser-audit.js": "4387da12ffb755caae0d66185591cc294f38dafe9887d564f2d47a3438124610"
   },
   "loadedTransportHashes": [
-    "2de9187ff669f4418277c19000ba460fd969e85f83e01a50cc846eed75cd9bb0",
-    "6d2c5013b7d90767fe103df9ea016b904e99387bf1621cbeb22fc618baa81a2b"
+    "b38a71a19fc806b750ed929880d8d150ee5314b51832d82f8d7aac9a38764082",
+    "e6a0248e859a22a33c09f2a896d9a42e26a768c3618088b1073c8a91b7a0e9ec"
   ]
 }

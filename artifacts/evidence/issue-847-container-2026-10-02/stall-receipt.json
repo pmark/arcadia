@@ -20,10 +20,10 @@
         "height": 900
       }
     ],
-    "expiresAt": "2026-10-02T11:17:15.275Z"
+    "expiresAt": "2026-10-02T11:36:20.888Z"
   },
-  "name": "arcadia-audit-67356ecd-68d5-4bc7-8e43-20ed6950f0f1",
-  "createdAt": "2026-10-02T11:07:32.731Z",
+  "name": "arcadia-audit-31217979-44d4-484a-aa91-2f2722798b7f",
+  "createdAt": "2026-10-02T11:26:39.225Z",
   "stage": "browser.stall",
   "timedOut": true,
   "removed": true,
@@ -33,8 +33,8 @@
   "stderr": "ARCADIA_CONTAINER_STAGE preview.ready\nARCADIA_CONTAINER_STAGE detached.started\nARCADIA_CONTAINER_STAGE browser.ready\nARCADIA_CONTAINER_STAGE browser.stall\n",
   "inspection": [
     {
-      "Id": "8b0746d3e0ca188b9a073149511593e136b7e804f1f32c5ad088445d3b0e8f0d",
-      "Created": "2026-10-02T11:07:32.771470554Z",
+      "Id": "1e682899a9f99d0e700cc7463c7bff6bda23d54673cb62c56e8d0f24aee55791",
+      "Created": "2026-10-02T11:26:39.279351126Z",
       "Path": "node",
       "Args": [
         "/audit/worker.mjs"
@@ -57,7 +57,7 @@
       "HostnamePath": "",
       "HostsPath": "",
       "LogPath": "",
-      "Name": "/arcadia-audit-67356ecd-68d5-4bc7-8e43-20ed6950f0f1",
+      "Name": "/arcadia-audit-31217979-44d4-484a-aa91-2f2722798b7f",
       "RestartCount": 0,
       "Driver": "overlayfs",
       "Platform": "linux",
@@ -146,13 +146,13 @@
         "Mounts": [
           {
             "Type": "bind",
-            "Source": "/private/tmp/arcadia-container-proof-jfBkuD/stall/site",
+            "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/site",
             "Target": "/site",
             "ReadOnly": true
           },
           {
             "Type": "bind",
-            "Source": "/private/tmp/arcadia-container-proof-jfBkuD/stall/input",
+            "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/input",
             "Target": "/input",
             "ReadOnly": true
           }
@@ -190,23 +190,23 @@
       "Mounts": [
         {
           "Type": "bind",
-          "Source": "/private/tmp/arcadia-container-proof-jfBkuD/stall/input",
-          "Destination": "/input",
+          "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/site",
+          "Destination": "/site",
           "Mode": "",
           "RW": false,
           "Propagation": "rprivate"
         },
         {
           "Type": "bind",
-          "Source": "/private/tmp/arcadia-container-proof-jfBkuD/stall/site",
-          "Destination": "/site",
+          "Source": "/private/tmp/arcadia-container-proof-hONfJ5/stall/input",
+          "Destination": "/input",
           "Mode": "",
           "RW": false,
           "Propagation": "rprivate"
         }
       ],
       "Config": {
-        "Hostname": "8b0746d3e0ca",
+        "Hostname": "1e682899a9f9",
         "Domainname": "",
         "User": "1000:1000",
         "AttachStdin": false,
@@ -271,7 +271,7 @@
       }
     }
   ],
-  "processes": "PID                 PPID                PGID                COMMAND             COMMAND\n77682               77658               77682               docker-init         /sbin/docker-init -- node /audit/worker.mjs\n77695               77682               77695               MainThread          node /audit/worker.mjs\n77704               77682               77704               sleep               /bin/sleep 300\n77768               77695               77768               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --disable-dev-shm-usage --remote-debugging-port=43124 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/playwright_chromiumdev_profile-xxY3LI --remote-debugging-pipe --no-startup-window\n77770               77768               77768               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-zygote-sandbox --no-sandbox --headless\n77771               77768               77768               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-sandbox --headless\n77785               77770               77768               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=gpu-process --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=UAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAYAAAAAAAAABgAAAAAAAAAAAAAAA\n77804               77768               77768               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US@posix --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,1082636347589306120,12621992037303096446,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AutoDeElevate,AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,OptimizationHints,PaintHolding,RenderDocument,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,13413764760373257886,16956856948559888083,4 --trace-process-track-uuid=3190708989122997041\n",
+  "processes": "PID                 PPID                PGID                COMMAND             COMMAND\n78517               78494               78517               docker-init         /sbin/docker-init -- node /audit/worker.mjs\n78532               78517               78532               MainThread          node /audit/worker.mjs\n78541               78517               78541               sleep               /bin/sleep 300\n78605               78532               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-edgeupdater --disable-extensions --disable-features=AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,OptimizationHints,msForceBrowserSignIn,msEdgeUpdateLaunchServicesPreferredVersion --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --disable-infobars --disable-search-engine-choice-screen --disable-sync --enable-unsafe-swiftshader --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --no-sandbox --disable-dev-shm-usage --remote-debugging-port=43124 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/playwright_chromiumdev_profile-HQr9Yi --remote-debugging-pipe --no-startup-window\n78607               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-zygote-sandbox --no-sandbox --headless\n78608               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=zygote --no-sandbox --headless\n78622               78607               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=gpu-process --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=UAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAAAQAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAYAAAAAAAAABgAAAAAAAAAAAAAAA\n78641               78605               78605               headless_shell      /ms-playwright/chromium_headless_shell-1228/chrome-linux/headless_shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US@posix --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,15003731884244051409,14147131701193075011,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AutoDeElevate,AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,OptimizationHints,PaintHolding,RenderDocument,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,3787401209262791375,4480811217655322474,4 --trace-process-track-uuid=3190708989122997041\n",
   "result": {
     "schema": "arcadia-container-browser-result-v1",
     "renders": [],

@@ -81,3 +81,25 @@ its release-quality Action. The Arcadia Decision proposal reconciles #847's
 named-profile-only wording with the separately approved host substitute.
 The Issue remains open, dispatch remains refused, and activation waits for
 operator approval of the exact scope after reviewed code installation.
+
+
+## Canonical handoff
+
+Arcadia settled Agent Ask `activate-scoped-container-audit-847-2026-10-02-v3`
+into open, unanswered Decision 0079. It proposes the bounded host alternative
+for #847 and the exact preserved-baseline one-shot Grant; it does not answer or
+activate either. v1/v2 were previews only and are superseded. The reviewed-scope
+expiry is 2026-10-02 18:45 UTC. The prepared approval action checks reviewed code,
+protected packaged runtime and the loaded host consumer before authority writes.
+It is published to the main `/runs` library but has not been executed.
+
+Worker results are retained independently of response delivery. A response write
+retries for five seconds; the same consumed Grant's durable result can be
+recovered without re-execution. Failure-receipt errors still attempt a response.
+If neither delivery nor durable retention succeeds, the in-flight guard remains
+closed for host recovery rather than permitting a new launch.
+
+The protected preservation launcher refused this inherited candidate with
+`No active Arcadia Session or manual handoff registers this preservation worktree.`
+The PR branch preserves the commits remotely. No registry entry was fabricated
+and no unrelated Project pointer was changed.

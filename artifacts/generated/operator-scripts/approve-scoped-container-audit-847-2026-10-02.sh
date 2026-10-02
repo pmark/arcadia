@@ -56,8 +56,14 @@ try:
     if consumed:
         nonce = consumed[0].name[len(active.name)+1:-len('.consumed')]
         response = workspace/'artifacts/container-audit-responses'/f'{nonce}.json'
-        if not response.is_file(): raise RuntimeError('Grant already consumed; inspect its host receipt. Do not reset or rerun it.')
-        result = json.loads(response.read_text())
+        if response.is_file():
+            result = json.loads(response.read_text())
+        else:
+            recovery = workspace/'artifacts/container-audits'/nonce/'worker-result.json'
+            if not recovery.is_file(): raise RuntimeError('Grant already consumed; inspect its host receipt. Do not reset or rerun it.')
+            result = json.loads(recovery.read_text())
+            if result.get('nonce') != nonce: raise RuntimeError('Recovery nonce mismatch; no rerun is authorized.')
+            print('Recovered the original durable worker result; no audit reran.')
     else:
         # Before first authority write, refuse unrelated local changes/divergence.
         if sha(decision) == d['openDecisionHash']:

@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, renameSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, renameSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ const { forkMock } = vi.hoisted(() => ({forkMock: vi.fn()}));
 vi.mock("node:child_process", async importOriginal => ({...await importOriginal<typeof import("node:child_process")>(), fork: forkMock}));
 import { containerAuditGrantAnswer, CONTAINER_AUDIT_REQUEST, processContainerAuditRequest, type HostAuditGrant } from "../src/sessions/containerAuditTransport.js";
 const roots: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); forkMock.mockReset(); for (const root of roots.splice(0)) rmSync(root, {recursive: true, force: true}); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); forkMock.mockReset(); for (const root of roots.splice(0)) rmSync(root, {recursive: true, force: true}); });
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), "audit-worker-failure-")); roots.push(root);
   const repository = path.join(root,"repository"), workspace = path.join(root,"workspace"), workerEntrypoint = path.join(root,"runtime/scripts/worker.js");
@@ -30,11 +30,27 @@ describe("host audit callback isolation",()=>{
     mkdirSync(path.join(f.workspace,"artifacts/container-audits",f.nonce,"failure.json"));
     expect(()=>f.child.emit("error",new Error("Synthetic child failure"))).not.toThrow();
     expect(f.stderr).toHaveBeenCalledWith(expect.stringContaining("failure receipt unavailable"));
+    const response=JSON.parse(readFileSync(path.join(f.workspace,"artifacts/container-audit-responses",f.nonce+".json"),"utf8"));
+    expect(response).toMatchObject({ok:false,receiptUnavailable:true});
   });
   it("survives response-directory loss after a successful child message",()=>{
+    vi.useFakeTimers();
     const f=fixture(); const directory=path.join(f.workspace,"artifacts/container-audit-responses");
     renameSync(directory,directory+".retained"); writeFileSync(directory,"Synthetic blocking file");
     expect(()=>f.child.emit("message",{ok:true,ready:true})).not.toThrow();
+    vi.advanceTimersByTime(5000);
     expect(f.stderr).toHaveBeenCalledWith(expect.stringContaining("response unavailable"));
+    expect(JSON.parse(readFileSync(path.join(f.workspace,"artifacts/container-audits",f.nonce,"worker-result.json"),"utf8"))).toMatchObject({nonce:f.nonce,ok:true,ready:true});
   });
+  it("retries response delivery after the response directory returns",()=>{
+    vi.useFakeTimers();
+    const f=fixture();const directory=path.join(f.workspace,"artifacts/container-audit-responses");
+    renameSync(directory,directory+".retained");writeFileSync(directory,"Synthetic blocking file");
+    f.child.emit("message",{ok:true,ready:true});
+    rmSync(directory);renameSync(directory+".retained",directory);
+    vi.advanceTimersByTime(1000);
+    expect(JSON.parse(readFileSync(path.join(directory,f.nonce+".json"),"utf8"))).toMatchObject({nonce:f.nonce,ok:true,ready:true});
+    expect(forkMock).toHaveBeenCalledTimes(1);
+  });
+
 });

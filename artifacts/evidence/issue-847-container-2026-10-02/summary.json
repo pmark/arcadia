@@ -1,20 +1,20 @@
 {
   "schema": "arcadia-container-browser-proof-v1",
-  "root": "/private/tmp/arcadia-container-proof-jfBkuD",
+  "root": "/private/tmp/arcadia-container-proof-hONfJ5",
   "ready": true,
   "normal": {
     "ready": true,
-    "receipt": "/private/tmp/arcadia-container-proof-jfBkuD/normal/receipt.json"
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/normal/receipt.json"
   },
   "stalled": {
     "ready": false,
-    "receipt": "/private/tmp/arcadia-container-proof-jfBkuD/stall/receipt.json"
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/stall/receipt.json"
   },
   "broker": {
     "nonce": "12345678-1234-1234-1234-123456789abc",
     "ok": true,
     "ready": true,
-    "receipt": "/private/tmp/arcadia-container-proof-jfBkuD/workspace-fixture/artifacts/container-audits/12345678-1234-1234-1234-123456789abc/receipt.json"
+    "receipt": "/private/tmp/arcadia-container-proof-hONfJ5/workspace-fixture/artifacts/container-audits/12345678-1234-1234-1234-123456789abc/receipt.json"
   },
   "brokerModuleRendered": true,
   "authorityDenials": {
@@ -50,6 +50,6 @@
         "height": 900
       }
     ],
-    "expiresAt": "2026-10-02T11:17:15.275Z"
+    "expiresAt": "2026-10-02T11:36:20.888Z"
   }
 }

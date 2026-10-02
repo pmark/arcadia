@@ -83,23 +83,42 @@ export function processContainerAuditRequest(workspace: string, repository: stri
   const receiptDirectory = path.join(workspace, "artifacts", "container-audits", nonce);
   let timer: NodeJS.Timeout | undefined;
   let finished = false;
-  const fail = (error: unknown) => {
-    if (finished) return;
-    finished = true;
+  let delivering = false;
+  const finish = (recoverable = true) => { finished = true; clearTimeout(timer); if (recoverable) inFlight.delete(repository); };
+  const deliver = (value: object) => {
+    if (finished || delivering) return;
+    delivering = true;
+    let retained = false;
+    const recovery = path.join(receiptDirectory, "worker-result.json");
+    try { writeFileSync(recovery, JSON.stringify({nonce, ...value}), {mode: 0o600, flag: "wx"}); retained = true; }
+    catch (error) { process.stderr.write(`Container audit durable result unavailable: ${String(error)}\n`); }
+    const attempt = (remaining: number) => {
+      try { respond(value); finish(); }
+      catch (error) {
+        if (remaining > 0) { timer = setTimeout(() => attempt(remaining - 1), 1000); return; }
+        process.stderr.write(`Container audit response unavailable: ${String(error)}; recovery ${retained ? recovery : "unavailable; inspect consumed Grant and container receipt"}\n`);
+        finish(retained);
+      }
+    };
     clearTimeout(timer);
-    inFlight.delete(repository);
+    attempt(5);
+  };
+  const fail = (error: unknown) => {
+    if (finished || delivering) return;
+    let receipt: string | undefined;
     try {
       mkdirSync(receiptDirectory, {recursive: true, mode: 0o700});
       const failure = path.join(receiptDirectory, "failure.json");
       writeFileSync(failure, JSON.stringify({nonce, authority: grant.authority, error: String(error), at: new Date().toISOString()}), {mode: 0o600});
-      respond({ok: false, error: String(error), receipt: failure});
+      receipt = failure;
     } catch (writeError) { process.stderr.write(`Container audit failure receipt unavailable: ${String(writeError)}\n`); }
+    deliver({ok: false, error: String(error), ...(receipt ? {receipt} : {receiptUnavailable: true})});
   };
   try {
     mkdirSync(receiptDirectory, {recursive: true, mode: 0o700});
     const child = fork(worker, [`${grantFile}.${nonce}.consumed`, receiptDirectory], {cwd: receiptDirectory, execArgv: [], env: {PATH: "/usr/local/bin:/usr/bin:/bin", HOME: receiptDirectory}, stdio: ["ignore", "ignore", "ignore", "ipc"]});
     timer = setTimeout(() => { child.kill("SIGTERM"); fail("audit.host: worker response timeout; retain consumed Grant and inspect its named container receipt"); }, 420000);
-    child.once("message", result => { if (finished) return; finished = true; clearTimeout(timer); inFlight.delete(repository); try { respond(result as object); } catch (error) { process.stderr.write(`Container audit response unavailable: ${String(error)}\n`); } });
+    child.once("message", result => { if (!finished) deliver(result as object); });
     child.once("error", fail);
     child.once("exit", code => { if (!finished) fail(`audit.host: worker exited without receipt (${code})`); });
   } catch (error) { fail(error); }
