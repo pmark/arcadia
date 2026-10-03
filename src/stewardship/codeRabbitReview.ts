@@ -223,7 +223,7 @@ const NOT_REVIEWED_REMEDY: Record<Extract<CodeRabbitStatus, { kind: "not_reviewe
   paused: `CodeRabbit paused reviews on this PR, so there is no CodeRabbit verdict for this head. ${ADVISORY_GATE}`,
   skipped: `CodeRabbit skipped this head, so there is no CodeRabbit verdict for it. ${ADVISORY_GATE}`,
   rate_limited: `CodeRabbit hit its rate limit and did not review this head. ${ADVISORY_GATE}`,
-  unverified_reporter: `The latest \`CodeRabbit\` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. ${ADVISORY_GATE}`,
+  unverified_reporter: `The latest \`CodeRabbit\` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. Check who posted the status named CodeRabbit and report a possible spoof. ${ADVISORY_GATE}`,
   unrecognized: `This CodeRabbit status is not a recognized completed review, so it is not treated as one. ${ADVISORY_GATE}`
 };
 

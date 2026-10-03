@@ -140,10 +140,10 @@ Read-only planning and adversarial helpers identified the smallest honest
 three-record scope: keep saved configuration unchanged, append durable serial
 execution to the existing enrollment identity while preserving its six criteria,
 and add one installed-host rehearsal Action. The finite revised design uses an
-actual disposable GitHub repository, the independent review gate of its
-reviewed head (`docs/agent-guidance/pull-requests.md`, Decision 0080) and existing
-independent PR QA rather than a new local reviewer supervisor; CodeRabbit, where
-installed, is advisory and never a required reviewer actor. With that route,
+actual disposable GitHub repository, CodeRabbit's actor/reviewed head and existing
+independent PR QA rather than a new local reviewer supervisor. As of Decision 0080,
+the independent review gate (`docs/agent-guidance/pull-requests.md`) replaces that
+reviewer actor and CodeRabbit is advisory. With that route,
 the adversary judges the combined enrollment/durability slice plausibly one
 heavy/high session; this is an estimate, not completion evidence. Draft-to-ready
 PR waiting, five fixed-role attempt lineage, host-derived QA identity and exact
