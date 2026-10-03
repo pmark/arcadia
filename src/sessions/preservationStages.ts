@@ -149,13 +149,16 @@ function indexLockRemedy(stage: string | null, malformed: boolean): string {
 }
 
 /** Whether a process may still own an old lock: it is fresh, a Git process
- * runs in the candidate, a process holds the lock file open, or one of those
- * could not be ruled out. */
+ * runs in the candidate, a process holds the lock file open, one of those
+ * could not be ruled out, or the lock changed while it was being probed. */
 export type IndexLockLiveness =
   | { liveness: "fresh" }
   | { liveness: "live"; liveGitPids: number[] }
   | { liveness: "held"; holderPids: number[] }
-  | { liveness: "unknown"; livenessError: string };
+  | { liveness: "unknown"; livenessError: string; holderProbeWarning?: string }
+  /** The lock was replaced or rewritten while its holders were probed. */
+  | { liveness: "changed"; probed: IndexLockIdentity; observed: IndexLockIdentity };
+export interface IndexLockIdentity { dev: number; ino: number; mtimeMs: number }
 
 /** An `index.lock` blocks the post-commit index sync and may belong to a
  * running process, so it is never removed, and the retry is safe. Typed

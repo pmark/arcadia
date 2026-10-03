@@ -1366,8 +1366,12 @@ toward the identical-refusal limit. Ten identical timeouts in a row stop
 automatic retries until an operator resolves the cause; a timed-out pull-request
 create or edit asks you to check for an existing pull request first. A blocked
 candidate `index.lock` reports its own code, `PRESERVATION_INDEX_LOCKED`, never a
-timeout: `reason: index_locked` (retryable; the lock is fresh, held open or a Git
-process still runs there) means let that process finish and rerun; `reason:
+timeout: `reason: index_locked` (retryable; the lock is fresh, held open, changed
+while it was checked, or a Git process still runs there) means let that process
+finish and rerun; an `lsof` warning that kept the answer unknown appears as
+`holderProbeWarning`. The held-open check sees only Git's brief lock write and
+non-Git holders; a `git commit` waiting on an editor is protected only by the
+running-Git-process check, never by the lock's age. `reason:
 index_lock_malformed` (not retryable; a directory or symlink) means inspect and
 remove it yourself, then rerun. Lock refusals never use up the timeout limit. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
 Installed launchers gain this behavior only after the reviewed **Reinstall the
