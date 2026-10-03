@@ -69,7 +69,7 @@ describe("POST /api/production-control On", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
-      error: "No reviewed configuration was saved.",
+      error: "No reviewed configuration was saved. Run preview and activate once.",
       details: { conflict: true, code: "no_saved_configuration", remedy: "Run preview and activate once." }
     });
     expect(cli.reactivateProduction).not.toHaveBeenCalled();

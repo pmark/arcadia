@@ -6,6 +6,7 @@ import { validationError } from "../cli/errors.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { discoverDocs } from "../docs/discover.js";
 import type { PlanDoc } from "../docs/types.js";
+import { getSchedulingProject } from "../scheduling/store.js";
 import {
   applyProductionActivation,
   assertReceiptTransition,
@@ -47,6 +48,7 @@ export type ReactivationRefusalCode =
   | "action_missing"
   | "action_not_open"
   | "plan_not_active"
+  | "project_paused"
   | "policy_revision_moved"
   | "configuration_revision_moved"
   | "configuration_fingerprint_mismatch";
@@ -79,8 +81,18 @@ export interface ProductionReactivationPreview {
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
 }
 
+interface ActionDrift {
+  /** Fingerprint of the saved configuration this was computed for. */
+  fingerprint: string;
+  missing: string[];
+  notOpen: string[];
+  inactivePlans: string[];
+}
+
 export interface ReactivationContext {
   now?: Date;
+  /** Plan-document drift computed outside any transaction; used only when its fingerprint still matches. */
+  drift?: ActionDrift;
   /** Known coding-agent provider ids; omit to skip the provider check. */
   knownProviders?: string[];
 }
@@ -179,7 +191,10 @@ export function evaluateReactivation(
   // needing attention and lists dependents as waiting, so neither its membership
   // nor its state says whether the reviewed Action is still open. Any drift
   // refuses; the saved list is never narrowed, widened or re-derived.
-  const drift = findActionDrift(db, scope.actions, scope.plans);
+  const drift =
+    context.drift && context.drift.fingerprint === configuration.fingerprint
+      ? context.drift
+      : findActionDrift(db, configuration.fingerprint, scope.actions, scope.plans);
   if (drift.missing.length > 0) {
     refusals.push({
       code: "action_missing",
@@ -199,6 +214,17 @@ export function evaluateReactivation(
       code: "plan_not_active",
       reason: `Saved Plan(s) are not active Plans any more: ${drift.inactivePlans.join(", ")}.`,
       remedy: "Re-establish the scope with `arcadia production preview` against the Plan that is now active."
+    });
+  }
+
+  // The first activation refused a paused Project; On must not succeed while the
+  // tick would skip every launch for it.
+  const paused = scope.projects.filter((slug) => getSchedulingProject(db, slug).pausedReason !== null);
+  if (paused.length > 0) {
+    refusals.push({
+      code: "project_paused",
+      reason: `Saved Project(s) are paused for scheduling: ${paused.join(", ")}. Reactivating would admit nothing for them.`,
+      remedy: "Resume the Project (`arcadia schedule resume`) or re-establish the scope without it."
     });
   }
 
@@ -225,9 +251,10 @@ const CLOSED_ACTION_STATUSES = new Set(["done", "blocked", "deferred"]);
  */
 function findActionDrift(
   db: Database.Database,
+  fingerprint: string,
   actions: string[],
   plans: string[]
-): { missing: string[]; notOpen: string[]; inactivePlans: string[] } {
+): ActionDrift {
   const projects = new Map(listProjects(db).map((project) => [project.slug, project]));
   const discovered = new Map<string, ReturnType<typeof discoverDocs> | null>();
   const docsFor = (projectSlug: string) => {
@@ -267,7 +294,7 @@ function findActionDrift(
     else if (CLOSED_ACTION_STATUSES.has(found.status)) notOpen.push(key);
   }
   // A saved Plan that is missing entirely surfaces as its Actions being missing.
-  return { missing, notOpen, inactivePlans };
+  return { fingerprint, missing, notOpen, inactivePlans };
 }
 
 function finish(
@@ -327,6 +354,12 @@ export function reactivateProduction(
   const startedAt = Date.now();
   const at = (input.now ?? new Date()).toISOString();
 
+  // Reading Plan documents is disk I/O. Do it before taking the write lock so a
+  // slow repository cannot hold up an Off; the result is used only if the saved
+  // configuration it was computed for is still the one inside the transaction.
+  const saved = readInactiveConfiguration(db);
+  const drift = saved ? findActionDrift(db, saved.fingerprint, saved.scope.actions, saved.scope.plans) : undefined;
+
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
@@ -343,7 +376,7 @@ export function reactivateProduction(
       return { replayed: true, revisionBefore: replay.revision_before };
     }
 
-    const preview = evaluateReactivation(db, { now: input.now, knownProviders: input.knownProviders });
+    const preview = evaluateReactivation(db, { now: input.now, knownProviders: input.knownProviders, drift });
     const refusals = [...preview.refusals];
     if (preview.configuration) {
       const { expected } = input;

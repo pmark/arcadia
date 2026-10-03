@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       const first = preview.refusals[0];
       return NextResponse.json(
         {
-          error: first?.reason ?? "The saved production configuration cannot be reactivated.",
+          error: first ? `${first.reason} ${first.remedy}` : "The saved production configuration cannot be reactivated.",
           details: { conflict: true, code: first?.code ?? null, remedy: first?.remedy ?? null, refusals: preview.refusals }
         },
         { status: 409 }

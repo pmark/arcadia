@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CapacityAdmissionDecision } from "../src/codingAgents/capacity.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import { upsertSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import {
   runProductionReactivateCommand,
@@ -390,6 +391,18 @@ describe("reactivation replays only the exact validated configuration", () => {
       "utf8"
     );
     expect(refusalCodes(workspace)).toContain("plan_not_active");
+  });
+
+  it("refuses a Project paused for scheduling, as the first activation did", () => {
+    const { workspace } = fixture();
+    activate(workspace, "grant-1");
+    off(workspace, "off-1");
+    withDatabase(workspace, (db) => upsertSchedulingProject(db, "demo", { pausedReason: "failed runs" }));
+    const refusal = withDatabase(workspace, (db) => evaluateReactivation(db)).refusals.find(
+      (entry) => entry.code === "project_paused"
+    );
+    expect(refusal?.reason).toContain("demo");
+    expect(() => reactivate(workspace, "on-1")).toThrow(/paused for scheduling/);
   });
 
   it("accepts dependents that wait on an open Action, since a reviewed scope lists them", () => {

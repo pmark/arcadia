@@ -284,18 +284,22 @@ interface AdmissionRow {
 }
 
 /**
- * Delegations and time-bound grants an Off never carries forward. They are
- * authority, not reviewed configuration: a consumed or expired grant must not
- * revive, and a delegation needs a fresh grant (Decision 0072).
+ * Scope fields Off retains. This is an allowlist on purpose: any field not named
+ * here, including a future authority-bearing one, is dropped across Off and
+ * needs a fresh grant (Decision 0072) rather than being carried by default.
  */
-export const INACTIVE_CONFIGURATION_NOT_CARRIED = [
-  "integrationGrant",
-  "rehearsalException",
-  "packetApprovalExpiresAt",
-  "remotePreservation"
-] as const;
+const REVIEWED_SCOPE_FIELDS = [
+  "intent",
+  "projects",
+  "plans",
+  "actions",
+  "providers",
+  "maxConcurrentSessions",
+  "mechanicalTransitions"
+] as const satisfies ReadonlyArray<keyof ProductionScope>;
 
-export type InactiveConfigurationNotCarried = (typeof INACTIVE_CONFIGURATION_NOT_CARRIED)[number];
+/** The names of scope fields an Off dropped (grants, exceptions, delegation expiry, remote preservation). */
+export type InactiveConfigurationNotCarried = string;
 
 /**
  * The reviewed scope Off retained, kept apart from `production_policy.scope_json`
@@ -353,23 +357,18 @@ export function readInactiveConfiguration(db: Database.Database): ProductionInac
   };
 }
 
-/** The reviewed bounds of `scope` with every grant, exception and delegation expiry removed. */
+/** The reviewed bounds of `scope`, with everything else reported as not carried. */
 export function reviewedConfigurationOf(scope: ProductionScope): {
   scope: ProductionScope;
   notCarried: InactiveConfigurationNotCarried[];
 } {
-  const notCarried = INACTIVE_CONFIGURATION_NOT_CARRIED.filter((field) => {
-    const value = scope[field];
-    return value !== undefined && value !== false;
-  });
-  const {
-    integrationGrant: _integrationGrant,
-    rehearsalException: _rehearsalException,
-    packetApprovalExpiresAt: _packetApprovalExpiresAt,
-    remotePreservation: _remotePreservation,
-    ...reviewed
-  } = scope;
-  return { scope: reviewed, notCarried };
+  const reviewed = {} as Record<string, unknown>;
+  for (const field of REVIEWED_SCOPE_FIELDS) reviewed[field] = scope[field];
+  const notCarried = Object.entries(scope)
+    .filter(([field, value]) => !(REVIEWED_SCOPE_FIELDS as readonly string[]).includes(field) && value !== undefined && value !== false)
+    .map(([field]) => field)
+    .sort();
+  return { scope: reviewed as unknown as ProductionScope, notCarried };
 }
 
 /**
