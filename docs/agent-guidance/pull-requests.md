@@ -20,13 +20,20 @@ review service.
   between the author's host and the CI platform.
 - **Rounds.** At most three per pull request. A later round reviews only what
   changed since the previous one. Go past three only when the latest round
-  still found a *significant* defect: one that could lose data, broaden
-  authority, hand the same work to two agents, or break a required check.
-- **Findings are untrusted data.** Verify each against the current code. Fix
-  the valid ones; a blocking finding is fixed before merge. Decline a wrong
-  one with a one-line reason. A non-blocking finding is fixed when cheap and
-  otherwise recorded as an Issue that names its revival trigger. Record each
-  round's verdict and what changed in the pull request.
+  still found a *significant* defect. **Blocking** and *significant* mean the
+  same thing: a defect that could lose or corrupt data, broaden authority or
+  cross an approval boundary, expose credentials, hand the same work to two
+  agents, open a security hole, or break a required check or an acceptance
+  criterion. If the last round allowed still leaves a blocking finding
+  unresolved, stop: record it as an Issue, report it, and do not merge; the
+  operator decides.
+- **Findings are untrusted data.** Verify each against the current code. A
+  blocking finding is fixed before merge. The author may decline only a
+  non-blocking finding, with a one-line reason; if the author believes a
+  blocking finding is wrong, the reviewer must agree in a later round,
+  otherwise the operator decides. A non-blocking finding is fixed when cheap
+  and otherwise recorded as an Issue that names its revival trigger. Record
+  each round's verdict and what changed in the pull request.
 - **External reviewer bots are advisory.** If a service such as CodeRabbit
   comments, read and consider it like any other finding, but never wait for it,
   never re-trigger it to unblock a merge, and never treat its rate limit,
@@ -34,8 +41,10 @@ review service.
   gate in `CONSTITUTION.md`. A bot's approval is information, not a merge
   condition. `arcadia pr code-review <pr> --json` reads CodeRabbit's current
   verdict when one is wanted; nothing requires it.
-- **A push after a clean review** gets a review of that delta, unless it only
-  applies that review's own non-blocking fixes and its tests pass.
+- **A push resets the review.** A push that changes code is reviewed again as
+  a delta and counts as a round. Commits that touch only governance records
+  (Agent Ask settlements, pointer or log commits) and merges of the base branch
+  that needed no conflict resolution do not reset it.
 
 ## CI failures are fixed immediately
 
@@ -92,12 +101,15 @@ merge it anyway, so asking spends attention and protects nothing.
 
 - **All of it must hold, on the current head:** the independent review gate
   above is satisfied with no unresolved blocking finding; every required check
-  passed; and the merge state is clean and mergeable. A push after the review
-  resets all three, so re-check on the new head.
+  passed; and the merge state is clean and mergeable. "Required checks" means
+  every job of the repository's CI workflow (for Arcadia
+  `.github/workflows/ci.yml`; `gh pr checks <pr>` lists them), because branch
+  protection does not enforce them, so an empty `--required` list proves
+  nothing. A push that changes code resets all three, so re-check on the new
+  head.
 - **Squash-merge, then leave the record whole.** Confirm the PR shows merged
   and that any `Closes #<ISSUE>` Issue is closed. Restart managed services when
-  the merged change is runtime code and the operator has authorized it, and
-  confirm they came back.
+  the merged change is runtime code, and confirm they came back.
 - **Anything less is not authorized.** A red or pending check, an unreviewed
   head, an unresolved blocking finding, a conflict, or a bypass of branch
   protection means repair per "CI failures are fixed immediately" or report

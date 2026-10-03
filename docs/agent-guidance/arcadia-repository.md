@@ -169,9 +169,10 @@ agent must automatically:
 5. rerun the independent review of the delta and the required checks against
    the new head before handoff, repeating the repair/push/review cycle until
    the PR is mergeable or the three-round review cap is reached (unless
-   significant defects keep appearing). If required checks remain red at that
-   cap, stop the automatic cycle and report the exact
-   unresolved checks and recovery attempted as a concrete blocker.
+   significant defects keep appearing). If required checks remain red, or a
+   blocking review finding remains unresolved, at that cap, stop the automatic
+   cycle and report the exact unresolved checks or finding and the recovery
+   attempted as a concrete blocker; never merge past it.
 
 Do not leave a PR in a conflicted, failing, or otherwise non-mergeable state
 with a narrative status report or ask the operator to perform these routine
