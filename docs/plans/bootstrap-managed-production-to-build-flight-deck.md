@@ -2981,6 +2981,26 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: reset-managed-preservation-timeout-history-on-success
+    title: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
+    expected_artifact: Evidence satisfying Agent Ask reset-managed-preservation-timeout-history-on-success
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-r2-managed-preservation-timeout-reset-2026-10-03
+    acceptance_criteria:
+      - "A regression test reproduces, before the fix, that a managed tick timeout followed by a successful preservation leaves timeout:<session.id> uncleared."
+      - After the fix, timeout then successful managed preservation then timeout counts the second timeout as the first consecutive one, while ten identical consecutive timeouts still stop automatic retries.
+      - The managed tick and the CLI use one shared budget; index_locked is counted separately from timeouts, bounded retry behavior is unchanged and the stop condition is not weakened.
+      - A malformed or live preservation lock yields a typed bounded error with preserved diagnostics instead of an unhandled exception.
+      - The actual managed handoff is exercised in a temporary repository and its structured receipts are retained; the original candidate commits and index remain recoverable.
+      - Merge and install are not claimed; the exact reviewed install step and host-path verification are named as the next gate.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
