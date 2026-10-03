@@ -17,7 +17,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { renderGoBrokerStatusSuccess, runGoBrokerStatusCommand } from "../src/commands/goBrokerInstall.js";
+import {
+  BROKER_LAUNCHERS,
+  brokerExecutables,
+  renderGoBrokerStatusSuccess,
+  runGoBrokerStatusCommand,
+  stageBrokerLaunchers,
+  validateExistingRelease
+} from "../src/commands/goBrokerInstall.js";
 import {
   configureGoBrokerAgents,
   inspectGoBrokerAgentSetup,
@@ -492,6 +499,68 @@ describe("go broker agent setup", () => {
       home: fixture.home,
       repository: path.resolve(import.meta.dirname, "..")
     })).toThrow("Protected broker setup is not ready");
+  });
+});
+
+describe("go broker release staging covers every protected launcher", () => {
+  const agents = ["codex", "claude", "opencode"];
+
+  it("stages a launcher for every BrokerExecutables operation and every agent", () => {
+    const fixture = createFixture(false);
+    expect(BROKER_LAUNCHERS.map(({ key }) => key).sort()).toEqual(Object.keys(fixture.executables).sort());
+    expect(Object.keys(brokerExecutables(path.join(fixture.home, "bin"))).sort()).toEqual(Object.keys(fixture.executables).sort());
+    const release = path.join(fixture.home, "release");
+    mkdirSync(release, { recursive: true });
+    const staged = stageBrokerLaunchers(release, "/release/dist/scripts/arcadia-go-broker.js");
+    const expected = BROKER_LAUNCHERS.flatMap(({ launcherBase }) => agents.map((agent) => `${launcherBase}-${agent}`));
+    expect(staged.map((file) => path.basename(file)).sort()).toEqual([...expected].sort());
+    for (const { operation, launcherBase } of BROKER_LAUNCHERS) {
+      for (const agent of agents) {
+        expect(readFileSync(path.join(release, `${launcherBase}-${agent}`), "utf8")).toContain(` ${agent} ${operation} "$@"`);
+      }
+    }
+    expect(existsSync(path.join(release, "arcadia-enroll-broker-claude"))).toBe(true);
+  });
+
+  it("is READY when every bin link resolves into a release staged by the installer's own launcher writer", () => {
+    const fixture = createFixture(false);
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
+    const release = path.join(fixture.home, ".local", "share", "arcadia", "staged-revision");
+    const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
+    write(brokerEntrypoint, "// fixture runtime\n");
+    write(path.join(release, "dist", "database", "schema.sql"), "-- fixture schema\n");
+    write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// fixture bridge\n");
+    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: "staged-revision", brokerEntrypoint }));
+    stageBrokerLaunchers(release, brokerEntrypoint);
+    for (const agent of agents) {
+      // Only the brief self-test needs a runnable entrypoint; every other staged launcher is used as written.
+      const brief = path.join(release, `arcadia-brief-broker-${agent}`);
+      chmodSync(brief, 0o755);
+      writeFileSync(brief, briefLauncher(repositoryBrokerEntrypoint, agent));
+    }
+    for (const { key, launcherBase } of BROKER_LAUNCHERS) {
+      for (const agent of agents) {
+        const executable = fixture.executables[key][agent as "codex"];
+        mkdirSync(path.dirname(executable), { recursive: true });
+        symlinkSync(path.join(release, `${launcherBase}-${agent}`), executable);
+      }
+    }
+    configureGoBrokerAgents({ ...fixture, skillTemplate: template, agentAskSkillTemplate: agentAskTemplate });
+    const result = runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") });
+    expect(result.data).toMatchObject({ ready: true, brokerIssues: [] });
+  });
+
+  it("refuses to reuse an existing release that lacks only the enroll launchers", () => {
+    const fixture = createFixture(false);
+    const release = path.join(fixture.home, "releases", "rev-1");
+    mkdirSync(path.join(release, "node_modules"), { recursive: true });
+    write(path.join(release, "dist", "database", "schema.sql"), "-- schema\n");
+    write(path.join(release, "scripts", "bridge-worktree-deps.mjs"), "// bridge\n");
+    write(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: "rev-1" }));
+    stageBrokerLaunchers(release, "/unused/arcadia-go-broker.js");
+    expect(() => validateExistingRelease(release, "rev-1")).not.toThrow();
+    for (const agent of agents) rmSync(path.join(release, `arcadia-enroll-broker-${agent}`), { force: true });
+    expect(() => validateExistingRelease(release, "rev-1")).toThrow("existing protected broker release is incomplete");
   });
 });
 

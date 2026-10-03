@@ -266,6 +266,42 @@ describe("protected session enrollment", () => {
     expect(on.launch).toHaveBeenCalledOnce();
   });
 
+  describe("a different caller and another request's pending row for the same Action", () => {
+    const other = { ...request, requestId: "enroll-request-0009", callerId: "helper-0009" };
+
+    it("is still blocked by a live pending row, named with its remedy", () => {
+      crashAfterPending();
+      expect(() => enrollGovernedSession(db, other, { ...dependencies(), recover: () => null })).toThrow(expect.objectContaining({
+        details: expect.objectContaining({ code: "enrollment_in_progress", blockingRequestId: request.requestId, remedy: expect.any(String) })
+      }));
+      expect(status()).toBe("pending");
+      expect(status(other.requestId)).toBeUndefined();
+    });
+
+    it("frees an expired row whose dead caller left no effect, keeping it as a failed record", () => {
+      crashAfterPending();
+      const deps = { ...dependencies(), recover: vi.fn(() => null), now: () => new Date(AT.getTime() + 61_000) };
+      expect(enrollGovernedSession(db, other, deps).principal.id).toBe("claim-1");
+      expect(deps.recover).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ requestId: request.requestId }) }));
+      expect(status()).toBe("failed");
+      expect(status(other.requestId)).toBe("completed");
+      expect(deps.prepare).toHaveBeenCalledOnce();
+    });
+
+    it("never frees an Action whose expired row has a proven effect to a second owner", () => {
+      crashAfterPending();
+      const recover = vi.fn(({ pending }: { pending: { requestId: string } }) =>
+        pending.requestId === request.requestId ? { id: "claim-1", worktree: "/candidate", claim } : null);
+      const deps = { ...dependencies(), recover, now: () => new Date(AT.getTime() + 61_000) };
+      expect(() => enrollGovernedSession(db, other, deps)).toThrow(expect.objectContaining({
+        details: expect.objectContaining({ code: "action_claimed", blockingRequestId: request.requestId })
+      }));
+      expect(deps.prepare).not.toHaveBeenCalled();
+      expect(status()).toBe("pending");
+      expect(status(other.requestId)).toBeUndefined();
+    });
+  });
+
   it("refuses native adoption without a host-observed adapter and names the managed-worker route", () => {
     const deps = dependencies();
     const native = { ...request, requestId: "native-request-0001", mode: "native-adopt" as const, nativeRuntimeId: "runtime-1" };
@@ -284,6 +320,24 @@ describe("protected session enrollment", () => {
     expect(adopted.principal).toEqual({ kind: "native-runtime", id: "runtime-1" });
     expect(deps.prepare).not.toHaveBeenCalled();
     expect(deps.launch).not.toHaveBeenCalled();
+  });
+
+  it("stops the owner-fence migration with the conflicting attempts instead of dropping data", () => {
+    const legacy = new Database(":memory:");
+    try {
+      applyInitialSchema(legacy);
+      legacy.exec(`DROP INDEX idx_session_role_attempts_one_requirement_owner;
+        CREATE UNIQUE INDEX idx_session_role_attempts_one_mutation_owner ON session_role_attempts(requirement_id, input_revision)
+          WHERE mutation_owner = 1 AND status IN ('pending', 'running');`);
+      const insert = legacy.prepare(`INSERT INTO session_role_attempts VALUES (?, 'requirement-1', ?, 'development', 1, ?, ?, 1, 'running',
+        NULL, NULL, NULL, NULL, 'x', 'x')`);
+      insert.run("attempt-a", "revision-1", "attempt-request-a", "developer-1");
+      insert.run("attempt-b", "revision-2", "attempt-request-b", "developer-2");
+      expect(() => applyMigrations(legacy)).toThrow(/Migration stopped: 1 requirement\(s\).*requirement-1: attempt-request-a,attempt-request-b/);
+      expect((legacy.prepare("SELECT count(*) count FROM session_role_attempts").get() as { count: number }).count).toBe(2);
+      legacy.prepare("UPDATE session_role_attempts SET status = 'failed' WHERE id = 'attempt-b'").run();
+      expect(() => applyMigrations(legacy)).not.toThrow();
+    } finally { legacy.close(); }
   });
 
   it("migrates a candidate-era enrollment store additively and idempotently", () => {

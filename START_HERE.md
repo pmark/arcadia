@@ -1381,7 +1381,11 @@ else (another helper, the production tick, an operator) refuses with
 writer died is reconciled only onto positive evidence of its own effect (the
 claim `go` recorded on the request inside the claim's own transaction, or the
 Session bound to the request's own admission), otherwise retried once its lease
-expires. A request that failed with no own effect is kept as a `failed` record,
+expires; a recovered own effect is handed back on governance identity alone,
+even if production has since gone Off. Another caller's pending row blocks the
+Action only while its lease is live: once expired with no recoverable effect it
+is kept as a `failed` record and the Action is freed. A request that failed with
+no own effect is kept as a `failed` record,
 so a changed replay still refuses and the exact replay may retry. Off
 (`production_off`), a changed epoch (`stale_epoch`), missing capacity
 (`capacity_unavailable`) and an unapproved packet (`packet_approval_required`)

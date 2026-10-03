@@ -104,10 +104,13 @@ export interface GoCommandOptions {
   /** Host enrollment must never walk away from the exact requested Action. */
   strictAction?: boolean;
   /**
-   * Host enrollment only; the CLI never exposes it. The pointer must still name
-   * `actionId` (otherwise refuse before any Git or claim write), an existing
-   * candidate is never resumed for the caller, and the new claim's identity is
-   * recorded on the pending enrollment row inside the claim's own transaction.
+   * Host enrollment only; the CLI never exposes it. The source checkout's
+   * pointer must name exactly `actionId` and be dispatchable: otherwise go
+   * refuses after its ordinary base observation but before any source
+   * reconciliation, Plan activation, worktree or claim. The re-resolved base
+   * pointer is checked again before claiming, an existing candidate is never
+   * resumed for the caller, and the new claim's identity is recorded on the
+   * pending enrollment row inside the claim's own transaction.
    */
   enrollment?: { requestId: string; actionId: string };
   /** Test-only override; the CLI intentionally does not expose it. */
@@ -302,6 +305,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   const projectRoot = integration === "already-integrated" ? (baseRecord?.path ?? sourceRecord.path) : sourceRecord.path;
   const projectSlug = resolveProjectSlug(projectRoot);
   const sourceDispatch = resolveDispatch(projectRoot, projectSlug);
+  if (options.enrollment && (!isDispatchable(sourceDispatch) || sourceDispatch.context?.action.id !== options.enrollment.actionId)) {
+    // Enrollment never activates a Plan or follows a moved pointer.
+    throw validationError("The governed pointer no longer names the enrolled Action; nothing was reconciled, activated or claimed.", {
+      code: "enrollment_governance_changed", expected: options.enrollment.actionId, actual: sourceDispatch.context?.action.id ?? null
+    });
+  }
   let activationResult: ActivateNextPlanResult | null = null;
   let workspaceForActivation: string | null = null;
   // Decision 0048: when the active Plan is absent or complete, the explicit

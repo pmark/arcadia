@@ -167,9 +167,22 @@ function ensureSessionEnrollmentTables(db: Database.Database): void {
       updated_at TEXT NOT NULL,
       UNIQUE(requirement_id, input_revision, role, ordinal)
     );
-    -- The candidate build scoped its owner fence per input revision; the
-    -- fence covers the whole requirement so a revised input never admits a
-    -- second concurrent developer.
+  `);
+  // The candidate build scoped its owner fence per input revision, which let
+  // one requirement hold several live developers under different revisions.
+  // The fence now covers the whole requirement. Never drop or rewrite such
+  // rows to make the index fit: stop with the exact conflicting attempts.
+  const hasRequirementOwnerIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_session_role_attempts_one_requirement_owner'").get();
+  if (!hasRequirementOwnerIndex) {
+    const conflicts = db.prepare(`SELECT requirement_id, group_concat(request_id) AS request_ids FROM session_role_attempts
+      WHERE mutation_owner = 1 AND status IN ('pending', 'running') GROUP BY requirement_id HAVING count(*) > 1`).all() as Array<{ requirement_id: string; request_ids: string }>;
+    if (conflicts.length > 0) {
+      throw new Error(`Migration stopped: ${conflicts.length} requirement(s) hold more than one live mutation-owning development attempt `
+        + `(${conflicts.map((row) => `${row.requirement_id}: ${row.request_ids}`).join("; ")}). `
+        + "Record a terminal outcome for all but one of each requirement's attempts through recordSessionRoleAttemptTerminal, then reopen the workspace.");
+    }
+  }
+  db.exec(`
     DROP INDEX IF EXISTS idx_session_role_attempts_one_mutation_owner;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_session_role_attempts_one_requirement_owner
       ON session_role_attempts(requirement_id)

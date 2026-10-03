@@ -28,7 +28,7 @@ import {
   type NativeRuntimeAdapter
 } from "./enrollment.js";
 import { canonicalPath, getActiveActionClaim, getRepositoryLease, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
-import { launchGuardedHostSession } from "./launch.js";
+import { launchGuardedHostSession, type GuardedLaunchInput } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 
 export interface HostEnrollmentInput {
@@ -45,6 +45,8 @@ export interface HostEnrollmentInput {
   tmux?: TmuxAdapter;
   capacityObservation?: ProviderCapacityObservation;
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /** Test-only fault injection forwarded to the guarded launcher. */
+  launchTestHooks?: GuardedLaunchInput["testHooks"];
   /** Host-registered native supervision adapters. Production registers none. */
   nativeAdapters?: Partial<Record<GoBrokerAgent, NativeRuntimeAdapter>>;
   now?: () => Date;
@@ -222,6 +224,7 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
         ...(input.tmux ? { tmux: input.tmux } : {}),
         ...(input.agentWorktreeRoot ? { agentWorktreeRoot: input.agentWorktreeRoot } : {}),
         ...(input.providerSignIn ? { providerSignIn: input.providerSignIn } : {}),
+        ...(input.launchTestHooks ? { testHooks: input.launchTestHooks } : {}),
         now: now()
       });
       if (result.session.action_id !== context.actionId) {
@@ -232,7 +235,9 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
 
     /** Positive evidence only: never a claim or Session another caller created. */
     const recover = ({ pending }: { pending: EnrollmentPending }): EnrollmentEffect | null => {
-      if (mode === "prepare") {
+      // The row being recovered may be another request's (a stale blocker),
+      // so its own mode and request id decide the evidence, not this caller's.
+      if (pending.mode === "prepare") {
         // `go` recorded this claim's id and generation on our own pending row
         // inside the claim's transaction; adopt exactly that live claim.
         if (!pending.effectClaimId) return null;
@@ -241,13 +246,14 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
           ? { id: claim.id, worktree: claim.worktree_path, claim: claimView(claim), admission: null }
           : null;
       }
-      if (mode === "managed-launch") {
-        // Only a started Session bound to this request's own admission. A
+      if (pending.mode === "managed-launch") {
+        const rowAdmission = `${pending.requestId}:admission`;
+        // Only a started Session bound to that request's own admission. A
         // prepared-but-unstarted own lease is resumed by the guarded launcher
         // (with its epoch check) on the takeover path instead.
         const session = db.prepare(`SELECT * FROM agent_sessions WHERE admission_request_id = ?
-          AND status = 'running' ORDER BY prepared_at DESC LIMIT 1`).get(ownAdmission) as AgentSession | undefined;
-        return session ? sessionEffect(session, findAdmission(db, ownAdmission)) : null;
+          AND status = 'running' ORDER BY prepared_at DESC LIMIT 1`).get(rowAdmission) as AgentSession | undefined;
+        return session ? sessionEffect(session, findAdmission(db, rowAdmission)) : null;
       }
       return null;
     };

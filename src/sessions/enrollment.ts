@@ -106,6 +106,9 @@ export interface EnrollmentReceipt {
 
 /** The durable record of a not-yet-completed request, including the effect marker its adapter wrote atomically. */
 export interface EnrollmentPending {
+  /** The request this row belongs to (not necessarily the caller's: a stale blocking row is recovered too). */
+  requestId: string;
+  mode: EnrollmentMode;
   createdAt: string;
   effectClaimId: string | null;
   effectClaimGeneration: string | null;
@@ -145,6 +148,8 @@ function requestFingerprint(request: EnrollmentRequest): string {
 }
 
 interface EnrollmentRow {
+  request_id: string;
+  mode: EnrollmentMode;
   request_fingerprint: string;
   status: "pending" | "completed" | "failed";
   receipt_json: string | null;
@@ -155,14 +160,17 @@ interface EnrollmentRow {
   effect_worktree: string | null;
 }
 
+const ROW_COLUMNS = `request_id, mode, request_fingerprint, status, receipt_json, created_at, lease_expires_at,
+  effect_claim_id, effect_claim_generation, effect_worktree`;
+
 function readRow(db: Database.Database, requestId: string): EnrollmentRow | undefined {
-  return db.prepare(`SELECT request_fingerprint, status, receipt_json, created_at, lease_expires_at,
-    effect_claim_id, effect_claim_generation, effect_worktree FROM session_enrollments WHERE request_id = ?`)
-    .get(requestId) as EnrollmentRow | undefined;
+  return db.prepare(`SELECT ${ROW_COLUMNS} FROM session_enrollments WHERE request_id = ?`).get(requestId) as EnrollmentRow | undefined;
 }
 
 function pendingView(row: EnrollmentRow): EnrollmentPending {
   return {
+    requestId: row.request_id,
+    mode: row.mode,
     createdAt: row.created_at,
     effectClaimId: row.effect_claim_id,
     effectClaimGeneration: row.effect_claim_generation,
@@ -221,6 +229,9 @@ function assertEnrollmentPreconditions(
       });
     }
   }
+  // An effect that already happened (positively recovered) is handed back on
+  // governance identity alone; launch gates apply only to new effects.
+  if (ownEffect) return;
   if (request.mode === "managed-launch") {
     if (context.policyState === "off") throw validationError("Managed production is Off; enrollment created no admission or claim.", { code: "production_off" });
     if (!context.packetApproved) throw validationError("The governed build packet is not approved.", { code: "packet_approval_required" });
@@ -326,25 +337,65 @@ export function enrollGovernedSession(
   const now = clock();
   const createdAt = now.toISOString();
   const heldLease = new Date(now.getTime() + leaseMs).toISOString();
+  const insert = () => writeTransaction(db, () => {
+    db.prepare(`INSERT INTO session_enrollments (
+      request_id, request_fingerprint, project_slug, plan_slug, action_id, caller_id, mode, status, receipt_json,
+      created_at, updated_at, lease_expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`).run(
+      request.requestId, fingerprint, context.projectSlug, context.planSlug, context.actionId,
+      request.callerId, request.mode, createdAt, createdAt, heldLease
+    );
+  });
   try {
-    writeTransaction(db, () => {
-      db.prepare(`INSERT INTO session_enrollments (
-        request_id, request_fingerprint, project_slug, plan_slug, action_id, caller_id, mode, status, receipt_json,
-        created_at, updated_at, lease_expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`).run(
-        request.requestId, fingerprint, context.projectSlug, context.planSlug, context.actionId,
-        request.callerId, request.mode, createdAt, createdAt, heldLease
-      );
-    });
+    insert();
   } catch (error) {
-    if (isUniqueViolation(error)) {
+    if (!isUniqueViolation(error)) throw error;
+    // Another request's pending row holds this Action. Free it only when its
+    // lease expired and recovery proves it left no effect; never hand its
+    // effect to this caller.
+    freeAbandonedPendingAction(db, request, context, dependencies, now, clock);
+    try {
+      insert();
+    } catch (retryError) {
+      if (!isUniqueViolation(retryError)) throw retryError;
       throw validationError("Another enrollment already owns this Action's host transaction.", {
         code: "enrollment_in_progress", projectSlug: context.projectSlug, planSlug: context.planSlug, actionId: context.actionId
       });
     }
-    throw error;
   }
   return runEnrollmentEffect(db, request, context, dependencies, createdAt, heldLease, clock);
+}
+
+function freeAbandonedPendingAction(
+  db: Database.Database,
+  request: EnrollmentRequest,
+  context: GovernedEnrollmentContext,
+  dependencies: EnrollmentDependencies,
+  now: Date,
+  clock: () => Date
+): void {
+  const blocker = db.prepare(`SELECT ${ROW_COLUMNS} FROM session_enrollments
+    WHERE project_slug = ? AND plan_slug = ? AND action_id = ? AND status = 'pending' AND request_id != ?`)
+    .get(context.projectSlug, context.planSlug, context.actionId, request.requestId) as EnrollmentRow | undefined;
+  if (!blocker) {
+    throw validationError("This exact enrollment request is already in progress.", { code: "enrollment_in_progress", requestId: request.requestId });
+  }
+  if (Date.parse(blocker.lease_expires_at) > now.getTime()) {
+    throw validationError("Another enrollment request is preparing this Action now.", {
+      code: "enrollment_in_progress", blockingRequestId: blocker.request_id, leaseExpiresAt: blocker.lease_expires_at,
+      remedy: "Wait for that request to finish or for its lease to expire, then request enrollment again."
+    });
+  }
+  const effect = dependencies.recover?.({ request, context, pending: pendingView(blocker) }) ?? null;
+  if (effect) {
+    throw validationError("An earlier enrollment request already produced this Action's principal; it is not handed to this caller.", {
+      code: "action_claimed", blockingRequestId: blocker.request_id,
+      remedy: `Only the caller of ${blocker.request_id} may replay it to receive its receipt.`
+    });
+  }
+  markFailed(db, blocker.request_id, blocker.lease_expires_at, validationError("Abandoned: its lease expired with no recoverable effect, freeing the Action for another caller.", {
+    code: "enrollment_abandoned", freedFor: request.requestId
+  }), clock);
 }
 
 /** Only the writer still holding `leaseExpiresAt` may fail the row; a takeover's lease is never clobbered. */

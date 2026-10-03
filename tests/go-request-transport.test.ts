@@ -113,13 +113,25 @@ describe("agent go request transport", () => {
     processPreservationRequests(db, workspace);
     const enrolling = requestAgentEnrollment(source, "codex");
     processPreservationRequests(db, workspace);
-    expect(mocks.enrollment).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(mocks.enrollment).toHaveBeenCalledTimes(1));
     const going = requestAgentGo(source, "codex");
     processPreservationRequests(db, workspace);
     expect(mocks.broker).not.toHaveBeenCalled();
     expect(existsSync(requestFile())).toBe(true);
     finishEnrollment();
     await enrolling;
+    processPreservationRequests(db, workspace);
+    await expect(going).resolves.toEqual(result);
+    expect(mocks.broker).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the shared source guard when the enrollment handler throws synchronously", async () => {
+    mocks.enrollment.mockImplementation(() => { throw new Error("synchronous host refusal"); });
+    processPreservationRequests(db, workspace);
+    const enrolling = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await expect(enrolling).rejects.toBeDefined();
+    const going = requestAgentGo(source, "codex");
     processPreservationRequests(db, workspace);
     await expect(going).resolves.toEqual(result);
     expect(mocks.broker).toHaveBeenCalledTimes(1);

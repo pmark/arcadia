@@ -27,9 +27,11 @@ import {
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 /**
- * One host controller per source at a time. Enrollment preparation runs the
- * same `arcadia go` a go request does, so both share this guard and can never
- * run `go` concurrently on one repository root.
+ * One host controller per source path at a time. Enrollment preparation runs
+ * the same `arcadia go` a go request does, so both share this guard and never
+ * run concurrently from the same source path. Different sources of one
+ * repository (its root and a Session worktree) are not serialized here; the
+ * database claim and lease fences keep them to one principal per Action.
  */
 const runningGoSources = new Set<string>();
 const runningPreservationRequests = new Set<string>();
@@ -549,7 +551,9 @@ function processEnrollmentRequest(input: { workspace: string; source: string }):
   try { unlinkSync(request); } catch { return; }
   if (existsSync(response)) return;
   runningGoSources.add(input.source);
-  void executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId, value.mode)
+  // Deferred so even a synchronous throw from the handler becomes a rejection
+  // and the guard below is always released.
+  void Promise.resolve().then(() => executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId, value.mode))
     .catch(goTransportFailure)
     .then(result => writeGoResponse(response, result))
     .catch(error => { process.stderr.write(`Could not write host enrollment response: ${String(error)}\n`); })

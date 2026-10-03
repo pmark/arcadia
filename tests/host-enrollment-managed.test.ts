@@ -271,6 +271,37 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
     expect(f.tmux.launches).toHaveLength(1);
   });
 
+  it("hands back its own Session after a lost receipt even when production is now Off", () => {
+    const f = fixture();
+    activate(f);
+    const receipt = enroll(f);
+    withDatabase(f.workspace, (db) => db.prepare("UPDATE session_enrollments SET status = 'pending', receipt_json = NULL").run());
+    withDatabase(f.workspace, (db) => deactivateProduction(db, { requestId: "off-after-lost-receipt" }));
+    const replay = enroll(f);
+    expect(replay.principal).toEqual(receipt.principal);
+    expect(replay.admission).toMatchObject({ requestId: "enroll:claude:runtime-0001:admission" });
+    expect(f.tmux.launches).toHaveLength(1);
+    expect(state(f)).toMatchObject({ sessions: 1, enrollments: 1, pending: 0 });
+    // A different caller is still refused while Off, and the Session is not re-issued.
+    expect(refusal(() => enroll(f, { requestId: "enroll:claude:runtime-0002", callerId: "claude:runtime-0002" })).details.code)
+      .toBe("action_claimed");
+  });
+
+  it("commits its own issued admission when it resumes a Session prepared before a host crash", () => {
+    const f = fixture();
+    activate(f);
+    expect(() => enroll(f, { launchTestHooks: { afterSessionPreparedBeforeCommit: () => { throw new Error("host crashed"); } } }))
+      .toThrow("host crashed");
+    expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.status)).toEqual(["issued"]);
+    expect(f.tmux.launches).toHaveLength(0);
+    const receipt = enroll(f);
+    expect(receipt.admission).toMatchObject({ requestId: "enroll:claude:runtime-0001:admission", status: "committed" });
+    expect(f.tmux.launches).toHaveLength(1);
+    // Concurrency limit 1: exactly one live (committed) admission and one Session.
+    expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.status)).toEqual(["committed"]);
+    expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, claims: 1, enrollments: 1, pending: 0 });
+  });
+
   it("refuses Off before writing an enrollment, admission, claim or candidate", () => {
     const f = fixture();
     const before = worktrees(f);
@@ -458,6 +489,23 @@ describe("host enrollment: preparation through strict arcadia go", () => {
       repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace, strictAction: true,
       agentWorktreeRoot: path.join(f.root, "moved"), enrollment: { requestId: "enroll:claude:runtime-0001", actionId: "moved-away" }
     })).details.code).toBe("enrollment_governance_changed");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f).claims).toBe(0);
+  });
+
+  it("go never activates a Plan or follows a moved pointer for an enrollment, even when activation would select work", () => {
+    const f = fixture();
+    // The enrolled Action finished; the source pointer no longer names a dispatchable copy of it.
+    const plan = path.join(f.repo, "docs", "plans", "copy-proof.md");
+    writeFileSync(plan, planDocument.replace("    status: open\n", "    status: done\n"));
+    git(f.repo, ["commit", "-qam", "finish define-contract"]);
+    const head = git(f.repo, ["rev-parse", "HEAD"]).trim();
+    const before = worktrees(f);
+    expect(refusal(() => runGoCommand({
+      repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace, strictAction: true,
+      agentWorktreeRoot: path.join(f.root, "activation"), enrollment: { requestId: "enroll:claude:runtime-0001", actionId: "define-contract" }
+    })).details).toMatchObject({ code: "enrollment_governance_changed", expected: "define-contract" });
+    expect(git(f.repo, ["rev-parse", "HEAD"]).trim()).toBe(head);
     expect(worktrees(f)).toBe(before);
     expect(state(f).claims).toBe(0);
   });
