@@ -1447,3 +1447,17 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/recover-draft-only-never-launched-candidates
+
+- **Did:** Completed Action arcadia/recover-draft-only-never-launched-candidates from accepted evidence (Candidate 01e2864d82d510b2f78e79540cf016a3f08b9de5).
+- **Result:** Every declared acceptance criterion was accepted as met: "Go distinguishes a draft-only linked candidate from a tracked or code-bearing one; every draft is preserved by exact sha256 and origin in an idempotent receipt before any resume or disposition, and no draft is settled, copied, moved or deleted."; "A draft-only never-launched candidate resumes in the same worktree and branch with no duplicate claim or worktree; a draft naming another Project stays in place; one narrow operator disposition is exposed only when resuming is unsafe."; "Tracked changes, non-Ask or unknown files, symlinks, renames, a changed hash and a concurrent Go attempt fail closed or converge on one receipt, recovery survives restart, the dispatch-launch path agrees with Go, and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-recover-draft-only-candidates-884-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr905
+
+- **Did:** Go no longer gets stranded by a never-launched candidate that only holds Ask drafts: PR #905 preserves each draft by hash and resumes the same worktree. https://github.com/pmark/arcadia/pull/905
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

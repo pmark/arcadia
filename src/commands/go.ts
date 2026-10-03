@@ -36,7 +36,6 @@ import {
   samePath,
   summarizeClutter,
   tryGit,
-  uncommittedChanges,
   type ClutterSummary
 } from "../git/worktrees.js";
 import {
@@ -65,6 +64,14 @@ import {
   type ModelTier
 } from "../codingAgents/modelTiers.js";
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
+import {
+  assertDraftRecoveryUnchanged,
+  commitDraftHandout,
+  evaluateDraftOnlyCandidate,
+  recordDraftRecoveryReceipt,
+  voidDraftHandoutIfUnlaunched,
+  type DraftRecoveryReceipt
+} from "../sessions/draftOnlyCandidate.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
@@ -106,6 +113,10 @@ export interface GoCommandOptions {
     askRecovery?: AskRecoveryTestHooks;
     /** Deterministic race injection immediately before a divergent-base result is published. */
     beforeBaseReconciliationPublish?: () => void;
+    /** Deterministic injection immediately before the dispatch transaction opens. */
+    beforeDispatchTransaction?: () => void;
+    /** Deterministic injection inside the dispatch transaction, immediately before the receipted drafts are re-verified. */
+    beforeDraftResumeVerification?: () => void;
   };
 }
 
@@ -181,6 +192,13 @@ export interface GoCommandData {
   clutter: ClutterSummary | null;
   /** Legacy root `agent-ask.yaml` drift recovered into an isolated Ask branch before the clean check, if any. */
   askRecoveries: LegacyAskRecovery[];
+  /**
+   * Set when `nextWorktree` resumes a never-launched candidate whose only dirt
+   * is Agent Ask drafts (Issue #884): the receipt recording each draft's exact
+   * sha256 and origin, left in place and never settled, copied, moved or
+   * deleted. Null on every other path.
+   */
+  draftRecovery: DraftRecoveryReceipt | null;
 }
 
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
@@ -333,6 +351,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
   // rather than a second, possibly staler, worktree's copy of them.
   let dispatchRoot = projectRoot;
   let queueFallback: GoCommandData["queueFallback"] = null;
+  let draftRecovery: DraftRecoveryReceipt | null = null;
   if (options.apply && integration !== "not-needed" && integration !== null) {
     if (integration === "fast-forward") {
       if (baseRecord) {
@@ -592,6 +611,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     const now = operationNow;
+    // A disposition refusal about a draft-only candidate (Issue #884) rolls the
+    // dispatch transaction back with everything else; its receipt is then
+    // committed on its own before the refusal is reported.
+    const dispositionReceipt: { receipt: DraftRecoveryReceipt | null } = { receipt: null };
+    options.testHooks?.beforeDispatchTransaction?.();
     // The conflict check and whatever it decides to do about it (resume's
     // reservation refresh, or a fresh worktree's creation+reservation) must
     // run inside one atomic transaction, not two separate `withDatabase`
@@ -655,8 +679,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             projectSlug,
             actionId: attemptActionId,
             agent: options.agent!,
+            baseBranch,
             tmux,
-            now
+            now,
+            beforeDraftResumeVerification: options.testHooks?.beforeDraftResumeVerification
           });
 
           if (candidate.kind === "refuse") {
@@ -729,7 +755,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               project: projectSlug,
               actionId: attemptActionId
             });
+            // One-shot: the handout marker commits with this claim refresh, so
+            // no later Go or tick attempt can hand the same candidate out again.
+            if (candidate.draftRecovery) commitDraftHandout(db, candidate.draftRecovery, "go", now);
             claim.actionId = attemptActionId;
+            draftRecovery = candidate.draftRecovery ?? null;
             return {
               agent: options.agent!,
               path: candidate.path!,
@@ -798,7 +828,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           }
         }
 
-        if (refusal) throw validationError(refusal.reason!, refusal.details);
+        if (refusal) {
+          dispositionReceipt.receipt = refusal.draftReceipt ?? null;
+          throw validationError(refusal.reason!, refusal.details);
+        }
         throw lostRace ?? validationError(
           "Arcadia go found no unclaimed, dependency-ready Action to dispatch.",
           { projectSlug, pointerActionId: actionId, remedy: "Finish or retire a live candidate, or add a ready Action to the queue." }
@@ -813,6 +846,16 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", reservationCommitCleanup.candidate.path]);
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "branch", "-D", reservationCommitCleanup.candidate.branch]);
       }
+      const pendingReceipt = dispositionReceipt.receipt;
+      if (pendingReceipt) {
+        // Best effort: a failed receipt write (a busy database) must never
+        // replace the refusal it accompanies. The drafts stay on disk either way.
+        try {
+          withDatabase(workspacePath, (db) => writeTransaction(db, () => recordDraftRecoveryReceipt(db, pendingReceipt, now)));
+        } catch {
+          // The original refusal below still names every draft and its hash.
+        }
+      }
       throw error;
     } finally {
       if (scratchDispatch.checkout) {
@@ -822,6 +865,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     if (options.launch && workspacePath) {
+      // Assigned inside the claim transaction's callback, which TypeScript's
+      // narrowing cannot see, so widen it back to its declared type.
+      const resumedDrafts = draftRecovery as DraftRecoveryReceipt | null;
+      // A receipted draft-only candidate is verified once more at launch time:
+      // anything that changed since the receipt refuses instead of launching.
+      // Outside the try below on purpose: a mismatch is positive evidence that
+      // something is writing in the worktree, so the handout marker is kept.
+      if (resumedDrafts) assertDraftRecoveryUnchanged(resumedDrafts);
       try {
         const prepared = withDatabase(workspacePath, (db) => prepareSession({
           db,
@@ -832,7 +883,9 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           agent: options.agent!,
           model,
           effort,
-          baseRevision: git(controlWorktree, ["rev-parse", baseBranch]).trim(),
+          // A resumed never-launched candidate's lineage starts at its own
+          // branch tip, which carries no commits beyond the base it was cut from.
+          baseRevision: resumedDrafts ? resumedDrafts.baseSha : git(controlWorktree, ["rev-parse", baseBranch]).trim(),
           branch: nextWorktree!.branch,
           worktreePath: nextWorktree!.path,
           now: options.now ?? new Date(),
@@ -851,6 +904,16 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             actionId: claim.actionId,
             generation: claim.generation!
           })));
+        }
+        // The one-shot handout committed with the claim; a launch that failed
+        // before any Session row described the candidate voids it, or every
+        // later attempt would refuse over a session that never ran.
+        if (resumedDrafts) {
+          try {
+            withDatabase(workspacePath, (db) => writeTransaction(db, () => voidDraftHandoutIfUnlaunched(db, resumedDrafts)));
+          } catch {
+            // Left marked: later attempts refuse with the structured disposition.
+          }
         }
         throw error;
       }
@@ -928,7 +991,8 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
         ...protectedWorktreePaths(controlWorktree, options.workspace, options.tmux ?? systemTmux),
         ...(nextWorktree ? [nextWorktree.path] : [])
       ]),
-      askRecoveries
+      askRecoveries,
+      draftRecovery
     }
   });
   } finally {
@@ -983,6 +1047,10 @@ function protectedWorktreePaths(repo: string, workspace: string | undefined, tmu
 
 interface CandidateEvaluation {
   kind: "clear" | "resume" | "refuse";
+  /** Set on a `resume` of a never-launched, draft-only candidate (Issue #884). */
+  draftRecovery?: DraftRecoveryReceipt;
+  /** Set on a draft-only disposition refusal: the receipt to persist before reporting it. */
+  draftReceipt?: DraftRecoveryReceipt | null;
   /**
    * Set on `refuse` when the refusal is about *this Action* rather than about
    * this repository: another live worktree already claims it. It is the one
@@ -1060,8 +1128,10 @@ function evaluateExistingCandidate(
     projectSlug: string;
     actionId: string;
     agent: SessionAgent;
+    baseBranch: string;
     tmux: Pick<TmuxAdapter, "hasSession">;
     now: Date;
+    beforeDraftResumeVerification?: () => void;
   }
 ): CandidateEvaluation {
   const handoff = getResumableLeaseHandoff(db, input.controlWorktree);
@@ -1125,20 +1195,20 @@ function evaluateExistingCandidate(
   // No DB-tracked Session or handoff owns a matching worktree. A worktree
   // prepared through a manual (never `--launch`ed) handoff leaves no tmux
   // name or session row behind, so Arcadia has no way to prove whether a
-  // human terminal is still using it -- it is always reported, never
-  // silently duplicated or auto-resumed.
-  const orphan = findUncommittedManualCandidate(input.controlWorktree, input.actionId, input.agent);
-  if (orphan) {
-    return {
-      kind: "refuse",
-      reason: "A prepared worktree for this Action already holds uncommitted changes; Arcadia go will not prepare a second one.",
-      details: {
-        worktreePath: orphan.path,
-        branch: orphan.branch,
-        remedy: "This worktree was never launched through Arcadia, so its exit cannot be proven terminal. Preserve it (commit and push its work, or resume it by hand) or discard it (remove the worktree and branch) before retrying."
-      }
-    };
-  }
+  // human terminal is still using it -- it is never silently duplicated. The
+  // one shape resumed in place is a never-launched candidate whose only dirt
+  // is receipted Agent Ask drafts (Issue #884); everything else is reported.
+  const orphan = evaluateDraftOnlyCandidate(db, {
+    repositoryPath: input.controlWorktree,
+    projectSlug: input.projectSlug,
+    actionId: input.actionId,
+    agent: input.agent,
+    baseBranch: input.baseBranch,
+    now: input.now,
+    beforeResumeVerification: input.beforeDraftResumeVerification
+  });
+  if (orphan.kind === "refuse") return { kind: "refuse", reason: orphan.reason, details: orphan.details, draftReceipt: orphan.receipt };
+  if (orphan.kind === "resume") return { kind: "resume", path: orphan.path, branch: orphan.branch, draftRecovery: orphan.receipt };
 
   // Nothing in *this* checkout owns the Action. The claim is the cross-checkout
   // question the checks above cannot answer: the 2026-09-22 collision was two
@@ -1178,31 +1248,6 @@ function evaluateExistingCandidate(
   }
 
   return { kind: "clear" };
-}
-
-/**
- * A worktree `prepareAgentWorktree` made for this exact Action and agent, still
- * on disk, still holding uncommitted changes, with no corresponding
- * `agent_sessions` row at all -- the manual-handoff case `evaluateExistingCandidate`
- * cannot otherwise see, matched the same way `prepareAgentWorktree` names one:
- * `<agent>/<slugified-action-id>-<timestamp>`.
- */
-function findUncommittedManualCandidate(
-  repositoryPath: string,
-  actionId: string,
-  agent: SessionAgent
-): { path: string; branch: string } | null {
-  const listing = tryGit(repositoryPath, ["worktree", "list", "--porcelain"]);
-  if (listing === null) return null;
-  const safeAction = actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
-  const prefix = `refs/heads/${agent}/${safeAction}-`;
-  for (const record of parseWorktrees(listing)) {
-    if (!record.branch?.startsWith(prefix)) continue;
-    if (!existsSync(record.path)) continue;
-    if (uncommittedChanges(record.path).length === 0) continue;
-    return { path: record.path, branch: record.branch.replace(/^refs\/heads\//, "") };
-  }
-  return null;
 }
 
 export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string[] {
@@ -1268,6 +1313,12 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     if (data.modelResolution?.note) lines.push(`  ${data.modelResolution.note}`);
     else if (data.modelResolution?.tier) lines.push(`  Resolved the ${data.modelResolution.tier} tier for ${data.nextWorktree.agent}.`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
+  }
+  if (data.draftRecovery) {
+    lines.push(`Handed out the never-launched candidate in place, once; its Agent Ask drafts stay untouched (receipt ${data.draftRecovery.requestId}):`);
+    for (const draft of data.draftRecovery.drafts) {
+      lines.push(`  ${draft.path} sha256:${draft.sha256}${draft.relevance === "current_action" ? "" : ` (${draft.relevance.replace("_", " ")})`}`);
+    }
   }
   if (data.preservation) {
     lines.push(`Preservation: ${data.preservation.ready ? "ready (local manual candidate)" : "needs configuration or repair"}`);

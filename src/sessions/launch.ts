@@ -30,6 +30,14 @@ import {
   type TmuxAdapter
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
+import {
+  assertDraftRecoveryUnchanged,
+  commitDraftHandout,
+  evaluateDraftOnlyCandidate,
+  recordDraftRecoveryReceipt,
+  voidDraftHandoutIfUnlaunched,
+  type DraftRecoveryReceipt
+} from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 
@@ -77,6 +85,8 @@ export interface GuardedLaunchInput {
     afterAdmissionIssuedBeforeCommit?: () => void;
     /** Deterministic fault injection inside `prepareSession`, before its Session row insert. */
     beforeSessionInsert?: () => void;
+    /** Deterministic injection after a draft-only handout committed, before its launch-time hash verification. */
+    beforeDraftLaunchVerification?: () => void;
   };
 }
 
@@ -301,13 +311,63 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
   }
 
+  // Issue #884: agree with `arcadia go` about a prepared candidate no Session
+  // row describes. Inside one claim transaction the shared evaluator either
+  // hands a never-launched draft-only candidate out in place -- once, with
+  // its receipt and handout marker committed alongside the claim refresh, so
+  // a candidate Go already handed out is never launched into again -- or
+  // refuses with the same reason and details Go reports, committing the
+  // receipt of a disposition first. Like Go's own ordering, a resumable
+  // handoff (handled above) decides first; only with none at all is an
+  // undescribed candidate considered.
+  let draftResume: { path: string; branch: string; receipt: DraftRecoveryReceipt } | null = null;
+  if (!staleHandoff) {
+    const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
+    try {
+      const decision = writeTransaction(input.db, () => {
+        const evaluated = evaluateDraftOnlyCandidate(input.db, lookup);
+        if (evaluated.kind === "refuse" && evaluated.receipt) recordDraftRecoveryReceipt(input.db, evaluated.receipt, now);
+        // Refreshed at the same path, never a second claim. The claim is not
+        // this call's to release afterwards: it held this candidate before.
+        if (evaluated.kind === "resume") {
+          reserveAgentWorktree(input.db, {
+            repositoryPath: repoRoot,
+            worktreePath: evaluated.path,
+            branch: evaluated.branch,
+            now,
+            project: preview.projectSlug,
+            actionId: preview.actionId!
+          });
+          commitDraftHandout(input.db, evaluated.receipt, "tick", now);
+        }
+        return evaluated;
+      });
+      if (decision.kind === "refuse") throw validationError(decision.reason, decision.details);
+      if (decision.kind === "resume") draftResume = decision;
+    } catch (error) {
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
+      throw error;
+    }
+  }
+  // A worktree this call did not create: never removed or unreserved here.
+  const resumedInPlace = resumableStaleClaim !== null || draftResume !== null;
+
   const reservationCommitCleanup: { candidate: PreparedAgentWorktree | null } = { candidate: null };
   // The generation this launch claimed, so a Session preparation that fails
   // after the claim committed releases it explicitly instead of leaving the
   // Action blocked for the TTL over work that never started.
   const claim: { generation: string | null } = { generation: null };
   let nextWorktree: PreparedAgentWorktree;
-  if (resumableStaleClaim) {
+  if (draftResume) {
+    nextWorktree = {
+      agent,
+      path: draftResume.path,
+      branch: draftResume.branch,
+      model,
+      effort,
+      command: buildAgentLaunchCommand(agent, draftResume.path, model, effort)
+    };
+  } else if (resumableStaleClaim) {
     // Resume in place: same worktree and branch, claim refreshed rather than
     // replaced (`reserveAgentWorktree` treats a reservation at the same path
     // as a renewal, per Decision 0051). No Git write happens here -- the
@@ -386,8 +446,24 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // still sitting in `prepared` status -- this process died between the
   // insert below committing and ever reaching launch -- still supplies the
   // right expectation the second time around.
-  const sessionBaseRevision = resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
-  const sessionLaunchRevision = resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+  // A never-launched draft-only candidate carries no commits, so its own
+  // branch tip is both its lineage start and the HEAD launch must observe.
+  const sessionBaseRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  const sessionLaunchRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+
+  // Outside the `prepareSession` failure path below on purpose: a mismatch is
+  // positive evidence that something is writing in the worktree, so the
+  // handout marker is KEPT and every later Go or tick attempt refuses with the
+  // disposition. Only the admission this call reserved is released.
+  if (draftResume) {
+    try {
+      input.testHooks?.beforeDraftLaunchVerification?.();
+      assertDraftRecoveryUnchanged(draftResume.receipt);
+    } catch (error) {
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
+      throw error;
+    }
+  }
 
   let prepared: AgentSession;
   try {
@@ -417,7 +493,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // A resumed stale claim's worktree pre-dates this call and may hold the
     // dead Session's real work -- never delete it or drop its protection
     // here; only the claim itself is released, so a later attempt can retry.
-    if (!resumableStaleClaim) {
+    if (!resumedInPlace) {
       tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
       tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
     }
@@ -433,8 +509,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         generation: claim.generation
       });
     }
-    if (!resumableStaleClaim) {
+    if (!resumedInPlace) {
       releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+    }
+    // A draft-only handout whose launch failed before any Session row came to
+    // describe the candidate is voided, or every later Go or tick attempt would
+    // refuse it as handed out over a session that never ran. Best effort.
+    if (draftResume) {
+      const handedOut = draftResume.receipt;
+      try {
+        writeTransaction(input.db, () => voidDraftHandoutIfUnlaunched(input.db, handedOut));
+      } catch {
+        // Left marked: later attempts refuse with the structured disposition.
+      }
     }
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {
@@ -468,7 +555,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       failPreparedSession(input.db, prepared.id);
       // See the same guard above: a resumed stale claim's worktree is prior
       // real work, never this call's to delete.
-      if (!resumableStaleClaim) {
+      if (!resumedInPlace) {
         tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
         tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
       }
@@ -480,9 +567,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
           generation: claim.generation
         });
       }
-      if (!resumableStaleClaim) {
+      if (!resumedInPlace) {
         releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
-      } else {
+      } else if (resumableStaleClaim) {
         // `prepareSession` already superseded the resumed handoff onto this
         // now-failed Session. Undo that, or the candidate's real worktree and
         // branch become permanently invisible to `getResumableLeaseHandoff`
