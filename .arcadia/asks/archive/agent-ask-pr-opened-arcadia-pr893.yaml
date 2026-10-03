@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr893","project":"arcadia","intent":"log","desired_result":"Production Off no longer forgets its reviewed scope: PR #893 saves it apart from authority and lets On replay it into a fresh epoch or refuse with the exact reason. https://github.com/pmark/arcadia/pull/893"}
