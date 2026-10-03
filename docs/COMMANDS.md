@@ -1472,12 +1472,13 @@ Automating the actual merge on top of this assessment is a separate, explicit
 approval boundary (see the orchestration vision document's trigger table) and
 is not part of this command.
 
-## Run The CodeRabbit Review Loop On A PR
+## Read CodeRabbit's Verdict On A PR (Advisory)
 
-In a repository with a `.coderabbit.yaml`, an agent does not stop at a push.
-The "CodeRabbit loop" section of the managed `AGENTS.md` block has it wait for
-CodeRabbit's review, fix or decline each finding, push, and repeat until
-CodeRabbit approves or three fix rounds have passed.
+Every PR gets an independent agent review at creation (see the "Independent
+review gate" in `docs/agent-guidance/pull-requests.md`). CodeRabbit, where a
+repository has a `.coderabbit.yaml`, is an advisory second opinion: this
+command reads its current verdict, and an agent considers what it says but
+never waits for it and never needs its approval to merge.
 
 ```sh
 pnpm arcadia pr code-review 325 --json
@@ -1488,13 +1489,15 @@ pnpm arcadia pr decline-finding PRRT_kwDO... "Not reachable: the caller already 
 `CodeRabbit` commit status on the PR's pushed head to finish, then returns
 `verdict`: `done` (approved, or nothing unresolved; `note` says which), `fix`
 (unresolved `findings`, each with its `threadId`), or `cap` (findings remain
-after three fix rounds; hand them to the operator). Findings CodeRabbit places
+after three fix rounds; a significant finding is reported to the operator, and
+the command never gates a merge). Findings CodeRabbit places
 outside the diff have no thread, so they are flagged by `outsideDiffFindings`
 with their text in `prompt` but never block `done` on their own. A draft PR, an unpushed local HEAD, a timeout, or a
 CodeRabbit failure is an error rather than a verdict.
 
 `decline-finding` replies on the thread with the reason and resolves it, so a
-wrong finding stops blocking approval without being silently ignored.
+wrong finding stops being open on the bot's side without being silently
+ignored; it never replaces the independent review gate.
 CodeRabbit only approves when `.coderabbit.yaml` sets
 `reviews.request_changes_workflow: true`.
 

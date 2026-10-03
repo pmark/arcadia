@@ -6,14 +6,14 @@
       "trigger": "start, continue, go, pointer, title, handoff, stop",
       "path": "docs/agent-guidance/continuation.md",
       "read_before": "Before starting or handing off any Action.",
-      "sha256": "ec398594ce2789e99f1d9b9ed43c1c4a150f7ab45a455648eb799f116d23c4b4"
+      "sha256": "8c5a3080c0b542f859fd2479db35d539edaa947c2ca395c0271ad8aeb6085f49"
     },
     {
       "id": "agent-asks",
       "trigger": "governance, complete, split, draft, preview, settle, workspace, database denied",
       "path": "docs/agent-guidance/agent-asks.md",
       "read_before": "Before proposing or changing Project state; preserve a blocked validated Ask.",
-      "sha256": "46091f9c1ad1f2744fa2c7a151e2eee943afed3aebac2816a0e0687cdc8180a0"
+      "sha256": "967fff221e0bc1022f270fb94589e3569a7de9953404c4283f068d9701ab6b3e"
     },
     {
       "id": "operator-actions",
@@ -41,7 +41,7 @@
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "789da1686eb88881a6dc9de3736bf0284123b0d63a9f783917552781ad0e77eb"
+      "sha256": "ca83ea6ba5ecd29bbff11f7f2624df82885d7f91e26363677efcb79cce1db18d"
     },
     {
       "id": "learning",
