@@ -455,6 +455,20 @@ describe("toggling, restart and in-flight work", () => {
     expect(policy.authority?.requestId).toBe("on-1");
   });
 
+  it("refuses to replay a deactivation's request id as an activation, and the reverse", () => {
+    const { workspace } = fixture();
+    activate(workspace, "grant-1");
+    off(workspace, "off-1");
+    const expected = expectedFrom(workspace);
+
+    expect(() => reactivate(workspace, "off-1", expected)).toThrow(/already recorded a deactivation/);
+    expect(withDatabase(workspace, readProductionPolicy).desiredState).toBe("inactive");
+
+    reactivate(workspace, "on-1", expected);
+    expect(() => off(workspace, "on-1")).toThrow(/already recorded an activation/);
+    expect(withDatabase(workspace, readProductionPolicy).desiredState).toBe("active");
+  });
+
   it("refuses to replay a request id for a different configuration", () => {
     const { workspace } = fixture();
     activate(workspace, "grant-1");

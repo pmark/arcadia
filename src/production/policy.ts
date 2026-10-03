@@ -899,6 +899,7 @@ export function applyProductionActivation(
 ): { replayed: boolean; revisionBefore: number } {
   const replay = findTransitionReceipt(db, input.requestId);
   if (replay) {
+    assertReceiptTransition(replay, input.requestId, "activate");
     if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.scopeFingerprint) {
       throw validationError(
         "This request id already activated a different scope; replaying it now would silently keep that scope instead of granting the one just requested. Use a new request id.",
@@ -972,6 +973,7 @@ export function deactivateProduction(
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
+      assertReceiptTransition(replay, input.requestId, "deactivate");
       return { replayed: true, revisionBefore: replay.revision_before, fenced: [] as AdmissionReceipt[] };
     }
 
@@ -1532,10 +1534,28 @@ function toReceipt(row: AdmissionRow): AdmissionReceipt {
 export function findTransitionReceipt(
   db: Database.Database,
   requestId: string
-): { revision_before: number; scope_fingerprint: string | null } | undefined {
+): { transition: "activate" | "deactivate"; revision_before: number; scope_fingerprint: string | null } | undefined {
   return db
-    .prepare(`SELECT revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
-    .get(requestId) as { revision_before: number; scope_fingerprint: string | null } | undefined;
+    .prepare(`SELECT transition, revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
+    .get(requestId) as
+    | { transition: "activate" | "deactivate"; revision_before: number; scope_fingerprint: string | null }
+    | undefined;
+}
+
+/**
+ * `request_id` is unique across both transitions, so a reused id may belong to
+ * the other kind. Replaying it would report a transition that never happened.
+ */
+export function assertReceiptTransition(
+  receipt: { transition: "activate" | "deactivate" },
+  requestId: string,
+  expected: "activate" | "deactivate"
+): void {
+  if (receipt.transition === expected) return;
+  throw validationError(
+    `This request id already recorded ${receipt.transition === "activate" ? "an activation" : "a deactivation"}, not ${expected === "activate" ? "an activation" : "a deactivation"}; replaying it would report a transition that did not happen. Use a new request id.`,
+    { conflict: true, requestId, recorded: receipt.transition, requested: expected }
+  );
 }
 
 function recordTransitionReceipt(

@@ -8,6 +8,7 @@ import { discoverDocs } from "../docs/discover.js";
 import type { PlanDoc } from "../docs/types.js";
 import {
   applyProductionActivation,
+  assertReceiptTransition,
   fingerprintProductionScope,
   findTransitionReceipt,
   normalizeProductionScope,
@@ -329,6 +330,7 @@ export function reactivateProduction(
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
+      assertReceiptTransition(replay, input.requestId, "activate");
       if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.expected.fingerprint) {
         throw validationError("This request id already settled a different configuration; use a new request id.", {
           conflict: true,
