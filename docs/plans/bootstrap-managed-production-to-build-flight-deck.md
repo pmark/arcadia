@@ -2877,7 +2877,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/878", "src/sessions/manualPreservation.ts", "src/sessions/candidatePreservation.ts", "tests/manual-preservation.test.ts", "tests/candidate-preservation.test.ts"]
   - id: fix-preserve-launcher-git-timeout-and-index-mutation
     title: Make fixed preservation never mutate the candidate's real index before the commit succeeds, and make any git timeout a typed, retryable, self-describing failure instead of a bare `spawnSync git ETIMEDOUT`.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make fixed preservation never mutate the candidate's real index before the commit succeeds, and make any git timeout a typed, retryable, self-describing failure instead of a bare `spawnSync git ETIMEDOUT`.

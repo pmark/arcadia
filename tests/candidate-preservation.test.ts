@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
+import { uncommittedChanges } from "../src/git/worktrees.js";
 import {
   preserveCandidate,
   type CandidatePreservationRemote,
@@ -164,6 +165,83 @@ describe("candidate preservation (local)", () => {
     expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
     const body = g(fixture.candidate, ["log", "-1", "--format=%B"]);
     expect(body).toContain("Arcadia-Preservation-Request: req-1");
+  });
+
+  it("leaves the real index, status and locks untouched when any stage before the commit fails", () => {
+    const fixture = makeFixture();
+    const gitDir = g(fixture.candidate, ["rev-parse", "--absolute-git-dir"]);
+    const observe = () => ({
+      index: readFileSync(path.join(gitDir, "index")),
+      indexMtimeMs: statSync(path.join(gitDir, "index")).mtimeMs,
+      // Read-only and untrimmed: ` M` (unstaged) must never become `M ` (staged).
+      status: execFileSync("git", ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"], { cwd: fixture.candidate, encoding: "utf8" }),
+      lock: existsSync(path.join(gitDir, "index.lock"))
+    });
+    const before = observe();
+    expect(before.status).toBe(" M README.md\n?? feature.txt\n");
+    for (const hook of ["beforeStage", "afterStage", "beforeCommit"] as const) {
+      expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture), {
+        hooks: { [hook]() { throw new Error(`forced ${hook} failure`); } }
+      }))).toThrow(`forced ${hook} failure`);
+      expect(observe()).toEqual(before);
+    }
+    // A content refusal after the snapshot is equally non-mutating.
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, {
+      validation: { passed: true, evidenceRef: "stale", candidateFingerprint: "0".repeat(40) }
+    })))).toThrow(/differs from the validated snapshot/);
+    expect(observe()).toEqual(before);
+    expect(commitsAhead(fixture.repo, fixture.branch)).toHaveLength(0);
+
+    withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(observe()).toMatchObject({ status: "", lock: false });
+  });
+
+  it("reads candidate status without rewriting a stat-dirty index", () => {
+    const fixture = makeFixture({ dirty: false });
+    const index = path.join(g(fixture.candidate, ["rev-parse", "--absolute-git-dir"]), "index");
+    // A new mtime with unchanged content: a plain `git status` would refresh
+    // the stat cache and rewrite the index through its optional lock.
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(path.join(fixture.candidate, "README.md"), later, later);
+    const before = { bytes: readFileSync(index), mtimeMs: statSync(index).mtimeMs };
+    expect(uncommittedChanges(fixture.candidate)).toEqual([]);
+    expect({ bytes: readFileSync(index), mtimeMs: statSync(index).mtimeMs }).toEqual(before);
+  });
+
+  it("recovers a durable commit by its trailer alone when HEAD's tree no longer matches", () => {
+    const fixture = makeFixture();
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture), {
+      hooks: { afterCommit() { throw new Error("crash after commit, before receipt"); } }
+    }))).toThrow("crash after commit");
+    const [preserved] = commitsAhead(fixture.repo, fixture.branch);
+    // HEAD moves to a different tree while the working content still equals
+    // the validated fingerprint, so only the trailer lookup can find the commit.
+    writeFileSync(path.join(fixture.candidate, "later.txt"), "later\n");
+    g(fixture.candidate, ["add", "later.txt"]);
+    g(fixture.candidate, ["commit", "-m", "later work"]);
+    rmSync(path.join(fixture.candidate, "later.txt"));
+    expect(g(fixture.candidate, ["rev-parse", "HEAD^{tree}"])).not.toBe(snapshotCandidate(fixture.candidate));
+
+    const recovered = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(recovered).toMatchObject({ commitSha: preserved, replayed: false });
+    expect(commitsAhead(fixture.repo, fixture.branch)).toHaveLength(2);
+    expect(g(fixture.candidate, ["log", "--format=%H", `--grep=Arcadia-Preservation-Request: req-1`, `main..${fixture.branch}`])).toBe(preserved);
+  });
+
+  it("ends clean on the replay and already-committed paths too", () => {
+    const fixture = makeFixture();
+    withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    // Simulate an index left behind by an interrupted earlier attempt.
+    g(fixture.candidate, ["read-tree", fixture.baseRevision]);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).not.toBe("");
+    const replayed = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(replayed.replayed).toBe(true);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
+
+    g(fixture.candidate, ["read-tree", fixture.baseRevision]);
+    const sameTree = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, { requestId: "req-2" })));
+    expect(sameTree.commitSha).toBe(replayed.commitSha);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
   });
 
   it("replays the same request id without a duplicate commit", () => {

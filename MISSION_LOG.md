@@ -1391,3 +1391,17 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/fix-preserve-launcher-git-timeout-and-index-mutation
+
+- **Did:** Completed Action arcadia/fix-preserve-launcher-git-timeout-and-index-mutation from accepted evidence (Candidate bc995e4fe4558b60474efb55a5642cbe45ef005a).
+- **Result:** Every declared acceptance criterion was accepted as met: "A forced failure at `preserve.recheck-binding` (and every other stage before the commit) leaves the candidate's real index bytes, `git status --porcelain` output and `.git` locks exactly as they were, with no `index.lock` and no staged change; a successful preserve still ends with a clean status."; "A git timeout in any preserve, binding or validation call (raw `execFileSync` in the snapshot code, `git()`, `tryGit`, `isAncestor`, `mergesCleanly`, `commitTreeAt`) raises a typed retryable error whose details name the git subcommand, arguments, working directory, timeout budget, stage and a retry remedy; it is never a bare `UNEXPECTED_ERROR`, "base branch could not be resolved" or "not a forward advance", and `tryGit` and `isAncestor` never turn a timeout into a negative answer."; "The per-call git timeout is configurable and defaults below the stage idle limit, snapshot steps emit progress so a large candidate cannot trip the stage watchdog, retryable timeouts do not consume the identical-refusal budget, and a retry after a timeout reuses the same request id and creates exactly one preservation commit; the failed-attempt journal is documented as safe to retry."; "Regression tests cover a hung-git shim at each stage, index-bytes-before-and-after equality, three consecutive timeouts not exhausting the refusal budget, and timeout-then-retry producing one commit; the notes and operator guidance describe the failure receipt and the separate reviewed broker reinstall that makes the fix live, with no install, restart or production action taken, and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-preserve-launcher-git-timeout-889-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr895
+
+- **Did:** Preservation stops staging your files and names its git timeouts: PR #895 keeps the candidate index untouched until the commit lands and types every git/gh timeout as retryable. https://github.com/pmark/arcadia/pull/895
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

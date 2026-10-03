@@ -130,6 +130,49 @@ rechecks them. Manual receipts say `authorityKind: manual_handoff`; their legacy
 revision are zero, meaning no production policy is claimed. Manual preservation
 is always LOCAL ONLY. No managed-production grant is inferred from ordinary Go.
 
+Preservation never writes the candidate's own index before its commit exists.
+Snapshots use a scratch index under the Git common directory, so a refusal or
+failure at any stage before the commit leaves the candidate's index bytes,
+`git status` and lock files exactly as they were. Only after the preservation
+commit is durable on the branch (or found again by its trailer, or replayed)
+does the host point the real index at the preserved tree, so a successful
+preservation ends with a clean status. If a killed earlier sync left the
+candidate's `index.lock` behind, the host removes it only when it is older than
+five minutes; a fresher lock may belong to a running Git process, so it is kept
+and the attempt refuses with the retryable receipt below (`reason:
+index_locked`, naming the lock path).
+
+Every Git call on the preservation, binding and validation path (snapshot,
+check-definition binding, materialization, ancestry and merge checks, commit,
+index sync and push) and the three `gh` calls that find, edit or create the
+draft pull request (`gh pr view`, `gh pr edit`, `gh pr create`) are bounded per
+call. The bound defaults to 90000 ms. `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS` on
+the host overrides it with a positive integer number of milliseconds, capped at
+120000 so that one heartbeat interval plus one maximal call stays below the
+150-second stage watchdog; any other value is ignored. Each bounded call
+reports progress as it starts, so a run of slow but successful calls never
+looks idle to that watchdog.
+
+A call that exceeds its bound fails with the retryable
+`PRESERVATION_GIT_TIMEOUT` receipt (`retryable: true`, `reason: timeout`): its
+details name the command, Git subcommand, arguments, working directory,
+timeout, stage and remedy, and the remedy says whether the commit can already
+exist. A timeout is never reported as a missing base, a rewritten base, a
+missing preservation commit, a missing pull request or a refused candidate. It
+does not count against the identical-refusal budget; instead ten identical
+timeouts in a row stop automatic retries with a non-retryable refusal until an
+operator resolves the cause, and a successful preservation clears that count.
+Retrying is otherwise safe: the same launcher derives the same request id, so a
+timeout before the commit retries from scratch with nothing committed, and a
+commit already made is recovered by its trailer rather than duplicated. A timed
+out `gh pr create` or `gh pr edit` may already have taken effect remotely, so
+its remedy says to check for an existing pull request before retrying. A failed
+attempt's journal (`<nonce>.attempt.json` with its `.events.jsonl` and
+`.result.json` siblings) is evidence only; it holds no claim, and the claim is
+released when the attempt ends, so it never blocks the retry. These behaviors
+reach the installed launchers only after the separate, reviewed **Reinstall the
+protected go broker** `/runs` action.
+
 Remote preservation is gated. Only when the standing production policy's scope
 explicitly sets `remotePreservation` does the controller push the branch and
 create or update its draft pull request (with the required operator QA plan).
