@@ -4,7 +4,7 @@ type: decision
 id: "0079"
 slug: decide-how-flight-deck-represents-the-work-pointer-versus-running-work-in-the
 project: arcadia
-status: open
+status: approved
 question: Decide how Flight Deck represents the work pointer versus running work in the Project → Plan → Action tree.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-02
+answer: Separate Selected and Running indicators
+decided: 2026-10-02
 ---
 
 # Decision 0079: Decide how Flight Deck represents the work pointer versus running work in the Project → Plan → Action tree.
