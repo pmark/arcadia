@@ -13,7 +13,7 @@ import {
 } from "../src/briefSupervisor.js";
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 
-import { requestAgentGo, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
+import { requestAgentEnrollment, requestAgentGo, requestCandidatePreservation } from "../src/sessions/preservationTransport.js";
 
 // A fixed brief always answers with exactly one JSON document on stdout: the
 // dispatch brief, or a failure naming its stage, correlation id and recovery.
@@ -27,6 +27,9 @@ try {
   const request = parseGoBrokerArguments(process.argv.slice(2));
   if (request.operation === "go") {
     const response = await requestAgentGo(request.source, request.agent);
+    process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+  } else if (request.operation === "enroll") {
+    const response = await requestAgentEnrollment(request.source, request.agent);
     process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
   } else if (request.operation === "brief" && !briefChild) {
     const correlationId = randomUUID();

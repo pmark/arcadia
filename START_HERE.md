@@ -1340,11 +1340,34 @@ fixed launchers:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
+~/.local/bin/arcadia-enroll-broker-codex
 ~/.local/bin/arcadia-advance-broker-codex
 ~/.local/bin/arcadia-work-monitor-broker-codex
 ~/.local/bin/arcadia-preserve-broker-codex
 # Claude and opencode use the corresponding -claude and -opencode executables.
 ```
+
+An unleased helper does not become an owner by running a prompt or by knowing a
+worktree path. It asks the host to enroll the work through the fixed request
+transport. The host re-resolves the configured workspace and exact checked-in
+Project, Plan and Action, returns the canonical brief and operator gates, and
+either returns the existing fenced candidate or uses the ordinary guarded
+managed-Session launch. The durable request id is separate from the one-shot
+transport nonce and is bound to the caller, mode, Action and input revision: an
+exact replay returns the first receipt, while a changed replay refuses before
+preparation, admission or claim mutation. Managed dispatch supplies stable
+request/caller identities; supported native helpers use their host-observable
+runtime identity. If neither exists, enrollment refuses before writing a
+request with `enrollment_identity_unavailable`.
+
+Native-process adoption is not a shortcut. It refuses with
+`native_runtime_not_supervisable` unless a host-observable adapter proves a
+stable runtime identity, liveness, terminal outcome and recovery. The refusal
+points to managed launch. Planner, critique, developer, exact-head review and
+independent-QA work each receive a distinct bounded attempt ordinal and request
+id; only the developer attempt may own mutations, and that actor cannot supply
+the independent review or QA verdict. A changed head, criteria fingerprint or
+evidence fingerprint invalidates the dependent verdict.
 
 A normal manual `go` handoff has `session: null`. It does not need a managed
 planning packet or production activation. The host records a binding from its

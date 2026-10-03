@@ -107,6 +107,7 @@ describe("go broker agent setup", () => {
     const claude = JSON.parse(readFileSync(paths.claudeSettings, "utf8"));
     const expectedLauncherPermissions = [
       fixture.executables.go,
+      fixture.executables.enroll,
       fixture.executables.advance,
       fixture.executables.preserve,
       fixture.executables.workMonitor,
@@ -718,6 +719,7 @@ function createFixture(withExecutables = true) {
   const executables = {
     preserve: mockAgentExecutables("arcadia-preserve-broker"),
     go: mockAgentExecutables("arcadia-go-broker"),
+    enroll: mockAgentExecutables("arcadia-enroll-broker"),
     advance: mockAgentExecutables("arcadia-advance-broker"),
     workMonitor: mockAgentExecutables("arcadia-work-monitor-broker"),
     brief: mockAgentExecutables("arcadia-brief-broker")

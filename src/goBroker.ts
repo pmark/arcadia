@@ -14,7 +14,7 @@ import { requireResolvedWorkspace } from "./workspace/resolve.js";
 
 /** The protected broker carries the same agent union the Session registry does. */
 export type GoBrokerAgent = SessionAgent;
-export type ProtectedBrokerOperation = "go" | "preserve" | "advance" | "work-monitor" | "brief";
+export type ProtectedBrokerOperation = "go" | "enroll" | "preserve" | "advance" | "work-monitor" | "brief";
 
 /** Operations that write shared Git metadata and must never run in the agent sandbox. */
 const HOST_CONTROLLER_OPERATIONS: ReadonlySet<ProtectedBrokerOperation> = new Set(["go"]);
@@ -122,6 +122,7 @@ export function parseGoBrokerArguments(argv: string[], source = process.cwd()): 
   }
   if (
     operation !== "go" &&
+    operation !== "enroll" &&
     operation !== "preserve" &&
     operation !== "advance" &&
     operation !== "work-monitor" &&
@@ -143,7 +144,7 @@ export function parseGoBrokerArguments(argv: string[], source = process.cwd()): 
  * repository and resolved workspace fixed by the launcher.
  */
 export function runGoBroker(
-  request: GoBrokerRequest & { operation: Exclude<ProtectedBrokerOperation, "preserve"> },
+  request: GoBrokerRequest & { operation: Exclude<ProtectedBrokerOperation, "preserve" | "enroll"> },
   runner: GoBrokerRunner = runGoCommand,
   advanceRunner: AdvanceBrokerRunner = runAdvanceCommand,
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,

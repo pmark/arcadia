@@ -32,6 +32,7 @@ export interface ProviderExecutables {
 
 export interface BrokerExecutables {
   go: ProviderExecutables;
+  enroll: ProviderExecutables;
   preserve: ProviderExecutables;
   advance: ProviderExecutables;
   workMonitor: ProviderExecutables;
@@ -148,6 +149,7 @@ export function renderManagedSkill(template: string, executables: BrokerExecutab
   const agentPlaceholder = (agent: keyof ProviderExecutables): string => `__ARCADIA_${agent.toUpperCase()}_`;
   const operations: Array<[keyof BrokerExecutables, string]> = [
     ["go", "GO_BROKER"],
+    ["enroll", "ENROLL_BROKER"],
     ["preserve", "PRESERVE_BROKER"],
     ["advance", "ADVANCE_BROKER"],
     ["workMonitor", "WORK_MONITOR_BROKER"],
@@ -258,7 +260,7 @@ export function inspectGoBrokerAgentSetup(options: ConfigureAgentSetupOptions): 
     ),
     noLegacyClaudePermissions: allow.every((entry) =>
       !isLegacyClaudePermission(entry) &&
-      (!/arcadia-(?:go|preserve|advance|work-monitor|brief)-broker-/.test(entry) ||
+      (!/arcadia-(?:go|enroll|preserve|advance|work-monitor|brief)-broker-/.test(entry) ||
         agentCallableExecutables(options.executables).some((providers) =>
           brokerAgents().some((agent) => entry === `Bash(${providers[agent]})`)
         ))
@@ -464,7 +466,7 @@ function updateClaudeSettings(
   const settings = readClaudeSettings(file, true) ?? {};
   const permissions = settings.permissions ?? {};
   const allow = (permissions.allow ?? []).filter(
-    (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|preserve|advance|work-monitor|brief)-broker-/.test(entry)
+    (entry) => !isLegacyClaudePermission(entry) && !/arcadia-(?:go|enroll|preserve|advance|work-monitor|brief)-broker-/.test(entry)
   );
   for (const providers of agentCallableExecutables(options.executables)) {
     for (const agent of brokerAgents()) allow.push(`Bash(${providers[agent]})`);
@@ -562,7 +564,7 @@ function managedCodexRule(executables: BrokerExecutables): string {
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.go, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
+  return [executables.go, executables.enroll, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
 }
 
 function setTopLevelTomlValues(content: string, values: Record<string, string>): string {

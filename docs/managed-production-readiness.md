@@ -149,6 +149,16 @@ integration fencing remain missing behavior. Repository publication, PR readines
 and bounded integration require the later fresh exact Grant. Verify CodeRabbit
 installation and required checks before live dispatch.
 
+The current enrollment candidate adds the host-owned replay contract and its
+additive five-role lineage store. Deterministic candidate tests cover changed
+identity/mode/Action refusal, concurrent enrollment fencing, failure cleanup,
+Off/epoch/capacity/packet refusal, native supervision, one mutation owner,
+independent reviewer/QA identities, bounded terminal retries, exact-head
+invalidation and three-Action dependency selection. This is candidate evidence
+only: it is not installed-host enrollment proof, production activation, a
+rehearsal, or completion evidence. The later protected preservation receipt,
+independent exact-head review and independent QA remain required.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`

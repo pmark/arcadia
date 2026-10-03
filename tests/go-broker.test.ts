@@ -52,6 +52,39 @@ describe("protected Arcadia go broker", () => {
     expect(parseGoBrokerArguments(["codex", "brief"], "/tmp/finished").operation).toBe("brief");
   });
 
+  it("accepts enroll only as a fixed no-argument launcher operation", () => {
+    expect(parseGoBrokerArguments(["codex", "enroll"], "/tmp/helper")).toMatchObject({
+      agent: "codex", operation: "enroll", source: "/tmp/helper"
+    });
+  });
+
+  it("routes enrollment through the protected request transport", async () => {
+    const response = { requestId: "request-1", principal: { kind: "prepared", id: "claim-1", worktree: "/tmp/candidate" } };
+    const requestAgentEnrollment = vi.fn().mockResolvedValue(response);
+    vi.doMock("../src/sessions/preservationTransport.js", () => ({
+      requestAgentEnrollment, requestAgentGo: vi.fn(), requestCandidatePreservation: vi.fn()
+    }));
+    const directBroker = vi.spyOn(broker, "runGoBroker");
+    const output = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    const errors = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    const argv = process.argv;
+    const exitCode = process.exitCode;
+    process.argv = ["node", "arcadia-go-broker", "codex", "enroll"];
+    try {
+      await import("../scripts/arcadia-go-broker.js?enrollment-request");
+      expect(requestAgentEnrollment).toHaveBeenCalledExactlyOnceWith(process.cwd(), "codex");
+      expect(directBroker).not.toHaveBeenCalled();
+      expect(output).toHaveBeenCalledWith(`${JSON.stringify(response, null, 2)}\n`);
+      expect(errors).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(exitCode);
+    } finally {
+      process.argv = argv;
+      process.exitCode = exitCode;
+      vi.restoreAllMocks();
+      vi.doUnmock("../src/sessions/preservationTransport.js");
+    }
+  });
+
   it("routes the actual sandboxed launcher through preservation transport", async () => {
     const response = { ok: true, command: "preserve", data: { receipt: { commit: "candidate" } } };
     const requestCandidatePreservation = vi.fn().mockResolvedValue(response);
@@ -353,6 +386,11 @@ describe("protected Arcadia go broker", () => {
         claude: `${bin}/arcadia-go-broker-claude`,
         opencode: `${bin}/arcadia-go-broker-opencode`
       },
+      enroll: {
+        codex: `${bin}/arcadia-enroll-broker-codex`,
+        claude: `${bin}/arcadia-enroll-broker-claude`,
+        opencode: `${bin}/arcadia-enroll-broker-opencode`
+      },
       advance: {
         codex: `${bin}/arcadia-advance-broker-codex`,
         claude: `${bin}/arcadia-advance-broker-claude`,
@@ -371,7 +409,7 @@ describe("protected Arcadia go broker", () => {
     };
     // Every fixed request launcher is request-only, so each is granted to
     // Codex rules and the Claude allowlist alike.
-    const launchers = ["go", "advance", "preserve", "work-monitor", "brief"].map(
+    const launchers = ["go", "enroll", "advance", "preserve", "work-monitor", "brief"].map(
       (operation) => `${bin}/arcadia-${operation}-broker`
     );
     expect(permissionSnippets(executables)).toEqual({

@@ -81,6 +81,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
+  ensureSessionEnrollmentTables(db);
   ensureAgentSessionStallColumns(db);
   ensureAgentSessionAdmissionColumn(db);
   ensureAgentSessionLaunchRevisionColumn(db);
@@ -98,6 +99,49 @@ export function applyMigrations(db: Database.Database): void {
   ensureProductionOperatorEscalationsTable(db);
   ensureRedAlertTables(db);
   applyCapabilityMigrations(db);
+}
+
+/** Durable, replay-safe host enrollment and the fixed five-role attempt lineage. */
+function ensureSessionEnrollmentTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_enrollments (
+      request_id TEXT PRIMARY KEY,
+      request_fingerprint TEXT NOT NULL,
+      project_slug TEXT NOT NULL,
+      plan_slug TEXT NOT NULL,
+      action_id TEXT NOT NULL,
+      caller_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('prepare', 'managed-launch', 'native-adopt')),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'completed')),
+      receipt_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_enrollments_single_pending_action
+      ON session_enrollments(project_slug, plan_slug, action_id)
+      WHERE status = 'pending';
+    CREATE TABLE IF NOT EXISTS session_role_attempts (
+      id TEXT PRIMARY KEY,
+      requirement_id TEXT NOT NULL,
+      input_revision TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('planner', 'critique', 'development', 'code-review', 'qa')),
+      ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+      request_id TEXT NOT NULL UNIQUE,
+      actor_id TEXT NOT NULL,
+      mutation_owner INTEGER NOT NULL CHECK (mutation_owner IN (0, 1)),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'passed', 'failed')),
+      target_head TEXT,
+      criteria_fingerprint TEXT,
+      evidence_fingerprint TEXT,
+      terminal_receipt_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(requirement_id, input_revision, role, ordinal)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_role_attempts_one_mutation_owner
+      ON session_role_attempts(requirement_id, input_revision)
+      WHERE mutation_owner = 1 AND status IN ('pending', 'running');
+  `);
 }
 
 /**

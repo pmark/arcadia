@@ -100,6 +100,8 @@ export interface GoCommandOptions {
   workspace?: string;
   /** The only option that authorizes process creation. */
   launch?: boolean;
+  /** Host enrollment must never walk away from the exact requested Action. */
+  strictAction?: boolean;
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -693,7 +695,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               // unresolved candidate for another Action -- and a different ready
               // Action would hit it identically, so there is nothing to walk to.
               // Only a claimed Action is a refusal another Action can answer.
-              if (candidate.code !== "action_claimed") break;
+              if (candidate.code !== "action_claimed" || options.strictAction) break;
               walked = true;
               attempts.push(...queueWalkCandidates(db, { projectSlug, exclude: attempts, now }));
             }
@@ -821,7 +823,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             lostRace ??= error;
             dispatch = pointerDispatch;
             queueFallback = null;
-            if (attemptActionId === actionId && !walked) {
+            if (attemptActionId === actionId && !walked && !options.strictAction) {
               walked = true;
               attempts.push(...queueWalkCandidates(db, { projectSlug, exclude: attempts, now }));
             }

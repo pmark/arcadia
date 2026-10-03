@@ -130,7 +130,7 @@ export function permissionSnippets(
 }
 
 function agentCallableExecutables(executables: BrokerExecutables): ProviderExecutables[] {
-  return [executables.go, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
+  return [executables.go, executables.enroll, executables.advance, executables.preserve, executables.workMonitor, executables.brief];
 }
 
 export function runGoBrokerInstallCommand(
@@ -147,6 +147,7 @@ export function runGoBrokerInstallCommand(
   const binDirectory = path.join(installHome, ".local", "bin");
   const executables: BrokerExecutables = {
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
+    enroll: providerExecutables(binDirectory, "arcadia-enroll-broker"),
     preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
     workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker"),
@@ -305,6 +306,7 @@ export function runGoBrokerStatusCommand(
   const binDirectory = path.join(installHome, ".local", "bin");
   const executables: BrokerExecutables = {
     go: providerExecutables(binDirectory, "arcadia-go-broker"),
+    enroll: providerExecutables(binDirectory, "arcadia-enroll-broker"),
     preserve: providerExecutables(binDirectory, "arcadia-preserve-broker"),
     advance: providerExecutables(binDirectory, "arcadia-advance-broker"),
     workMonitor: providerExecutables(binDirectory, "arcadia-work-monitor-broker"),
@@ -773,6 +775,7 @@ function providerExecutables(binDirectory: string, launcherBase: string): Provid
 function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
   switch (operation) {
     case "go": return "arcadia-go-broker";
+    case "enroll": return "arcadia-enroll-broker";
     case "preserve": return "arcadia-preserve-broker";
     case "advance": return "arcadia-advance-broker";
     case "workMonitor": return "arcadia-work-monitor-broker";
@@ -781,6 +784,6 @@ function launcherBaseForOperation(operation: keyof BrokerExecutables): string {
 }
 
 /** The exact no-argument launcher, also exercised by the disposable boundary proof. */
-export function renderGoBrokerLauncher(entrypoint: string, agent: GoBrokerAgent, operation: "go" | "preserve" | "advance" | "work-monitor" | "brief"): string {
+export function renderGoBrokerLauncher(entrypoint: string, agent: GoBrokerAgent, operation: "go" | "enroll" | "preserve" | "advance" | "work-monitor" | "brief"): string {
   return `#!/bin/sh\nexec ${shellQuote(process.execPath)} ${shellQuote(entrypoint)} ${agent} ${operation} "$@"\n`;
 }
