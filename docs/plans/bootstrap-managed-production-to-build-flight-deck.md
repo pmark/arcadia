@@ -2963,7 +2963,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/884", "src/commands/go.ts", "src/git/worktrees.ts", "src/sessions/launch.ts", "tests/go.test.ts"]
   - id: make-pr-review-verdict-truthful-for-current-head
     title: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
@@ -3005,7 +3005,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: make-pr-review-verdict-truthful-for-current-head
+current_action: enroll-session-through-governed-host-request
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

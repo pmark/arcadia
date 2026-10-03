@@ -7,7 +7,16 @@
 // `code-review` blocks until CodeRabbit has finished reviewing the PR's pushed
 // head, then returns `done`, `fix`, or `cap` (findings outlived
 // MAX_FIX_ROUNDS pushes; hand them to the operator). A draft PR, an unpushed
-// HEAD, a timeout, or a CodeRabbit failure is an error, never a verdict.
+// HEAD, a timeout, or a CodeRabbit failure is an error, never a verdict. So is
+// a `success` status that is not a completed review -- CodeRabbit marks a
+// paused, skipped or rate-limited head `success` too (#874, #892) -- which
+// fails as CODE_REVIEW_NOT_COMPLETED naming why.
+//
+// Review evidence is bound to the head it was given on: only an APPROVED
+// review by the CodeRabbit bot itself on the exact current head is approval.
+// A push invalidates every earlier review, so an older approval never carries
+// over to a changed head, and the head is re-read after the evidence is
+// gathered so a push mid-read is re-evaluated rather than judged on stale data.
 //
 // The signals are the ones CodeRabbit already emits: a `CodeRabbit` commit
 // status that goes pending -> success per head, review threads it resolves
@@ -24,9 +33,16 @@ import { ArcadiaError, validationError } from "../cli/errors.js";
 
 export const MAX_FIX_ROUNDS = 3;
 const BOT = "coderabbitai";
+// The exact login GitHub's REST API reports for the CodeRabbit app's bot. The
+// `[bot]` suffix cannot belong to a user account, so it identifies the actual
+// reviewer: only its reviews and its commit status are review evidence. `BOT`
+// above is only the permissive prefix used to find threads that may block.
+export const REVIEWER_LOGIN = "coderabbitai[bot]";
 const POLL_MS = 30_000;
 
 export interface Review {
+  // The reviewer's login; only reviews by REVIEWER_LOGIN are review evidence.
+  author: string;
   state: string;
   commitId: string;
   submittedAt: string;
@@ -60,6 +76,9 @@ export interface Verdict {
   verdict: "done" | "fix" | "cap";
   head: string;
   approved: boolean;
+  // Every verdict comes from a completed review of `head` (anything else is an
+  // error); this says whether that review approved `head` itself.
+  reviewStatus: "approved" | "completed_not_approved";
   fixRound: number;
   maxFixRounds: number;
   findings: Finding[];
@@ -78,8 +97,11 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   // CodeRabbit posts each reply to a thread as its own empty COMMENTED
   // review (seen live on pmark/arcadia#324). Counting those would let a reply
   // mask a real CHANGES_REQUESTED review, and its missing prompt would hide
-  // the actual one, so only reviews that say something count.
+  // the actual one, so only reviews that say something count. And only the
+  // CodeRabbit bot's own reviews are evidence at all: anyone else's review --
+  // even from a look-alike login -- can neither approve nor clear a head.
   const bot = reviews
+    .filter((review) => review.author === REVIEWER_LOGIN)
     .filter((review) => review.state !== "PENDING")
     .filter((review) => review.state !== "COMMENTED" || review.body.trim() !== "")
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
@@ -107,25 +129,32 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   ]);
   const prompt = extractPrompt(latestOnHead?.body ?? "");
   const outsideDiffFindings = hasOutsideDiffFindings(prompt ?? "");
-  // CodeRabbit does not re-approve a head it found clean: its earlier approval
-  // simply stands, exactly as GitHub's reviewDecision shows. A later review
-  // requesting changes would supersede it as the latest, so the latest review
-  // being an approval, with nothing left open, is approval of this head.
-  const approved = bot.at(-1)?.state === "APPROVED" && findings.length === 0;
+  // Approval is evidence about one head, from one reviewer: the latest review
+  // must be the CodeRabbit bot's own APPROVED review of exactly this head, with
+  // nothing left open. CodeRabbit may leave an earlier approval standing when
+  // it finds a later push clean (pmark/arcadia#325), and GitHub's
+  // reviewDecision keeps showing it, but that approval reviewed a different
+  // head: a push invalidates it (#874).
+  const latest = bot.at(-1);
+  const approved =
+    latest?.state === "APPROVED" && latest.commitId === head && findings.length === 0;
+  const earlierApproval = !approved && bot.some((review) => review.state === "APPROVED" && review.commitId !== head);
   if (findings.length > 0) roundHeads.add(head);
   const fixRound = roundHeads.size;
   const outsideNote = outsideDiffFindings
     ? " CodeRabbit also listed findings outside the diff in `prompt`; they have no thread, so fix them or name any you decline in the handoff."
     : "";
 
-  const base = { head, approved, fixRound, maxFixRounds: MAX_FIX_ROUNDS, findings, outsideDiffFindings, prompt };
+  const reviewStatus: Verdict["reviewStatus"] = approved ? "approved" : "completed_not_approved";
+  const base = { head, approved, reviewStatus, fixRound, maxFixRounds: MAX_FIX_ROUNDS, findings, outsideDiffFindings, prompt };
 
   if (approved) return { ...base, verdict: "done", note: `CodeRabbit approved this head.${outsideNote}` };
   if (findings.length === 0 && latestOnHead?.state !== "CHANGES_REQUESTED") {
+    const earlierNote = earlierApproval ? " CodeRabbit approved an earlier head, which does not approve this one." : "";
     return {
       ...base,
       verdict: "done",
-      note: `No unresolved CodeRabbit threads, but no approval on this head either; report that rather than claiming approval.${outsideNote}`
+      note: `CodeRabbit completed its review of this head with no unresolved threads, but gave no approval on this head; report that rather than claiming approval.${earlierNote}${outsideNote}`
     };
   }
   if (fixRound > MAX_FIX_ROUNDS) {
@@ -157,6 +186,41 @@ export function condense(body: string): string {
 export function hasOutsideDiffFindings(prompt: string): boolean {
   return /^Outside diff (range )?comments:/im.test(prompt);
 }
+
+export type CodeRabbitStatus =
+  | { kind: "waiting" }
+  | { kind: "failed" }
+  | { kind: "completed" }
+  | { kind: "not_reviewed"; reason: "paused" | "skipped" | "rate_limited" | "unrecognized" | "unverified_reporter" };
+
+// CodeRabbit's commit status is `success` for far more than a finished review:
+// a paused review, a skipped one and a rate-limited head are all green (#874,
+// #892). Only the description says which, so only "Review completed" counts as
+// a review; any other success, including wording this code has never seen,
+// fails closed as not reviewed rather than passing as done. A status context
+// named "CodeRabbit" can be posted by anyone with write access, so one not
+// created by the CodeRabbit bot itself is not review evidence in any state.
+export function classifyCodeRabbitStatus(entry: StatusEntry | undefined): CodeRabbitStatus {
+  if (!entry) return { kind: "waiting" };
+  if (entry.creator !== REVIEWER_LOGIN) return { kind: "not_reviewed", reason: "unverified_reporter" };
+  if (entry.state === "pending") return { kind: "waiting" };
+  if (entry.state === "failure" || entry.state === "error") return { kind: "failed" };
+  if (entry.state !== "success") return { kind: "waiting" };
+  const description = entry.description ?? "";
+  if (/^\s*review completed\b/i.test(description)) return { kind: "completed" };
+  if (/paused/i.test(description)) return { kind: "not_reviewed", reason: "paused" };
+  if (/skipped/i.test(description)) return { kind: "not_reviewed", reason: "skipped" };
+  if (/rate[ -]?limit/i.test(description)) return { kind: "not_reviewed", reason: "rate_limited" };
+  return { kind: "not_reviewed", reason: "unrecognized" };
+}
+
+const NOT_REVIEWED_REMEDY: Record<Extract<CodeRabbitStatus, { kind: "not_reviewed" }>["reason"], string> = {
+  paused: "CodeRabbit paused reviews on this PR. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the paused review in the handoff.",
+  skipped: "CodeRabbit skipped this head. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the skipped review in the handoff.",
+  rate_limited: "CodeRabbit hit its rate limit and did not review this head. Wait for the limit to reset, then request a review and rerun; reviews past the plan's limit are billed, which is the operator's spending decision. Report it rather than treating the loop as satisfied.",
+  unverified_reporter: "The latest `CodeRabbit` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. Check who posted it and report it rather than treating the loop as satisfied.",
+  unrecognized: "This CodeRabbit status is not a recognized completed review, so it is not treated as one. Check the status on the PR and report it rather than treating the loop as satisfied."
+};
 
 export function extractPrompt(body: string): string | null {
   const match = /<summary>🤖 Prompt[^<]*<\/summary>\s*```\n?([\s\S]*?)```/.exec(body);
@@ -192,14 +256,39 @@ export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions):
       throw validationError(`Local HEAD ${local.slice(0, 8)} is not the PR head ${pull.headRefOid.slice(0, 8)}; push first.`, { pr });
     }
 
-    const status = ghJson<CombinedStatus>(["api", `repos/${repository}/commits/${pull.headRefOid}/status`]);
-    const coderabbit = status.statuses.find((entry) => entry.context === "CodeRabbit");
-    if (coderabbit && (coderabbit.state === "failure" || coderabbit.state === "error")) {
-      throw new ArcadiaError("UNEXPECTED_ERROR", `CodeRabbit reported ${coderabbit.state}: ${coderabbit.description ?? "no description"}`, 1, { pr });
+    const coderabbit = fetchCodeRabbitStatus(gh, repository, pull.headRefOid);
+    const classified = classifyCodeRabbitStatus(coderabbit);
+    if (classified.kind === "failed") {
+      throw new ArcadiaError("UNEXPECTED_ERROR", `CodeRabbit reported ${coderabbit?.state}: ${coderabbit?.description ?? "no description"}`, 1, { pr });
     }
-    if (coderabbit?.state === "success") {
-      const verdict = decide(pull.headRefOid, fetchReviews(gh, repository, pr), fetchThreads(ghJson, repository, pr));
-      return { pr, repository, status: coderabbit.description, ...verdict };
+    if (classified.kind === "not_reviewed") {
+      throw new ArcadiaError(
+        "CODE_REVIEW_NOT_COMPLETED",
+        `CodeRabbit did not complete a review of ${pull.headRefOid.slice(0, 8)} (status: ${coderabbit?.description ?? "no description"}). This is not a completed review and never a done verdict.`,
+        1,
+        {
+          pr,
+          head: pull.headRefOid,
+          status: coderabbit?.description ?? null,
+          reporter: coderabbit?.creator ?? null,
+          reason: classified.reason,
+          remedy: NOT_REVIEWED_REMEDY[classified.reason]
+        }
+      );
+    }
+    if (classified.kind === "completed") {
+      const reviews = fetchReviews(gh, repository, pr);
+      const threads = fetchThreads(ghJson, repository, pr);
+      // A push while the evidence was read makes all of it stale: judge the
+      // new head instead, from its own status, rather than return a verdict
+      // the PR's current head never earned.
+      const after = ghJson<PullState>(["pr", "view", String(pr), "--json", "headRefOid,isDraft,state"]);
+      if (after.headRefOid === pull.headRefOid) {
+        const verdict = decide(pull.headRefOid, reviews, threads);
+        return { pr, repository, status: coderabbit?.description ?? null, ...verdict };
+      }
+      process.stderr.write(`PR head moved from ${pull.headRefOid.slice(0, 8)} to ${after.headRefOid.slice(0, 8)} while reading the review; re-reading.\n`);
+      continue;
     }
 
     if (Date.now() > deadline) {
@@ -291,8 +380,28 @@ interface PullState {
   state: string;
 }
 
-interface CombinedStatus {
-  statuses: { context: string; state: string; description: string | null }[];
+export interface StatusEntry {
+  state: string;
+  description: string | null;
+  // Login of whoever posted the status; null when GitHub reports none.
+  creator: string | null;
+}
+
+// The combined-status endpoint (`commits/<sha>/status`) omits who posted each
+// status, so read the per-commit status list instead, which carries `creator`
+// and is newest first: its first "CodeRabbit" entry is the one the combined
+// status shows.
+function fetchCodeRabbitStatus(gh: (args: string[]) => string, repository: string, sha: string): StatusEntry | undefined {
+  const first = gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/commits/${sha}/statuses?per_page=100`,
+    "--jq",
+    `.[] | select(.context == "CodeRabbit") | {state, description, creator: .creator.login}`
+  ])
+    .split("\n")
+    .find((line) => line.trim() !== "");
+  return first ? (JSON.parse(first) as StatusEntry) : undefined;
 }
 
 interface ThreadNode {
@@ -320,7 +429,7 @@ function fetchReviews(gh: (args: string[]) => string, repository: string, pr: nu
     "--paginate",
     `repos/${repository}/pulls/${pr}/reviews`,
     "--jq",
-    `.[] | select(.user.login | startswith("${BOT}")) | {state, commitId: .commit_id, submittedAt: (.submitted_at // ""), body}`
+    `.[] | select(.user.login == "${REVIEWER_LOGIN}") | {author: .user.login, state, commitId: .commit_id, submittedAt: (.submitted_at // ""), body}`
   ]);
   return lines
     .split("\n")
