@@ -13,7 +13,7 @@ import {
 import { assertManualPreservationBinding, bindManualPreservation, manualBindingFingerprint, manualPreservationRequestId } from "../sessions/manualPreservation.js";
 import { resolveDispatch } from "../docs/dispatch.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
-import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
+import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import {
@@ -79,7 +79,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
           id: binding.reservationId, repository: controlWorktree, worktree: source, base: binding.baseRevision, commands: binding.commands
         }, binding, assertBinding, options.onStage));
       options.onStage?.("post-validation-preserve-candidate");
-      return preserveCandidate(db, {
+      return guardPreservationTimeouts(db, binding.reservationId, options.now ?? new Date(), () => preserveCandidate(db, {
         requestId: manualPreservationRequestId(binding, validation.candidateFingerprint), repositoryPath: controlWorktree,
         candidateWorktreePath: source, branch, baseBranch, baseRevision: binding.baseRevision,
         actionId: binding.actionId, packetSha256: manualBindingFingerprint(binding),
@@ -88,7 +88,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
         now: options.now
       }, { ...options.deps, hooks: { ...options.deps?.hooks, onStage: options.onStage, beforeCommit: () => {
         options.deps?.hooks?.beforeCommit?.(); assertBinding();
-      } } });
+      } } }));
     }
     if (!samePath(lease.worktree_path, source)) {
       throw validationError("The repository's Session lease is for a different worktree.", {
@@ -136,7 +136,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
       throw validationError("Preservation authority changed after validation.");
     }
 
-    return preserveCandidate(
+    return guardPreservationTimeouts(db, lease.id, options.now ?? new Date(), () => preserveCandidate(
       db,
       {
         requestId: `preserve:${lease.id}`,
@@ -162,7 +162,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
           }
         }
       } }
-    );
+    ));
   };
   const receipt = options.db ? preserve(options.db) : withDatabase(options.workspace, preserve);
 

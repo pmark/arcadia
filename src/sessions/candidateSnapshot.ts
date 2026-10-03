@@ -1,29 +1,42 @@
-import { preservationProcessLimits } from "./preservationStages.js";
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { boundedExec as bounded, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
 import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
 
 // This transport file is never candidate content. Capture also honors Git ignore
 // rules for untracked files, including the candidate's .gitignore.
 export const PRESERVATION_REQUEST_FILE = ".arcadia-preserve-request";
 
+/** A scratch index older than any bounded attempt was orphaned by a killed one. */
+const STALE_SCRATCH_INDEX_MS = 60 * 60 * 1000;
+
+function removeStaleScratchIndexes(common: string): void {
+  try {
+    for (const entry of readdirSync(common)) {
+      if (!entry.startsWith("arcadia-index-")) continue;
+      const scratch = path.join(common, entry);
+      if (Date.now() - statSync(scratch).mtimeMs > STALE_SCRATCH_INDEX_MS) rmSync(scratch, { recursive: true, force: true });
+    }
+  } catch { /* best effort: a stale scratch index never affects a snapshot */ }
+}
+
 /** Capture raw bytes into Git's existing immutable object store, without running
- * candidate hooks, clean filters, export attributes or sharing a worktree index. */
+ * candidate hooks, clean filters, export attributes or sharing a worktree index.
+ * The candidate's own index is only read, never written. */
 export function snapshotCandidate(candidate: string): string {
   const root = realpathSync(candidate);
-  const common = execFileSync("git", ["rev-parse", "--git-common-dir"], { ...preservationProcessLimits(), cwd: root, encoding: "utf8" }).trim();
-  const scratch = mkdtempSync(path.join(path.resolve(root, common), "arcadia-index-"));
+  const common = path.resolve(root, bounded("git", ["rev-parse", "--git-common-dir"], { cwd: root, encoding: "utf8" }).toString().trim());
+  removeStaleScratchIndexes(common);
+  const scratch = mkdtempSync(path.join(common, "arcadia-index-"));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
-  const git = (args: string[], input?: Buffer | string) => execFileSync("git", args, {
-    ...preservationProcessLimits(), cwd: root, env, input, maxBuffer: 64 * 1024 * 1024
-  });
+  const git = (args: string[], input?: Buffer | string) => bounded("git", args, { cwd: root, env, input, maxBuffer: 64 * 1024 * 1024 });
   try {
-    const tracked = execFileSync("git", ["ls-files", "-z"], { ...preservationProcessLimits(), cwd: root }).toString().split("\0");
+    const tracked = bounded("git", ["ls-files", "-z"], { cwd: root }).toString().split("\0");
     if (tracked.includes(PRESERVATION_REQUEST_FILE)) throw validationError("The preservation transport file must not be tracked.");
     if (tracked.includes(GO_REQUEST_FILE)) throw validationError("The go transport file must not be tracked.");
-    const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { ...preservationProcessLimits(), cwd: root })
+    const files = [...new Set(bounded("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root })
       .toString().split("\0").filter(Boolean))].sort();
     const selected = files.filter(file => file !== PRESERVATION_REQUEST_FILE && file !== GO_REQUEST_FILE);
     // Node has no openat API. The system Python helper uses only stdlib and
@@ -31,10 +44,11 @@ export function snapshotCandidate(candidate: string): string {
     // the privileged reader follow it outside the selected candidate.
     let captured: Array<{ path: string; mode: number; bytes: string }>;
     try {
-      captured = JSON.parse(execFileSync("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
-        ...preservationProcessLimits(), input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
-      }));
+      captured = JSON.parse(bounded("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
+        input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
+      }, { displayArgs: ["-I", "-c", "<candidate capture>", root] }).toString());
     } catch (error) {
+      if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
       // Never include stdout: successful capture output contains file bytes.
       // Python's diagnostic names the refused operation instead of hiding every
       // environmental failure behind the same regular-files message.
@@ -68,11 +82,12 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
   env?: Record<string, string>;
 }): string {
   const message = options?.message ?? "arcadia preservation base-advance check";
-  const result = spawnSync("git", [
+  const args = [
     "-c", "core.hooksPath=/dev/null", "-c", "commit.gpgSign=false",
     "commit-tree", tree, "-p", parent, "-m", message
-  ], {
-    ...preservationProcessLimits(), cwd: repository,
+  ];
+  const result = spawnSync("git", args, {
+    ...preservationProcessLimits("git", args), cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -84,6 +99,8 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
       ...options?.env
     }
   });
+  const timeout = preservationTimeout(result.error, "git", args, repository);
+  if (timeout) throw timeout;
   if (result.status !== 0) {
     throw validationError("Git could not wrap a candidate tree into a commit.", {
       repository,
@@ -114,7 +131,7 @@ export function snapshotCandidateCommit(repository: string, candidate: string, p
 
 /** Export the tree's blobs exactly; git archive's export-ignore/subst are not used. */
 export function materializeCandidateTree(repository: string, tree: string, destination: string): void {
-  const entries = execFileSync("git", ["ls-tree", "-rz", tree], { ...preservationProcessLimits(), cwd: repository }).toString().split("\0").filter(Boolean);
+  const entries = bounded("git", ["ls-tree", "-rz", tree], { cwd: repository }).toString().split("\0").filter(Boolean);
   for (const entry of entries) {
     const match = /^(100644|100755) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
     if (!match) throw validationError("Validated snapshot contains an unsupported Git entry.");
@@ -122,7 +139,7 @@ export function materializeCandidateTree(repository: string, tree: string, desti
     const target = path.resolve(destination, name);
     if (!target.startsWith(`${destination}${path.sep}`)) throw validationError("Snapshot path escaped its root.");
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, execFileSync("git", ["cat-file", "blob", hash], { ...preservationProcessLimits(), cwd: repository, maxBuffer: 64 * 1024 * 1024 }), { mode: mode === "100755" ? 0o555 : 0o444 });
+    writeFileSync(target, bounded("git", ["cat-file", "blob", hash], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }), { mode: mode === "100755" ? 0o555 : 0o444 });
   }
 }
 

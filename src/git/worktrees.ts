@@ -1,4 +1,4 @@
-import { preservationProcessLimits } from "../sessions/preservationStages.js";
+import { preservationProcessLimits, preservationTimeout } from "../sessions/preservationStages.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,7 +64,8 @@ export function existingDirectory(input: string, label: string): string {
  * tracked file at one of those paths remains dirty and is still refused. */
 export function uncommittedChanges(cwd: string, ignoreUntracked: string[] = []): string[] {
   const ignored = new Set([GO_REQUEST_FILE, PRESERVATION_REQUEST_FILE, ...ignoreUntracked]);
-  return git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
+  // A pure read: never take the optional index lock to refresh stat data.
+  return git(cwd, ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"])
     .split("\n")
     .filter(line => Boolean(line) && !(line.startsWith("?? ") && ignored.has(line.slice(3))));
 }
@@ -110,7 +111,12 @@ export function countCommits(cwd: string, base: string, source: string): number 
 }
 
 export function isAncestor(cwd: string, ancestor: string, descendant: string): boolean {
-  return spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { ...preservationProcessLimits(), cwd }).status === 0;
+  const args = ["merge-base", "--is-ancestor", ancestor, descendant];
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd });
+  // A timeout is not an answer: "not an ancestor" would read as a rewritten base.
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
+  return result.status === 0;
 }
 
 /**
@@ -196,11 +202,14 @@ export function refExists(cwd: string, ref: string): boolean {
  * though the candidate itself conflicted.
  */
 export function mergesCleanly(cwd: string, branch: string, newBase: string): boolean {
-  const result = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", branch, newBase], {
-    ...preservationProcessLimits(), cwd,
+  const args = ["merge-tree", "--write-tree", "--name-only", branch, newBase];
+  const result = spawnSync("git", args, {
+    ...preservationProcessLimits("git", args), cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
   if (result.status === 0) return true;
   if (result.status === 1) return false;
   throw validationError("Git could not compute a merge-tree simulation for a preservation base-advance check.", {
@@ -222,18 +231,26 @@ export function upstreamRef(cwd: string, branch: string): string | null {
 
 export function git(cwd: string, args: string[]): string {
   try {
-    return execFileSync("git", args, { ...preservationProcessLimits(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return execFileSync("git", args, { ...preservationProcessLimits("git", args), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
-    const detail = error as { stderr?: Buffer | string; message?: string };
-    throw validationError(`Git command failed: git ${args.join(" ")}`, {
+    throw preservationTimeout(error, "git", args, cwd) ?? validationError(`Git command failed: git ${args.join(" ")}`, {
       cwd,
-      cause: String(detail.stderr ?? detail.message ?? error).trim()
+      cause: gitFailureCause(error)
     });
   }
 }
 
+/** A killed or spawn-failed call has empty stderr; fall back to its message. */
+function gitFailureCause(error: unknown): string {
+  const detail = error as { stderr?: Buffer | string; message?: string };
+  return (String(detail.stderr ?? "").trim() || String(detail.message ?? error)).trim();
+}
+
+/** Null only for a genuine non-zero exit; a timeout throws its typed error. */
 export function tryGit(cwd: string, args: string[]): string | null {
-  const result = spawnSync("git", args, { ...preservationProcessLimits(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
