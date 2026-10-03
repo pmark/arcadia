@@ -149,7 +149,8 @@ describe("preservation index lock safety", () => {
     expect(replaced.details).toMatchObject({ retryable: true, liveness: "changed", probed: { ino: original.ino, mtimeMs: original.mtimeMs } });
     const swapped = lstatSync(lockPath);
     expect(swapped.ino).not.toBe(original.ino);
-    expect(swapped.mtimeMs).toBe(original.mtimeMs);
+    // utimes rounds sub-millisecond parts differently per filesystem (ext4 vs APFS); an exact match is not portable.
+    expect(Math.abs(swapped.mtimeMs - original.mtimeMs)).toBeLessThan(1);
     expect((replaced.details.observed as { ino: number }).ino).toBe(swapped.ino);
     expect(readFileSync(lockPath, "utf8")).toBe("other preservation\n");
 
@@ -158,7 +159,9 @@ describe("preservation index lock safety", () => {
     setBeforeIndexLockRemovalForTests((lock) => utimesSync(lock, rewrittenAt, rewrittenAt));
     const rewritten = failure();
     expectTypedLock(rewritten, "index_locked", lockPath);
-    expect(rewritten.details).toMatchObject({ liveness: "changed", probed: { ino: swapped.ino, mtimeMs: swapped.mtimeMs }, observed: { ino: swapped.ino, mtimeMs: rewrittenAt.getTime() } });
+    expect(rewritten.details).toMatchObject({ liveness: "changed", probed: { ino: swapped.ino, mtimeMs: swapped.mtimeMs }, observed: { ino: swapped.ino } });
+    // The moved mtime is what the observation must reflect, within the filesystem's rounding.
+    expect(Math.abs((rewritten.details.observed as { mtimeMs: number }).mtimeMs - rewrittenAt.getTime())).toBeLessThan(1);
     expect(readFileSync(lockPath, "utf8")).toBe("other preservation\n");
     expect(fixtureGit(f.candidate, ["rev-parse", BRANCH])).toBe(committed);
 
