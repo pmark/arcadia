@@ -1531,3 +1531,10 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/close-index-lock-probe-races-and-fd-matching-gaps
+
+- **Did:** Completed Action arcadia/close-index-lock-probe-races-and-fd-matching-gaps from accepted evidence (Candidate edc23b932eb3202c3749d4a1276123fd2ce5d84c).
+- **Result:** Every declared acceptance criterion was accepted as met: "Stale `index.lock` removal re-`lstat`s the lock and compares its `ino` and `mtimeMs` immediately before `rmSync` and refuses with the typed retryable error if either changed since the holder probes, with a deterministic test that swaps the lock between the probe and the removal."; "The Linux `/proc/<pid>/fd` holder probe matches by device and inode via `stat` on each fd link rather than by path string (so bind mounts and mount namespaces cannot read as 'none'), keeping its fail-closed handling of unreadable pids, with tests using injected readers including a differing-path-same-inode case."; "An `lsof` warning on stderr is carried into the typed error details so the operator can see why the answer was 'unknown'; the docs say plainly that the held-open probe covers only Git's brief write and non-Git holders and that an editor-based commit is protected only by the Git-cwd probe; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-close-index-lock-probe-gaps-913-2026-10-03).

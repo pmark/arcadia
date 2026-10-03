@@ -3054,7 +3054,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/911", "docs/managed-production-readiness.md", "src/stewardship/codeRabbitReview.ts", "tests/code-rabbit-review.test.ts"]
   - id: close-index-lock-probe-races-and-fd-matching-gaps
     title: "Close the three non-blocking gaps the independent review of PR #912 left in stale index.lock handling."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Close the three non-blocking gaps the independent review of PR #912 left in stale index.lock handling."
@@ -3073,7 +3073,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: close-index-lock-probe-races-and-fd-matching-gaps
+current_action: enroll-session-through-governed-host-request
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
