@@ -48,7 +48,8 @@ stop the affected operation, preserve work and report the exact remedy.
   Merge only under Decision 0060 as amended by Decision 0080: an
   independent review of the current head has no unresolved blocking finding,
   all required checks on that head pass, and the merge state is clean. Important
-  Decisions and authority changes wait for the operator. A push resets proof.
+  Decisions and authority changes wait for the operator. A push resets proof, except the
+  governed-record commits the PR procedure lists.
 - **Governance:** never hand-edit pointers, Action status/result, Decision
   answers, Outcomes, Milestones or queues. Use an Agent Ask; previews never
   approve themselves. Document hygiene may be edited when it claims neither

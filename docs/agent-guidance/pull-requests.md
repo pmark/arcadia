@@ -20,7 +20,8 @@ review service.
   between the author's host and the CI platform.
 - **Rounds.** At most three per pull request. A later round reviews only what
   changed since the previous one. Go past three only when the latest round
-  still found a *significant* defect. **Blocking** and *significant* mean the
+  still found a *significant* defect, and never beyond five rounds in total: a
+  blocking finding left after the fifth round ends the cycle. **Blocking** and *significant* mean the
   same thing: a defect that could lose or corrupt data, broaden authority or
   cross an approval boundary, expose credentials, hand the same work to two
   agents, open a security hole, or break a required check or an acceptance
@@ -41,10 +42,15 @@ review service.
   gate in `CONSTITUTION.md`. A bot's approval is information, not a merge
   condition. `arcadia pr code-review <pr> --json` reads CodeRabbit's current
   verdict when one is wanted; nothing requires it.
-- **A push resets the review.** A push that changes code is reviewed again as
-  a delta and counts as a round. Commits that touch only governance records
-  (Agent Ask settlements, pointer or log commits) and merges of the base branch
-  that needed no conflict resolution do not reset it.
+- **A push resets the review.** Any push is reviewed again as a delta and
+  counts as a round, with exactly two exceptions: (a) commits written by
+  Arcadia's own governed commands (`arcadia agent-ask settle`,
+  `arcadia advance queue make-next`) that touch only `.arcadia/asks/`,
+  `MISSION_LOG.md`, `PROJECT.md`, `docs/plans/` and `docs/decisions/`; and
+  (b) a merge of the base branch whose result is exactly Git's automatic merge,
+  with no conflict resolution and no extra edits. An edit to
+  `CONSTITUTION.md`, the bootstrap, agent guidance, workflows or configuration
+  always resets the review, however it was produced.
 
 ## CI failures are fixed immediately
 
