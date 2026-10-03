@@ -2912,7 +2912,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/886", "src/cli.ts", "src/commands/agentAsk.ts", "tests/agent-ask-draft.test.ts"]
   - id: retire-legacy-operator-script-descriptors
     title: "Make `pnpm check:operator-scripts` pass on this host by retiring exactly the five named legacy descriptors through a hash-pinned, documented path, without weakening validation."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Make `pnpm check:operator-scripts` pass on this host by retiring exactly the five named legacy descriptors through a hash-pinned, documented path, without weakening validation."
@@ -2965,7 +2965,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: retire-legacy-operator-script-descriptors
+current_action: bound-fixed-brief-broker-with-structured-receipt
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

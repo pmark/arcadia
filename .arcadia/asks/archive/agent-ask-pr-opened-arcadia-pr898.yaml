@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr898","project":"arcadia","intent":"log","desired_result":"The operator-script check goes green again: PR #898 retires exactly the five legacy descriptors through a hash-pinned manifest without loosening validation. https://github.com/pmark/arcadia/pull/898"}

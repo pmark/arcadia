@@ -86,6 +86,22 @@ script. The script must state those effects plainly and must never hide manual
 Git reconciliation, governance settlement, or another unsupported shortcut
 inside automation.
 
+### Retiring a library entry
+
+A legacy local entry that `pnpm check:operator-scripts` refuses, and that can
+never run honestly again (already succeeded, superseded, or pinned to stale
+state with no derivable declaration), may be retired from that gate only by
+adding an exact entry to the tracked
+`src/operatorActions/legacyRetirements.json`: its id, the sha256 of its `.json`
+and `.sh`, its outcome, and the reason. The checker skips an id only when both
+hashes match and reports it under `retired`; any new, renamed or changed file
+gets full validation. No globs, prefixes or id-only entries. Retirement never
+changes `/runs`: the shared contract still refuses to load or run the entry.
+Never edit, move or delete ignored local descriptors, scripts, `runs/state` or
+`runs/receipts` by hand; state and receipts stay as the audit trail. A retired
+operator choice that was never executed is discarded; if it is still wanted,
+re-ask through a fresh Agent Ask and publish a new declared entry.
+
 If a load-bearing detail is unclear — repository, pull request, workspace,
 merge method, service target, credential boundary, desired effect, or recovery
 route — ask the operator before generating the script. In a continuation where
