@@ -235,6 +235,25 @@ describe("protected Arcadia go broker", () => {
       });
     });
 
+    it("reports each stage before it starts and carries the supervisor's correlation id", () => {
+      const stages: string[] = [];
+      const result = runGoBroker(
+        { source: "/tmp/prepared", agent: "claude", operation: "brief" },
+        vi.fn() as never,
+        vi.fn().mockReturnValue(advanceResponse) as never,
+        vi.fn(() => {
+          expect(stages.at(-1)).toBe("work-monitor");
+          return workMonitorResponse;
+        }) as never,
+        () => "/tmp/arcadia-workspace",
+        vi.fn().mockReturnValue(nextResponse) as never,
+        vi.fn().mockReturnValue("arcadia") as never,
+        { reportStage: (stage) => stages.push(stage), correlationId: "00000000-0000-4000-8000-000000000000" }
+      );
+      expect(stages).toEqual(["workspace", "advance", "work-monitor", "next", "render"]);
+      expect(result.data).toMatchObject({ correlationId: "00000000-0000-4000-8000-000000000000" });
+    });
+
     it.each([
       ["advance", (advanceRunner: () => void, _workMonitorRunner: () => void, _nextRunner: () => void) => advanceRunner],
       ["work-monitor", (_advanceRunner: () => void, workMonitorRunner: () => void, _nextRunner: () => void) => workMonitorRunner]

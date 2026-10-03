@@ -181,6 +181,16 @@ Do not widen permissions, copy the database, or build a replacement reader in
 the adopting Project. Shared Git writes likewise belong to host preservation.
 Regression: `tests/dispatch-journal.test.ts`, sandbox-callable broker section.
 
+## Brief launcher returned `BRIEF_DEADLINE_EXCEEDED` (or seemed to hang)
+
+keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status
+
+The fixed brief supervises itself: one JSON document on stdout within 25s.
+A failure names `error.details.stage`, `correlationId` and `recovery`; it is read-only, so rerun the same launcher once.
+`work-monitor` = many worktrees or a hung git; `advance`/`next` = a SQLite lock. Never run mutable `next` or widen the sandbox.
+Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action; `go-broker status` then shows `Brief supervisor: READY`.
+Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
+
 ## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED
 
 keys: sandbox, trust settings, certificate, gh, TMPDIR, claude code, SQLITE_WORKSPACE_WRITE_DENIED, readonly database, pnpm arcadia next, dispatch brief

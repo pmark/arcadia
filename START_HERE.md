@@ -1223,6 +1223,10 @@ Workspace database and shared Git metadata writes stay on their host paths.
 An older installed brief that fails at stage `next` with
 `SQLITE_WORKSPACE_WRITE_DENIED` needs the reviewed broker update and reinstall,
 not repeated profile selection or a broader database write grant.
+The brief launcher answers within 25 seconds with one JSON document on stdout;
+a stalled stage returns `BRIEF_DEADLINE_EXCEEDED` naming `stage`,
+`correlationId` and a retry-safe `recovery` after stopping its process group.
+This takes effect after the reviewed broker reinstall.
 Governed CLI launches explicitly select that profile with approvals
 disabled. For a Desktop or iPhone-connected task, choose
 **arcadia-unattended** in the permissions control beneath the composer and wait
@@ -1253,7 +1257,9 @@ whether the go route is serviceable: `READY` when the worker has serviced it
 recently, `BUSY` when a go-capable worker is alive but has not run the route
 within the window (retry in a few seconds; do not restart it), and `NOT READY`
 when no go-capable worker is there (start the updated worker). A fresh heartbeat
-alone is never sufficient. `Workspace trust` reports how many Project
+alone is never sufficient. `Brief supervisor` reports whether every installed
+brief launcher actually ran its internal self-test and answered; `NOT READY`
+there makes status `NOT READY` and needs the reviewed broker reinstall. `Workspace trust` reports how many Project
 repositories carry Codex trust; a missing one makes status `NOT READY` and is
 named in the issues as `codexWorkspaceTrust missing: <repository>`. Rerun
 `pnpm arcadia go-broker install` to add it. Install also records Claude Code's

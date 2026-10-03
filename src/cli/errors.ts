@@ -29,6 +29,7 @@ export type ArcadiaErrorCode =
   | "NARRATIVE_DIGEST_UNAVAILABLE"
   | "NARRATIVE_DIGEST_INVALID_RESULT"
   | "PRESERVATION_GIT_TIMEOUT"
+  | "BRIEF_DEADLINE_EXCEEDED"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;

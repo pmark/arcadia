@@ -50,7 +50,8 @@ const baseStatusData: Omit<GoBrokerStatusData, "ready" | "revision"> = {
   },
   preservationTransport: { ready: true, detail: "Fresh host worker heartbeat." },
   agentGoTransport: { ready: true, state: "ready", detail: "Host worker has serviced agent go requests recently." },
-  preservationChecks: null
+  preservationChecks: null,
+  briefSupervisor: { ready: true, detail: "Each fixed brief launcher self-spawned under its deadline and returned a structured receipt." }
 };
 
 describe("go-broker ensure", () => {

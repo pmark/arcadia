@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -18,6 +18,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { BRIEF_CHILD_ENV, BRIEF_DEADLINE_ENV, BRIEF_SELF_TEST_ENV } from "../briefSupervisor.js";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import type { GoBrokerAgent } from "../goBroker.js";
@@ -42,6 +43,10 @@ import { requireResolvedWorkspace } from "../workspace/resolve.js";
 const BROKER_AGENTS = SESSION_AGENTS as readonly (keyof ProviderExecutables)[];
 
 const INSTALL_SCHEMA = "arcadia-go-broker-install-v1";
+/** The supervised self-test's own deadline, and the outer bound on one launcher run. */
+const BRIEF_SELF_TEST_DEADLINE_MS = 10_000;
+const BRIEF_SELF_TEST_TIMEOUT_MS = 15_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface GoBrokerInstallData {
   revision: string;
@@ -67,6 +72,8 @@ export interface GoBrokerStatusData {
   preservationTransport: { ready: boolean; detail: string };
   agentGoTransport: { ready: boolean; state: "ready" | "busy" | "unavailable"; detail: string };
   preservationChecks: PreservationChecksStatus | null;
+  /** Whether every installed brief launcher actually self-spawned and answered. */
+  briefSupervisor: { ready: boolean; detail: string };
 }
 
 export interface PreservationChecksStatus {
@@ -234,6 +241,9 @@ export function runGoBrokerInstallCommand(
     projectRepositories
   });
   const installedBroker = inspectInstalledBroker(executables);
+  if (installedBroker.issues.length === 0) {
+    installedBroker.issues.push(...selfTestBriefLaunchers(executables, releaseDirectory).issues);
+  }
   if (installedBroker.issues.length > 0) {
     throw validationError("The protected broker did not pass its post-install verification.", {
       issues: installedBroker.issues,
@@ -303,6 +313,12 @@ export function runGoBrokerStatusCommand(
   const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
   const repository = realpathSync(requestedRepository);
   const broker = inspectInstalledBroker(executables);
+  // Installed is not usable: run each brief launcher's internal self-test,
+  // which touches no workspace, claim, database or Git.
+  const briefSupervisor = broker.issues.length === 0
+    ? selfTestBriefLaunchers(executables, broker.releaseDirectory ?? installHome)
+    : { ready: false, detail: "Not run: the installed broker has other issues.", issues: [] };
+  broker.issues.push(...briefSupervisor.issues);
   const agentSetup = inspectGoBrokerAgentSetup({
     home: installHome,
     executables,
@@ -354,7 +370,8 @@ export function runGoBrokerStatusCommand(
       workspaceTrust: agentSetup.workspaceTrust,
       preservationTransport,
       agentGoTransport,
-      preservationChecks
+      preservationChecks,
+      briefSupervisor: { ready: briefSupervisor.ready, detail: briefSupervisor.detail }
     });
   }
   return createSuccess({
@@ -367,7 +384,8 @@ export function runGoBrokerStatusCommand(
       agentSetup,
       preservationTransport,
       agentGoTransport,
-      preservationChecks
+      preservationChecks,
+      briefSupervisor: { ready: briefSupervisor.ready, detail: briefSupervisor.detail }
     }
   });
 }
@@ -384,8 +402,9 @@ export interface GoBrokerEnsureData {
  * paying `install`'s full cost — a `tsc` compile plus a dashboard build and a
  * vitest run via `runWorktreeRuntimeProbe` — on every call. `status` already
  * does everything needed to answer "is the installed broker ready and does it
- * match HEAD" for free (`inspectInstalledBroker` and `inspectGoBrokerAgentSetup`
- * only stat files and read one JSON manifest), so this defers to it and only
+ * match HEAD" cheaply (`inspectInstalledBroker` and `inspectGoBrokerAgentSetup`
+ * stat files and read one JSON manifest; the brief self-test runs each brief
+ * launcher once, without a workspace or Git), so this defers to it and only
  * falls through to a real `install` when that check says no.
  *
  * Meant to be safe to call unconditionally after every local restart — e.g.
@@ -470,6 +489,7 @@ export function renderGoBrokerStatusSuccess(response: CommandSuccess<GoBrokerSta
     `Protected broker setup: ${data.ready ? "READY" : "NOT READY"}`,
     `Preservation transport: ${data.preservationTransport.ready ? "READY" : "NOT READY"} — ${data.preservationTransport.detail}`,
     `Agent go transport: ${data.agentGoTransport.state === "ready" ? "READY" : data.agentGoTransport.state === "busy" ? "BUSY" : "NOT READY"} — ${data.agentGoTransport.detail}`,
+    `Brief supervisor: ${data.briefSupervisor.ready ? "READY" : "NOT READY"} — ${data.briefSupervisor.detail}`,
     ...(data.preservationChecks && !data.preservationChecks.ok
       ? [`Preservation checks: NEEDS DEPENDENCIES — ${data.preservationChecks.detail}`]
       : []),
@@ -691,6 +711,57 @@ function inspectInstalledBroker(executables: BrokerExecutables): {
     issues.push("broker manifest is missing or invalid");
   }
   return { revision, releaseDirectory, issues };
+}
+
+/**
+ * Run every installed brief launcher in its internal self-test mode: the
+ * supervisor self-spawns the release entrypoint, which loads the brief's
+ * module graph and answers with a structured receipt. A release whose files
+ * exist but cannot run (stale entrypoint, missing dependency, broken runtime)
+ * fails here instead of reporting READY.
+ */
+function selfTestBriefLaunchers(executables: BrokerExecutables, cwd: string): { ready: boolean; detail: string; issues: string[] } {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    [BRIEF_SELF_TEST_ENV]: "1",
+    [BRIEF_DEADLINE_ENV]: String(BRIEF_SELF_TEST_DEADLINE_MS)
+  };
+  delete env[BRIEF_CHILD_ENV];
+  const issues = BROKER_AGENTS.flatMap((agent) => {
+    const result = spawnSync(executables.brief[agent], [], {
+      cwd, env, encoding: "utf8", timeout: BRIEF_SELF_TEST_TIMEOUT_MS, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"]
+    });
+    let reason: string | null = null;
+    if (result.error) {
+      reason = (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT" ? `no answer within ${BRIEF_SELF_TEST_TIMEOUT_MS}ms` : result.error.message;
+    } else {
+      const receipt = parseSelfTestReceipt(result.stdout);
+      if (!receipt) reason = `exit ${result.status ?? result.signal} without a structured receipt`;
+      else if (receipt.ok !== true) reason = typeof receipt.error?.message === "string" ? receipt.error.message : "refused";
+      else if (receipt.command !== "brief-broker.self-test" || typeof receipt.data?.correlationId !== "string" || !UUID.test(receipt.data.correlationId)) {
+        reason = "answered without a supervised self-test receipt (stale entrypoint)";
+      }
+    }
+    return reason ? [`brief ${agent} launcher failed its supervisor self-test: ${reason}`] : [];
+  });
+  return {
+    ready: issues.length === 0,
+    detail: issues.length === 0
+      ? "Each fixed brief launcher self-spawned under its deadline and returned a structured receipt."
+      : "A fixed brief launcher could not run; reinstall the reviewed broker.",
+    issues
+  };
+}
+
+interface SelfTestReceipt { ok?: unknown; command?: unknown; data?: { correlationId?: unknown }; error?: { message?: unknown } }
+
+function parseSelfTestReceipt(stdout: string): SelfTestReceipt | null {
+  try {
+    const parsed: unknown = JSON.parse(stdout);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function providerExecutables(binDirectory: string, launcherBase: string): ProviderExecutables {
