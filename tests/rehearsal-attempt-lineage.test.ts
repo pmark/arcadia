@@ -256,6 +256,36 @@ describe("five-role attempt lineage through the real tick", () => {
     expect(rehearsal.attempts("write-marker-a").map((x) => [x.request_id, x.ordinal, x.status])).toEqual([[crashed.request_id, 1, "passed"]]);
   });
 
+  it("binds a development attempt to a Session prepared before a host crash when a launch reuses it, and settles it on exit", () => {
+    const rehearsal = activated();
+    rehearsal.crashLaunchAfterPrepare();
+    const prepared = rehearsal.lease()!;
+    expect(prepared.status).toBe("prepared");
+    expect(rehearsal.attempts("write-marker-a")).toEqual([]);
+
+    // A retried launch takes the plain (non-own) reuse path and starts the prepared Session under exactly one attempt.
+    const resumed = rehearsal.launchDirect("operator-retry-after-crash");
+    expect(resumed).toMatchObject({ reused: true, session: { id: prepared.id, status: "running" } });
+    const a = rehearsal.lease()!;
+    expect(a.id).toBe(prepared.id);
+    expect(rehearsal.sessions()).toHaveLength(1);
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.role, x.status, x.mutation_owner])).toEqual([["development", "running", 1]]);
+    expect(rehearsal.tick().launch?.outcome).not.toBe("launched");
+    expect(rehearsal.attempts("write-marker-a")).toHaveLength(1);
+
+    rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+    rehearsal.agentFinish(a, CRITERIA_A);
+    rehearsal.tmux.exit(a.tmux_session_name);
+    expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.ordinal, x.status])).toEqual([[1, "passed"]]);
+    const session = withDatabase(rehearsal.workspace, (db) => getSession(db, a.id)!);
+    // Readiness holds, so independent verdicts can integrate it.
+    expect(gate(rehearsal, session)).toMatchObject({ satisfied: false, code: "awaiting_independent_verdicts" });
+    verdict(rehearsal, session, "code-review");
+    verdict(rehearsal, session, "qa");
+    expect(rehearsal.tick().handoff?.integration.kind).toBe("integrated");
+  });
+
   it("allocates exactly one bounded next development ordinal after a terminal failure, and replays the exit without re-settling", () => {
     const rehearsal = activated();
     const a1 = launchA(rehearsal);

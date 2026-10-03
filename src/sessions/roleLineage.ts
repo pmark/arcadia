@@ -74,6 +74,13 @@ export function requirementIdentity(input: { projectSlug: string; planSlug: stri
   };
 }
 
+/** The requirement a Session works on, from the checked-in Plan at `repoRoot`; null when its Action is no longer there. */
+export function requirementForSession(repoRoot: string, session: Pick<AgentSession, "project_slug" | "plan_slug" | "action_id">): RequirementIdentity | null {
+  const plan = discoverDocs(repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
+  const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
+  return action ? requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action }) : null;
+}
+
 // ---------------------------------------------------------------- development
 
 function liveSessionFor(db: Database.Database, requirement: RequirementIdentity, exceptSessionId: string | null): string | null {
@@ -386,8 +393,11 @@ function assertIndependentOf(db: Database.Database, session: AgentSession, input
   const cwd = realPath(input.executionCwd);
   if (developer.ids.has(input.actorId) || developer.worktrees.some((worktree) => within(cwd, worktree)) ||
     (input.reviewerBindingId != null && developer.bindings.has(input.reviewerBindingId))) {
-    throw validationError("Independent review and QA cannot be supplied by the developer.", {
-      code: "independent_actor_required", actorId: input.actorId, executionCwd: cwd, reviewerBindingId: input.reviewerBindingId ?? null
+    const matched = developer.ids.has(input.actorId) ? `actor ${input.actorId}`
+      : developer.worktrees.some((worktree) => within(cwd, worktree)) ? `working directory ${cwd}`
+        : `agent binding ${String(input.reviewerBindingId)}`;
+    throw validationError(`Independent review and QA cannot be supplied by the developer (the reviewer's ${matched} is the developer's).`, {
+      code: "independent_actor_required", actorId: input.actorId, executionCwd: cwd, reviewerBindingId: input.reviewerBindingId ?? null, matched
     });
   }
 }

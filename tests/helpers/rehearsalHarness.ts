@@ -19,6 +19,7 @@ import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { loadPhase3Registries } from "../../src/intent/registries.js";
 import { runManagedProductionTick, type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
 import { getRepositoryLease, type AgentSession, type TmuxAdapter } from "../../src/sessions/index.js";
+import { launchGuardedHostSession } from "../../src/sessions/launch.js";
 import { materializeCandidateTree, snapshotCandidate } from "../../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions } from "../../src/sessions/preservationCheckBinding.js";
 import { processPreservationRequests } from "../../src/sessions/preservationTransport.js";
@@ -441,6 +442,33 @@ Disposable fixture plan.
     const exited = this.tick();
     if (exited.handoff?.integration.kind === "integrated" || this.options.independentReviewers === false) return { exited, integrated: exited };
     return { exited, integrated: this.tick() };
+  }
+
+  /** The guarded standing-policy launcher called directly, with the same registries, capacity and paths as `tick()`. */
+  launchDirect(requestId: string, testHooks?: Parameters<typeof launchGuardedHostSession>[0]["testHooks"]) {
+    const registries = loadPhase3Registries(this.workspace);
+    return withDatabase(this.workspace, (db) => launchGuardedHostSession({
+      db, workspace: this.workspace, repoRoot: this.repo, projectSlug: this.projectSlug, requestId, standingPolicy: true,
+      profiles: registries.codingAgents.profiles, adapters: registries.providerAdapters, tmux: this.tmux, now: this.now,
+      capacityObservation: capacity(this.provider), agentWorktreeRoot: this.worktrees,
+      providerSignIn: () => ({ signedIn: true, remedy: "" }), ...(testHooks ? { testHooks } : {})
+    }));
+  }
+
+  /**
+   * A worker host crash in the middle of a standing-policy launch: the
+   * Session is prepared and its admission issued, then the process dies
+   * before the admission commits (and so before any development attempt is
+   * allocated).
+   */
+  crashLaunchAfterPrepare(requestId = "worker-tick-crashed-after-prepare"): void {
+    try {
+      this.launchDirect(requestId, { afterSessionPreparedBeforeCommit: () => { throw new Error("worker host crashed"); } });
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "worker host crashed") throw error;
+      return;
+    }
+    throw new Error("The injected crash did not happen.");
   }
 
   /** Tick until `done` holds or `limit` ticks pass; returns every tick's result. */

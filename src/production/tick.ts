@@ -125,7 +125,8 @@ function recoverTerminalHandoff(
   projectSlug: string,
   now: Date,
   preserveDeps: PreserveSessionDeps,
-  integrateDeps: IntegrateSessionDeps
+  integrateDeps: IntegrateSessionDeps,
+  log?: (message: string) => void
 ): SessionHandoffResult | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
     .all() as Array<{ name: string }>;
@@ -214,7 +215,7 @@ function recoverTerminalHandoff(
   return {
     preservation,
     integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head,
-      verdictGate: () => escalatingVerdictGate(db, { session, repoRoot, now }) }, integrateDeps)
+      verdictGate: () => escalatingVerdictGate(db, { session, repoRoot, now, log }) }, integrateDeps)
   };
 }
 
@@ -255,6 +256,11 @@ function escalatingVerdictGate(
       + `No command records the code-review verdict yet; after an independent review of exactly that head, an operator may land it with \`${merge}\`.`
     : `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
+  if (previous && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) {
+    // One row per Action: never overwrite a different, still-open escalation.
+    input.log?.(`${actionKey} also waits on independent verdicts (${gate.reason}); keeping its open ${previous.kind} escalation.`);
+    return gate;
+  }
   const newlyDetected = recordOperatorEscalation(db, { actionKey, kind: gate.code, message: gate.reason, remedy, now: input.now });
   if (newlyDetected || previous?.kind !== gate.code) input.log?.(`Escalated ${actionKey} to the operator (${gate.code}): ${gate.reason}`);
   return gate;
@@ -1073,7 +1079,7 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
-        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {});
+        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log);
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);

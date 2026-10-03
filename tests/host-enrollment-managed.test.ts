@@ -141,6 +141,11 @@ function capacity(admitted = true): ProviderCapacityObservation {
   return { generatedAt: "2026-08-30T12:34:56.000Z", providers: [decision] };
 }
 
+function attempts(f: Fixture) {
+  return withReadOnlyDatabase(f.workspace, (db) =>
+    db.prepare("SELECT requirement_id, role, ordinal, status, mutation_owner FROM session_role_attempts ORDER BY created_at, rowid").all());
+}
+
 function enroll(f: Fixture, overrides: Partial<HostEnrollmentInput> = {}) {
   return executeHostEnrollment({
     source: f.repo, agent: "claude", requestId: "enroll:claude:runtime-0001", callerId: "claude:runtime-0001",
@@ -294,9 +299,13 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
       .toThrow("host crashed");
     expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.status)).toEqual(["issued"]);
     expect(f.tmux.launches).toHaveLength(0);
+    // The crash came before the attempt cutoff: nothing owns the requirement yet.
+    expect(attempts(f)).toEqual([]);
     const receipt = enroll(f);
     expect(receipt.admission).toMatchObject({ requestId: "enroll:claude:runtime-0001:admission", status: "committed" });
     expect(f.tmux.launches).toHaveLength(1);
+    // The own-lease resume bound exactly one running development attempt to the requirement before starting it.
+    expect(attempts(f)).toEqual([{ requirement_id: `test-project/${receipt.planSlug}/define-contract`, role: "development", ordinal: 1, status: "running", mutation_owner: 1 }]);
     // Concurrency limit 1: exactly one live (committed) admission and one Session.
     expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.status)).toEqual(["committed"]);
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, claims: 1, enrollments: 1, pending: 0 });

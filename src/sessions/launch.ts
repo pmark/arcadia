@@ -31,7 +31,7 @@ import {
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
-import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementIdFor, requirementIdentity } from "./roleLineage.js";
+import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementForSession, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
   assertDraftRecoveryUnchanged,
   commitDraftHandout,
@@ -282,11 +282,6 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // duplicated; after a terminal failure the launch grant this call carries (a
   // standing policy or an approved preview) authorizes the next bounded ordinal.
   const requirement = requirementIdentity({ projectSlug: preview.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
-  const lineageRefusal = (error: unknown): unknown =>
-    error instanceof ArcadiaError && typeof error.details?.code === "string" &&
-      (error.details.code.startsWith("attempt_") || error.details.code === "mutation_owner_active")
-      ? validationError(`The development attempt lineage refused this launch: ${error.message}`, { ...error.details, conflict: true })
-      : error;
   try {
     planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true });
   } catch (error) {
@@ -745,6 +740,14 @@ function markAttemptRunning(db: Database.Database, attempt: SessionRoleAttempt |
   }
 }
 
+/** A lineage refusal is an expected wait or operator state, never a repair-worthy launch failure. */
+function lineageRefusal(error: unknown): unknown {
+  return error instanceof ArcadiaError && typeof error.details?.code === "string" &&
+    (error.details.code.startsWith("attempt_") || error.details.code === "mutation_owner_active")
+    ? validationError(`The development attempt lineage refused this launch: ${error.message}`, { ...error.details, conflict: true })
+    : error;
+}
+
 function reusedLease(
   input: GuardedLaunchInput,
   lease: AgentSession,
@@ -755,9 +758,24 @@ function reusedLease(
   now: Date,
   beforeStart?: () => void
 ): GuardedLaunchResult {
-  const session = reuseOrRefuseLease(input.db, lease, preview, tmux, registry, providerSignIn, input.workspace, input.onProviderSignInConfirmed, beforeStart);
-  // A reused lease never allocates a second owner; it only marks the live
-  // attempt its original launch allocated as started.
+  // A lease prepared before a crash may have no development attempt yet (the
+  // launcher allocates it only after the admission cutoff). After any own
+  // admission commit, and before the process may start, bind the requirement's
+  // one development attempt to this Session: a live owner is resumed,
+  // otherwise one is allocated with this lease excluded from the live-holder
+  // check. A lease whose Action is no longer in the checked-in Plan has no
+  // requirement to bind and keeps the unchanged reuse semantics.
+  const ensureAttempt = () => {
+    beforeStart?.();
+    const requirement = requirementForSession(path.resolve(input.repoRoot), lease);
+    if (!requirement) return;
+    try {
+      beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: lease.id, now });
+    } catch (error) {
+      throw lineageRefusal(error);
+    }
+  };
+  const session = reuseOrRefuseLease(input.db, lease, preview, tmux, registry, providerSignIn, input.workspace, input.onProviderSignInConfirmed, ensureAttempt);
   if (session.status === "running") {
     markAttemptRunning(input.db, liveMutationOwner(input.db, requirementIdFor(session.project_slug, session.plan_slug, session.action_id)), now);
   }
