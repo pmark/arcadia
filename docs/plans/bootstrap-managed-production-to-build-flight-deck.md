@@ -3073,7 +3073,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: restore-readiness-evidence-and-report-spoofed-coderabbit-status
+current_action: close-index-lock-probe-races-and-fd-matching-gaps
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
