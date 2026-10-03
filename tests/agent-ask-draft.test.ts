@@ -292,8 +292,13 @@ describe("Agent Ask --file through the real CLI parser", () => {
       expect(result).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
       if (!result.ok) expect(result.error.message).toMatch(/^Invalid --file path: .*no-such-ask\.yaml does not exist\.$/);
     }
-    const blank = await runCli(["agent-ask", "draft", "--file", " ", "--workspace", fixture.workspace], fixture.candidate, fixture.main);
-    expect(blank).toMatchObject({ ok: false, error: { code: "VALIDATION_ERROR" } });
+    for (const command of ["draft", "preview"]) {
+      const blank = await runCli(["agent-ask", command, "--file", " ", "--workspace", fixture.workspace], fixture.candidate, fixture.main);
+      expect(blank).toMatchObject({
+        ok: false,
+        error: { code: "VALIDATION_ERROR", message: "--file needs a path to an Agent Ask file inside the caller's repository." }
+      });
+    }
     expect(existsSync(asksIn(fixture.candidate))).toBe(false);
     expectMainUntouched(fixture);
   });

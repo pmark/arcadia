@@ -271,7 +271,7 @@ export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraf
     lines.push(`Previewed: blocked (${d.previewFailure?.code ?? "unknown error"}) — ${d.previewFailure?.message ?? "workspace preview failed"}${d.previewFailure?.cause ? ` Cause: ${d.previewFailure.cause}` : ""}`);
     lines.push("Next: preserve the validated Ask file for a host with workspace access. Do not guess a workspace from the Project name or retry this database write from the same sandbox.");
   } else {
-    lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path}\`.`);
+    lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path} --dir ${path.dirname(path.dirname(path.dirname(d.path)))}\`.`);
   }
   lines.push(...renderAgentAskDiscovery(d.discovery));
   return lines;

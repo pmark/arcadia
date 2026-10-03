@@ -513,6 +513,15 @@ interface WorkspaceResolveData {
   warning?: string;
 }
 
+/**
+ * `--file` resolves like `--dir`, except that a blank value stays blank:
+ * resolving it would name the invocation directory itself, and the handler
+ * could then only report "outside the repository" instead of "no path given".
+ */
+function resolveAskFileOption(input: string): string {
+  return input.trim() ? resolveInvocationPath(input) : input;
+}
+
 export function buildProgram(): Command {
   const program = new Command();
 
@@ -806,7 +815,7 @@ export function buildProgram(): Command {
   addJsonOption(agentAsk.command("preview")
     .description("Normalize Agent Ask v1 and preview canonical effects without Project writes")
     .argument("[request]", "Strict Agent Ask v1 YAML or natural fallback text")
-    .option("--file <path>", "Read the Agent Ask from this file inside the caller's repository; a relative path resolves from where you ran the command", resolveInvocationPath)
+    .option("--file <path>", "Read the Agent Ask from this file inside the caller's repository; a relative path resolves from where you ran the command", resolveAskFileOption)
     .option("--request-id <id>", "Required idempotency key for natural fallback; also resolves a drift-recovered Ask by id when no request or --file is given")
     .option("--project <project>", "Destination Project for natural fallback")
     .option("--dir <path>", "Repository root: resolves a drift-recovered Ask's isolated branch, and where other unprocessed .arcadia/asks/ files are auto-discovered from", resolveInvocationPath, invocationRoot())
@@ -817,7 +826,7 @@ export function buildProgram(): Command {
   addJsonOption(agentAsk.command("draft")
     .description("Validate an Agent Ask and place it at .arcadia/asks/agent-ask-<request_id>.yaml, previewing it too if a workspace is ready")
     .argument("[request]", "Strict Agent Ask v1 YAML/JSON or natural fallback text")
-    .option("--file <path>", "Read the Agent Ask from this file inside the caller's repository; a relative path resolves from where you ran the command", resolveInvocationPath)
+    .option("--file <path>", "Read the Agent Ask from this file inside the caller's repository; a relative path resolves from where you ran the command", resolveAskFileOption)
     .option("--request-id <id>", "Required idempotency key for natural fallback")
     .option("--project <project>", "Destination Project for natural fallback")
     .option("--dir <path>", "Repository root containing .arcadia/asks/; also where other unprocessed files there are auto-discovered from", resolveInvocationPath, invocationRoot())
