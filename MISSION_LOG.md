@@ -1384,3 +1384,10 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr894
+
+- **Did:** ✅ Landing your Decision 0079 answer (Separate Selected and Running indicators) so the Flight Deck tree Actions unblock: https://github.com/pmark/arcadia/pull/894
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
