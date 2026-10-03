@@ -35,6 +35,7 @@ import {
   commitDraftHandout,
   evaluateDraftOnlyCandidate,
   recordDraftRecoveryReceipt,
+  voidDraftHandoutIfUnlaunched,
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
@@ -495,6 +496,17 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
     if (!resumedInPlace) {
       releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+    }
+    // A draft-only handout whose launch failed before any Session row came to
+    // describe the candidate is voided, or every later Go or tick attempt would
+    // refuse it as handed out over a session that never ran. Best effort.
+    if (draftResume) {
+      const handedOut = draftResume.receipt;
+      try {
+        writeTransaction(input.db, () => voidDraftHandoutIfUnlaunched(input.db, handedOut));
+      } catch {
+        // Left marked: later attempts refuse with the structured disposition.
+      }
     }
     const raced = getRepositoryLease(input.db, repoRoot);
     if (raced && matchesPreview(raced, preview)) {

@@ -67,10 +67,10 @@ The fix is live only after the separate reviewed **Reinstall the protected go br
 
 ## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
 
-keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries
+keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries, liveness, lsof, handed out
 
-Go (and the managed tick, same rule) hands the same worktree and branch out ONCE when its only dirt is `??` `.arcadia/asks/agent-ask-*.yaml` drafts, no Session row or `.arcadia-go-request`/`.arcadia-preserve-request` file shows a session ran, HEAD equals the current base tip and the live claim is its own. `data.draftRecovery` is the receipt (path, sha256, origin) in `candidate_draft_recoveries`; `resumed_at`/`resumed_route` mark the one handout, committed with the claim refresh.
-Any later Go or tick attempt refuses with `details.disposition` (receipt id, `handedOut`, drafts, next step); so do a moved base, a changed hash and a transport file. Other dirt keeps "already holds uncommitted changes" with `details.candidateKind`. Nothing is settled, copied, moved or deleted. Do not widen `uncommittedChanges`. Code: `src/sessions/draftOnlyCandidate.ts`.
+Go and the managed tick (same rule) hand the worktree and branch out ONCE when its only dirt is `??` `.arcadia/asks/agent-ask-*.yaml` drafts, no Session row or `.arcadia-go-request`/`.arcadia-preserve-request` shows a session ran, HEAD equals the current local base tip, the claim is its own and the host probe (`/proc`, else `lsof`; `src/sessions/worktreeLiveness.ts`) finds no process with its cwd inside. `data.draftRecovery` is the receipt in `candidate_draft_recoveries`: hashes and origin only; the drafts stay on disk. `resumed_at`/`resumed_route` mark the handout, voided if the launch fails before a Session row exists.
+Anything else draft-only refuses with `details.disposition` (receipt id, `handedOut`, drafts, next step); a probe that cannot tell refuses too. Base check is against local base: once main moves the candidate must be re-prepared. Other dirt keeps "already holds uncommitted changes" + `details.candidateKind`. Do not widen `uncommittedChanges`. Code: `src/sessions/draftOnlyCandidate.ts`.
 
 ## Where is the live workspace and its database?
 

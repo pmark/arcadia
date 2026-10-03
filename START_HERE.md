@@ -1198,16 +1198,22 @@ because those are about the repository rather than about which Action is free.
 
 One unpreserved candidate is handed out instead, exactly once: a worktree `go`
 prepared for this Action that was never launched (no Session row, no session
-request file, its HEAD still the current base tip, the live claim its own)
-and whose only uncommitted files are Agent Ask drafts in `.arcadia/asks/`. `go`
-records each draft's exact sha256 and origin in a receipt and hands back the
-*same* worktree and branch; it never settles, copies, moves, or deletes a
-draft, including one naming another Project. The managed tick follows the same
-rule, and a candidate either path has handed out is never handed out again by
-either. Every later attempt, a moved base, or a draft changed since its
-receipt refuses with one `disposition`: the receipt id, who it was handed out
-to and when, each draft's path and sha256, and the single safe next step. Any
-other dirt still gets the original refusal, now with `candidateKind`.
+request file, its HEAD still the current local base tip, the live claim its
+own) and whose only uncommitted files are Agent Ask drafts in `.arcadia/asks/`.
+Because a manual handoff leaves no record of whether its terminal is still
+open, `go` also checks the host process table and refuses while any process
+has its current directory inside that worktree, or when it cannot tell. `go`
+records each draft's sha256 and origin in a receipt (hashes only; the drafts
+stay on disk in that worktree) and hands back the *same* worktree and branch;
+it never settles, copies, moves, or deletes a draft, including one naming
+another Project. The managed tick follows the same rule, and a candidate
+either path has handed out is never handed out again by either, unless that
+launch failed before any Session existed. Every later attempt, a moved base, a
+live process, or a draft changed since its receipt refuses with one
+`disposition`: the receipt id, who it was handed out to and when, each draft's
+path and sha256, and the single safe next step, which retires the worktree only
+after every draft is settled or copied out. Any other dirt still gets the
+original refusal, now with `candidateKind`.
 
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
 launcher or an `arcadia go` prefix. Install the protected broker from a clean,

@@ -69,6 +69,7 @@ import {
   commitDraftHandout,
   evaluateDraftOnlyCandidate,
   recordDraftRecoveryReceipt,
+  voidDraftHandoutIfUnlaunched,
   type DraftRecoveryReceipt
 } from "../sessions/draftOnlyCandidate.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
@@ -847,7 +848,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }
       const pendingReceipt = dispositionReceipt.receipt;
       if (pendingReceipt) {
-        withDatabase(workspacePath, (db) => writeTransaction(db, () => recordDraftRecoveryReceipt(db, pendingReceipt, now)));
+        // Best effort: a failed receipt write (a busy database) must never
+        // replace the refusal it accompanies. The drafts stay on disk either way.
+        try {
+          withDatabase(workspacePath, (db) => writeTransaction(db, () => recordDraftRecoveryReceipt(db, pendingReceipt, now)));
+        } catch {
+          // The original refusal below still names every draft and its hash.
+        }
       }
       throw error;
     } finally {
@@ -861,10 +868,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       // Assigned inside the claim transaction's callback, which TypeScript's
       // narrowing cannot see, so widen it back to its declared type.
       const resumedDrafts = draftRecovery as DraftRecoveryReceipt | null;
-      // A receipted draft-only candidate is verified once more at launch time:
-      // anything that changed since the receipt refuses instead of launching.
-      if (resumedDrafts) assertDraftRecoveryUnchanged(resumedDrafts);
       try {
+        // A receipted draft-only candidate is verified once more at launch time:
+        // anything that changed since the receipt refuses instead of launching.
+        if (resumedDrafts) assertDraftRecoveryUnchanged(resumedDrafts);
         const prepared = withDatabase(workspacePath, (db) => prepareSession({
           db,
           workspace: workspacePath,
@@ -895,6 +902,16 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             actionId: claim.actionId,
             generation: claim.generation!
           })));
+        }
+        // The one-shot handout committed with the claim; a launch that failed
+        // before any Session row described the candidate voids it, or every
+        // later attempt would refuse over a session that never ran.
+        if (resumedDrafts) {
+          try {
+            withDatabase(workspacePath, (db) => writeTransaction(db, () => voidDraftHandoutIfUnlaunched(db, resumedDrafts)));
+          } catch {
+            // Left marked: later attempts refuse with the structured disposition.
+          }
         }
         throw error;
       }

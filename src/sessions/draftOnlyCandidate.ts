@@ -8,6 +8,7 @@ import { countCommits, git, parseWorktrees, tryGit, uncommittedChanges } from ".
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
 import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
 import { canonicalPath, getActiveActionClaim } from "./index.js";
+import { probeWorktreeLiveness } from "./worktreeLiveness.js";
 
 /**
  * Issue #884: a candidate `arcadia go` prepared but nobody ever launched, whose
@@ -82,7 +83,7 @@ export type DraftCandidateDecision =
 
 export const ORPHAN_CANDIDATE_REASON = "A prepared worktree for this Action already holds uncommitted changes; Arcadia go will not prepare a second one.";
 export const ORPHAN_CANDIDATE_REMEDY = "This worktree was never launched through Arcadia, so its exit cannot be proven terminal. Preserve it (commit and push its work, or resume it by hand) or discard it (remove the worktree and branch) before retrying.";
-export const UNSAFE_DRAFT_CANDIDATE_REASON = "A prepared worktree for this Action holds only Agent Ask drafts, but Arcadia cannot prove it is safe to resume; every draft is receipted in place and untouched.";
+export const UNSAFE_DRAFT_CANDIDATE_REASON = "A prepared worktree for this Action holds only Agent Ask drafts, but Arcadia cannot prove it is safe to resume; every draft is left untouched on disk and its hash receipted.";
 
 /**
  * Classify a candidate's uncommitted state from Git's NUL-delimited status --
@@ -291,6 +292,20 @@ export function commitDraftHandout(db: Database.Database, receipt: DraftRecovery
   }
 }
 
+/**
+ * Compensate a handout whose launch failed before any Session row came to
+ * describe the candidate: without this the marker would refuse every later
+ * attempt over a session that never ran, re-stranding the Action. A Session
+ * row, once present, keeps the marker; the candidate is then launched. Returns
+ * whether the marker was cleared.
+ */
+export function voidDraftHandoutIfUnlaunched(db: Database.Database, receipt: DraftRecoveryReceipt): boolean {
+  ensureDraftRecoveryTable(db);
+  if (launchedSessionId(db, receipt)) return false;
+  return db.prepare("UPDATE candidate_draft_recoveries SET resumed_at = NULL, resumed_route = NULL WHERE request_id = ? AND resumed_at IS NOT NULL")
+    .run(receipt.requestId).changes === 1;
+}
+
 interface Handout {
   receiptId: string;
   route: HandoutRoute;
@@ -391,12 +406,13 @@ function buildReceipt(input: CandidateLookup, candidate: { path: string; branch:
  * Resume only when the candidate holds nothing but drafts and every piece of
  * "never launched" evidence holds: no Session row of any status names its path
  * or branch, no session transport file is present, no receipt of it was ever
- * handed out, its HEAD is its branch tip and equals the current base tip, and
- * the live claim on this Action is this exact worktree and branch. A human
- * terminal still open in the worktree cannot be detected, which is why a
- * candidate is handed out at most once, why the hashes are re-verified
- * immediately before resuming (and again before any launch), and why every
- * unsafe case returns one structured disposition instead.
+ * handed out, its HEAD is its branch tip and equals the current base tip, the
+ * live claim on this Action is this exact worktree and branch, and the host
+ * process table shows nothing running inside it. A database row cannot say
+ * whether a manual handoff's terminal is still open, which is why the process
+ * probe fails closed, why a candidate is handed out at most once, why the
+ * hashes are re-verified immediately before resuming (and again before any
+ * launch), and why every unsafe case returns one structured disposition.
  */
 export function evaluateDraftOnlyCandidate(db: Database.Database, input: CandidateLookup & {
   /** Deterministic fault injection between evaluation and final hash verification. */
@@ -427,10 +443,37 @@ export function evaluateDraftOnlyCandidate(db: Database.Database, input: Candida
   const blocker = neverLaunchedBlocker(db, input, receipt);
   if (blocker) return unsafeRefusal(receipt, blocker);
 
+  // No row can say whether whoever a manual handoff gave this worktree to is
+  // still working in it -- and Go records a manual preservation binding for
+  // every worktree it hands out by hand, so a binding is affirmative evidence
+  // of exactly that. The host process table is the one observable answer, so
+  // it is a hard precondition for every resume, and a probe that cannot tell
+  // refuses rather than guessing.
+  const manual = hasManualBinding(db, receipt.worktree) ? " It was handed out manually when Go prepared it." : "";
+  const liveness = probeWorktreeLiveness(receipt.worktree);
+  if (!liveness.ok) return unsafeRefusal(receipt, `Could not verify that no session is running in this worktree: ${liveness.error}${manual}`);
+  if (liveness.processes.length > 0) {
+    const running = liveness.processes.map((entry) => `pid ${entry.pid}${entry.command ? ` (${entry.command})` : ""}`).join(", ");
+    return unsafeRefusal(receipt, `That session still appears to be running here: ${running} has its current directory inside this worktree.${manual}`);
+  }
+
   input.beforeResumeVerification?.();
   const mismatch = draftRecoveryMismatch(receipt);
   if (mismatch) return unsafeRefusal(receipt, mismatch);
   return { kind: "resume", path: candidate.path, branch: candidate.branch, receipt };
+}
+
+function hasManualBinding(db: Database.Database, worktree: string): boolean {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'manual_preservation_bindings'").get()) return false;
+  const rows = db.prepare("SELECT binding_json FROM manual_preservation_bindings").all() as Array<{ binding_json: string }>;
+  return rows.some((row) => {
+    try {
+      const binding = JSON.parse(row.binding_json) as { worktree?: unknown };
+      return typeof binding.worktree === "string" && canonicalPath(binding.worktree) === worktree;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function launchedSessionId(db: Database.Database, receipt: DraftRecoveryReceipt): string | null {
@@ -459,7 +502,7 @@ function neverLaunchedBlocker(db: Database.Database, input: CandidateLookup, rec
   }
   if (head !== receipt.baseSha) return "The candidate's HEAD is not its branch tip.";
   if (head !== base) {
-    return `The base branch ${input.baseBranch} moved to ${base} since this candidate was prepared at ${head}; it must be re-prepared from the current base (its drafts are preserved by this receipt).`;
+    return `The base branch ${input.baseBranch} moved to ${base} since this candidate was prepared at ${head}; it must be re-prepared from the current base. Its drafts remain on disk in this worktree; the receipt records their hashes.`;
   }
   const claim = getActiveActionClaim(db, input.repositoryPath, input.projectSlug, input.actionId, input.now);
   if (!claim) return "No live claim on this Action names the candidate.";
@@ -486,7 +529,7 @@ function unsafeRefusal(receipt: DraftRecoveryReceipt, blocker: string, handout: 
         blocker,
         handedOut: handout,
         drafts: receipt.drafts.map((draft) => ({ path: draft.path, sha256: draft.sha256 })),
-        nextStep: `${confirm}; then settle each receipted draft from there with arcadia agent-ask settle (or keep its exact bytes elsewhere) and retire the candidate (remove its worktree and branch) before rerunning arcadia go. Arcadia has not settled, copied, moved or deleted any draft.`
+        nextStep: `${confirm}; then settle each receipted draft from there with arcadia agent-ask settle, or copy its exact bytes out (the receipt records only their hashes; the drafts exist only on disk in this worktree). Only once every draft is settled or copied out, retire the candidate (remove its worktree and branch) and rerun arcadia go. Arcadia has not settled, copied, moved or deleted any draft.`
       },
       remedy: ORPHAN_CANDIDATE_REMEDY
     },

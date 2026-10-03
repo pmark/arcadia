@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
@@ -33,6 +33,7 @@ import { getRepositoryLease, prepareSession, reserveAgentWorktree, sessionView, 
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -1293,6 +1294,15 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
 });
 
 describe("a draft-only never-launched candidate: the managed tick agrees with arcadia go (Issue #884)", () => {
+  // The host process probe is replaced so these tests never depend on lsof or
+  // /proc; tests/worktree-liveness.test.ts exercises the real probe.
+  let liveness: WorktreeLiveness = { ok: true, processes: [] };
+  beforeEach(() => {
+    liveness = { ok: true, processes: [] };
+    setWorktreeLivenessProbeForTests(() => liveness);
+  });
+  afterEach(() => setWorktreeLivenessProbeForTests(null));
+
   function neverLaunchedCandidate(fixture: ReturnType<typeof preparedFixture>): { candidate: string; branch: string; draft: Buffer; draftPath: string } {
     const branch = "claude/define-contract-20260830T113456000Z";
     const candidate = path.join(realpathSync(fixture.root), "never-launched", "repo");
@@ -1389,6 +1399,64 @@ describe("a draft-only never-launched candidate: the managed tick agrees with ar
     expect(worktreeCount(fixture)).toBe(2);
     expect(claimRows(fixture)).toBe(1);
     expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+
+  it("refuses in both paths, handing nothing out and launching nothing, while a manual session still runs in the candidate", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    // Indistinguishable in the database from a fresh manual `go` handout whose
+    // agent has just drafted an Ask: only the host process table tells.
+    const { candidate, draft, draftPath } = neverLaunchedCandidate(fixture);
+    liveness = { ok: true, processes: [{ pid: 31337, command: "claude", cwd: path.join(candidate, "src") }] };
+
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-live"));
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+
+    for (const error of [launchError, goError]) {
+      expect(error.message).toContain("holds only Agent Ask drafts");
+      expect((error.details?.disposition as { blocker: string }).blocker).toContain("That session still appears to be running here: pid 31337 (claude)");
+    }
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(handoutRoutes(fixture)).toEqual([]);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+
+  it("refuses the tick launch when the liveness probe cannot tell", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    neverLaunchedCandidate(fixture);
+    liveness = { ok: false, error: "/proc could not be listed: EACCES" };
+
+    const error = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-unknown"));
+
+    expect((error.details?.disposition as { blocker: string }).blocker).toContain("Could not verify that no session is running in this worktree");
+    expect(tmux.launches).toHaveLength(0);
+    expect(handoutRoutes(fixture)).toEqual([]);
+  });
+
+  it("voids the handout when the launch fails before any Session row exists, so the next tick can hand it out", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate } = neverLaunchedCandidate(fixture);
+
+    const failed = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-fail", undefined, {
+      beforeSessionInsert: () => { throw validationError("synthetic Session insert failure"); }
+    }));
+    expect(failed.message).toContain("synthetic Session insert failure");
+    expect(handoutRoutes(fixture)).toEqual([]);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+
+    const retried = doStandingLaunch(fixture, tmux, "policy-req-retry");
+    expect(retried.session.worktree_path).toBe(candidate);
+    expect(tmux.launches).toHaveLength(1);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    expect(worktreeCount(fixture)).toBe(2);
   });
 
   it("refuses a code-bearing candidate with the same reason and candidateKind in both paths, creating nothing", () => {

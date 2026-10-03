@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
@@ -11,6 +11,7 @@ import { runTidyCommand } from "../src/commands/tidy.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
 import { runGoBroker } from "../src/goBroker.js";
+import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -636,6 +637,14 @@ describe("arcadia go — refuses to orphan an uncommitted candidate", () => {
 describe("arcadia go — resumes a draft-only never-launched candidate in place (Issue #884)", () => {
   const preparedAt = new Date("2026-09-06T12:00:00.000Z");
   const resumedAt = new Date("2026-09-06T13:00:00.000Z");
+  // The host process probe is replaced so these tests never depend on lsof or
+  // /proc; tests/worktree-liveness.test.ts exercises the real probe.
+  let liveness: WorktreeLiveness = { ok: true, processes: [] };
+  beforeEach(() => {
+    liveness = { ok: true, processes: [] };
+    setWorktreeLivenessProbeForTests(() => liveness);
+  });
+  afterEach(() => setWorktreeLivenessProbeForTests(null));
 
   function prepareCandidate(name: string): { fixture: ReturnType<typeof createFixture>; path: string; branch: string } {
     const fixture = createFixture(`claude/${name}`, planDocument);
@@ -805,7 +814,7 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
     expect(error.details?.candidateKind).toBe("draft_only");
     expect(error.details?.branch).toBe(branch);
     expect(disposition.drafts).toEqual([{ path: ".arcadia/asks/agent-ask-changing-2026-09-06.yaml", sha256: sha256(original) }]);
-    expect(disposition.nextStep).toContain("before rerunning arcadia go");
+    expect(disposition.nextStep).toContain("Only once every draft is settled or copied out, retire the candidate");
     // The receipt is committed after the refusal rolled back; the edit is left as found.
     expect(handouts(fixture)).toEqual([]);
     expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
@@ -889,6 +898,38 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
     expect(worktreeCount(fixture)).toBe(2);
   });
 
+  it("refuses with the disposition, handing nothing out, while a process still has its cwd inside the candidate", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-live-process");
+    const draft = writeDraft(candidate, "live-2026-09-06", "test-project");
+    liveness = { ok: true, processes: [{ pid: 4242, command: "claude", cwd: candidate }] };
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.blocker).toContain("That session still appears to be running here: pid 4242 (claude)");
+    expect(disposition.nextStep).toContain("Only once every draft is settled or copied out");
+    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
+    expect(handouts(fixture)).toEqual([]);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-live-2026-09-06.yaml")).equals(draft)).toBe(true);
+
+    // Once that process is gone, the same candidate is handed out as before.
+    liveness = { ok: true, processes: [] };
+    expect(goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }).data.nextWorktree?.path).toBe(candidate);
+    expect(handouts(fixture)).toHaveLength(1);
+  });
+
+  it("fails closed with the disposition when the liveness probe cannot tell", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-probe-failed");
+    writeDraft(candidate, "probe-2026-09-06", "test-project");
+    liveness = { ok: false, error: "lsof could not run: spawn lsof ENOENT" };
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    expect((error.details?.disposition as Disposition).blocker).toContain("Could not verify that no session is running in this worktree: lsof could not run");
+    expect(handouts(fixture)).toEqual([]);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
   it("refuses with the disposition when the base moved since the candidate was prepared", () => {
     const { fixture, path: candidate } = prepareCandidate("draft-stale-base");
     const draft = writeDraft(candidate, "stale-2026-09-06", "test-project");
@@ -898,7 +939,7 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
     const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
 
     const disposition = error.details?.disposition as Disposition;
-    expect(disposition.blocker).toContain("must be re-prepared");
+    expect(disposition.blocker).toContain("must be re-prepared from the current base. Its drafts remain on disk in this worktree");
     expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
     expect(handouts(fixture)).toEqual([]);
     expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-stale-2026-09-06.yaml")).equals(draft)).toBe(true);
