@@ -4,7 +4,7 @@ type: decision
 id: "0080"
 slug: decide-whether-the-standing-merge-exception-decision-0060-is-conditioned-on-an
 project: arcadia
-status: open
+status: approved
 question: Decide whether the standing merge exception (Decision 0060) is conditioned on an independent agent review plus green required checks instead of CodeRabbit approval.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-03
+answer: Independent review gate replaces CodeRabbit approval
+decided: 2026-10-03
 ---
 
 # Decision 0080: Decide whether the standing merge exception (Decision 0060) is conditioned on an independent agent review plus green required checks instead of CodeRabbit approval.
