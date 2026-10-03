@@ -1447,3 +1447,10 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/reset-managed-preservation-timeout-history-on-success
+
+- **Did:** Completed Action arcadia/reset-managed-preservation-timeout-history-on-success from accepted evidence (Candidate 8490600f4cc9fc236283c9c3bf3368ecece5c133).
+- **Result:** Every declared acceptance criterion was accepted as met: "A regression test reproduces, before the fix, that a managed tick timeout followed by a successful preservation leaves timeout:<session.id> uncleared."; "After the fix, timeout then successful managed preservation then timeout counts the second timeout as the first consecutive one, while ten identical consecutive timeouts still stop automatic retries."; "The managed tick and the CLI use one shared budget; index_locked is counted separately from timeouts, bounded retry behavior is unchanged and the stop condition is not weakened."; "A malformed or live preservation lock yields a typed bounded error with preserved diagnostics instead of an unhandled exception."; "The actual managed handoff is exercised in a temporary repository and its structured receipts are retained; the original candidate commits and index remain recoverable."; "Merge and install are not claimed; the exact reviewed install step and host-path verification are named as the next gate.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-reset-managed-preservation-timeout-history-896-2026-10-03-v2).

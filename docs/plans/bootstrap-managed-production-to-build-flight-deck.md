@@ -2983,7 +2983,7 @@ actions:
     references: []
   - id: reset-managed-preservation-timeout-history-on-success
     title: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
@@ -3005,7 +3005,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: recover-draft-only-never-launched-candidates
+current_action: make-pr-review-verdict-truthful-for-current-head
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
