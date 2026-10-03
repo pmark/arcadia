@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr895","project":"arcadia","intent":"log","desired_result":"Preservation stops staging your files and names its git timeouts: PR #895 keeps the candidate index untouched until the commit lands and types every git/gh timeout as retryable. https://github.com/pmark/arcadia/pull/895"}
