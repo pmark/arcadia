@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-02
+updated: 2026-10-03
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -2837,7 +2837,7 @@ actions:
     references: ["src/goBroker.ts", "src/sessions/goRequestExecutor.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/sessions/actionBrief.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", ".arcadia/asks/archive/agent-ask-enroll-any-session-and-preserve-production-config-2026-10-02-v2.yaml", ".arcadia/asks/agent-ask-minimal-autonomous-managed-production-critical-path-2026-10-02.yaml", "src/production/tick.ts", "src/sessions/reconciliation.ts", "src/qa/prReview.ts", "src/sessions/candidatePreservation.ts", "src/production/sessionHandoff.ts", "docs/reports/three-action-managed-production-scope-design-2026-10-02.md"]
   - id: persist-inactive-production-configuration
     title: Persist exact inactive production configuration separately from revoked authority so /runs can preview a safe fresh activation after Off.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Persist exact inactive production configuration separately from revoked authority so /runs can preview a safe fresh activation after Off.
@@ -2879,7 +2879,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: persist-inactive-production-configuration
+current_action: enroll-session-through-governed-host-request
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
