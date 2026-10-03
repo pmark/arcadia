@@ -8,8 +8,10 @@ import { LINE_A, LINE_B, LINE_C, Rehearsal } from "./helpers/rehearsalHarness.js
  * tick, real Git, real settlement and integration, with only tmux, the agent's
  * edits and provider capacity/sign-in simulated (see the harness). It proves
  * serial dependency selection across three Actions, that Off between two
- * Actions fences the next launch, and that ticking after re-activation and a
- * worker restart launches the next Action exactly once.
+ * Actions fences the next launch, and that after re-activation the following
+ * ticks launch the next Action exactly once. Later ticks open fresh
+ * database connections and registries but share this process, so they are
+ * not a full worker-process restart.
  */
 const rehearsals: Rehearsal[] = [];
 afterEach(() => {
@@ -30,8 +32,8 @@ test("marker lines are in order", () => {
 });
 `;
 
-describe("three-Action rehearsal: serial selection, between-Action Off, restart", () => {
-  it("launches only the next dependency-ready Action, fences Off between B and C, and launches C exactly once after On and restart", () => {
+describe("three-Action rehearsal: serial selection, between-Action Off, later ticks", () => {
+  it("launches only the next dependency-ready Action, fences Off between B and C, and launches C exactly once after On across later ticks", () => {
     const rehearsal = new Rehearsal({ thirdAction: true });
     rehearsals.push(rehearsal);
     rehearsal.createFixtureRepository();
@@ -79,9 +81,9 @@ describe("three-Action rehearsal: serial selection, between-Action Off, restart"
     expect(c.action_id).toBe("write-marker-c");
     expect(readFileSync(path.join(c.worktree_path, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n`);
 
-    // Worker restart: later ticks load everything fresh and never duplicate C.
-    const restarted = [rehearsal.tick(), rehearsal.tick()];
-    expect(restarted.every((r) => r.launch?.outcome !== "launched")).toBe(true);
+    // Later ticks (fresh connections and registries, same process) never duplicate C.
+    const later = [rehearsal.tick(), rehearsal.tick()];
+    expect(later.every((r) => r.launch?.outcome !== "launched")).toBe(true);
     expect(rehearsal.lease()?.id).toBe(c.id);
     expect(rehearsal.sessions().filter((s) => s.action_id === "write-marker-c")).toHaveLength(1);
 

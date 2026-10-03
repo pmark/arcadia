@@ -1,3 +1,4 @@
+import { recordEnrollmentClaim } from "../sessions/enrollment.js";
 import { assertLocalBrowserAuditReady, localBrowserAuditBlocker } from "../sessions/localBrowserAuditReadiness.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -102,6 +103,13 @@ export interface GoCommandOptions {
   launch?: boolean;
   /** Host enrollment must never walk away from the exact requested Action. */
   strictAction?: boolean;
+  /**
+   * Host enrollment only; the CLI never exposes it. The pointer must still name
+   * `actionId` (otherwise refuse before any Git or claim write), an existing
+   * candidate is never resumed for the caller, and the new claim's identity is
+   * recorded on the pending enrollment row inside the claim's own transaction.
+   */
+  enrollment?: { requestId: string; actionId: string };
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -503,6 +511,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     if (!actionId) {
       throw validationError("Arcadia go cannot name the next agent worktree without a resolved Action.");
     }
+    if (options.enrollment && actionId !== options.enrollment.actionId) {
+      throw validationError("The governed pointer moved before enrollment could prepare its Action; nothing was claimed.", {
+        code: "enrollment_governance_changed", expected: options.enrollment.actionId, actual: actionId
+      });
+    }
 
     // A session that produced no commits over the base (`commitsToIntegrate`
     // is proven current above) yet still ends on the exact same Action it
@@ -741,6 +754,13 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             break;
           }
 
+          if (candidate.kind === "resume" && options.enrollment) {
+            // Enrollment hands out only a candidate this request creates; an
+            // existing candidate belongs to its prior owner.
+            throw validationError("This Action already has a candidate; enrollment does not hand it to another caller.", {
+              code: "action_claimed", actionId: attemptActionId, worktree: candidate.path ?? null
+            });
+          }
           if (candidate.kind === "resume") {
             // Per Decision 0051: the same governed Action still owns this
             // candidate and its prior Session is proven terminal (reconciled,
@@ -798,14 +818,16 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               model,
               effort,
               beforeCreate(prepared) {
-                claim.generation = reserveAgentWorktree(db, {
+                const reservation = reserveAgentWorktree(db, {
                   repositoryPath: controlWorktree,
                   worktreePath: prepared.path,
                   branch: prepared.branch,
                   now,
                   project: projectSlug,
                   actionId: attemptActionId
-                }).claim_generation;
+                });
+                claim.generation = reservation.claim_generation;
+                if (options.enrollment) recordEnrollmentClaim(db, options.enrollment.requestId, reservation);
               }
             });
             claim.actionId = attemptActionId;

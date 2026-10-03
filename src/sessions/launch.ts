@@ -12,7 +12,7 @@ import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
+import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
   canonicalPath,
   failPreparedSession,
@@ -68,6 +68,15 @@ export interface GuardedLaunchInput {
    * prepared against the earlier grant.
    */
   expectedPolicyEpoch?: number;
+  /**
+   * Host enrollment only. The reuse branch below may hand back only a lease
+   * this exact request created (its `admission_request_id` is
+   * `${requestId}:admission`); any other prepared or running lease -- another
+   * enrollment's, the tick's, an operator's -- refuses with `action_claimed`
+   * before any admission. A reused own lease must also carry the current
+   * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
+   */
+  reuseOwnLeaseOnly?: boolean;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
@@ -158,6 +167,22 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // it is not creating anything, only handing back what this exact request
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
+  if (existingLease && input.reuseOwnLeaseOnly) {
+    const ownAdmission = `${input.requestId}:admission`;
+    if (existingLease.admission_request_id !== ownAdmission) {
+      throw validationError("The repository already has a prepared or running Session this request did not create; it is never re-issued.", {
+        code: existingLease.action_id === preview.actionId ? "action_claimed" : "repository_leased",
+        sessionId: existingLease.id,
+        conflict: true
+      });
+    }
+    const admission = listAdmissions(input.db).find((row) => row.requestId === ownAdmission) ?? null;
+    if (input.expectedPolicyEpoch !== undefined && admission?.epoch !== input.expectedPolicyEpoch) {
+      throw validationError("This request's own Session was admitted under an earlier production epoch; it is not resumed under the current grant.", {
+        code: "stale_epoch", sessionId: existingLease.id, admittedEpoch: admission?.epoch ?? null, currentEpoch: input.expectedPolicyEpoch, conflict: true
+      });
+    }
+  }
   if (existingLease && matchesPreview(existingLease, preview)) {
     return {
       reused: true,

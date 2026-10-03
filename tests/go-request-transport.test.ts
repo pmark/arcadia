@@ -105,6 +105,26 @@ describe("agent go request transport", () => {
     expect(mocks.enrollment).not.toHaveBeenCalled();
   });
 
+  it("never runs a go request while an enrollment on the same source is still running", async () => {
+    let finishEnrollment!: () => void;
+    mocks.enrollment.mockImplementation(() => new Promise(resolve => {
+      finishEnrollment = () => resolve({ ok: true, response: { principal: { kind: "prepared", id: "claim-1", worktree: "/prepared" } } });
+    }));
+    processPreservationRequests(db, workspace);
+    const enrolling = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    expect(mocks.enrollment).toHaveBeenCalledTimes(1);
+    const going = requestAgentGo(source, "codex");
+    processPreservationRequests(db, workspace);
+    expect(mocks.broker).not.toHaveBeenCalled();
+    expect(existsSync(requestFile())).toBe(true);
+    finishEnrollment();
+    await enrolling;
+    processPreservationRequests(db, workspace);
+    await expect(going).resolves.toEqual(result);
+    expect(mocks.broker).toHaveBeenCalledTimes(1);
+  });
+
   it("retains semantic request and caller identity across transport redelivery", async () => {
     processPreservationRequests(db, workspace);
     const first = requestAgentEnrollment(source, "codex");

@@ -26,7 +26,9 @@ import {
   listAdmissions,
   normalizeProductionScope
 } from "../src/production/policy.js";
+import { runGoCommand } from "../src/commands/go.js";
 import { executeHostEnrollment, type HostEnrollmentInput } from "../src/sessions/hostEnrollment.js";
+import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import type { TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -154,9 +156,15 @@ function state(f: Fixture) {
     liveAdmissions: listAdmissions(db).filter((row) => row.status === "issued" || row.status === "committed").length,
     sessions: (db.prepare("SELECT count(*) count FROM agent_sessions WHERE status IN ('prepared', 'running')").get() as { count: number }).count,
     claims: (db.prepare("SELECT count(*) count FROM agent_worktree_reservations WHERE action_id IS NOT NULL").get() as { count: number }).count,
-    enrollments: (db.prepare("SELECT count(*) count FROM session_enrollments").get() as { count: number }).count,
+    // Completed receipts; failed rows are durable identity records, counted by `failedRows`.
+    enrollments: (db.prepare("SELECT count(*) count FROM session_enrollments WHERE status = 'completed'").get() as { count: number }).count,
     pending: (db.prepare("SELECT count(*) count FROM session_enrollments WHERE status = 'pending'").get() as { count: number }).count
   }));
+}
+
+function failedRows(f: Fixture): number {
+  return withReadOnlyDatabase(f.workspace, (db) =>
+    (db.prepare("SELECT count(*) count FROM session_enrollments WHERE status = 'failed'").get() as { count: number }).count);
 }
 
 function worktrees(f: Fixture): number {
@@ -200,6 +208,69 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, enrollments: 1 });
   });
 
+  it("never gives a second caller the first caller's running Session (review probe)", () => {
+    const f = fixture();
+    activate(f);
+    const first = enroll(f);
+    const error = refusal(() => enroll(f, { requestId: "enroll:claude:runtime-0002", callerId: "claude:runtime-0002" }));
+    expect(error.details.code).toBe("action_claimed");
+    expect(f.tmux.launches).toHaveLength(1);
+    expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, claims: 1, enrollments: 1, pending: 0 });
+    expect(failedRows(f)).toBe(0);
+    // The first caller's own replay still returns its receipt.
+    expect(enroll(f)).toEqual(first);
+  });
+
+  it("refuses enrollment of an Action whose Session the production tick launched", () => {
+    const f = fixture();
+    activate(f);
+    withDatabase(f.workspace, (db) => launchGuardedHostSession({
+      db, workspace: f.workspace, repoRoot: f.repo, projectSlug: "test-project", requestId: "worker-tick-test-project-define-contract-1",
+      standingPolicy: true, profiles, adapters, tmux: f.tmux, capacityObservation: capacity(),
+      agentWorktreeRoot: path.join(f.root, "tick"), providerSignIn: () => ({ signedIn: true, remedy: "" }), now: NOW
+    }));
+    for (const mode of ["managed-launch", "prepare"] as const) {
+      expect(refusal(() => enroll(f, { mode, requestId: `enroll:claude:runtime-${mode}` })).details.code).toBe("action_claimed");
+    }
+    expect(f.tmux.launches).toHaveLength(1);
+    expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, claims: 1, enrollments: 0, pending: 0 });
+  });
+
+  it("guarded launch with reuseOwnLeaseOnly refuses a lease it did not create before any admission", () => {
+    const f = fixture();
+    activate(f);
+    const launch = (requestId: string, reuseOwnLeaseOnly: boolean) => withDatabase(f.workspace, (db) => launchGuardedHostSession({
+      db, workspace: f.workspace, repoRoot: f.repo, projectSlug: "test-project", requestId, standingPolicy: true, reuseOwnLeaseOnly,
+      profiles, adapters, tmux: f.tmux, capacityObservation: capacity(), agentWorktreeRoot: path.join(f.root, requestId),
+      providerSignIn: () => ({ signedIn: true, remedy: "" }), now: NOW
+    }));
+    const owner = launch("owner-request-0001", false);
+    const error = refusal(() => launch("enroll:claude:intruder-01", true));
+    expect(error.details).toMatchObject({ code: "action_claimed", sessionId: owner.session.id });
+    // Non-enrollment callers keep the unchanged reuse semantics.
+    expect(launch("other-caller-0001", false)).toMatchObject({ reused: true, session: { id: owner.session.id } });
+    expect(f.tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.requestId)).toEqual(["owner-request-0001:admission"]);
+  });
+
+  it("guarded launch with reuseOwnLeaseOnly never resumes its own lease under a later production epoch", () => {
+    const f = fixture();
+    const first = activate(f);
+    const launch = (expectedPolicyEpoch: number) => withDatabase(f.workspace, (db) => launchGuardedHostSession({
+      db, workspace: f.workspace, repoRoot: f.repo, projectSlug: "test-project", requestId: "enroll:claude:runtime-0001",
+      standingPolicy: true, reuseOwnLeaseOnly: true, expectedPolicyEpoch, profiles, adapters, tmux: f.tmux,
+      capacityObservation: capacity(), agentWorktreeRoot: path.join(f.root, "own"),
+      providerSignIn: () => ({ signedIn: true, remedy: "" }), now: NOW
+    }));
+    const epoch = first.policy.epoch;
+    const owned = launch(epoch);
+    expect(launch(epoch)).toMatchObject({ reused: true, session: { id: owned.session.id } });
+    withDatabase(f.workspace, (db) => deactivateProduction(db, { requestId: "off-before-replay" }));
+    const later = activate(f, "policy-grant-2");
+    expect(refusal(() => launch(later.policy.epoch)).details.code).toBe("stale_epoch");
+    expect(f.tmux.launches).toHaveLength(1);
+  });
+
   it("refuses Off before writing an enrollment, admission, claim or candidate", () => {
     const f = fixture();
     const before = worktrees(f);
@@ -225,6 +296,7 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
   it("fences a policy epoch that changes between host resolution and admission (Off then On)", () => {
     const f = fixture();
     activate(f);
+    const before = worktrees(f);
     const error = refusal(() => enroll(f, {
       // Called by launchGuardedHostSession after preview, before issueAdmission.
       providerSignIn: () => {
@@ -234,7 +306,8 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
       }
     }));
     expect(error.details.code).toBe("stale_epoch");
-    expect(state(f)).toMatchObject({ liveAdmissions: 0, sessions: 0, enrollments: 0, pending: 0 });
+    expect(state(f)).toEqual({ liveAdmissions: 0, sessions: 0, claims: 0, enrollments: 0, pending: 0 });
+    expect(worktrees(f)).toBe(before);
     expect(f.tmux.launches).toHaveLength(0);
     // The exact request remains replayable under the fresh epoch and launches once.
     expect(enroll(f).principal.kind).toBe("managed-session");
@@ -323,6 +396,70 @@ describe("host enrollment: preparation through strict arcadia go", () => {
     expect(error.details.code).toBe("action_claimed");
     expect(worktrees(f)).toBe(before);
     expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, pending: 0 });
+  });
+
+  it("never adopts another caller's claim made after this request's pending row (positive evidence only)", () => {
+    const f = fixture();
+    // The helper's own go attempt dies before claiming; meanwhile a plain
+    // `arcadia go` (another owner) claims the Action. The fixed 2026-08-30
+    // pending clock predates that claim, so a timestamp rule would adopt it.
+    const foreign = () => runGoCommand({
+      repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace, agentWorktreeRoot: path.join(f.root, "manual")
+    });
+    expect(() => enroll(f, { mode: "prepare", runGo: (options) => {
+      if (options.apply) { foreign(); throw new Error("helper go child killed"); }
+      return runGoCommand(options);
+    } })).toThrow("helper go child killed");
+    expect(failedRows(f)).toBe(1);
+    const before = worktrees(f);
+    // Replay of the failed row: no own marker, so the foreign claim refuses.
+    expect(refusal(() => enroll(f, { mode: "prepare" })).details.code).toBe("action_claimed");
+    // The same with the row still pending (writer presumed dead after its lease).
+    withDatabase(f.workspace, (db) => db.prepare("UPDATE session_enrollments SET status = 'pending', lease_expires_at = ?").run(new Date(NOW.getTime() + 60_000).toISOString()));
+    expect(refusal(() => enroll(f, { mode: "prepare" })).details.code).toBe("enrollment_in_progress");
+    expect(refusal(() => enroll(f, { mode: "prepare", now: () => new Date(NOW.getTime() + 120_000) })).details.code).toBe("action_claimed");
+    expect(state(f)).toMatchObject({ claims: 1, enrollments: 0, pending: 0 });
+    expect(failedRows(f)).toBe(1);
+    expect(worktrees(f)).toBe(before);
+  });
+
+  it("adopts its own claim when go committed it and the adapter then failed", () => {
+    const f = fixture();
+    const receipt = enroll(f, { mode: "prepare", runGo: (options) => {
+      const result = runGoCommand(options);
+      if (options.apply) throw new Error("response lost after the claim committed");
+      return result;
+    } });
+    expect(receipt.principal.kind).toBe("prepared");
+    expect(receipt.claim?.generation).toEqual(expect.any(String));
+    expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, pending: 0 });
+    expect(enroll(f, { mode: "prepare" })).toEqual(receipt);
+  });
+
+  it("lets a takeover complete while the original go still runs; the original converges on the same receipt", () => {
+    const f = fixture();
+    let nested: ReturnType<typeof executeHostEnrollment> | undefined;
+    let first = true;
+    const receipt = enroll(f, { mode: "prepare", pendingLeaseMs: 1_000, runGo: (options) => {
+      if (first && options.apply) {
+        first = false;
+        nested = enroll(f, { mode: "prepare", pendingLeaseMs: 1_000, now: () => new Date(NOW.getTime() + 5_000) });
+      }
+      return runGoCommand(options);
+    } });
+    expect(receipt).toEqual(nested);
+    expect(state(f)).toMatchObject({ claims: 1, enrollments: 1, pending: 0 });
+  });
+
+  it("go refuses an enrollment whose Action the pointer no longer names, before any claim or worktree", () => {
+    const f = fixture();
+    const before = worktrees(f);
+    expect(refusal(() => runGoCommand({
+      repo: f.repo, source: f.repo, apply: true, agent: "claude", workspace: f.workspace, strictAction: true,
+      agentWorktreeRoot: path.join(f.root, "moved"), enrollment: { requestId: "enroll:claude:runtime-0001", actionId: "moved-away" }
+    })).details.code).toBe("enrollment_governance_changed");
+    expect(worktrees(f)).toBe(before);
+    expect(state(f).claims).toBe(0);
   });
 
   it("recovers a preparation whose receipt was lost after the claim was written", () => {

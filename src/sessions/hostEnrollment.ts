@@ -21,12 +21,13 @@ import {
   type EnrollmentClaim,
   type EnrollmentEffect,
   type EnrollmentMode,
+  type EnrollmentPending,
   type EnrollmentReceipt,
   type EnrollmentRequest,
   type GovernedEnrollmentContext,
   type NativeRuntimeAdapter
 } from "./enrollment.js";
-import { canonicalPath, getActiveActionClaim, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
+import { canonicalPath, getActiveActionClaim, getRepositoryLease, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
 import { launchGuardedHostSession } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 
@@ -127,6 +128,10 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
     let preview: LaunchPreview | null = null;
     let capacityObservation: ProviderCapacityObservation | null = null;
     const currentClaim = () => getActiveActionClaim(db, repoRoot, dispatch.projectSlug, dispatch.action.id, now());
+    const ownAdmission = `${requestId}:admission`;
+    /** The claim id `go` recorded on this request's row atomically with the claim, if any. */
+    const recordedClaimId = () => (db.prepare("SELECT effect_claim_id FROM session_enrollments WHERE request_id = ?")
+      .get(requestId) as { effect_claim_id: string | null } | undefined)?.effect_claim_id ?? null;
 
     const resolve = (): GovernedEnrollmentContext => {
       const policy = readProductionPolicySafely(db);
@@ -163,7 +168,20 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
         policyEpoch: policy.status === "ok" ? policy.policy.epoch : 0,
         packetApproved: preview?.packet != null && preview.packetLifecycle?.kind === "build_packet_ready",
         capacityAvailable,
-        existingClaim: claimView(currentClaim())
+        // Only what this request positively owns is excluded: the claim `go`
+        // recorded on its own row, or the lease bound to its own admission
+        // (and that lease's claim). Everything else is another owner's.
+        ...(() => {
+          const lease = getRepositoryLease(db, repoRoot);
+          const ownLease = lease?.admission_request_id === ownAdmission ? lease : null;
+          const claim = currentClaim();
+          const ownClaim = claim && (claim.id === recordedClaimId() ||
+            (ownLease !== null && canonicalPath(claim.worktree_path) === canonicalPath(ownLease.worktree_path)));
+          return {
+            existingClaim: claim && !ownClaim ? claimView(claim) : null,
+            existingSession: lease && !ownLease ? { id: lease.id, worktree: lease.worktree_path, actionId: lease.action_id } : null
+          };
+        })()
       };
     };
 
@@ -175,6 +193,7 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
           ...options,
           workspace,
           strictAction: true,
+          enrollment: { requestId, actionId: dispatch.action.id },
           ...(input.agentWorktreeRoot ? { agentWorktreeRoot: input.agentWorktreeRoot } : {})
         })
       );
@@ -196,6 +215,7 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
         db, workspace, repoRoot, projectSlug: dispatch.projectSlug, requestId,
         standingPolicy: true,
         expectedPolicyEpoch: context.policyEpoch,
+        reuseOwnLeaseOnly: true,
         profiles: registries!.profiles,
         adapters: registries!.adapters!,
         ...(capacityObservation ? { capacityObservation } : {}),
@@ -207,23 +227,27 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
       if (result.session.action_id !== context.actionId) {
         throw validationError("The guarded launch reconciled onto a different Action.", { code: "enrollment_launch_identity_changed" });
       }
-      return sessionEffect(result.session, result.admission ?? findAdmission(db, `${requestId}:admission`));
+      return sessionEffect(result.session, result.admission ?? findAdmission(db, ownAdmission));
     };
 
-    const recover = ({ pending }: { pending: { createdAt: string } }): EnrollmentEffect | null => {
+    /** Positive evidence only: never a claim or Session another caller created. */
+    const recover = ({ pending }: { pending: EnrollmentPending }): EnrollmentEffect | null => {
       if (mode === "prepare") {
-        // Preparation refuses a pre-existing claim, so a live claim for this
-        // exact Action created at or after this request's pending row is the
-        // effect of this request's own dead attempt.
+        // `go` recorded this claim's id and generation on our own pending row
+        // inside the claim's transaction; adopt exactly that live claim.
+        if (!pending.effectClaimId) return null;
         const claim = currentClaim();
-        return claim && Date.parse(claim.created_at) >= Date.parse(pending.createdAt)
+        return claim && claim.id === pending.effectClaimId && claim.claim_generation === pending.effectClaimGeneration
           ? { id: claim.id, worktree: claim.worktree_path, claim: claimView(claim), admission: null }
           : null;
       }
       if (mode === "managed-launch") {
+        // Only a started Session bound to this request's own admission. A
+        // prepared-but-unstarted own lease is resumed by the guarded launcher
+        // (with its epoch check) on the takeover path instead.
         const session = db.prepare(`SELECT * FROM agent_sessions WHERE admission_request_id = ?
-          AND status IN ('prepared', 'running') ORDER BY prepared_at DESC LIMIT 1`).get(`${requestId}:admission`) as AgentSession | undefined;
-        return session ? sessionEffect(session, findAdmission(db, `${requestId}:admission`)) : null;
+          AND status = 'running' ORDER BY prepared_at DESC LIMIT 1`).get(ownAdmission) as AgentSession | undefined;
+        return session ? sessionEffect(session, findAdmission(db, ownAdmission)) : null;
       }
       return null;
     };

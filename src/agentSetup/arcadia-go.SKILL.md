@@ -49,6 +49,8 @@ return the identical receipt (same `enrollmentId`). A preparation receipt has
 `principal.kind: prepared` and a fenced `claim` with `generation`; a managed
 one has `principal.kind: managed-session` and a `committed` `admission`. The
 receipt's `principal.worktree` is the only candidate the helper may enter.
+Enrollment only hands out a candidate or Session this request created; another
+owner's claim or Session is refused with `action_claimed`, never re-issued.
 Report any refusal code (`action_claimed`, `production_off`, `stale_epoch`,
 `capacity_unavailable`, `packet_approval_required`, `enrollment_in_progress`)
 as the gate; do not retry around it. Enrollment grants no completion or

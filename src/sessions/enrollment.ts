@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
+import { normalizeError, validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import type { GoBrokerAgent } from "../goBroker.js";
 import { ENROLLMENT_REQUEST_MODES, ENROLLMENT_RESPONSE_TIMEOUT_MS, type EnrollmentRequestMode } from "./enrollmentRequestProtocol.js";
@@ -13,8 +13,9 @@ export type SessionAttemptRole = typeof SESSION_ATTEMPT_ROLES[number];
 /**
  * How long a pending enrollment row fences its Action before an exact replay
  * may take it over. It equals the transport's response budget: the host child
- * is killed at its execution timeout, so a row older than this has no live
- * writer and its effect (if any) is observable to `recover`.
+ * is killed at its execution timeout. A takeover is safe even if the first
+ * writer outlives it, because recovery adopts only positively-identified own
+ * effects and the canonical adapters refuse a second claim or lease.
  */
 export const ENROLLMENT_PENDING_LEASE_MS = ENROLLMENT_RESPONSE_TIMEOUT_MS;
 
@@ -39,7 +40,10 @@ export interface GovernedEnrollmentContext {
   policyEpoch: number;
   packetApproved: boolean;
   capacityAvailable: boolean;
+  /** Any live claim on this Action, whoever made it. */
   existingClaim: EnrollmentClaim | null;
+  /** Any prepared or running Session lease on this repository, whoever launched it. */
+  existingSession?: { id: string; worktree: string; actionId: string } | null;
 }
 
 export interface EnrollmentRequest {
@@ -53,7 +57,6 @@ export interface EnrollmentRequest {
   actionId: string;
   requirementId: string;
   inputRevision: string;
-  expectedPolicyEpoch?: number;
   /** Native adoption names only the runtime to observe; supervision is proven by a host adapter. */
   nativeRuntimeId?: string;
 }
@@ -101,6 +104,14 @@ export interface EnrollmentReceipt {
   createdAt: string;
 }
 
+/** The durable record of a not-yet-completed request, including the effect marker its adapter wrote atomically. */
+export interface EnrollmentPending {
+  createdAt: string;
+  effectClaimId: string | null;
+  effectClaimGeneration: string | null;
+  effectWorktree: string | null;
+}
+
 export interface EnrollmentAdapterInput {
   request: EnrollmentRequest;
   context: GovernedEnrollmentContext;
@@ -112,11 +123,12 @@ export interface EnrollmentDependencies {
   launch(input: EnrollmentAdapterInput): EnrollmentEffect;
   rollback?(input: EnrollmentAdapterInput): void;
   /**
-   * Reconcile a host effect that may have completed before its receipt was
-   * persisted (a lost response or a dead host child). Returns the effect only
-   * when it is provably this request's own; otherwise null.
+   * Return this request's own live effect, identified only by positive
+   * evidence (the marker its adapter recorded atomically with the claim, or a
+   * lease bound to this request's admission). Anything else -- a claim or
+   * Session some other caller made -- must return null.
    */
-  recover?(input: EnrollmentAdapterInput & { pending: { createdAt: string } }): EnrollmentEffect | null;
+  recover?(input: EnrollmentAdapterInput & { pending: EnrollmentPending }): EnrollmentEffect | null;
   /** The host-registered native adapter for this agent. Production registers none. */
   nativeAdapter?: NativeRuntimeAdapter | null;
   now?: () => Date;
@@ -128,39 +140,86 @@ function requestFingerprint(request: EnrollmentRequest): string {
   return createHash("sha256").update(JSON.stringify([
     request.requestId, request.source, request.agent, request.callerId, request.mode,
     request.projectSlug, request.planSlug, request.actionId, request.requirementId,
-    request.inputRevision, request.expectedPolicyEpoch ?? null, request.nativeRuntimeId ?? null
+    request.inputRevision, request.nativeRuntimeId ?? null
   ])).digest("hex");
 }
 
 interface EnrollmentRow {
   request_fingerprint: string;
-  status: "pending" | "completed";
+  status: "pending" | "completed" | "failed";
   receipt_json: string | null;
   created_at: string;
   lease_expires_at: string;
+  effect_claim_id: string | null;
+  effect_claim_generation: string | null;
+  effect_worktree: string | null;
+}
+
+function readRow(db: Database.Database, requestId: string): EnrollmentRow | undefined {
+  return db.prepare(`SELECT request_fingerprint, status, receipt_json, created_at, lease_expires_at,
+    effect_claim_id, effect_claim_generation, effect_worktree FROM session_enrollments WHERE request_id = ?`)
+    .get(requestId) as EnrollmentRow | undefined;
+}
+
+function pendingView(row: EnrollmentRow): EnrollmentPending {
+  return {
+    createdAt: row.created_at,
+    effectClaimId: row.effect_claim_id,
+    effectClaimGeneration: row.effect_claim_generation,
+    effectWorktree: row.effect_worktree
+  };
+}
+
+/**
+ * Called by the preparation adapter (`arcadia go`) inside the same write
+ * transaction that creates the Action claim, so the claim and this request's
+ * positive evidence of owning it commit together or not at all. Refuses when
+ * the request is no longer pending, which rolls the claim back.
+ */
+export function recordEnrollmentClaim(db: Database.Database, requestId: string, claim: { id: string; worktree_path: string; claim_generation: string | null }): void {
+  const changed = db.prepare(`UPDATE session_enrollments SET effect_claim_id = ?, effect_claim_generation = ?, effect_worktree = ?
+    WHERE request_id = ? AND status = 'pending'`).run(claim.id, claim.claim_generation, claim.worktree_path, requestId).changes;
+  if (changed !== 1) {
+    throw validationError("The enrollment request is no longer pending; the candidate claim was not created.", {
+      code: "enrollment_request_not_pending", requestId
+    });
+  }
 }
 
 /**
  * Refusals that must happen before any row, admission, claim or candidate is
  * written. Every value comes from the host-derived context, not the caller.
+ * `ownEffect` is true only when `recover` positively identified this request's
+ * own claim or Session, which then is not a conflict with itself.
  */
-function assertEnrollmentPreconditions(request: EnrollmentRequest, context: GovernedEnrollmentContext, dependencies: EnrollmentDependencies): void {
+function assertEnrollmentPreconditions(
+  request: EnrollmentRequest,
+  context: GovernedEnrollmentContext,
+  dependencies: EnrollmentDependencies,
+  ownEffect: boolean
+): void {
   const expected = [request.projectSlug, request.planSlug, request.actionId];
   const actual = [context.projectSlug, context.planSlug, context.actionId];
   if (expected.some((value, index) => value !== actual[index])) {
     throw validationError("The governed Project, Plan, or Action changed before enrollment.", { code: "enrollment_governance_changed", expected, actual });
   }
-  if (request.expectedPolicyEpoch !== undefined && request.expectedPolicyEpoch !== context.policyEpoch) {
-    throw validationError("The managed-production policy epoch changed before enrollment.", {
-      code: "stale_policy_epoch", expected: request.expectedPolicyEpoch, actual: context.policyEpoch
-    });
-  }
-  if (request.mode === "prepare" && context.existingClaim) {
-    // A live claim already names this Action's one principal. Handing it to a
-    // second caller would create a duplicate principal; preparation refuses.
-    throw validationError("This Action is already claimed by another candidate; enrollment did not hand it out.", {
-      code: "action_claimed", claim: context.existingClaim
-    });
+  if (!ownEffect) {
+    // Enrollment hands out only a candidate or Session this request creates.
+    // A claim or lease anyone else holds -- another helper, the production
+    // tick, an operator -- is never re-issued to this caller.
+    if (context.existingClaim) {
+      throw validationError("This Action is already claimed; enrollment does not hand another owner's candidate or Session to this caller.", {
+        code: "action_claimed", claim: context.existingClaim
+      });
+    }
+    const session = context.existingSession ?? null;
+    if (session) {
+      throw validationError(session.actionId === context.actionId
+        ? "This Action already has a prepared or running Session; enrollment does not re-issue it to this caller."
+        : "The repository already holds a prepared or running Session for another Action.", {
+        code: session.actionId === context.actionId ? "action_claimed" : "repository_leased", sessionId: session.id
+      });
+    }
   }
   if (request.mode === "managed-launch") {
     if (context.policyState === "off") throw validationError("Managed production is Off; enrollment created no admission or claim.", { code: "production_off" });
@@ -183,6 +242,11 @@ function assertEnrollmentPreconditions(request: EnrollmentRequest, context: Gove
   }
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  const code = (error as { code?: string }).code;
+  return code === "SQLITE_CONSTRAINT_UNIQUE" || code === "SQLITE_CONSTRAINT_PRIMARYKEY";
+}
+
 /**
  * Fixed host enrollment. All governed facts are re-derived by `resolve`; the
  * caller can bind expectations but cannot supply a command, packet, worktree,
@@ -190,6 +254,11 @@ function assertEnrollmentPreconditions(request: EnrollmentRequest, context: Gove
  * delegated only to the canonical prepare/guarded-launch adapters supplied by
  * the host. Enrollment itself grants nothing: a managed launch is admitted only
  * by the existing standing policy, and preparation only by `arcadia go`'s claim.
+ *
+ * Row lifecycle: `pending` while an effect may be in flight (never deleted
+ * once an effect may have happened), `completed` with the receipt, `failed`
+ * only after recovery found no own effect. A failed row keeps its fingerprint,
+ * so a changed replay still refuses and the exact replay may retry.
  */
 export function enrollGovernedSession(
   db: Database.Database,
@@ -208,8 +277,7 @@ export function enrollGovernedSession(
   const clock = dependencies.now ?? (() => new Date());
   const leaseMs = dependencies.pendingLeaseMs ?? ENROLLMENT_PENDING_LEASE_MS;
   const fingerprint = requestFingerprint(request);
-  const prior = db.prepare("SELECT request_fingerprint, status, receipt_json, created_at, lease_expires_at FROM session_enrollments WHERE request_id = ?")
-    .get(request.requestId) as EnrollmentRow | undefined;
+  const prior = readRow(db, request.requestId);
 
   if (prior) {
     if (prior.request_fingerprint !== fingerprint) {
@@ -218,34 +286,46 @@ export function enrollGovernedSession(
       });
     }
     if (prior.status === "completed" && prior.receipt_json) return JSON.parse(prior.receipt_json) as EnrollmentReceipt;
-    // Pending: a host effect may have finished before its receipt was written.
     const context = dependencies.resolve(request.source);
-    const recovered = dependencies.recover?.({ request, context, pending: { createdAt: prior.created_at } }) ?? null;
-    if (recovered) return completeEnrollment(db, request, context, recovered, prior.created_at, clock);
+    // A host effect may have finished before its receipt was written. Only
+    // positive evidence of this request's own effect is adopted.
+    const recovered = dependencies.recover?.({ request, context, pending: pendingView(prior) }) ?? null;
+    if (recovered) {
+      assertEnrollmentPreconditions(request, context, dependencies, true);
+      return completeEnrollment(db, request, context, recovered, prior.created_at, clock);
+    }
     const now = clock();
-    if (Date.parse(prior.lease_expires_at) > now.getTime()) {
+    if (prior.status === "pending" && Date.parse(prior.lease_expires_at) > now.getTime()) {
       throw validationError("This exact enrollment request is already in progress.", { code: "enrollment_in_progress", requestId: request.requestId });
     }
-    // The earlier writer is gone and left no observable effect. Take the
-    // pending row over atomically (compare-and-set on its lease) so two
-    // concurrent replays cannot both re-run the effect.
-    const taken = writeTransaction(db, () => db.prepare(`UPDATE session_enrollments SET lease_expires_at = ?, updated_at = ?
-      WHERE request_id = ? AND status = 'pending' AND lease_expires_at = ?`)
-      .run(new Date(now.getTime() + leaseMs).toISOString(), now.toISOString(), request.requestId, prior.lease_expires_at).changes === 1);
-    if (!taken) throw validationError("This exact enrollment request is already in progress.", { code: "enrollment_in_progress", requestId: request.requestId });
+    // No own effect exists. Refuse before any mutation if the gates no longer
+    // hold; a pending row with no effect becomes a failed (retryable) record.
     try {
-      assertEnrollmentPreconditions(request, context, dependencies);
+      assertEnrollmentPreconditions(request, context, dependencies, false);
     } catch (error) {
-      deletePending(db, request.requestId);
+      if (prior.status === "pending") markFailed(db, request.requestId, prior.lease_expires_at, error, clock);
       throw error;
     }
-    return runEnrollmentEffect(db, request, context, dependencies, prior.created_at, clock);
+    // Take the row over atomically (compare-and-set on status and lease) so two
+    // concurrent replays cannot both re-run the effect.
+    let taken = false;
+    const heldLease = new Date(now.getTime() + leaseMs).toISOString();
+    try {
+      taken = writeTransaction(db, () => db.prepare(`UPDATE session_enrollments SET status = 'pending', lease_expires_at = ?, updated_at = ?, failure_json = NULL
+        WHERE request_id = ? AND status = ? AND lease_expires_at = ?`)
+        .run(heldLease, now.toISOString(), request.requestId, prior.status, prior.lease_expires_at).changes === 1);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+    if (!taken) throw validationError("This exact enrollment request is already in progress.", { code: "enrollment_in_progress", requestId: request.requestId });
+    return runEnrollmentEffect(db, request, context, dependencies, prior.created_at, heldLease, clock);
   }
 
   const context = dependencies.resolve(request.source);
-  assertEnrollmentPreconditions(request, context, dependencies);
+  assertEnrollmentPreconditions(request, context, dependencies, false);
   const now = clock();
   const createdAt = now.toISOString();
+  const heldLease = new Date(now.getTime() + leaseMs).toISOString();
   try {
     writeTransaction(db, () => {
       db.prepare(`INSERT INTO session_enrollments (
@@ -253,22 +333,27 @@ export function enrollGovernedSession(
         created_at, updated_at, lease_expires_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`).run(
         request.requestId, fingerprint, context.projectSlug, context.planSlug, context.actionId,
-        request.callerId, request.mode, createdAt, createdAt, new Date(now.getTime() + leaseMs).toISOString()
+        request.callerId, request.mode, createdAt, createdAt, heldLease
       );
     });
   } catch (error) {
-    if ((error as { code?: string }).code?.startsWith("SQLITE_CONSTRAINT")) {
+    if (isUniqueViolation(error)) {
       throw validationError("Another enrollment already owns this Action's host transaction.", {
         code: "enrollment_in_progress", projectSlug: context.projectSlug, planSlug: context.planSlug, actionId: context.actionId
       });
     }
     throw error;
   }
-  return runEnrollmentEffect(db, request, context, dependencies, createdAt, clock);
+  return runEnrollmentEffect(db, request, context, dependencies, createdAt, heldLease, clock);
 }
 
-function deletePending(db: Database.Database, requestId: string): void {
-  writeTransaction(db, () => db.prepare("DELETE FROM session_enrollments WHERE request_id = ? AND status = 'pending'").run(requestId));
+/** Only the writer still holding `leaseExpiresAt` may fail the row; a takeover's lease is never clobbered. */
+function markFailed(db: Database.Database, requestId: string, leaseExpiresAt: string, error: unknown, clock: () => Date): void {
+  const { code, message, details } = normalizeError(error);
+  const at = clock().toISOString();
+  writeTransaction(db, () => db.prepare(`UPDATE session_enrollments SET status = 'failed', lease_expires_at = ?, updated_at = ?, failure_json = ?
+    WHERE request_id = ? AND status = 'pending' AND lease_expires_at = ?`)
+    .run(at, at, JSON.stringify({ code, message, refusal: details.code ?? null }), requestId, leaseExpiresAt));
 }
 
 function runEnrollmentEffect(
@@ -277,19 +362,30 @@ function runEnrollmentEffect(
   context: GovernedEnrollmentContext,
   dependencies: EnrollmentDependencies,
   createdAt: string,
+  heldLease: string,
   clock: () => Date
 ): EnrollmentReceipt {
+  let effect: EnrollmentEffect;
   try {
-    const effect: EnrollmentEffect = request.mode === "prepare"
+    effect = request.mode === "prepare"
       ? dependencies.prepare({ request, context })
       : request.mode === "managed-launch"
         ? dependencies.launch({ request, context })
-        : { id: request.nativeRuntimeId!, worktree: "", claim: context.existingClaim, admission: null };
-    return completeEnrollment(db, request, context, effect, createdAt, clock);
+        : { id: request.nativeRuntimeId!, worktree: "", claim: null, admission: null };
   } catch (error) {
-    try { dependencies.rollback?.({ request, context }); } finally { deletePending(db, request.requestId); }
+    // The adapter threw, but its effect may still have committed. Adopt it if
+    // this request provably owns it; otherwise the row stays a durable record:
+    // failed when recovery positively found nothing, pending when even that
+    // could not be determined.
+    const row = readRow(db, request.requestId);
+    const own = row ? dependencies.recover?.({ request, context, pending: pendingView(row) }) ?? null : null;
+    if (own) return completeEnrollment(db, request, context, own, createdAt, clock);
+    try { dependencies.rollback?.({ request, context }); } finally { markFailed(db, request.requestId, heldLease, error, clock); }
     throw error;
   }
+  // Outside the catch: a receipt write that fails (busy database, a racing
+  // completion) leaves the row pending for recovery, never deleted.
+  return completeEnrollment(db, request, context, effect, createdAt, clock);
 }
 
 function completeEnrollment(
@@ -320,14 +416,13 @@ function completeEnrollment(
     principal: kind === "native-runtime" ? { kind, id: effect.id } : { kind, id: effect.id, worktree: effect.worktree },
     createdAt
   };
-  const updated = writeTransaction(db, () => db.prepare(`UPDATE session_enrollments SET status = 'completed', receipt_json = ?, updated_at = ?
-    WHERE request_id = ? AND status = 'pending'`).run(JSON.stringify(receipt), clock().toISOString(), request.requestId).changes);
+  const updated = writeTransaction(db, () => db.prepare(`UPDATE session_enrollments SET status = 'completed', receipt_json = ?, updated_at = ?, failure_json = NULL
+    WHERE request_id = ? AND status IN ('pending', 'failed')`).run(JSON.stringify(receipt), clock().toISOString(), request.requestId).changes);
   if (updated !== 1) {
     // Another replay completed first; its receipt is the canonical one.
-    const row = db.prepare("SELECT receipt_json FROM session_enrollments WHERE request_id = ? AND status = 'completed'")
-      .get(request.requestId) as { receipt_json: string } | undefined;
-    if (row) return JSON.parse(row.receipt_json) as EnrollmentReceipt;
-    throw validationError("The enrollment request row disappeared before its receipt was recorded.", { code: "enrollment_in_progress", requestId: request.requestId });
+    const row = readRow(db, request.requestId);
+    if (row?.status === "completed" && row.receipt_json) return JSON.parse(row.receipt_json) as EnrollmentReceipt;
+    throw validationError("The enrollment request row changed before its receipt was recorded.", { code: "enrollment_in_progress", requestId: request.requestId });
   }
   return receipt;
 }

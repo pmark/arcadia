@@ -26,8 +26,12 @@ import {
 } from "./enrollmentRequestProtocol.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
+/**
+ * One host controller per source at a time. Enrollment preparation runs the
+ * same `arcadia go` a go request does, so both share this guard and can never
+ * run `go` concurrently on one repository root.
+ */
 const runningGoSources = new Set<string>();
-const runningEnrollmentSources = new Set<string>();
 const runningPreservationRequests = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
 /**
@@ -535,7 +539,7 @@ function assertUntrackedRequest(source: string, filename: string, label: string)
 }
 
 function processEnrollmentRequest(input: { workspace: string; source: string }): void {
-  if (runningEnrollmentSources.has(input.source)) return;
+  if (runningGoSources.has(input.source)) return;
   const request = path.join(input.source, ENROLLMENT_REQUEST_FILE);
   const value = readEnrollmentRequest(request);
   if (!value) return;
@@ -544,12 +548,12 @@ function processEnrollmentRequest(input: { workspace: string; source: string }):
   catch (error) { writeGoResponse(response, goTransportFailure(error)); return; }
   try { unlinkSync(request); } catch { return; }
   if (existsSync(response)) return;
-  runningEnrollmentSources.add(input.source);
+  runningGoSources.add(input.source);
   void executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId, value.mode)
     .catch(goTransportFailure)
     .then(result => writeGoResponse(response, result))
     .catch(error => { process.stderr.write(`Could not write host enrollment response: ${String(error)}\n`); })
-    .finally(() => runningEnrollmentSources.delete(input.source));
+    .finally(() => runningGoSources.delete(input.source));
 }
 
 function writeGoResponse(response: string, result: GoTransportResult): void {

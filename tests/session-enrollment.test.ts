@@ -32,7 +32,7 @@ describe("protected session enrollment", () => {
   const request: EnrollmentRequest = {
     requestId: "enroll-request-0001", source: "/repo", agent: "codex", callerId: "helper-0001",
     mode: "prepare", projectSlug: "arcadia", planSlug: "flight-deck", actionId: "enroll",
-    requirementId: "requirement-1", inputRevision: "revision-1", expectedPolicyEpoch: 12
+    requirementId: "requirement-1", inputRevision: "revision-1"
   };
   const dependencies = (overrides: Partial<GovernedEnrollmentContext> = {}) => ({
     resolve: vi.fn(() => ({ ...context, ...overrides })),
@@ -42,6 +42,8 @@ describe("protected session enrollment", () => {
     now: () => AT
   });
   const count = () => (db.prepare("SELECT count(*) count FROM session_enrollments").get() as { count: number }).count;
+  const status = (requestId = request.requestId) =>
+    (db.prepare("SELECT status FROM session_enrollments WHERE request_id = ?").get(requestId) as { status: string } | undefined)?.status;
 
   beforeEach(() => { db = new Database(":memory:"); applyInitialSchema(db); });
   afterEach(() => db.close());
@@ -53,7 +55,8 @@ describe("protected session enrollment", () => {
     expect(replay).toEqual(first);
     expect(deps.prepare).toHaveBeenCalledTimes(1);
     for (const changed of [
-      { callerId: "helper-0002" }, { actionId: "other" }, { mode: "managed-launch" as const }, { inputRevision: "revision-2" }
+      { callerId: "helper-0002" }, { actionId: "other" }, { mode: "managed-launch" as const }, { inputRevision: "revision-2" },
+      { agent: "claude" as const }, { source: "/other" }, { requirementId: "requirement-2" }, { planSlug: "other-plan" }
     ]) {
       expect(() => enrollGovernedSession(db, { ...request, ...changed }, deps))
         .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_request_changed" }) }));
@@ -87,8 +90,10 @@ describe("protected session enrollment", () => {
     [{ policyState: "off" as const }, "production_off"],
     [{ packetApproved: false }, "packet_approval_required"],
     [{ capacityAvailable: false }, "capacity_unavailable"],
-    [{ policyEpoch: 13 }, "stale_policy_epoch"],
-    [{ actionId: "moved" }, "enrollment_governance_changed"]
+    [{ actionId: "moved" }, "enrollment_governance_changed"],
+    [{ existingClaim: claim }, "action_claimed"],
+    [{ existingSession: { id: "session-other", worktree: "/other", actionId: "enroll" } }, "action_claimed"],
+    [{ existingSession: { id: "session-other", worktree: "/other", actionId: "different" } }, "repository_leased"]
   ])("refuses managed launch preconditions without effects: %s", (override, code) => {
     const deps = dependencies(override);
     expect(() => enrollGovernedSession(db, { ...request, mode: "managed-launch" }, deps))
@@ -98,13 +103,50 @@ describe("protected session enrollment", () => {
     expect(count()).toBe(0);
   });
 
-  it("cleans a failed effect and permits a recoverable exact retry", () => {
+  it("records a failed effect with no own effect as failed, keeps its identity, and permits the exact retry", () => {
     const deps = dependencies();
     deps.prepare.mockImplementationOnce(() => { throw new Error("transport refused"); });
     expect(() => enrollGovernedSession(db, request, deps)).toThrow("transport refused");
     expect(deps.rollback).toHaveBeenCalledOnce();
-    expect(count()).toBe(0);
+    expect(status()).toBe("failed");
+    // The failed record still binds the request id: a different mode is refused.
+    expect(() => enrollGovernedSession(db, { ...request, mode: "managed-launch" }, deps))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_request_changed" }) }));
     expect(enrollGovernedSession(db, request, deps).principal.id).toBe("claim-1");
+    expect(status()).toBe("completed");
+    expect(count()).toBe(1);
+  });
+
+  it("adopts an effect that committed even though its adapter then threw", () => {
+    const deps = dependencies();
+    deps.prepare.mockImplementationOnce(() => { throw new Error("claim committed, response lost"); });
+    const recover = vi.fn(() => ({ id: "claim-1", worktree: "/candidate", claim }));
+    const receipt = enrollGovernedSession(db, request, { ...deps, recover });
+    expect(receipt.principal).toEqual({ kind: "prepared", id: "claim-1", worktree: "/candidate" });
+    expect(deps.rollback).not.toHaveBeenCalled();
+    expect(status()).toBe("completed");
+  });
+
+  it("keeps the row pending, never deleted, when the receipt write fails after a successful effect", () => {
+    const deps = dependencies();
+    deps.prepare.mockImplementationOnce(() => {
+      db.exec(`CREATE TRIGGER fail_receipt BEFORE UPDATE OF receipt_json ON session_enrollments
+        BEGIN SELECT RAISE(ABORT, 'simulated busy receipt write'); END`);
+      return { id: "claim-1", worktree: "/candidate", claim };
+    });
+    expect(() => enrollGovernedSession(db, request, deps)).toThrow("simulated busy receipt write");
+    db.exec("DROP TRIGGER fail_receipt");
+    expect(status()).toBe("pending");
+    const recover = vi.fn(() => ({ id: "claim-1", worktree: "/candidate", claim }));
+    expect(enrollGovernedSession(db, request, { ...deps, recover }).principal.id).toBe("claim-1");
+    expect(deps.prepare).toHaveBeenCalledOnce();
+    expect(status()).toBe("completed");
+  });
+
+  it("refuses an unknown mode in the core before any row", () => {
+    expect(() => enrollGovernedSession(db, { ...request, mode: "bogus" as never }, dependencies()))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "invalid_enrollment_mode" }) }));
+    expect(count()).toBe(0);
   });
 
   it("fences concurrent enrollment of the same request or the same Action before a duplicate principal", () => {
@@ -162,9 +204,39 @@ describe("protected session enrollment", () => {
     const recover = vi.fn(() => ({ id: "claim-1", worktree: "/candidate", claim }));
     const restarted = enrollGovernedSession(db, request, { ...deps, recover });
     expect(restarted.principal).toEqual({ kind: "prepared", id: "claim-1", worktree: "/candidate" });
-    expect(recover).toHaveBeenCalledWith(expect.objectContaining({ pending: { createdAt: AT.toISOString() } }));
+    expect(recover).toHaveBeenCalledWith(expect.objectContaining({ pending: expect.objectContaining({ createdAt: AT.toISOString(), effectClaimId: null }) }));
     expect(deps.prepare).not.toHaveBeenCalled();
     expect(enrollGovernedSession(db, request, deps)).toEqual(restarted);
+  });
+
+  it("loses the takeover compare-and-set to a concurrent taker and never re-runs the effect", () => {
+    const deps = dependencies();
+    crashAfterPending();
+    // Between this replay's lease read and its compare-and-set, another
+    // connection takes the expired row over (renews its lease).
+    const recover = vi.fn(() => {
+      db.prepare("UPDATE session_enrollments SET lease_expires_at = ? WHERE request_id = ?")
+        .run(new Date(AT.getTime() + 999_000).toISOString(), request.requestId);
+      return null;
+    });
+    expect(() => enrollGovernedSession(db, request, { ...deps, recover, now: () => new Date(AT.getTime() + 61_000) }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_in_progress" }) }));
+    expect(deps.prepare).not.toHaveBeenCalled();
+    expect(status()).toBe("pending");
+  });
+
+  it("lets a takeover finish while the original writer still runs, and the original then returns the same receipt", () => {
+    const deps = dependencies();
+    let nested: ReturnType<typeof enrollGovernedSession> | undefined;
+    deps.prepare.mockImplementationOnce(() => {
+      // The first writer outlives its lease; an exact replay takes over and completes.
+      nested = enrollGovernedSession(db, request, { ...dependencies(), now: () => new Date(AT.getTime() + 400_000) });
+      return { id: "claim-1", worktree: "/candidate", claim };
+    });
+    const outer = enrollGovernedSession(db, request, deps);
+    expect(outer).toEqual(nested);
+    expect(status()).toBe("completed");
+    expect(count()).toBe(1);
   });
 
   it("keeps a live pending row fenced, then lets an exact replay take over once its lease expired with no effect", () => {
@@ -181,14 +253,14 @@ describe("protected session enrollment", () => {
     expect(enrollGovernedSession(db, request, later)).toEqual(taken);
   });
 
-  it("drops an expired pending managed request that now meets Off, leaving it replayable once On", () => {
+  it("fails an expired pending managed request with no own effect that now meets Off, replayable once On", () => {
     const managed = { ...request, requestId: "enroll-managed-0001", mode: "managed-launch" as const };
     crashAfterPending(managed);
     const off = { ...dependencies({ policyState: "off" }), recover: () => null, now: () => new Date(AT.getTime() + 61_000) };
     expect(() => enrollGovernedSession(db, managed, off))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "production_off" }) }));
     expect(off.launch).not.toHaveBeenCalled();
-    expect(count()).toBe(0);
+    expect(status(managed.requestId)).toBe("failed");
     const on = dependencies();
     expect(enrollGovernedSession(db, managed, on).principal).toEqual({ kind: "managed-session", id: "session-1", worktree: "/candidate" });
     expect(on.launch).toHaveBeenCalledOnce();
@@ -235,6 +307,10 @@ describe("protected session enrollment", () => {
       const indexes = (legacy.prepare("PRAGMA index_list(session_role_attempts)").all() as Array<{ name: string }>).map(row => row.name);
       expect(indexes).toContain("idx_session_role_attempts_one_requirement_owner");
       expect(indexes).not.toContain("idx_session_role_attempts_one_mutation_owner");
+      // The rebuilt table accepts the failed status and the effect marker, keeps the pending-Action fence.
+      legacy.prepare("UPDATE session_enrollments SET status = 'failed', effect_claim_id = 'claim-x' WHERE request_id = 'enroll-legacy-01'").run();
+      expect((legacy.prepare("PRAGMA index_list(session_enrollments)").all() as Array<{ name: string }>).map(row => row.name))
+        .toContain("idx_session_enrollments_single_pending_action");
     } finally { legacy.close(); }
   });
 });

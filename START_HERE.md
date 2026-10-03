@@ -1374,13 +1374,20 @@ second worktree, admission or Session. A preparation receipt names
 receipt names `principal.kind: managed-session` and the `admission` with
 `status: committed`. A changed caller, mode, Action or input revision under the
 same id refuses with `enrollment_request_changed` before any mutation; a live
-request answers `enrollment_in_progress`, and a request whose writer died is
-reconciled onto its own effect or retried once its lease expires. A claimed
-Action refuses a second helper with `action_claimed`. Off (`production_off`),
-a changed epoch (`stale_epoch`), missing capacity (`capacity_unavailable`) and
-an unapproved packet (`packet_approval_required`) refuse a managed launch with
-no enrollment row, admission, claim or candidate left behind. A managed launch
-whose spawn failed settles its admission; enroll again under a new request id.
+request answers `enrollment_in_progress`. Enrollment only ever hands out a
+candidate or Session this request created: a claim or lease held by anyone
+else (another helper, the production tick, an operator) refuses with
+`action_claimed` and is never re-issued to another caller. A request whose
+writer died is reconciled only onto positive evidence of its own effect (the
+claim `go` recorded on the request inside the claim's own transaction, or the
+Session bound to the request's own admission), otherwise retried once its lease
+expires. A request that failed with no own effect is kept as a `failed` record,
+so a changed replay still refuses and the exact replay may retry. Off
+(`production_off`), a changed epoch (`stale_epoch`), missing capacity
+(`capacity_unavailable`) and an unapproved packet (`packet_approval_required`)
+refuse a managed launch with no admission, claim or candidate left behind. A
+managed launch whose spawn failed settles its admission; enroll again under a
+new request id.
 Enrollment grants nothing: it adds no ownership beyond the claim `go` or the
 guarded launcher already creates, and no completion or production authority.
 
