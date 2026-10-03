@@ -387,7 +387,11 @@ function bareOrigin(): string {
 }
 
 function cloneOf(origin: string, name: string): string {
-  const target = path.join(origin, "..", name);
+  // Each call owns a unique parent, so an interrupted run's leftovers and
+  // concurrent runs can never collide on a fixed sibling name.
+  const parent = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-tidy-clone-")));
+  temporary.push(parent);
+  const target = path.join(parent, name);
   execFileSync("git", ["clone", "--quiet", origin, target], { encoding: "utf8" });
   const resolved = realpathSync(target);
   temporary.push(resolved);
