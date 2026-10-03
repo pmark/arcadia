@@ -115,7 +115,8 @@ function ensureSessionEnrollmentTables(db: Database.Database): void {
       status TEXT NOT NULL CHECK (status IN ('pending', 'completed')),
       receipt_json TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      lease_expires_at TEXT NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_session_enrollments_single_pending_action
       ON session_enrollments(project_slug, plan_slug, action_id)
@@ -138,8 +139,22 @@ function ensureSessionEnrollmentTables(db: Database.Database): void {
       updated_at TEXT NOT NULL,
       UNIQUE(requirement_id, input_revision, role, ordinal)
     );
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_role_attempts_one_mutation_owner
-      ON session_role_attempts(requirement_id, input_revision)
+  `);
+  // A candidate build of this store created the pending row without a lease
+  // and scoped its single-owner index per input revision. Both upgrades are
+  // additive: a missing lease reads as expired (an exact replay may take the
+  // row over once `recover` finds no effect), and the owner fence widens to
+  // the whole requirement so a revised input never admits a second developer.
+  const enrollmentColumns = new Set(
+    (db.prepare("PRAGMA table_info(session_enrollments)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!enrollmentColumns.has("lease_expires_at")) {
+    db.prepare("ALTER TABLE session_enrollments ADD COLUMN lease_expires_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'").run();
+  }
+  db.exec(`
+    DROP INDEX IF EXISTS idx_session_role_attempts_one_mutation_owner;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_role_attempts_one_requirement_owner
+      ON session_role_attempts(requirement_id)
       WHERE mutation_owner = 1 AND status IN ('pending', 'running');
   `);
 }

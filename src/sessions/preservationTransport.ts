@@ -15,7 +15,15 @@ import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
 import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js";
 import { CONTAINER_AUDIT_TRANSPORT_HASH, processContainerAuditRequest } from "./containerAuditTransport.js";
 import { executeHostEnrollmentRequest } from "./enrollmentRequestExecutor.js";
-import { ENROLLMENT_REQUEST_FILE, ENROLLMENT_RESPONSE_TIMEOUT_MS, resolveEnrollmentRequestIdentity, type EnrollmentTransportResult } from "./enrollmentRequestProtocol.js";
+import {
+  ENROLLMENT_REQUEST_FILE,
+  ENROLLMENT_REQUEST_MODES,
+  ENROLLMENT_RESPONSE_TIMEOUT_MS,
+  resolveEnrollmentRequestIdentity,
+  resolveEnrollmentRequestMode,
+  type EnrollmentRequestMode,
+  type EnrollmentTransportResult
+} from "./enrollmentRequestProtocol.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
 const runningGoSources = new Set<string>();
@@ -317,7 +325,10 @@ export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
 }
 
 /** Fixed no-argument helper enrollment. Its stable semantic identity is
- * separate from the one-shot transport nonce and carries no command. */
+ * separate from the one-shot transport nonce and carries no command: only the
+ * launcher-fixed provider, the request/caller identities and an enum mode.
+ * Only a configured Project repository root is an enrollment source; a leased
+ * or handed-out worktree already has its one principal. */
 export async function requestAgentEnrollment(source: string, agent: GoBrokerAgent) {
   const workspace = requireResolvedWorkspace({ cwd: source });
   const current = realpathSync(source);
@@ -325,16 +336,20 @@ export async function requestAgentEnrollment(source: string, agent: GoBrokerAgen
     throw validationError("Protected enrollment request path is unavailable. Start the updated Arcadia worker on the host before requesting enrollment.");
   }
   const routes = readHeartbeat(workspace);
-  const route = routes.sessions.find(s => s.worktree === current)
-    ?? routes.handoffs?.find(s => s.worktree === current)
-    ?? routes.repositories?.find(repository => repository.path === current);
-  if (!route || routes.enrollmentRequests !== true) throw validationError("No updated host-worker route registers this enrollment source.");
-  const nonce = randomUUID();
+  if (routes.enrollmentRequests !== true) throw validationError("No updated host-worker route services enrollment requests.");
+  if (!routes.repositories?.some(repository => repository.path === current)) {
+    throw validationError("Enrollment must be requested from a configured Project repository root.", {
+      code: "enrollment_source_not_repository", source: current,
+      remedy: "Run the fixed enroll launcher from the Project repository root; a prepared or leased worktree already has its principal."
+    });
+  }
   const identity = resolveEnrollmentRequestIdentity(agent);
+  const mode = resolveEnrollmentRequestMode();
+  const nonce = randomUUID();
   const request = path.join(current, ENROLLMENT_REQUEST_FILE);
   assertUntrackedRequest(current, ENROLLMENT_REQUEST_FILE, "enrollment");
   const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { writeFileSync(fd, JSON.stringify({ nonce, agent, ...identity })); } finally { closeSync(fd); }
+  try { writeFileSync(fd, JSON.stringify({ nonce, agent, mode, ...identity })); } finally { closeSync(fd); }
   const response = enrollmentResponsePath(workspace, nonce);
   const deadline = Date.now() + ENROLLMENT_RESPONSE_TIMEOUT_MS;
   try {
@@ -407,7 +422,6 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     try { processContainerAuditRequest(workspace, lease.worktree_path); }
     catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
     processGoRequest({ workspace, source: lease.worktree_path });
-    processEnrollmentRequest({ workspace, source: lease.worktree_path });
     const request = path.join(lease.worktree_path, PRESERVATION_REQUEST_FILE);
     if (!existsSync(request)) continue;
     const nonce = readPreserveRequest(request)?.nonce;
@@ -496,7 +510,7 @@ function readFixedAgentRequest(request: string): { nonce: string; agent: GoBroke
   } catch { return; }
 }
 
-function readEnrollmentRequest(request: string): { nonce: string; agent: GoBrokerAgent; requestId: string; callerId: string } | undefined {
+function readEnrollmentRequest(request: string): { nonce: string; agent: GoBrokerAgent; mode: EnrollmentRequestMode; requestId: string; callerId: string } | undefined {
   try {
     const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
@@ -506,11 +520,12 @@ function readEnrollmentRequest(request: string): { nonce: string; agent: GoBroke
       const length = readSync(fd, bytes, 0, bytes.length, 0);
       if (length > 512) return;
       const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
-      if (Object.keys(value).sort().join() !== "agent,callerId,nonce,requestId" || !NONCE.test(value.nonce)) return;
+      if (Object.keys(value).sort().join() !== "agent,callerId,mode,nonce,requestId" || !NONCE.test(value.nonce)) return;
       if (!SESSION_AGENTS.includes(value.agent as SessionAgent)) return;
+      if (!ENROLLMENT_REQUEST_MODES.includes(value.mode as EnrollmentRequestMode)) return;
       const bounded = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
       if (!bounded.test(value.requestId) || !bounded.test(value.callerId)) return;
-      return { nonce: value.nonce, agent: value.agent, requestId: value.requestId, callerId: value.callerId };
+      return { nonce: value.nonce, agent: value.agent, mode: value.mode, requestId: value.requestId, callerId: value.callerId };
     } finally { closeSync(fd); }
   } catch { return; }
 }
@@ -530,7 +545,7 @@ function processEnrollmentRequest(input: { workspace: string; source: string }):
   try { unlinkSync(request); } catch { return; }
   if (existsSync(response)) return;
   runningEnrollmentSources.add(input.source);
-  void executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId)
+  void executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId, value.mode)
     .catch(goTransportFailure)
     .then(result => writeGoResponse(response, result))
     .catch(error => { process.stderr.write(`Could not write host enrollment response: ${String(error)}\n`); })

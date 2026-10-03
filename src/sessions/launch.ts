@@ -61,6 +61,13 @@ export interface GuardedLaunchInput {
    * `previewFingerprint` or `standingPolicy` must be given.
    */
   standingPolicy?: boolean;
+  /**
+   * With `standingPolicy`, the production epoch the caller observed. A
+   * differing current epoch refuses at admission (`stale_epoch`) before any
+   * slot, worktree or claim exists, so an Off/On cycle cannot admit a launch
+   * prepared against the earlier grant.
+   */
+  expectedPolicyEpoch?: number;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
@@ -241,6 +248,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       planSlug: preview.planSlug ?? "",
       provider,
       capacity,
+      ...(input.expectedPolicyEpoch !== undefined ? { expectedEpoch: input.expectedPolicyEpoch } : {}),
       now
     });
     if (!issued.admitted) {

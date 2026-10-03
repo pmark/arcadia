@@ -77,9 +77,32 @@ describe("agent go request transport", () => {
       source,
       "codex",
       "enroll:codex:runtime-11111111-1111-1111-1111-111111111111",
-      "codex:runtime-11111111-1111-1111-1111-111111111111"
+      "codex:runtime-11111111-1111-1111-1111-111111111111",
+      "prepare"
     );
     expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(false);
+  });
+
+  it("carries only an enum mode, refusing an unknown mode before writing a request", async () => {
+    processPreservationRequests(db, workspace);
+    vi.stubEnv("ARCADIA_ENROLLMENT_MODE", "managed-launch");
+    const pending = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await pending;
+    expect(mocks.enrollment.mock.calls[0][4]).toBe("managed-launch");
+    vi.stubEnv("ARCADIA_ENROLLMENT_MODE", "sh -c true");
+    await expect(requestAgentEnrollment(source, "codex")).rejects.toMatchObject({ details: { code: "invalid_enrollment_mode" } });
+    expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(false);
+    expect(mocks.enrollment).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses enrollment from a source that is not a configured repository root", async () => {
+    processPreservationRequests(db, workspace);
+    const nested = path.join(source, "nested");
+    mkdirSync(nested);
+    await expect(requestAgentEnrollment(nested, "codex")).rejects.toMatchObject({ details: { code: "enrollment_source_not_repository" } });
+    expect(existsSync(path.join(nested, ".arcadia-enrollment-request"))).toBe(false);
+    expect(mocks.enrollment).not.toHaveBeenCalled();
   });
 
   it("retains semantic request and caller identity across transport redelivery", async () => {
@@ -92,8 +115,8 @@ describe("agent go request transport", () => {
     await second;
     expect(mocks.enrollment).toHaveBeenCalledTimes(2);
     expect(mocks.enrollment.mock.calls.map(call => call.slice(2))).toEqual([
-      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111"],
-      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111"]
+      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111", "prepare"],
+      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111", "prepare"]
     ]);
   });
 
@@ -111,6 +134,7 @@ describe("agent go request transport", () => {
     writeFileSync(path.join(source, ".arcadia-enrollment-request"), JSON.stringify({
       nonce,
       agent: "codex",
+      mode: "prepare",
       requestId: "enrollment-request-1",
       callerId: "codex:runtime-1",
       command: "sh"

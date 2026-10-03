@@ -6,6 +6,10 @@ export const ENROLLMENT_EXECUTION_TIMEOUT_MS = 300_000;
 export const ENROLLMENT_RESPONSE_TIMEOUT_MS = ENROLLMENT_EXECUTION_TIMEOUT_MS + 30_000;
 export const ENROLLMENT_REQUEST_ID_ENV = "ARCADIA_ENROLLMENT_REQUEST_ID";
 export const ENROLLMENT_CALLER_ID_ENV = "ARCADIA_ENROLLMENT_CALLER_ID";
+export const ENROLLMENT_MODE_ENV = "ARCADIA_ENROLLMENT_MODE";
+/** Kept here (not in enrollment.ts) so the sandbox-side helper loads no host modules. */
+export const ENROLLMENT_REQUEST_MODES = ["prepare", "managed-launch", "native-adopt"] as const;
+export type EnrollmentRequestMode = typeof ENROLLMENT_REQUEST_MODES[number];
 
 const BOUNDED_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
@@ -27,6 +31,17 @@ export function resolveEnrollmentRequestIdentity(
     });
   }
   return { requestId, callerId };
+}
+
+/** The requested mode is an enum, never a command; absent means preparation. */
+export function resolveEnrollmentRequestMode(env: NodeJS.ProcessEnv = process.env): EnrollmentRequestMode {
+  const value = env[ENROLLMENT_MODE_ENV]?.trim() || "prepare";
+  if (!ENROLLMENT_REQUEST_MODES.includes(value as EnrollmentRequestMode)) {
+    throw validationError("Unknown enrollment mode.", {
+      code: "invalid_enrollment_mode", mode: value, allowed: [...ENROLLMENT_REQUEST_MODES]
+    });
+  }
+  return value as EnrollmentRequestMode;
 }
 
 export type EnrollmentTransportResult =

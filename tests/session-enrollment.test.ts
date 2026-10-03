@@ -1,78 +1,101 @@
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyInitialSchema } from "../src/db/schema.js";
+import { applyInitialSchema, applyMigrations } from "../src/db/schema.js";
 import {
   allocateSessionRoleAttempt,
   attemptVerdictIsCurrent,
   enrollGovernedSession,
   nextDependencyReadyAction,
   recordSessionRoleAttemptTerminal,
+  type EnrollmentDependencies,
   type EnrollmentRequest,
   type GovernedEnrollmentContext
 } from "../src/sessions/enrollment.js";
+
+const AT = new Date("2026-10-03T18:00:00.000Z");
+const claim = { id: "claim-1", worktree: "/candidate", generation: "generation-1" };
 
 describe("protected session enrollment", () => {
   let db: Database.Database;
   const context: GovernedEnrollmentContext = {
     projectSlug: "arcadia", planSlug: "flight-deck", actionId: "enroll",
-    canonicalBrief: "canonical host brief", operatorGates: ["packet-approved"],
+    canonicalBrief: "canonical host brief", operatorGates: ["decision:0072"],
+    packet: { invocationId: "packet-1", sha256: "a".repeat(64) },
     provider: "codex-cli", model: "gpt-5.6-sol", effort: "high",
     policyState: "active", policyEpoch: 12, packetApproved: true,
     capacityAvailable: true,
-    existingClaim: { id: "claim-1", worktree: "/candidate", generation: "generation-1" }
+    existingClaim: null
   };
   const request: EnrollmentRequest = {
-    requestId: "enroll-request-0001", source: "/repo", agent: "codex", callerId: "helper-1",
+    requestId: "enroll-request-0001", source: "/repo", agent: "codex", callerId: "helper-0001",
     mode: "prepare", projectSlug: "arcadia", planSlug: "flight-deck", actionId: "enroll",
     requirementId: "requirement-1", inputRevision: "revision-1", expectedPolicyEpoch: 12
   };
   const dependencies = (overrides: Partial<GovernedEnrollmentContext> = {}) => ({
     resolve: vi.fn(() => ({ ...context, ...overrides })),
-    prepare: vi.fn(() => ({ id: "claim-1", worktree: "/candidate" })),
-    launch: vi.fn(() => ({ id: "session-1", worktree: "/candidate" })),
+    prepare: vi.fn(() => ({ id: "claim-1", worktree: "/candidate", claim })),
+    launch: vi.fn(() => ({ id: "session-1", worktree: "/candidate", claim, admission: { id: "adm-1", requestId: "enroll-request-0001:admission", epoch: 12, status: "committed" } })),
     rollback: vi.fn(),
-    now: () => new Date("2026-10-03T18:00:00.000Z")
+    now: () => AT
   });
+  const count = () => (db.prepare("SELECT count(*) count FROM session_enrollments").get() as { count: number }).count;
 
   beforeEach(() => { db = new Database(":memory:"); applyInitialSchema(db); });
   afterEach(() => db.close());
 
-  it("replays the original receipt and refuses changed caller, Action, or mode before effects", () => {
+  it("replays the original receipt and refuses changed caller, Action, mode or input before effects", () => {
     const deps = dependencies();
     const first = enrollGovernedSession(db, request, deps);
     const replay = enrollGovernedSession(db, request, deps);
     expect(replay).toEqual(first);
     expect(deps.prepare).toHaveBeenCalledTimes(1);
     for (const changed of [
-      { callerId: "helper-2" }, { actionId: "other" }, { mode: "managed-launch" as const }
+      { callerId: "helper-0002" }, { actionId: "other" }, { mode: "managed-launch" as const }, { inputRevision: "revision-2" }
     ]) {
-      expect(() => enrollGovernedSession(db, { ...request, ...changed }, deps)).toThrow("already used");
+      expect(() => enrollGovernedSession(db, { ...request, ...changed }, deps))
+        .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_request_changed" }) }));
     }
+    expect(deps.prepare).toHaveBeenCalledTimes(1);
     expect(deps.launch).not.toHaveBeenCalled();
+    expect(count()).toBe(1);
   });
 
-  it("returns the canonical candidate and fenced host-derived receipt", () => {
+  it("returns the canonical candidate, packet binding and fenced claim receipt without production authority", () => {
     const receipt = enrollGovernedSession(db, request, dependencies());
     expect(receipt).toMatchObject({
-      requestId: request.requestId, canonicalBrief: "canonical host brief",
+      requestId: request.requestId, canonicalBrief: "canonical host brief", operatorGates: ["decision:0072"],
+      packet: { invocationId: "packet-1" },
       execution: { provider: "codex-cli", model: "gpt-5.6-sol", effort: "high" },
-      claim: context.existingClaim,
+      claim,
+      admission: null,
       principal: { kind: "prepared", id: "claim-1", worktree: "/candidate" }
     });
+  });
+
+  it("refuses to hand an existing claim to a second caller before any row is written", () => {
+    const deps = dependencies({ existingClaim: claim });
+    expect(() => enrollGovernedSession(db, request, deps))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "action_claimed" }) }));
+    expect(deps.prepare).not.toHaveBeenCalled();
+    expect(count()).toBe(0);
   });
 
   it.each([
     [{ policyState: "off" as const }, "production_off"],
     [{ packetApproved: false }, "packet_approval_required"],
     [{ capacityAvailable: false }, "capacity_unavailable"],
-    [{ policyEpoch: 13 }, "stale_policy_epoch"]
+    [{ policyEpoch: 13 }, "stale_policy_epoch"],
+    [{ actionId: "moved" }, "enrollment_governance_changed"]
   ])("refuses managed launch preconditions without effects: %s", (override, code) => {
     const deps = dependencies(override);
     expect(() => enrollGovernedSession(db, { ...request, mode: "managed-launch" }, deps))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ code }) }));
     expect(deps.prepare).not.toHaveBeenCalled();
     expect(deps.launch).not.toHaveBeenCalled();
-    expect(db.prepare("SELECT count(*) count FROM session_enrollments").get()).toEqual({ count: 0 });
+    expect(count()).toBe(0);
   });
 
   it("cleans a failed effect and permits a recoverable exact retry", () => {
@@ -80,66 +103,139 @@ describe("protected session enrollment", () => {
     deps.prepare.mockImplementationOnce(() => { throw new Error("transport refused"); });
     expect(() => enrollGovernedSession(db, request, deps)).toThrow("transport refused");
     expect(deps.rollback).toHaveBeenCalledOnce();
-    expect(db.prepare("SELECT count(*) count FROM session_enrollments").get()).toEqual({ count: 0 });
+    expect(count()).toBe(0);
     expect(enrollGovernedSession(db, request, deps).principal.id).toBe("claim-1");
   });
 
-  it("fences concurrent enrollment before a duplicate principal", () => {
+  it("fences concurrent enrollment of the same request or the same Action before a duplicate principal", () => {
     const deps = dependencies();
     deps.prepare.mockImplementation(() => {
       expect(() => enrollGovernedSession(db, request, deps)).toThrow("already in progress");
-      return { id: "claim-1", worktree: "/candidate" };
+      expect(() => enrollGovernedSession(db, { ...request, requestId: "enroll-request-0002", callerId: "helper-0002" }, deps))
+        .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_in_progress" }) }));
+      return { id: "claim-1", worktree: "/candidate", claim };
     });
     expect(enrollGovernedSession(db, request, deps).principal.id).toBe("claim-1");
     expect(deps.prepare).toHaveBeenCalledOnce();
   });
 
-  it("reconciles a pending exact request after restart without duplicating its principal", () => {
-    const deps = dependencies();
-    deps.prepare.mockImplementation(() => {
-      throw new Error("host response lost");
-    });
-    // Model a process death after the pending row became durable but before
-    // its host result was recorded; a restart gets the host-observed result.
-    db.prepare(`INSERT INTO session_enrollments VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?)`)
-      .run(request.requestId,
-        "unused-by-this-fixture", context.projectSlug, context.planSlug, context.actionId,
-        request.callerId, request.mode, "2026-10-03T18:00:00.000Z", "2026-10-03T18:00:00.000Z");
-    const fingerprint = db.prepare("SELECT request_fingerprint FROM session_enrollments WHERE request_id = ?").get(request.requestId) as { request_fingerprint: string };
-    // Obtain the canonical fingerprint from an isolated completed request, then
-    // put it on the simulated pending row.
-    const scratch = new Database(":memory:");
-    applyInitialSchema(scratch);
-    enrollGovernedSession(scratch, request, dependencies());
-    const canonical = scratch.prepare("SELECT request_fingerprint FROM session_enrollments WHERE request_id = ?").get(request.requestId) as { request_fingerprint: string };
-    scratch.close();
-    db.prepare("UPDATE session_enrollments SET request_fingerprint = ? WHERE request_id = ?").run(canonical.request_fingerprint, request.requestId);
-    expect(fingerprint.request_fingerprint).toBe("unused-by-this-fixture");
-    const recovered = {
-      enrollmentId: "enrollment_recovered", requestId: request.requestId, mode: request.mode,
-      projectSlug: context.projectSlug, planSlug: context.planSlug, actionId: context.actionId,
-      callerId: request.callerId, canonicalBrief: context.canonicalBrief, operatorGates: context.operatorGates,
-      execution: { provider: context.provider, model: context.model, effort: context.effort },
-      requirementId: request.requirementId, inputRevision: request.inputRevision, claim: context.existingClaim,
-      principal: { kind: "prepared" as const, id: "claim-1", worktree: "/candidate" },
-      createdAt: "2026-10-03T18:00:00.000Z"
-    };
-    const restarted = enrollGovernedSession(db, request, { ...deps, recover: () => recovered });
-    expect(restarted).toEqual(recovered);
-    expect(deps.prepare).not.toHaveBeenCalled();
+  it("fences a concurrent enrollment on a second database connection", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-enroll-race-")));
+    const file = path.join(root, "arcadia.db");
+    const first = new Database(file);
+    const second = new Database(file);
+    try {
+      applyInitialSchema(first);
+      const deps = dependencies();
+      deps.prepare.mockImplementation(() => {
+        expect(() => enrollGovernedSession(second, { ...request, requestId: "enroll-request-0002", callerId: "helper-0002" }, dependencies()))
+          .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_in_progress" }) }));
+        expect(() => enrollGovernedSession(second, request, dependencies())).toThrow("already in progress");
+        return { id: "claim-1", worktree: "/candidate", claim };
+      });
+      const receipt = enrollGovernedSession(first, request, deps);
+      expect(enrollGovernedSession(second, request, dependencies())).toEqual(receipt);
+      expect((second.prepare("SELECT count(*) count FROM session_enrollments").get() as { count: number }).count).toBe(1);
+    } finally {
+      first.close();
+      second.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  it("refuses unsupervisable native adoption with the managed-worker remedy", () => {
+  /** Model a host child that died after its pending row was durable but before its receipt. */
+  function crashAfterPending(pendingRequest: EnrollmentRequest = request) {
+    const scratch = new Database(":memory:");
+    applyInitialSchema(scratch);
+    enrollGovernedSession(scratch, pendingRequest, dependencies());
+    const fingerprint = (scratch.prepare("SELECT request_fingerprint FROM session_enrollments").get() as { request_fingerprint: string }).request_fingerprint;
+    scratch.close();
+    db.prepare(`INSERT INTO session_enrollments (request_id, request_fingerprint, project_slug, plan_slug, action_id, caller_id, mode,
+      status, receipt_json, created_at, updated_at, lease_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`)
+      .run(pendingRequest.requestId, fingerprint, context.projectSlug, context.planSlug, context.actionId, pendingRequest.callerId,
+        pendingRequest.mode, AT.toISOString(), AT.toISOString(), new Date(AT.getTime() + 60_000).toISOString());
+  }
+
+  it("reconciles a pending exact request after restart onto its own effect without duplicating the principal", () => {
     const deps = dependencies();
-    expect(() => enrollGovernedSession(db, { ...request, mode: "native-adopt" }, deps)).toThrow(
-      expect.objectContaining({ details: expect.objectContaining({ code: "native_runtime_not_supervisable", remedy: expect.stringContaining("managed-launch") }) })
-    );
-    const adopted = enrollGovernedSession(db, {
-      ...request, requestId: "native-request-0001", mode: "native-adopt",
-      nativeAdapter: { adapterId: "observable-v1", runtimeId: "runtime-1", stableIdentity: true,
-        livenessObservable: true, terminalOutcomeObservable: true, recoveryObservable: true }
-    }, deps);
+    crashAfterPending();
+    const recover = vi.fn(() => ({ id: "claim-1", worktree: "/candidate", claim }));
+    const restarted = enrollGovernedSession(db, request, { ...deps, recover });
+    expect(restarted.principal).toEqual({ kind: "prepared", id: "claim-1", worktree: "/candidate" });
+    expect(recover).toHaveBeenCalledWith(expect.objectContaining({ pending: { createdAt: AT.toISOString() } }));
+    expect(deps.prepare).not.toHaveBeenCalled();
+    expect(enrollGovernedSession(db, request, deps)).toEqual(restarted);
+  });
+
+  it("keeps a live pending row fenced, then lets an exact replay take over once its lease expired with no effect", () => {
+    const deps = dependencies();
+    crashAfterPending();
+    const recover = vi.fn(() => null);
+    expect(() => enrollGovernedSession(db, request, { ...deps, recover }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "enrollment_in_progress" }) }));
+    expect(deps.prepare).not.toHaveBeenCalled();
+    const later = { ...deps, recover, now: () => new Date(AT.getTime() + 61_000) };
+    const taken = enrollGovernedSession(db, request, later);
+    expect(taken.principal.id).toBe("claim-1");
+    expect(deps.prepare).toHaveBeenCalledOnce();
+    expect(enrollGovernedSession(db, request, later)).toEqual(taken);
+  });
+
+  it("drops an expired pending managed request that now meets Off, leaving it replayable once On", () => {
+    const managed = { ...request, requestId: "enroll-managed-0001", mode: "managed-launch" as const };
+    crashAfterPending(managed);
+    const off = { ...dependencies({ policyState: "off" }), recover: () => null, now: () => new Date(AT.getTime() + 61_000) };
+    expect(() => enrollGovernedSession(db, managed, off))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "production_off" }) }));
+    expect(off.launch).not.toHaveBeenCalled();
+    expect(count()).toBe(0);
+    const on = dependencies();
+    expect(enrollGovernedSession(db, managed, on).principal).toEqual({ kind: "managed-session", id: "session-1", worktree: "/candidate" });
+    expect(on.launch).toHaveBeenCalledOnce();
+  });
+
+  it("refuses native adoption without a host-observed adapter and names the managed-worker route", () => {
+    const deps = dependencies();
+    const native = { ...request, requestId: "native-request-0001", mode: "native-adopt" as const, nativeRuntimeId: "runtime-1" };
+    const refusal = { details: expect.objectContaining({
+      code: "native_runtime_not_supervisable",
+      supportedRoute: expect.objectContaining({ mode: "managed-launch", launcher: "arcadia-enroll-broker-codex" }),
+      remedy: expect.stringContaining("managed-launch")
+    }) };
+    expect(() => enrollGovernedSession(db, native, deps)).toThrow(expect.objectContaining(refusal));
+    const partial = { id: "partial-v1", observe: vi.fn(() => ({ stableIdentity: true, liveness: true, terminalOutcome: false, recovery: true })) };
+    expect(() => enrollGovernedSession(db, native, { ...deps, nativeAdapter: partial })).toThrow(expect.objectContaining(refusal));
+    expect(partial.observe).toHaveBeenCalledWith("runtime-1");
+    expect(count()).toBe(0);
+    const full = { id: "observable-v1", observe: () => ({ stableIdentity: true, liveness: true, terminalOutcome: true, recovery: true }) };
+    const adopted = enrollGovernedSession(db, native, { ...deps, nativeAdapter: full } satisfies EnrollmentDependencies);
     expect(adopted.principal).toEqual({ kind: "native-runtime", id: "runtime-1" });
+    expect(deps.prepare).not.toHaveBeenCalled();
+    expect(deps.launch).not.toHaveBeenCalled();
+  });
+
+  it("migrates a candidate-era enrollment store additively and idempotently", () => {
+    const legacy = new Database(":memory:");
+    try {
+      applyInitialSchema(legacy);
+      legacy.exec(`DROP TABLE session_enrollments; DROP TABLE session_role_attempts;
+        CREATE TABLE session_enrollments (request_id TEXT PRIMARY KEY, request_fingerprint TEXT NOT NULL, project_slug TEXT NOT NULL,
+          plan_slug TEXT NOT NULL, action_id TEXT NOT NULL, caller_id TEXT NOT NULL, mode TEXT NOT NULL, status TEXT NOT NULL,
+          receipt_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO session_enrollments VALUES ('enroll-legacy-01', 'f', 'p', 'pl', 'a', 'c', 'prepare', 'pending', NULL, 'x', 'x');
+        CREATE TABLE session_role_attempts (id TEXT PRIMARY KEY, requirement_id TEXT NOT NULL, input_revision TEXT NOT NULL, role TEXT NOT NULL,
+          ordinal INTEGER NOT NULL, request_id TEXT NOT NULL UNIQUE, actor_id TEXT NOT NULL, mutation_owner INTEGER NOT NULL, status TEXT NOT NULL,
+          target_head TEXT, criteria_fingerprint TEXT, evidence_fingerprint TEXT, terminal_receipt_json TEXT, created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL, UNIQUE(requirement_id, input_revision, role, ordinal));
+        CREATE UNIQUE INDEX idx_session_role_attempts_one_mutation_owner ON session_role_attempts(requirement_id, input_revision)
+          WHERE mutation_owner = 1 AND status IN ('pending', 'running');`);
+      applyMigrations(legacy);
+      applyMigrations(legacy);
+      expect(legacy.prepare("SELECT lease_expires_at FROM session_enrollments").get()).toEqual({ lease_expires_at: "1970-01-01T00:00:00.000Z" });
+      const indexes = (legacy.prepare("PRAGMA index_list(session_role_attempts)").all() as Array<{ name: string }>).map(row => row.name);
+      expect(indexes).toContain("idx_session_role_attempts_one_requirement_owner");
+      expect(indexes).not.toContain("idx_session_role_attempts_one_mutation_owner");
+    } finally { legacy.close(); }
   });
 });
 
@@ -148,7 +244,7 @@ describe("durable role attempts and serial readiness", () => {
   beforeEach(() => { db = new Database(":memory:"); applyInitialSchema(db); });
   afterEach(() => db.close());
 
-  const allocate = (overrides: Record<string, unknown> = {}) => allocateSessionRoleAttempt(db, {
+  const allocate = (overrides: Record<string, unknown> = {}, connection = db) => allocateSessionRoleAttempt(connection, {
     requirementId: "requirement-1", inputRevision: "revision-1", role: "development",
     requestId: "attempt-development-1", actorId: "developer-1", mutationOwner: true,
     authorityCurrent: true, ...overrides
@@ -157,20 +253,55 @@ describe("durable role attempts and serial readiness", () => {
   it("allocates one mutation owner, replays transport, and bounds authorized retries", () => {
     const first = allocate();
     expect(allocate()).toEqual(first);
-    expect(() => allocate({ requestId: "attempt-development-2" })).toThrow("explicitly authorized");
+    expect(() => allocate({ requestId: "attempt-development-2" })).toThrow();
     recordSessionRoleAttemptTerminal(db, { requestId: first.request_id, actorId: "developer-1", status: "failed", receipt: { reason: "failed" } });
+    expect(() => allocate({ requestId: "attempt-development-2" })).toThrow("explicitly authorized");
     const second = allocate({ requestId: "attempt-development-2", retryAuthorized: true, maxOrdinal: 2 });
     expect(second.ordinal).toBe(2);
     recordSessionRoleAttemptTerminal(db, { requestId: second.request_id, actorId: "developer-1", status: "failed", receipt: {} });
     expect(() => allocate({ requestId: "attempt-development-3", retryAuthorized: true, maxOrdinal: 2 })).toThrow("limit is exhausted");
   });
 
-  it("keeps helpers read-only and requires independent review and QA identities", () => {
+  it("never admits a second concurrent mutation owner for a requirement, even under a revised input", () => {
+    allocate();
+    expect(() => allocate({ requestId: "attempt-development-r2", inputRevision: "revision-2", actorId: "developer-2" }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "mutation_owner_active" }) }));
+  });
+
+  it("allocates the next ordinal atomically across two database connections", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-attempt-race-")));
+    const file = path.join(root, "arcadia.db");
+    const first = new Database(file);
+    const second = new Database(file);
+    try {
+      applyInitialSchema(first);
+      const attempt = allocate({}, first);
+      recordSessionRoleAttemptTerminal(first, { requestId: attempt.request_id, actorId: "developer-1", status: "failed", receipt: {} });
+      const retried = allocate({ requestId: "attempt-development-2a", retryAuthorized: true }, first);
+      expect(() => allocate({ requestId: "attempt-development-2b", retryAuthorized: true }, second)).toThrow();
+      expect(retried.ordinal).toBe(2);
+      // Restart: a fresh connection replays the same transport id onto the same row.
+      second.close();
+      const restarted = new Database(file);
+      try {
+        expect(allocate({ requestId: "attempt-development-2a", retryAuthorized: true }, restarted)).toMatchObject({ id: retried.id, ordinal: 2 });
+        expect((restarted.prepare("SELECT count(*) count FROM session_role_attempts").get() as { count: number }).count).toBe(2);
+      } finally { restarted.close(); }
+    } finally {
+      first.close();
+      if (second.open) second.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps helpers read-only and requires independent review and QA identities across input revisions", () => {
     expect(() => allocate({ role: "planner", mutationOwner: true })).toThrow("Only the development role");
     allocate();
     expect(() => allocate({ role: "code-review", requestId: "attempt-review-developer", actorId: "developer-1", mutationOwner: false }))
       .toThrow("cannot be allocated to the developer");
     expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer", actorId: "developer-1", mutationOwner: false }))
+      .toThrow("cannot be allocated to the developer");
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer-r2", inputRevision: "revision-2", actorId: "developer-1", mutationOwner: false }))
       .toThrow("cannot be allocated to the developer");
     const qa = allocate({ role: "qa", requestId: "attempt-qa-no-binding", actorId: "qa-1", mutationOwner: false });
     expect(() => recordSessionRoleAttemptTerminal(db, {
