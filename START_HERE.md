@@ -1259,7 +1259,11 @@ within the window (retry in a few seconds; do not restart it), and `NOT READY`
 when no go-capable worker is there (start the updated worker). A fresh heartbeat
 alone is never sufficient. `Brief supervisor` reports whether every installed
 brief launcher actually ran its internal self-test and answered; `NOT READY`
-there makes status `NOT READY` and needs the reviewed broker reinstall. `Workspace trust` reports how many Project
+there makes status `NOT READY` and needs the reviewed broker reinstall. A
+release installed before that reinstall ignores the internal self-test marker,
+so its status run performs one real read-only brief against the inherited or
+default workspace and reports `NOT READY`. The internal
+`ARCADIA_BRIEF_CHILD`/`ARCADIA_GO_BROKER_SELFTEST` markers grant no authority. `Workspace trust` reports how many Project
 repositories carry Codex trust; a missing one makes status `NOT READY` and is
 named in the issues as `codexWorkspaceTrust missing: <repository>`. Rerun
 `pnpm arcadia go-broker install` to add it. Install also records Claude Code's

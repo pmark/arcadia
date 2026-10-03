@@ -188,7 +188,7 @@ keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRI
 The fixed brief supervises itself: one JSON document on stdout within 25s.
 A failure names `error.details.stage`, `correlationId` and `recovery`; it is read-only, so rerun the same launcher once.
 `work-monitor` = many worktrees or a hung git; `advance`/`next` = a SQLite lock. Never run mutable `next` or widen the sandbox.
-Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action; `go-broker status` then shows `Brief supervisor: READY`.
+Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
 Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
 ## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED

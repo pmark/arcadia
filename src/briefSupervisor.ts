@@ -7,7 +7,9 @@ import { createFailure } from "./cli/response.js";
  * The fixed brief runs synchronously (Git, SQLite, document reads), so no
  * in-process timer can ever interrupt it. The deadline is enforced from a
  * parent: the installed entrypoint re-spawns itself as a supervised child in
- * its own process group and owns the single receipt the caller reads.
+ * its own process group and owns the single receipt the caller reads. The
+ * child and self-test markers are internal and grant no authority: the child
+ * runs the same read-only brief, and the self-test touches nothing.
  */
 
 /** Set only on the supervised child; its value is the parent's correlation id. */
@@ -21,9 +23,30 @@ export const BRIEF_SELF_TEST_ENV = "ARCADIA_GO_BROKER_SELFTEST";
 export const BRIEF_DEADLINE_MS = 25_000;
 /** Each kill step (TERM grace, then KILL wait) is capped by this bound. */
 export const BRIEF_KILL_GRACE_MS = 1_000;
+/** How long a child that has exited may keep its stdout open before its answer is taken as complete. */
+export const BRIEF_DRAIN_GRACE_MS = 300;
 /** Progress lines on the child's stderr carry this prefix. */
 export const BRIEF_STAGE_PREFIX = "arcadia-brief-stage ";
 const STDERR_TAIL_BYTES = 4_096;
+/** Margin after the supervisor's own bound before the reaper acts alone. */
+const REAPER_MARGIN_MS = 2_000;
+
+/**
+ * A tiny watchdog in its own process group. It holds a pipe from the
+ * supervisor: if that pipe closes without "done" -- the supervisor was killed,
+ * including by a SIGKILL of the launcher's whole process group -- it kills the
+ * brief child's group. It also acts alone after the supervisor's own bound.
+ * It needs no process listing (`ps` is denied inside coding-agent sandboxes).
+ */
+const REAPER_SOURCE = `
+const pgid = Number(process.env.ARCADIA_BRIEF_REAPER_PGID);
+const reap = () => { try { process.kill(-pgid, "SIGKILL"); } catch {} process.exit(0); };
+setTimeout(reap, Number(process.env.ARCADIA_BRIEF_REAPER_CAP_MS));
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { if (chunk.includes("done")) process.exit(0); });
+process.stdin.on("end", reap);
+process.stdin.on("error", reap);
+`;
 
 export const BRIEF_STAGES = ["spawn", "workspace", "advance", "work-monitor", "next", "render", "self-test"] as const;
 export type BriefStage = (typeof BRIEF_STAGES)[number];
@@ -114,11 +137,14 @@ export interface BriefSupervisorOutcome {
 }
 
 /**
- * Run the brief child under a hard deadline. On expiry the whole child process
- * group gets SIGTERM, then SIGKILL after a bounded grace; the outcome resolves
- * no later than `deadlineMs + 2 * killGraceMs` regardless of what the child
- * does. After the deadline every child byte is discarded, so a late child
- * write can never produce a second receipt.
+ * Run the brief child under a hard deadline. The child leads its own process
+ * group so every Git or SQLite helper it starts can be stopped with it, without
+ * a process listing. On expiry that group gets SIGTERM, then SIGKILL after a
+ * bounded grace; the outcome resolves no later than `deadlineMs + 2 *
+ * killGraceMs`. After the deadline every child byte is discarded, so a late
+ * child write can never produce a second receipt. A reaper outside both groups
+ * stops the child's group if the supervisor itself dies, so a SIGKILL of the
+ * caller's process group still takes the whole brief down.
  */
 export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSupervisorOutcome> {
   const grace = options.killGraceMs ?? BRIEF_KILL_GRACE_MS;
@@ -132,6 +158,7 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
     let exited = false;
     let exitCode: number | null = null;
     let exitSignal: NodeJS.Signals | null = null;
+    let drain: NodeJS.Timeout | undefined;
     const stdout: Buffer[] = [];
     let stderrTail = "";
     let partialLine = "";
@@ -143,6 +170,17 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
       detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
+    const reaper = child.pid === undefined ? null : spawn(process.execPath, ["-e", REAPER_SOURCE], {
+      detached: true,
+      stdio: ["pipe", "ignore", "ignore"],
+      env: {
+        ARCADIA_BRIEF_REAPER_PGID: String(child.pid),
+        ARCADIA_BRIEF_REAPER_CAP_MS: String(options.deadlineMs + 2 * grace + REAPER_MARGIN_MS)
+      }
+    });
+    reaper?.on("error", () => { /* The deadline path still bounds the child. */ });
+    reaper?.stdin?.on("error", () => { /* A gone reaper needs no release. */ });
+    reaper?.unref();
 
     const killGroup = (signal: NodeJS.Signals) => {
       if (child.pid === undefined) return;
@@ -160,17 +198,43 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
 
     const failure = (error: ArcadiaError, stalled = false) =>
       briefFailureReceipt(error, { stage, correlationId: options.correlationId, stalled });
-    const finish = (outcome: Omit<BriefSupervisorOutcome, "stage" | "elapsedMs">) => {
+    const finish = (outcome: Omit<BriefSupervisorOutcome, "stage" | "elapsedMs">, stopRemaining = false) => {
       if (settled) return;
       settled = true;
       accepting = false;
       clearTimeout(deadline);
+      clearTimeout(drain);
+      // Anything still holding the child's pipes is stopped with its group;
+      // the group id stays reserved while such a member lives.
+      if (stopRemaining) stopGroup();
       for (const signal of parentSignals) process.off(signal, onParentSignal);
       process.off("exit", stopGroup);
+      reaper?.stdin?.end("done\n");
       child.stdout?.destroy();
       child.stderr?.destroy();
       child.unref();
       resolve({ ...outcome, stage, elapsedMs: Date.now() - started });
+    };
+
+    /** The child's own answer, verbatim, or a failure when it gave none. */
+    const settleFromChild = (stopRemaining: boolean) => {
+      const output = Buffer.concat(stdout).toString("utf8");
+      let parsed: unknown;
+      try { parsed = JSON.parse(output); } catch { parsed = undefined; }
+      if (parsed && typeof parsed === "object" && typeof (parsed as { ok?: unknown }).ok === "boolean") {
+        // Verbatim: the dispatch brief's bytes are never re-serialized.
+        finish({ receipt: output, exitCode: (parsed as { ok: boolean }).ok ? (exitCode ?? 0) : exitCode || 1, timedOut: false }, stopRemaining);
+        return;
+      }
+      finish({
+        receipt: failure(new ArcadiaError("UNEXPECTED_ERROR", "The fixed brief child exited without a structured receipt.", 1, {
+          childExitCode: exitCode,
+          childSignal: exitSignal,
+          ...(stderrTail.trim() ? { childStderrTail: stderrTail.trim() } : {})
+        })),
+        exitCode: 1,
+        timedOut: false
+      }, stopRemaining);
     };
 
     child.stdout?.on("data", (chunk: Buffer) => { if (accepting) stdout.push(chunk); });
@@ -204,26 +268,12 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
       exitCode = code;
       exitSignal = signal;
       for (const waiter of exitWaiters.splice(0)) waiter();
+      // A descendant that inherited the child's stdout can hold the pipe open
+      // after a complete answer; take what arrived once a short drain passes.
+      if (accepting) drain = setTimeout(() => { if (accepting) settleFromChild(true); }, BRIEF_DRAIN_GRACE_MS);
     });
     child.on("close", () => {
-      if (!accepting) return;
-      const output = Buffer.concat(stdout).toString("utf8");
-      let parsed: unknown;
-      try { parsed = JSON.parse(output); } catch { parsed = undefined; }
-      if (parsed && typeof parsed === "object" && typeof (parsed as { ok?: unknown }).ok === "boolean") {
-        // Verbatim: the dispatch brief's bytes are never re-serialized.
-        finish({ receipt: output, exitCode: (parsed as { ok: boolean }).ok ? (exitCode ?? 0) : exitCode || 1, timedOut: false });
-        return;
-      }
-      finish({
-        receipt: failure(new ArcadiaError("UNEXPECTED_ERROR", "The fixed brief child exited without a structured receipt.", 1, {
-          childExitCode: exitCode,
-          childSignal: exitSignal,
-          ...(stderrTail.trim() ? { childStderrTail: stderrTail.trim() } : {})
-        })),
-        exitCode: 1,
-        timedOut: false
-      });
+      if (accepting) settleFromChild(false);
     });
 
     const waitForExit = (ms: number) => new Promise<void>((done) => {
@@ -237,6 +287,7 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
       // Freeze the receipt first: nothing the child writes from here on can
       // reach the caller, so a late child answer never becomes a second one.
       accepting = false;
+      clearTimeout(drain);
       const receipt = failure(new ArcadiaError(
         "BRIEF_DEADLINE_EXCEEDED",
         `The fixed brief did not finish within ${options.deadlineMs}ms; its process group was stopped.`,

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,7 +39,11 @@ function scratch(): string {
 /** A process is gone once signalling fails or only its zombie entry remains. */
 function alive(pid: number): boolean {
   try { process.kill(pid, 0); } catch { return false; }
-  const stat = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim();
+  // A zombie still answers signal 0. Where `ps` is denied (a coding-agent
+  // sandbox) the signal answer stands.
+  const ps = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+  if (ps.error || typeof ps.stdout !== "string") return true;
+  const stat = ps.stdout.trim();
   return stat !== "" && !stat.startsWith("Z");
 }
 
@@ -70,6 +74,12 @@ if (mode === "ok") {
   writeFileSync(pidFile, String(sleeper.pid));
   stage("work-monitor");
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+} else if (mode === "linger") {
+  const holder = spawn("sleep", ["30"], { stdio: ["ignore", "inherit", "ignore"] });
+  writeFileSync(pidFile, String(holder.pid));
+  stage("render");
+  writeSync(1, JSON.stringify({ ok: true, command: "brief-broker", data: { dispatchBrief: "complete" } }) + "\\n");
+  process.exit(0);
 } else if (mode === "late") {
   stage("next");
   process.on("SIGTERM", () => {
@@ -82,7 +92,11 @@ if (mode === "ok") {
   return script;
 }
 
-function supervise(directory: string, mode: string, deadlineMs = 800) {
+// Generous for a loaded runner: every stage-reaching child is plain node.
+const DEADLINE_MS = 3_000;
+const GRACE_MS = 300;
+
+function supervise(directory: string, mode: string, deadlineMs = DEADLINE_MS) {
   const pidFile = path.join(directory, `${mode}.pid`);
   return {
     pidFile,
@@ -93,7 +107,7 @@ function supervise(directory: string, mode: string, deadlineMs = 800) {
       env: process.env,
       correlationId: crypto.randomUUID(),
       deadlineMs,
-      killGraceMs: 300
+      killGraceMs: GRACE_MS
     })
   };
 }
@@ -115,12 +129,12 @@ describe("brief supervisor", () => {
     expect(outcome.receipt).toBe(expected);
   });
 
-  it("kills a stalled child's whole process group within the bound and names the last stage", async () => {
+  it("kills a stalled child and its descendants within the bound and names the last stage", async () => {
     const directory = scratch();
     const { pidFile, run } = supervise(directory, "stall");
     const started = Date.now();
     const outcome = await run;
-    expect(Date.now() - started).toBeLessThan(800 + 2 * 300 + 1_000);
+    expect(Date.now() - started).toBeLessThan(DEADLINE_MS + 2 * GRACE_MS + 2_000);
     expect(outcome).toMatchObject({ exitCode: 1, timedOut: true, stage: "work-monitor" });
     const receipt = JSON.parse(outcome.receipt);
     expect(receipt).toMatchObject({
@@ -128,13 +142,24 @@ describe("brief supervisor", () => {
       command: "brief-broker",
       error: {
         code: "BRIEF_DEADLINE_EXCEEDED",
-        details: { stage: "work-monitor", deadlineMs: 800, readOnly: true }
+        details: { stage: "work-monitor", deadlineMs: DEADLINE_MS, readOnly: true }
       }
     });
     expect(receipt.error.details.correlationId).toMatch(UUID);
     expect(receipt.error.details.recovery).toContain("rerunning the same fixed brief launcher is safe");
-    expect(receipt.error.details.elapsedMs).toBeGreaterThanOrEqual(800);
+    expect(receipt.error.details.elapsedMs).toBeGreaterThanOrEqual(DEADLINE_MS);
     // The grandchild shared the child's group and did not survive it.
+    await expectDead(Number(readFileSync(pidFile, "utf8")));
+  });
+
+  it("keeps a complete answer whose descendant still holds stdout, then stops that descendant", async () => {
+    const directory = scratch();
+    const { pidFile, run } = supervise(directory, "linger");
+    const started = Date.now();
+    const outcome = await run;
+    expect(Date.now() - started).toBeLessThan(DEADLINE_MS);
+    expect(outcome).toMatchObject({ exitCode: 0, timedOut: false, stage: "render" });
+    expect(outcome.receipt).toBe(`${JSON.stringify({ ok: true, command: "brief-broker", data: { dispatchBrief: "complete" } })}\n`);
     await expectDead(Number(readFileSync(pidFile, "utf8")));
   });
 
@@ -229,7 +254,7 @@ describe("fixed brief entrypoint under supervision", () => {
     const pids = path.join(path.dirname(repo), "git.pids");
     write(path.join(shims, "git"), `#!/bin/sh\necho $$ >> '${pids}'\nexec sleep 30\n`);
     chmodSync(path.join(shims, "git"), 0o755);
-    const deadlineMs = 10_000;
+    const deadlineMs = 7_000;
 
     const result = runBriefLauncher(repo, {
       ARCADIA_WORKSPACE: workspace,
@@ -293,6 +318,33 @@ describe("fixed brief entrypoint under supervision", () => {
     expect(git(repo, ["status", "--porcelain=v1", "--untracked-files=all"])).toBe(statusBefore);
     expect(git(repo, ["rev-parse", "HEAD"])).toBe(headBefore);
     expect(existsSync(path.join(repo, ".arcadia"))).toBe(false);
+  });
+
+  it("leaves no brief child or hung git behind when the caller SIGKILLs the launcher's process group", async () => {
+    const { repo, workspace } = candidateFixture();
+    const shims = path.join(path.dirname(repo), "shims");
+    const pids = path.join(path.dirname(repo), "git.pids");
+    // $$ is the hung git (exec keeps the pid); $PPID is the brief child.
+    write(path.join(shims, "git"), `#!/bin/sh\necho "$$ $PPID" >> '${pids}'\nexec sleep 30\n`);
+    chmodSync(path.join(shims, "git"), 0o755);
+    // The launcher leads its own group here, as a harness's tool process would.
+    const launcher = spawn(process.execPath, ["--import", tsxLoader, entrypoint, "codex", "brief"], {
+      cwd: repo,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, CODEX_SANDBOX: "", ARCADIA_WORKSPACE: workspace, PATH: `${shims}${path.delimiter}${process.env.PATH ?? ""}` }
+    });
+    try {
+      const until = Date.now() + 30_000;
+      while (!existsSync(pids) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
+      const [gitPid, childPid] = readFileSync(pids, "utf8").trim().split("\n")[0].split(" ").map(Number);
+      expect(alive(gitPid) && alive(childPid)).toBe(true);
+      process.kill(-launcher.pid!, "SIGKILL");
+      await expectDead(childPid);
+      await expectDead(gitPid);
+    } finally {
+      try { process.kill(-launcher.pid!, "SIGKILL"); } catch { /* Already gone. */ }
+    }
   });
 
   it("answers the internal self-test without a workspace", () => {

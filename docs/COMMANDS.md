@@ -1665,7 +1665,13 @@ repository. Its success output is canonical JSON; a refusal is JSON on stderr.
 `brief` is the exception: it always writes exactly one JSON document to
 stdout. The launcher supervises a child copy of itself in its own process
 group under a 25-second deadline (`ARCADIA_BRIEF_DEADLINE_MS` may only shorten
-it). On success the child's receipt, including `data.dispatchBrief`, is copied
+it). A small reaper outside both groups stops that child group if the
+launcher itself is killed, including by a SIGKILL of the caller's process
+group; a descendant still holding stdout after the child exits is stopped
+after a 300ms drain, and the child's complete answer is kept. The
+`ARCADIA_BRIEF_CHILD` and `ARCADIA_GO_BROKER_SELFTEST` environment markers are
+internal: setting them grants no authority (the child runs the same read-only
+brief; the self-test touches nothing). On success the child's receipt, including `data.dispatchBrief`, is copied
 byte-for-byte and carries `data.correlationId`. A stalled stage (a hung Git
 call, a held SQLite lock) yields `ok: false` with code
 `BRIEF_DEADLINE_EXCEEDED`, after the whole group is stopped; every brief
@@ -1728,7 +1734,10 @@ brief launcher in an internal self-test (no workspace, claim, database or Git):
 `Brief supervisor: READY` means the release entrypoint actually self-spawned
 and returned a structured receipt, and a launcher that cannot is a broker
 issue that makes status `NOT READY`; `install` applies the same check after
-linking. It exits nonzero with
+linking. During the transition, a release installed before this change
+ignores the self-test marker, so that one status run performs a real
+read-only brief from the release directory against the inherited or default
+workspace and reports `NOT READY` until the reviewed reinstall. It exits nonzero with
 structured issues unless every check passes; a missing present profile root is
 reported with that profile's name. Success reports `READY`. Re-running
 `install` on a READY host is a no-op.
