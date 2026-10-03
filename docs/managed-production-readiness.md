@@ -161,13 +161,26 @@ failure and restart reconciliation leave no duplicate principal or live
 orphan admission, lease or enrollment row. Native adoption refuses without a
 host-observed adapter. Store-level tests cover one mutation owner per
 requirement, independent reviewer/QA identities, bounded terminal retries,
-two-connection ordinal allocation and exact-head invalidation. Missing:
-the role store is not yet wired into the planner, critique, review or QA
-executors or the tick, deterministic-readiness-before-inference is not
-enforced, and three-Action serial selection/restart/Off is not proven
-against the real dispatcher. This is candidate evidence only: it is not
-installed-host enrollment proof, production activation, a rehearsal, or
-completion evidence.
+two-connection ordinal allocation and exact-head invalidation.
+
+The lineage is now wired into the real executors (candidate, not installed):
+the guarded launcher allocates or resumes the one development attempt after
+its deterministic prerequisites and before admission; exit reconciliation
+finishes it in the receipt's transaction; the tick's planning resolution
+records planner and packet-critique attempts; code review and QA attempts
+require a deterministic readiness binding (head, criteria, preserved
+evidence) before any reviewer runs; `arcadia qa pr` records QA for a
+lineage-bound managed PR; and the tick integrates only with current,
+independent code review and QA verdicts on the exact head. The hermetic
+three-Action rehearsal proves serial selection, between-Action Off fencing
+and one lineage per role per Action through the real tick, with simulated
+reviewers. Missing: no executor records the code-review verdict (the
+independent review gate is a reviewer agent, not a host command), so
+unattended integration of a real candidate still waits on an operator merge
+or that executor; QA requires a ready, non-draft PR whose head is the
+candidate's settled head, which needs the later publication/PR-readiness
+Grant. This is candidate evidence only: it is not installed-host enrollment
+proof, production activation, a rehearsal, or completion evidence.
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

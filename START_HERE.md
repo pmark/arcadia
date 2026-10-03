@@ -1013,6 +1013,18 @@ the worker reports the exact `git merge --ff-only` command to run instead.
 Deploying, publishing, spending, credentials, messaging, and deletion remain
 separate gates.
 
+Even under a valid grant, the worker integrates only a candidate whose current
+independent code review and QA verdicts both bind its exact head, its governed
+acceptance criteria and its preserved validation evidence. The exit tick
+preserves and accepts the candidate, then reports `Integration waits on current
+independent verdicts`; a later tick integrates once both verdicts exist. A new
+commit on the candidate, an amended criterion or new validation evidence makes
+earlier verdicts stale, and the developer's own Session can never supply them.
+`arcadia qa pr` records the QA verdict for a managed candidate's PR when the
+PR head is that ready head, and refuses before any reviewer runs otherwise. No
+CLI yet records the code-review verdict, so for now an operator merges with the
+reported command.
+
 ### Provider capacity gates every admission, unless you turn the gate off
 
 Being Active is not enough on its own. Before any Action is admitted, Arcadia
