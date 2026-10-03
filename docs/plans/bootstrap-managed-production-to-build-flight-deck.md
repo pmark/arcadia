@@ -3037,7 +3037,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/908", "src/stewardship/codeRabbitReview.ts", "src/cli.ts", "docs/agent-guidance/pull-requests.md", "docs/agents-context.md", "docs/managed-production-readiness.md"]
   - id: restore-readiness-evidence-and-report-spoofed-coderabbit-status
     title: Undo two small wording regressions left by the advisory-CodeRabbit alignment.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Undo two small wording regressions left by the advisory-CodeRabbit alignment.
