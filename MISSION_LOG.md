@@ -1503,3 +1503,17 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/clear-preservation-timeout-count-and-harden-index-lock-checks
+
+- **Did:** Completed Action arcadia/clear-preservation-timeout-count-and-harden-index-lock-checks from accepted evidence (Candidate da9443fb1d8249327e6ef12353b55a2b0d3a363a).
+- **Result:** Every declared acceptance criterion was accepted as met: "The managed-production tick path (`src/production/sessionHandoff.ts`) counts preserve-stage timeouts toward the same identical-timeout cap as `arcadia preserve` and clears the count after a successful preservation, with a deterministic test that fails when either is removed."; "Stale `index.lock` removal no longer rests on mtime alone: a lock is removed only when it is older than the threshold and a fail-closed probe finds no process holding it open (an unreadable probe refuses with the typed retryable error); a directory lock, a symlinked lock and a dangling symlink raise the typed error instead of an untyped failure after the commit; tests cover each shape."; "`index_locked` has its own error code, is not counted against the timeout budget, and the cap message no longer suggests tuning the timeout for a locked index; notes and START_HERE describe it; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-clear-preservation-timeout-count-896-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr912
+
+- **Did:** Preservation stops guessing about a stale index.lock: PR #912 refuses a lock a process still holds, and gives a locked index its own retryable error that no longer burns the timeout budget. https://github.com/pmark/arcadia/pull/912
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

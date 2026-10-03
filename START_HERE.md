@@ -1364,9 +1364,15 @@ Git subcommand, stage, timeout and remedy. Rerun the same launcher unchanged: th
 retry reuses the request id, never creates a second commit, and does not count
 toward the identical-refusal limit. Ten identical timeouts in a row stop
 automatic retries until an operator resolves the cause; a timed-out pull-request
-create or edit asks you to check for an existing pull request first. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
+create or edit asks you to check for an existing pull request first. A blocked
+candidate `index.lock` reports its own code, `PRESERVATION_INDEX_LOCKED`, never a
+timeout: `reason: index_locked` (retryable; the lock is fresh, held open or a Git
+process still runs there) means let that process finish and rerun; `reason:
+index_lock_malformed` (not retryable; a directory or symlink) means inspect and
+remove it yourself, then rerun. Lock refusals never use up the timeout limit. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
 Installed launchers gain this behavior only after the reviewed **Reinstall the
-protected go broker** `/runs` action.
+protected go broker** `/runs` action, and the managed tick only after the host-services
+recovery restarts the worker.
 
 For managed Sessions, preservation checks come from host-managed Project `validation_commands`,
 frozen in the approved immutable packet. The host executes those checks against

@@ -123,3 +123,110 @@ export function lsofProbe(root: string): WorktreeLiveness {
   if (!sawProcess) return { ok: false, error: "lsof reported no processes at all." };
   return { ok: true, processes };
 }
+
+/**
+ * Whether any process holds `file` open -- e.g. a Git process still writing
+ * its `index.lock` -- answered fail-closed for the same reason as the worktree
+ * probe above: only `none` is a positive "nobody holds it"; a probe that cannot
+ * run, errors, times out or returns unparseable output is `unknown`, which the
+ * caller must treat as held.
+ *
+ * Residual risk, accepted as in the worktree probe: on Linux another user's
+ * process whose descriptors we may not inspect is skipped.
+ */
+export type FileHolders = { status: "none" } | { status: "held"; pids: number[] } | { status: "unknown"; error: string };
+export type FileHolderProbe = (fileRealpath: string) => FileHolders;
+
+/** Bound on the `lsof` file-holder probe; far inside the preservation stage watchdog. */
+const FILE_HOLDER_PROBE_TIMEOUT_MS = 10_000;
+let fileHolderOverride: FileHolderProbe | null = null;
+
+/** Test-only: replace the host file-holder probe; pass null to restore it. */
+export function setFileHolderProbeForTests(probe: FileHolderProbe | null): void {
+  fileHolderOverride = probe;
+}
+
+export function fileIsHeldOpen(file: string): FileHolders {
+  let target: string;
+  try {
+    target = realpathSync(file);
+  } catch (error) {
+    return { status: "unknown", error: `The file path could not be resolved: ${(error as Error).message}` };
+  }
+  try {
+    const probe = fileHolderOverride ?? (existsSync("/proc/self/fd") ? (resolved: string) => procFdHolders(resolved) : (resolved: string) => lsofFileHolders(resolved));
+    return probe(target);
+  } catch (error) {
+    return { status: "unknown", error: `The file-holder probe failed: ${(error as Error).message}` };
+  }
+}
+
+/** The `/proc` reads the Linux descriptor scan needs; injectable for tests. */
+export interface ProcFdReader { list(): string[]; fds(pid: string): string[]; link(pid: string, fd: string): string }
+const systemProcFd: ProcFdReader = {
+  list: () => readdirSync("/proc"),
+  fds: (pid) => readdirSync(`/proc/${pid}/fd`),
+  link: (pid, fd) => readlinkSync(`/proc/${pid}/fd/${fd}`)
+};
+/** A process that exited mid-scan, or one that is not ours to inspect, is skipped. */
+const SKIPPED_PROC_ERRORS = new Set(["EACCES", "EPERM", "ENOENT", "ESRCH"]);
+
+/** Linux: every readable `/proc/<pid>/fd/*` link naming `target`. Exported for tests. */
+export function procFdHolders(target: string, proc: ProcFdReader = systemProcFd): FileHolders {
+  let entries: string[];
+  try {
+    entries = proc.list();
+  } catch (error) {
+    return { status: "unknown", error: `/proc could not be listed: ${(error as Error).message}` };
+  }
+  const pids: number[] = [];
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let fds: string[];
+    try {
+      fds = proc.fds(entry);
+    } catch (error) {
+      if (SKIPPED_PROC_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")) continue;
+      return { status: "unknown", error: `/proc/${entry}/fd could not be read: ${(error as Error).message}` };
+    }
+    for (const fd of fds) {
+      let link: string;
+      try {
+        link = proc.link(entry, fd);
+      } catch (error) {
+        if (SKIPPED_PROC_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")) continue;
+        return { status: "unknown", error: `/proc/${entry}/fd/${fd} could not be read: ${(error as Error).message}` };
+      }
+      if (link === target) { pids.push(Number(entry)); break; }
+    }
+  }
+  return pids.length > 0 ? { status: "held", pids } : { status: "none" };
+}
+
+/** macOS and other hosts without /proc: `lsof -F p -- <file>`. `run` is injectable for tests. */
+export function lsofFileHolders(
+  target: string,
+  run: (args: string[]) => { error?: Error; status: number | null; stdout: string; stderr: string } = (args) =>
+    spawnSync("lsof", args, { encoding: "utf8", timeout: FILE_HOLDER_PROBE_TIMEOUT_MS, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"] })
+): FileHolders {
+  // lsof escapes non-printable and non-ASCII bytes in names, so such a path
+  // cannot be trusted to match.
+  if (/[^\x20-\x7e]/.test(target)) {
+    return { status: "unknown", error: "lsof cannot be trusted for a file path containing non-ASCII or non-printable characters." };
+  }
+  const result = run(["-F", "p", "--", target]);
+  if (result.error) return { status: "unknown", error: `lsof could not run: ${result.error.message}` };
+  const stdout = result.stdout ?? "";
+  const stderr = (result.stderr ?? "").trim();
+  // lsof exits 1, silently, when no process has the file open.
+  if (result.status === 1 && !stdout.trim() && !stderr) return { status: "none" };
+  if (result.status !== 0) return { status: "unknown", error: `lsof exited with status ${String(result.status)}: ${stderr.slice(0, 300)}` };
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line || line.startsWith("f")) continue;
+    const pid = line.startsWith("p") ? Number(line.slice(1)) : Number.NaN;
+    if (!Number.isInteger(pid) || pid <= 0) return { status: "unknown", error: "lsof output was not parseable." };
+    pids.push(pid);
+  }
+  return pids.length > 0 ? { status: "held", pids } : { status: "unknown", error: "lsof exited 0 without naming a process." };
+}

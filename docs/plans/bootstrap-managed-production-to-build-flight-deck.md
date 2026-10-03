@@ -3003,7 +3003,7 @@ actions:
     references: []
   - id: clear-preservation-timeout-count-and-harden-index-lock-checks
     title: Make the managed-production tick count and clear preservation timeouts like the CLI path, and make the stale index.lock decision and its error code accurate.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the managed-production tick count and clear preservation timeouts like the CLI path, and make the stale index.lock decision and its error code accurate.
