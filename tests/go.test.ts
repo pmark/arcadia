@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
-import { withReadOnlyDatabase } from "../src/db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
 import { runGoBroker } from "../src/goBroker.js";
+import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -629,6 +631,359 @@ describe("arcadia go — refuses to orphan an uncommitted candidate", () => {
     // still be counted.
     expect(second.data.clutter?.extraWorktrees).not.toBe(0);
     expect(second.data.clutter?.extraWorktrees).toBe(1);
+  });
+});
+
+describe("arcadia go — resumes a draft-only never-launched candidate in place (Issue #884)", () => {
+  const preparedAt = new Date("2026-09-06T12:00:00.000Z");
+  const resumedAt = new Date("2026-09-06T13:00:00.000Z");
+  // The host process probe is replaced so these tests never depend on lsof or
+  // /proc; tests/worktree-liveness.test.ts exercises the real probe.
+  let liveness: WorktreeLiveness = { ok: true, processes: [] };
+  beforeEach(() => {
+    liveness = { ok: true, processes: [] };
+    setWorktreeLivenessProbeForTests(() => liveness);
+  });
+  afterEach(() => setWorktreeLivenessProbeForTests(null));
+
+  function prepareCandidate(name: string): { fixture: ReturnType<typeof createFixture>; path: string; branch: string } {
+    const fixture = createFixture(`claude/${name}`, planDocument);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    const prepared = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees"),
+      now: preparedAt
+    }).data.nextWorktree!;
+    // Git reports worktrees by real path; a macOS temp dir is a symlink.
+    return { fixture, path: realpathSync(prepared.path), branch: prepared.branch };
+  }
+
+  function writeDraft(worktree: string, name: string, project: string, extra = ""): Buffer {
+    mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+    const bytes = Buffer.from(`{\n  "agent_ask": "v1",\n  "request_id": "${name}",\n  "project": "${project}",\n  "intent": "proposal"${extra}\n}\n`);
+    writeFileSync(path.join(worktree, ".arcadia", "asks", `agent-ask-${name}.yaml`), bytes);
+    return bytes;
+  }
+
+  function goAgain(fixture: ReturnType<typeof createFixture>, extra: Partial<Parameters<typeof runGoCommand>[0]> = {}) {
+    return runGoCommand({
+      repo: fixture.main,
+      source: fixture.main,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees-2"),
+      now: resumedAt,
+      ...extra
+    });
+  }
+
+  function worktreeCount(fixture: ReturnType<typeof createFixture>): number {
+    return git(fixture.main, ["worktree", "list", "--porcelain"]).split("\n").filter((line) => line.startsWith("worktree ")).length;
+  }
+
+  function claims(fixture: ReturnType<typeof createFixture>): Array<{ worktree_path: string; branch: string }> {
+    return withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+      "SELECT worktree_path, branch FROM agent_worktree_reservations WHERE action_id = 'define-contract'"
+    ).all() as Array<{ worktree_path: string; branch: string }>);
+  }
+
+  function receiptIds(fixture: ReturnType<typeof createFixture>): string[] {
+    return withReadOnlyDatabase(fixture.workspace, (db) => {
+      const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_draft_recoveries'").get();
+      if (!table) return [];
+      return (db.prepare("SELECT request_id FROM candidate_draft_recoveries ORDER BY request_id").all() as Array<{ request_id: string }>)
+        .map((row) => row.request_id);
+    });
+  }
+
+  function handouts(fixture: ReturnType<typeof createFixture>): Array<{ request_id: string; resumed_route: string }> {
+    return withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+      "SELECT request_id, resumed_route FROM candidate_draft_recoveries WHERE resumed_at IS NOT NULL"
+    ).all() as Array<{ request_id: string; resumed_route: string }>);
+  }
+
+  interface Disposition {
+    receiptId: string;
+    blocker: string;
+    handedOut: { receiptId: string; route: string; at: string } | null;
+    drafts: Array<{ path: string; sha256: string }>;
+    nextStep: string;
+  }
+
+  function sha256(bytes: Buffer): string {
+    return createHash("sha256").update(bytes).digest("hex");
+  }
+
+  it("resumes the same worktree and branch with one claim, byte-identical drafts and a path+sha256+origin receipt", () => {
+    const { fixture, path: candidate, branch } = prepareCandidate("draft-resume");
+    const draft = writeDraft(candidate, "draft-resume-2026-09-06", "test-project");
+
+    const result = goAgain(fixture);
+
+    expect(result.data.nextWorktree?.path).toBe(candidate);
+    expect(result.data.nextWorktree?.branch).toBe(branch);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claims(fixture)).toEqual([{ worktree_path: realpathSync(candidate), branch }]);
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-draft-resume-2026-09-06.yaml");
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+    const receipt = result.data.draftRecovery!;
+    expect(receipt.worktree).toBe(realpathSync(candidate));
+    expect(receipt.branch).toBe(branch);
+    expect(receipt.baseSha).toBe(git(candidate, ["rev-parse", "HEAD"]).trim());
+    expect(receipt.drafts).toEqual([{
+      path: ".arcadia/asks/agent-ask-draft-resume-2026-09-06.yaml",
+      sha256: sha256(draft),
+      bytes: draft.length,
+      origin: { worktree: realpathSync(candidate), branch },
+      project: "test-project",
+      requestId: "draft-resume-2026-09-06",
+      relevance: "current_action"
+    }]);
+    expect(receiptIds(fixture)).toEqual([receipt.requestId]);
+    expect(handouts(fixture)).toEqual([{ request_id: receipt.requestId, resumed_route: "go" }]);
+    expect(git(candidate, ["status", "--porcelain"])).toBe("?? .arcadia/\n");
+  });
+
+  it("hashes a draft naming another Project and leaves both drafts in place, unsettled, uncopied and unmoved", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-other");
+    const own = writeDraft(candidate, "own-2026-09-06", "test-project");
+    const foreign = writeDraft(candidate, "foreign-2026-09-06", "another-project");
+
+    const receipt = goAgain(fixture).data.draftRecovery!;
+
+    expect(receipt.drafts.map((draft) => [draft.path, draft.sha256, draft.relevance])).toEqual([
+      [".arcadia/asks/agent-ask-foreign-2026-09-06.yaml", sha256(foreign), "other_project"],
+      [".arcadia/asks/agent-ask-own-2026-09-06.yaml", sha256(own), "current_action"]
+    ]);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-own-2026-09-06.yaml")).equals(own)).toBe(true);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-foreign-2026-09-06.yaml")).equals(foreign)).toBe(true);
+    expect(git(fixture.main, ["branch", "--list", "ask/recover-*"]).trim()).toBe("");
+    expect(existsSync(path.join(fixture.main, ".arcadia"))).toBe(false);
+    expect(git(fixture.main, ["log", "--all", "--format=%s"])).not.toMatch(/agent-ask|recover/i);
+  });
+
+  it.each<[string, (candidate: string) => void, "code_bearing" | "unknown"]>([
+    ["a tracked-file edit", (candidate) => writeFileSync(path.join(candidate, "PROJECT.md"), "changed\n"), "code_bearing"],
+    ["an untracked code file", (candidate) => writeFileSync(path.join(candidate, "feature.ts"), "export {};\n"), "code_bearing"],
+    ["a rename", (candidate) => git(candidate, ["mv", "PROJECT.md", "PROJECT-renamed.md"]), "code_bearing"],
+    ["a non-Ask .arcadia file", (candidate) => writeFileSync(path.join(candidate, ".arcadia", "other.txt"), "x\n"), "unknown"],
+    ["an archived Ask", (candidate) => {
+      mkdirSync(path.join(candidate, ".arcadia", "asks", "archive"), { recursive: true });
+      writeFileSync(path.join(candidate, ".arcadia", "asks", "archive", "agent-ask-old.yaml"), "{}\n");
+    }, "unknown"],
+    ["a symlinked draft", (candidate) => {
+      const target = path.join(path.dirname(candidate), "outside.yaml");
+      writeFileSync(target, "{}\n");
+      symlinkSync(target, path.join(candidate, ".arcadia", "asks", "agent-ask-linked.yaml"));
+    }, "unknown"],
+    ["an oversized draft", (candidate) => writeFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-huge.yaml"), Buffer.alloc(1024 * 1024 + 1, 0x20)), "unknown"],
+    ["a non-UTF-8 draft", (candidate) => writeFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-binary.yaml"), Buffer.from([0xff, 0xfe, 0x00])), "unknown"]
+  ])("keeps the original refusal for %s alongside a draft, touching nothing", (_label, dirty, candidateKind) => {
+    const { fixture, path: candidate } = prepareCandidate(`draft-dirty-${candidateKind}`);
+    const draft = writeDraft(candidate, "kept-2026-09-06", "test-project");
+    dirty(candidate);
+    const before = git(candidate, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+
+    const error = expectValidation(() => goAgain(fixture), "already holds uncommitted changes");
+
+    expect(error.details?.candidateKind).toBe(candidateKind);
+    expect(error.details?.worktreePath).toBe(candidate);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-kept-2026-09-06.yaml")).equals(draft)).toBe(true);
+    expect(git(candidate, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])).toBe(before);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(receiptIds(fixture)).toEqual([]);
+  });
+
+  it("refuses with one structured disposition when a draft changes between its receipt and the resume", () => {
+    const { fixture, path: candidate, branch } = prepareCandidate("draft-changed");
+    const original = writeDraft(candidate, "changing-2026-09-06", "test-project");
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-changing-2026-09-06.yaml");
+
+    const error = expectValidation(() => goAgain(fixture, {
+      testHooks: { beforeDraftResumeVerification: () => writeFileSync(draftPath, "edited by a live terminal\n") }
+    }), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(error.details?.candidateKind).toBe("draft_only");
+    expect(error.details?.branch).toBe(branch);
+    expect(disposition.drafts).toEqual([{ path: ".arcadia/asks/agent-ask-changing-2026-09-06.yaml", sha256: sha256(original) }]);
+    expect(disposition.nextStep).toContain("Only once every draft is settled or copied out, retire the candidate");
+    // The receipt is committed after the refusal rolled back; the edit is left as found.
+    expect(handouts(fixture)).toEqual([]);
+    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
+    expect(readFileSync(draftPath, "utf8")).toBe("edited by a live terminal\n");
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("classifies a refused-only candidate afresh after an edit, on a new receipt, and hands it out", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-refused-then-edited");
+    writeDraft(candidate, "edited-2026-09-06", "test-project");
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-edited-2026-09-06.yaml");
+    const refused = expectValidation(() => goAgain(fixture, {
+      testHooks: { beforeDraftResumeVerification: () => writeFileSync(draftPath, "{\"project\": \"test-project\"}\n") }
+    }), "holds only Agent Ask drafts");
+    const refusedReceipt = (refused.details?.disposition as Disposition).receiptId;
+
+    const resumed = goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") });
+
+    expect(resumed.data.nextWorktree?.path).toBe(candidate);
+    expect(resumed.data.draftRecovery?.requestId).not.toBe(refusedReceipt);
+    expect(receiptIds(fixture).sort()).toEqual([refusedReceipt, resumed.data.draftRecovery!.requestId].sort());
+    expect(handouts(fixture)).toEqual([{ request_id: resumed.data.draftRecovery!.requestId, resumed_route: "go" }]);
+  });
+
+  it("refuses with the handed-out disposition once a handed-out candidate's draft changes", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-changed-later");
+    writeDraft(candidate, "later-2026-09-06", "test-project");
+    const first = goAgain(fixture).data.draftRecovery!;
+    const edited = Buffer.from("edited after the handout\n");
+    writeFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-later-2026-09-06.yaml"), edited);
+
+    const error = expectValidation(() => goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.handedOut).toEqual({ receiptId: first.requestId, route: "go", at: resumedAt.toISOString() });
+    expect(disposition.drafts.map((draft) => draft.sha256)).toEqual([sha256(edited)]);
+    expect(disposition.nextStep).toContain("is gone");
+    // Both observed versions stay receipted; only the first was ever handed out.
+    expect(receiptIds(fixture).sort()).toEqual([first.requestId, disposition.receiptId].sort());
+    expect(handouts(fixture)).toEqual([{ request_id: first.requestId, resumed_route: "go" }]);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("hands a candidate out once: a repeated Go call replays the same receipt and refuses with the disposition", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-replay");
+    writeDraft(candidate, "replay-2026-09-06", "test-project");
+
+    const first = goAgain(fixture).data.draftRecovery!;
+    const error = expectValidation(() => goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.receiptId).toBe(first.requestId);
+    expect(disposition.handedOut?.receiptId).toBe(first.requestId);
+    expect(disposition.blocker).toContain("Already handed out via arcadia go");
+    expect(receiptIds(fixture)).toEqual([first.requestId]);
+    expect(handouts(fixture)).toHaveLength(1);
+    expect(claims(fixture)).toHaveLength(1);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("gives exactly one of two racing Go attempts the candidate; the other refuses with the disposition", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-race");
+    writeDraft(candidate, "race-2026-09-06", "test-project");
+    let outerError: ArcadiaError | null = null;
+
+    // The second attempt runs entirely inside the first one's window before its
+    // own dispatch transaction opens; that transaction then sees the handout.
+    const inner = { result: null as ReturnType<typeof goAgain> | null };
+    try {
+      goAgain(fixture, { testHooks: { beforeDispatchTransaction: () => { inner.result = goAgain(fixture); } } });
+    } catch (error) {
+      outerError = error as ArcadiaError;
+    }
+
+    expect(inner.result!.data.nextWorktree?.path).toBe(candidate);
+    expect(outerError?.message).toContain("holds only Agent Ask drafts");
+    expect((outerError?.details?.disposition as Disposition).handedOut?.receiptId).toBe(inner.result!.data.draftRecovery?.requestId);
+    expect(receiptIds(fixture)).toHaveLength(1);
+    expect(handouts(fixture)).toHaveLength(1);
+    expect(claims(fixture)).toHaveLength(1);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("refuses with the disposition, handing nothing out, while a process still has its cwd inside the candidate", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-live-process");
+    const draft = writeDraft(candidate, "live-2026-09-06", "test-project");
+    liveness = { ok: true, processes: [{ pid: 4242, command: "claude", cwd: candidate }] };
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.blocker).toContain("That session still appears to be running here: pid 4242 (claude)");
+    expect(disposition.nextStep).toContain("Only once every draft is settled or copied out");
+    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
+    expect(handouts(fixture)).toEqual([]);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-live-2026-09-06.yaml")).equals(draft)).toBe(true);
+
+    // Once that process is gone, the same candidate is handed out as before.
+    liveness = { ok: true, processes: [] };
+    expect(goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }).data.nextWorktree?.path).toBe(candidate);
+    expect(handouts(fixture)).toHaveLength(1);
+  });
+
+  it("fails closed with the disposition when the liveness probe cannot tell", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-probe-failed");
+    writeDraft(candidate, "probe-2026-09-06", "test-project");
+    liveness = { ok: false, error: "lsof could not run: spawn lsof ENOENT" };
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    expect((error.details?.disposition as Disposition).blocker).toContain("Could not verify that no session is running in this worktree: lsof could not run");
+    expect(handouts(fixture)).toEqual([]);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("refuses with the disposition when the base moved since the candidate was prepared", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-stale-base");
+    const draft = writeDraft(candidate, "stale-2026-09-06", "test-project");
+    commitFeature(fixture.main, "landed.txt", "another candidate landed\n");
+    git(fixture.main, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.blocker).toContain("must be re-prepared from the current base. Its drafts remain on disk in this worktree");
+    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
+    expect(handouts(fixture)).toEqual([]);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-stale-2026-09-06.yaml")).equals(draft)).toBe(true);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it.each([".arcadia-go-request", ".arcadia-preserve-request"])("treats %s beside a draft as evidence a session ran, refusing with the disposition", (transport) => {
+    const { fixture, path: candidate } = prepareCandidate(`draft-transport${transport.replaceAll(".", "-")}`);
+    writeDraft(candidate, "transport-2026-09-06", "test-project");
+    writeFileSync(path.join(candidate, transport), "{}\n");
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    expect((error.details?.disposition as Disposition).blocker).toContain(`A session has run in this candidate: ${transport}`);
+    expect(handouts(fixture)).toEqual([]);
+    expect(existsSync(path.join(candidate, transport))).toBe(true);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("refuses with the disposition, not a resume, when the candidate branch already carries commits", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-committed");
+    commitFeature(candidate, "work.txt", "work\n");
+    writeDraft(candidate, "committed-2026-09-06", "test-project");
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    expect((error.details?.disposition as { blocker: string }).blocker).toContain("commit(s) beyond main");
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("still leaves a draft-holding candidate to tidy as dirt, never retiring it", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-tidy");
+    const draft = writeDraft(candidate, "tidy-2026-09-06", "test-project");
+    // Drop the handoff reservation so only tidy's own dirt rule stands between
+    // this candidate and retirement.
+    withDatabase(fixture.workspace, (db) => db.prepare("DELETE FROM agent_worktree_reservations").run());
+
+    // No liveness grace either: the drafts alone must keep it.
+    const tidy = runTidyCommand({ repo: fixture.main, workspace: fixture.workspace, apply: true, livenessGraceMs: 0, now: new Date(Date.now() + 60_000) }).data;
+
+    const entry = tidy.worktrees.find((candidateEntry: { path: string }) => candidateEntry.path === realpathSync(candidate));
+    expect(entry?.verdict).toBe("dirty");
+    expect(existsSync(candidate)).toBe(true);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-tidy-2026-09-06.yaml")).equals(draft)).toBe(true);
   });
 });
 

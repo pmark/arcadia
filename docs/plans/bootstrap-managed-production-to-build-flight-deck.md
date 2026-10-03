@@ -2946,7 +2946,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/885", "scripts/arcadia-go-broker.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "tests/go-broker.test.ts", "tests/dispatch-journal.test.ts"]
   - id: recover-draft-only-never-launched-candidates
     title: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.

@@ -65,6 +65,13 @@ A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; `rea
 Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
 The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/candidate-preservation.test.ts`.
 
+## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
+
+keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries, liveness, lsof, handed out
+
+Go and the managed tick (same rule) hand the worktree and branch out ONCE when its only dirt is `??` `.arcadia/asks/agent-ask-*.yaml` drafts, no Session row or `.arcadia-go-request`/`.arcadia-preserve-request` shows a session ran, HEAD equals the current local base tip, the claim is its own and the host probe (`/proc`, else `lsof`; `src/sessions/worktreeLiveness.ts`) finds no process with its cwd inside. `data.draftRecovery` is the receipt in `candidate_draft_recoveries`: hashes and origin only; the drafts stay on disk. `resumed_at`/`resumed_route` mark the handout, voided if the launch fails before a Session row exists.
+Anything else draft-only refuses with `details.disposition` (receipt id, `handedOut`, drafts, next step); a probe that cannot tell refuses too. Base check is against local base: once main moves the candidate must be re-prepared. Residual risk: the probe cannot see a session whose cwd is outside the worktree or another user's process; the one-shot marker bounds it. Other dirt keeps "already holds uncommitted changes" + `details.candidateKind`. Do not widen `uncommittedChanges`. Code: `src/sessions/draftOnlyCandidate.ts`.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config

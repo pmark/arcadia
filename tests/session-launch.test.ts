@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { ArcadiaError, validationError } from "../src/cli/errors.js";
+import { runGoCommand } from "../src/commands/go.js";
 import { openDatabase, withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -32,6 +33,7 @@ import { getRepositoryLease, prepareSession, reserveAgentWorktree, sessionView, 
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
+import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -1290,6 +1292,226 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
   });
 });
+
+describe("a draft-only never-launched candidate: the managed tick agrees with arcadia go (Issue #884)", () => {
+  // The host process probe is replaced so these tests never depend on lsof or
+  // /proc; tests/worktree-liveness.test.ts exercises the real probe.
+  let liveness: WorktreeLiveness = { ok: true, processes: [] };
+  beforeEach(() => {
+    liveness = { ok: true, processes: [] };
+    setWorktreeLivenessProbeForTests(() => liveness);
+  });
+  afterEach(() => setWorktreeLivenessProbeForTests(null));
+
+  function neverLaunchedCandidate(fixture: ReturnType<typeof preparedFixture>): { candidate: string; branch: string; draft: Buffer; draftPath: string } {
+    const branch = "claude/define-contract-20260830T113456000Z";
+    const candidate = path.join(realpathSync(fixture.root), "never-launched", "repo");
+    git(fixture.repo, ["worktree", "add", "-q", "-b", branch, candidate, "main"]);
+    withDatabase(fixture.workspace, (db) => reserveAgentWorktree(db, {
+      repositoryPath: fixture.repo,
+      worktreePath: candidate,
+      branch,
+      now: new Date(fixture.now.getTime() - 60 * 60 * 1000),
+      project: "test-project",
+      actionId: "define-contract"
+    }));
+    const draft = Buffer.from('{"agent_ask": "v1", "request_id": "parity-2026-08-30", "project": "test-project", "intent": "proposal"}\n');
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-parity-2026-08-30.yaml");
+    mkdirSync(path.dirname(draftPath), { recursive: true });
+    writeFileSync(draftPath, draft);
+    return { candidate, branch, draft, draftPath };
+  }
+
+  function goFor(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux) {
+    return runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: "sonnet",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "go-unused"),
+      now: fixture.now,
+      tmux
+    });
+  }
+
+  function claimRows(fixture: ReturnType<typeof preparedFixture>): number {
+    return withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM agent_worktree_reservations WHERE action_id = 'define-contract'").get() as { count: number }).count);
+  }
+
+  function worktreeCount(fixture: ReturnType<typeof preparedFixture>): number {
+    return git(fixture.repo, ["worktree", "list", "--porcelain"]).split("\n").filter((line) => line.startsWith("worktree ")).length;
+  }
+
+  function handoutRoutes(fixture: ReturnType<typeof preparedFixture>): string[] {
+    return withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT resumed_route FROM candidate_draft_recoveries WHERE resumed_at IS NOT NULL").all() as Array<{ resumed_route: string }>)
+        .map((row) => row.resumed_route));
+  }
+
+  it("lets the tick hand the candidate out once at its own tip, after which Go hands nothing out", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, branch, draft, draftPath } = neverLaunchedCandidate(fixture);
+    const tip = git(candidate, ["rev-parse", "HEAD"]).trim();
+
+    const launched = doStandingLaunch(fixture, tmux, "policy-req-draft");
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+
+    expect(launched.session.worktree_path).toBe(candidate);
+    expect(launched.session.branch).toBe(branch);
+    expect(launched.session.status).toBe("running");
+    expect(launched.session.base_revision).toBe(tip);
+    expect(tmux.launches).toHaveLength(1);
+    expect(tmux.launches[0].cwd).toBe(candidate);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    // The tick's Session now owns the candidate; Go hands nothing out again.
+    expect(goError.message).toContain("A Session is already live for this repository");
+    expect(goError.details?.worktreePath).toBe(candidate);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+    expect(git(fixture.repo, ["branch", "--list", "ask/recover-*"]).trim()).toBe("");
+  });
+
+  it("never launches into a candidate Go already handed out by hand, refusing with the same disposition", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, branch, draft, draftPath } = neverLaunchedCandidate(fixture);
+
+    const go = goFor(fixture, tmux).data;
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-after-go"));
+
+    expect(go.nextWorktree?.path).toBe(candidate);
+    expect(go.nextWorktree?.branch).toBe(branch);
+    expect(launchError.message).toContain("holds only Agent Ask drafts");
+    expect(launchError.details?.candidateKind).toBe("draft_only");
+    const disposition = launchError.details?.disposition as { receiptId: string; handedOut: { receiptId: string; route: string } };
+    expect(disposition.receiptId).toBe(go.draftRecovery!.requestId);
+    expect(disposition.handedOut).toMatchObject({ receiptId: go.draftRecovery!.requestId, route: "go" });
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(handoutRoutes(fixture)).toEqual(["go"]);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+
+  it("refuses in both paths, handing nothing out and launching nothing, while a manual session still runs in the candidate", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    // Indistinguishable in the database from a fresh manual `go` handout whose
+    // agent has just drafted an Ask: only the host process table tells.
+    const { candidate, draft, draftPath } = neverLaunchedCandidate(fixture);
+    liveness = { ok: true, processes: [{ pid: 31337, command: "claude", cwd: path.join(candidate, "src") }] };
+
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-live"));
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+
+    for (const error of [launchError, goError]) {
+      expect(error.message).toContain("holds only Agent Ask drafts");
+      expect((error.details?.disposition as { blocker: string }).blocker).toContain("That session still appears to be running here: pid 31337 (claude)");
+    }
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(handoutRoutes(fixture)).toEqual([]);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+
+  it("refuses the tick launch when the liveness probe cannot tell", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    neverLaunchedCandidate(fixture);
+    liveness = { ok: false, error: "/proc could not be listed: EACCES" };
+
+    const error = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-unknown"));
+
+    expect((error.details?.disposition as { blocker: string }).blocker).toContain("Could not verify that no session is running in this worktree");
+    expect(tmux.launches).toHaveLength(0);
+    expect(handoutRoutes(fixture)).toEqual([]);
+  });
+
+  it("voids the handout when the launch fails before any Session row exists, so the next tick can hand it out", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate } = neverLaunchedCandidate(fixture);
+
+    const failed = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-fail", undefined, {
+      beforeSessionInsert: () => { throw validationError("synthetic Session insert failure"); }
+    }));
+    expect(failed.message).toContain("synthetic Session insert failure");
+    expect(handoutRoutes(fixture)).toEqual([]);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+
+    const retried = doStandingLaunch(fixture, tmux, "policy-req-retry");
+    expect(retried.session.worktree_path).toBe(candidate);
+    expect(tmux.launches).toHaveLength(1);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("keeps the handout when a draft changes after the handout and before launch, so the next tick and Go refuse", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { draftPath } = neverLaunchedCandidate(fixture);
+
+    const mismatch = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-mismatch", undefined, {
+      beforeDraftLaunchVerification: () => writeFileSync(draftPath, "edited by something we cannot see\n")
+    }));
+    expect(mismatch.message).toContain("holds only Agent Ask drafts");
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+
+    const nextTick = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-after-mismatch"));
+    const go = captureArcadiaError(() => goFor(fixture, tmux));
+    for (const error of [nextTick, go]) {
+      expect((error.details?.disposition as { handedOut: { route: string } | null }).handedOut?.route).toBe("tick");
+    }
+    expect(tmux.launches).toHaveLength(0);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+  });
+
+  it("refuses a code-bearing candidate with the same reason and candidateKind in both paths, creating nothing", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, draft, draftPath } = neverLaunchedCandidate(fixture);
+    writeFileSync(path.join(candidate, "contract.md"), "real work\n");
+
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-code"));
+
+    expect(launchError.message).toBe(goError.message);
+    expect(goError.message).toContain("already holds uncommitted changes");
+    expect(launchError.details?.candidateKind).toBe("code_bearing");
+    expect(goError.details?.candidateKind).toBe("code_bearing");
+    expect(launchError.details?.worktreePath).toBe(goError.details?.worktreePath);
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+});
+
+function captureArcadiaError(run: () => unknown): ArcadiaError {
+  try {
+    run();
+  } catch (error) {
+    expect(error).toBeInstanceOf(ArcadiaError);
+    return error as ArcadiaError;
+  }
+  throw new Error("Expected an ArcadiaError");
+}
 
 const productionScope: ProductionScope = normalizeProductionScope({
   intent: "Prove the standing-policy launch path.",
