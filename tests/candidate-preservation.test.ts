@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
+import { uncommittedChanges } from "../src/git/worktrees.js";
 import {
   preserveCandidate,
   type CandidatePreservationRemote,
@@ -171,8 +172,9 @@ describe("candidate preservation (local)", () => {
     const gitDir = g(fixture.candidate, ["rev-parse", "--absolute-git-dir"]);
     const observe = () => ({
       index: readFileSync(path.join(gitDir, "index")),
-      // Untrimmed: ` M` (unstaged) must never become `M ` (staged).
-      status: execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: fixture.candidate, encoding: "utf8" }),
+      indexMtimeMs: statSync(path.join(gitDir, "index")).mtimeMs,
+      // Read-only and untrimmed: ` M` (unstaged) must never become `M ` (staged).
+      status: execFileSync("git", ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"], { cwd: fixture.candidate, encoding: "utf8" }),
       lock: existsSync(path.join(gitDir, "index.lock"))
     });
     const before = observe();
@@ -192,6 +194,38 @@ describe("candidate preservation (local)", () => {
 
     withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
     expect(observe()).toMatchObject({ status: "", lock: false });
+  });
+
+  it("reads candidate status without rewriting a stat-dirty index", () => {
+    const fixture = makeFixture({ dirty: false });
+    const index = path.join(g(fixture.candidate, ["rev-parse", "--absolute-git-dir"]), "index");
+    // A new mtime with unchanged content: a plain `git status` would refresh
+    // the stat cache and rewrite the index through its optional lock.
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(path.join(fixture.candidate, "README.md"), later, later);
+    const before = { bytes: readFileSync(index), mtimeMs: statSync(index).mtimeMs };
+    expect(uncommittedChanges(fixture.candidate)).toEqual([]);
+    expect({ bytes: readFileSync(index), mtimeMs: statSync(index).mtimeMs }).toEqual(before);
+  });
+
+  it("recovers a durable commit by its trailer alone when HEAD's tree no longer matches", () => {
+    const fixture = makeFixture();
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture), {
+      hooks: { afterCommit() { throw new Error("crash after commit, before receipt"); } }
+    }))).toThrow("crash after commit");
+    const [preserved] = commitsAhead(fixture.repo, fixture.branch);
+    // HEAD moves to a different tree while the working content still equals
+    // the validated fingerprint, so only the trailer lookup can find the commit.
+    writeFileSync(path.join(fixture.candidate, "later.txt"), "later\n");
+    g(fixture.candidate, ["add", "later.txt"]);
+    g(fixture.candidate, ["commit", "-m", "later work"]);
+    rmSync(path.join(fixture.candidate, "later.txt"));
+    expect(g(fixture.candidate, ["rev-parse", "HEAD^{tree}"])).not.toBe(snapshotCandidate(fixture.candidate));
+
+    const recovered = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(recovered).toMatchObject({ commitSha: preserved, replayed: false });
+    expect(commitsAhead(fixture.repo, fixture.branch)).toHaveLength(2);
+    expect(g(fixture.candidate, ["log", "--format=%H", `--grep=Arcadia-Preservation-Request: req-1`, `main..${fixture.branch}`])).toBe(preserved);
   });
 
   it("ends clean on the replay and already-committed paths too", () => {

@@ -61,9 +61,9 @@ The hermetic fixed-launcher proof is retained with the host receipts; an explici
 
 keys: 889, preserve, broker, launcher, timeout, ETIMEDOUT, PRESERVATION_GIT_TIMEOUT, read-tree, index.lock, staged, retry
 
-A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; details name `gitSubcommand`, `args`, `cwd`, `timeoutMs`, `stage`, `remedy`): rerun the same launcher unchanged; it reuses the request id, and an existing commit is recovered by trailer. Timeouts never count against the refusal budget.
-Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS` (default 90000, below the 150000 stage watchdog).
-The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts`, `tests/candidate-preservation.test.ts`.
+A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; `reason` is `timeout` or `index_locked`; details name the command, `gitSubcommand`, `args`, `cwd`, `timeoutMs`, `stage`, `remedy`): follow the stage-aware remedy and rerun the same launcher unchanged; it reuses the request id and recovers an existing commit by trailer. A timed-out `gh pr create`/`edit`: check `gh pr view <branch>` first. Timeouts skip the refusal budget; 10 identical ones stop automatic retries.
+Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
+The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/candidate-preservation.test.ts`.
 
 ## Where is the live workspace and its database?
 

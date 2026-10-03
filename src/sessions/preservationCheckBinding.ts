@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
+import { boundedExec } from "./preservationStages.js";
 
 /** Declared preservation checks execute code from the candidate tree, so binding
  * only the command text lets a candidate neuter its own check by rewriting the
@@ -78,7 +78,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     bound.set(file, blob);
     if (!blob) return;
     if (PYTHON_EXTENSION.test(file)) {
-      const source = execFileSync("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      const source = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString();
       const dir = path.posix.dirname(file);
       const visitPythonModule = (dotted: string) => {
         // A same-directory import resolves to a plain module or, when that
@@ -113,7 +113,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
       return;
     }
     if (!SCRIPT_EXTENSIONS.test(file)) return;
-    const source = execFileSync("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const source = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString();
     for (const match of source.matchAll(RELATIVE_SPECIFIER)) {
       const target = inTree(path.posix.join(path.posix.dirname(file), match[1]));
       if (!target) continue;
@@ -138,9 +138,13 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (!manifestBlob) return;
     let main = "index.js";
     try {
-      const manifest = JSON.parse(execFileSync("git", ["cat-file", "blob", manifestBlob], { cwd: repository, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }));
+      const manifest = JSON.parse(boundedExec("git", ["cat-file", "blob", manifestBlob], { cwd: repository, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 }).toString());
       if (typeof manifest.main === "string" && manifest.main.trim()) main = manifest.main;
-    } catch { /* unparsable manifest is already bound; any candidate rewrite of it is still refused */ }
+    } catch (error) {
+      // A timeout is not an unparsable manifest; it must surface as retryable.
+      if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
+      /* unparsable manifest is already bound; any candidate rewrite of it is still refused */
+    }
     const mainTarget = inTree(path.posix.join(target, main));
     if (mainTarget) for (const probe of REQUIRE_PROBES) visit(mainTarget + probe);
   };
@@ -232,7 +236,7 @@ function inTree(candidate: string): string | null {
 }
 
 function blobs(repository: string, revision: string): Map<string, string> {
-  const entries = execFileSync("git", ["ls-tree", "-rz", revision], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0");
+  const entries = boundedExec("git", ["ls-tree", "-rz", revision], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0");
   const map = new Map<string, string>();
   for (const entry of entries) {
     const match = /^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);

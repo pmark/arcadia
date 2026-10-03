@@ -1,9 +1,8 @@
-import { preservationStage, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
-import { execFileSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { boundedExec, preservationIndexLocked, preservationStage } from "./preservationStages.js";
+import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
 import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
@@ -170,13 +169,28 @@ function canonical(value: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
+/** No legitimate `read-tree` holds the index lock anywhere near this long; an
+ * older lock was left by a killed one (its own timeout or the watchdog's
+ * process-group kill) after the commit was already durable. */
+const STALE_INDEX_LOCK_MS = 5 * 60 * 1000;
+
 /**
  * Point this worktree's real index at the preserved tree, so the candidate
  * reads clean against its preserved commit. Runs only once that commit is
  * durable on the branch: every refusal or failure before it leaves the
  * candidate's index bytes, `git status` and lock files exactly as they were.
+ * A stale lock from a killed earlier sync is removed so the retry can finish;
+ * a fresh one may belong to a running Git process and refuses as retryable.
  */
 function syncIndexToPreservedTree(candidateWorktreePath: string, tree: string): void {
+  preservationStage("preserve.index-sync");
+  const lock = path.resolve(candidateWorktreePath, git(candidateWorktreePath, ["rev-parse", "--git-path", "index.lock"]).trim());
+  let lockAgeMs: number | null = null;
+  try { lockAgeMs = Date.now() - statSync(lock).mtimeMs; } catch { /* no lock */ }
+  if (lockAgeMs !== null) {
+    if (lockAgeMs < STALE_INDEX_LOCK_MS) throw preservationIndexLocked(lock, lockAgeMs);
+    rmSync(lock, { force: true });
+  }
   git(candidateWorktreePath, ["read-tree", tree]);
 }
 
@@ -580,6 +594,12 @@ export function preserveCandidate(
   });
 }
 
+/** A killed `gh pr create`/`edit` may already have taken effect remotely. */
+function pullRequestWriteRemedy(branch: string): string {
+  return `The preservation commit is durable and pushed, but the pull request may or may not have been created or updated before the timeout. ` +
+    `Check for an existing pull request first (\`gh pr view ${branch}\`); a retry of the same fixed protected launcher reuses the same request id and commit and updates an existing pull request rather than creating another, but confirm none was opened twice.`;
+}
+
 /** Real network adapter: `git push` plus the `gh` CLI for the draft pull request. */
 export const systemPreservationRemote: CandidatePreservationRemote = {
   hasRemote(repositoryPath) {
@@ -591,35 +611,33 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   },
   findPullRequest({ repositoryPath, branch }) {
     try {
-      const output = execFileSync("gh", ["pr", "view", branch, "--json", "number,url"], {
-        ...preservationProcessLimits(),
+      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url"], {
         cwd: repositoryPath,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"]
-      });
+      }).toString();
       const parsed = JSON.parse(output) as { number: number; url: string };
       return { number: parsed.number, url: parsed.url };
     } catch (error) {
       // A timeout is not "no pull request"; that answer would open a duplicate.
-      const timeout = preservationTimeout(error, "gh", ["pr", "view", branch, "--json", "number,url"], repositoryPath);
-      if (timeout) throw timeout;
+      if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
       return null;
     }
   },
   upsertDraftPullRequest({ repositoryPath, branch, baseBranch, title, body, existing }) {
     if (existing) {
-      execFileSync("gh", ["pr", "edit", String(existing.number), "--body", body], {
-        ...preservationProcessLimits(),
+      boundedExec("gh", ["pr", "edit", String(existing.number), "--body", body], {
         cwd: repositoryPath,
         stdio: ["ignore", "ignore", "pipe"]
-      });
+      }, { remedy: pullRequestWriteRemedy(branch) });
       return existing;
     }
-    const output = execFileSync(
+    const output = boundedExec(
       "gh",
       ["pr", "create", "--draft", "--base", baseBranch, "--head", branch, "--title", title, "--body", body],
-      { ...preservationProcessLimits(), cwd: repositoryPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
-    ).trim();
+      { cwd: repositoryPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      { remedy: pullRequestWriteRemedy(branch) }
+    ).toString().trim();
     const number = Number.parseInt(output.match(/\/pull\/(\d+)/)?.[1] ?? "0", 10);
     return { number, url: output };
   }

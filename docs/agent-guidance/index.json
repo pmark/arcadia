@@ -76,7 +76,7 @@
       "trigger": "worktree, branch, preserve, detached, conflict, local only",
       "path": "docs/working-copy-safety.md",
       "read_before": "Before editing code or reconciling Git, and before stopping.",
-      "sha256": "928a6b643ecafebae5af3492602f084052ab77fc48c8cd60cb7a3b6a6ccc788d"
+      "sha256": "f1d2ca191d82a4ab07a57f80d1efe40b2bcc5b2702849d67c818f6bb20b3bffe"
     }
   ]
 }

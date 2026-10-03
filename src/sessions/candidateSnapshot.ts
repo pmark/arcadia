@@ -1,5 +1,5 @@
-import { preservationHeartbeat, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
-import { execFileSync, spawnSync, type ExecFileSyncOptions } from "node:child_process";
+import { boundedExec as bounded, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ArcadiaError, validationError } from "../cli/errors.js";
@@ -11,16 +11,6 @@ export const PRESERVATION_REQUEST_FILE = ".arcadia-preserve-request";
 
 /** A scratch index older than any bounded attempt was orphaned by a killed one. */
 const STALE_SCRATCH_INDEX_MS = 60 * 60 * 1000;
-
-/** Every snapshot subprocess is bounded, reports a timeout as the typed
- * retryable failure, and heartbeats the current stage once it returns. */
-function bounded(command: string, args: string[], options: ExecFileSyncOptions, displayArgs = args): Buffer | string {
-  try {
-    return execFileSync(command, args, { ...preservationProcessLimits(), ...options });
-  } catch (error) {
-    throw preservationTimeout(error, command, displayArgs, options.cwd?.toString()) ?? error;
-  } finally { preservationHeartbeat(); }
-}
 
 function removeStaleScratchIndexes(common: string): void {
   try {
@@ -56,7 +46,7 @@ export function snapshotCandidate(candidate: string): string {
     try {
       captured = JSON.parse(bounded("/usr/bin/python3", ["-I", "-c", CAPTURE_FILES, root], {
         input: JSON.stringify(selected), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
-      }, ["-I", "-c", "<candidate capture>", root]).toString());
+      }, { displayArgs: ["-I", "-c", "<candidate capture>", root] }).toString());
     } catch (error) {
       if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
       // Never include stdout: successful capture output contains file bytes.
@@ -97,7 +87,7 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
     "commit-tree", tree, "-p", parent, "-m", message
   ];
   const result = spawnSync("git", args, {
-    ...preservationProcessLimits(), cwd: repository,
+    ...preservationProcessLimits("git", args), cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: {

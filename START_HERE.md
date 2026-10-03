@@ -1327,7 +1327,9 @@ A preservation refusal leaves the candidate's index and `git status` unchanged.
 If Git is slow, the launcher reports `PRESERVATION_GIT_TIMEOUT`, which names the
 Git subcommand, stage, timeout and remedy. Rerun the same launcher unchanged: the
 retry reuses the request id, never creates a second commit, and does not count
-toward the identical-refusal limit. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
+toward the identical-refusal limit. Ten identical timeouts in a row stop
+automatic retries until an operator resolves the cause; a timed-out pull-request
+create or edit asks you to check for an existing pull request first. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
 Installed launchers gain this behavior only after the reviewed **Reinstall the
 protected go broker** `/runs` action.
 

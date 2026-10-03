@@ -12,6 +12,17 @@ import { ArcadiaError, validationError } from "../cli/errors.js";
  */
 export const MAX_IDENTICAL_PRESERVATION_REFUSALS = 3;
 
+/**
+ * A retryable timeout (`PRESERVATION_GIT_TIMEOUT`) is host load rather than a
+ * refusal, so it never touches the refusal budget above. It has its own,
+ * larger budget instead: a candidate that times out the same way this many
+ * times in a row is evidently causing it, and is no longer retried
+ * automatically. Kept on a separate subject so the two counts never reset
+ * each other.
+ */
+export const MAX_IDENTICAL_PRESERVATION_TIMEOUTS = 10;
+const timeoutSubject = (subjectId: string) => `timeout:${subjectId}`;
+
 export function ensurePreservationRefusalTable(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS preservation_refusal_attempts (
     subject_id TEXT PRIMARY KEY,
@@ -85,6 +96,51 @@ export function clearPreservationRefusal(db: Database.Database, subjectId: strin
   db.prepare("DELETE FROM preservation_refusal_attempts WHERE subject_id = ?").run(subjectId);
 }
 
+export function getPreservationTimeoutAttempts(db: Database.Database, subjectId: string): number {
+  return getPreservationRefusalAttempts(db, timeoutSubject(subjectId));
+}
+
+/** Count one retryable timeout for `subjectId` and rethrow it, or refuse
+ * automatic retries once the identical-timeout budget is exhausted. */
+function recordPreservationTimeout(
+  db: Database.Database,
+  subjectId: string,
+  now: Date,
+  error: ArcadiaError,
+  onLimitReached?: (attempts: number, error: ArcadiaError) => void
+): never {
+  const { reason, stage, command, gitSubcommand } = error.details;
+  const fingerprint = fingerprintPreservationRefusal(error.code, { reason, stage, command, gitSubcommand });
+  const { attempts } = recordPreservationRefusal(db, timeoutSubject(subjectId), fingerprint, error.message, now);
+  if (attempts >= MAX_IDENTICAL_PRESERVATION_TIMEOUTS) {
+    onLimitReached?.(attempts, error);
+    throw validationError(
+      `Preservation timed out the same way ${attempts} times in a row: ${error.message} ` +
+        "This candidate will not be retried automatically; an operator must resolve the timeout before retrying.",
+      {
+        ...error.details, retryable: false, identicalTimeoutLimitReached: true, identicalRefusalLimitReached: true, attempts,
+        remedy: "Inspect the retained attempt journals for the stalled Git call, then reduce the candidate's size, relieve host load, or raise ARCADIA_PRESERVATION_GIT_TIMEOUT_MS on the host before retrying the same launcher. A successful preservation clears this count."
+      }
+    );
+  }
+  throw error;
+}
+
+/** Bound the preservation step itself: only retryable timeouts are counted
+ * (against the identical-timeout budget); every other error passes through
+ * untouched, and a success clears the timeout count. */
+export function guardPreservationTimeouts<T>(db: Database.Database, subjectId: string, now: Date, run: () => T): T {
+  let result: T;
+  try {
+    result = run();
+  } catch (error) {
+    if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") recordPreservationTimeout(db, subjectId, now, error);
+    throw error;
+  }
+  clearPreservationRefusal(db, timeoutSubject(subjectId));
+  return result;
+}
+
 export function getPreservationRefusalAttempts(db: Database.Database, subjectId: string): number {
   ensurePreservationRefusalTable(db);
   const row = db.prepare("SELECT attempts FROM preservation_refusal_attempts WHERE subject_id = ?").get(subjectId) as
@@ -122,8 +178,8 @@ export function guardPreservationRefusal<T>(
   } catch (error) {
     if (!(error instanceof ArcadiaError)) throw error;
     // A bounded subprocess timeout is host load, not a refusal of the candidate:
-    // it neither consumes nor resets the identical-refusal budget.
-    if (error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
+    // it neither consumes nor resets the identical-refusal budget, only its own.
+    if (error.code === "PRESERVATION_GIT_TIMEOUT") recordPreservationTimeout(db, subjectId, now, error, onLimitReached);
     const { evidenceRef: _evidenceRef, ...stableDetails } = error.details;
     const fingerprint = fingerprintPreservationRefusal(error.message, stableDetails);
     const { attempts } = recordPreservationRefusal(db, subjectId, fingerprint, error.message, now);
