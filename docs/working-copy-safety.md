@@ -137,10 +137,17 @@ failure at any stage before the commit leaves the candidate's index bytes,
 commit is durable on the branch (or found again by its trailer, or replayed)
 does the host point the real index at the preserved tree, so a successful
 preservation ends with a clean status. If a killed earlier sync left the
-candidate's `index.lock` behind, the host removes it only when it is older than
-five minutes; a fresher lock may belong to a running Git process, so it is kept
-and the attempt refuses with the retryable receipt below (`reason:
-index_locked`, naming the lock path).
+candidate's `index.lock` behind, the host removes it only when it is a regular
+file older than five minutes and no Git process is running in the candidate
+worktree. A fresher lock, or one a running Git process (such as `git commit`
+waiting on an editor) may own, or one whose liveness could not be checked, is
+kept and the attempt refuses with the retryable receipt below (`reason:
+index_locked`, naming the lock path, its age and `liveness`). A lock path that
+is not a regular file (a directory or a symlink) is never removed or followed:
+it refuses with `reason: index_lock_malformed` (`retryable: false`, naming
+`lockKind`) until an operator removes it. Index-lock refusals count on their
+own ten-attempt identical limit, separate from timeouts, and neither resets
+the other.
 
 Every Git call on the preservation, binding and validation path (snapshot,
 check-definition binding, materialization, ancestry and merge checks, commit,
@@ -162,6 +169,8 @@ missing preservation commit, a missing pull request or a refused candidate. It
 does not count against the identical-refusal budget; instead ten identical
 timeouts in a row stop automatic retries with a non-retryable refusal until an
 operator resolves the cause, and a successful preservation clears that count.
+The CLI broker and the managed-production tick's terminal-exit handoff share
+that one budget per Session id, so a success on either path clears it.
 Retrying is otherwise safe: the same launcher derives the same request id, so a
 timeout before the commit retries from scratch with nothing committed, and a
 commit already made is recovered by its trailer rather than duplicated. A timed

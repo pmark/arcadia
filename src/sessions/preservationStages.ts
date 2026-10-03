@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
-import { normalizeError, preservationGitTimeout, type ArcadiaError } from "../cli/errors.js";
+import { execFileSync, spawnSync, type ExecFileSyncOptions } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import path from "node:path";
+import { ArcadiaError, normalizeError, preservationGitTimeout } from "../cli/errors.js";
 
 export type PreservationProgress = (stage: string, details?: Record<string, unknown>) => void;
 /** A per-call bound, or (for deterministic tests) a bound chosen per call. */
@@ -15,6 +17,8 @@ export const PRESERVATION_STAGE_TIMEOUT_MS = 150_000;
 /** Default per-call bound for every bounded preservation subprocess. */
 export const PRESERVATION_GIT_TIMEOUT_MS = 90_000;
 const PRESERVATION_HEARTBEAT_INTERVAL_MS = 5_000;
+/** Bound on the index-lock liveness probe; far inside the stage watchdog. */
+const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
 /** Largest per-call bound. Every bounded call heartbeats as it starts (throttled
  * to the interval above), so the longest idle gap the watchdog can see is one
  * interval plus one call. This 30s margin keeps that below the stage limit, so
@@ -131,12 +135,88 @@ export function preservationTimeout(error: unknown, command: string, args: reado
   );
 }
 
-/** A fresh `index.lock` blocks the post-commit index sync: another Git process
- * may still be running, so it is never removed, and the retry is safe. */
-export function preservationIndexLocked(lockPath: string, ageMs: number): ArcadiaError {
+/** Remedy for a blocked post-commit index sync: the commit is durable, and the
+ * timeout bound is irrelevant, so it never suggests tuning it. */
+function indexLockRemedy(stage: string | null, malformed: boolean): string {
+  const durable = stage && POST_COMMIT_STAGES.has(stage)
+    ? "The preservation commit is already durable on the branch; only the candidate index still names the pre-commit tree. "
+    : "";
+  return malformed
+    ? `${durable}Arcadia never removes a lock that is not a regular file. Inspect the path, remove it yourself once no Git process is using the candidate, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer.`
+    : `${durable}The lock may belong to a running Git process, so it is never removed while one runs in the candidate or while it is fresh. Let that process finish, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer. ` +
+      "Index-lock refusals have their own identical-attempt limit, separate from timeouts.";
+}
+
+/** Whether a Git process may still own an old lock in this worktree. */
+export type IndexLockLiveness =
+  | { liveness: "fresh" }
+  | { liveness: "live"; liveGitPids: number[] }
+  | { liveness: "unknown"; livenessError: string };
+
+/** An `index.lock` blocks the post-commit index sync and may belong to a
+ * running Git process (it is fresh, a Git process runs in the candidate, or
+ * that could not be ruled out), so it is never removed, and the retry is safe. */
+export function preservationIndexLocked(lockPath: string, ageMs: number, liveness: IndexLockLiveness = { liveness: "fresh" }): ArcadiaError {
   const stage = progress.getStore()?.stage ?? null;
   return preservationGitTimeout(
     `The candidate index is locked (${lockPath}); a Git process may still be running. Retry the same protected launcher later.`,
-    { reason: "index_locked", lockPath, lockAgeMs: ageMs, stage, remedy: retryRemedy(stage) }
+    { reason: "index_locked", lockPath, lockAgeMs: ageMs, ...liveness, stage, remedy: indexLockRemedy(stage, false) }
   );
+}
+
+/** A lock path that is not a regular file (a directory, a symlink -- dangling
+ * or not -- or another node) is never removed or read through. Typed and
+ * bounded by the index-lock budget, with its diagnostics, but not retryable
+ * until an operator inspects it. */
+export function preservationIndexLockMalformed(lockPath: string, lockKind: string, details: Record<string, unknown> = {}): ArcadiaError {
+  const stage = progress.getStore()?.stage ?? null;
+  return new ArcadiaError(
+    "PRESERVATION_GIT_TIMEOUT",
+    `The candidate index lock path is not a regular file (${lockKind}: ${lockPath}); preservation will not remove or follow it.`,
+    1,
+    { ...details, reason: "index_lock_malformed", lockPath, lockKind, stage, retryable: false, remedy: indexLockRemedy(stage, true) }
+  );
+}
+
+/**
+ * Git processes whose working directory is inside `worktree` -- e.g. a
+ * `git commit` still waiting on an editor, whose lock is old by mtime but
+ * live. Any failure to look is reported as `unknown`, which callers must treat
+ * as live: an old lock is removed only on a positive "none".
+ */
+export function gitProcessesInWorktree(worktree: string): { status: "none" } | { status: "live"; pids: number[] } | { status: "unknown"; error: string } {
+  let root: string;
+  try { root = realpathSync(worktree); } catch (error) { return { status: "unknown", error: String(error) }; }
+  const within = (dir: string) => dir === root || dir.startsWith(root + path.sep);
+  const found = (pids: number[]) => pids.length > 0 ? { status: "live" as const, pids } : { status: "none" as const };
+  preservationHeartbeat();
+  if (process.platform === "linux" && existsSync("/proc/self/cwd")) {
+    const pids: number[] = [];
+    for (const entry of readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        if (!readFileSync(`/proc/${entry}/comm`, "utf8").trim().startsWith("git")) continue;
+        if (within(readlinkSync(`/proc/${entry}/cwd`))) pids.push(Number(entry));
+      } catch { /* exited, or not ours to inspect */ }
+    }
+    return found(pids);
+  }
+  const result = spawnSync("lsof", ["-a", "-c", "git", "-d", "cwd", "-F", "pn"], {
+    encoding: "utf8", timeout: LIVENESS_PROBE_TIMEOUT_MS, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.error) return { status: "unknown", error: `lsof: ${result.error.message}` };
+  // lsof exits 1, silently, when no process matches.
+  if (result.status === 1 && !result.stdout.trim() && !result.stderr.trim()) return { status: "none" };
+  if (result.status !== 0) return { status: "unknown", error: `lsof exited ${result.status ?? result.signal}: ${result.stderr.trim().slice(0, 300)}` };
+  const pids: number[] = [];
+  let pid: number | null = null;
+  for (const line of result.stdout.split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid !== null) {
+      let dir = line.slice(1);
+      try { dir = realpathSync(dir); } catch { /* keep as reported */ }
+      if (within(dir)) pids.push(pid);
+    }
+  }
+  return found(pids);
 }
