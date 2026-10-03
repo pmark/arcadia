@@ -3001,6 +3001,40 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: clear-preservation-timeout-count-and-harden-index-lock-checks
+    title: Make the managed-production tick count and clear preservation timeouts like the CLI path, and make the stale index.lock decision and its error code accurate.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make the managed-production tick count and clear preservation timeouts like the CLI path, and make the stale index.lock decision and its error code accurate.
+    expected_artifact: Evidence satisfying Agent Ask clear-preservation-timeout-count-and-harden-index-lock-checks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-review-gate-and-timeout-followups-896-908-2026-10-03
+    acceptance_criteria:
+      - The managed-production tick path (`src/production/sessionHandoff.ts`) counts preserve-stage timeouts toward the same identical-timeout cap as `arcadia preserve` and clears the count after a successful preservation, with a deterministic test that fails when either is removed.
+      - "Stale `index.lock` removal no longer rests on mtime alone: a lock is removed only when it is older than the threshold and a fail-closed probe finds no process holding it open (an unreadable probe refuses with the typed retryable error); a directory lock, a symlinked lock and a dangling symlink raise the typed error instead of an untyped failure after the commit; tests cover each shape."
+      - "`index_locked` has its own error code, is not counted against the timeout budget, and the cap message no longer suggests tuning the timeout for a locked index; notes and START_HERE describe it; lint, tsc and required checks pass."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/896", "src/production/sessionHandoff.ts", "src/sessions/candidatePreservation.ts", "src/sessions/preservationStages.ts", "src/sessions/preservationRefusalBudget.ts", "tests/preservation-git-timeout.test.ts"]
+  - id: align-code-review-messages-with-advisory-coderabbit
+    title: Make every runtime message and document agree that CodeRabbit is advisory under Decision 0080 and that main now has branch protection.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make every runtime message and document agree that CodeRabbit is advisory under Decision 0080 and that main now has branch protection.
+    expected_artifact: Evidence satisfying Agent Ask align-code-review-messages-with-advisory-coderabbit
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-review-gate-and-timeout-followups-896-908-2026-10-03
+    acceptance_criteria:
+      - "`arcadia pr code-review` and its runtime messages (`src/stewardship/codeRabbitReview.ts`, `src/cli.ts`) no longer say a completed CodeRabbit review is required or to wait for a limit to reset; they say a rate limit or missing review never blocks a merge and that the independent review gate governs, with tests updated."
+      - "The bootstrap names conflict-free base merges beside the governed-record commits; the PR procedure tells the reviewer to confirm the settle receipt id for an exempt commit and says branch protection on main now requires the seven CI jobs (lint, unit-1..4, dashboard, e2e); the regenerated AGENTS.md and guidance fingerprints agree and `check:agent-guidance` passes."
+      - The CodeRabbit-dependent rehearsal text in `docs/managed-production-readiness.md` is revised so CodeRabbit is advisory rather than a required reviewer actor, with the independent review gate named; lint, tsc and required checks pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/908", "src/stewardship/codeRabbitReview.ts", "src/cli.ts", "docs/agent-guidance/pull-requests.md", "docs/agents-context.md", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
