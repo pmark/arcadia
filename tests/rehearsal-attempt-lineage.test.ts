@@ -286,6 +286,21 @@ describe("five-role attempt lineage through the real tick", () => {
     expect(rehearsal.tick().handoff?.integration.kind).toBe("integrated");
   });
 
+  it("hands an already-running Session back without superseding its live attempt when the Action input changes", () => {
+    const rehearsal = activated();
+    const a = launchA(rehearsal);
+    const [live] = rehearsal.attempts("write-marker-a");
+    const planFile = path.join(rehearsal.repo, "docs", "plans", "two-action-rehearsal-bootstrap.md");
+    const plan = git(rehearsal.repo, ["show", "HEAD:docs/plans/two-action-rehearsal-bootstrap.md"]);
+    writeFileSync(planFile, plan.replace(`followed by a trailing newline, with no other content.`, `followed by a trailing newline, and nothing else at all.`));
+    git(rehearsal.repo, ["-c", "user.name=Operator", "-c", "user.email=operator@rehearsal.test", "commit", "-qam", "amend A's criteria mid-flight"]);
+    const outcome = code(() => rehearsal.launchDirect("operator-retry-while-running"));
+    // The launcher hands the live Session back, and its attempt is untouched.
+    expect(rehearsal.lease()?.id).toBe(a.id);
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.request_id, x.status])).toEqual([[live.request_id, "running"]]);
+    expect(outcome).toBeNull();
+  });
+
   it("allocates exactly one bounded next development ordinal after a terminal failure, and replays the exit without re-settling", () => {
     const rehearsal = activated();
     const a1 = launchA(rehearsal);
