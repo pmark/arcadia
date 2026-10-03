@@ -2897,7 +2897,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: enroll-session-through-governed-host-request
+current_action: fix-preserve-launcher-git-timeout-and-index-mutation
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
