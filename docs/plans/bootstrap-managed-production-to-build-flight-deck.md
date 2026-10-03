@@ -2875,6 +2875,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/878", "src/sessions/manualPreservation.ts", "src/sessions/candidatePreservation.ts", "tests/manual-preservation.test.ts", "tests/candidate-preservation.test.ts"]
+  - id: fix-preserve-launcher-git-timeout-and-index-mutation
+    title: Make fixed preservation never mutate the candidate's real index before the commit succeeds, and make any git timeout a typed, retryable, self-describing failure instead of a bare `spawnSync git ETIMEDOUT`.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make fixed preservation never mutate the candidate's real index before the commit succeeds, and make any git timeout a typed, retryable, self-describing failure instead of a bare `spawnSync git ETIMEDOUT`.
+    expected_artifact: Evidence satisfying Agent Ask fix-preserve-launcher-git-timeout-and-index-mutation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-preserve-launcher-git-timeout-889-2026-10-03
+    acceptance_criteria:
+      - A forced failure at `preserve.recheck-binding` (and every other stage before the commit) leaves the candidate's real index bytes, `git status --porcelain` output and `.git` locks exactly as they were, with no `index.lock` and no staged change; a successful preserve still ends with a clean status.
+      - A git timeout in any preserve, binding or validation call (raw `execFileSync` in the snapshot code, `git()`, `tryGit`, `isAncestor`, `mergesCleanly`, `commitTreeAt`) raises a typed retryable error whose details name the git subcommand, arguments, working directory, timeout budget, stage and a retry remedy; it is never a bare `UNEXPECTED_ERROR`, "base branch could not be resolved" or "not a forward advance", and `tryGit` and `isAncestor` never turn a timeout into a negative answer.
+      - The per-call git timeout is configurable and defaults below the stage idle limit, snapshot steps emit progress so a large candidate cannot trip the stage watchdog, retryable timeouts do not consume the identical-refusal budget, and a retry after a timeout reuses the same request id and creates exactly one preservation commit; the failed-attempt journal is documented as safe to retry.
+      - Regression tests cover a hung-git shim at each stage, index-bytes-before-and-after equality, three consecutive timeouts not exhausting the refusal budget, and timeout-then-retry producing one commit; the notes and operator guidance describe the failure receipt and the separate reviewed broker reinstall that makes the fix live, with no install, restart or production action taken, and required checks pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/889", "src/sessions/candidatePreservation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "src/sessions/preservationStages.ts", "src/sessions/preservationRefusalBudget.ts", "src/git/worktrees.ts", "tests/candidate-preservation.test.ts", "tests/manual-preservation.test.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
