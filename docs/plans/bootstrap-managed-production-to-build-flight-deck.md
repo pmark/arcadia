@@ -3039,7 +3039,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: clear-preservation-timeout-count-and-harden-index-lock-checks
+current_action: enroll-session-through-governed-host-request
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
