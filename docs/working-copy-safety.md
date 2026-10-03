@@ -130,6 +130,32 @@ rechecks them. Manual receipts say `authorityKind: manual_handoff`; their legacy
 revision are zero, meaning no production policy is claimed. Manual preservation
 is always LOCAL ONLY. No managed-production grant is inferred from ordinary Go.
 
+Preservation never writes the candidate's own index before its commit exists.
+Snapshots use a scratch index under the Git common directory, so a refusal or
+failure at any stage before the commit leaves the candidate's index bytes,
+`git status` and lock files exactly as they were. Only after the preservation
+commit is durable on the branch (or found again by its trailer, or replayed)
+does the host point the real index at the preserved tree, so a successful
+preservation ends with a clean status.
+
+Every Git call on the preservation, binding and validation path is bounded per
+call (default 90 seconds; `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS` on the host
+overrides it with any positive value below the 150-second stage watchdog), and
+snapshot work reports progress between calls so a large candidate never looks
+idle to that watchdog. A call that exceeds its bound fails with the retryable
+`PRESERVATION_GIT_TIMEOUT` receipt: its details name the Git subcommand,
+arguments, working directory, timeout, stage and remedy. A timeout is never
+reported as a missing base, a rewritten base, a missing preservation commit or
+a refused candidate, and it does not count against the identical-refusal
+budget. Retrying is safe: the same launcher derives the same request id, so a
+timeout before the commit retries from scratch with nothing committed, and a
+commit already made is recovered by its trailer rather than duplicated. A
+failed attempt's journal (`<nonce>.attempt.json`, its `.events.jsonl` and
+`.result.json`) is evidence only; it holds no claim, and the claim is released
+when the attempt ends, so it never blocks the retry. These behaviors reach the
+installed launchers only after the separate, reviewed **Reinstall the protected
+go broker** `/runs` action.
+
 Remote preservation is gated. Only when the standing production policy's scope
 explicitly sets `remotePreservation` does the controller push the branch and
 create or update its draft pull request (with the required operator QA plan).

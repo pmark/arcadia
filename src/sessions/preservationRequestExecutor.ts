@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { goTransportFailure } from "./goRequestExecutor.js";
 import type { GoTransportResult } from "./goRequestProtocol.js";
+import { PRESERVATION_STAGE_TIMEOUT_MS } from "./preservationStages.js";
 
+export { PRESERVATION_STAGE_TIMEOUT_MS };
 export const PRESERVATION_EXECUTION_TIMEOUT_MS = 1_320_000;
-export const PRESERVATION_STAGE_TIMEOUT_MS = 150_000;
 
 export interface PreservationAttempt {
   stage: string;

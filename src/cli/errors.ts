@@ -28,6 +28,7 @@ export type ArcadiaErrorCode =
   | "CLARIFY_ENGINE_UNAVAILABLE"
   | "NARRATIVE_DIGEST_UNAVAILABLE"
   | "NARRATIVE_DIGEST_INVALID_RESULT"
+  | "PRESERVATION_GIT_TIMEOUT"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;
@@ -132,6 +133,15 @@ export function narrativeDigestUnavailable(message: string): ArcadiaError {
 
 export function narrativeDigestInvalidResult(message: string): ArcadiaError {
   return new ArcadiaError("NARRATIVE_DIGEST_INVALID_RESULT", message, 1, {});
+}
+
+/**
+ * A bounded preservation subprocess exceeded its per-call budget. Exit 1: the
+ * request was sound and nothing about the candidate was refused, so the remedy
+ * is to retry the same protected launcher, not to change the candidate.
+ */
+export function preservationGitTimeout(message: string, details: ArcadiaErrorDetails): ArcadiaError {
+  return new ArcadiaError("PRESERVATION_GIT_TIMEOUT", message, 1, { ...details, retryable: true });
 }
 
 export function projectReplyAmbiguous(question: string): ArcadiaError {

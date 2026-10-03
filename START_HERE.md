@@ -1323,6 +1323,14 @@ the base. Changed authority, expired reservations and changed history refuse.
 Manual preservation never pushes, opens a PR, completes an Action, or grants
 managed-production authority. Those gates remain separate.
 
+A preservation refusal leaves the candidate's index and `git status` unchanged.
+If Git is slow, the launcher reports `PRESERVATION_GIT_TIMEOUT`, which names the
+Git subcommand, stage, timeout and remedy. Rerun the same launcher unchanged: the
+retry reuses the request id, never creates a second commit, and does not count
+toward the identical-refusal limit. See [Working-Copy Safety](docs/working-copy-safety.md#preserving-a-candidate-through-the-host-controller).
+Installed launchers gain this behavior only after the reviewed **Reinstall the
+protected go broker** `/runs` action.
+
 For managed Sessions, preservation checks come from host-managed Project `validation_commands`,
 frozen in the approved immutable packet. The host executes those checks against
 an immutable Git snapshot using macOS Seatbelt, retains the actual results, and

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,6 +164,50 @@ describe("candidate preservation (local)", () => {
     expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
     const body = g(fixture.candidate, ["log", "-1", "--format=%B"]);
     expect(body).toContain("Arcadia-Preservation-Request: req-1");
+  });
+
+  it("leaves the real index, status and locks untouched when any stage before the commit fails", () => {
+    const fixture = makeFixture();
+    const gitDir = g(fixture.candidate, ["rev-parse", "--absolute-git-dir"]);
+    const observe = () => ({
+      index: readFileSync(path.join(gitDir, "index")),
+      // Untrimmed: ` M` (unstaged) must never become `M ` (staged).
+      status: execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: fixture.candidate, encoding: "utf8" }),
+      lock: existsSync(path.join(gitDir, "index.lock"))
+    });
+    const before = observe();
+    expect(before.status).toBe(" M README.md\n?? feature.txt\n");
+    for (const hook of ["beforeStage", "afterStage", "beforeCommit"] as const) {
+      expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture), {
+        hooks: { [hook]() { throw new Error(`forced ${hook} failure`); } }
+      }))).toThrow(`forced ${hook} failure`);
+      expect(observe()).toEqual(before);
+    }
+    // A content refusal after the snapshot is equally non-mutating.
+    expect(() => withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, {
+      validation: { passed: true, evidenceRef: "stale", candidateFingerprint: "0".repeat(40) }
+    })))).toThrow(/differs from the validated snapshot/);
+    expect(observe()).toEqual(before);
+    expect(commitsAhead(fixture.repo, fixture.branch)).toHaveLength(0);
+
+    withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(observe()).toMatchObject({ status: "", lock: false });
+  });
+
+  it("ends clean on the replay and already-committed paths too", () => {
+    const fixture = makeFixture();
+    withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    // Simulate an index left behind by an interrupted earlier attempt.
+    g(fixture.candidate, ["read-tree", fixture.baseRevision]);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).not.toBe("");
+    const replayed = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture)));
+    expect(replayed.replayed).toBe(true);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
+
+    g(fixture.candidate, ["read-tree", fixture.baseRevision]);
+    const sameTree = withDatabase(fixture.workspace, (db) => preserveCandidate(db, request(fixture, { requestId: "req-2" })));
+    expect(sameTree.commitSha).toBe(replayed.commitSha);
+    expect(g(fixture.candidate, ["status", "--porcelain"])).toBe("");
   });
 
   it("replays the same request id without a duplicate commit", () => {

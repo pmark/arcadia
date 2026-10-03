@@ -121,6 +121,9 @@ export function guardPreservationRefusal<T>(
     result = run();
   } catch (error) {
     if (!(error instanceof ArcadiaError)) throw error;
+    // A bounded subprocess timeout is host load, not a refusal of the candidate:
+    // it neither consumes nor resets the identical-refusal budget.
+    if (error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
     const { evidenceRef: _evidenceRef, ...stableDetails } = error.details;
     const fingerprint = fingerprintPreservationRefusal(error.message, stableDetails);
     const { attempts } = recordPreservationRefusal(db, subjectId, fingerprint, error.message, now);

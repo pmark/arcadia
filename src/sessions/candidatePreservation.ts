@@ -1,4 +1,4 @@
-import { preservationStage, preservationProcessLimits } from "./preservationStages.js";
+import { preservationStage, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -170,12 +170,14 @@ function canonical(value: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
-/** Capture raw candidate bytes with Git's object store, then set only this
- * worktree's index to the captured tree. Filters/hooks never run as host code. */
-function stageAndFingerprint(candidateWorktreePath: string): string {
-  const tree = snapshotCandidate(candidateWorktreePath);
+/**
+ * Point this worktree's real index at the preserved tree, so the candidate
+ * reads clean against its preserved commit. Runs only once that commit is
+ * durable on the branch: every refusal or failure before it leaves the
+ * candidate's index bytes, `git status` and lock files exactly as they were.
+ */
+function syncIndexToPreservedTree(candidateWorktreePath: string, tree: string): void {
   git(candidateWorktreePath, ["read-tree", tree]);
-  return tree;
 }
 
 function headTree(candidateWorktreePath: string): string | null {
@@ -231,6 +233,7 @@ function commitCandidate(input: {
     env: { GIT_AUTHOR_DATE: stamp, GIT_COMMITTER_DATE: stamp }
   });
   git(input.candidateWorktreePath, ["-c", "core.hooksPath=/dev/null", "update-ref", branch, commit, parent]);
+  syncIndexToPreservedTree(input.candidateWorktreePath, input.fingerprint);
   return commit;
 }
 
@@ -433,11 +436,12 @@ export function preserveCandidate(
     baseAdvanceCheckedParent = candidateHead;
   }
 
-  // --- Stage exactly this candidate and fingerprint it (AC2, AC3) ----------
+  // --- Fingerprint exactly this candidate (AC2, AC3) ------------------------
+  // The snapshot uses a scratch index; the real index changes only after commit.
   hooks.onStage?.("candidate-stage-and-fingerprint");
   preservationStage("preserve.snapshot");
   hooks.beforeStage?.();
-  const candidateFingerprint = stageAndFingerprint(candidateWorktreePath);
+  const candidateFingerprint = snapshotCandidate(candidateWorktreePath);
   hooks.afterStage?.();
   if (candidateFingerprint !== request.validation.candidateFingerprint) {
     throw validationError("Candidate content differs from the validated snapshot.", { evidenceRef: request.validation.evidenceRef });
@@ -454,6 +458,7 @@ export function preserveCandidate(
   const priorReceipt = loadReceipt(db, request.requestId);
   if (priorReceipt) {
     assertReplayBindingsMatch(priorReceipt, request, candidateFingerprint);
+    syncIndexToPreservedTree(candidateWorktreePath, candidateFingerprint);
     return { ...priorReceipt, replayed: true };
   }
 
@@ -470,10 +475,12 @@ export function preserveCandidate(
         remedy: "Use a fresh request id for the changed candidate."
       });
     }
+    syncIndexToPreservedTree(candidateWorktreePath, candidateFingerprint);
   } else if (headTree(candidateWorktreePath) === candidateFingerprint) {
     // Nothing new to commit — the candidate content already matches HEAD.
     // Preserve the existing commit rather than creating an empty one.
     commitSha = git(candidateWorktreePath, ["rev-parse", "HEAD"]).trim();
+    syncIndexToPreservedTree(candidateWorktreePath, candidateFingerprint);
   } else {
     preservationStage("preserve.recheck-snapshot");
     if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
@@ -592,7 +599,10 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
       });
       const parsed = JSON.parse(output) as { number: number; url: string };
       return { number: parsed.number, url: parsed.url };
-    } catch {
+    } catch (error) {
+      // A timeout is not "no pull request"; that answer would open a duplicate.
+      const timeout = preservationTimeout(error, "gh", ["pr", "view", branch, "--json", "number,url"], repositoryPath);
+      if (timeout) throw timeout;
       return null;
     }
   },

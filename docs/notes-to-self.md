@@ -57,6 +57,14 @@ Run only `/Users/pmark/.local/bin/arcadia-preserve-broker-codex` with no argumen
 Gotcha: if an older installed runtime returns the reservation-only identity or refuses the revised candidate, retain that exact receipt/refusal; do not raw-commit, install, restart, or alter production/PPN to work around it.
 The hermetic fixed-launcher proof is retained with the host receipts; an explicit operator recovery exception may preserve exact pending docs and reconcile canonical Log appends, retaining both histories. See `docs/reports/issue-878-manual-preservation-continuation.md`; this older-runtime workaround expires after the reviewed repair is installed.
 
+## Preserve launcher failed with a git timeout, or left the candidate staged
+
+keys: 889, preserve, broker, launcher, timeout, ETIMEDOUT, PRESERVATION_GIT_TIMEOUT, read-tree, index.lock, staged, retry
+
+A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; details name `gitSubcommand`, `args`, `cwd`, `timeoutMs`, `stage`, `remedy`): rerun the same launcher unchanged; it reuses the request id, and an existing commit is recovered by trailer. Timeouts never count against the refusal budget.
+Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS` (default 90000, below the 150000 stage watchdog).
+The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts`, `tests/candidate-preservation.test.ts`.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config
