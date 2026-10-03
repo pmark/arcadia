@@ -2961,6 +2961,26 @@ actions:
     depends_on: [bound-fixed-brief-broker-with-structured-receipt]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/884", "src/commands/go.ts", "src/git/worktrees.ts", "src/sessions/launch.ts", "tests/go.test.ts"]
+  - id: make-pr-review-verdict-truthful-for-current-head
+    title: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
+    expected_artifact: Evidence satisfying Agent Ask make-pr-review-verdict-truthful-for-current-head
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-r1-truthful-current-head-review-2026-10-03
+    acceptance_criteria:
+      - Regression tests reproduce, before the fix, that a `Review paused` success status with an old APPROVED head and a `Review rate limited` success with no review each wrongly yield verdict done.
+      - After the fix, paused or skipped success plus an old approval is not a completed review, and rate-limited success with no review is not a completed review.
+      - A genuinely completed review without approval is reported as completed-not-approved, and a genuine approval of the exact current head by the actual reviewer identity is reported as approved; an approval of an earlier head never approves a changed head.
+      - Unresolved review findings keep the verdict not done, and a push invalidates all earlier review evidence for that PR.
+      - Decision 0060 and the exact-head independent review, QA and required-check gates are unchanged, and no gate, test or branch protection is weakened.
+      - Show by test or code trace that the rehearsal and managed path consume the corrected classification, and state explicitly that installed verification is not claimed until the separate reviewed install.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
