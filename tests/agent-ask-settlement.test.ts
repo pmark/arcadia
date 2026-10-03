@@ -1540,7 +1540,9 @@ describe("Agent Ask settlement", () => {
     const { workspace, repo } = fixture();
     const outsidePath = path.join(path.dirname(repo), "recovered-ask.yaml");
     writeFileSync(outsidePath, JSON.stringify({ agent_ask: "v1", request_id: "outside-asks-dir", project: "demo", intent: "log", desired_result: "Recovered from elsewhere" }), "utf8");
-    runAgentAskPreviewCommand({ workspace, file: outsidePath });
+    // `--file` reads only inside the caller's repository (#886), so the recovered
+    // file's own directory is named as the caller's here, not the Project repo.
+    runAgentAskPreviewCommand({ workspace, file: outsidePath, dir: path.dirname(outsidePath) });
 
     const preview = runAgentAskSettleCommand({ workspace, proposal: "outside-asks-dir", requestId: "settle-outside-asks-dir", disposition: "accepted" });
     const applied = runAgentAskSettleCommand({

@@ -115,7 +115,8 @@ reproduction of the original failure, both below.
    recovered content, exactly as if it had been drafted correctly from the
    start, with no intermediate `git show` step. (`git show
    <branch>:<askFile> > /tmp/recovered-ask.yaml` followed by `arcadia
-   agent-ask preview --file /tmp/recovered-ask.yaml` still works too, for a
+   agent-ask preview --file /tmp/recovered-ask.yaml --dir /tmp` still works
+   too (`--file` reads only inside `--dir`'s repository, issue #886), for a
    workspace where addressing by request id alone is not convenient.)
 6. To confirm the prepared production worktree starts from the unchanged
    clean base after recovery: after step 3, run `git log --oneline -1 main`
