@@ -1524,3 +1524,10 @@ updated: 2026-10-03
 - **Result:** Every declared acceptance criterion was accepted as met: "`docs/managed-production-readiness.md` again carries the original historical sentence about what the read-only helpers and the adversary judged (the CodeRabbit-actor route), with a short 'as of Decision 0080' note after it saying the independent review gate now replaces that reviewer actor; no other claim in the document changes."; "The `unverified_reporter` remedy in `src/stewardship/codeRabbitReview.ts` again tells the agent to check who posted the status named CodeRabbit and to report a possible spoof, while still saying the status is advisory and never blocks a merge; a test asserts both statements."; "Verdict codes, error codes and the JSON shape of `arcadia pr code-review` are unchanged, and lint, tsc and required checks pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-restore-readiness-evidence-911-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr914
+
+- **Did:** Two small wording slips from the CodeRabbit-advisory change are being undone: PR #914 restores a historical evidence sentence and the spoofed-status check. https://github.com/pmark/arcadia/pull/914
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
