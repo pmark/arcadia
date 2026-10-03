@@ -29,6 +29,14 @@ import { spawnSync } from "node:child_process";
 import { initWorkspace } from "../../src/workspace/initWorkspace.js";
 import type { SessionRoleAttempt } from "../../src/sessions/enrollment.js";
 import { beginIndependentVerdict, finishIndependentVerdict, independentVerdictGate, independentVerdictReadiness } from "../../src/sessions/roleLineage.js";
+import type { SelectedCodingAgentConfiguration } from "../../src/codingAgents/providerAdapters.js";
+import {
+  CODE_REVIEW_PR_CRITERIA,
+  QA_PR_REVIEW_CRITERIA,
+  runQaPrReviewCommand,
+  type QaPrModelVerdict,
+  type QaPrReviewDependencies
+} from "../../src/qa/prReview.js";
 
 /**
  * A hermetic replica of the operator's two-Action rehearsal
@@ -57,7 +65,10 @@ import { beginIndependentVerdict, finishIndependentVerdict, independentVerdictGa
  *   candidate that is deterministically ready, through the same
  *   `beginIndependentVerdict`/`finishIndependentVerdict` seam a real
  *   reviewer process uses, under reviewer identities distinct from the
- *   developer's. `independentReviewers: false` turns them off.
+ *   developer's. `independentReviewers: false` turns them off;
+ *   `"host-commands"` instead runs the real host commands
+ *   (`arcadia qa code-review`, `arcadia qa pr`) with only GitHub and the
+ *   read-only reviewer model stubbed ({@link hostReviewHost}).
  *
  * Nothing else is stubbed: preservation runs the real Seatbelt validator,
  * reconciliation and integration run real Git, and settlement writes real
@@ -149,8 +160,8 @@ export interface RehearsalOptions {
    * script's shape.
    */
   thirdAction?: boolean;
-  /** Simulated out-of-band reviewers before each tick (default on); see the class comment. */
-  independentReviewers?: boolean;
+  /** Simulated out-of-band reviewers before each tick (default on), or the real host commands; see the class comment. */
+  independentReviewers?: boolean | "host-commands";
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
@@ -491,6 +502,7 @@ Disposable fixture plan.
    * Returns the request ids recorded.
    */
   review(verdict: "passed" | "failed" = "passed", roles: Array<"code-review" | "qa"> = ["code-review", "qa"]): string[] {
+    if (this.options.independentReviewers === "host-commands") return this.reviewThroughHostCommands(verdict, roles);
     const recorded: string[] = [];
     withDatabase(this.workspace, (db) => {
       const sessions = db.prepare(`SELECT s.* FROM agent_sessions s JOIN session_exit_receipts r ON r.session_id = s.id
@@ -508,6 +520,39 @@ Disposable fixture plan.
         }
       }
     });
+    return recorded;
+  }
+
+  /**
+   * The real host review path: for each accepted candidate that is ready and
+   * still waits on verdicts, run `arcadia qa code-review` and `arcadia qa pr`
+   * against its PR (stubbed GitHub, stubbed reviewer model). The commands
+   * themselves enforce readiness, exact head, independence and Off.
+   */
+  reviewThroughHostCommands(verdict: "passed" | "failed", roles: Array<"code-review" | "qa">): string[] {
+    const waiting = withDatabase(this.workspace, (db) => {
+      const sessions = db.prepare(`SELECT s.* FROM agent_sessions s JOIN session_exit_receipts r ON r.session_id = s.id
+        WHERE s.project_slug = ? AND r.outcome = 'accepted_completion' ORDER BY s.created_at, s.rowid`).all(this.projectSlug) as AgentSession[];
+      return sessions.flatMap((session) => {
+        const readiness = independentVerdictReadiness(db, { session, repoRoot: this.repo });
+        return readiness.ready && !independentVerdictGate(db, { session, repoRoot: this.repo }).satisfied
+          ? [{ session, head: readiness.binding.targetHead }] : [];
+      });
+    });
+    const recorded: string[] = [];
+    for (const { session, head } of waiting) {
+      const { dependencies } = hostReviewHost(session, head, { verdict: verdict === "passed" ? "pass" : "fail" });
+      for (const role of roles) {
+        try {
+          const result = runQaPrReviewCommand({ workspace: this.workspace, pullRequest: HOST_REVIEW_PR_URL, role }, dependencies);
+          recorded.push(`${role}:${session.action_id}:${result.data.verdict}`);
+        } catch (error) {
+          // Off fences the reviewer; every other refusal is a rehearsal failure.
+          if ((error as { details?: { code?: string } }).details?.code !== "managed_production_off") throw error;
+          this.log.push(`[review] ${role} for ${session.action_id} withheld: managed production is Off`);
+        }
+      }
+    }
     return recorded;
   }
 
@@ -660,4 +705,88 @@ function capacity(provider: string): ProviderCapacityObservation {
     }
   } as CapacityAdmissionDecision;
   return { generatedAt: "2026-09-26T21:00:00.000Z", providers: [decision] };
+}
+
+export const HOST_REVIEW_PR_URL = "https://github.com/pmark/rehearsal/pull/7";
+export const HOST_REVIEWER_BINDING = "host-reviewer-binding";
+
+/**
+ * Stubbed GitHub and read-only reviewer model for the real
+ * `arcadia qa code-review` / `arcadia qa pr` executor: the PR is the
+ * candidate's branch at `head` (`calls.prHead` may move it), every check is
+ * green, and `model.verdict` decides each reviewer invocation's verdict.
+ */
+export function hostReviewHost(session: AgentSession, head: string, model: { verdict: "pass" | "fail" } = { verdict: "pass" }) {
+  const calls = { reviewer: 0, prompts: [] as string[], prHead: head };
+  const dependencies: QaPrReviewDependencies = {
+    now: () => new Date("2026-10-03T22:00:00.000Z"),
+    selectReviewer: () => hostReviewer(),
+    runCommand: ({ command, args, stdin }) => {
+      if (command === "git") return ok("https://github.com/pmark/rehearsal.git\n");
+      if (command === "gh" && args[1] === "view") return ok(`${JSON.stringify(hostPullRequest(session.branch, calls.prHead))}\n`);
+      if (command === "gh" && args[0] === "api") return ok(`diff --git a/MARKER.md b/MARKER.md\n+${session.action_id}\n`);
+      if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
+      if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
+      if (command === "codex") {
+        calls.reviewer += 1;
+        calls.prompts.push(stdin ?? "");
+        const criteria = (stdin ?? "").includes("Exact-Head Code Review") ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
+        writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(model.verdict, criteria))}\n`, "utf8");
+        return ok('{"type":"task.completed"}\n');
+      }
+      return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };
+    }
+  };
+  return { calls, dependencies };
+}
+
+function hostReviewer(): SelectedCodingAgentConfiguration {
+  return {
+    mappingId: "host-reviewer-mapping",
+    bindingId: HOST_REVIEWER_BINDING,
+    profile: { name: "host_reviewer", provider: "codex-cli", package: "fake", command: "codex", purpose: "planning", sandbox: "read-only", args: [] },
+    provider: "codex-cli",
+    model: "gpt-test",
+    capability: "c2_integrated",
+    effort: "e2_standard",
+    args: ["--model", "gpt-test"],
+    costRank: 1
+  };
+}
+
+function hostPullRequest(branch: string, head: string) {
+  return {
+    number: 7,
+    title: `Candidate ${branch}`,
+    url: HOST_REVIEW_PR_URL,
+    state: "OPEN",
+    isDraft: false,
+    mergeStateStatus: "CLEAN",
+    headRefName: branch,
+    headRefOid: head,
+    baseRefName: "main",
+    baseRefOid: "5e41cf757912474496705060abf5421aeda3236f",
+    body: "## QA plan\nRead MARKER.md.",
+    files: [{ path: "MARKER.md", additions: 1, deletions: 0, changeType: "MODIFIED" }],
+    statusCheckRollup: [{ name: "fast", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/fast", workflowName: "CI" }]
+  };
+}
+
+function hostModelVerdict(verdict: "pass" | "fail", criteria: ReadonlyArray<{ id: string; name: string }>): QaPrModelVerdict {
+  return {
+    verdict,
+    summary: verdict === "pass" ? "No defects in the exact head." : "A defect blocks this head.",
+    findings: verdict === "pass" ? [] : [{ severity: "blocker", title: "Defect", evidence: "MARKER.md", recommendation: "Fix it." }],
+    checks: criteria.map((criterion) => ({
+      criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
+      name: criterion.name,
+      status: verdict === "pass" ? "pass" : "fail",
+      evidence: `${criterion.name} judged against the patch.`
+    })),
+    residualRisks: []
+  };
+}
+
+function ok(stdout: string) {
+  return { status: 0, stdout, stderr: "", error: null };
 }

@@ -3423,6 +3423,28 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       renderQaPrReviewSuccess
     )
   );
+  addJsonOption(
+    qa
+      .command("code-review")
+      .description("Run the independent read-only exact-head code review of one immutable GitHub pull-request revision; for a managed candidate it records the code-review verdict the worker needs to integrate")
+      .argument("<pull-request-url>", "Full GitHub pull-request URL")
+      .option("--reviewer <profile>", "Configured read-only coding-agent profile")
+      .option("--rerun", "Run a new review even when this exact revision already has receipts (the authorized retry after a failed verdict)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((pullRequest: string, options: { workspace: string; reviewer?: string; rerun?: boolean; json?: boolean }) =>
+    runCliAction(
+      "qa.codeReview",
+      options,
+      () => runQaPrReviewCommand({
+        workspace: options.workspace,
+        pullRequest,
+        reviewerProfile: options.reviewer,
+        rerun: options.rerun,
+        role: "code-review"
+      }),
+      renderQaPrReviewSuccess
+    )
+  );
 
   const proofTarget = program.command("proof-target").description("Configured Stable/Candidate proof targets for the Project Detail hero");
   addJsonOption(

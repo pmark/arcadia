@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { LINE_A, LINE_B, LINE_C, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { git, HOST_REVIEWER_BINDING, LINE_A, LINE_B, LINE_C, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 /**
  * The opt-in three-Action variant of the hermetic rehearsal: the real worker
@@ -12,6 +12,11 @@ import { LINE_A, LINE_B, LINE_C, Rehearsal } from "./helpers/rehearsalHarness.js
  * ticks launch the next Action exactly once. Later ticks open fresh
  * database connections and registries but share this process, so they are
  * not a full worker-process restart.
+ *
+ * It runs twice: with the harness's simulated reviewers, and with the real
+ * host review path (`arcadia qa code-review` and `arcadia qa pr`, only GitHub
+ * and the reviewer model stubbed), where every Action integrates through the
+ * tick with no operator merge once both exact-head verdicts are recorded.
  */
 const rehearsals: Rehearsal[] = [];
 afterEach(() => {
@@ -33,8 +38,11 @@ test("marker lines are in order", () => {
 `;
 
 describe("three-Action rehearsal: serial selection, between-Action Off, later ticks", () => {
-  it("launches only the next dependency-ready Action, fences Off between B and C, and launches C exactly once after On across later ticks", () => {
-    const rehearsal = new Rehearsal({ thirdAction: true });
+  it.each([
+    { reviewers: true as const, label: "simulated reviewers" },
+    { reviewers: "host-commands" as const, label: "the real host review commands" }
+  ])("launches only the next dependency-ready Action, fences Off between B and C, and launches C exactly once after On across later ticks ($label)", ({ reviewers }) => {
+    const rehearsal = new Rehearsal({ thirdAction: true, independentReviewers: reviewers });
     rehearsals.push(rehearsal);
     rehearsal.createFixtureRepository();
     rehearsal.approve(rehearsal.registerProject());
@@ -133,5 +141,22 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
       }
     }
     expect(requestIds.size).toBe(total);
+
+    // Each candidate waited visibly on its verdicts, then the tick itself
+    // fast-forwarded the base (no operator merge) and cleared the escalation.
+    for (const actionKey of [rehearsal.actionA, rehearsal.actionB, rehearsal.actionC]) {
+      expect(rehearsal.log.some((line) => line.includes(`Escalated ${actionKey} to the operator (awaiting_independent_verdicts)`))).toBe(true);
+    }
+    expect(rehearsal.status().operatorEscalations).toEqual([]);
+    const developmentHeads = ["write-marker-a", "write-marker-b", "write-marker-c"]
+      .map((actionId) => rehearsal.attempts(actionId).find((x) => x.role === "development")!.target_head!);
+    for (const head of developmentHeads) git(rehearsal.repo, ["merge-base", "--is-ancestor", head, "refs/heads/main"]);
+    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(developmentHeads[2]);
+    if (reviewers === "host-commands") {
+      for (const actionId of ["write-marker-a", "write-marker-b", "write-marker-c"]) {
+        expect(rehearsal.attempts(actionId).filter((x) => x.role === "code-review" || x.role === "qa").map((x) => [x.role, x.actor_id]))
+          .toEqual([["code-review", `code-review-reviewer:${HOST_REVIEWER_BINDING}`], ["qa", `qa-reviewer:${HOST_REVIEWER_BINDING}`]]);
+      }
+    }
   });
 });
