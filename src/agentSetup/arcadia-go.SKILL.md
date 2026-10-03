@@ -79,6 +79,13 @@ work has happened — running it right after `go` is a guaranteed
    `data.workMonitor` finds; do not ask for approval to run this read-only
    preflight.
 
+   The launcher always answers within about 25 seconds with exactly one JSON
+   document on stdout. A refusal (`ok: false`) names `error.details.stage`,
+   `correlationId` and `recovery`: the brief is read-only, so follow
+   `recovery` and rerun the same launcher once; if it repeats, report the
+   stage and correlation id. Never fall back to mutable `next` or `advance`,
+   and never widen sandbox permissions.
+
    Then, in your own next chat reply, paste `data.dispatchBrief` verbatim (a
    fenced code block is fine) as the session's opening brief, before doing
    anything else. Running the command is not enough by itself: the operator

@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr902","project":"arcadia","intent":"log","desired_result":"The fixed brief launcher can no longer hang silently: PR #902 supervises it with a deadline and a structured receipt, and broker status now proves the brief actually runs. https://github.com/pmark/arcadia/pull/902"}

@@ -2929,7 +2929,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/887", "scripts/check-operator-scripts.ts", "src/operatorActions/libraryContract.ts", "tests/operator-script-contract.test.ts", "docs/agent-guidance/operator-actions.md"]
   - id: bound-fixed-brief-broker-with-structured-receipt
     title: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
@@ -3005,7 +3005,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: bound-fixed-brief-broker-with-structured-receipt
+current_action: recover-draft-only-never-launched-candidates
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
