@@ -3069,26 +3069,42 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/913", "src/sessions/candidatePreservation.ts", "src/sessions/worktreeLiveness.ts", "tests/preservation-index-lock.test.ts", "docs/working-copy-safety.md"]
   - id: wire-requirement-attempt-lineage-into-session-roles-and-tick
     title: Wire the persisted requirement/attempt lineage into the five fixed roles and the production tick so one mutation owner, serial dependency-ready selection and verdict invalidation hold end to end.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Wire the persisted requirement/attempt lineage into the five fixed roles and the production tick so one mutation owner, serial dependency-ready selection and verdict invalidation hold end to end.
+    next_action: Record the merged lineage wiring (one mutation owner, serial selection, verdict invalidation, restart and Off fencing) as done and keep the code-review verdict recorder as a remainder Action so unattended integration can proceed.
     expected_artifact: Evidence satisfying Agent Ask wire-requirement-attempt-lineage-into-session-roles-and-tick
     clarification: clarified
     confidence: high
-    source: Agent Ask split-enrollment-protected-request-from-attempt-lineage-2026-10-03
+    source: Agent Ask split-lineage-code-review-recorder-2026-10-03-v2
     acceptance_criteria:
-      - Persist a requirement identity/input revision and distinct attempt ordinal/request ID for planner, critique, development, exact-head code review and independent QA. Transport replay returns the same receipt; an explicitly authorized retry after terminal failure atomically allocates the next bounded ordinal.
       - Route only one mutation-owning principal; helpers are separately identified and read-only. Deterministic readiness precedes inference, and push/criteria/evidence changes invalidate dependent verdicts.
       - A three-Action Plan always selects only its next dependency-ready Action; restart resumes or reconciles its current attempt without duplication; Off fences a between-Action launch; independent review/QA cannot be supplied by the developer; focused migration/race/replay/restart/Off tests pass.
     depends_on: []
+    split_into: [record-code-review-verdicts-for-unattended-integration]
     decisions: []
     references: ["src/sessions/enrollment.ts", "src/production/tick.ts", "src/sessions/launch.ts", "tests/rehearsal-three-action.test.ts", "docs/reports/three-action-managed-production-scope-design-2026-10-02.md", "https://github.com/pmark/arcadia/pull/917"]
+  - id: record-code-review-verdicts-for-unattended-integration
+    title: Give the host a governed way to record an exact-head independent code-review verdict so the production tick can integrate a managed candidate without an operator merge.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give the host a governed way to record an exact-head independent code-review verdict so the production tick can integrate a managed candidate without an operator merge.
+    expected_artifact: Evidence satisfying Agent Ask record-code-review-verdicts-for-unattended-integration
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-lineage-code-review-recorder-2026-10-03-v2
+    acceptance_criteria:
+      - Persist a requirement identity/input revision and distinct attempt ordinal/request ID for planner, critique, development, exact-head code review and independent QA. Transport replay returns the same receipt; an explicitly authorized retry after terminal failure atomically allocates the next bounded ordinal.
+      - A host command or worker step records a passed or failed exact-head code-review verdict through beginIndependentVerdict/finishIndependentVerdict for a preserved managed candidate, refuses any developer-supplied or stale-head verdict, and the production tick then integrates a candidate with both current code-review and QA verdicts with no operator merge; the awaiting_independent_verdicts escalation clears; focused replay/stale/independence/Off tests and the three-Action rehearsal pass.
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/roleLineage.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/qa/prReview.ts", "https://github.com/pmark/arcadia/pull/919"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: wire-requirement-attempt-lineage-into-session-roles-and-tick
+current_action: record-code-review-verdicts-for-unattended-integration
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

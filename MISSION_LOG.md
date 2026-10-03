@@ -1566,3 +1566,10 @@ updated: 2026-10-03
 - **Result:** Record and notify this actual scope/ownership conflict under the operator's explicit direction that real input requests use the configured default notification/messaging channel. This Log creates no Plan, Action, Decision, Grant, installation, activation or ownership transfer. Root's state is waiting_for_operator for source mutation while the existing lineage writer and independent non-mutating work can continue; the full original nine-criterion acceptance is not claimed. Nearest orchestrator has been informed.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/wire-requirement-attempt-lineage-into-session-roles-and-tick
+
+- **Did:** Completed Action arcadia/wire-requirement-attempt-lineage-into-session-roles-and-tick from accepted evidence (Candidate d7fded21746dced1398d18ef46848a79b5611f60).
+- **Result:** Every declared acceptance criterion was accepted as met: "Route only one mutation-owning principal; helpers are separately identified and read-only. Deterministic readiness precedes inference, and push/criteria/evidence changes invalidate dependent verdicts."; "A three-Action Plan always selects only its next dependency-ready Action; restart resumes or reconciles its current attempt without duplication; Off fences a between-Action launch; independent review/QA cannot be supplied by the developer; focused migration/race/replay/restart/Off tests pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/record-code-review-verdicts-for-unattended-integration immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-lineage-code-review-recorder-2026-10-03-v2).
