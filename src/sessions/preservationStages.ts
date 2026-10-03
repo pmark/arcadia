@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync, spawnSync, type ExecFileSyncOptions } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
-import { ArcadiaError, normalizeError, preservationGitTimeout } from "../cli/errors.js";
+import { ArcadiaError, normalizeError, preservationGitTimeout, preservationIndexLockedError } from "../cli/errors.js";
 
 export type PreservationProgress = (stage: string, details?: Record<string, unknown>) => void;
 /** A per-call bound, or (for deterministic tests) a bound chosen per call. */
@@ -143,25 +143,32 @@ function indexLockRemedy(stage: string | null, malformed: boolean): string {
     : "";
   return malformed
     ? `${durable}Arcadia never removes a lock that is not a regular file. Inspect the path, remove it yourself once no Git process is using the candidate, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer.`
-    : `${durable}The lock may belong to a running Git process, so it is never removed while one runs in the candidate or while it is fresh. Let that process finish, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer. ` +
+    : `${durable}The lock may belong to a running Git process, so it is never removed while it is fresh, while any process holds it open, or while a Git process runs in the candidate. Let that process finish, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer. ` +
       "A long-lived `git fsmonitor--daemon` running in the candidate never finishes on its own: stop it with `git -C <candidate> fsmonitor--daemon stop`, then retry. " +
-      "Index-lock refusals have their own identical-attempt limit, separate from timeouts.";
+      "Index-lock refusals (`PRESERVATION_INDEX_LOCKED`) have their own identical-attempt limit and never count against the timeout budget.";
 }
 
-/** Whether a Git process may still own an old lock in this worktree. */
+/** Whether a process may still own an old lock: it is fresh, a Git process
+ * runs in the candidate, a process holds the lock file open, one of those
+ * could not be ruled out, or the lock changed while it was being probed. */
 export type IndexLockLiveness =
   | { liveness: "fresh" }
   | { liveness: "live"; liveGitPids: number[] }
-  | { liveness: "unknown"; livenessError: string };
+  | { liveness: "held"; holderPids: number[] }
+  | { liveness: "unknown"; livenessError: string; holderProbeWarning?: string }
+  /** The lock was replaced or rewritten while its holders were probed. */
+  | { liveness: "changed"; probed: IndexLockIdentity; observed: IndexLockIdentity };
+export interface IndexLockIdentity { dev: number; ino: number; mtimeMs: number }
 
 /** An `index.lock` blocks the post-commit index sync and may belong to a
- * running Git process (it is fresh, a Git process runs in the candidate, or
- * that could not be ruled out), so it is never removed, and the retry is safe. */
+ * running process, so it is never removed, and the retry is safe. Typed
+ * `PRESERVATION_INDEX_LOCKED`, never as a timeout. */
 export function preservationIndexLocked(lockPath: string, ageMs: number, liveness: IndexLockLiveness = { liveness: "fresh" }): ArcadiaError {
   const stage = progress.getStore()?.stage ?? null;
-  return preservationGitTimeout(
+  return preservationIndexLockedError(
     `The candidate index is locked (${lockPath}); a Git process may still be running. Retry the same protected launcher later.`,
-    { reason: "index_locked", lockPath, lockAgeMs: ageMs, ...liveness, stage, remedy: indexLockRemedy(stage, false) }
+    { reason: "index_locked", lockPath, lockAgeMs: ageMs, ...liveness, stage, remedy: indexLockRemedy(stage, false) },
+    true
   );
 }
 
@@ -171,11 +178,10 @@ export function preservationIndexLocked(lockPath: string, ageMs: number, livenes
  * until an operator inspects it. */
 export function preservationIndexLockMalformed(lockPath: string, lockKind: string, details: Record<string, unknown> = {}): ArcadiaError {
   const stage = progress.getStore()?.stage ?? null;
-  return new ArcadiaError(
-    "PRESERVATION_GIT_TIMEOUT",
+  return preservationIndexLockedError(
     `The candidate index lock path is not a regular file (${lockKind}: ${lockPath}); preservation will not remove or follow it.`,
-    1,
-    { ...details, reason: "index_lock_malformed", lockPath, lockKind, stage, retryable: false, remedy: indexLockRemedy(stage, true) }
+    { ...details, reason: "index_lock_malformed", lockPath, lockKind, stage, remedy: indexLockRemedy(stage, true) },
+    false
   );
 }
 

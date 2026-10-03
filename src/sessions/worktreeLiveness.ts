@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -122,4 +122,144 @@ export function lsofProbe(root: string): WorktreeLiveness {
   }
   if (!sawProcess) return { ok: false, error: "lsof reported no processes at all." };
   return { ok: true, processes };
+}
+
+/**
+ * Whether any process holds `file` open -- e.g. a Git process still writing
+ * its `index.lock` -- answered fail-closed for the same reason as the worktree
+ * probe above: only `none` is a positive "nobody holds it"; a probe that cannot
+ * run, errors, times out or returns unparseable output is `unknown`, which the
+ * caller must treat as held. An `unknown` from `lsof` carries any stderr
+ * warning as `warning`, so the operator can see why it could not tell.
+ *
+ * Scope: this sees only a process holding the file open right now -- Git's
+ * own brief lock write, or a non-Git holder. A `git commit` waiting on an
+ * editor has already closed its lock descriptor; only the caller's separate
+ * Git-cwd probe protects that lock, never this probe or the lock's age.
+ *
+ * Residual risk, accepted as in the worktree probe: on Linux another user's
+ * process whose descriptors we may not inspect is skipped.
+ */
+export type FileHolders = { status: "none" } | { status: "held"; pids: number[] } | { status: "unknown"; error: string; warning?: string };
+export type FileHolderProbe = (fileRealpath: string) => FileHolders;
+
+/** Bound on the `lsof` file-holder probe; far inside the preservation stage watchdog. */
+const FILE_HOLDER_PROBE_TIMEOUT_MS = 10_000;
+/** Bound on an `lsof` stderr warning carried into a typed refusal. */
+const LSOF_WARNING_LIMIT = 2000;
+let fileHolderOverride: FileHolderProbe | null = null;
+
+/** Test-only: replace the host file-holder probe; pass null to restore it. */
+export function setFileHolderProbeForTests(probe: FileHolderProbe | null): void {
+  fileHolderOverride = probe;
+}
+
+export function fileIsHeldOpen(file: string): FileHolders {
+  let target: string;
+  try {
+    target = realpathSync(file);
+  } catch (error) {
+    return { status: "unknown", error: `The file path could not be resolved: ${(error as Error).message}` };
+  }
+  try {
+    const probe = fileHolderOverride ?? (existsSync("/proc/self/fd") ? (resolved: string) => procFdHolders(resolved) : (resolved: string) => lsofFileHolders(resolved));
+    return probe(target);
+  } catch (error) {
+    return { status: "unknown", error: `The file-holder probe failed: ${(error as Error).message}` };
+  }
+}
+
+/** A file's identity: the device and inode a descriptor or path resolves to. */
+export interface FileIdentity { dev: bigint; ino: bigint }
+
+/** The `/proc` reads the Linux descriptor scan needs; injectable for tests.
+ * `stat` follows `/proc/<pid>/fd/<fd>` to the open file itself; `statFile`
+ * stats the file being asked about. */
+export interface ProcFdReader { list(): string[]; fds(pid: string): string[]; stat(pid: string, fd: string): FileIdentity; statFile(file: string): FileIdentity }
+const identity = (file: string): FileIdentity => {
+  const stats = statSync(file, { bigint: true });
+  return { dev: stats.dev, ino: stats.ino };
+};
+const systemProcFd: ProcFdReader = {
+  list: () => readdirSync("/proc"),
+  fds: (pid) => readdirSync(`/proc/${pid}/fd`),
+  stat: (pid, fd) => identity(`/proc/${pid}/fd/${fd}`),
+  statFile: identity
+};
+/** A process that exited mid-scan, or one that is not ours to inspect, is skipped. */
+const SKIPPED_PROC_ERRORS = new Set(["EACCES", "EPERM", "ENOENT", "ESRCH"]);
+
+/**
+ * Linux: every readable `/proc/<pid>/fd/*` whose open file has `target`'s
+ * device and inode. Matching by identity, not by the link's path string,
+ * keeps a holder visible through a bind mount or another mount namespace,
+ * where its link names a different path for the same file. Exported for tests.
+ */
+export function procFdHolders(target: string, proc: ProcFdReader = systemProcFd): FileHolders {
+  let wanted: FileIdentity;
+  try {
+    wanted = proc.statFile(target);
+  } catch (error) {
+    return { status: "unknown", error: `${target} could not be stat'ed: ${(error as Error).message}` };
+  }
+  let entries: string[];
+  try {
+    entries = proc.list();
+  } catch (error) {
+    return { status: "unknown", error: `/proc could not be listed: ${(error as Error).message}` };
+  }
+  const pids: number[] = [];
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let fds: string[];
+    try {
+      fds = proc.fds(entry);
+    } catch (error) {
+      if (SKIPPED_PROC_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")) continue;
+      return { status: "unknown", error: `/proc/${entry}/fd could not be read: ${(error as Error).message}` };
+    }
+    for (const fd of fds) {
+      let open: FileIdentity;
+      try {
+        open = proc.stat(entry, fd);
+      } catch (error) {
+        if (SKIPPED_PROC_ERRORS.has((error as NodeJS.ErrnoException).code ?? "")) continue;
+        return { status: "unknown", error: `/proc/${entry}/fd/${fd} could not be stat'ed: ${(error as Error).message}` };
+      }
+      if (open.dev === wanted.dev && open.ino === wanted.ino) { pids.push(Number(entry)); break; }
+    }
+  }
+  return pids.length > 0 ? { status: "held", pids } : { status: "none" };
+}
+
+/** macOS and other hosts without /proc: `lsof -F p -- <file>`. `run` is injectable for tests. */
+export function lsofFileHolders(
+  target: string,
+  run: (args: string[]) => { error?: Error; status: number | null; stdout: string; stderr: string } = (args) =>
+    spawnSync("lsof", args, { encoding: "utf8", timeout: FILE_HOLDER_PROBE_TIMEOUT_MS, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"] })
+): FileHolders {
+  // lsof escapes non-printable and non-ASCII bytes in names, so such a path
+  // cannot be trusted to match.
+  if (/[^\x20-\x7e]/.test(target)) {
+    return { status: "unknown", error: "lsof cannot be trusted for a file path containing non-ASCII or non-printable characters." };
+  }
+  const result = run(["-F", "p", "--", target]);
+  const stderr = (result.stderr ?? "").trim();
+  // Any stderr (an lsof "WARNING: can't stat()" on macOS) still means "cannot
+  // tell"; it rides along so the refusal shows why.
+  const unknown = (error: string): FileHolders =>
+    stderr ? { status: "unknown", error, warning: stderr.slice(0, LSOF_WARNING_LIMIT) } : { status: "unknown", error };
+  if (result.error) return unknown(`lsof could not run: ${result.error.message}`);
+  const stdout = result.stdout ?? "";
+  // lsof exits 1, silently, when no process has the file open.
+  if (result.status === 1 && !stdout.trim() && !stderr) return { status: "none" };
+  if (result.status !== 0) return unknown(`lsof exited with status ${String(result.status)}: ${stderr.slice(0, 300)}`);
+  const pids: number[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line || line.startsWith("f")) continue;
+    const pid = line.startsWith("p") ? Number(line.slice(1)) : Number.NaN;
+    if (!Number.isInteger(pid) || pid <= 0) return unknown("lsof output was not parseable.");
+    pids.push(pid);
+  }
+  return pids.length > 0 ? { status: "held", pids } : unknown("lsof exited 0 without naming a process.");
 }

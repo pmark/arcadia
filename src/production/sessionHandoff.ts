@@ -196,7 +196,8 @@ export function preserveSessionCandidate(
 function refusedPreservation(error: unknown): PreservationStep {
   const detail = (error as { details?: unknown } | null)?.details;
   const flags = !!detail && typeof detail === "object" ? detail as { identicalRefusalLimitReached?: unknown; retryable?: unknown } : {};
-  const nonRetryable = error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT" && flags.retryable === false;
+  const nonRetryable = error instanceof ArcadiaError && flags.retryable === false
+    && (error.code === "PRESERVATION_GIT_TIMEOUT" || error.code === "PRESERVATION_INDEX_LOCKED");
   const identicalRefusalLimitReached = flags.identicalRefusalLimitReached === true || nonRetryable;
   return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
 }

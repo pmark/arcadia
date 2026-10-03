@@ -18,7 +18,7 @@ import {
 } from "../src/sessions/preservationRefusalBudget.js";
 import {
   PRESERVATION_GIT_TIMEOUT_MAX_MS, PRESERVATION_GIT_TIMEOUT_MS, PRESERVATION_STAGE_TIMEOUT_MS, preservationGitTimeoutMs,
-  preservationIndexLocked, preservationProcessLimits, preservationStage, withPreservationProgress
+  preservationIndexLocked, preservationIndexLockMalformed, preservationProcessLimits, preservationStage, withPreservationProgress
 } from "../src/sessions/preservationStages.js";
 import {
   BRANCH, CALL_TIMEOUT_MS, expectTypedTimeout, HUNG_CALL_TIMEOUT_MS, installTimeoutFixtureHooks, mockValidationWithRealGit,
@@ -103,14 +103,21 @@ describe("preservation git timeouts end to end", () => {
     expect(synced.details.remedy).toContain("already durable");
     expect(observe()).toMatchObject({ ahead: "1", lock: true });
     const committed = fixtureGit(f.candidate, ["rev-parse", BRANCH]);
+    const timeoutsBeforeLock = withDatabase(f.workspace, db => getPreservationTimeoutAttempts(db, binding.reservationId));
 
     // A fresh lock may belong to a live Git process: refused as retryable, kept.
     const locked = failure();
-    expect(locked.code).toBe("PRESERVATION_GIT_TIMEOUT");
-    expect(locked.details).toMatchObject({ retryable: true, reason: "index_locked", stage: "preserve.index-sync" });
+    expect(locked.code).toBe("PRESERVATION_INDEX_LOCKED");
+    expect(locked.exitCode).toBe(1);
+    expect(locked.details).toMatchObject({ retryable: true, reason: "index_locked", liveness: "fresh", stage: "preserve.index-sync" });
     expect(realpathSync(String(locked.details.lockPath))).toBe(realpathSync(lockPath));
     expect(locked.message).toContain("may still be running");
     expect(existsSync(lockPath)).toBe(true);
+    // The lock refusal is not a timeout: the timeout streak is untouched.
+    withDatabase(f.workspace, db => {
+      expect(getPreservationTimeoutAttempts(db, binding.reservationId)).toBe(timeoutsBeforeLock);
+      expect(getPreservationIndexLockAttempts(db, binding.reservationId)).toBe(1);
+    });
 
     // A stale lock is removed; the retry recovers the same commit and ends clean.
     const old = new Date(Date.now() - 10 * 60 * 1000);
@@ -286,6 +293,7 @@ describe("identical-timeout budget", () => {
 
       // An interleaved lock refusal is not a timeout: the streak survives it.
       const first = step(locked());
+      expect(first.code).toBe("PRESERVATION_INDEX_LOCKED");
       expect(first.details).toMatchObject({ retryable: true, reason: "index_locked" });
       expect(first.details.remedy).not.toContain("ARCADIA_PRESERVATION_GIT_TIMEOUT_MS");
       expect(getPreservationTimeoutAttempts(db, "subject")).toBe(2);
@@ -295,12 +303,14 @@ describe("identical-timeout budget", () => {
       expect(getPreservationIndexLockAttempts(db, "subject")).toBe(1);
 
       for (let count = 2; count < MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS; count += 1) {
-        expect(step(locked()).code).toBe("PRESERVATION_GIT_TIMEOUT");
+        expect(step(locked()).code).toBe("PRESERVATION_INDEX_LOCKED");
         expect(getPreservationIndexLockAttempts(db, "subject")).toBe(count);
+        expect(getPreservationTimeoutAttempts(db, "subject")).toBe(3);
       }
       const capped = step(locked());
       expect(capped.code).toBe("VALIDATION_ERROR");
       expect(capped.message).toMatch(new RegExp(`index lock blocked preservation the same way ${MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS} times.*will not be retried automatically`));
+      expect(capped.message).not.toMatch(/timed out|ARCADIA_PRESERVATION_GIT_TIMEOUT_MS/);
       expect(capped.details).toMatchObject({ retryable: false, identicalIndexLockLimitReached: true, identicalRefusalLimitReached: true,
         attempts: MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS, reason: "index_locked" });
       expect(capped.details.identicalTimeoutLimitReached).toBeUndefined();
@@ -312,5 +322,38 @@ describe("identical-timeout budget", () => {
       expect(getPreservationTimeoutAttempts(db, "subject")).toBe(0);
       expect(getPreservationIndexLockAttempts(db, "subject")).toBe(0);
     });
+  });
+
+  it("never trips the timeout cap on index_locked alone, outside the refusal budget, and transports its own code and retryable flag", () => {
+    const f = plainFixture();
+    const lockPath = "/x/.git/index.lock";
+    withDatabase(f.workspace, db => {
+      const viaValidation = (error: Error) => caught(() => guardPreservationRefusal(db, "subject", NOW, () => { throw error; }));
+      const viaStep = (error: Error) => caught(() => guardPreservationTimeouts(db, "subject", NOW, () => { throw error; }));
+      // Distinct lock ages and liveness never change the fingerprint: these are
+      // identical lock refusals, alternating between both guards.
+      for (let count = 1; count < MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS; count += 1) {
+        const error = (count % 2 ? viaValidation : viaStep)(preservationIndexLocked(lockPath, count, { liveness: "held", holderPids: [count] }));
+        expect(error.code).toBe("PRESERVATION_INDEX_LOCKED");
+        expect(error.details.identicalTimeoutLimitReached).toBeUndefined();
+      }
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(0);
+      expect(getPreservationRefusalAttempts(db, "subject")).toBe(0);
+      expect(getPreservationIndexLockAttempts(db, "subject")).toBe(MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS - 1);
+    });
+
+    const error = preservationIndexLocked(lockPath, 10, { liveness: "unknown", livenessError: "file-holder probe: lsof could not run" });
+    expect(error.code).toBe("PRESERVATION_INDEX_LOCKED");
+    expect(error.exitCode).toBe(1);
+    expect(String(error.details.remedy)).not.toContain("ARCADIA_PRESERVATION_GIT_TIMEOUT_MS");
+    for (const sent of [error, preservationIndexLockMalformed(lockPath, "directory")]) {
+      const transported = goTransportFailure(sent);
+      if (transported.ok) throw new Error("transport reported success");
+      const received = preservationResponseError(transported.error);
+      expect(received.code).toBe("PRESERVATION_INDEX_LOCKED");
+      expect(received.exitCode).toBe(1);
+      expect(received.details).toEqual(sent.details);
+    }
+    expect(preservationIndexLockMalformed(lockPath, "directory").details.retryable).toBe(false);
   });
 });

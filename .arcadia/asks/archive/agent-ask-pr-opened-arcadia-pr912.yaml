@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr912","project":"arcadia","intent":"log","desired_result":"Preservation stops guessing about a stale index.lock: PR #912 refuses a lock a process still holds, and gives a locked index its own retryable error that no longer burns the timeout budget. https://github.com/pmark/arcadia/pull/912"}

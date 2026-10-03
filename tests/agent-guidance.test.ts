@@ -74,7 +74,7 @@ describe("compact Way instruction delivery", () => {
 
   it("keeps authority, governance, preservation, learning and identity rules in the visible bootstrap", () => {
     const loaded = Buffer.from(file(canonicalRoot, "AGENTS.md")).subarray(0, 32768).toString();
-    for (const rule of ["CodeRabbit approves the current head", "A push resets proof", "never hand-edit pointers", "edit SQLite directly", "never on main", "docs/notes-to-self.md", "targeted `rg`", "arcadia identity resolve", "never rewrite Git config", "docs/agent-guidance/index.json"]) expect(loaded).toContain(rule);
+    for (const rule of ["independent review of the current head", "A push resets proof", "never hand-edit pointers", "edit SQLite directly", "never on main", "docs/notes-to-self.md", "targeted `rg`", "arcadia identity resolve", "never rewrite Git config", "docs/agent-guidance/index.json"]) expect(loaded).toContain(rule);
     const entries = guidanceEntries(file(canonicalRoot, GUIDANCE_INDEX));
     for (const entry of entries) { expect(existsSync(path.join(canonicalRoot, entry.path))).toBe(true); expect(entry.trigger).toBeTruthy(); expect(entry.read_before).toBeTruthy(); }
   });

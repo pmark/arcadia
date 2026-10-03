@@ -1475,3 +1475,73 @@ updated: 2026-10-03
 - **Result:** Every declared acceptance criterion was accepted as met: "Regression tests reproduce, before the fix, that a `Review paused` success status with an old APPROVED head and a `Review rate limited` success with no review each wrongly yield verdict done."; "After the fix, paused or skipped success plus an old approval is not a completed review, and rate-limited success with no review is not a completed review."; "A genuinely completed review without approval is reported as completed-not-approved, and a genuine approval of the exact current head by the actual reviewer identity is reported as approved; an approval of an earlier head never approves a changed head."; "Unresolved review findings keep the verdict not done, and a push invalidates all earlier review evidence for that PR."; "Decision 0060 and the exact-head independent review, QA and required-check gates are unchanged, and no gate, test or branch protection is weakened."; "Show by test or code trace that the rehearsal and managed path consume the corrected classification, and state explicitly that installed verification is not claimed until the separate reviewed install.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-make-pr-review-verdict-truthful-for-current-head-2026-10-03-v2).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr907
+
+- **Did:** Review rules are now written down for every coding agent, not just one: PR #907 makes an independent review the merge gate and CodeRabbit advisory, and opens Decision 0080 for your answer. https://github.com/pmark/arcadia/pull/907
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Agent Ask pr-ready-arcadia-pr907-decision-answer-2026-10-03
+
+- **Did:** Your call needed: Decision 0080 and PR #907 write the independent-review merge rule into the Constitution for every coding agent (CodeRabbit becomes advisory). Three review rounds are clean; answer the Decision, then merge the PR. https://github.com/pmark/arcadia/pull/907
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/align-code-review-messages-with-advisory-coderabbit
+
+- **Did:** Completed Action arcadia/align-code-review-messages-with-advisory-coderabbit from accepted evidence (Candidate 56e8fca3649bf6cc94fd19df0bd010a3c20533b1).
+- **Result:** Every declared acceptance criterion was accepted as met: "`arcadia pr code-review` and its runtime messages (`src/stewardship/codeRabbitReview.ts`, `src/cli.ts`) no longer say a completed CodeRabbit review is required or to wait for a limit to reset; they say a rate limit or missing review never blocks a merge and that the independent review gate governs, with tests updated."; "The bootstrap names conflict-free base merges beside the governed-record commits; the PR procedure tells the reviewer to confirm the settle receipt id for an exempt commit and says branch protection on main now requires the seven CI jobs (lint, unit-1..4, dashboard, e2e); the regenerated AGENTS.md and guidance fingerprints agree and `check:agent-guidance` passes."; "The CodeRabbit-dependent rehearsal text in `docs/managed-production-readiness.md` is revised so CodeRabbit is advisory rather than a required reviewer actor, with the independent review gate named; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-align-code-review-messages-908-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr910
+
+- **Did:** Messages now match the rule you set: PR #910 makes pr code-review and the guidance say CodeRabbit is advisory and that a rate limit never blocks a merge. https://github.com/pmark/arcadia/pull/910
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/clear-preservation-timeout-count-and-harden-index-lock-checks
+
+- **Did:** Completed Action arcadia/clear-preservation-timeout-count-and-harden-index-lock-checks from accepted evidence (Candidate da9443fb1d8249327e6ef12353b55a2b0d3a363a).
+- **Result:** Every declared acceptance criterion was accepted as met: "The managed-production tick path (`src/production/sessionHandoff.ts`) counts preserve-stage timeouts toward the same identical-timeout cap as `arcadia preserve` and clears the count after a successful preservation, with a deterministic test that fails when either is removed."; "Stale `index.lock` removal no longer rests on mtime alone: a lock is removed only when it is older than the threshold and a fail-closed probe finds no process holding it open (an unreadable probe refuses with the typed retryable error); a directory lock, a symlinked lock and a dangling symlink raise the typed error instead of an untyped failure after the commit; tests cover each shape."; "`index_locked` has its own error code, is not counted against the timeout budget, and the cap message no longer suggests tuning the timeout for a locked index; notes and START_HERE describe it; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-clear-preservation-timeout-count-896-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr912
+
+- **Did:** Preservation stops guessing about a stale index.lock: PR #912 refuses a lock a process still holds, and gives a locked index its own retryable error that no longer burns the timeout budget. https://github.com/pmark/arcadia/pull/912
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/restore-readiness-evidence-and-report-spoofed-coderabbit-status
+
+- **Did:** Completed Action arcadia/restore-readiness-evidence-and-report-spoofed-coderabbit-status from accepted evidence (Candidate 1c2d1da37fd0ead3462ddec9bb2ff9c382e54b9c).
+- **Result:** Every declared acceptance criterion was accepted as met: "`docs/managed-production-readiness.md` again carries the original historical sentence about what the read-only helpers and the adversary judged (the CodeRabbit-actor route), with a short 'as of Decision 0080' note after it saying the independent review gate now replaces that reviewer actor; no other claim in the document changes."; "The `unverified_reporter` remedy in `src/stewardship/codeRabbitReview.ts` again tells the agent to check who posted the status named CodeRabbit and to report a possible spoof, while still saying the status is advisory and never blocks a merge; a test asserts both statements."; "Verdict codes, error codes and the JSON shape of `arcadia pr code-review` are unchanged, and lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-restore-readiness-evidence-911-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr914
+
+- **Did:** Two small wording slips from the CodeRabbit-advisory change are being undone: PR #914 restores a historical evidence sentence and the spoofed-status check. https://github.com/pmark/arcadia/pull/914
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/close-index-lock-probe-races-and-fd-matching-gaps
+
+- **Did:** Completed Action arcadia/close-index-lock-probe-races-and-fd-matching-gaps from accepted evidence (Candidate edc23b932eb3202c3749d4a1276123fd2ce5d84c).
+- **Result:** Every declared acceptance criterion was accepted as met: "Stale `index.lock` removal re-`lstat`s the lock and compares its `ino` and `mtimeMs` immediately before `rmSync` and refuses with the typed retryable error if either changed since the holder probes, with a deterministic test that swaps the lock between the probe and the removal."; "The Linux `/proc/<pid>/fd` holder probe matches by device and inode via `stat` on each fd link rather than by path string (so bind mounts and mount namespaces cannot read as 'none'), keeping its fail-closed handling of unreadable pids, with tests using injected readers including a differing-path-same-inode case."; "An `lsof` warning on stderr is carried into the typed error details so the operator can see why the answer was 'unknown'; the docs say plainly that the held-open probe covers only Git's brief write and non-Git holders and that an editor-based commit is protected only by the Git-cwd probe; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-close-index-lock-probe-gaps-913-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr915
+
+- **Did:** Stale-lock cleanup gets safer: PR #915 re-checks the lock right before deleting it, matches holders by inode on Linux, and shows probe warnings. https://github.com/pmark/arcadia/pull/915
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

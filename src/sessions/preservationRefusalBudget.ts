@@ -24,15 +24,20 @@ export const MAX_IDENTICAL_PRESERVATION_TIMEOUTS = 10;
 const timeoutSubject = (subjectId: string) => `timeout:${subjectId}`;
 
 /**
- * A blocked candidate index lock (`reason: index_locked`, or a malformed lock
- * shape `index_lock_malformed`) shares the timeout's typed, retryable
- * transport but is not a slow Git call: it is counted on its own subject with
- * its own identical-attempt limit, so it neither consumes nor resets the
- * timeout streak, and its cap names the lock rather than the timeout bound.
+ * A blocked candidate index lock (`PRESERVATION_INDEX_LOCKED`, `reason:
+ * index_locked`, or a malformed lock shape `index_lock_malformed`) is not a
+ * slow Git call: it has its own code, is counted on its own subject with its
+ * own identical-attempt limit, so it neither consumes nor resets the timeout
+ * streak, and its cap names the lock rather than the timeout bound.
  */
 export const MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS = 10;
 const indexLockSubject = (subjectId: string) => `index_lock:${subjectId}`;
-const INDEX_LOCK_REASONS = new Set(["index_locked", "index_lock_malformed"]);
+
+/** The two host-condition codes that bypass the identical-refusal budget,
+ * each counted on its own budget instead. */
+function isBudgetedHostCondition(error: ArcadiaError): boolean {
+  return error.code === "PRESERVATION_GIT_TIMEOUT" || error.code === "PRESERVATION_INDEX_LOCKED";
+}
 
 export function ensurePreservationRefusalTable(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS preservation_refusal_attempts (
@@ -115,9 +120,10 @@ export function getPreservationIndexLockAttempts(db: Database.Database, subjectI
   return getPreservationRefusalAttempts(db, indexLockSubject(subjectId));
 }
 
-/** Count one retryable `PRESERVATION_GIT_TIMEOUT` for `subjectId` -- a slow Git
- * call on the timeout budget, a blocked index lock on its own -- and rethrow
- * it, or refuse automatic retries once that budget is exhausted. */
+/** Count one `PRESERVATION_GIT_TIMEOUT` (a slow Git call, on the timeout
+ * budget) or `PRESERVATION_INDEX_LOCKED` (a blocked index lock, on its own)
+ * for `subjectId` and rethrow it, or refuse automatic retries once that
+ * budget is exhausted. */
 function recordPreservationTimeout(
   db: Database.Database,
   subjectId: string,
@@ -126,7 +132,7 @@ function recordPreservationTimeout(
   onLimitReached?: (attempts: number, error: ArcadiaError) => void
 ): never {
   const { reason, stage, command, gitSubcommand, lockPath, lockKind } = error.details;
-  if (typeof reason === "string" && INDEX_LOCK_REASONS.has(reason)) {
+  if (error.code === "PRESERVATION_INDEX_LOCKED") {
     const fingerprint = fingerprintPreservationRefusal(error.code, { reason, stage, lockPath, lockKind });
     const { attempts } = recordPreservationRefusal(db, indexLockSubject(subjectId), fingerprint, error.message, now);
     if (attempts >= MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS) {
@@ -159,17 +165,17 @@ function recordPreservationTimeout(
   throw error;
 }
 
-/** Bound the preservation step itself: only retryable `PRESERVATION_GIT_TIMEOUT`
- * failures are counted (timeouts and index-lock refusals on their separate
- * budgets); every other error passes through untouched, and a success clears
- * both counts. Shared by the CLI `arcadia preserve` broker and the managed
+/** Bound the preservation step itself: only `PRESERVATION_GIT_TIMEOUT` and
+ * `PRESERVATION_INDEX_LOCKED` failures are counted, each on its own budget;
+ * every other error passes through untouched, and a success clears both
+ * counts. Shared by the CLI `arcadia preserve` broker and the managed
  * tick's terminal-exit handoff, keyed on the same Session id. */
 export function guardPreservationTimeouts<T>(db: Database.Database, subjectId: string, now: Date, run: () => T): T {
   let result: T;
   try {
     result = run();
   } catch (error) {
-    if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") recordPreservationTimeout(db, subjectId, now, error);
+    if (error instanceof ArcadiaError && isBudgetedHostCondition(error)) recordPreservationTimeout(db, subjectId, now, error);
     throw error;
   }
   clearPreservationRefusal(db, timeoutSubject(subjectId));
@@ -213,9 +219,10 @@ export function guardPreservationRefusal<T>(
     result = run();
   } catch (error) {
     if (!(error instanceof ArcadiaError)) throw error;
-    // A bounded subprocess timeout is host load, not a refusal of the candidate:
-    // it neither consumes nor resets the identical-refusal budget, only its own.
-    if (error.code === "PRESERVATION_GIT_TIMEOUT") recordPreservationTimeout(db, subjectId, now, error, onLimitReached);
+    // A bounded subprocess timeout (host load) or a blocked index lock is not a
+    // refusal of the candidate: it neither consumes nor resets the
+    // identical-refusal budget, only its own.
+    if (isBudgetedHostCondition(error)) recordPreservationTimeout(db, subjectId, now, error, onLimitReached);
     const { evidenceRef: _evidenceRef, ...stableDetails } = error.details;
     const fingerprint = fingerprintPreservationRefusal(error.message, stableDetails);
     const { attempts } = recordPreservationRefusal(db, subjectId, fingerprint, error.message, now);

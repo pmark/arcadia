@@ -283,7 +283,7 @@ settlement, a Log entry, a Plan or Decision edit) is refreshed to current
 `HEAD` first, but only when that stale revision is still an ancestor of `HEAD`
 *and* every commit since touched only governance records, so the evidence
 still describes exactly the code at `HEAD`. Ancestry alone is not enough: a
-later code change — even a CodeRabbit-loop fix — could break a criterion the
+later code change — even a review-driven fix — could break a criterion the
 evidence recorded as met. That, and anything else — missing or incomplete
 evidence, a genuinely divergent revision, an unresolved required review
 Decision — falls through to an ordinary dispatch untouched.

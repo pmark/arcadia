@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr914","project":"arcadia","intent":"log","desired_result":"Two small wording slips from the CodeRabbit-advisory change are being undone: PR #914 restores a historical evidence sentence and the spoofed-status check. https://github.com/pmark/arcadia/pull/914"}

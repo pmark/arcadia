@@ -338,6 +338,20 @@ describe("coderabbit loop only treats a genuinely completed review of the curren
     });
   });
 
+  it("tells the agent to check who posted the spoofable status and report it, while keeping it advisory", async () => {
+    const error = await runLoop({
+      heads: ["h1"],
+      status: { h1: { ...completed, creator: "coderabbitai-x" } },
+      reviews: [review("h1", "APPROVED", "1")],
+      threads: []
+    }).catch((e: unknown) => e);
+    const { remedy } = (error as { details: { remedy: string } }).details;
+    expect(remedy).toMatch(/check who posted the status named CodeRabbit/i);
+    expect(remedy).toMatch(/report a possible spoof/i);
+    expect(remedy).toMatch(/advisory/);
+    expect(remedy).toMatch(/never blocks a merge|does not block|never blocks/i);
+  });
+
   it("re-reads the head after gathering evidence, so a push mid-read never yields a verdict on stale evidence", async () => {
     // h1 is approved and complete when the loop starts; a push lands h2 while
     // the reviews are being read. h2 has no finished review, so the loop must
@@ -349,6 +363,54 @@ describe("coderabbit loop only treats a genuinely completed review of the curren
       threads: []
     });
     await expect(result).rejects.toMatchObject({ message: expect.stringContaining("h2") });
+  });
+});
+
+describe("pr code-review messages treat CodeRabbit as advisory (Decision 0080, #908)", () => {
+  const forbidden = [/still required/i, /wait for the limit/i, /loop verdict/i, /treating the loop as satisfied/i];
+  const advisory = /never blocks a merge/i;
+  const gate = /independent review gate \(docs\/agent-guidance\/pull-requests\.md\)/;
+
+  for (const [reason, description] of [
+    ["paused", "Review paused"],
+    ["skipped", "Review skipped"],
+    ["rate_limited", "Review rate limited"],
+    ["unrecognized", "Something new"]
+  ] as const) {
+    it(`says a ${reason} CodeRabbit status never blocks a merge and names the independent review gate`, async () => {
+      const error = await runLoop({ heads: ["h1"], status: { h1: { state: "success", description } }, reviews: [], threads: [] }).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: "CODE_REVIEW_NOT_COMPLETED", details: expect.objectContaining({ reason }) });
+      const { message, details } = error as { message: string; details: { remedy: string } };
+      expect(message).toMatch(advisory);
+      expect(details.remedy).toMatch(advisory);
+      expect(details.remedy).toMatch(gate);
+      for (const pattern of forbidden) {
+        expect(message).not.toMatch(pattern);
+        expect(details.remedy).not.toMatch(pattern);
+      }
+    });
+  }
+
+  it("says the same for a status another identity posted", async () => {
+    const error = await runLoop({ heads: ["h1"], status: { h1: { state: "success", description: "Review completed", creator: "coderabbitai-x" } }, reviews: [], threads: [] }).catch((caught: unknown) => caught);
+    expect((error as { details: { remedy: string } }).details.remedy).toMatch(gate);
+  });
+
+  it("says a missing CodeRabbit review at the timeout never blocks a merge", async () => {
+    const error = await runLoop({ heads: ["h1"], status: { h1: { state: "pending", description: "Review in progress" } }, reviews: [], threads: [] }).catch((caught: unknown) => caught);
+    expect((error as Error).message).toMatch(/A missing CodeRabbit review never blocks a merge: the independent review gate governs/);
+  });
+
+  it("keeps fix and cap notes advisory, naming the independent review gate", () => {
+    const fix = decide("h1", [review("h1", "CHANGES_REQUESTED", "1")], [thread("t1")]);
+    const cap = decide("h4", ["h1", "h2", "h3", "h4"].map((head, index) => review(head, "CHANGES_REQUESTED", String(index))), [thread("t1", { commitId: "h4" })]);
+    expect(fix.verdict).toBe("fix");
+    expect(cap.verdict).toBe("cap");
+    for (const note of [fix.note, cap.note]) {
+      expect(note).toMatch(gate);
+      expect(note).toMatch(/advisory/);
+      for (const pattern of forbidden) expect(note).not.toMatch(pattern);
+    }
   });
 });
 

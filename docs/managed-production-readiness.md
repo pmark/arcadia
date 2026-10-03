@@ -141,13 +141,16 @@ three-record scope: keep saved configuration unchanged, append durable serial
 execution to the existing enrollment identity while preserving its six criteria,
 and add one installed-host rehearsal Action. The finite revised design uses an
 actual disposable GitHub repository, CodeRabbit's actor/reviewed head and existing
-independent PR QA rather than a new local reviewer supervisor. With that route,
+independent PR QA rather than a new local reviewer supervisor. As of Decision 0080,
+the independent review gate (`docs/agent-guidance/pull-requests.md`) replaces that
+reviewer actor and CodeRabbit is advisory. With that route,
 the adversary judges the combined enrollment/durability slice plausibly one
 heavy/high session; this is an estimate, not completion evidence. Draft-to-ready
 PR waiting, five fixed-role attempt lineage, host-derived QA identity and exact
 integration fencing remain missing behavior. Repository publication, PR readiness
-and bounded integration require the later fresh exact Grant. Verify CodeRabbit
-installation and required checks before live dispatch.
+and bounded integration require the later fresh exact Grant. Verify the
+independent review gate and required checks before live dispatch; a missing or
+rate-limited CodeRabbit review never blocks it.
 
 The current enrollment candidate adds the host-owned replay contract and its
 additive five-role lineage store. Real-fixture host tests drive strict `go`

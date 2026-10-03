@@ -138,16 +138,29 @@ commit is durable on the branch (or found again by its trailer, or replayed)
 does the host point the real index at the preserved tree, so a successful
 preservation ends with a clean status. If a killed earlier sync left the
 candidate's `index.lock` behind, the host removes it only when it is a regular
-file older than five minutes and no Git process is running in the candidate
-worktree. A fresher lock, or one a running Git process (such as `git commit`
-waiting on an editor) may own, or one whose liveness could not be checked, is
-kept and the attempt refuses with the retryable receipt below (`reason:
-index_locked`, naming the lock path, its age and `liveness`). A lock path that
-is not a regular file (a directory or a symlink) is never removed or followed:
-it refuses with `reason: index_lock_malformed` (`retryable: false`, naming
-`lockKind`) until an operator removes it. Index-lock refusals count on their
-own ten-attempt identical limit, separate from timeouts, and neither resets
-the other.
+file older than five minutes, no Git process is running in the candidate
+worktree, and a fail-closed probe (`/proc/<pid>/fd` on Linux, matched by
+device and inode rather than path so a bind mount cannot hide a holder; `lsof`
+elsewhere) finds no process holding the lock file open; age alone never
+suffices. The held-open probe covers only Git's own brief lock write and
+non-Git holders: a `git commit` waiting on an editor has already closed its
+lock, so that lock is protected only by the Git-process-in-the-candidate probe,
+never by age or the held-open probe. Immediately before removal the host
+`lstat`s the lock again and keeps it if its inode or mtime changed while the
+probes ran (another preservation's fresh lock, `liveness: changed`). A
+fresher lock, one a running Git process (such as `git commit` waiting on an
+editor) may own, one a process holds open, or one whose liveness or holders
+could not be checked, is kept and the attempt refuses with its own code,
+`PRESERVATION_INDEX_LOCKED` (exit 1, `retryable: true`, `reason:
+index_locked`, naming the lock path, its age, `liveness` and any
+`holderPids` or `livenessError`, and any `lsof` stderr warning as
+`holderProbeWarning`). A lock path that is not a regular file (a
+directory, or a symlink, dangling or not) is never removed or followed: it
+refuses as `PRESERVATION_INDEX_LOCKED` with `reason: index_lock_malformed`
+(`retryable: false`, naming `lockKind`) until an operator removes it.
+Index-lock refusals are not timeouts: they never count against the timeout
+budget below, they count on their own ten-attempt identical limit, neither
+resets the other, and their remedies never suggest tuning the timeout.
 
 Every Git call on the preservation, binding and validation path (snapshot,
 check-definition binding, materialization, ancestry and merge checks, commit,
@@ -170,7 +183,9 @@ does not count against the identical-refusal budget; instead ten identical
 timeouts in a row stop automatic retries with a non-retryable refusal until an
 operator resolves the cause, and a successful preservation clears that count.
 The CLI broker and the managed-production tick's terminal-exit handoff share
-that one budget per Session id, so a success on either path clears it.
+that one budget per Session id, so a success on either path clears it; the
+managed tick runs this only once the worker is restarted by the separately
+authorized host-services recovery.
 Retrying is otherwise safe: the same launcher derives the same request id, so a
 timeout before the commit retries from scratch with nothing committed, and a
 commit already made is recovered by its trailer rather than duplicated. A timed

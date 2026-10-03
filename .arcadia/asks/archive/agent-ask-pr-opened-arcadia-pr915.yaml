@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr915","project":"arcadia","intent":"log","desired_result":"Stale-lock cleanup gets safer: PR #915 re-checks the lock right before deleting it, matches holders by inode on Linux, and shows probe warnings. https://github.com/pmark/arcadia/pull/915"}

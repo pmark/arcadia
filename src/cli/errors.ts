@@ -29,6 +29,7 @@ export type ArcadiaErrorCode =
   | "NARRATIVE_DIGEST_UNAVAILABLE"
   | "NARRATIVE_DIGEST_INVALID_RESULT"
   | "PRESERVATION_GIT_TIMEOUT"
+  | "PRESERVATION_INDEX_LOCKED"
   | "CODE_REVIEW_NOT_COMPLETED"
   | "BRIEF_DEADLINE_EXCEEDED"
   | "UNEXPECTED_ERROR";
@@ -144,6 +145,17 @@ export function narrativeDigestInvalidResult(message: string): ArcadiaError {
  */
 export function preservationGitTimeout(message: string, details: ArcadiaErrorDetails): ArcadiaError {
   return new ArcadiaError("PRESERVATION_GIT_TIMEOUT", message, 1, { ...details, retryable: true });
+}
+
+/**
+ * The candidate's `index.lock` blocked the post-commit index sync. Not a slow
+ * Git call, so it has its own code and is never counted against the timeout
+ * budget. Exit 1: nothing about the candidate was refused. `retryable` is true
+ * for a lock that may belong to a running Git process (retry later) and false
+ * for a lock path that is not a regular file (an operator must inspect it).
+ */
+export function preservationIndexLockedError(message: string, details: ArcadiaErrorDetails, retryable: boolean): ArcadiaError {
+  return new ArcadiaError("PRESERVATION_INDEX_LOCKED", message, 1, { ...details, retryable });
 }
 
 export function projectReplyAmbiguous(question: string): ArcadiaError {

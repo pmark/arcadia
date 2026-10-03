@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr907","project":"arcadia","intent":"log","desired_result":"Review rules are now written down for every coding agent, not just one: PR #907 makes an independent review the merge gate and CodeRabbit advisory, and opens Decision 0080 for your answer. https://github.com/pmark/arcadia/pull/907"}
