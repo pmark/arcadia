@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr905","project":"arcadia","intent":"log","desired_result":"Go no longer gets stranded by a never-launched candidate that only holds Ask drafts: PR #905 preserves each draft by hash and resumes the same worktree. https://github.com/pmark/arcadia/pull/905"}

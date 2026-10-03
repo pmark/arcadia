@@ -13,12 +13,12 @@ import { bindCheckDefinitions } from "../src/sessions/preservationCheckBinding.j
 import { goTransportFailure } from "../src/sessions/goRequestExecutor.js";
 import { preservationResponseError } from "../src/sessions/preservationTransport.js";
 import {
-  getPreservationRefusalAttempts, getPreservationTimeoutAttempts, guardPreservationRefusal, guardPreservationTimeouts,
-  MAX_IDENTICAL_PRESERVATION_REFUSALS, MAX_IDENTICAL_PRESERVATION_TIMEOUTS
+  getPreservationIndexLockAttempts, getPreservationRefusalAttempts, getPreservationTimeoutAttempts, guardPreservationRefusal, guardPreservationTimeouts,
+  MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS, MAX_IDENTICAL_PRESERVATION_REFUSALS, MAX_IDENTICAL_PRESERVATION_TIMEOUTS
 } from "../src/sessions/preservationRefusalBudget.js";
 import {
   PRESERVATION_GIT_TIMEOUT_MAX_MS, PRESERVATION_GIT_TIMEOUT_MS, PRESERVATION_STAGE_TIMEOUT_MS, preservationGitTimeoutMs,
-  preservationProcessLimits, preservationStage, withPreservationProgress
+  preservationIndexLocked, preservationProcessLimits, preservationStage, withPreservationProgress
 } from "../src/sessions/preservationStages.js";
 import {
   BRANCH, CALL_TIMEOUT_MS, expectTypedTimeout, HUNG_CALL_TIMEOUT_MS, installTimeoutFixtureHooks, mockValidationWithRealGit,
@@ -272,6 +272,45 @@ describe("identical-timeout budget", () => {
 
       expect(guardPreservationTimeouts(db, "subject", NOW, () => "preserved")).toBe("preserved");
       expect(getPreservationTimeoutAttempts(db, "subject")).toBe(0);
+    });
+  });
+
+  it("counts index_locked on its own budget: it neither consumes nor resets the timeout streak, and caps with a lock remedy", () => {
+    const f = plainFixture();
+    const locked = () => preservationIndexLocked("/x/.git/index.lock", 10);
+    withDatabase(f.workspace, db => {
+      const step = (error: Error) => caught(() => guardPreservationTimeouts(db, "subject", NOW, () => { throw error; }));
+      step(timeout("preserve.commit"));
+      step(timeout("preserve.commit"));
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(2);
+
+      // An interleaved lock refusal is not a timeout: the streak survives it.
+      const first = step(locked());
+      expect(first.details).toMatchObject({ retryable: true, reason: "index_locked" });
+      expect(first.details.remedy).not.toContain("ARCADIA_PRESERVATION_GIT_TIMEOUT_MS");
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(2);
+      expect(getPreservationIndexLockAttempts(db, "subject")).toBe(1);
+      step(timeout("preserve.commit"));
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(3);
+      expect(getPreservationIndexLockAttempts(db, "subject")).toBe(1);
+
+      for (let count = 2; count < MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS; count += 1) {
+        expect(step(locked()).code).toBe("PRESERVATION_GIT_TIMEOUT");
+        expect(getPreservationIndexLockAttempts(db, "subject")).toBe(count);
+      }
+      const capped = step(locked());
+      expect(capped.code).toBe("VALIDATION_ERROR");
+      expect(capped.message).toMatch(new RegExp(`index lock blocked preservation the same way ${MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS} times.*will not be retried automatically`));
+      expect(capped.details).toMatchObject({ retryable: false, identicalIndexLockLimitReached: true, identicalRefusalLimitReached: true,
+        attempts: MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS, reason: "index_locked" });
+      expect(capped.details.identicalTimeoutLimitReached).toBeUndefined();
+      expect(String(capped.details.remedy)).not.toContain("ARCADIA_PRESERVATION_GIT_TIMEOUT_MS");
+      // The capped lock refusal never touched the timeout count either.
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(3);
+
+      expect(guardPreservationTimeouts(db, "subject", NOW, () => "preserved")).toBe("preserved");
+      expect(getPreservationTimeoutAttempts(db, "subject")).toBe(0);
+      expect(getPreservationIndexLockAttempts(db, "subject")).toBe(0);
     });
   });
 });

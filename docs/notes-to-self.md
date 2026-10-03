@@ -59,11 +59,18 @@ The hermetic fixed-launcher proof is retained with the host receipts; an explici
 
 ## Preserve launcher failed with a git timeout, or left the candidate staged
 
-keys: 889, preserve, broker, launcher, timeout, ETIMEDOUT, PRESERVATION_GIT_TIMEOUT, read-tree, index.lock, staged, retry
+keys: 889, 896, preserve, broker, launcher, timeout, ETIMEDOUT, PRESERVATION_GIT_TIMEOUT, read-tree, index.lock, index_locked, index_lock_malformed, staged, retry, managed tick
 
-A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; `reason` is `timeout` or `index_locked`; details name the command, `gitSubcommand`, `args`, `cwd`, `timeoutMs`, `stage`, `remedy`): follow the stage-aware remedy and rerun the same launcher unchanged; it reuses the request id and recovers an existing commit by trailer. A timed-out `gh pr create`/`edit`: check `gh pr view <branch>` first. Timeouts skip the refusal budget; 10 identical ones stop automatic retries.
+A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; `reason` is `timeout` or `index_locked`; details name the command, `gitSubcommand`, `args`, `cwd`, `timeoutMs`, `stage`, `remedy`): follow the stage-aware remedy and rerun the same launcher unchanged; it reuses the request id and recovers an existing commit by trailer. A timed-out `gh pr create`/`edit`: check `gh pr view <branch>` first. Timeouts skip the refusal budget; 10 identical ones stop automatic retries. The CLI and the managed tick share that budget per Session id (#896); `index_locked` counts on its own 10-attempt limit. `index_lock_malformed` (`retryable: false`): the lock path is a directory or symlink; remove it by hand, then rerun. An old lock is kept while any Git process runs in the candidate (a `git fsmonitor--daemon` too: `git -C <candidate> fsmonitor--daemon stop`).
 Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
 The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/candidate-preservation.test.ts`.
+
+## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
+
+keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries, liveness, lsof, handed out
+
+Go and the managed tick (same rule) hand the worktree and branch out ONCE when its only dirt is `??` `.arcadia/asks/agent-ask-*.yaml` drafts, no Session row or `.arcadia-go-request`/`.arcadia-preserve-request` shows a session ran, HEAD equals the current local base tip, the claim is its own and the host probe (`/proc`, else `lsof`; `src/sessions/worktreeLiveness.ts`) finds no process with its cwd inside. `data.draftRecovery` is the receipt in `candidate_draft_recoveries`: hashes and origin only; the drafts stay on disk. `resumed_at`/`resumed_route` mark the handout, voided if the launch fails before a Session row exists.
+Anything else draft-only refuses with `details.disposition` (receipt id, `handedOut`, drafts, next step); a probe that cannot tell refuses too. Base check is against local base: once main moves the candidate must be re-prepared. Residual risk: the probe cannot see a session whose cwd is outside the worktree or another user's process; the one-shot marker bounds it. Other dirt keeps "already holds uncommitted changes" + `details.candidateKind`. Do not widen `uncommittedChanges`. Code: `src/sessions/draftOnlyCandidate.ts`.
 
 ## Where is the live workspace and its database?
 
@@ -180,6 +187,16 @@ broker using the existing **Reinstall the protected go broker** `/runs` action.
 Do not widen permissions, copy the database, or build a replacement reader in
 the adopting Project. Shared Git writes likewise belong to host preservation.
 Regression: `tests/dispatch-journal.test.ts`, sandbox-callable broker section.
+
+## Brief launcher returned `BRIEF_DEADLINE_EXCEEDED` (or seemed to hang)
+
+keys: brief broker, hang, timeout, deadline, correlationId, stage, recovery, BRIEF_DEADLINE_EXCEEDED, go-broker status
+
+The fixed brief supervises itself: one JSON document on stdout within 25s.
+A failure names `error.details.stage`, `correlationId` and `recovery`; it is read-only, so rerun the same launcher once.
+`work-monitor` = many worktrees or a hung git; `advance`/`next` = a SQLite lock. Never run mutable `next` or widen the sandbox.
+Older releases lack this until the reviewed **Reinstall the protected go broker** `/runs` action (their status self-test runs one real read-only brief and reports NOT READY); then `Brief supervisor: READY`.
+Code: `src/briefSupervisor.ts`; proof: `tests/brief-supervisor.test.ts`.
 
 ## Claude Code sandbox: `pnpm arcadia` floods "failed to copy trust settings", or `next`/`work monitor` fail with SQLITE_WORKSPACE_WRITE_DENIED
 

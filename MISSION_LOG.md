@@ -1434,9 +1434,37 @@ updated: 2026-10-03
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
 
-## 2026-10-03 — Completed arcadia/make-pr-review-verdict-truthful-for-current-head
+## 2026-10-03 — Completed arcadia/bound-fixed-brief-broker-with-structured-receipt
 
-- **Did:** Completed Action arcadia/make-pr-review-verdict-truthful-for-current-head from accepted evidence (Candidate c590fb0487d9b50c6af38722bb91207a7dc4ce2e).
-- **Result:** Every declared acceptance criterion was accepted as met: "Regression tests reproduce, before the fix, that a `Review paused` success status with an old APPROVED head and a `Review rate limited` success with no review each wrongly yield verdict done."; "After the fix, paused or skipped success plus an old approval is not a completed review, and rate-limited success with no review is not a completed review."; "A genuinely completed review without approval is reported as completed-not-approved, and a genuine approval of the exact current head by the actual reviewer identity is reported as approved; an approval of an earlier head never approves a changed head."; "Unresolved review findings keep the verdict not done, and a push invalidates all earlier review evidence for that PR."; "Decision 0060 and the exact-head independent review, QA and required-check gates are unchanged, and no gate, test or branch protection is weakened."; "Show by test or code trace that the rehearsal and managed path consume the corrected classification, and state explicitly that installed verification is not claimed until the separate reviewed install.".
+- **Did:** Completed Action arcadia/bound-fixed-brief-broker-with-structured-receipt from accepted evidence (Candidate 18dbd0846a4f2683c08780c19c1451fd31a63183).
+- **Result:** Every declared acceptance criterion was accepted as met: "Every fixed brief invocation returns within a bounded deadline: the literal dispatch brief with its bytes and hash unchanged, or a structured failure on a single stream naming the stage, a correlation id and the safe recovery; a stalled dependency is reproduced in an integration test through the real entrypoint and kills the whole process group."; "A healthy brief creates no claim, admission or dispatch telemetry and does not mutate the candidate; repeated calls and a worker restart neither hang nor duplicate telemetry, and a late child write after the deadline never produces a second receipt."; "Installed-broker status proves the brief is usable rather than merely installed, the notes and operator guidance record the new failure receipt, and required checks pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
-- **Blockers:** None recorded by this settlement (Agent Ask complete-make-pr-review-verdict-truthful-for-current-head-2026-10-03).
+- **Blockers:** None recorded by this settlement (Agent Ask complete-bound-fixed-brief-broker-885-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr902
+
+- **Did:** The fixed brief launcher can no longer hang silently: PR #902 supervises it with a deadline and a structured receipt, and broker status now proves the brief actually runs. https://github.com/pmark/arcadia/pull/902
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/recover-draft-only-never-launched-candidates
+
+- **Did:** Completed Action arcadia/recover-draft-only-never-launched-candidates from accepted evidence (Candidate 01e2864d82d510b2f78e79540cf016a3f08b9de5).
+- **Result:** Every declared acceptance criterion was accepted as met: "Go distinguishes a draft-only linked candidate from a tracked or code-bearing one; every draft is preserved by exact sha256 and origin in an idempotent receipt before any resume or disposition, and no draft is settled, copied, moved or deleted."; "A draft-only never-launched candidate resumes in the same worktree and branch with no duplicate claim or worktree; a draft naming another Project stays in place; one narrow operator disposition is exposed only when resuming is unsafe."; "Tracked changes, non-Ask or unknown files, symlinks, renames, a changed hash and a concurrent Go attempt fail closed or converge on one receipt, recovery survives restart, the dispatch-launch path agrees with Go, and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-recover-draft-only-candidates-884-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr905
+
+- **Did:** Go no longer gets stranded by a never-launched candidate that only holds Ask drafts: PR #905 preserves each draft by hash and resumes the same worktree. https://github.com/pmark/arcadia/pull/905
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/reset-managed-preservation-timeout-history-on-success
+
+- **Did:** Completed Action arcadia/reset-managed-preservation-timeout-history-on-success from accepted evidence (Candidate 8490600f4cc9fc236283c9c3bf3368ecece5c133).
+- **Result:** Every declared acceptance criterion was accepted as met: "A regression test reproduces, before the fix, that a managed tick timeout followed by a successful preservation leaves timeout:<session.id> uncleared."; "After the fix, timeout then successful managed preservation then timeout counts the second timeout as the first consecutive one, while ten identical consecutive timeouts still stop automatic retries."; "The managed tick and the CLI use one shared budget; index_locked is counted separately from timeouts, bounded retry behavior is unchanged and the stop condition is not weakened."; "A malformed or live preservation lock yields a typed bounded error with preserved diagnostics instead of an unhandled exception."; "The actual managed handoff is exercised in a temporary repository and its structured receipts are retained; the original candidate commits and index remain recoverable."; "Merge and install are not claimed; the exact reviewed install step and host-path verification are named as the next gate.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-reset-managed-preservation-timeout-history-896-2026-10-03-v2).

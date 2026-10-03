@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
+import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
 import { preserveCandidate, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
-import { guardPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
+import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { readProductionPolicySafely } from "./policy.js";
 
@@ -136,10 +137,7 @@ export function preserveSessionCandidate(
     // repository-wide budget per Session, whichever path checks it.
     validation = guardPreservationRefusal(db, session.id, input.now, () => validate(db, workspace, session, input.terminalRecovery === true));
   } catch (error) {
-    const detail = (error as { details?: unknown }).details;
-    const identicalRefusalLimitReached =
-      !!detail && typeof detail === "object" && (detail as { identicalRefusalLimitReached?: unknown }).identicalRefusalLimitReached === true;
-    return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
+    return refusedPreservation(error);
   }
 
   const currentPolicy = readProductionPolicySafely(db);
@@ -155,7 +153,10 @@ export function preserveSessionCandidate(
 
   const preserve = deps.preserve ?? preserveCandidate;
   try {
-    const receipt: CandidatePreservationReceipt = preserve(
+    // The same shared timeout guard the CLI broker uses, keyed on the same
+    // Session id: a preserve-stage timeout or index-lock refusal here counts
+    // against the one budget, and a success clears it for both paths.
+    const receipt: CandidatePreservationReceipt = guardPreservationTimeouts(db, session.id, input.now, () => preserve(
       db,
       {
         requestId: `worker-tick-preserve-${session.id}`,
@@ -174,7 +175,7 @@ export function preserveSessionCandidate(
         now: input.now
       },
       { remote: deps.remote ?? systemPreservationRemote }
-    );
+    ));
     return {
       kind: "preserved",
       receiptId: receipt.id,
@@ -184,8 +185,20 @@ export function preserveSessionCandidate(
       baseBranch
     };
   } catch (error) {
-    return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail: (error as { details?: unknown }).details };
+    return refusedPreservation(error);
   }
+}
+
+/** A refused step, flagging an exhausted identical refusal, timeout or
+ * index-lock budget -- or a non-retryable preservation failure such as a
+ * malformed index lock, which a resumed Session (a new id, so a zero count)
+ * would only hit again -- so the tick withholds automatic resumption. */
+function refusedPreservation(error: unknown): PreservationStep {
+  const detail = (error as { details?: unknown } | null)?.details;
+  const flags = !!detail && typeof detail === "object" ? detail as { identicalRefusalLimitReached?: unknown; retryable?: unknown } : {};
+  const nonRetryable = error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT" && flags.retryable === false;
+  const identicalRefusalLimitReached = flags.identicalRefusalLimitReached === true || nonRetryable;
+  return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
 }
 
 /** Local, read-only classification of a candidate branch against its base. */

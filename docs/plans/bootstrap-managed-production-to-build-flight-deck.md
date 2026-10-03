@@ -2929,7 +2929,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/887", "scripts/check-operator-scripts.ts", "src/operatorActions/libraryContract.ts", "tests/operator-script-contract.test.ts", "docs/agent-guidance/operator-actions.md"]
   - id: bound-fixed-brief-broker-with-structured-receipt
     title: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
@@ -2946,7 +2946,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/885", "scripts/arcadia-go-broker.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "tests/go-broker.test.ts", "tests/dispatch-journal.test.ts"]
   - id: recover-draft-only-never-launched-candidates
     title: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.
@@ -2963,7 +2963,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/884", "src/commands/go.ts", "src/git/worktrees.ts", "src/sessions/launch.ts", "tests/go.test.ts"]
   - id: make-pr-review-verdict-truthful-for-current-head
     title: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
-    status: done
+    status: open
     responsibility: agent
     effort: session
     next_action: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
@@ -2983,7 +2983,7 @@ actions:
     references: []
   - id: reset-managed-preservation-timeout-history-on-success
     title: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
@@ -3005,7 +3005,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: bound-fixed-brief-broker-with-structured-receipt
+current_action: make-pr-review-verdict-truthful-for-current-head
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

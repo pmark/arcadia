@@ -1,0 +1,57 @@
+{
+  "schema": "arcadia.evidence/managed-preservation-timeout-reset/v1",
+  "sessionId": "session_d21ded1a517c4f008a",
+  "handoff": {
+    "preservation": {
+      "kind": "refused",
+      "reason": "Preservation timed out the same way 10 times in a row: git update-ref exceeded its 1 ms preservation budget at stage preserve.commit; retry the same protected launcher. This candidate will not be retried automatically; an operator must resolve the timeout before retrying.",
+      "detail": {
+        "reason": "timeout",
+        "command": "git",
+        "gitSubcommand": "update-ref",
+        "args": [
+          "update-ref"
+        ],
+        "cwd": "/candidate",
+        "timeoutMs": 1,
+        "stage": "preserve.commit",
+        "remedy": "Inspect the retained attempt journals for the stalled Git call, then reduce the candidate's size, relieve host load, or raise ARCADIA_PRESERVATION_GIT_TIMEOUT_MS on the host before retrying the same launcher. A successful preservation clears this count.",
+        "retryable": false,
+        "identicalTimeoutLimitReached": true,
+        "identicalRefusalLimitReached": true,
+        "attempts": 10
+      },
+      "identicalRefusalLimitReached": true
+    },
+    "integration": {
+      "kind": "refused",
+      "reason": "Integration waits on a preserved candidate: Preservation timed out the same way 10 times in a row: git update-ref exceeded its 1 ms preservation budget at stage preserve.commit; retry the same protected launcher. This candidate will not be retried automatically; an operator must resolve the timeout before retrying.",
+      "operatorMergeCommand": null
+    }
+  },
+  "reconciled": [
+    {
+      "sessionId": "session_d21ded1a517c4f008a",
+      "outcome": "incomplete_resumable"
+    }
+  ],
+  "exitReceipt": {
+    "session_id": "session_d21ded1a517c4f008a",
+    "outcome": "incomplete_resumable",
+    "candidate_revision": "7e5153c23a6f968432f377fc710af7db0a5c0272",
+    "lease_handoff": 0
+  },
+  "budgetRows": [
+    {
+      "subject_id": "timeout:session_d21ded1a517c4f008a",
+      "attempts": 10,
+      "last_reason": "git update-ref exceeded its 1 ms preservation budget at stage preserve.commit; retry the same protected launcher."
+    }
+  ],
+  "candidate": {
+    "head": "7e5153c23a6f968432f377fc710af7db0a5c0272",
+    "branch": "claude/define-contract-20260830T123456000Z",
+    "status": "?? docs/pending.md\n",
+    "indexUnchanged": true
+  }
+}

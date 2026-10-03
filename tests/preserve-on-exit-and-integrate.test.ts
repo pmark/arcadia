@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import type Database from "better-sqlite3";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
-import { validationError } from "../src/cli/errors.js";
+import { preservationGitTimeout, validationError } from "../src/cli/errors.js";
 import { runProductionPreviewCommand } from "../src/commands/production.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
@@ -27,7 +27,12 @@ import { integrateSessionCandidate, preserveSessionCandidate } from "../src/prod
 import { runManagedProductionTick } from "../src/production/tick.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
-import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
+import { preserveCandidate } from "../src/sessions/candidatePreservation.js";
+import {
+  getPreservationIndexLockAttempts, getPreservationTimeoutAttempts, guardPreservationTimeouts,
+  MAX_IDENTICAL_PRESERVATION_REFUSALS, MAX_IDENTICAL_PRESERVATION_TIMEOUTS
+} from "../src/sessions/preservationRefusalBudget.js";
+import { preservationIndexLocked, preservationIndexLockMalformed } from "../src/sessions/preservationStages.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -622,6 +627,152 @@ describe("preserve-on-exit and integrate", () => {
     expect(receipt.lease_handoff).toBe(0);
   });
 
+  it("shares one timeout budget with the CLI, counts index_locked separately, and a managed success clears both", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    finishCandidate(fixture, tmux, session);
+    const candidateHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    const indexBefore = candidateIndex(session.worktree_path);
+    let failWith: (() => Error) | null = managedTimeout;
+    const preserve: typeof preserveCandidate = (...args) => {
+      if (failWith) throw failWith();
+      return preserveCandidate(...args);
+    };
+    const attempt = () => withDatabase(fixture.workspace, (db) =>
+      preserveSessionCandidate({ db, workspace: fixture.workspace, repoRoot: fixture.repo, session, now: fixture.now },
+        { validate: fixtureValidator(true), preserve }));
+    const counts = () => withDatabase(fixture.workspace, (db) => ({
+      timeouts: getPreservationTimeoutAttempts(db, session.id), locks: getPreservationIndexLockAttempts(db, session.id)
+    }));
+
+    // The CLI broker has already timed out once for this Session id.
+    withDatabase(fixture.workspace, (db) => {
+      expect(() => guardPreservationTimeouts(db, session.id, fixture.now, () => { throw managedTimeout(); })).toThrow(/preservation budget/);
+    });
+    expect(counts()).toEqual({ timeouts: 1, locks: 0 });
+
+    // A managed timeout counts against the same budget.
+    expect(attempt()).toMatchObject({ kind: "refused", identicalRefusalLimitReached: false });
+    expect(counts()).toEqual({ timeouts: 2, locks: 0 });
+    // A managed index_locked refusal is counted on its own budget.
+    failWith = () => preservationIndexLocked(path.join(session.worktree_path, ".git", "index.lock"), 10);
+    expect(attempt()).toMatchObject({ kind: "refused", identicalRefusalLimitReached: false });
+    expect(counts()).toEqual({ timeouts: 2, locks: 1 });
+    // Neither refusal touched the candidate.
+    expect(git(session.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(candidateHead);
+    expect(candidateIndex(session.worktree_path)).toBe(indexBefore);
+
+    // A successful managed preservation clears timeout:<session.id> and the lock count.
+    failWith = null;
+    expect(attempt()).toMatchObject({ kind: "preserved" });
+    expect(counts()).toEqual({ timeouts: 0, locks: 0 });
+
+    // So the next timeout is the first consecutive one again.
+    failWith = managedTimeout;
+    expect(attempt()).toMatchObject({ kind: "refused", identicalRefusalLimitReached: false });
+    expect(counts()).toEqual({ timeouts: 1, locks: 0 });
+  });
+
+  it("stops automatic retries after ten identical timeouts across CLI and managed attempts, retaining the candidate and its receipts", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nTimed out.\n");
+    git(session.worktree_path, ["add", "."]);
+    git(session.worktree_path, ["commit", "-m", "candidate that keeps timing out"]);
+    writeFileSync(path.join(session.worktree_path, "docs", "pending.md"), "uncommitted candidate work\n");
+    tmux.live.delete(session.tmux_session_name);
+    const candidateHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+    const indexBefore = candidateIndex(session.worktree_path);
+    const statusBefore = git(session.worktree_path, ["status", "--porcelain"]);
+    const preserve: typeof preserveCandidate = () => { throw managedTimeout(); };
+
+    withDatabase(fixture.workspace, (db) => {
+      for (let attempt = 1; attempt < MAX_IDENTICAL_PRESERVATION_TIMEOUTS; attempt += 1) {
+        if (attempt % 2) {
+          expect(() => guardPreservationTimeouts(db, session.id, fixture.now, () => { throw managedTimeout(); })).toThrow(/preservation budget/);
+        } else {
+          expect(preserveSessionCandidate({ db, workspace: fixture.workspace, repoRoot: fixture.repo, session, now: fixture.now },
+            { validate: fixtureValidator(true), preserve })).toMatchObject({ kind: "refused", identicalRefusalLimitReached: false });
+        }
+        expect(getPreservationTimeoutAttempts(db, session.id)).toBe(attempt);
+      }
+    });
+
+    // The tick's own attempt is the tenth identical timeout: it stops.
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        handoff: { preserve: { validate: fixtureValidator(true), preserve } }
+      })
+    );
+    const project = result.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.handoff?.preservation).toMatchObject({ kind: "refused", identicalRefusalLimitReached: true,
+      detail: { identicalTimeoutLimitReached: true, retryable: false, attempts: MAX_IDENTICAL_PRESERVATION_TIMEOUTS, stage: "preserve.commit" } });
+    expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    const exitReceipt = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT session_id, outcome, candidate_revision, lease_handoff FROM session_exit_receipts WHERE session_id = ?").get(session.id)
+    ) as { session_id: string; outcome: string; candidate_revision: string; lease_handoff: number };
+    expect(exitReceipt).toMatchObject({ outcome: "incomplete_resumable", lease_handoff: 0 });
+    const budgetRows = withDatabase(fixture.workspace, (db) => {
+      expect(getPreservationTimeoutAttempts(db, session.id)).toBe(MAX_IDENTICAL_PRESERVATION_TIMEOUTS);
+      return db.prepare("SELECT subject_id, attempts, last_reason FROM preservation_refusal_attempts ORDER BY subject_id").all();
+    });
+
+    // The original candidate commit, index and uncommitted work are untouched.
+    expect(git(session.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(candidateHead);
+    expect(git(fixture.repo, ["rev-parse", `refs/heads/${session.branch}`]).trim()).toBe(candidateHead);
+    expect(candidateIndex(session.worktree_path)).toBe(indexBefore);
+    expect(git(session.worktree_path, ["status", "--porcelain"])).toBe(statusBefore);
+
+    const receipts = {
+      schema: "arcadia.evidence/managed-preservation-timeout-reset/v1",
+      sessionId: session.id,
+      handoff: project.handoff,
+      reconciled: project.reconciled,
+      exitReceipt,
+      budgetRows,
+      candidate: { head: candidateHead, branch: session.branch, status: statusBefore, indexUnchanged: true }
+    };
+    expect(receipts.budgetRows).toContainEqual(expect.objectContaining({ subject_id: `timeout:${session.id}`, attempts: MAX_IDENTICAL_PRESERVATION_TIMEOUTS }));
+    if (process.env.ARCADIA_EVIDENCE_OUT) writeFileSync(process.env.ARCADIA_EVIDENCE_OUT, JSON.stringify(receipts, null, 2) + "\n");
+  });
+
+  it("withholds automatic resumption on a non-retryable malformed index lock through the real tick", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nBlocked by a malformed lock.\n");
+    git(session.worktree_path, ["add", "."]);
+    git(session.worktree_path, ["commit", "-m", "candidate blocked by a malformed lock"]);
+    tmux.live.delete(session.tmux_session_name);
+    const preserve: typeof preserveCandidate = () => {
+      throw preservationIndexLockMalformed(path.join(session.worktree_path, ".git", "index.lock"), "directory");
+    };
+    // The very first attempt: no budget is exhausted, yet a resumed Session
+    // (a new id with a zero count) would only hit the same lock again.
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        handoff: { preserve: { validate: fixtureValidator(true), preserve } }
+      })
+    );
+    const project = result.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.handoff?.preservation).toMatchObject({ kind: "refused", identicalRefusalLimitReached: true,
+      detail: { reason: "index_lock_malformed", retryable: false, lockKind: "directory" } });
+    expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    const receipt = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT lease_handoff FROM session_exit_receipts WHERE session_id = ?").get(session.id)
+    ) as { lease_handoff: number };
+    expect(receipt.lease_handoff).toBe(0);
+  });
+
   it("refuses to preserve when the Project declares no objective validation_commands", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -759,6 +910,19 @@ type Fixture = ReturnType<typeof preparedFixture>;
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
+}
+
+/** The candidate's real index bytes, read without refreshing its stat cache. */
+function candidateIndex(worktree: string): string {
+  return readFileSync(path.join(git(worktree, ["rev-parse", "--absolute-git-dir"]).trim(), "index")).toString("base64");
+}
+
+/** The typed retryable timeout a stalled preserve-stage Git call raises. */
+function managedTimeout() {
+  return preservationGitTimeout("git update-ref exceeded its 1 ms preservation budget at stage preserve.commit; retry the same protected launcher.", {
+    reason: "timeout", command: "git", gitSubcommand: "update-ref", args: ["update-ref"], cwd: "/candidate", timeoutMs: 1,
+    stage: "preserve.commit", remedy: "Retry the same fixed protected launcher unchanged."
+  });
 }
 
 function profile(name: string, provider: string): CodingAgentProfile {
