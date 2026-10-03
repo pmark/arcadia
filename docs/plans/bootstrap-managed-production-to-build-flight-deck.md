@@ -2893,6 +2893,74 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/889", "src/sessions/candidatePreservation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "src/sessions/preservationStages.ts", "src/sessions/preservationRefusalBudget.ts", "src/git/worktrees.ts", "tests/candidate-preservation.test.ts", "tests/manual-preservation.test.ts"]
+  - id: resolve-agent-ask-draft-file-from-caller-worktree
+    title: Resolve a relative agent-ask draft/preview --file from the caller's repository or worktree, never the main checkout.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Resolve a relative agent-ask draft/preview --file from the caller's repository or worktree, never the main checkout.
+    expected_artifact: Evidence satisfying Agent Ask resolve-agent-ask-draft-file-from-caller-worktree
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-governance-tooling-defects-884-887-2026-10-03
+    acceptance_criteria:
+      - A relative `--file` passed to `agent-ask draft` or `preview` from a linked candidate worktree is read from that worktree, validated and previewed as that exact file; the main checkout is untouched and nothing is copied into it.
+      - A nonexistent path, a path or symlink resolving outside the caller's repository, and a reused request id with different content each fail closed with no read or write outside the caller's repository.
+      - Regression tests drive the real CLI parser for the main checkout, a linked worktree and a different Project repository, and required checks pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/886", "src/cli.ts", "src/commands/agentAsk.ts", "tests/agent-ask-draft.test.ts"]
+  - id: retire-legacy-operator-script-descriptors
+    title: "Make `pnpm check:operator-scripts` pass on this host by retiring exactly the five named legacy descriptors through a hash-pinned, documented path, without weakening validation."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Make `pnpm check:operator-scripts` pass on this host by retiring exactly the five named legacy descriptors through a hash-pinned, documented path, without weakening validation."
+    expected_artifact: Evidence satisfying Agent Ask retire-legacy-operator-script-descriptors
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-governance-tooling-defects-884-887-2026-10-03
+    acceptance_criteria:
+      - A tracked retirement manifest names exactly the five legacy descriptors with the sha256 of each descriptor and script and a stated reason; the checker skips an id only when both hashes match, so any new, renamed or changed file still gets full validation.
+      - "`pnpm check:operator-scripts` against the live local library exits 0, and `validateOperatorScriptContract` and runtime settlement enforcement are unchanged; a new undeclared Agent Ask script, a retired id with different bytes and a Plan with a non-null target still fail."
+      - No ignored local descriptor, script, run state or receipt is modified, deleted or moved; one-shot and repeatability behavior is unchanged; the retirement path is documented in the operator-actions guidance and covered by tests, and required checks pass.
+    depends_on: [resolve-agent-ask-draft-file-from-caller-worktree]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/887", "scripts/check-operator-scripts.ts", "src/operatorActions/libraryContract.ts", "tests/operator-script-contract.test.ts", "docs/agent-guidance/operator-actions.md"]
+  - id: bound-fixed-brief-broker-with-structured-receipt
+    title: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make every fixed brief broker invocation return a bounded structured success or failure receipt instead of hanging.
+    expected_artifact: Evidence satisfying Agent Ask bound-fixed-brief-broker-with-structured-receipt
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-governance-tooling-defects-884-887-2026-10-03
+    acceptance_criteria:
+      - "Every fixed brief invocation returns within a bounded deadline: the literal dispatch brief with its bytes and hash unchanged, or a structured failure on a single stream naming the stage, a correlation id and the safe recovery; a stalled dependency is reproduced in an integration test through the real entrypoint and kills the whole process group."
+      - A healthy brief creates no claim, admission or dispatch telemetry and does not mutate the candidate; repeated calls and a worker restart neither hang nor duplicate telemetry, and a late child write after the deadline never produces a second receipt.
+      - Installed-broker status proves the brief is usable rather than merely installed, the notes and operator guidance record the new failure receipt, and required checks pass.
+    depends_on: [retire-legacy-operator-script-descriptors]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/885", "scripts/arcadia-go-broker.ts", "src/goBroker.ts", "src/commands/goBrokerInstall.ts", "tests/go-broker.test.ts", "tests/dispatch-journal.test.ts"]
+  - id: recover-draft-only-never-launched-candidates
+    title: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give Arcadia Go a host-owned, receipt-backed route that preserves and resumes a never-launched candidate holding only untracked Agent Ask drafts.
+    expected_artifact: Evidence satisfying Agent Ask recover-draft-only-never-launched-candidates
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-governance-tooling-defects-884-887-2026-10-03
+    acceptance_criteria:
+      - Go distinguishes a draft-only linked candidate from a tracked or code-bearing one; every draft is preserved by exact sha256 and origin in an idempotent receipt before any resume or disposition, and no draft is settled, copied, moved or deleted.
+      - A draft-only never-launched candidate resumes in the same worktree and branch with no duplicate claim or worktree; a draft naming another Project stays in place; one narrow operator disposition is exposed only when resuming is unsafe.
+      - Tracked changes, non-Ask or unknown files, symlinks, renames, a changed hash and a concurrent Go attempt fail closed or converge on one receipt, recovery survives restart, the dispatch-launch path agrees with Go, and required checks pass.
+    depends_on: [bound-fixed-brief-broker-with-structured-receipt]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/884", "src/commands/go.ts", "src/git/worktrees.ts", "src/sessions/launch.ts", "tests/go.test.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
