@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import defaultAdapters from "../config/defaults/provider-adapters.json" with { t
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { ArcadiaError, validationError } from "../src/cli/errors.js";
+import { runGoCommand } from "../src/commands/go.js";
 import { openDatabase, withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -1290,6 +1291,130 @@ describe("launchGuardedHostSession under a standing managed-production policy gr
     expect(git(worktreePath, ["log", "-1", "--format=%s"]).trim()).toBe("wip: partial progress before the crash");
   });
 });
+
+describe("a draft-only never-launched candidate: the managed tick agrees with arcadia go (Issue #884)", () => {
+  function neverLaunchedCandidate(fixture: ReturnType<typeof preparedFixture>): { candidate: string; branch: string; draft: Buffer; draftPath: string } {
+    const branch = "claude/define-contract-20260830T113456000Z";
+    const candidate = path.join(realpathSync(fixture.root), "never-launched", "repo");
+    git(fixture.repo, ["worktree", "add", "-q", "-b", branch, candidate, "main"]);
+    withDatabase(fixture.workspace, (db) => reserveAgentWorktree(db, {
+      repositoryPath: fixture.repo,
+      worktreePath: candidate,
+      branch,
+      now: new Date(fixture.now.getTime() - 60 * 60 * 1000),
+      project: "test-project",
+      actionId: "define-contract"
+    }));
+    const draft = Buffer.from('{"agent_ask": "v1", "request_id": "parity-2026-08-30", "project": "test-project", "intent": "proposal"}\n');
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-parity-2026-08-30.yaml");
+    mkdirSync(path.dirname(draftPath), { recursive: true });
+    writeFileSync(draftPath, draft);
+    return { candidate, branch, draft, draftPath };
+  }
+
+  function goFor(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux) {
+    return runGoCommand({
+      repo: fixture.repo,
+      source: fixture.repo,
+      apply: true,
+      agent: "claude",
+      model: "sonnet",
+      workspace: fixture.workspace,
+      agentWorktreeRoot: path.join(fixture.root, "go-unused"),
+      now: fixture.now,
+      tmux
+    });
+  }
+
+  function claimRows(fixture: ReturnType<typeof preparedFixture>): number {
+    return withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT COUNT(*) AS count FROM agent_worktree_reservations WHERE action_id = 'define-contract'").get() as { count: number }).count);
+  }
+
+  function worktreeCount(fixture: ReturnType<typeof preparedFixture>): number {
+    return git(fixture.repo, ["worktree", "list", "--porcelain"]).split("\n").filter((line) => line.startsWith("worktree ")).length;
+  }
+
+  it("resumes the same worktree and branch in both paths, on one receipt, launching at the candidate's own tip", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, branch, draft, draftPath } = neverLaunchedCandidate(fixture);
+    const tip = git(candidate, ["rev-parse", "HEAD"]).trim();
+
+    const go = goFor(fixture, tmux).data;
+    const launched = doStandingLaunch(fixture, tmux, "policy-req-draft");
+
+    expect(go.nextWorktree?.path).toBe(candidate);
+    expect(go.nextWorktree?.branch).toBe(branch);
+    expect(launched.session.worktree_path).toBe(candidate);
+    expect(launched.session.branch).toBe(branch);
+    expect(launched.session.status).toBe("running");
+    expect(launched.session.base_revision).toBe(tip);
+    expect(tmux.launches).toHaveLength(1);
+    expect(tmux.launches[0].cwd).toBe(candidate);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+    const receipts = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT request_id, worktree, branch FROM candidate_draft_recoveries").all());
+    expect(receipts).toEqual([{ request_id: go.draftRecovery!.requestId, worktree: candidate, branch }]);
+    expect(git(fixture.repo, ["branch", "--list", "ask/recover-*"]).trim()).toBe("");
+  });
+
+  it("refuses a code-bearing candidate with the same reason and candidateKind in both paths, creating nothing", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, draft, draftPath } = neverLaunchedCandidate(fixture);
+    writeFileSync(path.join(candidate, "contract.md"), "real work\n");
+
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-code"));
+
+    expect(launchError.message).toBe(goError.message);
+    expect(goError.message).toContain("already holds uncommitted changes");
+    expect(launchError.details?.candidateKind).toBe("code_bearing");
+    expect(goError.details?.candidateKind).toBe("code_bearing");
+    expect(launchError.details?.worktreePath).toBe(goError.details?.worktreePath);
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
+  });
+
+  it("refuses a launch with the disposition when a receipted draft changed after Go resumed it", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { draftPath } = neverLaunchedCandidate(fixture);
+    const receiptId = goFor(fixture, tmux).data.draftRecovery!.requestId;
+    writeFileSync(draftPath, "edited after the receipt\n");
+
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-changed"));
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
+
+    for (const error of [launchError, goError]) {
+      expect(error.message).toContain("holds only Agent Ask drafts");
+      expect(error.details?.candidateKind).toBe("draft_only");
+      expect((error.details?.disposition as { receiptId: string }).receiptId).toBe(receiptId);
+    }
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(readFileSync(draftPath, "utf8")).toBe("edited after the receipt\n");
+  });
+});
+
+function captureArcadiaError(run: () => unknown): ArcadiaError {
+  try {
+    run();
+  } catch (error) {
+    expect(error).toBeInstanceOf(ArcadiaError);
+    return error as ArcadiaError;
+  }
+  throw new Error("Expected an ArcadiaError");
+}
 
 const productionScope: ProductionScope = normalizeProductionScope({
   intent: "Prove the standing-policy launch path.",

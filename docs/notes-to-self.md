@@ -65,6 +65,13 @@ A fixed runtime refuses with `PRESERVATION_GIT_TIMEOUT` (`retryable: true`; `rea
 Gotcha: an older installed runtime instead says `UNEXPECTED_ERROR`/`spawnSync git ETIMEDOUT`, "base branch could not be resolved" or "not a forward advance", and a refusal after `preserve.snapshot` left ` M` as `M ` in the real index. Retain that receipt and the staged index; never raw-commit or reset. Per-call bound: `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS`, a positive integer (default 90000, capped at 120000 under the 150000 stage watchdog).
 The fix is live only after the separate reviewed **Reinstall the protected go broker** `/runs` action. Regressions: `tests/preservation-git-timeout.test.ts` (and its `-stages`, `-commit-stages`, `-base` siblings), `tests/candidate-preservation.test.ts`.
 
+## Go refused or resumed a never-launched candidate holding only Agent Ask drafts
+
+keys: 884, draft-only, never launched, orphan candidate, already holds uncommitted changes, candidateKind, disposition, candidate_draft_recoveries
+
+Go (and the managed tick, same rule) resumes the same worktree and branch when its only dirt is `??` `.arcadia/asks/agent-ask-*.yaml` drafts, no Session row names it, the branch has no commits and the live claim is its own; `data.draftRecovery` is the receipt (path, sha256, origin), stored in `candidate_draft_recoveries` and replayed by content-addressed id. Nothing is settled, copied, moved or deleted.
+Any other dirt keeps "already holds uncommitted changes" with `details.candidateKind`; a draft changed since a receipt refuses with `details.disposition` (receipt id, drafts, next step). Do not widen `uncommittedChanges`: tidy and claim release must keep treating drafts as dirt. Code: `src/sessions/draftOnlyCandidate.ts`.
+
 ## Where is the live workspace and its database?
 
 keys: workspace, database, sqlite, db path, arcadia.sqlite3, config

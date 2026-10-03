@@ -1196,6 +1196,17 @@ that holds the pointer's Action. Only a claimed Action is walked past: a live
 Session, an unreconciled exit, or an unpreserved candidate still refuses,
 because those are about the repository rather than about which Action is free.
 
+One unpreserved candidate is resumed instead: a worktree `go` prepared for this
+Action that was never launched (no Session row, no commits, the live claim is
+its own) and whose only uncommitted files are Agent Ask drafts in
+`.arcadia/asks/`. `go` records each draft's exact sha256 and origin in a
+receipt, then hands back the *same* worktree and branch; it never settles,
+copies, moves, or deletes a draft, including one naming another Project. The
+managed tick follows the same rule. If any draft changes after its receipt, the
+refusal carries one `disposition`: the receipt id, each draft's path and
+sha256, and the single safe next step. Any other dirt still gets the original
+refusal, now with `candidateKind`.
+
 For unattended `arcadia-go` skill runs, do not allowlist the general Arcadia
 launcher or an `arcadia go` prefix. Install the protected broker from a clean,
 reviewed Arcadia commit as an explicit operator action:
