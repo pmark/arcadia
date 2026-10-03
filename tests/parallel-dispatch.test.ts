@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAdvanceCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
@@ -14,7 +14,10 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 const roots: string[] = [];
 const START = new Date();
 
+beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
+
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -73,7 +76,7 @@ function createFixture(): Fixture {
  * tomorrow. `go` only needs the two dispatches to differ, which the offset
  * gives it -- the stamp reaches the branch name and nothing else.
  */
-function dispatch(fixture: Fixture, minutesFromNow: number) {
+function dispatch(fixture: Fixture, minutesFromNow: number, strictAction = false) {
   return runGoCommand({
     repo: fixture.main,
     source: fixture.main,
@@ -82,11 +85,21 @@ function dispatch(fixture: Fixture, minutesFromNow: number) {
     model: "claude-sonnet-5",
     workspace: fixture.workspace,
     agentWorktreeRoot: fixture.agentRoot,
-    now: new Date(START.getTime() + minutesFromNow * 60_000)
+    now: new Date(START.getTime() + minutesFromNow * 60_000),
+    strictAction
   }).data;
 }
 
 describe("arcadia go — one ready Action per concurrent session", () => {
+  it("never queue-walks a fixed enrollment away from its exact Action", () => {
+    const fixture = createFixture();
+    dispatch(fixture, 0);
+    expect(() => dispatch(fixture, 2, true)).toThrow("already claims this Action");
+    withDatabase(fixture.workspace, db => {
+      expect(getActiveActionClaim(db, fixture.main, "parallel-project", "gamma", new Date(START.getTime() + 3 * 60_000))).toBeNull();
+    });
+  });
+
   it("lands two dispatches against the same current_action on two different ready Actions", () => {
     const fixture = createFixture();
 

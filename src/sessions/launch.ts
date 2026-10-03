@@ -12,7 +12,7 @@ import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
 import { git, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { commitAdmission, issueAdmission, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
+import { commitAdmission, issueAdmission, listAdmissions, releaseAdmission, type AdmissionReceipt } from "../production/policy.js";
 import {
   canonicalPath,
   failPreparedSession,
@@ -61,6 +61,22 @@ export interface GuardedLaunchInput {
    * `previewFingerprint` or `standingPolicy` must be given.
    */
   standingPolicy?: boolean;
+  /**
+   * With `standingPolicy`, the production epoch the caller observed. A
+   * differing current epoch refuses at admission (`stale_epoch`) before any
+   * slot, worktree or claim exists, so an Off/On cycle cannot admit a launch
+   * prepared against the earlier grant.
+   */
+  expectedPolicyEpoch?: number;
+  /**
+   * Host enrollment only. The reuse branch below may hand back only a lease
+   * this exact request created (its `admission_request_id` is
+   * `${requestId}:admission`); any other prepared or running lease -- another
+   * enrollment's, the tick's, an operator's -- refuses with `action_claimed`
+   * before any admission. A reused own lease must also carry the current
+   * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
+   */
+  reuseOwnLeaseOnly?: boolean;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
@@ -85,6 +101,8 @@ export interface GuardedLaunchInput {
     afterAdmissionIssuedBeforeCommit?: () => void;
     /** Deterministic fault injection inside `prepareSession`, before its Session row insert. */
     beforeSessionInsert?: () => void;
+    /** Deterministic fault injection after the Session row exists, before its admission commits. */
+    afterSessionPreparedBeforeCommit?: () => void;
     /** Deterministic injection after a draft-only handout committed, before its launch-time hash verification. */
     beforeDraftLaunchVerification?: () => void;
   };
@@ -151,6 +169,33 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // it is not creating anything, only handing back what this exact request
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
+  if (existingLease && input.reuseOwnLeaseOnly) {
+    const ownAdmission = `${input.requestId}:admission`;
+    if (existingLease.admission_request_id !== ownAdmission) {
+      throw validationError("The repository already has a prepared or running Session this request did not create; it is never re-issued.", {
+        code: existingLease.action_id === preview.actionId ? "action_claimed" : "repository_leased",
+        sessionId: existingLease.id,
+        conflict: true
+      });
+    }
+    const admission = listAdmissions(input.db).find((row) => row.requestId === ownAdmission) ?? null;
+    if (input.expectedPolicyEpoch !== undefined && admission?.epoch !== input.expectedPolicyEpoch) {
+      throw validationError("This request's own Session was admitted under an earlier production epoch; it is not resumed under the current grant.", {
+        code: "stale_epoch", sessionId: existingLease.id, admittedEpoch: admission?.epoch ?? null, currentEpoch: input.expectedPolicyEpoch, conflict: true
+      });
+    }
+    // A crash between `prepareSession` and `commitAdmission` leaves the own
+    // lease prepared with its admission still issued. Commit it (idempotent
+    // for an already-committed one) before the reuse below may start the
+    // process, so a resumed Session always runs on a committed slot; an
+    // expired, fenced or released admission refuses instead.
+    const committed = admission ? commitAdmission(input.db, ownAdmission, now) : null;
+    if (!committed?.admitted) {
+      throw validationError("This request's own Session has no committable admission; it is not started.", {
+        code: committed?.code ?? "admission_missing", sessionId: existingLease.id, conflict: true
+      });
+    }
+  }
   if (existingLease && matchesPreview(existingLease, preview)) {
     return {
       reused: true,
@@ -241,6 +286,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       planSlug: preview.planSlug ?? "",
       provider,
       capacity,
+      ...(input.expectedPolicyEpoch !== undefined ? { expectedEpoch: input.expectedPolicyEpoch } : {}),
       now
     });
     if (!issued.admitted) {
@@ -483,6 +529,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       tmux,
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
+    if (input.reuseOwnLeaseOnly && admission) {
+      // Enrollment only: bind the lease to this request's admission at once,
+      // so a crash before the commit below still leaves positive evidence the
+      // lease is this request's own (the reuse branch then commits it).
+      input.db.prepare("UPDATE agent_sessions SET admission_request_id = ? WHERE id = ?").run(admission.requestId, prepared.id);
+      prepared = { ...prepared, admission_request_id: admission.requestId };
+    }
   } catch (error) {
     // A concurrent caller may have won the repository lease between our
     // pre-check above and this insert (either by throwing here first, or via
@@ -524,6 +577,13 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       }
     }
     const raced = getRepositoryLease(input.db, repoRoot);
+    if (raced && input.reuseOwnLeaseOnly && raced.admission_request_id !== `${input.requestId}:admission`) {
+      // Enrollment never reconciles onto a lease another caller won.
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
+      throw validationError("Another caller won this repository's lease; it is never re-issued.", {
+        code: raced.action_id === preview.actionId ? "action_claimed" : "repository_leased", sessionId: raced.id, conflict: true
+      });
+    }
     if (raced && matchesPreview(raced, preview)) {
       // The winner's Session satisfies this request; this call's own reserved
       // admission (if any) never committed to a launch and would otherwise
@@ -549,6 +609,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // reactivated between issuing this admission and this exact moment — the
   // prepared Session and its worktree are abandoned unlaunched rather than
   // spawning a process no policy currently authorizes.
+  // Outside every cleanup path on purpose: a throw here models a host crash.
+  input.testHooks?.afterSessionPreparedBeforeCommit?.();
   if (admission) {
     const committed = commitAdmission(input.db, admission.requestId, now);
     if (!committed.admitted) {

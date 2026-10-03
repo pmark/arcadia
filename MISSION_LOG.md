@@ -1545,3 +1545,10 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr917
+
+- **Did:** Any helper can now ask the host for governed preparation or a managed worker without gaining authority: PR #917 adds the protected enrollment request (criteria 1-6 done, 7-9 queued as a split). https://github.com/pmark/arcadia/pull/917
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

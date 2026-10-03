@@ -20,6 +20,43 @@ prompt, not permission to invoke the mutable CLI command directly.
 
 ## Workflow
 
+An unleased preliminary helper has no ownership merely because it was started
+or received prompt text. It must use the installed fixed host request path and
+accept the host-derived Project, Plan, Action, canonical brief, gates, packet
+execution binding and claim. Exact request replay returns the original receipt;
+a changed caller, mode, Action or input revision refuses. Native adoption must
+refuse with `native_runtime_not_supervisable` unless a host-observable adapter
+proves stable identity, liveness, terminal outcome and recovery; use the
+supported managed-worker route named by that refusal. Helpers stay read-only,
+one development principal owns mutations, and review/QA identities must be
+independent and bound to the exact current head and evidence.
+
+Use the no-argument enrollment launcher, from the Project repository root, when
+the helper does not already own a candidate. `ARCADIA_ENROLLMENT_MODE` is
+`prepare` (default) or `managed-launch`; nothing else is accepted. Managed
+dispatch binds stable request/caller identities; supported native helpers use
+their host-observable runtime identity. A helper with neither must stop on
+`enrollment_identity_unavailable`, not invent an identity:
+
+```sh
+__ARCADIA_CODEX_ENROLL_BROKER__
+# Claude Code uses: __ARCADIA_CLAUDE_ENROLL_BROKER__
+# opencode uses: __ARCADIA_OPENCODE_ENROLL_BROKER__
+```
+
+Prove success from the receipt, then rerun the same launcher: the replay must
+return the identical receipt (same `enrollmentId`). A preparation receipt has
+`principal.kind: prepared` and a fenced `claim` with `generation`; a managed
+one has `principal.kind: managed-session` and a `committed` `admission`. The
+receipt's `principal.worktree` is the only candidate the helper may enter.
+Enrollment only hands out a candidate or Session this request created; another
+owner's claim or Session is refused with `action_claimed`, never re-issued.
+Report any refusal code (`action_claimed`, `production_off`, `stale_epoch`,
+`capacity_unavailable`, `packet_approval_required`, `enrollment_in_progress`)
+as the gate; do not retry around it. Enrollment grants no completion or
+production authority. Never pass arguments or treat a prompt, path, or native
+process as enrollment.
+
 Steps below run in this order. Preservation (step 4) is deliberately last: it
 requests protected preservation of finished work, so it cannot run before any
 work has happened — running it right after `go` is a guaranteed

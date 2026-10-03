@@ -7,15 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertClean } from "../src/git/worktrees.js";
 import { GO_RESPONSE_TIMEOUT_MS } from "../src/sessions/goRequestProtocol.js";
 
-const mocks = vi.hoisted(() => ({ broker: vi.fn(), projects: vi.fn(), metadata: vi.fn(), workspace: vi.fn() }));
+const mocks = vi.hoisted(() => ({ broker: vi.fn(), enrollment: vi.fn(), projects: vi.fn(), metadata: vi.fn(), workspace: vi.fn() }));
 vi.mock("../src/sessions/goRequestExecutor.js", async importOriginal => ({
   ...await importOriginal<typeof import("../src/sessions/goRequestExecutor.js")>(),
   executeHostGo: mocks.broker
 }));
+vi.mock("../src/sessions/enrollmentRequestExecutor.js", () => ({ executeHostEnrollmentRequest: mocks.enrollment }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/workspace/resolve.js", () => ({ requireResolvedWorkspace: mocks.workspace }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
-import { agentGoTransportReady, agentGoTransportState, processPreservationRequests, refreshPreservationHeartbeat, requestAgentGo } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, agentGoTransportState, processPreservationRequests, refreshPreservationHeartbeat, requestAgentEnrollment, requestAgentGo } from "../src/sessions/preservationTransport.js";
 
 describe("agent go request transport", () => {
   let root: string;
@@ -29,6 +30,7 @@ describe("agent go request transport", () => {
 
   beforeEach(() => {
     vi.stubEnv("CODEX_SANDBOX", "");
+    vi.stubEnv("CODEX_SESSION_ID", "runtime-11111111-1111-1111-1111-111111111111");
     vi.resetAllMocks();
     root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "arcadia-go-transport-")));
     source = path.join(root, "repo");
@@ -42,6 +44,9 @@ describe("agent go request transport", () => {
       assertClean(source, "source worktree");
       return Promise.resolve({ ok: true, response: result });
     });
+    mocks.enrollment.mockResolvedValue({ ok: true, response: {
+      requestId: nonce, principal: { kind: "prepared", id: "claim-1", worktree: "/prepared" }
+    } });
   });
 
   afterEach(() => {
@@ -60,6 +65,114 @@ describe("agent go request transport", () => {
     expect(mocks.broker).toHaveBeenCalledExactlyOnceWith(source, "codex");
     processPreservationRequests(db, workspace);
     expect(mocks.broker).toHaveBeenCalledTimes(1);
+  });
+
+  it("enrolls through the fixed host route and returns the fenced principal", async () => {
+    processPreservationRequests(db, workspace);
+    const pending = requestAgentEnrollment(source, "codex");
+    expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(true);
+    processPreservationRequests(db, workspace);
+    await expect(pending).resolves.toMatchObject({ principal: { id: "claim-1", worktree: "/prepared" } });
+    expect(mocks.enrollment).toHaveBeenCalledExactlyOnceWith(
+      source,
+      "codex",
+      "enroll:codex:runtime-11111111-1111-1111-1111-111111111111",
+      "codex:runtime-11111111-1111-1111-1111-111111111111",
+      "prepare"
+    );
+    expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(false);
+  });
+
+  it("carries only an enum mode, refusing an unknown mode before writing a request", async () => {
+    processPreservationRequests(db, workspace);
+    vi.stubEnv("ARCADIA_ENROLLMENT_MODE", "managed-launch");
+    const pending = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await pending;
+    expect(mocks.enrollment.mock.calls[0][4]).toBe("managed-launch");
+    vi.stubEnv("ARCADIA_ENROLLMENT_MODE", "sh -c true");
+    await expect(requestAgentEnrollment(source, "codex")).rejects.toMatchObject({ details: { code: "invalid_enrollment_mode" } });
+    expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(false);
+    expect(mocks.enrollment).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses enrollment from a source that is not a configured repository root", async () => {
+    processPreservationRequests(db, workspace);
+    const nested = path.join(source, "nested");
+    mkdirSync(nested);
+    await expect(requestAgentEnrollment(nested, "codex")).rejects.toMatchObject({ details: { code: "enrollment_source_not_repository" } });
+    expect(existsSync(path.join(nested, ".arcadia-enrollment-request"))).toBe(false);
+    expect(mocks.enrollment).not.toHaveBeenCalled();
+  });
+
+  it("never runs a go request while an enrollment on the same source is still running", async () => {
+    let finishEnrollment!: () => void;
+    mocks.enrollment.mockImplementation(() => new Promise(resolve => {
+      finishEnrollment = () => resolve({ ok: true, response: { principal: { kind: "prepared", id: "claim-1", worktree: "/prepared" } } });
+    }));
+    processPreservationRequests(db, workspace);
+    const enrolling = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await vi.waitFor(() => expect(mocks.enrollment).toHaveBeenCalledTimes(1));
+    const going = requestAgentGo(source, "codex");
+    processPreservationRequests(db, workspace);
+    expect(mocks.broker).not.toHaveBeenCalled();
+    expect(existsSync(requestFile())).toBe(true);
+    finishEnrollment();
+    await enrolling;
+    processPreservationRequests(db, workspace);
+    await expect(going).resolves.toEqual(result);
+    expect(mocks.broker).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the shared source guard when the enrollment handler throws synchronously", async () => {
+    mocks.enrollment.mockImplementation(() => { throw new Error("synchronous host refusal"); });
+    processPreservationRequests(db, workspace);
+    const enrolling = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await expect(enrolling).rejects.toBeDefined();
+    const going = requestAgentGo(source, "codex");
+    processPreservationRequests(db, workspace);
+    await expect(going).resolves.toEqual(result);
+    expect(mocks.broker).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains semantic request and caller identity across transport redelivery", async () => {
+    processPreservationRequests(db, workspace);
+    const first = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await first;
+    const second = requestAgentEnrollment(source, "codex");
+    processPreservationRequests(db, workspace);
+    await second;
+    expect(mocks.enrollment).toHaveBeenCalledTimes(2);
+    expect(mocks.enrollment.mock.calls.map(call => call.slice(2))).toEqual([
+      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111", "prepare"],
+      ["enroll:codex:runtime-11111111-1111-1111-1111-111111111111", "codex:runtime-11111111-1111-1111-1111-111111111111", "prepare"]
+    ]);
+  });
+
+  it("refuses enrollment before writing a request when no stable identity exists", async () => {
+    vi.stubEnv("CODEX_SESSION_ID", "");
+    vi.stubEnv("CODEX_THREAD_ID", "");
+    processPreservationRequests(db, workspace);
+    await expect(requestAgentEnrollment(source, "codex")).rejects.toMatchObject({
+      details: { code: "enrollment_identity_unavailable" }
+    });
+    expect(existsSync(path.join(source, ".arcadia-enrollment-request"))).toBe(false);
+  });
+
+  it("rejects enrollment transport fields that could carry caller commands or authority", () => {
+    writeFileSync(path.join(source, ".arcadia-enrollment-request"), JSON.stringify({
+      nonce,
+      agent: "codex",
+      mode: "prepare",
+      requestId: "enrollment-request-1",
+      callerId: "codex:runtime-1",
+      command: "sh"
+    }));
+    processPreservationRequests(db, workspace);
+    expect(mocks.enrollment).not.toHaveBeenCalled();
   });
 
   it("services an opencode go request and clears its marker", async () => {

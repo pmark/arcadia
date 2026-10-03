@@ -81,6 +81,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureNarrativeDigestScopeColumns(db);
   ensureProofTargetChecksTable(db);
   ensureAgentSessionsTable(db);
+  ensureSessionEnrollmentTables(db);
   ensureAgentSessionStallColumns(db);
   ensureAgentSessionAdmissionColumn(db);
   ensureAgentSessionLaunchRevisionColumn(db);
@@ -98,6 +99,95 @@ export function applyMigrations(db: Database.Database): void {
   ensureProductionOperatorEscalationsTable(db);
   ensureRedAlertTables(db);
   applyCapabilityMigrations(db);
+}
+
+const SESSION_ENROLLMENTS_TABLE = `
+    CREATE TABLE IF NOT EXISTS session_enrollments (
+      request_id TEXT PRIMARY KEY,
+      request_fingerprint TEXT NOT NULL,
+      project_slug TEXT NOT NULL,
+      plan_slug TEXT NOT NULL,
+      action_id TEXT NOT NULL,
+      caller_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('prepare', 'managed-launch', 'native-adopt')),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+      receipt_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      lease_expires_at TEXT NOT NULL,
+      effect_claim_id TEXT,
+      effect_claim_generation TEXT,
+      effect_worktree TEXT,
+      failure_json TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_enrollments_single_pending_action
+      ON session_enrollments(project_slug, plan_slug, action_id)
+      WHERE status = 'pending';
+`;
+
+/** Durable, replay-safe host enrollment and the fixed five-role attempt lineage. */
+function ensureSessionEnrollmentTables(db: Database.Database): void {
+  // A candidate build of this store had no `failed` status, no lease and no
+  // effect marker. SQLite cannot widen a CHECK in place, so rebuild that table
+  // once, copying every row (a missing lease reads as expired) before the
+  // current definition is ensured.
+  const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'session_enrollments'")
+    .get() as { sql: string } | undefined;
+  if (existing && (!existing.sql.includes("'failed'") || !existing.sql.includes("effect_claim_id"))) {
+    const columns = new Set((db.prepare("PRAGMA table_info(session_enrollments)").all() as Array<{ name: string }>).map((column) => column.name));
+    const lease = columns.has("lease_expires_at") ? "lease_expires_at" : "'1970-01-01T00:00:00.000Z'";
+    db.transaction(() => {
+      db.exec(`DROP INDEX IF EXISTS idx_session_enrollments_single_pending_action;
+        ALTER TABLE session_enrollments RENAME TO session_enrollments_candidate;`);
+      db.exec(SESSION_ENROLLMENTS_TABLE);
+      db.exec(`INSERT INTO session_enrollments (request_id, request_fingerprint, project_slug, plan_slug, action_id, caller_id, mode,
+          status, receipt_json, created_at, updated_at, lease_expires_at)
+        SELECT request_id, request_fingerprint, project_slug, plan_slug, action_id, caller_id, mode,
+          status, receipt_json, created_at, updated_at, ${lease} FROM session_enrollments_candidate;
+        DROP TABLE session_enrollments_candidate;`);
+    })();
+  }
+  db.exec(SESSION_ENROLLMENTS_TABLE);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_role_attempts (
+      id TEXT PRIMARY KEY,
+      requirement_id TEXT NOT NULL,
+      input_revision TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('planner', 'critique', 'development', 'code-review', 'qa')),
+      ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+      request_id TEXT NOT NULL UNIQUE,
+      actor_id TEXT NOT NULL,
+      mutation_owner INTEGER NOT NULL CHECK (mutation_owner IN (0, 1)),
+      status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'passed', 'failed')),
+      target_head TEXT,
+      criteria_fingerprint TEXT,
+      evidence_fingerprint TEXT,
+      terminal_receipt_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(requirement_id, input_revision, role, ordinal)
+    );
+  `);
+  // The candidate build scoped its owner fence per input revision, which let
+  // one requirement hold several live developers under different revisions.
+  // The fence now covers the whole requirement. Never drop or rewrite such
+  // rows to make the index fit: stop with the exact conflicting attempts.
+  const hasRequirementOwnerIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_session_role_attempts_one_requirement_owner'").get();
+  if (!hasRequirementOwnerIndex) {
+    const conflicts = db.prepare(`SELECT requirement_id, group_concat(request_id) AS request_ids FROM session_role_attempts
+      WHERE mutation_owner = 1 AND status IN ('pending', 'running') GROUP BY requirement_id HAVING count(*) > 1`).all() as Array<{ requirement_id: string; request_ids: string }>;
+    if (conflicts.length > 0) {
+      throw new Error(`Migration stopped: ${conflicts.length} requirement(s) hold more than one live mutation-owning development attempt `
+        + `(${conflicts.map((row) => `${row.requirement_id}: ${row.request_ids}`).join("; ")}). `
+        + "Record a terminal outcome for all but one of each requirement's attempts through recordSessionRoleAttemptTerminal, then reopen the workspace.");
+    }
+  }
+  db.exec(`
+    DROP INDEX IF EXISTS idx_session_role_attempts_one_mutation_owner;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_role_attempts_one_requirement_owner
+      ON session_role_attempts(requirement_id)
+      WHERE mutation_owner = 1 AND status IN ('pending', 'running');
+  `);
 }
 
 /**

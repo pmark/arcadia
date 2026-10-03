@@ -152,6 +152,23 @@ and bounded integration require the later fresh exact Grant. Verify the
 independent review gate and required checks before live dispatch; a missing or
 rate-limited CodeRabbit review never blocks it.
 
+The current enrollment candidate adds the host-owned replay contract and its
+additive five-role lineage store. Real-fixture host tests drive strict `go`
+preparation and `launchGuardedHostSession` (issue/commit admission) through
+enrollment: exact replay, changed identity/mode refusal, a claimed Action,
+Off, a mid-launch Off/On epoch change, capacity, packet approval, spawn
+failure and restart reconciliation leave no duplicate principal or live
+orphan admission, lease or enrollment row. Native adoption refuses without a
+host-observed adapter. Store-level tests cover one mutation owner per
+requirement, independent reviewer/QA identities, bounded terminal retries,
+two-connection ordinal allocation and exact-head invalidation. Missing:
+the role store is not yet wired into the planner, critique, review or QA
+executors or the tick, deterministic-readiness-before-inference is not
+enforced, and three-Action serial selection/restart/Off is not proven
+against the real dispatcher. This is candidate evidence only: it is not
+installed-host enrollment proof, production activation, a rehearsal, or
+completion evidence.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`

@@ -14,8 +14,25 @@ import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import { PRESERVATION_REQUEST_FILE } from "./candidateSnapshot.js";
 import { SESSION_AGENTS, type AgentSession, type SessionAgent } from "./index.js";
 import { CONTAINER_AUDIT_TRANSPORT_HASH, processContainerAuditRequest } from "./containerAuditTransport.js";
+import { executeHostEnrollmentRequest } from "./enrollmentRequestExecutor.js";
+import {
+  ENROLLMENT_REQUEST_FILE,
+  ENROLLMENT_REQUEST_MODES,
+  ENROLLMENT_RESPONSE_TIMEOUT_MS,
+  resolveEnrollmentRequestIdentity,
+  resolveEnrollmentRequestMode,
+  type EnrollmentRequestMode,
+  type EnrollmentTransportResult
+} from "./enrollmentRequestProtocol.js";
 
 const HEARTBEAT = ".arcadia/preservation.heartbeat";
+/**
+ * One host controller per source path at a time. Enrollment preparation runs
+ * the same `arcadia go` a go request does, so both share this guard and never
+ * run concurrently from the same source path. Different sources of one
+ * repository (its root and a Session worktree) are not serialized here; the
+ * database claim and lease fences keep them to one principal per Action.
+ */
 const runningGoSources = new Set<string>();
 const runningPreservationRequests = new Set<string>();
 const NONCE = /^[a-f0-9-]{36}$/;
@@ -38,6 +55,8 @@ const responsePath = (workspace: string, session: string, nonce: string) =>
   path.join(workspace, "artifacts", "preservation", session, `${nonce}.json`);
 const goResponsePath = (workspace: string, nonce: string) =>
   path.join(workspace, "artifacts", "go-requests", `${nonce}.json`);
+const enrollmentResponsePath = (workspace: string, nonce: string) =>
+  path.join(workspace, "artifacts", "enrollment-requests", `${nonce}.json`);
 
 interface TransportHeartbeat {
   schema: "arcadia-preservation-transport-v1";
@@ -46,6 +65,7 @@ interface TransportHeartbeat {
   repositories?: Array<{ path: string; projectSlug: string }>;
   handoffs?: Array<{ id: string; worktree: string }>;
   goRequests?: boolean;
+  enrollmentRequests?: boolean;
   /**
    * When `processPreservationRequests` last actually ran its go route. Unlike
    * `at`, this is never re-stamped by `refreshPreservationHeartbeat`, so a
@@ -310,6 +330,52 @@ export async function requestAgentGo(source: string, agent: GoBrokerAgent) {
   }
 }
 
+/** Fixed no-argument helper enrollment. Its stable semantic identity is
+ * separate from the one-shot transport nonce and carries no command: only the
+ * launcher-fixed provider, the request/caller identities and an enum mode.
+ * Only a configured Project repository root is an enrollment source; a leased
+ * or handed-out worktree already has its one principal. */
+export async function requestAgentEnrollment(source: string, agent: GoBrokerAgent) {
+  const workspace = requireResolvedWorkspace({ cwd: source });
+  const current = realpathSync(source);
+  if (agentGoTransportState(workspace) === "unavailable") {
+    throw validationError("Protected enrollment request path is unavailable. Start the updated Arcadia worker on the host before requesting enrollment.");
+  }
+  const routes = readHeartbeat(workspace);
+  if (routes.enrollmentRequests !== true) throw validationError("No updated host-worker route services enrollment requests.");
+  if (!routes.repositories?.some(repository => repository.path === current)) {
+    throw validationError("Enrollment must be requested from a configured Project repository root.", {
+      code: "enrollment_source_not_repository", source: current,
+      remedy: "Run the fixed enroll launcher from the Project repository root; a prepared or leased worktree already has its principal."
+    });
+  }
+  const identity = resolveEnrollmentRequestIdentity(agent);
+  const mode = resolveEnrollmentRequestMode();
+  const nonce = randomUUID();
+  const request = path.join(current, ENROLLMENT_REQUEST_FILE);
+  assertUntrackedRequest(current, ENROLLMENT_REQUEST_FILE, "enrollment");
+  const fd = openSync(request, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try { writeFileSync(fd, JSON.stringify({ nonce, agent, mode, ...identity })); } finally { closeSync(fd); }
+  const response = enrollmentResponsePath(workspace, nonce);
+  const deadline = Date.now() + ENROLLMENT_RESPONSE_TIMEOUT_MS;
+  try {
+    while (Date.now() < deadline) {
+      if (existsSync(response)) {
+        const result = JSON.parse(readFileSync(response, "utf8")) as EnrollmentTransportResult;
+        if (!result.ok) throw new ArcadiaError(result.error.code, result.error.message, result.error.exitCode, result.error.details);
+        return result.response;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    throw validationError("Protected enrollment response timed out; inspect the durable host receipt before retrying.", { source: current, response });
+  } finally {
+    try {
+      assertUntrackedRequest(current, ENROLLMENT_REQUEST_FILE, "enrollment");
+      if (readEnrollmentRequest(request)?.nonce === nonce) unlinkSync(request);
+    } catch { /* Host may already have consumed it. */ }
+  }
+}
+
 function assertUntrackedGoRequest(source: string): void {
   if (git(source, ["ls-files", "--", GO_REQUEST_FILE])) {
     throw validationError("The go transport file must not be tracked.", { source, remedy: "Remove the reserved transport filename from version control before requesting go." });
@@ -345,12 +411,14 @@ export function processPreservationRequests(db: Database.Database, workspace: st
     repositories,
     handoffs: handoffs.map(h => ({ id: h.id, worktree: h.worktree_path })),
     goRequests: true,
+    enrollmentRequests: true,
     goRequestsAt: at,
     containerAuditRequests: {at, transportHash: CONTAINER_AUDIT_TRANSPORT_HASH}
   };
   latestPreservationRoutes.set(workspace, routes);
   writePreservationHeartbeat(workspace, routes, at);
   for (const repository of repositories) processGoRequest({ workspace, source: repository.path });
+  for (const repository of repositories) processEnrollmentRequest({ workspace, source: repository.path });
   for (const repository of repositories) {
     try { processContainerAuditRequest(workspace, repository.path); }
     catch (error) { process.stderr.write(`Container audit request failed: ${String(error)}\n`); }
@@ -424,6 +492,10 @@ export function processPreservationRequests(db: Database.Database, workspace: st
 }
 
 function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent } | undefined {
+  return readFixedAgentRequest(request);
+}
+
+function readFixedAgentRequest(request: string): { nonce: string; agent: GoBrokerAgent } | undefined {
   try {
     const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
@@ -442,6 +514,50 @@ function readGoRequest(request: string): { nonce: string; agent: GoBrokerAgent }
       return { nonce: value.nonce, agent: value.agent };
     } finally { closeSync(fd); }
   } catch { return; }
+}
+
+function readEnrollmentRequest(request: string): { nonce: string; agent: GoBrokerAgent; mode: EnrollmentRequestMode; requestId: string; callerId: string } | undefined {
+  try {
+    const fd = openSync(request, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const stat = fstatSync(fd);
+      if (!stat.isFile() || stat.size > 512) return;
+      const bytes = Buffer.alloc(513);
+      const length = readSync(fd, bytes, 0, bytes.length, 0);
+      if (length > 512) return;
+      const value = JSON.parse(bytes.subarray(0, length).toString("utf8"));
+      if (Object.keys(value).sort().join() !== "agent,callerId,mode,nonce,requestId" || !NONCE.test(value.nonce)) return;
+      if (!SESSION_AGENTS.includes(value.agent as SessionAgent)) return;
+      if (!ENROLLMENT_REQUEST_MODES.includes(value.mode as EnrollmentRequestMode)) return;
+      const bounded = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+      if (!bounded.test(value.requestId) || !bounded.test(value.callerId)) return;
+      return { nonce: value.nonce, agent: value.agent, mode: value.mode, requestId: value.requestId, callerId: value.callerId };
+    } finally { closeSync(fd); }
+  } catch { return; }
+}
+
+function assertUntrackedRequest(source: string, filename: string, label: string): void {
+  if (git(source, ["ls-files", "--", filename])) throw validationError(`The ${label} transport file must not be tracked.`, { source });
+}
+
+function processEnrollmentRequest(input: { workspace: string; source: string }): void {
+  if (runningGoSources.has(input.source)) return;
+  const request = path.join(input.source, ENROLLMENT_REQUEST_FILE);
+  const value = readEnrollmentRequest(request);
+  if (!value) return;
+  const response = enrollmentResponsePath(input.workspace, value.nonce);
+  try { assertUntrackedRequest(input.source, ENROLLMENT_REQUEST_FILE, "enrollment"); }
+  catch (error) { writeGoResponse(response, goTransportFailure(error)); return; }
+  try { unlinkSync(request); } catch { return; }
+  if (existsSync(response)) return;
+  runningGoSources.add(input.source);
+  // Deferred so even a synchronous throw from the handler becomes a rejection
+  // and the guard below is always released.
+  void Promise.resolve().then(() => executeHostEnrollmentRequest(input.source, value.agent, value.requestId, value.callerId, value.mode))
+    .catch(goTransportFailure)
+    .then(result => writeGoResponse(response, result))
+    .catch(error => { process.stderr.write(`Could not write host enrollment response: ${String(error)}\n`); })
+    .finally(() => runningGoSources.delete(input.source));
 }
 
 function writeGoResponse(response: string, result: GoTransportResult): void {

@@ -1340,11 +1340,72 @@ fixed launchers:
 
 ```sh
 ~/.local/bin/arcadia-go-broker-codex
+~/.local/bin/arcadia-enroll-broker-codex
 ~/.local/bin/arcadia-advance-broker-codex
 ~/.local/bin/arcadia-work-monitor-broker-codex
 ~/.local/bin/arcadia-preserve-broker-codex
 # Claude and opencode use the corresponding -claude and -opencode executables.
 ```
+
+An unleased helper does not become an owner by running a prompt or by knowing a
+worktree path. It asks the host to enroll the work through the fixed request
+transport: run the provider's `arcadia-enroll-broker-*` launcher with no
+arguments from the Project repository root (a prepared or leased worktree
+already has its principal and is refused with `enrollment_source_not_repository`).
+`ARCADIA_ENROLLMENT_MODE` chooses `prepare` (the default: a strict `arcadia go`
+candidate for the exact current Action) or `managed-launch` (the ordinary
+guarded Session launch under the standing production policy). The host
+re-resolves the configured workspace and exact checked-in Project, Plan and
+Action, the canonical brief, operator gates, packet and its
+provider/model/effort, the policy epoch, capacity and any existing claim. The
+request carries no command, executable, path or authority.
+
+The durable request id is separate from the one-shot transport nonce and is
+bound to the caller, mode, Action and input revision. Managed dispatch supplies
+`ARCADIA_ENROLLMENT_REQUEST_ID` and `ARCADIA_ENROLLMENT_CALLER_ID`; otherwise
+the runtime's own host-observable session id is used. With neither, enrollment
+refuses before writing a request with `enrollment_identity_unavailable`.
+
+Success is the printed receipt, and running the same launcher again proves it:
+an exact replay returns the identical receipt (same `enrollmentId`) without a
+second worktree, admission or Session. A preparation receipt names
+`principal.kind: prepared`, the only candidate the helper may enter
+(`principal.worktree`) and its fenced `claim` with `generation`; a managed
+receipt names `principal.kind: managed-session` and the `admission` with
+`status: committed`. A changed caller, mode, Action or input revision under the
+same id refuses with `enrollment_request_changed` before any mutation; a live
+request answers `enrollment_in_progress`. Enrollment only ever hands out a
+candidate or Session this request created: a claim or lease held by anyone
+else (another helper, the production tick, an operator) refuses with
+`action_claimed` and is never re-issued to another caller. A request whose
+writer died is reconciled only onto positive evidence of its own effect (the
+claim `go` recorded on the request inside the claim's own transaction, or the
+Session bound to the request's own admission), otherwise retried once its lease
+expires; a recovered own effect is handed back on governance identity alone,
+even if production has since gone Off. Another caller's pending row blocks the
+Action only while its lease is live: once expired with no recoverable effect it
+is kept as a `failed` record and the Action is freed. A request that failed with
+no own effect is kept as a `failed` record,
+so a changed replay still refuses and the exact replay may retry. Off
+(`production_off`), a changed epoch (`stale_epoch`), missing capacity
+(`capacity_unavailable`) and an unapproved packet (`packet_approval_required`)
+refuse a managed launch with no admission, claim or candidate left behind. A
+managed launch whose spawn failed settles its admission; enroll again under a
+new request id.
+Enrollment grants nothing: it adds no ownership beyond the claim `go` or the
+guarded launcher already creates, and no completion or production authority.
+
+Native-process adoption is not a shortcut. It refuses with
+`native_runtime_not_supervisable` unless a host-registered adapter observes a
+stable runtime identity, liveness, terminal outcome and recovery (none is
+registered today). The refusal's `supportedRoute` names the managed-launch
+route. The fixed-role attempt store gives planner, critique, developer,
+exact-head review and independent QA each a distinct bounded attempt ordinal
+and request id; only one development attempt per requirement may own
+mutations, and any developer of that requirement cannot supply its review or QA
+verdict. A changed head, criteria fingerprint or evidence fingerprint
+invalidates the dependent verdict. Wiring that store into the existing planner,
+review and QA executors is not done yet.
 
 A normal manual `go` handoff has `session: null`. It does not need a managed
 planning packet or production activation. The host records a binding from its
