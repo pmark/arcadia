@@ -2895,7 +2895,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/889", "src/sessions/candidatePreservation.ts", "src/sessions/candidateSnapshot.ts", "src/sessions/manualPreservation.ts", "src/sessions/preservationStages.ts", "src/sessions/preservationRefusalBudget.ts", "src/git/worktrees.ts", "tests/candidate-preservation.test.ts", "tests/manual-preservation.test.ts"]
   - id: resolve-agent-ask-draft-file-from-caller-worktree
     title: Resolve a relative agent-ask draft/preview --file from the caller's repository or worktree, never the main checkout.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Resolve a relative agent-ask draft/preview --file from the caller's repository or worktree, never the main checkout.
@@ -2965,7 +2965,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: resolve-agent-ask-draft-file-from-caller-worktree
+current_action: retire-legacy-operator-script-descriptors
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
