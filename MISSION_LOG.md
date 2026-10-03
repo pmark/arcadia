@@ -1440,3 +1440,10 @@ updated: 2026-10-03
 - **Result:** Every declared acceptance criterion was accepted as met: "Every fixed brief invocation returns within a bounded deadline: the literal dispatch brief with its bytes and hash unchanged, or a structured failure on a single stream naming the stage, a correlation id and the safe recovery; a stalled dependency is reproduced in an integration test through the real entrypoint and kills the whole process group."; "A healthy brief creates no claim, admission or dispatch telemetry and does not mutate the candidate; repeated calls and a worker restart neither hang nor duplicate telemetry, and a late child write after the deadline never produces a second receipt."; "Installed-broker status proves the brief is usable rather than merely installed, the notes and operator guidance record the new failure receipt, and required checks pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-bound-fixed-brief-broker-885-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr902
+
+- **Did:** The fixed brief launcher can no longer hang silently: PR #902 supervises it with a deadline and a structured receipt, and broker status now proves the brief actually runs. https://github.com/pmark/arcadia/pull/902
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
