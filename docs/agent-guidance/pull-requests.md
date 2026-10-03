@@ -48,7 +48,11 @@ review service.
   `arcadia advance queue make-next`) that touch only `.arcadia/asks/`,
   `MISSION_LOG.md`, `PROJECT.md`, `docs/plans/` and `docs/decisions/`; and
   (b) a merge of the base branch whose result is exactly Git's automatic merge,
-  with no conflict resolution and no extra edits. An edit to
+  with no conflict resolution and no extra edits. For (a), confirm the
+  commit's receipt id: a real governed commit's message carries the command's
+  receipt line, such as ``Written by `arcadia agent-ask settle --apply`
+  (asksettle_...)``; a hand-written claim without that receipt is not exempt
+  and is reviewed like any other push. An edit to
   `CONSTITUTION.md`, the bootstrap, agent guidance, workflows or configuration
   always resets the review, however it was produced.
 
@@ -109,8 +113,11 @@ merge it anyway, so asking spends attention and protects nothing.
   above is satisfied with no unresolved blocking finding; every required check
   passed; and the merge state is clean and mergeable. "Required checks" means
   every job of the repository's CI workflow (for Arcadia
-  `.github/workflows/ci.yml`; `gh pr checks <pr>` lists them), because branch
-  protection does not enforce them, so an empty `--required` list proves
+  `.github/workflows/ci.yml`; `gh pr checks <pr>` lists them). Branch
+  protection on Arcadia's `main` requires its seven CI jobs (`lint`,
+  `unit-1`, `unit-2`, `unit-3`, `unit-4`, `dashboard`, `e2e`); it is not
+  strict, and admin bypass stays on so governed settlement pushes still work,
+  so a missing required check or an empty `--required` list still proves
   nothing. A push that changes code resets all three, so re-check on the new
   head.
 - **Squash-merge, then leave the record whole.** Confirm the PR shows merged
