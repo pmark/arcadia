@@ -224,9 +224,10 @@ const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verd
 /**
  * The integration gate, plus a deduped operator escalation while it refuses,
  * so `production status` (not only the worker log) shows a candidate that is
- * accepted but cannot land. The escalation names the exact QA command and the
- * exact operator merge; it clears the moment the gate is satisfied. No
- * command records the code-review verdict yet, and this does not invent one.
+ * accepted but cannot land. The escalation names the exact host command for
+ * each missing verdict (`arcadia qa code-review`, `arcadia qa pr`) and keeps
+ * the exact operator merge as the manual fallback; it clears the moment the
+ * gate is satisfied and the tick integrates with no operator merge.
  */
 function escalatingVerdictGate(
   db: Database.Database,
@@ -251,9 +252,16 @@ function escalatingVerdictGate(
   const merge = gate.head
     ? `git -C ${repoRoot} merge --ff-only ${gate.head}   # then push ${baseBranch}`
     : operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
+  const url = pullRequestUrl ?? "<the candidate's PR URL>";
+  const commands = gate.code === "awaiting_independent_verdicts"
+    ? gate.missing.map((entry) => entry.startsWith("code-review:")
+      ? `code review with \`arcadia qa code-review ${url}\``
+      : `QA with \`arcadia qa pr ${url}\``)
+    : [];
   const remedy = gate.code === "awaiting_independent_verdicts"
-    ? `Record QA with \`arcadia qa pr ${pullRequestUrl ?? "<the candidate's PR URL>"}\` once that PR is ready for review (not a draft) and its head is ${gate.head}. `
-      + `No command records the code-review verdict yet; after an independent review of exactly that head, an operator may land it with \`${merge}\`.`
+    ? `Record ${commands.join(" and ")} once that PR is ready for review (not a draft, checks green) and its head is ${gate.head}, `
+      + `with managed production On; a failed verdict needs a fix or \`--rerun\`. The next tick then integrates it with no operator merge. `
+      + `Manual fallback: after an independent review of exactly that head, an operator may land it with \`${merge}\`.`
     : `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
   if (previous && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) {
@@ -1149,7 +1157,7 @@ export function developmentLineageRemedy(code: string, details: Record<string, u
   }
   if (details?.status === "passed") {
     return "The development attempt for this exact Action input already passed: its accepted candidate waits for current independent code review "
-      + "and QA verdicts or an operator merge (see that candidate's awaiting_independent_verdicts escalation and its `git merge --ff-only` command). "
+      + "and QA verdicts (`arcadia qa code-review` and `arcadia qa pr`) or an operator merge (see that candidate's awaiting_independent_verdicts escalation and its `git merge --ff-only` command). "
       + "Redoing the work instead requires a governed amendment of the Action.";
   }
   return `The development attempt for this exact Action input is ${String(details?.status ?? "finished")} and no retry is authorized; `

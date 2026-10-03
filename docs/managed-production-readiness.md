@@ -169,15 +169,19 @@ its deterministic prerequisites and before admission; exit reconciliation
 finishes it in the receipt's transaction; the tick's planning resolution
 records planner and packet-critique attempts; code review and QA attempts
 require a deterministic readiness binding (head, criteria, preserved
-evidence) before any reviewer runs; `arcadia qa pr` records QA for a
-lineage-bound managed PR; and the tick integrates only with current,
-independent code review and QA verdicts on the exact head. The hermetic
-three-Action rehearsal proves serial selection, between-Action Off fencing
-and one lineage per role per Action through the real tick, with simulated
-reviewers. Missing: no executor records the code-review verdict (the
-independent review gate is a reviewer agent, not a host command), so
-unattended integration of a real candidate still waits on an operator merge
-or that executor; QA requires a ready, non-draft PR whose head is the
+evidence) before any reviewer runs; `arcadia qa code-review` and
+`arcadia qa pr` record the exact-head code review and QA for a lineage-bound
+managed PR through separate read-only reviewers, refusing a developer
+directory or binding, a stale head and Off before any reviewer runs; and the
+tick integrates only with current, independent code review and QA verdicts on
+the exact head, with no operator merge, clearing its
+`awaiting_independent_verdicts` escalation. The hermetic three-Action
+rehearsal proves serial selection, between-Action Off fencing and one lineage
+per role per Action through the real tick, with simulated reviewers;
+`tests/code-review-verdict-recorder.test.ts` drives both host commands
+against a real rehearsal candidate with stubbed GitHub and reviewer model.
+Missing: nothing runs those commands unattended yet (the operator or a host
+step invokes them), and both need a ready, non-draft PR whose head is the
 candidate's settled head, which needs the later publication/PR-readiness
 Grant. This is candidate evidence only: it is not installed-host enrollment
 proof, production activation, a rehearsal, or completion evidence.

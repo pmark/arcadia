@@ -202,6 +202,14 @@ result from the independently persisted Decision context and cross-checks the
 Artifact, Decision status, PR source, evidence fingerprint, paths, and stored
 file hashes. Any mismatch creates a fresh review instead of trusting the cache.
 
+`pnpm arcadia qa code-review <pull-request-url>` is the same executor with the
+same readiness refusals, sandbox and receipts, judging the patch as code against
+six code-review criteria (correctness, failure handling, state and concurrency,
+security and authority, compatibility, tests). Its report and Decision live
+under `artifacts/code-review/pull-requests/`. For a managed candidate it records
+the exact-head code-review verdict the worker needs before it integrates (see
+the managed-production section below).
+
 Pull-request QA never runs commands copied from PR prose, edits the Candidate,
 posts to GitHub, approves release, merges, deploys, or repairs a finding. It is
 evidence for the operator's Decision, not that Decision's external effect.
@@ -1020,25 +1028,35 @@ preserves and accepts the candidate, then reports `Integration waits on current
 independent verdicts`; a later tick integrates once both verdicts exist. A new
 commit on the candidate, an amended criterion or new validation evidence makes
 earlier verdicts stale, and the developer's own Session can never supply them.
-`arcadia qa pr` records the QA verdict for a managed candidate's PR when the
-PR head is that ready head, and refuses before any reviewer runs otherwise. No
-CLI yet records the code-review verdict, so for now an operator merges with the
-reported command. While a candidate waits, `arcadia production status` lists an
-`awaiting_independent_verdicts` (or `verdict_readiness_failed`) escalation whose
-remedy names the exact `arcadia qa pr` URL and the exact `git merge --ff-only
-<head>` command; it clears once the verdicts are current.
+Two host commands record those verdicts for a managed candidate's PR, each
+running a separate read-only reviewer in the evidence-only sandbox:
 
-Re-running QA: a plain `arcadia qa pr` on unchanged evidence reuses its earlier
-result. `--rerun` is the authorized retry after a failed QA verdict on the same
-head, criteria and evidence; it is refused when a QA verdict on that exact
-binding already passed. A new commit, criterion or evidence is a new binding
-and needs no `--rerun`.
+```sh
+pnpm arcadia qa code-review <pull-request-url>   # exact-head code review
+pnpm arcadia qa pr <pull-request-url>            # independent QA
+```
+
+Each refuses before any reviewer runs unless the PR is ready (not a draft,
+checks green), its head is the candidate's ready head, and managed production
+is On. The verdict comes only from that reviewer; no flag supplies one. Once
+both pass on the same head, the next worker tick integrates the candidate with
+no operator merge. A failed verdict never integrates. While a candidate waits,
+`arcadia production status` lists an `awaiting_independent_verdicts` (or
+`verdict_readiness_failed`) escalation. Its remedy names the command for each
+missing verdict and, as the manual fallback, the exact `git merge --ff-only
+<head>` command. It clears once the tick integrates.
+
+Re-running either command: a plain run on unchanged evidence reuses its earlier
+result. `--rerun` is the authorized retry after a failed verdict on the same
+head, criteria and evidence; it is refused when a verdict on that exact binding
+already passed. A new commit, criterion or evidence is a new binding and needs
+no `--rerun`.
 
 Independence is checked against what the host can see: the reviewer's identity
 must not be any of the developer's attempt, Session or admission ids, its
 working directory must not be inside a developer worktree (compared after
-resolving symlinks), and a QA reviewer's agent binding must differ from the
-developer Session's. The host cannot observe process ancestry portably, so the
+resolving symlinks), and the code-review or QA reviewer's agent binding must
+differ from the developer Session's. The host cannot observe process ancestry portably, so the
 same provider or model under a different binding is permitted.
 
 Attempt limits: each Action input allows three development attempts, three

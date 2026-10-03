@@ -763,12 +763,20 @@ function reusedLease(
   // admission commit, and before the process may start, bind the requirement's
   // one development attempt to this Session: a live owner is resumed,
   // otherwise one is allocated with this lease excluded from the live-holder
-  // check. A lease whose Action is no longer in the checked-in Plan has no
-  // requirement to bind and keeps the unchanged reuse semantics.
-  const ensureAttempt = () => {
+  // check. An already-running Session is handed back unchanged: its live
+  // attempt is never superseded under it (one is allocated only if none is
+  // live). A prepared lease whose Action is no longer in the checked-in Plan
+  // has no requirement to bind, so no process starts without an attempt.
+  const ensureAttempt = (alreadyRunning: boolean) => {
     beforeStart?.();
     const requirement = requirementForSession(path.resolve(input.repoRoot), lease);
-    if (!requirement) return;
+    if (!requirement) {
+      if (alreadyRunning) return;
+      throw validationError("The prepared Session's Action is no longer in the checked-in Plan; no process starts without its development attempt.", {
+        code: "requirement_missing", sessionId: lease.id, actionId: lease.action_id, conflict: true
+      });
+    }
+    if (alreadyRunning && liveMutationOwner(input.db, requirement.requirementId)) return;
     try {
       beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: lease.id, now });
     } catch (error) {
@@ -801,7 +809,7 @@ function reuseOrRefuseLease(
   providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
   workspace: string,
   onProviderSignInConfirmed?: (provider: string) => void,
-  beforeStart?: () => void
+  beforeStart?: (alreadyRunning: boolean) => void
 ): AgentSession {
   const isAlreadyRunning = session.status === "running" || tmux.hasSession(session.tmux_session_name);
   // An already-running Session (or one alive in tmux) is always handed back
@@ -820,7 +828,7 @@ function reuseOrRefuseLease(
       code: "no_validation_commands"
     });
   }
-  beforeStart?.();
+  beforeStart?.(isAlreadyRunning);
   return resumeOrReturn(db, session, isAlreadyRunning, tmux, registry, providerSignIn, workspace, onProviderSignInConfirmed);
 }
 
