@@ -338,6 +338,20 @@ describe("coderabbit loop only treats a genuinely completed review of the curren
     });
   });
 
+  it("tells the agent to check who posted the spoofable status and report it, while keeping it advisory", async () => {
+    const error = await runLoop({
+      heads: ["h1"],
+      status: { h1: { ...completed, creator: "coderabbitai-x" } },
+      reviews: [review("h1", "APPROVED", "1")],
+      threads: []
+    }).catch((e: unknown) => e);
+    const { remedy } = (error as { details: { remedy: string } }).details;
+    expect(remedy).toMatch(/check who posted the status named CodeRabbit/i);
+    expect(remedy).toMatch(/report a possible spoof/i);
+    expect(remedy).toMatch(/advisory/);
+    expect(remedy).toMatch(/never blocks a merge|does not block|never blocks/i);
+  });
+
   it("re-reads the head after gathering evidence, so a push mid-read never yields a verdict on stale evidence", async () => {
     // h1 is approved and complete when the loop starts; a push lands h2 while
     // the reviews are being read. h2 has no finished review, so the loop must
