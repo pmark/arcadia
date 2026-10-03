@@ -483,6 +483,31 @@ export interface ProductionScopeInfo {
   mechanicalTransitions: string[];
 }
 
+export interface ProductionInactiveConfigurationInfo {
+  configurationRevision: number;
+  fingerprint: string;
+  savedAtPolicyRevision: number;
+  sourceEpoch: number;
+  scope: ProductionScopeInfo;
+  notCarried: string[];
+  savedAt: string;
+}
+
+export interface ProductionReactivationRefusalInfo {
+  code: string;
+  reason: string;
+  remedy: string;
+}
+
+export interface ProductionReactivationPreviewResponse {
+  preview: {
+    ready: boolean;
+    refusals: ProductionReactivationRefusalInfo[];
+    expected: { policyRevision: number; configurationRevision: number; fingerprint: string } | null;
+    configuration: ProductionInactiveConfigurationInfo | null;
+  };
+}
+
 export interface ProductionStatusResponse {
   read: {
     status: string;
@@ -505,6 +530,11 @@ export interface ProductionStatusResponse {
   };
   display: { state: string; label: string; observedAt: string };
   liveAdmissions: number;
+  /**
+   * The reviewed configuration Off retained. Separate from `read.policy.scope`
+   * (active permission): it is what a reactivation may replay, never authority.
+   */
+  inactiveConfiguration: ProductionInactiveConfigurationInfo | null;
   /** Currently unresolved launch refusals that need an operator or agent action, oldest first. */
   operatorEscalations: Array<{
     actionKey: string;
@@ -521,10 +551,9 @@ export async function loadProductionStatus(): Promise<ArcadiaJsonSuccess<Product
 }
 
 /**
- * Off just needs an idempotency key. On reuses the scope already recorded on
- * the policy (read via `loadProductionStatus`) rather than asking the
- * operator to reconstruct project/plan/provider flags from a toggle — the
- * dashboard is a switch, not a scope editor.
+ * Off just needs an idempotency key. It retains the reviewed configuration in
+ * the CLI; On (`reactivateProduction`) replays it — the dashboard is a switch,
+ * not a scope editor.
  */
 export async function deactivateProduction(input: { requestId: string; reason?: string }): Promise<ArcadiaJsonSuccess<unknown>> {
   const args = ["production", "deactivate", "--request-id", input.requestId];
@@ -532,35 +561,35 @@ export async function deactivateProduction(input: { requestId: string; reason?: 
   return runArcadiaCliJson<unknown>(args);
 }
 
-export async function activateProduction(input: {
-  scope: ProductionScopeInfo;
+export async function previewProductionReactivation(): Promise<ArcadiaJsonSuccess<ProductionReactivationPreviewResponse>> {
+  return runArcadiaCliJson<ProductionReactivationPreviewResponse>(["production", "reactivate-preview"]);
+}
+
+/**
+ * On replays the saved reviewed configuration inside the CLI, bound to the
+ * revision and fingerprint the preview showed. The dashboard never rebuilds a
+ * scope from flags: argv cannot express grants, delegation expiry or an empty
+ * transition list faithfully, which is how a saved scope used to widen.
+ */
+export async function reactivateProduction(input: {
   requestId: string;
   grantedBy: string;
-  expectedRevision: number;
+  expected: { policyRevision: number; configurationRevision: number; fingerprint: string };
 }): Promise<ArcadiaJsonSuccess<unknown>> {
-  const args = [
+  return runArcadiaCliJson<unknown>([
     "production",
-    "activate",
+    "reactivate",
     "--request-id",
     input.requestId,
     "--granted-by",
     input.grantedBy,
     "--expected-revision",
-    String(input.expectedRevision),
-    "--concurrency",
-    String(input.scope.maxConcurrentSessions || 1)
-  ];
-  for (const project of input.scope.projects) args.push("--project", project);
-  for (const plan of input.scope.plans) args.push("--plan", plan);
-  // Keep the exact allowlist recorded at the original grant; without it the
-  // CLI re-derives every queued Action of the Plans (Issue #392).
-  for (const action of input.scope.actions) args.push("--action", action);
-  for (const provider of input.scope.providers) args.push("--provider", provider);
-  if (input.scope.intent) args.push("--intent", input.scope.intent);
-  if (input.scope.mechanicalTransitions?.length) {
-    args.push("--transitions", input.scope.mechanicalTransitions.join(","));
-  }
-  return runArcadiaCliJson<unknown>(args);
+    String(input.expected.policyRevision),
+    "--expected-configuration-revision",
+    String(input.expected.configurationRevision),
+    "--expected-fingerprint",
+    input.expected.fingerprint
+  ]);
 }
 
 export interface CapacityProviderDecision {

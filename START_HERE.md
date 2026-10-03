@@ -889,6 +889,42 @@ work that survives the cutoff is named rather than concealed. Off also bumps a
 monotonic revision, so a stale worker holding an old view cannot resurrect the
 grant it lost.
 
+**Saved configuration is not active permission.** When Off clears an active
+scope it also saves, in the same transaction, the exact reviewed configuration
+(Projects, Plans, the ordered Action allowlist, providers, concurrency and
+delegated mechanics) in a separate store with its own revision and fingerprint.
+Nothing reads that store as authority: every admission gate still requires
+`desiredState: active`, and `production status` shows it under "Saved
+configuration (not active permission)". Off does **not** save, and On never
+restores, anything time-bound or delegated: a candidate-integration grant, a
+rehearsal exception, the `packet_approval` delegation and its expiry, or remote
+preservation. Each needs a fresh grant from the CLI. A second Off keeps the
+first save; an Off from a policy that was never active has nothing to save.
+
+To switch back On, preview first, then reactivate bound to what the preview
+showed. Reactivation replays the saved scope verbatim into a **fresh epoch**
+with fresh authority, never a revived one. It never re-derives the Action list
+from the queue or pointer: if a saved Action is done, blocked, deferred or gone,
+its Plan is no longer active, a provider is no longer configured, the saved
+scope delegates `packet_approval`, or the policy or saved configuration moved
+since the preview, it refuses and names the exact gate (`action_not_open`,
+`action_missing`, `plan_not_active`, `provider_unknown`,
+`packet_approval_expiry_required`, `policy_revision_moved`,
+`configuration_revision_moved`, `configuration_fingerprint_mismatch`,
+`already_active`, `saved_actions_empty`, `no_saved_configuration`):
+
+```sh
+pnpm arcadia production reactivate-preview
+pnpm arcadia production reactivate --request-id bootstrap-on-2 --granted-by "$USER" \
+  --expected-revision <n> --expected-configuration-revision <n> --expected-fingerprint <sha>
+```
+
+The Runs dashboard On switch does exactly this and answers 409 with the same
+code and remedy on a refusal. Effective concurrency stays one until the
+concurrency proof gate opens, whatever the saved ceiling says. An Off that
+predates this store left nothing to restore: the first On after upgrading
+needs one `production preview` and `production activate` from the CLI.
+
 Two states are deliberately distinct from Inactive. `Active · No admitted work`
 means the authorization stands but nothing is eligible. `Observation
 unavailable` means the policy store could not be read — Arcadia will admit

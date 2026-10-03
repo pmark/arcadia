@@ -1,12 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
   ArcadiaCliError,
-  activateProduction,
   deactivateProduction,
   loadCapacityStatus,
   loadDispatchJournal,
   loadProductionStatus,
   loadScheduleSummary,
+  previewProductionReactivation,
+  reactivateProduction,
   resolveDashboardWorkspace
 } from "../../../lib/arcadia-cli";
 import { cachedStale } from "../../../lib/swr-cache";
@@ -87,7 +89,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'action must be "activate" or "deactivate".', details: null }, { status: 400 });
     }
 
-    const requestId = `dashboard-toggle-${Date.now()}`;
+    // The suffix keeps two toggles in the same millisecond from sharing an id, which would replay the first.
+    const requestId = `dashboard-toggle-${Date.now()}-${randomUUID().slice(0, 8)}`;
 
     if (action === "deactivate") {
       await deactivateProduction({ requestId, reason: "Switched off from the Runs dashboard." });
@@ -95,22 +98,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ production: status.data });
     }
 
-    // Reactivating reuses the scope already on record — the toggle is a
-    // switch, not a re-entry of every project/plan/provider flag.
-    const current = await loadProductionStatus();
-    const scope = current.data.read.policy?.scope;
-    const revision = current.data.read.policy?.revision ?? 0;
-    if (!scope || scope.projects.length === 0 || scope.providers.length === 0) {
+    // On replays the configuration Off retained, bound to the revisions the
+    // preview just showed. Drift (a moved queue, policy or configuration, a
+    // delegation that needs a fresh grant) is a 409 naming the exact gate; the
+    // saved scope is never rebuilt or narrowed here.
+    const { data } = await previewProductionReactivation();
+    const { preview } = data;
+    if (!preview.ready || !preview.expected) {
+      const first = preview.refusals[0];
       return NextResponse.json(
         {
-          error: "No prior production scope is on record. Run `arcadia production preview` and `activate` once from the CLI to establish one.",
-          details: null
+          error: first?.reason ?? "The saved production configuration cannot be reactivated.",
+          details: { conflict: true, code: first?.code ?? null, remedy: first?.remedy ?? null, refusals: preview.refusals }
         },
         { status: 409 }
       );
     }
 
-    await activateProduction({ scope, requestId, grantedBy: "dashboard-toggle", expectedRevision: revision });
+    await reactivateProduction({ requestId, grantedBy: "dashboard-toggle", expected: preview.expected });
     const status = await loadProductionStatus();
     return NextResponse.json({ production: status.data });
   } catch (error) {
