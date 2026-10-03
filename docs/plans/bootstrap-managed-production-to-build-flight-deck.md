@@ -3035,6 +3035,40 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/908", "src/stewardship/codeRabbitReview.ts", "src/cli.ts", "docs/agent-guidance/pull-requests.md", "docs/agents-context.md", "docs/managed-production-readiness.md"]
+  - id: restore-readiness-evidence-and-report-spoofed-coderabbit-status
+    title: Undo two small wording regressions left by the advisory-CodeRabbit alignment.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Undo two small wording regressions left by the advisory-CodeRabbit alignment.
+    expected_artifact: Evidence satisfying Agent Ask restore-readiness-evidence-and-report-spoofed-coderabbit-status
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-followups-911-913-2026-10-03
+    acceptance_criteria:
+      - "`docs/managed-production-readiness.md` again carries the original historical sentence about what the read-only helpers and the adversary judged (the CodeRabbit-actor route), with a short 'as of Decision 0080' note after it saying the independent review gate now replaces that reviewer actor; no other claim in the document changes."
+      - The `unverified_reporter` remedy in `src/stewardship/codeRabbitReview.ts` again tells the agent to check who posted the status named CodeRabbit and to report a possible spoof, while still saying the status is advisory and never blocks a merge; a test asserts both statements.
+      - Verdict codes, error codes and the JSON shape of `arcadia pr code-review` are unchanged, and lint, tsc and required checks pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/911", "docs/managed-production-readiness.md", "src/stewardship/codeRabbitReview.ts", "tests/code-rabbit-review.test.ts"]
+  - id: close-index-lock-probe-races-and-fd-matching-gaps
+    title: "Close the three non-blocking gaps the independent review of PR #912 left in stale index.lock handling."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the three non-blocking gaps the independent review of PR #912 left in stale index.lock handling."
+    expected_artifact: Evidence satisfying Agent Ask close-index-lock-probe-races-and-fd-matching-gaps
+    clarification: clarified
+    confidence: high
+    source: Agent Ask queue-followups-911-913-2026-10-03
+    acceptance_criteria:
+      - Stale `index.lock` removal re-`lstat`s the lock and compares its `ino` and `mtimeMs` immediately before `rmSync` and refuses with the typed retryable error if either changed since the holder probes, with a deterministic test that swaps the lock between the probe and the removal.
+      - The Linux `/proc/<pid>/fd` holder probe matches by device and inode via `stat` on each fd link rather than by path string (so bind mounts and mount namespaces cannot read as 'none'), keeping its fail-closed handling of unreadable pids, with tests using injected readers including a differing-path-same-inode case.
+      - An `lsof` warning on stderr is carried into the typed error details so the operator can see why the answer was 'unknown'; the docs say plainly that the held-open probe covers only Git's brief write and non-Git holders and that an editor-based commit is protected only by the Git-cwd probe; lint, tsc and required checks pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/913", "src/sessions/candidatePreservation.ts", "src/sessions/worktreeLiveness.ts", "tests/preservation-index-lock.test.ts", "docs/working-copy-safety.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
