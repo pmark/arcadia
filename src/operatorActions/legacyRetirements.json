@@ -1,0 +1,42 @@
+{
+  "schema": "arcadia-operator-script-retirements-v1",
+  "issue": "https://github.com/pmark/arcadia/issues/887",
+  "rule": "check:operator-scripts skips an id only when both the descriptor and script sha256 match exactly; any other bytes, id or file get full validation. /runs runtime validation is unchanged, so these entries still refuse to load or run.",
+  "retirements": [
+    {
+      "id": "accept-narrow-managed-session-preservation-actions-2026-09-30-v3",
+      "descriptorSha256": "8dc0927a7c11254a874b82d2f6c3e6501fa3af5568f3083adb7efd8436553ded",
+      "scriptSha256": "fbd41bbfeb2bed84764eefec2b44e27a749ab87e399c13498befebb213ad5e65",
+      "outcome": "never run, no run state; operator choice not executed -- re-ask via a fresh Agent Ask if still wanted",
+      "reason": "Settles a four-Action insertion pinned to queue revision 172, which is stale; its intent and targetRef are not derivable, so it cannot be migrated honestly. Retiring it discards an unexecuted operator choice that was already unrunnable."
+    },
+    {
+      "id": "accept-worker-recovery-completion-2026-09-20",
+      "descriptorSha256": "4fc85701fcd0d86b28e18d8b4703b36f73a6c0d2bc072ec7cd6c28b2f93009be",
+      "scriptSha256": "80541b57971aec30e11415cf08420976c24490cac47c83249e6a1d99b229d21a",
+      "outcome": "failed exit 2 on 2026-09-20, state retained; superseded by Agent Ask complete-verify-worker-recovery-before-success-2026-09-20-v3",
+      "reason": "Its candidate worktree is gone and MISSION_LOG records the Action completed through the -v3 Ask, so this completion can never apply."
+    },
+    {
+      "id": "preview-terminal-integration-recovery-2026-10-01",
+      "descriptorSha256": "5a814cd0a7e8fd71d1dfdc1171fc55beecaeaf511b7af4f8aac774c42eb2ba63",
+      "scriptSha256": "587e36bc225385ded43f6abf9f17148fd2af9dcf39c34cab575cb54750d12696",
+      "outcome": "repeatable preview only, no run state; its Ask is archived, so it always refuses",
+      "reason": "Runs only agent-ask preview --file and never settles; the recovery Ask it previews has been archived after completion, so the entry has no live use."
+    },
+    {
+      "id": "remove-superseded-branches-and-worktree-2026-09-27",
+      "descriptorSha256": "6df0055659aa16212153f1eecf68970119e8dc931a7810d806256b0da966638e",
+      "scriptSha256": "a89be5ecb99be1afc929527837eeb9147ea054ecca89480e3a0580a61af12892",
+      "outcome": "succeeded 2026-09-29, state retained",
+      "reason": "Git cleanup, not a settlement: the settlement pattern matches only a literal stale Ask file path it names; declaring agentAsk would be false metadata."
+    },
+    {
+      "id": "settle-complete-approval-must-apply-or-refuse-2026-09-20",
+      "descriptorSha256": "45248eaa81173cda7d7d61f085fc1822033dea5d2eadf36bdf58cce5483480a4",
+      "scriptSha256": "fd4ce635a1cdc8c35f3441990a2065d21d5b36d966ddcba4cb6e80b06ae1d51b",
+      "outcome": "succeeded 2026-09-20, one-shot, state retained",
+      "reason": "Settled complete-approval-must-apply-or-refuse-2026-09-20-v2 before declarations existed; adding one would rewrite ignored local bytes a pull request cannot ship for an action that already succeeded."
+    }
+  ]
+}

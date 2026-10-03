@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { planAmendmentLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
+import { parseRetirementManifest, sha256 } from "../src/operatorActions/libraryRetirements.js";
 const root = path.resolve(import.meta.dirname, "..");
 const roots: string[] = [];
 afterEach(() => { for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -51,5 +52,102 @@ describe("Every applicable generated action must use the shared runner", () => {
     writeFileSync(path.join(dir, d.script), planAmendmentLauncher(d.id) + "exit 99\n", { mode: 0o755 });
     const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts"), dir], { encoding: "utf8" });
     expect(result.status).toBe(1); expect(JSON.parse(result.stderr)).toMatchObject({ id: d.id, reason: "PLAN_AMENDMENT_RUNNER_REQUIRED" });
+  });
+});
+
+describe("Legacy library entries retire only through the exact-hash manifest", () => {
+  const checker = path.join(root, "scripts/check-operator-scripts.ts");
+  const legacyScript = "#!/bin/sh\narcadia agent-ask settle --apply\n";
+  const ids = ["legacy-one", "legacy-two", "legacy-three", "legacy-four", "legacy-five"];
+  function tempDir(prefix: string): string { const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), prefix))); roots.push(dir); return dir; }
+  function legacy(id: string): OperatorScriptDescriptor { const d = descriptor(); delete d.planAmendment; d.id = id; d.script = `${id}.sh`; return d; }
+  function write(dir: string, d: OperatorScriptDescriptor, script = legacyScript): void {
+    writeFileSync(path.join(dir, `${d.id}.json`), JSON.stringify(d)); writeFileSync(path.join(dir, d.script), script, { mode: 0o755 });
+  }
+  function pinnedLibrary(): { library: string; manifest: string } {
+    const library = tempDir("arcadia-retired-library-"); const pins = tempDir("arcadia-retired-manifest-");
+    for (const id of ids) write(library, legacy(id));
+    const retirements = ids.map(id => ({ id, descriptorSha256: sha256(readFileSync(path.join(library, `${id}.json`))),
+      scriptSha256: sha256(readFileSync(path.join(library, `${id}.sh`))), outcome: "succeeded, state retained", reason: "legacy fixture" }));
+    const manifest = path.join(pins, "retirements.json");
+    writeFileSync(manifest, JSON.stringify({ schema: "arcadia-operator-script-retirements-v1", retirements }));
+    return { library, manifest };
+  }
+  const check = (library: string, manifest?: string) =>
+    spawnSync(process.execPath, ["--import", "tsx", checker, library, ...(manifest === undefined ? [] : ["--retirements", manifest])], { encoding: "utf8" });
+  const failuresOf = (stderr: string) => stderr.split("\n").filter(line => line.startsWith("{")).map(line => JSON.parse(line) as { id?: string; reason: string });
+
+  it("skips pinned legacy pairs visibly and leaves the library untouched", () => {
+    const { library, manifest } = pinnedLibrary();
+    const before = readdirSync(library).sort().map(file => [file, sha256(readFileSync(path.join(library, file)))]);
+    const result = check(library, manifest);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ checked: 0, retired: 5, retiredIds: [...ids].sort(), failures: 0 });
+    expect(readdirSync(library).sort().map(file => [file, sha256(readFileSync(path.join(library, file)))])).toEqual(before);
+  });
+  it.each([".sh", ".json"])("fully validates a retired id whose %s bytes changed", suffix => {
+    const { library, manifest } = pinnedLibrary();
+    if (suffix === ".sh") writeFileSync(path.join(library, "legacy-two.sh"), legacyScript + "\n", { mode: 0o755 });
+    else write(library, { ...legacy("legacy-two"), title: "Changed title" });
+    const result = check(library, manifest);
+    expect(result.status).toBe(1); expect(JSON.parse(result.stdout)).toMatchObject({ retired: 4, failures: 1 });
+    expect(failuresOf(result.stderr)).toEqual([{ id: "legacy-two", reason: "UNDECLARED_OPERATOR_SETTLEMENT", message: expect.any(String) }]);
+  });
+  it("fully validates a new undeclared Agent Ask script and a renamed copy of a retired pair", () => {
+    const { library, manifest } = pinnedLibrary();
+    write(library, legacy("brand-new-settlement"));
+    copyFileSync(path.join(library, "legacy-one.json"), path.join(library, "legacy-one-renamed.json"));
+    copyFileSync(path.join(library, "legacy-one.sh"), path.join(library, "legacy-one-renamed.sh"));
+    const result = check(library, manifest);
+    expect(result.status).toBe(1); expect(JSON.parse(result.stdout)).toMatchObject({ retired: 5, failures: 2 });
+    expect(failuresOf(result.stderr).map(f => [f.id, f.reason])).toEqual([
+      ["brand-new-settlement", "UNDECLARED_OPERATOR_SETTLEMENT"], ["legacy-one-renamed", "INVALID_OPERATOR_CONTRACT"]]);
+  });
+  it("refuses a retired id whose matching script resolves outside the library", () => {
+    const { library, manifest } = pinnedLibrary(); const outside = tempDir("arcadia-retired-outside-");
+    copyFileSync(path.join(library, "legacy-three.sh"), path.join(outside, "legacy-three.sh"));
+    rmSync(path.join(library, "legacy-three.sh")); symlinkSync(path.join(outside, "legacy-three.sh"), path.join(library, "legacy-three.sh"));
+    const result = check(library, manifest);
+    expect(result.status).toBe(1); expect(failuresOf(result.stderr)).toMatchObject([{ id: "legacy-three", reason: "INVALID_OPERATOR_CONTRACT" }]);
+  });
+  it("still refuses an existing-Plan amendment even when a manifest is present", () => {
+    const { library, manifest } = pinnedLibrary();
+    write(library, { ...legacy("plan-target"), agentAsk: { proposal: "amend-plan", intent: "plan", targetRef: "plan/existing" } });
+    const result = check(library, manifest);
+    expect(result.status).toBe(1); expect(failuresOf(result.stderr)).toMatchObject([{ id: "plan-target", reason: "PLAN_AMENDMENT_RUNNER_REQUIRED" }]);
+  });
+  it("keeps declared Action, draft-Plan and completion settlements valid", () => {
+    const { library, manifest } = pinnedLibrary();
+    write(library, { ...legacy("declared-action"), agentAsk: { proposal: "add-action", intent: "action", targetRef: null } });
+    write(library, { ...legacy("declared-draft-plan"), agentAsk: { proposal: "create-plan", intent: "plan", targetRef: null } });
+    write(library, { ...legacy("declared-completion"), agentAsk: { proposal: "complete-it", intent: "complete", targetRef: "action/some-action" } });
+    const result = check(library, manifest);
+    expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({ checked: 3, retired: 5, failures: 0 });
+  });
+  it.each([["missing", (dir: string) => path.join(dir, "absent.json")], ["malformed", (dir: string) => { const p = path.join(dir, "bad.json"); writeFileSync(p, "{"); return p; }],
+    ["glob id", (dir: string) => { const p = path.join(dir, "glob.json"); writeFileSync(p, JSON.stringify({ schema: "arcadia-operator-script-retirements-v1",
+      retirements: [{ id: "legacy-*", descriptorSha256: "0".repeat(64), scriptSha256: "0".repeat(64), outcome: "x", reason: "y" }] })); return p; }]])(
+    "fails closed on a %s manifest", (_label, make) => {
+      const { library } = pinnedLibrary(); const result = check(library, make(tempDir("arcadia-retired-bad-")));
+      expect(result.status).toBe(1); expect(result.stdout).toBe(""); expect(failuresOf(result.stderr)).toMatchObject([{ reason: "INVALID_RETIREMENT_MANIFEST" }]);
+    });
+  it("rejects id-only, duplicate and malformed-hash entries", () => {
+    const entry = { id: "legacy-one", descriptorSha256: "a".repeat(64), scriptSha256: "b".repeat(64), outcome: "x", reason: "y" };
+    const parse = (retirements: unknown[]) => () => parseRetirementManifest({ schema: "arcadia-operator-script-retirements-v1", retirements });
+    expect(parse([entry])).not.toThrow();
+    expect(parse([{ id: "legacy-one" }])).toThrow("exactly");
+    expect(parse([entry, entry])).toThrow("Duplicate");
+    expect(parse([{ ...entry, scriptSha256: "B".repeat(64) }])).toThrow("exactly");
+    expect(parse([{ ...entry, extra: true }])).toThrow("exactly");
+  });
+  it("ships exactly the five pinned legacy retirements", () => {
+    const shipped = JSON.parse(readFileSync(path.join(root, "src/operatorActions/legacyRetirements.json"), "utf8")) as { retirements: { id: string }[] };
+    const entries = parseRetirementManifest(shipped);
+    expect([...entries.keys()].sort()).toEqual([
+      "accept-narrow-managed-session-preservation-actions-2026-09-30-v3", "accept-worker-recovery-completion-2026-09-20",
+      "preview-terminal-integration-recovery-2026-10-01", "remove-superseded-branches-and-worktree-2026-09-27",
+      "settle-complete-approval-must-apply-or-refuse-2026-09-20"]);
+    expect(shipped.retirements).toHaveLength(5);
+    for (const e of entries.values()) expect(`${e.id}${e.descriptorSha256}${e.scriptSha256}`).not.toMatch(/[*?[\]{}]/);
   });
 });

@@ -25,6 +25,8 @@ and `targetRef`; declaring draft-Plan creation cannot authorize amending an
 existing Plan. These checks preserve the existing operator approval boundary.
 They do not govern ordinary candidate completion evidence or grant an agent
 permission to run an approval button.
+Legacy entries retire from that check only through the exact-hash manifest in
+[`operator-actions.md`](operator-actions.md#retiring-a-library-entry).
 
 <!-- Everything outside the markers above is this repository's own and is never regenerated. -->
 
