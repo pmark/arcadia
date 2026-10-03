@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,6 +13,7 @@ import {
   type QaPrModelVerdict,
   type QaPrReviewDependencies
 } from "../src/qa/prReview.js";
+import { allocateSessionRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const temporaryPaths: string[] = [];
@@ -293,6 +294,53 @@ describe("minimal independent pull-request QA", () => {
       artifacts: countRows(db, "artifacts"),
       decisions: countRows(db, "review_items")
     }))).toEqual(before);
+  });
+
+  it("records nothing and invokes no reviewer for a lineage-bound managed candidate that is not deterministically ready", () => {
+    const fixture = createFixture();
+    let reviewerInvocations = 0;
+    withDatabase(fixture.workspace, (db) => {
+      db.pragma("foreign_keys = OFF");
+      const project = db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string };
+      const at = "2026-08-15T19:00:00.000Z";
+      db.prepare(`INSERT INTO agent_sessions (id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id, work_item_id,
+        packet_id, packet_path, packet_sha256, authorizing_decisions_json, provider_profile, provider, model, base_revision, branch,
+        worktree_path, provider_session_id, display_name, terminal_transport, tmux_session_name, status, prepared_at, created_at, updated_at)
+        VALUES ('session_qa_lineage', ?, 'arcadia', ?, 'docs/plans/p.md', 'plan', 'action', 'work', 'packet', 'p', 'sha', '[]',
+          'claude_build', 'claude-code-cli', 'model', ?, 'codex/operator-attention-planning', ?, 'provider-session', 'name', 'tmux',
+          'tmux-qa-lineage', 'completed', ?, ?, ?)`)
+        .run(project.id, realpathSync(fixture.repository), BASE_SHA, path.join(fixture.repository, "candidate"), at, at, at);
+      const development = allocateSessionRoleAttempt(db, {
+        requirementId: "arcadia/plan/action", inputRevision: "revision", role: "development", requestId: "development-qa-lineage",
+        actorId: "development-qa-lineage", mutationOwner: true, authorityCurrent: true
+      });
+      recordSessionRoleAttemptTerminal(db, { requestId: development.request_id, actorId: development.actor_id, status: "passed", targetHead: HEAD_SHA, receipt: {} });
+    });
+    const dependencies: QaPrReviewDependencies = {
+      now: () => new Date("2026-08-15T20:00:00.000Z"),
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view" && args.includes("--jq")) return success(`${HEAD_SHA}\n`);
+        if (command === "gh" && args[1] === "view") return success(`${JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")]))}\n`);
+        if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
+        if (command === "codex") reviewerInvocations += 1;
+        return failure(`Unexpected command: ${command} ${args.join(" ")}`);
+      }
+    };
+    let refusal: unknown = null;
+    try {
+      runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, dependencies);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ArcadiaError);
+    expect((refusal as ArcadiaError).details).toMatchObject({ code: "verdict_not_ready" });
+    expect(reviewerInvocations).toBe(0);
+    expect(withDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT count(*) count FROM session_role_attempts WHERE role = 'qa'").get())).toEqual({ count: 0 });
   });
 
   it("refuses absent checks and a blocked merge state without reviewer work", () => {

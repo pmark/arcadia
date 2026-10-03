@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
@@ -30,6 +29,7 @@ import {
 import { canonicalPath, getActiveActionClaim, getRepositoryLease, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
 import { launchGuardedHostSession, type GuardedLaunchInput } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
+import { requirementIdentity } from "./roleLineage.js";
 
 export interface HostEnrollmentInput {
   source: string;
@@ -102,13 +102,9 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
       code: "enrollment_not_dispatchable", blockers: next.data.blockers
     });
   }
-  const requirementId = `${dispatch.projectSlug}/${dispatch.activePlan}/${dispatch.action.id}`;
-  const inputRevision = createHash("sha256").update(JSON.stringify({
-    nextAction: dispatch.action.nextAction,
-    acceptanceCriteria: dispatch.action.acceptanceCriteria,
-    responsibility: dispatch.action.responsibility,
-    execution: dispatch.action.resolvedExecution ?? dispatch.action.execution ?? null
-  })).digest("hex");
+  // The same requirement identity the guarded launcher's development attempt
+  // and every verdict bind, so a receipt and its attempt lineage always agree.
+  const { requirementId, inputRevision } = requirementIdentity({ projectSlug: dispatch.projectSlug, planSlug: dispatch.activePlan, action: dispatch.action });
 
   const request: EnrollmentRequest = {
     requestId,

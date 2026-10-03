@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
@@ -36,6 +36,7 @@ import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
+import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -124,7 +125,8 @@ function recoverTerminalHandoff(
   projectSlug: string,
   now: Date,
   preserveDeps: PreserveSessionDeps,
-  integrateDeps: IntegrateSessionDeps
+  integrateDeps: IntegrateSessionDeps,
+  log?: (message: string) => void
 ): SessionHandoffResult | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
     .all() as Array<{ name: string }>;
@@ -212,8 +214,56 @@ function recoverTerminalHandoff(
   }
   return {
     preservation,
-    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head }, integrateDeps)
+    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head,
+      verdictGate: () => escalatingVerdictGate(db, { session, repoRoot, now, log }) }, integrateDeps)
   };
+}
+
+const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed"]);
+
+/**
+ * The integration gate, plus a deduped operator escalation while it refuses,
+ * so `production status` (not only the worker log) shows a candidate that is
+ * accepted but cannot land. The escalation names the exact QA command and the
+ * exact operator merge; it clears the moment the gate is satisfied. No
+ * command records the code-review verdict yet, and this does not invent one.
+ */
+function escalatingVerdictGate(
+  db: Database.Database,
+  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void }
+): VerdictGate {
+  const { session, repoRoot } = input;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const gate = independentVerdictGate(db, { session, repoRoot });
+  const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  if (gate.satisfied) {
+    if (previous && VERDICT_WAIT_ESCALATIONS.has(previous.kind)) clearOperatorEscalation(db, actionKey);
+    return gate;
+  }
+  let pullRequestUrl: string | null = null;
+  try {
+    const row = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+      .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
+    pullRequestUrl = row ? (JSON.parse(row.receipt_json) as { pullRequestUrl?: string | null }).pullRequestUrl ?? null : null;
+  } catch { /* named generically below */ }
+  let baseBranch = "the governed base branch";
+  try { baseBranch = resolveBaseBranch(repoRoot); } catch { /* keep the generic name */ }
+  const merge = gate.head
+    ? `git -C ${repoRoot} merge --ff-only ${gate.head}   # then push ${baseBranch}`
+    : operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
+  const remedy = gate.code === "awaiting_independent_verdicts"
+    ? `Record QA with \`arcadia qa pr ${pullRequestUrl ?? "<the candidate's PR URL>"}\` once that PR is ready for review (not a draft) and its head is ${gate.head}. `
+      + `No command records the code-review verdict yet; after an independent review of exactly that head, an operator may land it with \`${merge}\`.`
+    : `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
+      + `After independent review, an operator may land it with \`${merge}\`.`;
+  if (previous && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) {
+    // One row per Action: never overwrite a different, still-open escalation.
+    input.log?.(`${actionKey} also waits on independent verdicts (${gate.reason}); keeping its open ${previous.kind} escalation.`);
+    return gate;
+  }
+  const newlyDetected = recordOperatorEscalation(db, { actionKey, kind: gate.code, message: gate.reason, remedy, now: input.now });
+  if (newlyDetected || previous?.kind !== gate.code) input.log?.(`Escalated ${actionKey} to the operator (${gate.code}): ${gate.reason}`);
+  return gate;
 }
 
 export interface ManagedProductionTickResult {
@@ -427,21 +477,80 @@ function attemptAutomaticPlanningResolution(
   const requestedProfile = predictedPurpose
     ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
     : undefined;
+  // The planner is a separately identified, read-only helper attempt (it
+  // writes packet records, never the candidate), reached only after the
+  // deterministic launch preview reported `planning_required`. Being called
+  // again under the same input is itself the deterministic observation that
+  // an earlier passed planner's output no longer stands, so it is re-run as
+  // the next bounded ordinal (`rerunPassed`). A run that prepares nothing, or
+  // throws (busy database, Git/I/O failure), stays live and is resumed on the
+  // next tick under the same ordinal, so transient failures consume nothing.
+  const requirement = requirementIdentity({ projectSlug: context.projectSlug, planSlug: context.activePlan, action: context.action });
+  const now = new Date();
   try {
-    const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
-    if (prepared.data.buildInvocation) {
+    const planned = runHelperAttempt(db, { role: "planner", requirement, actorId: "host-planner:work-plan", retryAuthorized: true, rerunPassed: true, now }, () => {
+      const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
+      const invocation = prepared.data.buildInvocation ?? prepared.data.codexInvocation;
+      const kind = prepared.data.buildInvocation ? "build_packet_ready" : prepared.data.planningDecision ? "planning_approval_pending" : null;
+      return { outcome: kind !== null ? "passed" as const : "inconclusive" as const, receipt: { kind, invocationId: invocation?.id ?? null, promptPath: invocation?.prompt_path ?? null } };
+    });
+    if (planned.finished && !planned.replayed && planned.receipt.invocationId && planned.receipt.promptPath) {
+      // Advisory bookkeeping: a critique-recording failure never undoes the planner's packet.
+      try {
+        recordPacketCritique(db, requirement, planned.receipt.invocationId, path.resolve(input.workspace, planned.receipt.promptPath), now);
+      } catch (error) {
+        log(`Could not record the packet critique attempt for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (planned.replayed) {
+      log(`The planner attempt for ${actionKey} already finished for this exact Action input (${planned.attempt.status}); not re-running it.`);
+      return null;
+    }
+    if (planned.receipt.kind === "build_packet_ready") {
       log(`Automatically prepared a build packet for ${actionKey} (was planning_required); it still needs its own build-packet approval.`);
       return "build_packet_ready";
     }
-    if (prepared.data.planningDecision) {
+    if (planned.receipt.kind === "planning_approval_pending") {
       log(`Automatically requested a Decision-gated planning run for ${actionKey} (was planning_required); its approval gate is unchanged.`);
       return "planning_approval_pending";
     }
     return null;
   } catch (error) {
+    if (error instanceof ArcadiaError && error.details?.code === "attempt_limit_exhausted") {
+      log(`Planner attempts for ${actionKey} are exhausted for this exact Action input.`);
+      return PLANNER_ATTEMPTS_EXHAUSTED;
+    }
     log(`Automatic planning_required resolution failed for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
+}
+
+/** Returned by planning resolution when every bounded planner ordinal for this input passed and planning is still required. */
+const PLANNER_ATTEMPTS_EXHAUSTED = "planner_attempts_exhausted";
+const PLANNER_ATTEMPTS_EXHAUSTED_REMEDY = "Every bounded planner attempt for this exact Action input prepared a packet, yet the launch preview "
+  + "still reports planning_required. Inspect why the prepared packet is not accepted (`arcadia session preview-launch`). No command resets "
+  + "attempt lineage today: the only path is a governed amendment of the Action (an Agent Ask), which gives it a new input revision.";
+
+/**
+ * The packet's deterministic stewardship critique, recorded as its own
+ * read-only critique attempt. It reads the critique the packet writer already
+ * produced (no second critic run), so it is advisory exactly as before.
+ */
+function recordPacketCritique(db: Database.Database, requirement: ReturnType<typeof requirementIdentity>, invocationId: string, promptPath: string, now: Date): void {
+  runHelperAttempt(db, { role: "critique", requirement, actorId: "host-critic:deterministic_critic", retryAuthorized: true, rerunPassed: true, now }, () => {
+    type PacketCritique = { critic?: string; status?: string; findings?: unknown[] };
+    let critique: PacketCritique | null;
+    try {
+      critique = (JSON.parse(readFileSync(path.join(path.dirname(promptPath), "metadata.json"), "utf8")) as { critique?: PacketCritique }).critique ?? null;
+    } catch {
+      critique = null;
+    }
+    return {
+      // An unreadable critique is an I/O gap, not a verdict: it stays live.
+      outcome: critique === null ? "inconclusive" as const : critique.status === "approved" ? "passed" as const : "failed" as const,
+      receipt: { invocationId, critic: critique?.critic ?? null, status: critique?.status ?? "unreadable", findings: critique?.findings?.length ?? null }
+    };
+  });
 }
 
 /**
@@ -915,7 +1024,8 @@ export function runManagedProductionTick(
         // Session is preserved and reported, never merged.
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed
-          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.integrate ?? {})
+          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now,
+              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, options.handoff?.integrate ?? {})
           : {
               kind: "refused" as const,
               reason: preservation.kind === "preserved"
@@ -969,7 +1079,7 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
-        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {});
+        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log);
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1023,6 +1133,27 @@ export function runManagedProductionTick(
   }
 
   return { policyActive: active, scheduling, schedulingError, projects };
+}
+
+/** Development-attempt refusals that only an operator can resolve: never retried in a loop, never a repair failure. */
+const ATTEMPT_LINEAGE_ESCALATIONS = new Set(["attempt_limit_exhausted", "attempt_retry_not_authorized"]);
+
+/**
+ * One remedy per lineage state. No command resets attempt lineage today, and
+ * none is invented here: the only ways forward are the ones named.
+ */
+export function developmentLineageRemedy(code: string, details: Record<string, unknown> | undefined): string {
+  if (code === "attempt_limit_exhausted") {
+    return `Every bounded development attempt (${String(details?.limit ?? 3)}) for this exact Action input failed. Repair the cause; `
+      + "no command resets attempt lineage today, so the only path is a governed amendment of the Action (an Agent Ask), which gives it a new input revision.";
+  }
+  if (details?.status === "passed") {
+    return "The development attempt for this exact Action input already passed: its accepted candidate waits for current independent code review "
+      + "and QA verdicts or an operator merge (see that candidate's awaiting_independent_verdicts escalation and its `git merge --ff-only` command). "
+      + "Redoing the work instead requires a governed amendment of the Action.";
+  }
+  return `The development attempt for this exact Action input is ${String(details?.status ?? "finished")} and no retry is authorized; `
+    + "the only path is a governed amendment of the Action (an Agent Ask).";
 }
 
 function attemptProjectLaunch(
@@ -1272,13 +1403,19 @@ function attemptProjectLaunch(
       // metadata clears it, so it escalates the same way rather than
       // retrying the same refusal forever (the fate `planning_required` was
       // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
-      const escalationKind = rawCode === "no_validation_commands"
+      const escalationKind = rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
-        : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
-          ? resolvedLifecycleKind
-          : null;
+        : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
+          ? PLANNER_ATTEMPTS_EXHAUSTED
+          : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
+            ? resolvedLifecycleKind
+            : null;
       if (escalationKind) {
-        const remedy = rawCode === "no_validation_commands"
+        const remedy = rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
+          ? developmentLineageRemedy(rawCode, error.details)
+          : escalationKind === PLANNER_ATTEMPTS_EXHAUSTED
+          ? PLANNER_ATTEMPTS_EXHAUSTED_REMEDY
+          : rawCode === "no_validation_commands"
           ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
           : typeof error.details?.packetLifecycleRemedy === "string"
             ? error.details.packetLifecycleRemedy

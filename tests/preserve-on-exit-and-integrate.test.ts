@@ -26,7 +26,8 @@ import { activateProduction, deactivateProduction, fingerprintProductionScope, n
 import { integrateSessionCandidate, preserveSessionCandidate } from "../src/production/sessionHandoff.js";
 import { runManagedProductionTick } from "../src/production/tick.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
-import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, getSession, type TmuxAdapter } from "../src/sessions/index.js";
+import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
 import { preserveCandidate } from "../src/sessions/candidatePreservation.js";
 import {
   getPreservationIndexLockAttempts, getPreservationTimeoutAttempts, guardPreservationTimeouts,
@@ -142,6 +143,23 @@ function finishCandidate(fixture: Fixture, tmux: FakeTmux, session: { worktree_p
   tmux.live.delete(session.tmux_session_name);
 }
 
+/**
+ * An independent reviewer, separate from the developer Session, recording an
+ * exact-head code review and QA verdict through the host seam. The exit tick
+ * must have preserved the candidate first: readiness refuses before that.
+ */
+function reviewIndependently(fixture: Fixture, sessionId: string, verdict: "passed" | "failed" = "passed") {
+  withDatabase(fixture.workspace, (db) => {
+    const session = getSession(db, sessionId)!;
+    for (const role of ["code-review", "qa"] as const) {
+      const requestId = `${role}-fixture-${sessionId.replaceAll("_", "-")}-${Math.random().toString(36).slice(2, 8)}`;
+      const actorId = `${role}-reviewer:fixture`;
+      beginIndependentVerdict(db, { role, session, repoRoot: fixture.repo, requestId, actorId, executionCwd: fixture.workspace, now: fixture.now });
+      finishIndependentVerdict(db, { requestId, actorId, session, repoRoot: fixture.repo, verdict, receipt: { reviewer: actorId }, now: fixture.now });
+    }
+  });
+}
+
 function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z") {
   const fixture = preparedFixture();
   const tmux = new FakeTmux();
@@ -150,14 +168,21 @@ function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z") {
   finishCandidate(fixture, tmux, session);
   const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
   const first = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+    profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 30_000),
+    capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+    handoff: { preserve: { validate: fixtureValidator(true) } }
+  }));
+  expect(first.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
+  expect(first.projects[0]?.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/current independent verdicts/) });
+  reviewIndependently(fixture, session.id);
+  const interrupted = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
     profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
     capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
-    handoff: { preserve: { validate: fixtureValidator(true) }, integrate: { fastForward: () => {
+    handoff: { integrate: { fastForward: () => {
       throw new Error("injected interruption before integration");
     } } }
   }));
-  expect(first.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
-  expect(first.projects[0]?.handoff?.integration.kind).toBe("refused");
+  expect(interrupted.projects[0]?.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/injected interruption/) });
   expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
   return { fixture, tmux, session, baseBefore };
 }
@@ -199,6 +224,11 @@ describe("preserve-on-exit and integrate", () => {
     expect(stillOff.handoff?.integration.kind).toBe("refused");
     expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
     activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }), "fresh-terminal-grant");
+    const preservedOnly = retryHandoff(fixture, tmux);
+    expect(preservedOnly.handoff?.preservation.kind).toBe("preserved");
+    expect(preservedOnly.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/current independent verdicts/) });
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+    reviewIndependently(fixture, session.id);
     const recovered = retryHandoff(fixture, tmux);
     expect(recovered.handoff?.preservation.kind).toBe("preserved");
     expect(recovered.handoff?.integration.kind).toBe("integrated");
@@ -286,15 +316,24 @@ describe("preserve-on-exit and integrate", () => {
     const session = launchFirstSession(fixture, tmux);
     finishCandidate(fixture, tmux, session);
     let integrations = 0;
+    const exited = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 30_000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      handoff: { preserve: { validate: fixtureValidator(true) }, integrate: { fastForward: () => { integrations += 1; } } }
+    }));
+    expect(exited.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
+    // No verdicts yet: the integration primitive is never reached.
+    expect(exited.projects[0]?.handoff?.integration.kind).toBe("refused");
+    expect(integrations).toBe(0);
+    reviewIndependently(fixture, session.id);
     const first = withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
       profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
       capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
-      handoff: { preserve: { validate: fixtureValidator(true) }, integrate: { fastForward: () => {
+      handoff: { integrate: { fastForward: () => {
         integrations += 1;
         throw new Error("injected interruption before integration");
       } } }
     }));
-    expect(first.projects[0]?.reconciled[0]?.outcome).toBe("accepted_completion");
     expect(first.projects[0]?.handoff?.integration.kind).toBe("refused");
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
     expect(integrations).toBe(1);
@@ -388,7 +427,7 @@ describe("preserve-on-exit and integrate", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
-  it("preserves, integrates under a valid grant, completes, and admits the next Action in the same tick", () => {
+  it("preserves and completes on exit, then integrates under a valid grant once independent verdicts are current and admits the next Action in that tick", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
@@ -396,17 +435,28 @@ describe("preserve-on-exit and integrate", () => {
     finishCandidate(fixture, tmux, session);
     const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
 
-    const second = withDatabase(fixture.workspace, (db) =>
+    const exited = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {
-        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 30_000),
         capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
         handoff: { preserve: { validate: fixtureValidator(true) } }
       })
+    ).projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(exited.handoff?.preservation.kind).toBe("preserved");
+    expect(exited.reconciled[0]?.outcome).toBe("accepted_completion");
+    expect(exited.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/current independent verdicts/) });
+    expect(exited.launch?.outcome).not.toBe("launched");
+    expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+
+    reviewIndependently(fixture, session.id);
+    const second = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
     );
     const project = second.projects.find((entry) => entry.projectSlug === "test-project")!;
-    expect(project.handoff?.preservation.kind).toBe("preserved");
     expect(project.handoff?.integration).toMatchObject({ kind: "integrated", baseBranch: "main" });
-    expect(project.reconciled[0]?.outcome).toBe("accepted_completion");
     expect(project.launch?.outcome).toBe("launched");
     expect(project.launch?.actionKey).toBe("test-project/second-action");
 

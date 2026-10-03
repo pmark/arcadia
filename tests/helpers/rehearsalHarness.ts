@@ -19,6 +19,7 @@ import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { loadPhase3Registries } from "../../src/intent/registries.js";
 import { runManagedProductionTick, type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
 import { getRepositoryLease, type AgentSession, type TmuxAdapter } from "../../src/sessions/index.js";
+import { launchGuardedHostSession } from "../../src/sessions/launch.js";
 import { materializeCandidateTree, snapshotCandidate } from "../../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions } from "../../src/sessions/preservationCheckBinding.js";
 import { processPreservationRequests } from "../../src/sessions/preservationTransport.js";
@@ -26,6 +27,8 @@ import { preservationAuthority, validatePreservationCandidate } from "../../src/
 import { validationError } from "../../src/cli/errors.js";
 import { spawnSync } from "node:child_process";
 import { initWorkspace } from "../../src/workspace/initWorkspace.js";
+import type { SessionRoleAttempt } from "../../src/sessions/enrollment.js";
+import { beginIndependentVerdict, finishIndependentVerdict, independentVerdictGate, independentVerdictReadiness } from "../../src/sessions/roleLineage.js";
 
 /**
  * A hermetic replica of the operator's two-Action rehearsal
@@ -49,6 +52,12 @@ import { initWorkspace } from "../../src/workspace/initWorkspace.js";
  *   commit, draft and settle a `complete` Agent Ask), through the same
  *   `agent-ask draft`/`settle` command functions the agent's shell would run.
  * - **Provider capacity and sign-in**, which need a real provider account.
+ * - **The independent reviewers.** Between ticks, {@link Rehearsal.review}
+ *   records an exact-head code review and QA verdict for every terminal
+ *   candidate that is deterministically ready, through the same
+ *   `beginIndependentVerdict`/`finishIndependentVerdict` seam a real
+ *   reviewer process uses, under reviewer identities distinct from the
+ *   developer's. `independentReviewers: false` turns them off.
  *
  * Nothing else is stubbed: preservation runs the real Seatbelt validator,
  * reconciliation and integration run real Git, and settlement writes real
@@ -140,6 +149,8 @@ export interface RehearsalOptions {
    * script's shape.
    */
   thirdAction?: boolean;
+  /** Simulated out-of-band reviewers before each tick (default on); see the class comment. */
+  independentReviewers?: boolean;
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
@@ -172,6 +183,11 @@ export class Rehearsal {
   projectId = "";
   /** Test-only fault injection: a signed-out provider makes admission refuse on every tick. */
   providerSignedIn = true;
+  /**
+   * Test-only, one-shot: runs at the launch's sign-in preflight -- after the
+   * tick re-read the policy and the launch preview, before issueAdmission.
+   */
+  beforeAdmission: (() => void) | null = null;
   now = new Date("2026-09-26T21:00:00.000Z");
   private tickCount = 0;
 
@@ -392,6 +408,7 @@ Disposable fixture plan.
     const registries = loadPhase3Registries(this.workspace);
     // `arcadia worker` services agent preservation requests immediately before each tick.
     withDatabase(this.workspace, (db) => processPreservationRequests(db, this.workspace));
+    if (this.options.independentReviewers !== false) this.review();
     const result = withDatabase(this.workspace, (db) =>
       runManagedProductionTick(db, this.workspace, {
         profiles: registries.codingAgents.profiles,
@@ -399,7 +416,12 @@ Disposable fixture plan.
         tmux: this.tmux,
         now: this.now,
         capacityObservation: capacity(this.provider),
-        providerSignIn: () => ({ signedIn: this.providerSignedIn, remedy: this.providerSignedIn ? "" : "Sign in to the provider (injected fault)." }),
+        providerSignIn: () => {
+          const hook = this.beforeAdmission;
+          this.beforeAdmission = null;
+          hook?.();
+          return { signedIn: this.providerSignedIn, remedy: this.providerSignedIn ? "" : "Sign in to the provider (injected fault)." };
+        },
         agentWorktreeRoot: this.worktrees,
         log: (message) => this.log.push(`[tick ${this.tickCount}] ${message}`),
         ...(HOST_SEATBELT ? {} : { handoff: { preserve: { validate: unsandboxedValidator } } })
@@ -408,6 +430,45 @@ Disposable fixture plan.
     const project = result.projects.find((entry) => entry.projectSlug === this.projectSlug);
     if (!project) throw new Error("The fixture Project was not visited by the tick.");
     return project;
+  }
+
+  /**
+   * A Session just exited with its completion settled: the exit tick
+   * reconciles and preserves it, but integration waits for current
+   * independent verdicts; the simulated reviewers judge the exact head before
+   * the next tick, which integrates it (and may launch the next Action).
+   */
+  tickThroughReview(): { exited: ManagedProductionTickProjectResult; integrated: ManagedProductionTickProjectResult } {
+    const exited = this.tick();
+    if (exited.handoff?.integration.kind === "integrated" || this.options.independentReviewers === false) return { exited, integrated: exited };
+    return { exited, integrated: this.tick() };
+  }
+
+  /** The guarded standing-policy launcher called directly, with the same registries, capacity and paths as `tick()`. */
+  launchDirect(requestId: string, testHooks?: Parameters<typeof launchGuardedHostSession>[0]["testHooks"]) {
+    const registries = loadPhase3Registries(this.workspace);
+    return withDatabase(this.workspace, (db) => launchGuardedHostSession({
+      db, workspace: this.workspace, repoRoot: this.repo, projectSlug: this.projectSlug, requestId, standingPolicy: true,
+      profiles: registries.codingAgents.profiles, adapters: registries.providerAdapters, tmux: this.tmux, now: this.now,
+      capacityObservation: capacity(this.provider), agentWorktreeRoot: this.worktrees,
+      providerSignIn: () => ({ signedIn: true, remedy: "" }), ...(testHooks ? { testHooks } : {})
+    }));
+  }
+
+  /**
+   * A worker host crash in the middle of a standing-policy launch: the
+   * Session is prepared and its admission issued, then the process dies
+   * before the admission commits (and so before any development attempt is
+   * allocated).
+   */
+  crashLaunchAfterPrepare(requestId = "worker-tick-crashed-after-prepare"): void {
+    try {
+      this.launchDirect(requestId, { afterSessionPreparedBeforeCommit: () => { throw new Error("worker host crashed"); } });
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "worker host crashed") throw error;
+      return;
+    }
+    throw new Error("The injected crash did not happen.");
   }
 
   /** Tick until `done` holds or `limit` ticks pass; returns every tick's result. */
@@ -421,6 +482,40 @@ Disposable fixture plan.
     throw new Error(
       `Condition not reached within ${limit} ticks.\nTick results:\n${results.map((r) => JSON.stringify(r.launch) + " reconciled=" + JSON.stringify(r.reconciled) + " handoff=" + JSON.stringify(r.handoff)).join("\n")}\nWorker log:\n${this.log.join("\n")}`
     );
+  }
+
+  /**
+   * Simulated independent reviewers: for each tick-reconciled accepted
+   * candidate that is deterministically ready and still lacks a current
+   * verdict, record code review and QA as `verdict` (passed by default).
+   * Returns the request ids recorded.
+   */
+  review(verdict: "passed" | "failed" = "passed", roles: Array<"code-review" | "qa"> = ["code-review", "qa"]): string[] {
+    const recorded: string[] = [];
+    withDatabase(this.workspace, (db) => {
+      const sessions = db.prepare(`SELECT s.* FROM agent_sessions s JOIN session_exit_receipts r ON r.session_id = s.id
+        WHERE s.project_slug = ? AND r.outcome = 'accepted_completion' ORDER BY s.created_at, s.rowid`).all(this.projectSlug) as AgentSession[];
+      for (const session of sessions) {
+        const readiness = independentVerdictReadiness(db, { session, repoRoot: this.repo });
+        if (!readiness.ready || independentVerdictGate(db, { session, repoRoot: this.repo }).satisfied) continue;
+        for (const role of roles) {
+          const requestId = `${role}-${session.id}-${readiness.binding.targetHead.slice(0, 12)}`.replaceAll("_", "-");
+          const actorId = `${role}-reviewer:rehearsal`;
+          const begun = beginIndependentVerdict(db, { role, session, repoRoot: this.repo, requestId, actorId, executionCwd: this.root, now: this.now });
+          if (begun.attempt.status === "passed" || begun.attempt.status === "failed") continue;
+          finishIndependentVerdict(db, { requestId, actorId, session, repoRoot: this.repo, verdict, receipt: { reviewer: actorId }, now: this.now });
+          recorded.push(requestId);
+        }
+      }
+    });
+    return recorded;
+  }
+
+  /** Every attempt the role lineage recorded for one Action of this fixture. */
+  attempts(actionId: string) {
+    return withReadOnlyDatabase(this.workspace, (db) =>
+      db.prepare("SELECT * FROM session_role_attempts WHERE requirement_id = ? ORDER BY created_at, rowid")
+        .all(`${this.projectSlug}/${this.planSlug}/${actionId}`) as SessionRoleAttempt[]);
   }
 
   lease(): AgentSession | null {

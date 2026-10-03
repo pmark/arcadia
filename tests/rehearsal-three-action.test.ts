@@ -44,6 +44,9 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
     const a = rehearsal.lease()!;
     expect(a.action_id).toBe("write-marker-a");
+    // The launch runs under exactly one mutation-owning development attempt; nothing else is live for A yet.
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.role, x.ordinal, x.status, x.mutation_owner])).toEqual([["development", 1, "running", 1]]);
+    expect(rehearsal.attempts("write-marker-b")).toEqual([]);
     rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
     rehearsal.agentFinish(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
@@ -58,13 +61,14 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinish(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
-    const integrated = rehearsal.tick();
+    const { integrated } = rehearsal.tickThroughReview();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
     expect(rehearsal.pointer()).toBe("write-marker-c");
     // C needs its own packet; it has not launched in the integrating tick.
     expect(integrated.launch?.outcome).not.toBe("launched");
     const launchesBetween = rehearsal.tmux.launches.length;
+    const attemptsBeforeOff = rehearsal.attempts("write-marker-c").length;
 
     // Off between B and C: nothing launches, however many ticks pass.
     rehearsal.deactivate("turn-off-between-b-and-c");
@@ -73,6 +77,9 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     expect(rehearsal.tmux.launches).toHaveLength(launchesBetween);
     expect(rehearsal.lease()).toBeNull();
     expect(rehearsal.status().liveAdmissions).toBe(0);
+    // Off fences the between-Action launch at the attempt level too: no development attempt for C exists.
+    expect(rehearsal.attempts("write-marker-c")).toHaveLength(attemptsBeforeOff);
+    expect(rehearsal.attempts("write-marker-c").some((x) => x.role === "development")).toBe(false);
 
     // A fresh On grant: C (the only dependency-ready Action) launches once.
     rehearsal.activate("reactivate-for-c-20260926T233000Z");
@@ -86,11 +93,12 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     expect(later.every((r) => r.launch?.outcome !== "launched")).toBe(true);
     expect(rehearsal.lease()?.id).toBe(c.id);
     expect(rehearsal.sessions().filter((s) => s.action_id === "write-marker-c")).toHaveLength(1);
+    expect(rehearsal.attempts("write-marker-c").filter((x) => x.role === "development")).toHaveLength(1);
 
     rehearsal.agentEdit(c, "MARKER.md", `${LINE_A}\n${LINE_B}\n${LINE_C}\n`);
     rehearsal.agentFinish(c, CRITERIA_C);
     rehearsal.tmux.exit(c.tmux_session_name);
-    const finished = rehearsal.tick();
+    const { integrated: finished } = rehearsal.tickThroughReview();
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-c")).toBe("done");
     expect(readFileSync(path.join(rehearsal.repo, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n${LINE_C}\n`);
@@ -98,5 +106,32 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     expect(after.every((r) => r.launch?.outcome !== "launched")).toBe(true);
     expect(rehearsal.sessions().map((s) => s.action_id)).toEqual(["write-marker-a", "write-marker-b", "write-marker-c"]);
     expect(rehearsal.status().liveAdmissions).toBe(0);
+
+    // Every Action carries its requirement lineage: one passed development
+    // attempt (the only mutation owner), and independent exact-head code
+    // review and QA verdicts bound to the head that was integrated. B and C's
+    // packets were prepared by the tick, so their planner and critique are
+    // recorded as read-only helper attempts. Every transport id is distinct.
+    const requestIds = new Set<string>();
+    let total = 0;
+    for (const actionId of ["write-marker-a", "write-marker-b", "write-marker-c"]) {
+      const lineage = rehearsal.attempts(actionId);
+      total += lineage.length;
+      for (const attempt of lineage) requestIds.add(attempt.request_id);
+      const development = lineage.filter((x) => x.role === "development");
+      expect(development.map((x) => [x.ordinal, x.status, x.mutation_owner])).toEqual([[1, "passed", 1]]);
+      for (const role of ["code-review", "qa"]) {
+        const verdicts = lineage.filter((x) => x.role === role);
+        expect(verdicts.map((x) => [x.status, x.mutation_owner, x.target_head])).toEqual([["passed", 0, development[0].target_head]]);
+        expect(verdicts[0].actor_id).not.toBe(development[0].actor_id);
+      }
+      expect(new Set(lineage.map((x) => x.input_revision)).size).toBe(1);
+      expect(lineage.every((x) => x.requirement_id === `${rehearsal.projectSlug}/${rehearsal.planSlug}/${actionId}`)).toBe(true);
+      if (actionId !== "write-marker-a") {
+        expect(lineage.filter((x) => x.role === "planner" || x.role === "critique").map((x) => [x.role, x.mutation_owner]))
+          .toEqual(expect.arrayContaining([["planner", 0], ["critique", 0]]));
+      }
+    }
+    expect(requestIds.size).toBe(total);
   });
 });
