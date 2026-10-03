@@ -1,12 +1,15 @@
-// The CodeRabbit review loop an agent runs after pushing to a PR, as two
-// commands under `arcadia pr`:
+// Reads CodeRabbit's advisory review of a PR, as two commands under
+// `arcadia pr`:
 //
-//   arcadia pr code-review <pr>              wait for CodeRabbit, return a verdict
+//   arcadia pr code-review <pr>              read CodeRabbit's verdict
 //   arcadia pr decline-finding <thread> <why> reply on a thread and resolve it
 //
-// `code-review` blocks until CodeRabbit has finished reviewing the PR's pushed
-// head, then returns `done`, `fix`, or `cap` (findings outlived
-// MAX_FIX_ROUNDS pushes; hand them to the operator). A draft PR, an unpushed
+// CodeRabbit is advisory (Decision 0080): the independent review gate in
+// docs/agent-guidance/pull-requests.md governs merges, and a rate limit or a
+// missing CodeRabbit review never blocks one. `code-review` waits, up to its
+// timeout, for CodeRabbit to finish reviewing the PR's pushed head, then
+// returns `done`, `fix`, or `cap` (findings outlived MAX_FIX_ROUNDS pushes;
+// weigh them in the independent review). A draft PR, an unpushed
 // HEAD, a timeout, or a CodeRabbit failure is an error, never a verdict. So is
 // a `success` status that is not a completed review -- CodeRabbit marks a
 // paused, skipped or rate-limited head `success` too (#874, #892) -- which
@@ -161,13 +164,13 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
     return {
       ...base,
       verdict: "cap",
-      note: `Findings remain after ${MAX_FIX_ROUNDS} fix rounds. Stop and put the remaining findings to the operator.`
+      note: `CodeRabbit findings remain after ${MAX_FIX_ROUNDS} fix rounds. They are advisory: verify each and weigh it in the independent review gate (docs/agent-guidance/pull-requests.md), which decides whether anything blocks the merge.`
     };
   }
   return {
     ...base,
     verdict: "fix",
-    note: `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. Fix valid findings, decline wrong ones with 'arcadia pr decline-finding', push, and run 'arcadia pr code-review' again.${outsideNote}`
+    note: `Fix round ${fixRound} of ${MAX_FIX_ROUNDS}. CodeRabbit is advisory: fix valid findings and decline wrong ones with 'arcadia pr decline-finding'. Its findings never block a merge on their own; the independent review gate (docs/agent-guidance/pull-requests.md) governs.${outsideNote}`
   };
 }
 
@@ -214,12 +217,14 @@ export function classifyCodeRabbitStatus(entry: StatusEntry | undefined): CodeRa
   return { kind: "not_reviewed", reason: "unrecognized" };
 }
 
+const ADVISORY_GATE = "CodeRabbit is advisory: a rate limit or a missing CodeRabbit review never blocks a merge. The independent review gate (docs/agent-guidance/pull-requests.md) governs; continue with it, and do not wait for or re-trigger CodeRabbit.";
+
 const NOT_REVIEWED_REMEDY: Record<Extract<CodeRabbitStatus, { kind: "not_reviewed" }>["reason"], string> = {
-  paused: "CodeRabbit paused reviews on this PR. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the paused review in the handoff.",
-  skipped: "CodeRabbit skipped this head. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the skipped review in the handoff.",
-  rate_limited: "CodeRabbit hit its rate limit and did not review this head. Wait for the limit to reset, then request a review and rerun; reviews past the plan's limit are billed, which is the operator's spending decision. Report it rather than treating the loop as satisfied.",
-  unverified_reporter: "The latest `CodeRabbit` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. Check who posted it and report it rather than treating the loop as satisfied.",
-  unrecognized: "This CodeRabbit status is not a recognized completed review, so it is not treated as one. Check the status on the PR and report it rather than treating the loop as satisfied."
+  paused: `CodeRabbit paused reviews on this PR, so there is no CodeRabbit verdict for this head. ${ADVISORY_GATE}`,
+  skipped: `CodeRabbit skipped this head, so there is no CodeRabbit verdict for it. ${ADVISORY_GATE}`,
+  rate_limited: `CodeRabbit hit its rate limit and did not review this head. ${ADVISORY_GATE}`,
+  unverified_reporter: `The latest \`CodeRabbit\` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. ${ADVISORY_GATE}`,
+  unrecognized: `This CodeRabbit status is not a recognized completed review, so it is not treated as one. ${ADVISORY_GATE}`
 };
 
 export function extractPrompt(body: string): string | null {
@@ -264,7 +269,7 @@ export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions):
     if (classified.kind === "not_reviewed") {
       throw new ArcadiaError(
         "CODE_REVIEW_NOT_COMPLETED",
-        `CodeRabbit did not complete a review of ${pull.headRefOid.slice(0, 8)} (status: ${coderabbit?.description ?? "no description"}). This is not a completed review and never a done verdict.`,
+        `CodeRabbit did not complete a review of ${pull.headRefOid.slice(0, 8)} (status: ${coderabbit?.description ?? "no description"}). This is not a completed review and never a done verdict, and it never blocks a merge: the independent review gate governs.`,
         1,
         {
           pr,
@@ -294,7 +299,7 @@ export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions):
     if (Date.now() > deadline) {
       throw new ArcadiaError(
         "UNEXPECTED_ERROR",
-        `No finished CodeRabbit review on ${pull.headRefOid.slice(0, 8)} after ${timeoutMin} min (status: ${coderabbit?.description ?? "none"}). Is CodeRabbit installed on ${repository}?`,
+        `No finished CodeRabbit review on ${pull.headRefOid.slice(0, 8)} after ${timeoutMin} min (status: ${coderabbit?.description ?? "none"}). Is CodeRabbit installed on ${repository}? A missing CodeRabbit review never blocks a merge: the independent review gate governs.`,
         1,
         { pr }
       );
@@ -311,7 +316,8 @@ export interface DeclineFindingResult {
 }
 
 // For a finding the agent judges wrong: reply with the reason and resolve the
-// thread, so it stops blocking approval without being silently ignored.
+// thread, so it stops standing open on the bot's side without being silently
+// ignored. It never replaces the independent review gate.
 export function declineCodeRabbitFinding(repo: string, threadId: string, reason: string): DeclineFindingResult {
   const gh = (args: string[]): string => runGh(repo, args);
   const reply = `mutation($id:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id,body:$body}){comment{url}}}`;
