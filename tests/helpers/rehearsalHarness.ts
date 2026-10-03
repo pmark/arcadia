@@ -95,6 +95,8 @@ export const PROVIDER = "claude-code-cli";
 export const AGENT_PROFILE = "claude_build";
 export const LINE_A = "two-action rehearsal action A";
 export const LINE_B = "two-action rehearsal action B";
+/** Only the opt-in three-Action variant (`thirdAction`) has this line. */
+export const LINE_C = "three-action rehearsal action C";
 
 export class FakeTmux implements TmuxAdapter {
   live = new Set<string>();
@@ -132,13 +134,19 @@ export interface RehearsalOptions {
   withOrigin?: boolean;
   /** The coding-agent provider and its build profile; defaults to Claude Code. */
   provider?: { id: string; profile: string };
+  /**
+   * Append a third Action C (depending on B) to the same Plan. Off by
+   * default, so the two-Action fixture stays byte-for-byte the prepare
+   * script's shape.
+   */
+  thirdAction?: boolean;
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
 
-/** The genesis check: MARKER.md, when present, must be a prefix of the two expected lines. */
-const CHECK_MARKER_SCRIPT = `import { existsSync, readFileSync } from "node:fs";
-const expected = [${JSON.stringify(LINE_A)}, ${JSON.stringify(LINE_B)}];
+/** The genesis check: MARKER.md, when present, must be a prefix of the expected lines. */
+const checkMarkerScript = (lines: string[]) => `import { existsSync, readFileSync } from "node:fs";
+const expected = [${lines.map((line) => JSON.stringify(line)).join(", ")}];
 if (!existsSync("MARKER.md")) process.exit(0);
 const lines = readFileSync("MARKER.md", "utf8").split("\\n");
 if (lines.at(-1) !== "") { console.error("MARKER.md must end with a newline"); process.exit(1); }
@@ -190,13 +198,18 @@ export class Rehearsal {
     return `${this.projectSlug}/write-marker-b`;
   }
 
+  get actionC() {
+    return `${this.projectSlug}/write-marker-c`;
+  }
+
   /** Runbook Step 1: the fixture repository, byte-for-byte the prepare script's shape. */
   createFixtureRepository(): void {
     mkdirSync(path.join(this.repo, "docs", "plans"), { recursive: true });
     mkdirSync(path.join(this.repo, "scripts"), { recursive: true });
     writeFileSync(path.join(this.repo, "AGENTS.md"), "# AGENTS\n\nDisposable rehearsal fixture.\n");
     writeFileSync(path.join(this.repo, "CONSTITUTION.md"), "# Constitution\n\n- Do not merge, deploy, or publish from a Session.\n");
-    writeFileSync(path.join(this.repo, "scripts", "check-marker.mjs"), CHECK_MARKER_SCRIPT);
+    writeFileSync(path.join(this.repo, "scripts", "check-marker.mjs"),
+      checkMarkerScript(this.options.thirdAction ? [LINE_A, LINE_B, LINE_C] : [LINE_A, LINE_B]));
     writeFileSync(path.join(this.repo, "PROJECT.md"), `---
 arcadia: v1
 type: project
@@ -253,7 +266,20 @@ actions:
       - tests/marker.test.mjs exists and "node --test" passes, asserting both lines appear in order.
     depends_on: [write-marker-a]
     decisions: []
-questions: []
+${this.options.thirdAction ? `  - id: write-marker-c
+    title: Implement appending the line "${LINE_C}" to MARKER.md after action B's line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending the line "${LINE_C}" to MARKER.md after action B's line.
+    expected_artifact: MARKER.md with all three lines
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - MARKER.md contains the A, B and C lines in that order.
+    depends_on: [write-marker-b]
+    decisions: []
+` : ""}questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: medium
