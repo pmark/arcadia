@@ -1335,31 +1335,60 @@ describe("a draft-only never-launched candidate: the managed tick agrees with ar
     return git(fixture.repo, ["worktree", "list", "--porcelain"]).split("\n").filter((line) => line.startsWith("worktree ")).length;
   }
 
-  it("resumes the same worktree and branch in both paths, on one receipt, launching at the candidate's own tip", () => {
+  function handoutRoutes(fixture: ReturnType<typeof preparedFixture>): string[] {
+    return withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT resumed_route FROM candidate_draft_recoveries WHERE resumed_at IS NOT NULL").all() as Array<{ resumed_route: string }>)
+        .map((row) => row.resumed_route));
+  }
+
+  it("lets the tick hand the candidate out once at its own tip, after which Go hands nothing out", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     activatePolicy(fixture);
     const { candidate, branch, draft, draftPath } = neverLaunchedCandidate(fixture);
     const tip = git(candidate, ["rev-parse", "HEAD"]).trim();
 
-    const go = goFor(fixture, tmux).data;
     const launched = doStandingLaunch(fixture, tmux, "policy-req-draft");
+    const goError = captureArcadiaError(() => goFor(fixture, tmux));
 
-    expect(go.nextWorktree?.path).toBe(candidate);
-    expect(go.nextWorktree?.branch).toBe(branch);
     expect(launched.session.worktree_path).toBe(candidate);
     expect(launched.session.branch).toBe(branch);
     expect(launched.session.status).toBe("running");
     expect(launched.session.base_revision).toBe(tip);
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].cwd).toBe(candidate);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    // The tick's Session now owns the candidate; Go hands nothing out again.
+    expect(goError.message).toContain("A Session is already live for this repository");
+    expect(goError.details?.worktreePath).toBe(candidate);
     expect(worktreeCount(fixture)).toBe(2);
     expect(claimRows(fixture)).toBe(1);
     expect(readFileSync(draftPath).equals(draft)).toBe(true);
-    const receipts = withReadOnlyDatabase(fixture.workspace, (db) =>
-      db.prepare("SELECT request_id, worktree, branch FROM candidate_draft_recoveries").all());
-    expect(receipts).toEqual([{ request_id: go.draftRecovery!.requestId, worktree: candidate, branch }]);
     expect(git(fixture.repo, ["branch", "--list", "ask/recover-*"]).trim()).toBe("");
+  });
+
+  it("never launches into a candidate Go already handed out by hand, refusing with the same disposition", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { candidate, branch, draft, draftPath } = neverLaunchedCandidate(fixture);
+
+    const go = goFor(fixture, tmux).data;
+    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-after-go"));
+
+    expect(go.nextWorktree?.path).toBe(candidate);
+    expect(go.nextWorktree?.branch).toBe(branch);
+    expect(launchError.message).toContain("holds only Agent Ask drafts");
+    expect(launchError.details?.candidateKind).toBe("draft_only");
+    const disposition = launchError.details?.disposition as { receiptId: string; handedOut: { receiptId: string; route: string } };
+    expect(disposition.receiptId).toBe(go.draftRecovery!.requestId);
+    expect(disposition.handedOut).toMatchObject({ receiptId: go.draftRecovery!.requestId, route: "go" });
+    expect(tmux.launches).toHaveLength(0);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+    expect(handoutRoutes(fixture)).toEqual(["go"]);
+    expect(worktreeCount(fixture)).toBe(2);
+    expect(claimRows(fixture)).toBe(1);
+    expect(readFileSync(draftPath).equals(draft)).toBe(true);
   });
 
   it("refuses a code-bearing candidate with the same reason and candidateKind in both paths, creating nothing", () => {
@@ -1381,28 +1410,6 @@ describe("a draft-only never-launched candidate: the managed tick agrees with ar
     expect(liveAdmissionCount(fixture)).toBe(0);
     expect(worktreeCount(fixture)).toBe(2);
     expect(readFileSync(draftPath).equals(draft)).toBe(true);
-  });
-
-  it("refuses a launch with the disposition when a receipted draft changed after Go resumed it", () => {
-    const fixture = preparedFixture();
-    const tmux = new FakeTmux();
-    activatePolicy(fixture);
-    const { draftPath } = neverLaunchedCandidate(fixture);
-    const receiptId = goFor(fixture, tmux).data.draftRecovery!.requestId;
-    writeFileSync(draftPath, "edited after the receipt\n");
-
-    const launchError = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-changed"));
-    const goError = captureArcadiaError(() => goFor(fixture, tmux));
-
-    for (const error of [launchError, goError]) {
-      expect(error.message).toContain("holds only Agent Ask drafts");
-      expect(error.details?.candidateKind).toBe("draft_only");
-      expect((error.details?.disposition as { receiptId: string }).receiptId).toBe(receiptId);
-    }
-    expect(tmux.launches).toHaveLength(0);
-    expect(liveAdmissionCount(fixture)).toBe(0);
-    expect(worktreeCount(fixture)).toBe(2);
-    expect(readFileSync(draftPath, "utf8")).toBe("edited after the receipt\n");
   });
 });
 

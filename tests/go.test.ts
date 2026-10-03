@@ -694,6 +694,20 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
     });
   }
 
+  function handouts(fixture: ReturnType<typeof createFixture>): Array<{ request_id: string; resumed_route: string }> {
+    return withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+      "SELECT request_id, resumed_route FROM candidate_draft_recoveries WHERE resumed_at IS NOT NULL"
+    ).all() as Array<{ request_id: string; resumed_route: string }>);
+  }
+
+  interface Disposition {
+    receiptId: string;
+    blocker: string;
+    handedOut: { receiptId: string; route: string; at: string } | null;
+    drafts: Array<{ path: string; sha256: string }>;
+    nextStep: string;
+  }
+
   function sha256(bytes: Buffer): string {
     return createHash("sha256").update(bytes).digest("hex");
   }
@@ -724,6 +738,7 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
       relevance: "current_action"
     }]);
     expect(receiptIds(fixture)).toEqual([receipt.requestId]);
+    expect(handouts(fixture)).toEqual([{ request_id: receipt.requestId, resumed_route: "go" }]);
     expect(git(candidate, ["status", "--porcelain"])).toBe("?? .arcadia/\n");
   });
 
@@ -786,76 +801,120 @@ describe("arcadia go — resumes a draft-only never-launched candidate in place 
       testHooks: { beforeDraftResumeVerification: () => writeFileSync(draftPath, "edited by a live terminal\n") }
     }), "holds only Agent Ask drafts");
 
-    const disposition = error.details?.disposition as { receiptId: string; drafts: Array<{ path: string; sha256: string }>; nextStep: string };
+    const disposition = error.details?.disposition as Disposition;
     expect(error.details?.candidateKind).toBe("draft_only");
     expect(error.details?.branch).toBe(branch);
     expect(disposition.drafts).toEqual([{ path: ".arcadia/asks/agent-ask-changing-2026-09-06.yaml", sha256: sha256(original) }]);
     expect(disposition.nextStep).toContain("before rerunning arcadia go");
-    // The pre-pass receipt survived the refusal's rollback; the edit is left as found.
+    // The receipt is committed after the refusal rolled back; the edit is left as found.
+    expect(handouts(fixture)).toEqual([]);
     expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
     expect(readFileSync(draftPath, "utf8")).toBe("edited by a live terminal\n");
     expect(worktreeCount(fixture)).toBe(2);
   });
 
-  it("refuses with the disposition when a draft changes after the committed receipt and before the dispatch transaction", () => {
-    const { fixture, path: candidate } = prepareCandidate("draft-changed-early");
-    writeDraft(candidate, "early-2026-09-06", "test-project");
-
-    const error = expectValidation(() => goAgain(fixture, {
-      testHooks: { afterDraftRecoveryReceipt: () => writeDraft(candidate, "appeared-2026-09-06", "test-project") }
+  it("classifies a refused-only candidate afresh after an edit, on a new receipt, and hands it out", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-refused-then-edited");
+    writeDraft(candidate, "edited-2026-09-06", "test-project");
+    const draftPath = path.join(candidate, ".arcadia", "asks", "agent-ask-edited-2026-09-06.yaml");
+    const refused = expectValidation(() => goAgain(fixture, {
+      testHooks: { beforeDraftResumeVerification: () => writeFileSync(draftPath, "{\"project\": \"test-project\"}\n") }
     }), "holds only Agent Ask drafts");
+    const refusedReceipt = (refused.details?.disposition as Disposition).receiptId;
 
-    const disposition = error.details?.disposition as { receiptId: string; drafts: Array<{ path: string }> };
-    expect(disposition.drafts.map((draft) => draft.path)).toEqual([".arcadia/asks/agent-ask-early-2026-09-06.yaml"]);
-    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
-    expect(existsSync(path.join(candidate, ".arcadia", "asks", "agent-ask-appeared-2026-09-06.yaml"))).toBe(true);
+    const resumed = goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") });
+
+    expect(resumed.data.nextWorktree?.path).toBe(candidate);
+    expect(resumed.data.draftRecovery?.requestId).not.toBe(refusedReceipt);
+    expect(receiptIds(fixture).sort()).toEqual([refusedReceipt, resumed.data.draftRecovery!.requestId].sort());
+    expect(handouts(fixture)).toEqual([{ request_id: resumed.data.draftRecovery!.requestId, resumed_route: "go" }]);
   });
 
-  it("keeps refusing with the earlier receipt's disposition once a resumed candidate's draft changes", () => {
+  it("refuses with the handed-out disposition once a handed-out candidate's draft changes", () => {
     const { fixture, path: candidate } = prepareCandidate("draft-changed-later");
-    const original = writeDraft(candidate, "later-2026-09-06", "test-project");
+    writeDraft(candidate, "later-2026-09-06", "test-project");
     const first = goAgain(fixture).data.draftRecovery!;
-    writeFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-later-2026-09-06.yaml"), "edited after the resume\n");
+    const edited = Buffer.from("edited after the handout\n");
+    writeFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-later-2026-09-06.yaml"), edited);
 
     const error = expectValidation(() => goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }), "holds only Agent Ask drafts");
 
-    const disposition = error.details?.disposition as { receiptId: string; drafts: Array<{ sha256: string }> };
-    expect(disposition.receiptId).toBe(first.requestId);
-    expect(disposition.drafts.map((draft) => draft.sha256)).toEqual([sha256(original)]);
-    // Both observed versions stay receipted; the edit itself is left in place.
-    expect(receiptIds(fixture)).toHaveLength(2);
-    expect(receiptIds(fixture)).toContain(first.requestId);
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.handedOut).toEqual({ receiptId: first.requestId, route: "go", at: resumedAt.toISOString() });
+    expect(disposition.drafts.map((draft) => draft.sha256)).toEqual([sha256(edited)]);
+    expect(disposition.nextStep).toContain("is gone");
+    // Both observed versions stay receipted; only the first was ever handed out.
+    expect(receiptIds(fixture).sort()).toEqual([first.requestId, disposition.receiptId].sort());
+    expect(handouts(fixture)).toEqual([{ request_id: first.requestId, resumed_route: "go" }]);
     expect(worktreeCount(fixture)).toBe(2);
   });
 
-  it("replays one receipt across repeated Go calls, each reopening the database", () => {
+  it("hands a candidate out once: a repeated Go call replays the same receipt and refuses with the disposition", () => {
     const { fixture, path: candidate } = prepareCandidate("draft-replay");
     writeDraft(candidate, "replay-2026-09-06", "test-project");
 
     const first = goAgain(fixture).data.draftRecovery!;
-    const second = goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }).data.draftRecovery!;
+    const error = expectValidation(() => goAgain(fixture, { now: new Date("2026-09-06T14:00:00.000Z") }), "holds only Agent Ask drafts");
 
-    expect(second.requestId).toBe(first.requestId);
-    expect(second).toEqual(first);
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.receiptId).toBe(first.requestId);
+    expect(disposition.handedOut?.receiptId).toBe(first.requestId);
+    expect(disposition.blocker).toContain("Already handed out via arcadia go");
     expect(receiptIds(fixture)).toEqual([first.requestId]);
+    expect(handouts(fixture)).toHaveLength(1);
     expect(claims(fixture)).toHaveLength(1);
     expect(worktreeCount(fixture)).toBe(2);
   });
 
-  it("converges two racing Go attempts on one receipt, one claim and one worktree", () => {
+  it("gives exactly one of two racing Go attempts the candidate; the other refuses with the disposition", () => {
     const { fixture, path: candidate } = prepareCandidate("draft-race");
     writeDraft(candidate, "race-2026-09-06", "test-project");
-    let inner: ReturnType<typeof goAgain> | null = null;
+    let outerError: ArcadiaError | null = null;
 
-    // The second attempt runs entirely inside the first one's window between
-    // its committed receipt and its own dispatch transaction.
-    const outer = goAgain(fixture, { testHooks: { afterDraftRecoveryReceipt: () => { inner = goAgain(fixture); } } });
+    // The second attempt runs entirely inside the first one's window before its
+    // own dispatch transaction opens; that transaction then sees the handout.
+    const inner = { result: null as ReturnType<typeof goAgain> | null };
+    try {
+      goAgain(fixture, { testHooks: { beforeDispatchTransaction: () => { inner.result = goAgain(fixture); } } });
+    } catch (error) {
+      outerError = error as ArcadiaError;
+    }
 
-    expect(inner!.data.nextWorktree?.path).toBe(candidate);
-    expect(outer.data.nextWorktree?.path).toBe(candidate);
-    expect(inner!.data.draftRecovery?.requestId).toBe(outer.data.draftRecovery?.requestId);
+    expect(inner.result!.data.nextWorktree?.path).toBe(candidate);
+    expect(outerError?.message).toContain("holds only Agent Ask drafts");
+    expect((outerError?.details?.disposition as Disposition).handedOut?.receiptId).toBe(inner.result!.data.draftRecovery?.requestId);
     expect(receiptIds(fixture)).toHaveLength(1);
+    expect(handouts(fixture)).toHaveLength(1);
     expect(claims(fixture)).toHaveLength(1);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it("refuses with the disposition when the base moved since the candidate was prepared", () => {
+    const { fixture, path: candidate } = prepareCandidate("draft-stale-base");
+    const draft = writeDraft(candidate, "stale-2026-09-06", "test-project");
+    commitFeature(fixture.main, "landed.txt", "another candidate landed\n");
+    git(fixture.main, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    const disposition = error.details?.disposition as Disposition;
+    expect(disposition.blocker).toContain("must be re-prepared");
+    expect(receiptIds(fixture)).toEqual([disposition.receiptId]);
+    expect(handouts(fixture)).toEqual([]);
+    expect(readFileSync(path.join(candidate, ".arcadia", "asks", "agent-ask-stale-2026-09-06.yaml")).equals(draft)).toBe(true);
+    expect(worktreeCount(fixture)).toBe(2);
+  });
+
+  it.each([".arcadia-go-request", ".arcadia-preserve-request"])("treats %s beside a draft as evidence a session ran, refusing with the disposition", (transport) => {
+    const { fixture, path: candidate } = prepareCandidate(`draft-transport${transport.replaceAll(".", "-")}`);
+    writeDraft(candidate, "transport-2026-09-06", "test-project");
+    writeFileSync(path.join(candidate, transport), "{}\n");
+
+    const error = expectValidation(() => goAgain(fixture), "holds only Agent Ask drafts");
+
+    expect((error.details?.disposition as Disposition).blocker).toContain(`A session has run in this candidate: ${transport}`);
+    expect(handouts(fixture)).toEqual([]);
+    expect(existsSync(path.join(candidate, transport))).toBe(true);
     expect(worktreeCount(fixture)).toBe(2);
   });
 

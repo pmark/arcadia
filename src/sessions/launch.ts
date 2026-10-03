@@ -32,8 +32,9 @@ import {
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import {
   assertDraftRecoveryUnchanged,
+  commitDraftHandout,
   evaluateDraftOnlyCandidate,
-  receiptDraftOnlyCandidate,
+  recordDraftRecoveryReceipt,
   type DraftRecoveryReceipt
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
@@ -308,20 +309,21 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
 
   // Issue #884: agree with `arcadia go` about a prepared candidate no Session
-  // row describes. The shared classifier receipts a draft-only one in its own
-  // committed transaction first, then -- inside the claim transaction --
-  // resumes it in place only when it is provably never launched and its
-  // receipted drafts are unchanged; every other dirty candidate refuses with
-  // the same reason and details Go reports. Like Go's own ordering, a
-  // resumable handoff (handled above) decides first; only with none at all is
-  // an undescribed candidate considered.
+  // row describes. Inside one claim transaction the shared evaluator either
+  // hands a never-launched draft-only candidate out in place -- once, with
+  // its receipt and handout marker committed alongside the claim refresh, so
+  // a candidate Go already handed out is never launched into again -- or
+  // refuses with the same reason and details Go reports, committing the
+  // receipt of a disposition first. Like Go's own ordering, a resumable
+  // handoff (handled above) decides first; only with none at all is an
+  // undescribed candidate considered.
   let draftResume: { path: string; branch: string; receipt: DraftRecoveryReceipt } | null = null;
   if (!staleHandoff) {
     const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
     try {
-      const expectedReceipt = writeTransaction(input.db, () => receiptDraftOnlyCandidate(input.db, lookup));
       const decision = writeTransaction(input.db, () => {
-        const evaluated = evaluateDraftOnlyCandidate(input.db, { ...lookup, expectedReceipt });
+        const evaluated = evaluateDraftOnlyCandidate(input.db, lookup);
+        if (evaluated.kind === "refuse" && evaluated.receipt) recordDraftRecoveryReceipt(input.db, evaluated.receipt, now);
         // Refreshed at the same path, never a second claim. The claim is not
         // this call's to release afterwards: it held this candidate before.
         if (evaluated.kind === "resume") {
@@ -333,6 +335,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
             project: preview.projectSlug,
             actionId: preview.actionId!
           });
+          commitDraftHandout(input.db, evaluated.receipt, "tick", now);
         }
         return evaluated;
       });

@@ -40,6 +40,12 @@ export interface CandidateDirt {
   drafts: CapturedDraft[];
   /** Why the worktree is not `draft_only`; null when it is. */
   reason: string | null;
+  /**
+   * Go/preservation request files present at the root. Only a session running
+   * inside the candidate writes them, so for the resume decision they are
+   * evidence that it was launched -- never ignorable dirt.
+   */
+  sessionTransport: string[];
 }
 
 export interface DraftRecoveryEntry {
@@ -66,10 +72,13 @@ export interface DraftRecoveryReceipt {
   drafts: DraftRecoveryEntry[];
 }
 
+export type HandoutRoute = "go" | "tick";
+
 export type DraftCandidateDecision =
   | { kind: "none" }
   | { kind: "resume"; path: string; branch: string; receipt: DraftRecoveryReceipt }
-  | { kind: "refuse"; reason: string; details: Record<string, unknown> };
+  /** `receipt` is set for a disposition: the caller persists it before reporting the refusal. */
+  | { kind: "refuse"; reason: string; details: Record<string, unknown>; receipt: DraftRecoveryReceipt | null };
 
 export const ORPHAN_CANDIDATE_REASON = "A prepared worktree for this Action already holds uncommitted changes; Arcadia go will not prepare a second one.";
 export const ORPHAN_CANDIDATE_REMEDY = "This worktree was never launched through Arcadia, so its exit cannot be proven terminal. Preserve it (commit and push its work, or resume it by hand) or discard it (remove the worktree and branch) before retrying.";
@@ -83,7 +92,10 @@ export const UNSAFE_DRAFT_CANDIDATE_REASON = "A prepared worktree for this Actio
  * regular, small, UTF-8 draft file at the exact draft path fails closed.
  */
 export function classifyCandidateDirt(worktreePath: string): CandidateDirt {
-  const unknown = (reason: string): CandidateDirt => ({ kind: "unknown", drafts: [], reason });
+  const root = path.resolve(worktreePath);
+  // Checked directly rather than through status, which an ignore rule could hide them from.
+  const sessionTransport = [GO_REQUEST_FILE, PRESERVATION_REQUEST_FILE].filter((file) => lstatOrNull(path.join(root, file)) !== null);
+  const unknown = (reason: string): CandidateDirt => ({ kind: "unknown", drafts: [], reason, sessionTransport });
   // Untrimmed: a leading status column can be a space.
   const status = rawGit(worktreePath, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
   if (status === null) return unknown("Git status could not be read.");
@@ -95,18 +107,17 @@ export function classifyCandidateDirt(worktreePath: string): CandidateDirt {
     const code = entry.slice(0, 2);
     const file = entry.slice(3);
     if (code !== "??") {
-      return { kind: "code_bearing", drafts: [], reason: `Tracked change ${JSON.stringify(code)} at ${file}.` };
+      return { kind: "code_bearing", drafts: [], reason: `Tracked change ${JSON.stringify(code)} at ${file}.`, sessionTransport };
     }
     if (file === GO_REQUEST_FILE || file === PRESERVATION_REQUEST_FILE) continue;
     if (!file.startsWith(".arcadia/")) {
-      return { kind: "code_bearing", drafts: [], reason: `Untracked non-Ask file ${file}.` };
+      return { kind: "code_bearing", drafts: [], reason: `Untracked non-Ask file ${file}.`, sessionTransport };
     }
     if (!DRAFT_ASK_PATH.test(file)) return unknown(`Untracked file ${file} is not an isolated Agent Ask draft.`);
     draftPaths.push(file);
   }
   if (draftPaths.length === 0) return unknown("No Agent Ask draft was found.");
 
-  const root = path.resolve(worktreePath);
   for (const directory of [".arcadia", path.join(".arcadia", "asks")]) {
     const stat = lstatOrNull(path.join(root, directory));
     if (!stat?.isDirectory() || stat.isSymbolicLink()) return unknown(`${directory} is not a real directory.`);
@@ -134,7 +145,7 @@ export function classifyCandidateDirt(worktreePath: string): CandidateDirt {
     if (typeof captured === "string") return unknown(captured);
     drafts.push(captured);
   }
-  return { kind: "draft_only", drafts, reason: null };
+  return { kind: "draft_only", drafts, reason: null, sessionTransport };
 }
 
 function rawGit(cwd: string, args: string[]): string | null {
@@ -236,11 +247,17 @@ export function ensureDraftRecoveryTable(db: Database.Database): void {
     action_id TEXT NOT NULL,
     base_sha TEXT NOT NULL,
     receipt_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    resumed_at TEXT,
+    resumed_route TEXT
   )`);
+  // A table created before the one-shot handout marker existed gains it here.
+  const columns = new Set((db.prepare("PRAGMA table_info(candidate_draft_recoveries)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!columns.has("resumed_at")) db.exec("ALTER TABLE candidate_draft_recoveries ADD COLUMN resumed_at TEXT");
+  if (!columns.has("resumed_route")) db.exec("ALTER TABLE candidate_draft_recoveries ADD COLUMN resumed_route TEXT");
 }
 
-/** Insert once; a replay must match byte for byte or it is refused. */
+/** Insert once; a replay must match byte for byte or it is refused. Never changes the handout marker. */
 export function recordDraftRecoveryReceipt(db: Database.Database, receipt: DraftRecoveryReceipt, now: Date): DraftRecoveryReceipt {
   ensureDraftRecoveryTable(db);
   const json = JSON.stringify(receipt);
@@ -259,25 +276,41 @@ export function recordDraftRecoveryReceipt(db: Database.Database, receipt: Draft
   return receipt;
 }
 
-export function getDraftRecoveryReceipt(db: Database.Database, requestId: string): DraftRecoveryReceipt | null {
-  ensureDraftRecoveryTable(db);
-  const row = db.prepare("SELECT receipt_json FROM candidate_draft_recoveries WHERE request_id = ?")
-    .get(requestId) as { receipt_json: string } | undefined;
-  return row ? JSON.parse(row.receipt_json) as DraftRecoveryReceipt : null;
+/**
+ * Hand the candidate out exactly once. Callers run this in the same
+ * transaction that refreshes the claim (`reserveAgentWorktree`), so of any
+ * number of Go or tick attempts exactly one wins; every later attempt sees the
+ * marker and refuses with the disposition instead of resuming again.
+ */
+export function commitDraftHandout(db: Database.Database, receipt: DraftRecoveryReceipt, route: HandoutRoute, now: Date): void {
+  recordDraftRecoveryReceipt(db, receipt, now);
+  const marked = db.prepare(`UPDATE candidate_draft_recoveries SET resumed_at = ?, resumed_route = ?
+    WHERE request_id = ? AND resumed_at IS NULL`).run(now.toISOString(), route, receipt.requestId);
+  if (marked.changes !== 1) {
+    throw validationError("This draft-only candidate was already handed out; Arcadia will not hand it out a second time.", { receiptId: receipt.requestId });
+  }
 }
 
-function earlierDifferingReceipt(db: Database.Database, current: DraftRecoveryReceipt): DraftRecoveryReceipt | null {
+interface Handout {
+  receiptId: string;
+  route: HandoutRoute;
+  at: string;
+}
+
+/** The handout of any receipt of this exact candidate, whatever its drafts held then. */
+function existingHandout(db: Database.Database, receipt: DraftRecoveryReceipt): Handout | null {
   ensureDraftRecoveryTable(db);
-  const row = db.prepare(`SELECT receipt_json FROM candidate_draft_recoveries
-    WHERE worktree = ? AND branch = ? AND request_id != ?
-    ORDER BY created_at DESC, rowid DESC LIMIT 1`)
-    .get(current.worktree, current.branch, current.requestId) as { receipt_json: string } | undefined;
-  return row ? JSON.parse(row.receipt_json) as DraftRecoveryReceipt : null;
+  const row = db.prepare(`SELECT request_id, resumed_route, resumed_at FROM candidate_draft_recoveries
+    WHERE worktree = ? AND branch = ? AND resumed_at IS NOT NULL
+    ORDER BY resumed_at DESC, rowid DESC LIMIT 1`)
+    .get(receipt.worktree, receipt.branch) as { request_id: string; resumed_route: HandoutRoute; resumed_at: string } | undefined;
+  return row ? { receiptId: row.request_id, route: row.resumed_route, at: row.resumed_at } : null;
 }
 
 /** Null when the worktree still holds exactly the receipted drafts and nothing else. */
 export function draftRecoveryMismatch(receipt: DraftRecoveryReceipt): string | null {
   const current = classifyCandidateDirt(receipt.worktree);
+  if (current.sessionTransport.length > 0) return sessionTransportBlocker(current.sessionTransport);
   if (current.kind !== "draft_only") return current.reason ?? "The candidate no longer holds only Agent Ask drafts.";
   const now = JSON.stringify(current.drafts.map((draft) => [draft.path, draft.sha256]));
   const then = JSON.stringify(receipt.drafts.map((draft) => [draft.path, draft.sha256]));
@@ -287,7 +320,11 @@ export function draftRecoveryMismatch(receipt: DraftRecoveryReceipt): string | n
   return null;
 }
 
-/** Throw the structured disposition refusal when a receipted candidate changed. */
+function sessionTransportBlocker(files: string[]): string {
+  return `A session has run in this candidate: ${files.join(", ")} is present, and only a session inside it writes that.`;
+}
+
+/** Throw the structured disposition refusal when a handed-out candidate changed before launch. */
 export function assertDraftRecoveryUnchanged(receipt: DraftRecoveryReceipt): void {
   const mismatch = draftRecoveryMismatch(receipt);
   if (mismatch) {
@@ -345,43 +382,24 @@ function buildReceipt(input: CandidateLookup, candidate: { path: string; branch:
 }
 
 /**
- * Receipt the drafts of this Action's single draft-only prepared candidate, in
- * its own committed transaction, before Go or the managed tick decides anything
- * about it -- so a refusal that rolls back the dispatch transaction can never
- * take the receipt with it. Records only; never touches a file.
- */
-export function receiptDraftOnlyCandidate(db: Database.Database, input: CandidateLookup): DraftRecoveryReceipt | null {
-  let candidates: Array<{ path: string; branch: string }>;
-  try {
-    candidates = dirtyPreparedCandidates(input);
-  } catch {
-    // Best effort: an unreadable worktree is the authoritative evaluation's to
-    // refuse, after a resumable handoff or live lease has had its say first.
-    return null;
-  }
-  if (candidates.length !== 1) return null;
-  const dirt = classifyCandidateDirt(candidates[0].path);
-  if (dirt.kind !== "draft_only") return null;
-  const receipt = buildReceipt(input, candidates[0], dirt.drafts);
-  return receipt ? recordDraftRecoveryReceipt(db, receipt, input.now) : null;
-}
-
-/**
- * Decide, inside the caller's dispatch transaction, what to do about a dirty
- * prepared candidate for this Action that no Session row describes.
+ * Decide, inside the caller's dispatch transaction and after its handoff and
+ * lease checks, what to do about a dirty prepared candidate for this Action
+ * that no Session row describes. Writes nothing: on `resume` the caller commits
+ * the receipt and the one-shot handout with its claim refresh
+ * (`commitDraftHandout`); on a disposition refusal it persists `receipt`.
  *
- * Resume only when the candidate holds nothing but receipted drafts and every
- * piece of "never launched" evidence holds: no Session row of any status names
- * its path or branch, its branch carries no commits beyond the base, and the
- * live claim on this Action is this exact worktree and branch. A human terminal
- * still open in the worktree cannot be detected, which is why the hashes are
- * re-verified immediately before resuming (and again before any launch) and why
- * every unsafe case returns one structured disposition instead.
+ * Resume only when the candidate holds nothing but drafts and every piece of
+ * "never launched" evidence holds: no Session row of any status names its path
+ * or branch, no session transport file is present, no receipt of it was ever
+ * handed out, its HEAD is its branch tip and equals the current base tip, and
+ * the live claim on this Action is this exact worktree and branch. A human
+ * terminal still open in the worktree cannot be detected, which is why a
+ * candidate is handed out at most once, why the hashes are re-verified
+ * immediately before resuming (and again before any launch), and why every
+ * unsafe case returns one structured disposition instead.
  */
 export function evaluateDraftOnlyCandidate(db: Database.Database, input: CandidateLookup & {
-  /** The receipt the pre-pass committed for this Action, when it ran. */
-  expectedReceipt?: DraftRecoveryReceipt | null;
-  /** Deterministic fault injection between receipt and final hash verification. */
+  /** Deterministic fault injection between evaluation and final hash verification. */
   beforeResumeVerification?: () => void;
 }): DraftCandidateDecision {
   const candidates = dirtyPreparedCandidates(input);
@@ -390,25 +408,22 @@ export function evaluateDraftOnlyCandidate(db: Database.Database, input: Candida
   const ordinaryRefusal = (candidateKind: CandidateKind): DraftCandidateDecision => ({
     kind: "refuse",
     reason: ORPHAN_CANDIDATE_REASON,
-    details: { worktreePath: candidate.path, branch: candidate.branch, candidateKind, remedy: ORPHAN_CANDIDATE_REMEDY }
+    details: { worktreePath: candidate.path, branch: candidate.branch, candidateKind, remedy: ORPHAN_CANDIDATE_REMEDY },
+    receipt: null
   });
   if (candidates.length > 1) return ordinaryRefusal("unknown");
   const dirt = classifyCandidateDirt(candidate.path);
   if (dirt.kind !== "draft_only") return ordinaryRefusal(dirt.kind);
-  const built = buildReceipt(input, candidate, dirt.drafts);
-  if (!built) return ordinaryRefusal("unknown");
+  const receipt = buildReceipt(input, candidate, dirt.drafts);
+  if (!receipt) return ordinaryRefusal("unknown");
+  // A launched candidate is not this module's to receipt or resume.
+  if (launchedSessionId(db, receipt)) return ordinaryRefusal("draft_only");
 
-  if (input.expectedReceipt && input.expectedReceipt.requestId !== built.requestId) {
-    // The drafts changed after the pre-pass receipted them. Its committed
-    // receipt stands; the changed state is not safe to resume blind.
-    return unsafeRefusal(input.expectedReceipt, "An Agent Ask draft changed, appeared or disappeared since it was receipted.");
+  if (dirt.sessionTransport.length > 0) return unsafeRefusal(receipt, sessionTransportBlocker(dirt.sessionTransport));
+  const handout = existingHandout(db, receipt);
+  if (handout) {
+    return unsafeRefusal(receipt, `Already handed out via ${handout.route === "go" ? "arcadia go" : "the managed tick"} at ${handout.at} (receipt ${handout.receiptId}); a candidate is handed out at most once.`, handout);
   }
-  // A draft that changed since an earlier Go or tick receipted this candidate
-  // is the one observable sign that a terminal may still be working in it.
-  const earlier = earlierDifferingReceipt(db, built);
-  if (earlier) return unsafeRefusal(earlier, "An Agent Ask draft changed, appeared or disappeared since an earlier receipt of this candidate.");
-  const receipt = recordDraftRecoveryReceipt(db, built, input.now);
-
   const blocker = neverLaunchedBlocker(db, input, receipt);
   if (blocker) return unsafeRefusal(receipt, blocker);
 
@@ -418,13 +433,15 @@ export function evaluateDraftOnlyCandidate(db: Database.Database, input: Candida
   return { kind: "resume", path: candidate.path, branch: candidate.branch, receipt };
 }
 
-function neverLaunchedBlocker(db: Database.Database, input: CandidateLookup, receipt: DraftRecoveryReceipt): string | null {
+function launchedSessionId(db: Database.Database, receipt: DraftRecoveryReceipt): string | null {
   const hasSessions = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_sessions'").get();
-  if (hasSessions) {
-    const session = db.prepare("SELECT id FROM agent_sessions WHERE worktree_path = ? OR branch IN (?, ?) LIMIT 1")
-      .get(receipt.worktree, receipt.branch, `refs/heads/${receipt.branch}`) as { id: string } | undefined;
-    if (session) return `Session ${session.id} already references this candidate, so it was launched.`;
-  }
+  if (!hasSessions) return null;
+  const session = db.prepare("SELECT id FROM agent_sessions WHERE worktree_path = ? OR branch IN (?, ?) LIMIT 1")
+    .get(receipt.worktree, receipt.branch, `refs/heads/${receipt.branch}`) as { id: string } | undefined;
+  return session?.id ?? null;
+}
+
+function neverLaunchedBlocker(db: Database.Database, input: CandidateLookup, receipt: DraftRecoveryReceipt): string | null {
   let commits: number;
   try {
     commits = countCommits(input.repositoryPath, input.baseBranch, receipt.branch);
@@ -433,12 +450,17 @@ function neverLaunchedBlocker(db: Database.Database, input: CandidateLookup, rec
   }
   if (commits !== 0) return `The candidate branch carries ${commits} commit(s) beyond ${input.baseBranch}.`;
   let head: string;
+  let base: string;
   try {
     head = git(receipt.worktree, ["rev-parse", "HEAD"]).trim();
+    base = git(input.repositoryPath, ["rev-parse", "--verify", `refs/heads/${input.baseBranch}^{commit}`]).trim();
   } catch {
-    return "The candidate's HEAD could not be read.";
+    return "The candidate's HEAD or the current base tip could not be read.";
   }
   if (head !== receipt.baseSha) return "The candidate's HEAD is not its branch tip.";
+  if (head !== base) {
+    return `The base branch ${input.baseBranch} moved to ${base} since this candidate was prepared at ${head}; it must be re-prepared from the current base (its drafts are preserved by this receipt).`;
+  }
   const claim = getActiveActionClaim(db, input.repositoryPath, input.projectSlug, input.actionId, input.now);
   if (!claim) return "No live claim on this Action names the candidate.";
   if (canonicalPath(claim.worktree_path) !== receipt.worktree || claim.branch.replace(/^refs\/heads\//, "") !== receipt.branch) {
@@ -448,7 +470,10 @@ function neverLaunchedBlocker(db: Database.Database, input: CandidateLookup, rec
 }
 
 /** The one narrow operator disposition, offered only when resuming is unsafe. */
-function unsafeRefusal(receipt: DraftRecoveryReceipt, blocker: string): { kind: "refuse"; reason: string; details: Record<string, unknown> } {
+function unsafeRefusal(receipt: DraftRecoveryReceipt, blocker: string, handout: Handout | null = null): Extract<DraftCandidateDecision, { kind: "refuse" }> {
+  const confirm = handout
+    ? `Confirm the session it was handed to via ${handout.route === "go" ? "arcadia go" : "the managed tick"} at ${handout.at} is gone and no terminal is still using ${receipt.worktree}`
+    : `Confirm no terminal is still using ${receipt.worktree}`;
   return {
     kind: "refuse",
     reason: UNSAFE_DRAFT_CANDIDATE_REASON,
@@ -459,10 +484,12 @@ function unsafeRefusal(receipt: DraftRecoveryReceipt, blocker: string): { kind: 
       disposition: {
         receiptId: receipt.requestId,
         blocker,
+        handedOut: handout,
         drafts: receipt.drafts.map((draft) => ({ path: draft.path, sha256: draft.sha256 })),
-        nextStep: `Confirm no terminal is still using ${receipt.worktree}; then settle each receipted draft from there with arcadia agent-ask settle (or keep its exact bytes elsewhere) and retire the candidate (remove its worktree and branch) before rerunning arcadia go. Arcadia has not settled, copied, moved or deleted any draft.`
+        nextStep: `${confirm}; then settle each receipted draft from there with arcadia agent-ask settle (or keep its exact bytes elsewhere) and retire the candidate (remove its worktree and branch) before rerunning arcadia go. Arcadia has not settled, copied, moved or deleted any draft.`
       },
       remedy: ORPHAN_CANDIDATE_REMEDY
-    }
+    },
+    receipt
   };
 }

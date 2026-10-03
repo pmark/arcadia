@@ -66,8 +66,9 @@ import {
 import { bindManualPreservation } from "../sessions/manualPreservation.js";
 import {
   assertDraftRecoveryUnchanged,
+  commitDraftHandout,
   evaluateDraftOnlyCandidate,
-  receiptDraftOnlyCandidate,
+  recordDraftRecoveryReceipt,
   type DraftRecoveryReceipt
 } from "../sessions/draftOnlyCandidate.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
@@ -111,8 +112,8 @@ export interface GoCommandOptions {
     askRecovery?: AskRecoveryTestHooks;
     /** Deterministic race injection immediately before a divergent-base result is published. */
     beforeBaseReconciliationPublish?: () => void;
-    /** Deterministic injection after a draft-only candidate's receipt committed, before the dispatch transaction. */
-    afterDraftRecoveryReceipt?: () => void;
+    /** Deterministic injection immediately before the dispatch transaction opens. */
+    beforeDispatchTransaction?: () => void;
     /** Deterministic injection inside the dispatch transaction, immediately before the receipted drafts are re-verified. */
     beforeDraftResumeVerification?: () => void;
   };
@@ -609,19 +610,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
     }
 
     const now = operationNow;
-    // A never-launched candidate holding only Agent Ask drafts is receipted in
-    // its own committed transaction first, so the receipt survives any refusal
-    // that rolls the dispatch transaction below back (Issue #884). Records
-    // only: no draft is read for authority, settled, copied, moved or deleted.
-    const draftReceipt = withDatabase(workspacePath, (db) => writeTransaction(db, () => receiptDraftOnlyCandidate(db, {
-      repositoryPath: controlWorktree,
-      projectSlug,
-      actionId,
-      agent: options.agent!,
-      baseBranch,
-      now
-    })));
-    options.testHooks?.afterDraftRecoveryReceipt?.();
+    // A disposition refusal about a draft-only candidate (Issue #884) rolls the
+    // dispatch transaction back with everything else; its receipt is then
+    // committed on its own before the refusal is reported.
+    const dispositionReceipt: { receipt: DraftRecoveryReceipt | null } = { receipt: null };
+    options.testHooks?.beforeDispatchTransaction?.();
     // The conflict check and whatever it decides to do about it (resume's
     // reservation refresh, or a fresh worktree's creation+reservation) must
     // run inside one atomic transaction, not two separate `withDatabase`
@@ -688,7 +681,6 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             baseBranch,
             tmux,
             now,
-            expectedDraftReceipt: attemptActionId === actionId ? draftReceipt : null,
             beforeDraftResumeVerification: options.testHooks?.beforeDraftResumeVerification
           });
 
@@ -762,6 +754,9 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               project: projectSlug,
               actionId: attemptActionId
             });
+            // One-shot: the handout marker commits with this claim refresh, so
+            // no later Go or tick attempt can hand the same candidate out again.
+            if (candidate.draftRecovery) commitDraftHandout(db, candidate.draftRecovery, "go", now);
             claim.actionId = attemptActionId;
             draftRecovery = candidate.draftRecovery ?? null;
             return {
@@ -832,7 +827,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           }
         }
 
-        if (refusal) throw validationError(refusal.reason!, refusal.details);
+        if (refusal) {
+          dispositionReceipt.receipt = refusal.draftReceipt ?? null;
+          throw validationError(refusal.reason!, refusal.details);
+        }
         throw lostRace ?? validationError(
           "Arcadia go found no unclaimed, dependency-ready Action to dispatch.",
           { projectSlug, pointerActionId: actionId, remedy: "Finish or retire a live candidate, or add a ready Action to the queue." }
@@ -846,6 +844,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       if (reservationCommitCleanup.candidate) {
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", reservationCommitCleanup.candidate.path]);
         tryGit(controlWorktree, ["-c", "core.hooksPath=/dev/null", "branch", "-D", reservationCommitCleanup.candidate.branch]);
+      }
+      const pendingReceipt = dispositionReceipt.receipt;
+      if (pendingReceipt) {
+        withDatabase(workspacePath, (db) => writeTransaction(db, () => recordDraftRecoveryReceipt(db, pendingReceipt, now)));
       }
       throw error;
     } finally {
@@ -1028,6 +1030,8 @@ interface CandidateEvaluation {
   kind: "clear" | "resume" | "refuse";
   /** Set on a `resume` of a never-launched, draft-only candidate (Issue #884). */
   draftRecovery?: DraftRecoveryReceipt;
+  /** Set on a draft-only disposition refusal: the receipt to persist before reporting it. */
+  draftReceipt?: DraftRecoveryReceipt | null;
   /**
    * Set on `refuse` when the refusal is about *this Action* rather than about
    * this repository: another live worktree already claims it. It is the one
@@ -1108,7 +1112,6 @@ function evaluateExistingCandidate(
     baseBranch: string;
     tmux: Pick<TmuxAdapter, "hasSession">;
     now: Date;
-    expectedDraftReceipt: DraftRecoveryReceipt | null;
     beforeDraftResumeVerification?: () => void;
   }
 ): CandidateEvaluation {
@@ -1183,10 +1186,9 @@ function evaluateExistingCandidate(
     agent: input.agent,
     baseBranch: input.baseBranch,
     now: input.now,
-    expectedReceipt: input.expectedDraftReceipt,
     beforeResumeVerification: input.beforeDraftResumeVerification
   });
-  if (orphan.kind === "refuse") return { kind: "refuse", reason: orphan.reason, details: orphan.details };
+  if (orphan.kind === "refuse") return { kind: "refuse", reason: orphan.reason, details: orphan.details, draftReceipt: orphan.receipt };
   if (orphan.kind === "resume") return { kind: "resume", path: orphan.path, branch: orphan.branch, draftRecovery: orphan.receipt };
 
   // Nothing in *this* checkout owns the Action. The claim is the cross-checkout
@@ -1294,7 +1296,7 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     lines.push(`Launch: ${data.nextWorktree.command}`);
   }
   if (data.draftRecovery) {
-    lines.push(`Resumed the never-launched candidate in place; its Agent Ask drafts stay untouched (receipt ${data.draftRecovery.requestId}):`);
+    lines.push(`Handed out the never-launched candidate in place, once; its Agent Ask drafts stay untouched (receipt ${data.draftRecovery.requestId}):`);
     for (const draft of data.draftRecovery.drafts) {
       lines.push(`  ${draft.path} sha256:${draft.sha256}${draft.relevance === "current_action" ? "" : ` (${draft.relevance.replace("_", " ")})`}`);
     }
