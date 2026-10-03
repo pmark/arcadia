@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_ASK_INTENTS, normalizeAgentAsk, STRICT_ACTION_FIELDS, STRICT_FIELDS, STRICT_OPTION_FIELDS, type AgentAskProposal } from "../ask/agentAsk.js";
@@ -26,6 +26,67 @@ import {
   type PendingAgentAskNotification
 } from "../ask/settlement.js";
 
+/**
+ * The caller's repository: the Git toplevel enclosing `dir`, or `dir` itself
+ * outside Git (a bare container with no checkout yet).
+ *
+ * `--dir` defaults to the directory the operator stood in, which may be a
+ * subdirectory; without this a draft run there placed `.arcadia/asks/` under
+ * the subdirectory, where neither discovery nor settlement looks. The caller's
+ * own spelling is kept (Git reports a realpath) so a returned path still reads
+ * the way the caller wrote it.
+ */
+function callerRepositoryRoot(dir: string): string {
+  const requested = path.resolve(dir);
+  const toplevel = existsSync(requested) ? tryGit(requested, ["rev-parse", "--show-toplevel"]) : null;
+  if (!toplevel) return requested;
+  const realToplevel = realpathSync(toplevel);
+  // Walk up the caller's spelling rather than joining `..` onto it: `..` is
+  // lexical, so after a symlinked segment it would name the wrong directory.
+  for (let candidate = requested; ; candidate = path.dirname(candidate)) {
+    if (realpathSync(candidate) === realToplevel) return candidate;
+    if (path.dirname(candidate) === candidate) return realToplevel;
+  }
+}
+
+/**
+ * Read an Agent Ask `--file` from inside the caller's repository, and only
+ * there.
+ *
+ * The launcher changes directory into Arcadia's own checkout before running,
+ * so a relative `--file` resolved against `process.cwd()` named a file in the
+ * main checkout, never the candidate worktree the agent was standing in
+ * (issue #886). The CLI now resolves it from the invocation directory; this is
+ * the boundary behind that: a missing file, or one whose realpath -- after
+ * following any symlink -- lies outside the caller's repository, is refused
+ * before anything is read, and nothing ever falls back to the runtime checkout.
+ * Both sides are compared as realpaths because temp and home paths on macOS
+ * differ lexically from what they resolve to (`/var` vs `/private/var`).
+ */
+function readAskFile(file: string, baseDir: string | undefined, repoRoot: string): { path: string; content: string } {
+  if (!file.trim()) throw validationError("--file needs a path to an Agent Ask file inside the caller's repository.");
+  const requested = path.resolve(baseDir ?? invocationRoot(), file.trim());
+  const details = { file: requested, repository: repoRoot };
+  let real: string;
+  try {
+    real = realpathSync(requested);
+  } catch {
+    throw validationError(`Invalid --file path: ${requested} does not exist.`, details);
+  }
+  let realRoot: string | null = null;
+  try { realRoot = realpathSync(repoRoot); } catch { /* a missing repository contains nothing */ }
+  const relative = realRoot ? path.relative(realRoot, real) : "..";
+  if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw validationError(`Invalid --file path: ${requested} resolves outside the caller's repository ${repoRoot}.`, {
+      ...details,
+      resolved: real,
+      remedy: "Place the Agent Ask file inside the repository or worktree you are running from, or pass --dir naming the repository that contains it."
+    });
+  }
+  if (!statSync(real).isFile()) throw validationError(`Invalid --file path: ${requested} is not a file.`, details);
+  return { path: requested, content: readFileSync(real, "utf8") };
+}
+
 export interface AgentAskPreviewOptions { workspace: string; request?: string; file?: string; requestId?: string; project?: string; dir?: string; }
 export interface AgentAskPreviewData { proposal: AgentAskProposal; preview: string[]; projectWritesPerformed: 0; replayed: boolean; discovery: AgentAskDiscoveryResult; }
 
@@ -42,10 +103,12 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
   const recovered = !options.request && !options.file && options.requestId
     ? findRecoveredAsk(path.resolve(options.dir ?? process.cwd()), options.requestId)
     : null;
-  const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : recovered ? recovered.content : options.request ?? "";
+  const repoDir = options.dir ? callerRepositoryRoot(options.dir) : null;
+  const askFile = options.file !== undefined ? readAskFile(options.file, options.dir, repoDir ?? callerRepositoryRoot(invocationRoot())) : null;
+  const request = askFile ? askFile.content : recovered ? recovered.content : options.request ?? "";
   const result = withDatabase(workspacePath, (db) => previewAgentAskRequest(db, {
-    request, requestId: options.requestId, project: options.project, sourcePath: options.file ? path.resolve(options.file) : null,
-    repoRoot: options.dir ? path.resolve(options.dir) : null
+    request, requestId: options.requestId, project: options.project, sourcePath: askFile?.path ?? null,
+    repoRoot: repoDir
   }));
   // Discovery runs only after the request this call was actually asked
   // about has already been recorded above — so a file that is itself under
@@ -55,8 +118,8 @@ export function runAgentAskPreviewCommand(options: AgentAskPreviewOptions): Comm
   // a unit test exercising proposal logic directly); the CLI itself always
   // supplies it, defaulted to `process.cwd()`, so real invocations always
   // run discovery with no extra flag required.
-  const discovery = options.dir
-    ? withDatabase(workspacePath, (db) => discoverUnprocessedAgentAsks(db, path.resolve(options.dir!)))
+  const discovery = repoDir
+    ? withDatabase(workspacePath, (db) => discoverUnprocessedAgentAsks(db, repoDir))
     : EMPTY_AGENT_ASK_DISCOVERY;
   const preview = [...renderAgentAskPreview(result.proposal), ...renderAgentAskDiscovery(discovery)];
   return createSuccess({ command: "agent-ask.preview", workspace: workspacePath, data: { proposal: result.proposal, preview, projectWritesPerformed: 0, replayed: result.replayed, discovery } });
@@ -111,10 +174,10 @@ export interface AgentAskDraftData {
  */
 export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandSuccess<AgentAskDraftData> {
   if (options.request && options.file) throw validationError("Pass either an Agent Ask argument or --file, not both.");
-  const request = options.file ? readFileSync(path.resolve(options.file), "utf8") : options.request ?? "";
+  const repoDir = callerRepositoryRoot(options.dir ?? invocationRoot());
+  const request = options.file !== undefined ? readAskFile(options.file, options.dir, repoDir).content : options.request ?? "";
   const normalized = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
   const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
-  const repoDir = path.resolve(options.dir ?? process.cwd());
   if (normalized.intent === "complete") assertCompletionApplicableAtHead(repoDir, normalized.candidateRevision);
   const askDir = path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
@@ -141,7 +204,7 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     // through (rather than letting preview default it separately) makes
     // discovery scan the same `.arcadia/asks/` directory this draft was
     // just placed into, not whatever `process.cwd()` happens to be.
-    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project, dir: options.dir });
+    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project, dir: repoDir });
     preview = { proposal: previewResult.data.proposal, fingerprint: previewResult.data.proposal.fingerprint };
     discovery = previewResult.data.discovery;
     workspaceStatus = "previewed";
@@ -208,7 +271,7 @@ export function renderAgentAskDraftSuccess(response: CommandSuccess<AgentAskDraf
     lines.push(`Previewed: blocked (${d.previewFailure?.code ?? "unknown error"}) — ${d.previewFailure?.message ?? "workspace preview failed"}${d.previewFailure?.cause ? ` Cause: ${d.previewFailure.cause}` : ""}`);
     lines.push("Next: preserve the validated Ask file for a host with workspace access. Do not guess a workspace from the Project name or retry this database write from the same sandbox.");
   } else {
-    lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path}\`.`);
+    lines.push("Previewed: not yet — no ready Arcadia workspace resolved here.", `Next: preserve the Ask file; a host with the correct writable workspace can run \`arcadia agent-ask preview --file ${d.path} --dir ${path.dirname(path.dirname(path.dirname(d.path)))}\`.`);
   }
   lines.push(...renderAgentAskDiscovery(d.discovery));
   return lines;

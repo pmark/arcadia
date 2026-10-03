@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr897","project":"arcadia","intent":"log","desired_result":"Prepared sessions can now validate their own Ask drafts: PR #897 makes agent-ask --file resolve from the caller worktree instead of the main checkout. https://github.com/pmark/arcadia/pull/897"}

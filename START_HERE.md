@@ -592,6 +592,12 @@ Save the envelope to a file and preview it:
 ARCADIA_SURFACE=claude pnpm arcadia agent-ask preview --file /absolute/path/agent-ask.yaml --workspace "$WORKSPACE" --json
 ```
 
+`--file` (for `preview` and `draft`) reads only from the repository or
+worktree you run the command in: a relative path resolves from your directory,
+not Arcadia's checkout, and a missing file or one that resolves outside that
+repository (including through a symlink) is refused. For a file kept
+elsewhere, pass `--dir` naming the directory that contains it.
+
 Preview preserves an immutable capture and proposal receipt but performs zero
 Project writes and creates no queue entry. `requested_authority` may be
 `propose` or `apply_if_approved`; an agent cannot claim that work is approved,

@@ -1405,3 +1405,17 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/resolve-agent-ask-draft-file-from-caller-worktree
+
+- **Did:** Completed Action arcadia/resolve-agent-ask-draft-file-from-caller-worktree from accepted evidence (Candidate c04a68c07b2b1a5b97d5804f0213774333b7048e).
+- **Result:** Every declared acceptance criterion was accepted as met: "A relative `--file` passed to `agent-ask draft` or `preview` from a linked candidate worktree is read from that worktree, validated and previewed as that exact file; the main checkout is untouched and nothing is copied into it."; "A nonexistent path, a path or symlink resolving outside the caller's repository, and a reused request id with different content each fail closed with no read or write outside the caller's repository."; "Regression tests drive the real CLI parser for the main checkout, a linked worktree and a different Project repository, and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-resolve-agent-ask-draft-file-886-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr897
+
+- **Did:** Prepared sessions can now validate their own Ask drafts: PR #897 makes agent-ask --file resolve from the caller worktree instead of the main checkout. https://github.com/pmark/arcadia/pull/897
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
