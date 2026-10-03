@@ -302,6 +302,22 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, claims: 1, enrollments: 1, pending: 0 });
   });
 
+  it("checks a resumed own lease's reuse refusals before committing its issued admission", () => {
+    const f = fixture();
+    activate(f);
+    expect(() => enroll(f, { launchTestHooks: { afterSessionPreparedBeforeCommit: () => { throw new Error("host crashed"); } } }))
+      .toThrow("host crashed");
+    // The Project stops declaring validation commands before the replay.
+    withDatabase(f.workspace, (db) => {
+      const project = db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string };
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: f.repo, validationCommands: [] });
+    });
+    expect(refusal(() => enroll(f)).details.code).toBe("no_validation_commands");
+    // The prepared Session never started and its slot was never consumed by the refused reuse.
+    expect(withReadOnlyDatabase(f.workspace, (db) => listAdmissions(db)).map((row) => row.status)).toEqual(["issued"]);
+    expect(f.tmux.launches).toHaveLength(0);
+  });
+
   it("refuses Off before writing an enrollment, admission, claim or candidate", () => {
     const f = fixture();
     const before = worktrees(f);

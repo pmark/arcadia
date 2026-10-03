@@ -140,12 +140,12 @@ export function settleDevelopmentAttemptForExit(db: Database.Database, input: {
   if (!live) return null;
   const receipt = { sessionId: session.id, outcome: input.outcome, exitReceiptId: input.exitReceiptId };
   if (input.outcome === "accepted_completion") {
-    const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim();
-    if (!head) {
-      return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "failed", now: input.now,
-        receipt: { ...receipt, reason: "The accepted candidate's head could not be read." } });
-    }
-    return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "passed", targetHead: head, now: input.now, receipt });
+    // Accepted work passed even when its worktree is already gone; without a
+    // readable head no verdict can bind it, so it can never be integrated by
+    // the tick on that attempt alone.
+    const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() || undefined;
+    return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "passed", now: input.now,
+      ...(head ? { targetHead: head } : {}), receipt: head ? receipt : { ...receipt, headUnreadable: true } });
   }
   if (input.outcome === "failed_execution" || input.outcome === "missing_evidence") {
     return recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: live.actor_id, status: "failed", now: input.now, receipt });

@@ -442,9 +442,16 @@ function attemptAutomaticPlanningResolution(
       const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
       const invocation = prepared.data.buildInvocation ?? prepared.data.codexInvocation;
       const kind = prepared.data.buildInvocation ? "build_packet_ready" : prepared.data.planningDecision ? "planning_approval_pending" : null;
-      if (invocation) recordPacketCritique(db, requirement, invocation.id, path.resolve(input.workspace, invocation.prompt_path), now);
-      return { passed: kind !== null, receipt: { kind, invocationId: invocation?.id ?? null } };
+      return { passed: kind !== null, receipt: { kind, invocationId: invocation?.id ?? null, promptPath: invocation?.prompt_path ?? null } };
     });
+    if (!planned.replayed && planned.receipt.invocationId && planned.receipt.promptPath) {
+      // Advisory bookkeeping: a critique-recording failure never undoes the planner's packet.
+      try {
+        recordPacketCritique(db, requirement, planned.receipt.invocationId, path.resolve(input.workspace, planned.receipt.promptPath), now);
+      } catch (error) {
+        log(`Could not record the packet critique attempt for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     if (planned.replayed) {
       log(`The planner attempt for ${actionKey} already finished for this exact Action input (${planned.attempt.status}); not re-running it.`);
       return null;
