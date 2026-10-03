@@ -182,6 +182,11 @@ export class Rehearsal {
   projectId = "";
   /** Test-only fault injection: a signed-out provider makes admission refuse on every tick. */
   providerSignedIn = true;
+  /**
+   * Test-only, one-shot: runs at the launch's sign-in preflight -- after the
+   * tick re-read the policy and the launch preview, before issueAdmission.
+   */
+  beforeAdmission: (() => void) | null = null;
   now = new Date("2026-09-26T21:00:00.000Z");
   private tickCount = 0;
 
@@ -410,7 +415,12 @@ Disposable fixture plan.
         tmux: this.tmux,
         now: this.now,
         capacityObservation: capacity(this.provider),
-        providerSignIn: () => ({ signedIn: this.providerSignedIn, remedy: this.providerSignedIn ? "" : "Sign in to the provider (injected fault)." }),
+        providerSignIn: () => {
+          const hook = this.beforeAdmission;
+          this.beforeAdmission = null;
+          hook?.();
+          return { signedIn: this.providerSignedIn, remedy: this.providerSignedIn ? "" : "Sign in to the provider (injected fault)." };
+        },
         agentWorktreeRoot: this.worktrees,
         log: (message) => this.log.push(`[tick ${this.tickCount}] ${message}`),
         ...(HOST_SEATBELT ? {} : { handoff: { preserve: { validate: unsandboxedValidator } } })

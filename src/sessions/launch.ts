@@ -31,7 +31,7 @@ import {
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
-import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, requirementIdFor, requirementIdentity } from "./roleLineage.js";
+import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, planDevelopmentAttempt, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
   assertDraftRecoveryUnchanged,
   commitDraftHandout,
@@ -272,21 +272,25 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // tick can retry it for free once sign-in is restored.
   checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
 
-  // The one mutation-owning development attempt this launch runs under, after
-  // every deterministic launch prerequisite above and before any admission,
-  // worktree or Session. A live attempt for the same requirement input is
-  // resumed rather than duplicated; after a terminal failure the launch grant
-  // this call carries (a standing policy or an approved preview) is the
-  // explicit authority for the next bounded ordinal.
+  // The one mutation-owning development attempt this launch runs under. Its
+  // refusals (a passed or exhausted lineage, a live owner whose Session still
+  // runs) are checked here, read-only, after every deterministic launch
+  // prerequisite and before any admission, worktree or Session; the attempt
+  // itself is allocated only after the admission's Off/epoch cutoff commits
+  // below, so an Off or stale-epoch refusal never leaves a pending attempt. A
+  // live attempt for the same requirement input is resumed rather than
+  // duplicated; after a terminal failure the launch grant this call carries (a
+  // standing policy or an approved preview) authorizes the next bounded ordinal.
   const requirement = requirementIdentity({ projectSlug: preview.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
-  let development: SessionRoleAttempt;
+  const lineageRefusal = (error: unknown): unknown =>
+    error instanceof ArcadiaError && typeof error.details?.code === "string" &&
+      (error.details.code.startsWith("attempt_") || error.details.code === "mutation_owner_active")
+      ? validationError(`The development attempt lineage refused this launch: ${error.message}`, { ...error.details, conflict: true })
+      : error;
   try {
-    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, now }).attempt;
+    planDevelopmentAttempt(input.db, { requirement, retryAuthorized: true });
   } catch (error) {
-    if (error instanceof ArcadiaError && typeof error.details?.code === "string" && error.details.code.startsWith("attempt_")) {
-      throw validationError(`The development attempt lineage refused this launch: ${error.message}`, { ...error.details, conflict: true });
-    }
-    throw error;
+    throw lineageRefusal(error);
   }
 
   const model = preview.selection.model;
@@ -630,33 +634,38 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // spawning a process no policy currently authorizes.
   // Outside every cleanup path on purpose: a throw here models a host crash.
   input.testHooks?.afterSessionPreparedBeforeCommit?.();
+  const preparedActionId: string = preview.actionId;
+  /** Abandon the prepared, never-started Session and everything this call reserved for it. */
+  const abandonPrepared = () => {
+    failPreparedSession(input.db, prepared.id);
+    // See the same guard above: a resumed stale claim's worktree is prior
+    // real work, never this call's to delete.
+    if (!resumedInPlace) {
+      tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
+      tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
+    }
+    if (claim.generation) {
+      releaseActionClaim(input.db, {
+        repositoryPath: repoRoot,
+        project: preview.projectSlug,
+        actionId: preparedActionId,
+        generation: claim.generation
+      });
+    }
+    if (!resumedInPlace) {
+      releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
+    } else if (resumableStaleClaim) {
+      // `prepareSession` already superseded the resumed handoff onto this
+      // now-failed Session. Undo that, or the candidate's real worktree and
+      // branch become permanently invisible to `getResumableLeaseHandoff`
+      // even though nothing ever ran in it (CodeRabbit, PR #696).
+      restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
+    }
+  };
   if (admission) {
     const committed = commitAdmission(input.db, admission.requestId, now);
     if (!committed.admitted) {
-      failPreparedSession(input.db, prepared.id);
-      // See the same guard above: a resumed stale claim's worktree is prior
-      // real work, never this call's to delete.
-      if (!resumedInPlace) {
-        tryGit(repoRoot, ["worktree", "remove", nextWorktree.path]);
-        tryGit(repoRoot, ["branch", "-D", nextWorktree.branch]);
-      }
-      if (claim.generation) {
-        releaseActionClaim(input.db, {
-          repositoryPath: repoRoot,
-          project: preview.projectSlug,
-          actionId: preview.actionId,
-          generation: claim.generation
-        });
-      }
-      if (!resumedInPlace) {
-        releaseWorktreeReservation(input.db, repoRoot, nextWorktree.path);
-      } else if (resumableStaleClaim) {
-        // `prepareSession` already superseded the resumed handoff onto this
-        // now-failed Session. Undo that, or the candidate's real worktree and
-        // branch become permanently invisible to `getResumableLeaseHandoff`
-        // even though nothing ever ran in it (CodeRabbit, PR #696).
-        restoreLeaseHandoffIfSupersededBy(input.db, resumableStaleClaim.receiptId, prepared.id);
-      }
+      abandonPrepared();
       // `commitAdmission` already fenced a stale-epoch/expired/inactive
       // admission before reporting the refusal, which already excludes it
       // from `countLiveAdmissions`. `policy_unavailable` is the one refusal
@@ -678,6 +687,19 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // of leaving it committed until its TTL-less "committed" state leaks
     // forever (Issue #610).
     input.db.prepare("UPDATE agent_sessions SET admission_request_id = ? WHERE id = ?").run(admission.requestId, prepared.id);
+  }
+  // Past the Off/epoch cutoff: allocate (or resume) the development attempt
+  // now. This launch's own prepared Session never counts as a competing live
+  // holder. A refusal here (only a concurrent lineage change could cause one
+  // after the read-only check above) abandons the unstarted Session and gives
+  // back its committed slot, exactly like a withdrawn admission.
+  let development: SessionRoleAttempt;
+  try {
+    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, exceptSessionId: prepared.id, now }).attempt;
+  } catch (error) {
+    abandonPrepared();
+    if (admission) releaseAdmission(input.db, admission.requestId, now);
+    throw lineageRefusal(error);
   }
   // The launch command depends on whether the Session is admission-bound
   // (unattended), so hand `launchPreparedSession` the row as it now stands.

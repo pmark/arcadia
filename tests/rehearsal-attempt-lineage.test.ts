@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -6,8 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
+import { developmentLineageRemedy } from "../src/production/tick.js";
+import { recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import {
   beginDevelopmentAttempt,
+  runHelperAttempt,
   beginIndependentVerdict,
   finishIndependentVerdict,
   independentVerdictGate,
@@ -100,8 +103,23 @@ describe("five-role attempt lineage through the real tick", () => {
     ]) {
       expect(code(() => verdict(rehearsal, session, "code-review", identity))).toBe("independent_actor_required");
     }
+    // Canonical paths on both sides: a symlinked route into the developer's worktree is still the worktree.
+    const alias = path.join(rehearsal.root, "worktree-alias");
+    symlinkSync(session.worktree_path, alias);
+    expect(code(() => verdict(rehearsal, session, "qa", { executionCwd: path.join(alias, "docs") }))).toBe("independent_actor_required");
+    // A reviewer running under the developer Session's own agent binding is refused where the host observes it.
+    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE agent_sessions SET provider_binding_id = 'developer-binding' WHERE id = ?").run(session.id));
+    expect(code(() => withDatabase(rehearsal.workspace, (db) => beginIndependentVerdict(db, {
+      role: "qa", session, repoRoot: rehearsal.repo, requestId: "qa-same-binding-0001", actorId: "qa-reviewer:same-binding",
+      executionCwd: rehearsal.root, reviewerBindingId: "developer-binding", now: rehearsal.now
+    })))).toBe("independent_actor_required");
     expect(rehearsal.attempts("write-marker-a").filter((x) => x.role === "code-review" || x.role === "qa")).toEqual([]);
     expect(gate(rehearsal, session)).toMatchObject({ satisfied: false, reason: expect.stringMatching(/code-review: none; qa: none/) });
+    // The waiting candidate is an operator-visible escalation with the exact QA and merge commands, not only a log line.
+    const waiting = rehearsal.status().operatorEscalations.find((row) => row.actionKey === rehearsal.actionA);
+    expect(waiting).toMatchObject({ kind: "awaiting_independent_verdicts" });
+    expect(waiting?.remedy).toMatch(/arcadia qa pr /);
+    expect(waiting?.remedy).toContain(`merge --ff-only ${development.target_head}`);
 
     // One verdict alone never integrates.
     verdict(rehearsal, session, "code-review");
@@ -113,6 +131,37 @@ describe("five-role attempt lineage through the real tick", () => {
     const integrated = rehearsal.tick();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-a")).toBe("done");
+    expect(rehearsal.status().operatorEscalations.filter((row) => row.actionKey === rehearsal.actionA)).toEqual([]);
+  });
+
+  it("leaves no development attempt when Off lands between the tick's policy re-read and admission", () => {
+    const rehearsal = activated();
+    rehearsal.beforeAdmission = () => rehearsal.deactivate("off-between-reread-and-admission");
+    const refused = rehearsal.tick();
+    expect(refused.launch?.outcome).toBe("refused");
+    expect(rehearsal.attempts("write-marker-a")).toEqual([]);
+    expect(rehearsal.sessions()).toEqual([]);
+    expect(rehearsal.status().liveAdmissions).toBe(0);
+    // A fresh On launches A under exactly one attempt.
+    rehearsal.activate("reactivate-after-off-before-admission");
+    launchA(rehearsal);
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.ordinal, x.status])).toEqual([[1, "running"]]);
+  });
+
+  it("never supersedes the live owner of a revised Action input while its Session still runs", () => {
+    const rehearsal = activated();
+    const a = launchA(rehearsal);
+    const live = rehearsal.attempts("write-marker-a")[0];
+    const revised = withDatabase(rehearsal.workspace, (db) => {
+      const plan = discoverDocs(rehearsal.repo).docs.find((doc) => doc.type === "plan");
+      const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === "write-marker-a")! : null;
+      const requirement = requirementIdentity({ projectSlug: rehearsal.projectSlug, planSlug: rehearsal.planSlug,
+        action: { ...action!, acceptanceCriteria: ["A revised criterion."] } });
+      return code(() => beginDevelopmentAttempt(db, { requirement, requestId: "launch-under-revised-input", retryAuthorized: true, now: rehearsal.now }));
+    });
+    expect(revised).toBe("mutation_owner_active");
+    expect(rehearsal.attempts("write-marker-a").map((x) => [x.request_id, x.status])).toEqual([[live.request_id, "running"]]);
+    expect(rehearsal.lease()?.id).toBe(a.id);
   });
 
   it("invalidates dependent verdicts when the candidate head, the governed criteria, or the validation evidence changes", () => {
@@ -254,5 +303,64 @@ describe("five-role attempt lineage through the real tick", () => {
       second.close();
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("names a distinct remedy for a passed lineage and an exhausted one", () => {
+    const passed = developmentLineageRemedy("attempt_retry_not_authorized", { status: "passed" });
+    const exhausted = developmentLineageRemedy("attempt_limit_exhausted", { limit: 3 });
+    expect(passed).toMatch(/already passed.*awaiting_independent_verdicts.*merge --ff-only/s);
+    expect(exhausted).toMatch(/Every bounded development attempt \(3\).*No command resets attempt lineage today.*governed amendment/is);
+    expect(passed).not.toBe(exhausted);
+  });
+});
+
+describe("read-only helper attempts", () => {
+  let db: Database.Database;
+  const now = new Date("2026-10-03T19:00:00.000Z");
+  const action = {
+    id: "plan-me", nextAction: "Plan it.", acceptanceCriteria: ["It is planned."], responsibility: "agent", resolvedExecution: null, execution: null
+  } as unknown as Parameters<typeof requirementIdentity>[0]["action"];
+  const requirement = requirementIdentity({ projectSlug: "p", planSlug: "plan", action });
+  const run = (outcome: () => { outcome: "passed" | "failed" | "inconclusive"; receipt: unknown }, rerunPassed = true) =>
+    runHelperAttempt(db, { role: "planner", requirement, actorId: "host-planner:work-plan", retryAuthorized: true, rerunPassed, now }, outcome);
+  const lineage = () => db.prepare("SELECT ordinal, status FROM session_role_attempts WHERE role = 'planner' ORDER BY ordinal").all();
+  afterEach(() => db?.close());
+
+  it("never consumes an ordinal for a thrown or inconclusive run, and resumes the same attempt", () => {
+    db = new Database(":memory:");
+    applyInitialSchema(db);
+    expect(() => run(() => { throw new Error("database is locked"); })).toThrow("database is locked");
+    expect(run(() => ({ outcome: "inconclusive", receipt: {} })).finished).toBe(false);
+    expect(lineage()).toEqual([{ ordinal: 1, status: "running" }]);
+    expect(run(() => ({ outcome: "passed", receipt: { kind: "build_packet_ready" } })).attempt).toMatchObject({ ordinal: 1, status: "passed" });
+  });
+
+  it("re-runs a passed planner only when planning is required again, within the ordinal bound", () => {
+    db = new Database(":memory:");
+    applyInitialSchema(db);
+    const pass = () => ({ outcome: "passed" as const, receipt: { kind: "build_packet_ready" } });
+    run(pass);
+    expect(run(pass, false)).toMatchObject({ replayed: true, attempt: { ordinal: 1 } });
+    run(pass);
+    run(pass);
+    expect(lineage()).toEqual([1, 2, 3].map((ordinal) => ({ ordinal, status: "passed" })));
+    expect(code(() => run(pass))).toBe("attempt_limit_exhausted");
+  });
+
+  it("accepts a concurrent identical-outcome terminal write as already done", () => {
+    db = new Database(":memory:");
+    applyInitialSchema(db);
+    const result = run(() => {
+      const live = db.prepare("SELECT request_id FROM session_role_attempts WHERE role = 'planner'").get() as { request_id: string };
+      recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: "host-planner:work-plan", status: "passed", receipt: { by: "other writer" } });
+      return { outcome: "passed", receipt: { by: "this writer" } };
+    });
+    expect(result.attempt).toMatchObject({ status: "passed", terminal_receipt_json: JSON.stringify({ by: "other writer" }) });
+    // A different outcome is still a real conflict.
+    expect(() => run(() => {
+      const live = db.prepare("SELECT request_id FROM session_role_attempts WHERE role = 'planner' AND status = 'running'").get() as { request_id: string };
+      recordSessionRoleAttemptTerminal(db, { requestId: live.request_id, actorId: "host-planner:work-plan", status: "failed", receipt: {} });
+      return { outcome: "passed", receipt: {} };
+    })).toThrow(/immutable/);
   });
 });

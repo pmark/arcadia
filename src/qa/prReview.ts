@@ -321,7 +321,7 @@ export function runQaPrReviewCommand(
     const begun = beginIndependentVerdict(db, {
       role: "qa", session, repoRoot: project.repositoryPath,
       requestId: `qa-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
-      actorId: qaActorId, executionCwd: process.cwd(), retryAuthorized: options.rerun === true, now: now()
+      actorId: qaActorId, executionCwd: process.cwd(), reviewerBindingId: reviewer.bindingId, retryAuthorized: options.rerun === true, now: now()
     });
     return { session, requestId: begun.attempt.request_id };
   });

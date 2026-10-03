@@ -76,26 +76,77 @@ export function requirementIdentity(input: { projectSlug: string; planSlug: stri
 
 // ---------------------------------------------------------------- development
 
+function liveSessionFor(db: Database.Database, requirement: RequirementIdentity, exceptSessionId: string | null): string | null {
+  const row = db.prepare(`SELECT id FROM agent_sessions WHERE project_slug = ? AND plan_slug = ? AND action_id = ?
+    AND status IN ('prepared', 'running') AND id != ? LIMIT 1`)
+    .get(requirement.projectSlug, requirement.planSlug, requirement.actionId, exceptSessionId ?? "") as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+/**
+ * Read-only: what {@link beginDevelopmentAttempt} would do, refusing exactly
+ * as it would. The guarded launcher calls it before any admission so a
+ * lineage refusal reserves nothing, and allocates only after the admission's
+ * Off/epoch cutoff committed, so an Off or stale-epoch refusal never leaves a
+ * pending attempt behind.
+ */
+export function planDevelopmentAttempt(db: Database.Database, input: {
+  requirement: RequirementIdentity;
+  retryAuthorized: boolean;
+  /** The launch's own prepared Session, which never counts as another live holder. */
+  exceptSessionId?: string | null;
+  maxOrdinal?: number;
+}): { kind: "resume"; attempt: SessionRoleAttempt } | { kind: "allocate"; supersedes: SessionRoleAttempt | null } {
+  const live = liveMutationOwner(db, input.requirement.requirementId);
+  if (live && live.input_revision === input.requirement.inputRevision) return { kind: "resume", attempt: live };
+  if (live) {
+    // A revised input supersedes the live owner only when no Session is still
+    // working under it: a live developer is never displaced mid-flight.
+    const holder = liveSessionFor(db, input.requirement, input.exceptSessionId ?? null);
+    if (holder) {
+      throw validationError("Another development attempt already owns this requirement's mutations; its Session is still live.", {
+        code: "mutation_owner_active", requestId: live.request_id, sessionId: holder
+      });
+    }
+  }
+  const previous = latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, "development");
+  if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
+    throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
+      code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
+      requestId: previous.request_id, status: previous.status
+    });
+  }
+  const limit = input.maxOrdinal ?? 3;
+  if ((previous?.ordinal ?? 0) + 1 > limit) {
+    throw validationError("The bounded attempt limit is exhausted.", {
+      code: "attempt_limit_exhausted", requirementId: input.requirement.requirementId, role: "development", limit
+    });
+  }
+  return { kind: "allocate", supersedes: live };
+}
+
 /**
  * The one mutation-owning attempt a launch runs under. A live attempt for the
  * same requirement input is resumed (a crash before, or a resumable exit
  * after, a Session start never allocates a second owner); a live attempt for
- * an older input revision is superseded and failed first. Otherwise a new
- * attempt is allocated; after a terminal failure that is the next bounded
- * ordinal, authorized by the launch grant the caller holds.
+ * an older input revision is superseded and failed first, but only when no
+ * other Session still runs under it. Otherwise a new attempt is allocated;
+ * after a terminal failure that is the next bounded ordinal, authorized by
+ * the launch grant the caller holds.
  */
 export function beginDevelopmentAttempt(db: Database.Database, input: {
   requirement: RequirementIdentity;
   requestId: string;
   retryAuthorized: boolean;
+  exceptSessionId?: string | null;
   now: Date;
 }): { attempt: SessionRoleAttempt; resumed: boolean } {
   return writeTransaction(db, () => {
-    const live = liveMutationOwner(db, input.requirement.requirementId);
-    if (live && live.input_revision === input.requirement.inputRevision) return { attempt: live, resumed: true };
-    if (live) {
+    const plan = planDevelopmentAttempt(db, input);
+    if (plan.kind === "resume") return { attempt: plan.attempt, resumed: true };
+    if (plan.supersedes) {
       recordSessionRoleAttemptTerminal(db, {
-        requestId: live.request_id, actorId: live.actor_id, status: "failed", now: input.now,
+        requestId: plan.supersedes.request_id, actorId: plan.supersedes.actor_id, status: "failed", now: input.now,
         receipt: { reason: "superseded: the governed Action input changed before this attempt finished", supersededBy: input.requestId }
       });
     }
@@ -157,24 +208,35 @@ export function settleDevelopmentAttemptForExit(db: Database.Database, input: {
 
 /**
  * A read-only host helper attempt (planner, critique). The transport identity
- * is derived from the requirement input and the bounded ordinal, so a replay
- * of a finished attempt returns its receipt without running again, a crashed
- * pending attempt is resumed under the same identity, and a terminal failure
- * is retried as the next ordinal only when `retryAuthorized`.
+ * is derived from the requirement input and the bounded ordinal, so a crashed
+ * or interrupted attempt is resumed under the same identity.
+ *
+ * Only a real result is terminal. `run` returning `inconclusive` (nothing was
+ * prepared) or throwing (a busy database, a Git or I/O failure) leaves the
+ * attempt live, so transient infrastructure failures never consume an
+ * ordinal; the next call resumes the same one. A failed result is retried as
+ * the next ordinal only when `retryAuthorized`. A passed result is replayed
+ * unless `rerunPassed` says the caller has deterministically observed that
+ * it no longer stands (planning is required again under the same input).
+ *
+ * Callers are serialized per workspace (the single worker tick). If another
+ * writer nonetheless finishes the same attempt first, its identical-outcome
+ * terminal write is accepted as already done rather than failing the caller.
  */
 export function runHelperAttempt<T>(db: Database.Database, input: {
   role: "planner" | "critique";
   requirement: RequirementIdentity;
   actorId: string;
   retryAuthorized: boolean;
+  rerunPassed?: boolean;
   maxOrdinal?: number;
   now: Date;
-}, run: () => { passed: boolean; receipt: T }): { attempt: SessionRoleAttempt; receipt: T; replayed: boolean } {
+}, run: () => { outcome: "passed" | "failed" | "inconclusive"; receipt: T }): { attempt: SessionRoleAttempt; receipt: T; replayed: boolean; finished: boolean } {
   const latest = latestRoleAttempt(db, input.requirement.requirementId, input.requirement.inputRevision, input.role);
-  if (latest?.status === "passed" || (latest?.status === "failed" && !input.retryAuthorized)) {
-    return { attempt: latest, receipt: JSON.parse(latest.terminal_receipt_json ?? "null") as T, replayed: true };
+  if ((latest?.status === "passed" && !input.rerunPassed) || (latest?.status === "failed" && !input.retryAuthorized)) {
+    return { attempt: latest, receipt: JSON.parse(latest.terminal_receipt_json ?? "null") as T, replayed: true, finished: true };
   }
-  const ordinal = latest === null ? 1 : latest.status === "failed" ? latest.ordinal + 1 : latest.ordinal;
+  const ordinal = latest === null ? 1 : latest.status === "failed" || latest.status === "passed" ? latest.ordinal + 1 : latest.ordinal;
   const requestId = `${input.role}-${sha256([input.requirement.requirementId, input.requirement.inputRevision]).slice(0, 24)}-${ordinal}`;
   const attempt = allocateSessionRoleAttempt(db, {
     requirementId: input.requirement.requirementId,
@@ -185,20 +247,31 @@ export function runHelperAttempt<T>(db: Database.Database, input: {
     mutationOwner: false,
     retryAuthorized: input.retryAuthorized,
     authorityCurrent: true,
+    ...(latest?.status === "passed" ? { supersedesPassed: latest.request_id } : {}),
     ...(input.maxOrdinal !== undefined ? { maxOrdinal: input.maxOrdinal } : {}),
     now: input.now
   });
-  markSessionRoleAttemptRunning(db, { requestId, actorId: input.actorId, now: input.now });
-  let outcome: { passed: boolean; receipt: T };
-  try {
-    outcome = run();
-  } catch (error) {
-    recordSessionRoleAttemptTerminal(db, { requestId, actorId: input.actorId, status: "failed", now: input.now,
-      receipt: { error: error instanceof Error ? error.message : String(error) } });
-    throw error;
+  if (attempt.status === "passed" || attempt.status === "failed") {
+    return { attempt, receipt: JSON.parse(attempt.terminal_receipt_json ?? "null") as T, replayed: true, finished: true };
   }
-  const finished = recordSessionRoleAttemptTerminal(db, { requestId, actorId: input.actorId, status: outcome.passed ? "passed" : "failed", now: input.now, receipt: outcome.receipt });
-  return { attempt: finished ?? attempt, receipt: outcome.receipt, replayed: false };
+  markSessionRoleAttemptRunning(db, { requestId, actorId: input.actorId, now: input.now });
+  // A throw propagates with the attempt still live: resumable, never terminal.
+  const result = run();
+  if (result.outcome === "inconclusive") {
+    return { attempt: getSessionRoleAttempt(db, requestId) ?? attempt, receipt: result.receipt, replayed: false, finished: false };
+  }
+  let finished: SessionRoleAttempt;
+  try {
+    finished = recordSessionRoleAttemptTerminal(db, { requestId, actorId: input.actorId, status: result.outcome, now: input.now, receipt: result.receipt });
+  } catch (error) {
+    const raced = getSessionRoleAttempt(db, requestId);
+    if ((error as { details?: { code?: string } }).details?.code === "attempt_terminal_changed" && raced?.status === result.outcome) {
+      finished = raced;
+    } else {
+      throw error;
+    }
+  }
+  return { attempt: finished, receipt: result.receipt, replayed: false, finished: true };
 }
 
 // ------------------------------------------------- independent verdicts
@@ -259,33 +332,62 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
   };
 }
 
-/** Every identity the developer acted under for this requirement: its attempt actors, Sessions and admissions. */
-function developerPrincipals(db: Database.Database, session: AgentSession): { ids: Set<string>; worktrees: string[] } {
+/** Resolves symlinks (macOS `/var` -> `/private/var`) on whichever prefix exists, so both sides compare canonically. */
+function realPath(value: string): string {
+  const resolved = path.resolve(value);
+  const suffix: string[] = [];
+  let existing = resolved;
+  for (;;) {
+    try {
+      return path.join(realpathSync(existing), ...suffix);
+    } catch {
+      const parent = path.dirname(existing);
+      if (parent === existing) return resolved;
+      suffix.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+/** Every identity the developer acted under for this requirement: its attempt actors, Sessions, admissions and agent bindings. */
+function developerPrincipals(db: Database.Database, session: AgentSession): { ids: Set<string>; worktrees: string[]; bindings: Set<string> } {
   const requirementId = requirementIdFor(session.project_slug, session.plan_slug, session.action_id);
   const ids = new Set<string>();
   for (const row of db.prepare("SELECT actor_id, request_id FROM session_role_attempts WHERE requirement_id = ? AND role = 'development'")
     .all(requirementId) as Array<{ actor_id: string; request_id: string }>) {
     ids.add(row.actor_id); ids.add(row.request_id);
   }
-  const sessions = db.prepare("SELECT id, admission_request_id, worktree_path FROM agent_sessions WHERE project_slug = ? AND plan_slug = ? AND action_id = ?")
-    .all(session.project_slug, session.plan_slug, session.action_id) as Array<{ id: string; admission_request_id: string | null; worktree_path: string }>;
+  const sessions = db.prepare(`SELECT id, admission_request_id, worktree_path, provider_binding_id FROM agent_sessions
+    WHERE project_slug = ? AND plan_slug = ? AND action_id = ?`)
+    .all(session.project_slug, session.plan_slug, session.action_id) as Array<{ id: string; admission_request_id: string | null; worktree_path: string; provider_binding_id: string | null }>;
+  const bindings = new Set<string>();
   for (const row of sessions) {
     ids.add(row.id);
     if (row.admission_request_id) ids.add(row.admission_request_id);
+    if (row.provider_binding_id) bindings.add(row.provider_binding_id);
   }
-  return { ids, worktrees: sessions.map((row) => path.resolve(row.worktree_path)) };
+  return { ids, worktrees: sessions.map((row) => realPath(row.worktree_path)), bindings };
 }
 
 function within(child: string, parent: string): boolean {
-  const relative = path.relative(parent, path.resolve(child));
+  const relative = path.relative(parent, child);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function assertIndependentOf(db: Database.Database, session: AgentSession, actorId: string, executionCwd: string): void {
+/**
+ * What the host can observe about the reviewer, compared with every developer
+ * identity for the requirement. The host cannot observe process ancestry
+ * portably, so a reviewer process that shares no identity, working directory
+ * or agent binding with the developer is accepted; the same provider family
+ * or model under a different binding is permitted.
+ */
+function assertIndependentOf(db: Database.Database, session: AgentSession, input: { actorId: string; executionCwd: string; reviewerBindingId?: string | null }): void {
   const developer = developerPrincipals(db, session);
-  if (developer.ids.has(actorId) || developer.worktrees.some((worktree) => within(executionCwd, worktree))) {
+  const cwd = realPath(input.executionCwd);
+  if (developer.ids.has(input.actorId) || developer.worktrees.some((worktree) => within(cwd, worktree)) ||
+    (input.reviewerBindingId != null && developer.bindings.has(input.reviewerBindingId))) {
     throw validationError("Independent review and QA cannot be supplied by the developer.", {
-      code: "independent_actor_required", actorId, executionCwd
+      code: "independent_actor_required", actorId: input.actorId, executionCwd: cwd, reviewerBindingId: input.reviewerBindingId ?? null
     });
   }
 }
@@ -304,6 +406,8 @@ export function beginIndependentVerdict(db: Database.Database, input: {
   requestId: string;
   actorId: string;
   executionCwd: string;
+  /** The reviewer's host-selected agent binding, when the executor has one (QA does). */
+  reviewerBindingId?: string | null;
   retryAuthorized?: boolean;
   maxOrdinal?: number;
   now: Date;
@@ -325,7 +429,7 @@ export function beginIndependentVerdict(db: Database.Database, input: {
       code: "verdict_not_ready", reasons: readiness.reasons
     });
   }
-  assertIndependentOf(db, input.session, input.actorId, input.executionCwd);
+  assertIndependentOf(db, input.session, input);
   // Restart: the same reviewer resumes its own unfinished attempt on the same
   // binding instead of allocating a duplicate under a fresh transport id.
   const unfinished = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, input.role);
@@ -402,7 +506,7 @@ export function finishIndependentVerdict(db: Database.Database, input: {
 
 export type VerdictGate =
   | { satisfied: true; binding: VerdictBinding; verdicts: Record<IndependentVerdictRole, SessionRoleAttempt> }
-  | { satisfied: false; reason: string };
+  | { satisfied: false; code: "verdict_readiness_failed" | "awaiting_independent_verdicts"; reason: string; head: string | null; missing: string[] };
 
 /**
  * What the tick consumes before integrating: a current, passing, independent
@@ -412,7 +516,10 @@ export type VerdictGate =
  */
 export function independentVerdictGate(db: Database.Database, input: { session: AgentSession; repoRoot: string }): VerdictGate {
   const readiness = independentVerdictReadiness(db, input);
-  if (!readiness.ready) return { satisfied: false, reason: `Integration waits on deterministic verdict readiness: ${readiness.reasons.join(" ")}` };
+  if (!readiness.ready) {
+    return { satisfied: false, code: "verdict_readiness_failed", head: null, missing: [],
+      reason: `Integration waits on deterministic verdict readiness: ${readiness.reasons.join(" ")}` };
+  }
   const developer = developerPrincipals(db, input.session);
   const verdicts: Partial<Record<IndependentVerdictRole, SessionRoleAttempt>> = {};
   const missing: string[] = [];
@@ -428,7 +535,8 @@ export function independentVerdictGate(db: Database.Database, input: { session: 
     }
   }
   if (missing.length > 0) {
-    return { satisfied: false, reason: `Integration waits on current independent verdicts for head ${readiness.binding.targetHead.slice(0, 12)} (${missing.join("; ")}).` };
+    return { satisfied: false, code: "awaiting_independent_verdicts", head: readiness.binding.targetHead, missing,
+      reason: `Integration waits on current independent verdicts for head ${readiness.binding.targetHead.slice(0, 12)} (${missing.join("; ")}).` };
   }
   return { satisfied: true, binding: readiness.binding, verdicts: verdicts as Record<IndependentVerdictRole, SessionRoleAttempt> };
 }

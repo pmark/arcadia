@@ -525,6 +525,13 @@ export interface AllocateAttemptInput {
    * pinned to it, and its terminal verdict may never name another.
    */
   binding?: VerdictBinding;
+  /**
+   * Planner and critique only: the request id of the latest attempt, which
+   * passed, that the caller has deterministically shown no longer stands (the
+   * launch preview needs planning again under the same input). It allows the
+   * next bounded ordinal without pretending the earlier attempt failed.
+   */
+  supersedesPassed?: string;
   now?: Date;
 }
 
@@ -628,7 +635,9 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
     // the same binding after a failure is a retry and needs authorization.
     const supersededVerdict = previous !== null && isVerdictRole(input.role) &&
       (previous.status === "passed" || previous.status === "failed") && !sameBinding(previous, binding);
-    if (previous && !supersededVerdict && (previous.status !== "failed" || !input.retryAuthorized)) {
+    const supersededHelper = previous !== null && (input.role === "planner" || input.role === "critique") &&
+      previous.status === "passed" && input.supersedesPassed === previous.request_id;
+    if (previous && !supersededVerdict && !supersededHelper && (previous.status !== "failed" || !input.retryAuthorized)) {
       throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
         code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
         requestId: previous.request_id,

@@ -1023,7 +1023,38 @@ earlier verdicts stale, and the developer's own Session can never supply them.
 `arcadia qa pr` records the QA verdict for a managed candidate's PR when the
 PR head is that ready head, and refuses before any reviewer runs otherwise. No
 CLI yet records the code-review verdict, so for now an operator merges with the
-reported command.
+reported command. While a candidate waits, `arcadia production status` lists an
+`awaiting_independent_verdicts` (or `verdict_readiness_failed`) escalation whose
+remedy names the exact `arcadia qa pr` URL and the exact `git merge --ff-only
+<head>` command; it clears once the verdicts are current.
+
+Re-running QA: a plain `arcadia qa pr` on unchanged evidence reuses its earlier
+result. `--rerun` is the authorized retry after a failed QA verdict on the same
+head, criteria and evidence; it is refused when a QA verdict on that exact
+binding already passed. A new commit, criterion or evidence is a new binding
+and needs no `--rerun`.
+
+Independence is checked against what the host can see: the reviewer's identity
+must not be any of the developer's attempt, Session or admission ids, its
+working directory must not be inside a developer worktree (compared after
+resolving symlinks), and a QA reviewer's agent binding must differ from the
+developer Session's. The host cannot observe process ancestry portably, so the
+same provider or model under a different binding is permitted.
+
+Attempt limits: each Action input allows three development attempts, three
+planner attempts and five attempts per verdict role. A planner error or a run
+that prepared nothing stays live and is resumed without using up an attempt.
+When `production status` shows `attempt_limit_exhausted`,
+`attempt_retry_not_authorized` or `planner_attempts_exhausted`, repair the
+cause; no command resets attempt lineage today, so the only path is a governed
+amendment of the Action through an Agent Ask, which gives it a new input
+revision. `arcadia production reset-repair-budget` resets the separate launch
+repair budget, not attempts.
+
+Upgrade gap: a Session launched before attempt lineage existed has no
+development attempt, so the worker never integrates it; it reports
+`verdict_readiness_failed` with the merge command, and an operator lands it
+after an independent review.
 
 ### Provider capacity gates every admission, unless you turn the gate off
 
