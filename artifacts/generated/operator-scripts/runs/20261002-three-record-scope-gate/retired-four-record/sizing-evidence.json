@@ -1,0 +1,93 @@
+{
+  "classification": "Read-only scope sizing and reversible operator-gate preparation",
+  "milestone": "Bootstrap managed production to run unattended from the GitHub board",
+  "currentAction": "prove-literal-split-browser-and-ledger",
+  "principals": {
+    "mutationOwner": "/root",
+    "planningHelper": "/root/scope_planner",
+    "adversarialHelper": "/root/scope_adversary",
+    "helpersGovernedSessions": false,
+    "helpersAdmissions": false
+  },
+  "sizingVerdict": "Combined enrollment and full durability is not defensibly session-sized on inspected evidence. Recommend an explicit four-record exception; do not silently relabel stages or weaken criteria.",
+  "actualImplementationRecords": [
+    "persist-inactive-production-configuration",
+    "enroll-session-through-governed-host-request",
+    "make-one-plan-serial-execution-durable",
+    "prove-installed-three-action-autonomous-rehearsal"
+  ],
+  "fixtureActions": [
+    "write-start-marker",
+    "transform-start-marker",
+    "verify-final-rehearsal"
+  ],
+  "reuse": [
+    "Exact immutable packet/provider/candidate Session preparation",
+    "Repository lease and admission fencing",
+    "Dependency-ready dispatch and serial terminal integration",
+    "Restart/terminal reconciliation and Off handling",
+    "Read-only QA readiness, isolation, structured verdict parsing and evidence rechecks"
+  ],
+  "missingDesign": [
+    {
+      "module": "src/db/schema.ts; proposed src/production/roleAttempts.ts",
+      "behavior": "Add versioned canonical role requirement/input hashes, immutable attempts and request bindings; atomically allocate next bounded ordinal only after an authorized terminal retry; retain every prior outcome."
+    },
+    {
+      "module": "src/goBroker.ts; src/sessions/goRequestProtocol.ts; goRequestExecutor.ts; goRequestWorker.ts; proposed sessions/enrollment.ts",
+      "behavior": "Protected fixed prepare/launch enrollment, canonical scope/model/claim derivation, changed-request refusal and unsupported native supervision refusal; no caller executable or shell text."
+    },
+    {
+      "module": "src/execution/planningPreparation.ts; src/sessions/launch.ts/index.ts/reconciliation.ts",
+      "behavior": "Bind the fixed five roles and development Session/admission to immutable input, selected configuration and principal identities; resume uncertain live attempt instead of allocating another."
+    },
+    {
+      "module": "src/qa/prReview.ts; proposed src/qa/candidateReview.ts",
+      "behavior": "Reuse isolation/readiness/verdict parsing for local candidate review and QA; distinct independent identities; verdicts bind exact head, ordered criteria and deterministic evidence."
+    },
+    {
+      "module": "src/production/tick.ts; src/production/sessionHandoff.ts",
+      "behavior": "Consume role outcomes and refuse stale/failed/developer-supplied verdicts before completion and integration; invalidate changed draft/head/criteria/evidence and fence between-Action launches after Off."
+    }
+  ],
+  "reuseLimits": [
+    "Intelligence job submission returns existing job without changed-payload comparison; retry mutates the same row and evidence directory. Reuse lease-token fencing, allocate a new job for each immutable role attempt.",
+    "Existing packet deterministic_critic is stewardship evidence, not an independently observed adversarial principal.",
+    "Current PR QA needs a GitHub PR and lacks durable requirement/attempt and developer/reviewer identity comparison.",
+    "Current integration validates scope/Grant/head but consumes no independent verdict."
+  ],
+  "requiredFocusedChecks": [
+    "Additive migration and retained history",
+    "Exact replay versus changed request",
+    "Concurrent retry allocation and exhausted bound",
+    "Crash/lost response/unknown liveness/restart reconciliation",
+    "Off and epoch changes at claim/inference/terminal/between Actions",
+    "Competing owner and developer/reviewer identity collision",
+    "Zero inference on failed deterministic readiness",
+    "Changed head/draft/criteria/evidence invalidation",
+    "Review or QA failure blocks completion and integration",
+    "Three serial integrations once, recoverable originals, terminal zero admissions and leases"
+  ],
+  "checksExecuted": false,
+  "sourceEvidence": [
+    "src/execution/planningAuthorization.ts",
+    "src/sessions/launch.ts",
+    "src/sessions/reconciliation.ts",
+    "src/production/tick.ts",
+    "src/production/sessionHandoff.ts",
+    "src/qa/prReview.ts",
+    "src/codex/packets.ts",
+    "src/intelligence/db/repository.ts",
+    "src/intelligence/db/sqliteRepository.ts",
+    "src/intelligence/service/jobService.ts"
+  ],
+  "publicationReceipt": "artifacts/generated/operator-scripts/runs/20261002T164449Z-98726/publication.json",
+  "judgmentQuestion": "May the critical path use four implementation Actions while the disposable rehearsal retains exactly three?",
+  "offAuthority": "No activation, packet rebinding, Session admission, implementation or governance change in this sizing pass.",
+  "alternativeConsidered": {
+    "route": "Disposable GitHub repository, observed CodeRabbit actor/reviewed head, existing PR QA and preservation",
+    "priorEstimate": "An earlier read-only adversary judged enrollment plus durability plausibly one heavy/high session on this narrower route. This is a conditional sizing estimate, not a demonstrated implementation bound.",
+    "tradeoff": "This avoids a new local reviewer supervisor, but still requires five-role immutable attempt lineage, atomic bounded retry, protected enrollment, host-derived QA identity, draft-to-ready/review wait recovery and worker verdict/integration consumers. Four records separate enrollment from those cross-cutting durability changes. The operator is choosing that separation, not being told a three-record route is impossible.",
+    "preferredReuse": "Use existing PR review/QA when setup is available. A local candidate-review path is an alternative requiring its own necessity check, not automatic implementation scope."
+  }
+}

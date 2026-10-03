@@ -136,48 +136,59 @@ narrative-custody/refusal cases, retained every failed run, and published only
 the original two commits. It left the revised pair, Notes, derived readiness
 and other preparation unpublished.
 
-Read-only planning and adversarial helpers identified the smallest honest
-three-record scope: keep saved configuration unchanged, append durable serial
-execution to the existing enrollment identity while preserving its six criteria,
-and add one installed-host rehearsal Action. The finite revised design uses an
-actual disposable GitHub repository, CodeRabbit's actor/reviewed head and existing
-independent PR QA rather than a new local reviewer supervisor. With that route,
-the adversary judges the combined enrollment/durability slice plausibly one
-heavy/high session; this is an estimate, not completion evidence. Draft-to-ready
-PR waiting, five fixed-role attempt lineage, host-derived QA identity and exact
-integration fencing remain missing behavior. Repository publication, PR readiness
-and bounded integration require the later fresh exact Grant. Verify CodeRabbit
-installation and required checks before live dispatch.
+An earlier preparation design proposed three records by appending durable
+execution to enrollment and reusing an actual disposable GitHub repository,
+CodeRabbit's observed actor/reviewed head, and existing PR QA. Its adversary
+estimated one heavy/high session conditionally. That route remains a possible
+scope alternative; the estimate does not prove a one-session implementation
+bound. The original report and drafts remain retained as prior evidence.
 
-Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
-all twelve accepted prerequisite criteria. They are validated inputs, not
-accepted scope. Optional preview is blocked by configured `martianrover`
-workspace-write access; no alternate workspace, repeated same-proposal write or
-direct database editing was used. The shared one-existing-Action Plan-amendment
-runner, separate ordinary Action Ask and fingerprinted `advance queue make-next`
-are the existing governed writers. None may infer authority from queue order or
-silently rebind an immutable packet.
+The current sizing recommendation separates enrollment from the cross-cutting
+five-role lineage, atomic retry, host-derived QA identity, restart-safe PR
+readiness/review waiting and completion/integration consumers. Reusing existing
+PR review/QA can avoid a local reviewer supervisor and should be preferred when
+its setup is available. The four-record choice is a disclosed judgment about
+Action boundaries, not proof that every three-record design is impossible.
+The previous mixed-dirty-main custody observation is historical: the operator
+subsequently published the prerequisite settlement and notes; current main is
+synced except this explicitly reviewed sizing/gate preparation. The earlier
+report must not be used as a current pointer, custody or authority instruction.
 
-The first remaining preparation gate is custody of mixed dirty main. Protected
-Go refuses the modified library pair, readiness, AGENTS/Notes and narrative
-reports; its narrow Ask exemptions do not evacuate them. Preservation needs an
-already registered candidate and the shared amendment runner requires entirely
-clean primary state. The documented operator recovery playbook can preserve the
-exact understood preparation on a recovery branch and publish its review PR;
-it is operator-owned recovery, not a fabricated broker reservation or a new
-implementation Action. Preserve the learning contribution and validated Log
-Ask with that handoff. The five pre-existing unrelated library-contract failures
-remain recorded; isolated valid pairs do not make the whole library green.
+## Critical-path record-count gate — 2026-10-02
 
-[The bounded scope/custody design](reports/three-action-managed-production-scope-design-2026-10-02.md)
-records exact identities, coverage, seams, required external setup and writer
-boundaries. After preparation is reviewed, obtain exact scope acceptance and
-pointer transition, then use one protected candidate/Session per implementation
-Action with compliant immutable provider/model/effort, deterministic checks,
-independent exact-head verdicts, same-candidate completion, PR/check/merge and
-installed-service evidence. Prepare/pass the hermetic three-Action rehearsal
-before requesting its fresh exact Grant. No installed-host autonomous rehearsal
-has run here, and the older literal split/browser/ledger Action stays open.
+Prerequisite settlement publication is complete. The retained receipt at
+`artifacts/generated/operator-scripts/runs/20261002T164449Z-98726/publication.json`
+confirms the exact two commits `ec53674aaaad0148e3ed7e6f3da3a9bb75ab3d64`
+and `a5a6844e751a6441576871b8b20ae8ccf2ab9d6e`, without repeated acceptance.
+The old publication gate is succeeded and must not be reused. Both new
+prerequisite Actions remain open; the pointer still selects
+`prove-literal-split-browser-and-ledger`. Policy observed at
+2026-10-02T18:43:55.295Z remained Inactive revision 29, epoch 19, zero live
+admissions. No live rehearsal is proved by this preparation.
+
+The read-only sizing pass did not establish a defensible one-session bound for
+protected enrollment plus full durable five-role attempt/input lineage,
+independent exact-head review/QA and completion/integration enforcement. The
+earlier narrower PR-based estimate is preserved above as a conditional
+alternative, not silently discarded.
+Existing leases, admission, dependency-ready scheduling, recovery and Off
+handling remain reusable. The bounded recommendation is an explicit four-record
+exception: saved configuration, protected enrollment, durable serial execution,
+and installed-host rehearsal. It preserves both accepted prerequisite IDs and
+all twelve criteria. The disposable rehearsal still has exactly the three
+specified serial Actions; four implementation records are not called stages.
+
+Agent Ask `approve-four-record-managed-production-critical-path-2026-10-02`
+is validated and its host preview names one open Decision. The sandbox draft's
+workspace preview refusal is retained; host preview recorded only operational
+proposal evidence. Neither scope acceptance nor the Decision answer has applied.
+The one-shot `/runs` choice, once independently reviewed and visible, records
+and publishes only this exact count judgment. It creates no implementation
+Action, changes no pointer or queue, approves no packet and activates nothing.
+Separate canonical Action settlements and the exact `advance queue make-next`
+transition follow only after that judgment. The older literal split/browser/ledger
+Action remains open. Sizing evidence and continuation are retained under
+`artifacts/generated/operator-scripts/runs/20261002-three-action-scope-sizing/`.
 
 ## Refresh contract
 

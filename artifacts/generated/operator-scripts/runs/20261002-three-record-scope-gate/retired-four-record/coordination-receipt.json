@@ -1,0 +1,12 @@
+{
+  "observedAt": "2026-10-02T19:28:45.596904+00:00",
+  "humanAuthorization": "Authorize coordination with task 01a0fd32-9c62-7441-b8b8-c9e213016580",
+  "mutationOwner": "01a0fd56-d5ce-7711-a0d4-f02cd02c1267",
+  "readOnlyCoordinatingTask": "01a0fd32-9c62-7441-b8b8-c9e213016580",
+  "ownerAgreed": true,
+  "scopeApproval": false,
+  "productionAuthority": false,
+  "unusedFourRecordPair": "Moved intact into this custody directory, not executed. All run/failed receipt history retained. No lifecycle state reset.",
+  "latestReadOnlyAgreement": "No uncovered criterion invalidates the smaller PR/CodeRabbit route; conditional heavy/high estimate, not implementation proof. Preserve final settled head review/QA identity and later exact Grant publication/readiness/integration scope.",
+  "unreviewedFourRecordLimits": "Prior version passed6 hermetic cases; latest fixes were not finally independently reviewed; no PASS or execution authority inferred."
+}

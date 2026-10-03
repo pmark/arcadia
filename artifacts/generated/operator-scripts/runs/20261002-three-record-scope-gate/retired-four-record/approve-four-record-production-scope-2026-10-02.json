@@ -1,0 +1,65 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "approve-four-record-production-scope-2026-10-02",
+  "title": "Approve four implementation Actions; keep the rehearsal exactly three",
+  "script": "approve-four-record-production-scope-2026-10-02.sh",
+  "kind": "grant",
+  "repeatable": false,
+  "problem": "The primary brief requires exactly three implementation records, but two accepted prerequisite identities plus separate durable execution and installed proof make four. Folding full durability into enrollment is not defensibly one-session-sized.",
+  "desired_effect": "Record and publish only the exact four-record critical-path count exception in canonical Decision 0079, preserving both accepted prerequisite IDs and all twelve criteria; the disposable rehearsal remains exactly three serial Actions.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/approve-four-record-production-scope-2026-10-02.sh run",
+  "agentAsk": {
+    "proposal": "approve-four-record-managed-production-critical-path-2026-10-02",
+    "intent": "decision",
+    "targetRef": null
+  },
+  "authority": {
+    "does": [
+      "Validate the exact clean primary repository, reviewed base lineage, unchanged Project/Plan/acceptance, reviewed input/script/artifact hashes and Inactive revision29 epoch19 with zero live admissions",
+      "Commit only the exact reviewed Ask, this executable/descriptor, sizing evidence and derived readiness preparation; use canonical Agent Ask preview/apply to create only the reviewed open Decision and archive its input",
+      "Use canonical Decision dry-run and approval to record only Approve four implementation Actions; replays validate the exact existing creation/answer instead of replacing them",
+      "Within a four-minute command budget plus at most twenty seconds of termination cleanup, publish only the exact preparation, Decision-creation and answer commits with a normal push; retain failed receipts and confirm remote HEAD"
+    ],
+    "never_does": [
+      "Create or amend implementation Actions, change statuses/pointer/queue/active Plan, close the older proof, approve/rebind packets, launch or adopt Sessions, activate production, consume/revive a Grant, restart services or integrate candidates",
+      "Stage arbitrary files, reconcile or reset/rebase Git, force-push, delete branches/worktrees/receipts, clear leases/dashboard state, spend, alter credentials, deploy, merge or answer another Decision"
+    ]
+  },
+  "success": {
+    "effect": "The exact count exception is canonically answered and its three reviewed commits are published. Both prerequisite identities and criteria, the older proof pointer, packets and production authority are unchanged.",
+    "next": "Continue this session to prepare separate canonical durable/rehearsal Action Asks and the exact saved-configuration pointer transition. Scope counting alone grants no implementation admission or live rehearsal authority."
+  },
+  "failure": {
+    "effect": "A stale source, queue/document preview, Decision state, expiry, unrelated checkout/commit or remote divergence refuses. Any exact preparation, created Decision or answer remains recoverable; no replacement acceptance is attempted.",
+    "next": "Inspect this timestamped failure and canonical receipts; restore only the named precondition and retry this exact still-live choice. Changed scope/expiry requires fresh review; never reset main, force publication, discard commits or clear succeeded buttons."
+  },
+  "policyRevision": "arcadia-critical-path-count-exception-v1",
+  "scope": [
+    "persist-inactive-production-configuration",
+    "enroll-session-through-governed-host-request",
+    "make-one-plan-serial-execution-durable",
+    "prove-installed-three-action-autonomous-rehearsal"
+  ],
+  "expiresAt": "2026-10-03T07:00:00Z",
+  "decided": "2026-10-02",
+  "checkout": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+  "origin": "https://github.com/pmark/arcadia.git",
+  "reviewedBase": "bdf06d6ebc1d575175b83c485ce1171e47ffe2f9",
+  "answer": "Approve four implementation Actions",
+  "askSha256": "caf3cb3524c8363b59f63432368bce45be4d46a3d323279a2b91212918c171f0",
+  "decision": {
+    "id": "0079",
+    "path": "docs/decisions/0079-may-the-critical-path-use-four-implementation-actions-while-the-disposable.md",
+    "openContent": "---\narcadia: v1\ntype: decision\nid: \"0079\"\nslug: may-the-critical-path-use-four-implementation-actions-while-the-disposable\nproject: arcadia\nstatus: open\nquestion: May the critical path use four implementation Actions while the disposable rehearsal retains exactly three?\ngap_type: missing-decision\ngate_question: approval_boundary\nrecommendation: Approve four implementation Actions\noptions:\n  - label: Approve four implementation Actions\n    consequence: Keep both accepted prerequisite identities and all twelve criteria unchanged; use persist-inactive-production-configuration, enroll-session-through-governed-host-request, make-one-plan-serial-execution-durable and prove-installed-three-action-autonomous-rehearsal as four actual implementation records. Prepare the two missing Actions through Agent Asks and select saved configuration through a separately previewed canonical pointer transition. Each Action keeps its own candidate, session, completion, PR/review/checks, permitted merge and installation. The disposable Plan autonomous-three-action-rehearsal still has exactly write-start-marker, transform-start-marker and verify-final-rehearsal. This answers only the record-count exception; it creates no Action, changes no pointer or queue, approves no packet, activates no production and grants no live rehearsal.\n    recommended: true\nconfidence: high\nplan: bootstrap-managed-production-to-build-flight-deck\nupdated: 2026-10-02\n---\n\n# Decision 0079: May the critical path use four implementation Actions while the disposable rehearsal retains exactly three?\n\n## Options\n\n- **Approve four implementation Actions** (recommended): Keep both accepted prerequisite identities and all twelve criteria unchanged; use persist-inactive-production-configuration, enroll-session-through-governed-host-request, make-one-plan-serial-execution-durable and prove-installed-three-action-autonomous-rehearsal as four actual implementation records. Prepare the two missing Actions through Agent Asks and select saved configuration through a separately previewed canonical pointer transition. Each Action keeps its own candidate, session, completion, PR/review/checks, permitted merge and installation. The disposable Plan autonomous-three-action-rehearsal still has exactly write-start-marker, transform-start-marker and verify-final-rehearsal. This answers only the record-count exception; it creates no Action, changes no pointer or queue, approves no packet, activates no production and grants no live rehearsal.\n\n## Rationale\n\nThe primary brief requires exactly three implementation Actions. Reusing the two canonically accepted prerequisite identities plus separate durable execution and installed-host rehearsal yields four actual records. Read-only planner /root/scope_planner and adversary /root/scope_adversary found that folding full durable five-role execution into enrollment is not defensibly session-sized: missing migrated requirement/input/attempt lineage, atomic bounded retries retaining prior failures, distinct principal/reviewer identity, local exact-head candidate review and QA, criteria/evidence invalidation, and worker completion/integration consumers cross the existing broker, database, planning, Session, QA and production paths. Existing dependency dispatch, leases/admission, restart recovery, deterministic QA readiness and Off fences are reusable. Combining durable implementation and installed proof in the last Action would require installation before same-candidate completion/publication and risks a later split creating a fourth record. The bounded recommendation is an explicit four-record exception, not counting four records as three stages. No workflow DSL, dashboard redesign, multi-project scheduling, notification or broad cleanup machinery is included. Preserve prove-literal-split-browser-and-ledger open. The accepted prerequisite settlement and exact two commits are already published; receipt artifacts/generated/operator-scripts/runs/20261002T164449Z-98726/publication.json is retained. Scope approval remains separate from newly authorized immutable packets and from the fresh exact one-shot live rehearsal Grant. If the operator rejects this recommendation, do not silently consolidate or weaken criteria: obtain a concretely session-sized three-record design first.\n\nProposed by Agent Ask approve-four-record-managed-production-critical-path-2026-10-02.\n",
+    "openSha256": "080438957b7097d38e0f2db187742a336815b3492be220d2a751c0da0139439b"
+  },
+  "unchangedFiles": {
+    "PROJECT.md": "e527f44d70bcb1543228f9a0e125bbf4e4339f9a2fd61a46322e49992abb4d9c",
+    "docs/plans/bootstrap-managed-production-to-build-flight-deck.md": "b04c5f64ab678346cd232da2cd265dce4206a7a7719c7ae85dadd31f9d06201c"
+  },
+  "preparationFiles": {
+    "docs/managed-production-readiness.md": "da04fe655a3d91491e03efc72e67c0d91d4dee7d92c2e4499975aeae58cd4f53",
+    "artifacts/generated/operator-scripts/runs/20261002-three-action-scope-sizing/sizing-evidence.json": "ffaa6303966dc8a498aee988ea84ac498ed6931debf4801d7f2858a299cd7a55"
+  },
+  "reviewedScriptSha256": "3729248679b013fa3d37e171f236c8281796eea0965aac5f66744f57cfe0b8ae"
+}
