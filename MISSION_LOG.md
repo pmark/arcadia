@@ -1489,3 +1489,17 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/align-code-review-messages-with-advisory-coderabbit
+
+- **Did:** Completed Action arcadia/align-code-review-messages-with-advisory-coderabbit from accepted evidence (Candidate 56e8fca3649bf6cc94fd19df0bd010a3c20533b1).
+- **Result:** Every declared acceptance criterion was accepted as met: "`arcadia pr code-review` and its runtime messages (`src/stewardship/codeRabbitReview.ts`, `src/cli.ts`) no longer say a completed CodeRabbit review is required or to wait for a limit to reset; they say a rate limit or missing review never blocks a merge and that the independent review gate governs, with tests updated."; "The bootstrap names conflict-free base merges beside the governed-record commits; the PR procedure tells the reviewer to confirm the settle receipt id for an exempt commit and says branch protection on main now requires the seven CI jobs (lint, unit-1..4, dashboard, e2e); the regenerated AGENTS.md and guidance fingerprints agree and `check:agent-guidance` passes."; "The CodeRabbit-dependent rehearsal text in `docs/managed-production-readiness.md` is revised so CodeRabbit is advisory rather than a required reviewer actor, with the independent review gate named; lint, tsc and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-align-code-review-messages-908-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr910
+
+- **Did:** Messages now match the rule you set: PR #910 makes pr code-review and the guidance say CodeRabbit is advisory and that a rate limit never blocks a merge. https://github.com/pmark/arcadia/pull/910
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

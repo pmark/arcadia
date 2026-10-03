@@ -30,7 +30,8 @@ framework or log search engine is needed. Revisit those only when a concrete
 operator flow cannot be completed with these surfaces. There is no new runtime
 model inference; plan generation defaults to Medium Token Impact with one
 bounded implementation and scoped review pass per Action. Repair rounds name
-their failure and remain bounded by the existing CodeRabbit contract.
+their failure and remain bounded by the independent review gate's round
+limit (`docs/agent-guidance/pull-requests.md`); CodeRabbit is advisory.
 
 ## Evidence
 
@@ -160,7 +161,7 @@ collapse/reopen, exactly one launch, and correct terminal state.
 
 Each slice gets one PR with `START_HERE.md` changes in that PR, dashboard build,
 `pnpm exec vitest run apps/dashboard`, full `pnpm exec playwright test`, and
-the CodeRabbit/required-check loop. Seed the existing isolated e2e workspace
+the independent review gate plus required checks. Seed the existing isolated e2e workspace
 and a temporary operator-script library with deterministic safe scripts; never
 click live production or approvals for QA. Move `batch-push-view.spec.ts` and
 `needs-you-board.spec.ts` assertions with their behavior, preserving preview,

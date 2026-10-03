@@ -1493,7 +1493,10 @@ after three fix rounds; a significant finding is reported to the operator, and
 the command never gates a merge). Findings CodeRabbit places
 outside the diff have no thread, so they are flagged by `outsideDiffFindings`
 with their text in `prompt` but never block `done` on their own. A draft PR, an unpushed local HEAD, a timeout, or a
-CodeRabbit failure is an error rather than a verdict.
+CodeRabbit failure is an error rather than a verdict, and so is a paused,
+skipped or rate-limited head (`CODE_REVIEW_NOT_COMPLETED`). None of these
+blocks a merge: the independent review gate governs, so never wait for a rate
+limit to reset or re-trigger CodeRabbit to unblock one.
 
 `decline-finding` replies on the thread with the reason and resolves it, so a
 wrong finding stops being open on the bot's side without being silently

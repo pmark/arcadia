@@ -1901,7 +1901,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     pr
       .command("code-review")
-      .description("Wait for CodeRabbit to review a PR's pushed head and return the loop verdict: done, fix, or cap. Reads only.")
+      .description("Read CodeRabbit's advisory review of a PR's pushed head (waiting up to --timeout-min) and return its verdict: done, fix, or cap. Advisory only: a rate limit or missing review never blocks a merge; the independent review gate (docs/agent-guidance/pull-requests.md) governs. Reads only.")
       .argument("<pr>", "Pull request number")
       .option("--timeout-min <minutes>", "Give up waiting after this many minutes", "20")
       .option("--repo <path>", "Repository checkout the PR belongs to", resolveInvocationPath, invocationRoot())

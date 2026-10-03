@@ -3020,7 +3020,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/896", "src/production/sessionHandoff.ts", "src/sessions/candidatePreservation.ts", "src/sessions/preservationStages.ts", "src/sessions/preservationRefusalBudget.ts", "tests/preservation-git-timeout.test.ts"]
   - id: align-code-review-messages-with-advisory-coderabbit
     title: Make every runtime message and document agree that CodeRabbit is advisory under Decision 0080 and that main now has branch protection.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every runtime message and document agree that CodeRabbit is advisory under Decision 0080 and that main now has branch protection.
@@ -3039,7 +3039,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: enroll-session-through-governed-host-request
+current_action: clear-preservation-timeout-count-and-harden-index-lock-checks
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
