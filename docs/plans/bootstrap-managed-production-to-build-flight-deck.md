@@ -2963,7 +2963,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/884", "src/commands/go.ts", "src/git/worktrees.ts", "src/sessions/launch.ts", "tests/go.test.ts"]
   - id: make-pr-review-verdict-truthful-for-current-head
     title: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Fix the CodeRabbit loop and `arcadia pr code-review` so only a genuinely completed review of the current head can yield done or approved.
