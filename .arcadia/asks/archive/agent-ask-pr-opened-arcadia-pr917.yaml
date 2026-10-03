@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr917","project":"arcadia","intent":"log","desired_result":"Any helper can now ask the host for governed preparation or a managed worker without gaining authority: PR #917 adds the protected enrollment request (criteria 1-6 done, 7-9 queued as a split). https://github.com/pmark/arcadia/pull/917"}
