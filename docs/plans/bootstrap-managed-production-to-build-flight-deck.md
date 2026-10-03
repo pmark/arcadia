@@ -2983,7 +2983,7 @@ actions:
     references: []
   - id: reset-managed-preservation-timeout-history-on-success
     title: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Route the managed tick's preserve call through the shared timeout guard so a success clears the consecutive timeout count.

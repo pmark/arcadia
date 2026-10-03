@@ -1,5 +1,5 @@
-import { boundedExec, preservationIndexLocked, preservationStage } from "./preservationStages.js";
-import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
+import { boundedExec, gitProcessesInWorktree, preservationIndexLocked, preservationIndexLockMalformed, preservationStage } from "./preservationStages.js";
+import { existsSync, lstatSync, realpathSync, rmSync, type Stats } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
@@ -171,7 +171,9 @@ function canonical(value: string): string {
 
 /** No legitimate `read-tree` holds the index lock anywhere near this long; an
  * older lock was left by a killed one (its own timeout or the watchdog's
- * process-group kill) after the commit was already durable. */
+ * process-group kill) after the commit was already durable -- unless some
+ * other Git process (a `git commit` waiting on an editor) still runs in the
+ * candidate, which is checked separately. */
 const STALE_INDEX_LOCK_MS = 5 * 60 * 1000;
 
 /**
@@ -179,17 +181,37 @@ const STALE_INDEX_LOCK_MS = 5 * 60 * 1000;
  * reads clean against its preserved commit. Runs only once that commit is
  * durable on the branch: every refusal or failure before it leaves the
  * candidate's index bytes, `git status` and lock files exactly as they were.
- * A stale lock from a killed earlier sync is removed so the retry can finish;
- * a fresh one may belong to a running Git process and refuses as retryable.
+ * A stale regular-file lock from a killed earlier sync is removed so the retry
+ * can finish, but only when no Git process runs in the candidate; a fresh or
+ * possibly live one refuses as retryable, and a lock path that is not a
+ * regular file (directory, symlink) refuses typed and is never touched.
  */
 function syncIndexToPreservedTree(candidateWorktreePath: string, tree: string): void {
   preservationStage("preserve.index-sync");
   const lock = path.resolve(candidateWorktreePath, git(candidateWorktreePath, ["rev-parse", "--git-path", "index.lock"]).trim());
-  let lockAgeMs: number | null = null;
-  try { lockAgeMs = Date.now() - statSync(lock).mtimeMs; } catch { /* no lock */ }
-  if (lockAgeMs !== null) {
+  let stats: Stats | null = null;
+  try {
+    stats = lstatSync(lock);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT") throw preservationIndexLockMalformed(lock, "unreadable", { errorCode: code ?? null, error: String(error) });
+  }
+  if (stats) {
+    const lockAgeMs = Date.now() - stats.mtimeMs;
+    if (!stats.isFile()) {
+      const lockKind = stats.isDirectory() ? "directory" : stats.isSymbolicLink() ? "symlink" : "other";
+      throw preservationIndexLockMalformed(lock, lockKind, { lockAgeMs });
+    }
     if (lockAgeMs < STALE_INDEX_LOCK_MS) throw preservationIndexLocked(lock, lockAgeMs);
-    rmSync(lock, { force: true });
+    const holders = gitProcessesInWorktree(candidateWorktreePath);
+    if (holders.status === "live") throw preservationIndexLocked(lock, lockAgeMs, { liveness: "live", liveGitPids: holders.pids });
+    if (holders.status === "unknown") throw preservationIndexLocked(lock, lockAgeMs, { liveness: "unknown", livenessError: holders.error });
+    try {
+      rmSync(lock);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") throw preservationIndexLockMalformed(lock, "unremovable", { lockAgeMs, errorCode: code ?? null, error: String(error) });
+    }
   }
   git(candidateWorktreePath, ["read-tree", tree]);
 }

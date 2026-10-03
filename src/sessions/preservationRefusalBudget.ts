@@ -23,6 +23,17 @@ export const MAX_IDENTICAL_PRESERVATION_REFUSALS = 3;
 export const MAX_IDENTICAL_PRESERVATION_TIMEOUTS = 10;
 const timeoutSubject = (subjectId: string) => `timeout:${subjectId}`;
 
+/**
+ * A blocked candidate index lock (`reason: index_locked`, or a malformed lock
+ * shape `index_lock_malformed`) shares the timeout's typed, retryable
+ * transport but is not a slow Git call: it is counted on its own subject with
+ * its own identical-attempt limit, so it neither consumes nor resets the
+ * timeout streak, and its cap names the lock rather than the timeout bound.
+ */
+export const MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS = 10;
+const indexLockSubject = (subjectId: string) => `index_lock:${subjectId}`;
+const INDEX_LOCK_REASONS = new Set(["index_locked", "index_lock_malformed"]);
+
 export function ensurePreservationRefusalTable(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS preservation_refusal_attempts (
     subject_id TEXT PRIMARY KEY,
@@ -100,8 +111,13 @@ export function getPreservationTimeoutAttempts(db: Database.Database, subjectId:
   return getPreservationRefusalAttempts(db, timeoutSubject(subjectId));
 }
 
-/** Count one retryable timeout for `subjectId` and rethrow it, or refuse
- * automatic retries once the identical-timeout budget is exhausted. */
+export function getPreservationIndexLockAttempts(db: Database.Database, subjectId: string): number {
+  return getPreservationRefusalAttempts(db, indexLockSubject(subjectId));
+}
+
+/** Count one retryable `PRESERVATION_GIT_TIMEOUT` for `subjectId` -- a slow Git
+ * call on the timeout budget, a blocked index lock on its own -- and rethrow
+ * it, or refuse automatic retries once that budget is exhausted. */
 function recordPreservationTimeout(
   db: Database.Database,
   subjectId: string,
@@ -109,7 +125,24 @@ function recordPreservationTimeout(
   error: ArcadiaError,
   onLimitReached?: (attempts: number, error: ArcadiaError) => void
 ): never {
-  const { reason, stage, command, gitSubcommand } = error.details;
+  const { reason, stage, command, gitSubcommand, lockPath, lockKind } = error.details;
+  if (typeof reason === "string" && INDEX_LOCK_REASONS.has(reason)) {
+    const fingerprint = fingerprintPreservationRefusal(error.code, { reason, stage, lockPath, lockKind });
+    const { attempts } = recordPreservationRefusal(db, indexLockSubject(subjectId), fingerprint, error.message, now);
+    if (attempts >= MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS) {
+      onLimitReached?.(attempts, error);
+      throw validationError(
+        `The candidate index lock blocked preservation the same way ${attempts} times in a row: ${error.message} ` +
+          "This candidate will not be retried automatically; an operator must resolve the lock before retrying.",
+        {
+          ...error.details, retryable: false, identicalIndexLockLimitReached: true, identicalRefusalLimitReached: true, attempts,
+          remedy: `Confirm no Git process is still running in the candidate worktree, then inspect and remove ${String(lockPath ?? "the candidate's index.lock")} yourself ` +
+            "(the preservation commit is already durable on the branch) and rerun the same launcher unchanged. A successful preservation clears this count."
+        }
+      );
+    }
+    throw error;
+  }
   const fingerprint = fingerprintPreservationRefusal(error.code, { reason, stage, command, gitSubcommand });
   const { attempts } = recordPreservationRefusal(db, timeoutSubject(subjectId), fingerprint, error.message, now);
   if (attempts >= MAX_IDENTICAL_PRESERVATION_TIMEOUTS) {
@@ -126,9 +159,11 @@ function recordPreservationTimeout(
   throw error;
 }
 
-/** Bound the preservation step itself: only retryable timeouts are counted
- * (against the identical-timeout budget); every other error passes through
- * untouched, and a success clears the timeout count. */
+/** Bound the preservation step itself: only retryable `PRESERVATION_GIT_TIMEOUT`
+ * failures are counted (timeouts and index-lock refusals on their separate
+ * budgets); every other error passes through untouched, and a success clears
+ * both counts. Shared by the CLI `arcadia preserve` broker and the managed
+ * tick's terminal-exit handoff, keyed on the same Session id. */
 export function guardPreservationTimeouts<T>(db: Database.Database, subjectId: string, now: Date, run: () => T): T {
   let result: T;
   try {
@@ -138,6 +173,7 @@ export function guardPreservationTimeouts<T>(db: Database.Database, subjectId: s
     throw error;
   }
   clearPreservationRefusal(db, timeoutSubject(subjectId));
+  clearPreservationRefusal(db, indexLockSubject(subjectId));
   return result;
 }
 
