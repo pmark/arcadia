@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 
 # Mission Log: Arcadia
@@ -1367,6 +1367,20 @@ updated: 2026-10-02
 ## 2026-10-02 — Agent Ask pr-opened-arcadia-pr888
 
 - **Did:** Manual preservation snapshot identity repair is published for review in draft PR https://github.com/pmark/arcadia/pull/888; protected final narrative preservation is blocked by base drift.
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/persist-inactive-production-configuration
+
+- **Did:** Completed Action arcadia/persist-inactive-production-configuration from accepted evidence (Candidate ec2b24e281214ef702c8d99ecc14a505b4ec598e).
+- **Result:** Every declared acceptance criterion was accepted as met: "Off atomically revokes active authority and fences pending admissions while retaining separately labelled DB-owned configuration across worker and dashboard restart; a migration and named revision/fingerprint preserve its provenance."; "The /runs On path previews the saved exact Project/Plan/Action/provider bounds and current effective concurrency, refuses stale policy/configuration revisions, and never re-derives scope.actions from a moved queue or pointer."; "An authorized On transition records fresh activation authority and epoch; old fenced admissions stay fenced, committed work remains identifiable, and restart or duplicate toggles never launch a duplicate worker."; "Consumed or expired integration Grants, rehearsal exceptions and packet delegation never revive. Missing current authority returns the exact actionable gate; any changed On delegation semantics remain inactive pending the required explicit Decision."; "Effective production-worker concurrency remains one until the existing concurrency proof gate permits more; native helpers cannot bypass principal ownership or admission accounting."; "Deterministic policy and dashboard tests cover absent configuration, migration, Off/On, consumed/expired grants, moved pointers, concurrent toggles, restart and in-flight work; required checks pass and the operator guide describes saved configuration separately from active permission.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-persist-inactive-production-configuration-2026-10-03).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr893
+
+- **Did:** Production Off no longer forgets its reviewed scope: PR #893 saves it apart from authority and lets On replay it into a fresh epoch or refuse with the exact reason. https://github.com/pmark/arcadia/pull/893
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

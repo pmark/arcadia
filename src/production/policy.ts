@@ -283,6 +283,136 @@ interface AdmissionRow {
   fenced_reason: string | null;
 }
 
+/**
+ * Scope fields Off retains. This is an allowlist on purpose: any field not named
+ * here, including a future authority-bearing one, is dropped across Off and
+ * needs a fresh grant (Decision 0072) rather than being carried by default.
+ */
+const REVIEWED_SCOPE_FIELDS = [
+  "intent",
+  "projects",
+  "plans",
+  "actions",
+  "providers",
+  "maxConcurrentSessions",
+  "mechanicalTransitions"
+] as const satisfies ReadonlyArray<keyof ProductionScope>;
+
+/** The names of scope fields an Off dropped (grants, exceptions, delegation expiry, remote preservation). */
+export type InactiveConfigurationNotCarried = string;
+
+/**
+ * The reviewed scope Off retained, kept apart from `production_policy.scope_json`
+ * so it can never be mistaken for active authority: every admission gate reads
+ * the policy row and requires `desiredState === "active"`. It records what was
+ * reviewed (Project, Plan, exact Action allowlist, providers, concurrency,
+ * mechanical transitions), never a grant.
+ */
+export interface ProductionInactiveConfiguration {
+  /** Increments each time an Off from an Active policy saves a configuration. */
+  configurationRevision: number;
+  /** `fingerprintProductionScope(scope)` of the retained scope. */
+  fingerprint: string;
+  /** The policy revision the saving Off produced. */
+  savedAtPolicyRevision: number;
+  /** The epoch whose authorization this configuration was reviewed under. */
+  sourceEpoch: number;
+  sourceAuthorityRequestId: string | null;
+  scope: ProductionScope;
+  /** The scope fields present on the active scope that Off deliberately dropped. */
+  notCarried: InactiveConfigurationNotCarried[];
+  savedAt: string;
+}
+
+interface InactiveConfigurationRow {
+  configuration_revision: number;
+  fingerprint: string;
+  saved_at_policy_revision: number;
+  source_epoch: number;
+  source_authority_request_id: string | null;
+  scope_json: string;
+  not_carried_json: string;
+  saved_at: string;
+}
+
+/** Reads the retained configuration; `null` when no Off has saved one. */
+export function readInactiveConfiguration(db: Database.Database): ProductionInactiveConfiguration | null {
+  const row = db
+    .prepare(
+      `SELECT configuration_revision, fingerprint, saved_at_policy_revision, source_epoch,
+              source_authority_request_id, scope_json, not_carried_json, saved_at
+         FROM production_inactive_configuration WHERE id = 'workspace'`
+    )
+    .get() as InactiveConfigurationRow | undefined;
+  if (!row) return null;
+  return {
+    configurationRevision: row.configuration_revision,
+    fingerprint: row.fingerprint,
+    savedAtPolicyRevision: row.saved_at_policy_revision,
+    sourceEpoch: row.source_epoch,
+    sourceAuthorityRequestId: row.source_authority_request_id,
+    scope: JSON.parse(row.scope_json) as ProductionScope,
+    notCarried: JSON.parse(row.not_carried_json) as InactiveConfigurationNotCarried[],
+    savedAt: row.saved_at
+  };
+}
+
+/** The reviewed bounds of `scope`, with everything else reported as not carried. */
+export function reviewedConfigurationOf(scope: ProductionScope): {
+  scope: ProductionScope;
+  notCarried: InactiveConfigurationNotCarried[];
+} {
+  const reviewed = {} as Record<string, unknown>;
+  for (const field of REVIEWED_SCOPE_FIELDS) reviewed[field] = scope[field];
+  const notCarried = Object.entries(scope)
+    .filter(([field, value]) => !(REVIEWED_SCOPE_FIELDS as readonly string[]).includes(field) && value !== undefined && value !== false)
+    .map(([field]) => field)
+    .sort();
+  return { scope: reviewed as unknown as ProductionScope, notCarried };
+}
+
+/**
+ * Called only inside the Off transaction, and only when an Active scope is
+ * about to be cleared: a second Off (or an Off of a never-activated policy)
+ * has nothing to retain and must not overwrite what the first one saved.
+ */
+function saveInactiveConfiguration(
+  db: Database.Database,
+  before: ProductionPolicyRecord,
+  savedAtPolicyRevision: number,
+  at: string
+): void {
+  if (before.desiredState !== "active" || !before.scope) return;
+  const { scope, notCarried } = reviewedConfigurationOf(before.scope);
+  const previous = db
+    .prepare(`SELECT configuration_revision FROM production_inactive_configuration WHERE id = 'workspace'`)
+    .get() as { configuration_revision: number } | undefined;
+  db.prepare(
+    `INSERT INTO production_inactive_configuration
+       (id, configuration_revision, fingerprint, saved_at_policy_revision, source_epoch,
+        source_authority_request_id, scope_json, not_carried_json, saved_at)
+     VALUES ('workspace', ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       configuration_revision = excluded.configuration_revision,
+       fingerprint = excluded.fingerprint,
+       saved_at_policy_revision = excluded.saved_at_policy_revision,
+       source_epoch = excluded.source_epoch,
+       source_authority_request_id = excluded.source_authority_request_id,
+       scope_json = excluded.scope_json,
+       not_carried_json = excluded.not_carried_json,
+       saved_at = excluded.saved_at`
+  ).run(
+    (previous?.configuration_revision ?? 0) + 1,
+    fingerprintProductionScope(scope),
+    savedAtPolicyRevision,
+    before.epoch,
+    before.authority?.requestId ?? null,
+    JSON.stringify(scope),
+    JSON.stringify(notCarried),
+    at
+  );
+}
+
 export function ensureProductionPolicyTables(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS production_policy (
@@ -327,6 +457,17 @@ export function ensureProductionPolicyTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS production_admissions_status
       ON production_admissions (status, epoch);
+    CREATE TABLE IF NOT EXISTS production_inactive_configuration (
+      id TEXT PRIMARY KEY CHECK (id = 'workspace'),
+      configuration_revision INTEGER NOT NULL,
+      fingerprint TEXT NOT NULL,
+      saved_at_policy_revision INTEGER NOT NULL,
+      source_epoch INTEGER NOT NULL,
+      source_authority_request_id TEXT,
+      scope_json TEXT NOT NULL,
+      not_carried_json TEXT NOT NULL,
+      saved_at TEXT NOT NULL
+    );
   `);
   ensureProductionPolicyReceiptScopeFingerprintColumn(db);
 }
@@ -728,59 +869,7 @@ export function activateProduction(
     );
   }
 
-  const result = writeTransaction(db, () => {
-    const replay = findTransitionReceipt(db, input.requestId);
-    if (replay) {
-      if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.scopeFingerprint) {
-        throw validationError(
-          "This request id already activated a different scope; replaying it now would silently keep that scope instead of granting the one just requested. Use a new request id.",
-          {
-            requestId: input.requestId,
-            previousRevision: replay.revision_before,
-            previousScopeFingerprint: replay.scope_fingerprint,
-            requestedScopeFingerprint: input.scopeFingerprint
-          }
-        );
-      }
-      return { replayed: true, revisionBefore: replay.revision_before };
-    }
-
-    const before = readProductionPolicy(db);
-    if (input.expectedRevision !== undefined && input.expectedRevision !== before.revision) {
-      throw validationError("Production policy moved since it was previewed.", {
-        expectedRevision: input.expectedRevision,
-        currentRevision: before.revision
-      });
-    }
-
-    const authority: ProductionAuthorityReceipt = {
-      requestId: input.requestId,
-      grantedBy: input.grantedBy,
-      grantedAt: at,
-      decisionRef: input.decisionRef ?? null,
-      scopeFingerprint: input.scopeFingerprint
-    };
-
-    db.prepare(
-      `UPDATE production_policy
-          SET desired_state = 'active', revision = revision + 1, epoch = epoch + 1,
-              scope_json = ?, authority_json = ?, revoked_at = NULL, updated_at = ?
-        WHERE id = 'workspace'`
-    ).run(JSON.stringify(input.scope), JSON.stringify(authority), at);
-
-    const after = readProductionPolicy(db);
-    recordTransitionReceipt(db, {
-      requestId: input.requestId,
-      transition: "activate",
-      revisionBefore: before.revision,
-      revisionAfter: after.revision,
-      epochAfter: after.epoch,
-      receipt: { authority, scope: input.scope },
-      at,
-      scopeFingerprint: input.scopeFingerprint
-    });
-    return { replayed: false, revisionBefore: before.revision };
-  });
+  const result = writeTransaction(db, () => applyProductionActivation(db, input, at));
 
   const elapsedMs = Date.now() - startedAt;
   return {
@@ -793,6 +882,72 @@ export function activateProduction(
     elapsedMs,
     withinAcknowledgementDeadline: elapsedMs <= PRODUCTION_CONTROL_DEADLINES.offAcknowledgementMs
   };
+}
+
+/**
+ * The activation write itself. The caller owns the surrounding `writeTransaction`
+ * and has already checked that `input.scopeFingerprint` matches `input.scope`;
+ * `reactivateProduction` runs its own drift checks inside the same transaction,
+ * so nothing can move between the check and this write.
+ */
+export function applyProductionActivation(
+  db: Database.Database,
+  input: ActivateProductionInput,
+  at: string,
+  receiptExtra: Record<string, unknown> = {}
+): { replayed: boolean; revisionBefore: number } {
+  const replay = findTransitionReceipt(db, input.requestId);
+  if (replay) {
+    assertReceiptTransition(replay, input.requestId, "activate");
+    if (replay.scope_fingerprint !== null && replay.scope_fingerprint !== input.scopeFingerprint) {
+      throw validationError(
+        "This request id already activated a different scope; replaying it now would silently keep that scope instead of granting the one just requested. Use a new request id.",
+        {
+          requestId: input.requestId,
+          previousRevision: replay.revision_before,
+          previousScopeFingerprint: replay.scope_fingerprint,
+          requestedScopeFingerprint: input.scopeFingerprint
+        }
+      );
+    }
+    return { replayed: true, revisionBefore: replay.revision_before };
+  }
+
+  const before = readProductionPolicy(db);
+  if (input.expectedRevision !== undefined && input.expectedRevision !== before.revision) {
+    throw validationError("Production policy moved since it was previewed.", {
+      expectedRevision: input.expectedRevision,
+      currentRevision: before.revision
+    });
+  }
+
+  const authority: ProductionAuthorityReceipt = {
+    requestId: input.requestId,
+    grantedBy: input.grantedBy,
+    grantedAt: at,
+    decisionRef: input.decisionRef ?? null,
+    scopeFingerprint: input.scopeFingerprint
+  };
+
+  db.prepare(
+    `UPDATE production_policy
+        SET desired_state = 'active', revision = revision + 1, epoch = epoch + 1,
+            scope_json = ?, authority_json = ?, revoked_at = NULL, updated_at = ?
+      WHERE id = 'workspace'`
+  ).run(JSON.stringify(input.scope), JSON.stringify(authority), at);
+
+  const after = readProductionPolicy(db);
+  recordTransitionReceipt(db, {
+    requestId: input.requestId,
+    transition: "activate",
+    revisionBefore: before.revision,
+    revisionAfter: after.revision,
+    epochAfter: after.epoch,
+    receipt: { authority, scope: input.scope, ...receiptExtra },
+    at,
+    scopeFingerprint: input.scopeFingerprint
+  });
+  return { replayed: false, revisionBefore: before.revision };
 }
 
 export interface DeactivateProductionInput {
@@ -817,11 +972,16 @@ export function deactivateProduction(
   const result = writeTransaction(db, () => {
     const replay = findTransitionReceipt(db, input.requestId);
     if (replay) {
+      assertReceiptTransition(replay, input.requestId, "deactivate");
       return { replayed: true, revisionBefore: replay.revision_before, fenced: [] as AdmissionReceipt[] };
     }
 
     const before = readProductionPolicy(db);
     const pending = listAdmissionRows(db, "issued");
+
+    // Saved in the same transaction that clears the scope, so no restart can
+    // observe "scope gone, nothing retained".
+    saveInactiveConfiguration(db, before, before.revision + 1, at);
 
     db.prepare(
       `UPDATE production_policy
@@ -1373,10 +1533,28 @@ function toReceipt(row: AdmissionRow): AdmissionReceipt {
 export function findTransitionReceipt(
   db: Database.Database,
   requestId: string
-): { revision_before: number; scope_fingerprint: string | null } | undefined {
+): { transition: "activate" | "deactivate"; revision_before: number; scope_fingerprint: string | null } | undefined {
   return db
-    .prepare(`SELECT revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
-    .get(requestId) as { revision_before: number; scope_fingerprint: string | null } | undefined;
+    .prepare(`SELECT transition, revision_before, scope_fingerprint FROM production_policy_receipts WHERE request_id = ?`)
+    .get(requestId) as
+    | { transition: "activate" | "deactivate"; revision_before: number; scope_fingerprint: string | null }
+    | undefined;
+}
+
+/**
+ * `request_id` is unique across both transitions, so a reused id may belong to
+ * the other kind. Replaying it would report a transition that never happened.
+ */
+export function assertReceiptTransition(
+  receipt: { transition: "activate" | "deactivate" },
+  requestId: string,
+  expected: "activate" | "deactivate"
+): void {
+  if (receipt.transition === expected) return;
+  throw validationError(
+    `This request id already recorded ${receipt.transition === "activate" ? "an activation" : "a deactivation"}, not ${expected === "activate" ? "an activation" : "a deactivation"}; replaying it would report a transition that did not happen. Use a new request id.`,
+    { conflict: true, requestId, recorded: receipt.transition, requested: expected }
+  );
 }
 
 function recordTransitionReceipt(

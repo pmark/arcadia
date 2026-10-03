@@ -9,31 +9,42 @@ vi.mock("node:child_process", () => {
   };
   (execFile as unknown as Record<symbol, unknown>)[promisify.custom] = async (_command: string, args: string[]) => {
     calls.push(args);
-    return { stdout: JSON.stringify({ ok: true, command: "production.activate", data: {} }), stderr: "" };
+    return { stdout: JSON.stringify({ ok: true, command: "production.reactivate", data: {} }), stderr: "" };
   };
   return { execFile };
 });
 
-describe("dashboard production reactivation (Issue #392)", () => {
-  it("forwards the exact recorded scope.actions instead of letting the CLI re-derive them", async () => {
-    const { activateProduction } = await import("./arcadia-cli");
-    await activateProduction({
+describe("dashboard production reactivation (Issues #392, #883)", () => {
+  it("asks the CLI to replay the saved configuration, bound to the previewed revisions, and never rebuilds a scope", async () => {
+    const cli = await import("./arcadia-cli");
+    // The old flag-rebuilding entry point is gone: argv cannot express grants,
+    // delegation expiry or an empty transition list, which is how scope widened.
+    expect("activateProduction" in cli).toBe(false);
+
+    await cli.reactivateProduction({
       requestId: "req-1",
-      grantedBy: "operator",
-      expectedRevision: 4,
-      scope: {
-        intent: "Finish the Plan.",
-        projects: ["demo"],
-        plans: ["demo/queue-plan"],
-        actions: ["demo/migrate", "demo/ship-it"],
-        providers: ["claude"],
-        maxConcurrentSessions: 1,
-        mechanicalTransitions: ["validation"]
-      }
+      grantedBy: "dashboard-toggle",
+      expected: { policyRevision: 29, configurationRevision: 3, fingerprint: "abc123" }
     });
 
     const args = calls.at(-1) ?? [];
-    const forwarded = args.flatMap((arg, index) => (arg === "--action" ? [args[index + 1]] : []));
-    expect(forwarded).toEqual(["demo/migrate", "demo/ship-it"]);
+    expect(args.slice(args.indexOf("production"))).toEqual([
+      "production",
+      "reactivate",
+      "--request-id",
+      "req-1",
+      "--granted-by",
+      "dashboard-toggle",
+      "--expected-revision",
+      "29",
+      "--expected-configuration-revision",
+      "3",
+      "--expected-fingerprint",
+      "abc123",
+      "--json"
+    ]);
+    for (const flag of ["--action", "--project", "--plan", "--provider", "--transitions", "--concurrency"]) {
+      expect(args).not.toContain(flag);
+    }
   });
 });

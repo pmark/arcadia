@@ -65,12 +65,15 @@ import {
 } from "./commands/capacity.js";
 import {
   renderProductionPreviewSuccess,
+  renderProductionReactivatePreviewSuccess,
   renderProductionResetRepairBudgetSuccess,
   renderProductionStatusSuccess,
   renderProductionTransitionSuccess,
   runProductionActivateCommand,
   runProductionDeactivateCommand,
   runProductionPreviewCommand,
+  runProductionReactivateCommand,
+  runProductionReactivatePreviewCommand,
   runProductionResetRepairBudgetCommand,
   runProductionStatusCommand
 } from "./commands/production.js";
@@ -1078,6 +1081,28 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .addOption(new Option("--expect-revision <n>").hideHelp())
   ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string }) =>
     runCliAction("production.activate", options, () => runProductionActivateCommand(options), renderProductionTransitionSuccess)
+  );
+  addJsonOption(
+    production
+      .command("reactivate-preview")
+      .description("Preview replaying the configuration Off retained into a fresh epoch; writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("production.reactivate-preview", options, () => runProductionReactivatePreviewCommand(options), renderProductionReactivatePreviewSuccess)
+  );
+  addJsonOption(
+    production
+      .command("reactivate")
+      .description("Replay the saved reviewed configuration into a fresh epoch, or refuse with the exact drift reason")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--request-id <id>", "Idempotency key for this grant")
+      .requiredOption("--granted-by <who>", "Operator granting the authorization")
+      .option("--decision <ref>", "Authorizing Decision reference")
+      .requiredOption("--expected-revision <n>", "Policy revision from `reactivate-preview` (expected.policyRevision)")
+      .requiredOption("--expected-configuration-revision <n>", "Saved configuration revision from `reactivate-preview`")
+      .requiredOption("--expected-fingerprint <sha>", "Saved configuration fingerprint from `reactivate-preview`")
+  ).action((options: { workspace: string; requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectedConfigurationRevision?: string; expectedFingerprint?: string; json?: boolean }) =>
+    runCliAction("production.reactivate", options, () => runProductionReactivateCommand(options), renderProductionTransitionSuccess)
   );
   addJsonOption(
     production
@@ -4833,7 +4858,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "deactivate", "reset-repair-budget"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget"].includes(second ?? "")) {
     return `production.${second}`;
   }
 

@@ -20,15 +20,22 @@ import {
   deactivateProduction,
   findTransitionReceipt,
   listAdmissions,
+  readInactiveConfiguration,
   readProductionPolicySafely,
   resolveConcurrencyGate,
   type AdmissionReceipt,
   type ConcurrencyGateStatus,
   type MechanicalTransition,
+  type ProductionInactiveConfiguration,
   type ProductionIntegrationGrant,
   type ProductionPolicyRead,
   type ProductionTransitionResult
 } from "../production/policy.js";
+import {
+  evaluateReactivation,
+  reactivateProduction,
+  type ProductionReactivationPreview
+} from "../production/reactivation.js";
 import {
   getProductionRepairAttempts,
   listLaunchBlockers,
@@ -82,6 +89,20 @@ export interface ProductionDeactivateOptions {
   reason?: string;
 }
 
+export interface ProductionReactivatePreviewOptions {
+  workspace: string;
+}
+
+export interface ProductionReactivateOptions extends ProductionReactivatePreviewOptions {
+  requestId: string;
+  grantedBy: string;
+  decision?: string;
+  /** From the reactivate preview's `expected` block; all three are required. */
+  expectedRevision?: string;
+  expectedConfigurationRevision?: string;
+  expectedFingerprint?: string;
+}
+
 export interface ProductionResetRepairBudgetOptions {
   workspace: string;
   actionKey: string;
@@ -102,6 +123,12 @@ export interface ProductionStatusData {
   redAlerts: RedAlert[];
   /** The one bounded diagnosis per alert episode, when one ran. */
   redAlertDiagnoses?: RedAlertDiagnosis[];
+  /**
+   * The reviewed configuration Off retained, separate from `read.policy.scope`:
+   * it is what a reactivation may replay, never active permission. `null` when
+   * nothing was saved (or the store predates it).
+   */
+  inactiveConfiguration: ProductionInactiveConfiguration | null;
   offConsequence: string;
   controlDeadlines: typeof PRODUCTION_CONTROL_DEADLINES;
   /** `null` only when no scope is active to gate; Off always reports `null`. */
@@ -110,6 +137,10 @@ export interface ProductionStatusData {
 
 export interface ProductionPreviewData {
   preview: ProductionActivationPreview;
+}
+
+export interface ProductionReactivatePreviewData {
+  preview: ProductionReactivationPreview;
 }
 
 export interface ProductionTransitionData {
@@ -144,6 +175,7 @@ export function runProductionStatusCommand(
       operatorEscalations: listOperatorEscalations(db),
       redAlerts: listOpenRedAlerts(db),
       redAlertDiagnoses: listRedAlertDiagnoses(db),
+      inactiveConfiguration: readInactiveConfigurationSafely(db),
       offConsequence: PRODUCTION_OFF_CONSEQUENCE,
       controlDeadlines: PRODUCTION_CONTROL_DEADLINES,
       concurrencyGate:
@@ -256,6 +288,72 @@ export function runProductionActivateCommand(
   });
 }
 
+export function runProductionReactivatePreviewCommand(
+  options: ProductionReactivatePreviewOptions
+): CommandSuccess<ProductionReactivatePreviewData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const preview = withDatabase(workspacePath, (db) =>
+    evaluateReactivation(db, { knownProviders: knownProviders(workspacePath) })
+  );
+  return createSuccess({
+    command: "production.reactivate-preview",
+    workspace: workspacePath,
+    data: { preview },
+    warnings: preview.refusals.map((refusal) => `[${refusal.code}] ${refusal.reason}`)
+  });
+}
+
+/**
+ * Replays the saved reviewed configuration into a fresh epoch. Every expectation
+ * is mandatory: a reactivation without a preview to bind to is not a switch.
+ */
+export function runProductionReactivateCommand(
+  options: ProductionReactivateOptions
+): CommandSuccess<ProductionTransitionData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (!options.requestId?.trim()) {
+    throw validationError("Reactivation needs a --request-id so a replay is recognised.", { field: "requestId" });
+  }
+  if (!options.grantedBy?.trim()) {
+    throw validationError("Reactivation needs --granted-by naming the authorizing operator.", { field: "grantedBy" });
+  }
+  const policyRevision = parseOptionalInteger(options.expectedRevision, "expected-revision");
+  const configurationRevision = parseOptionalInteger(
+    options.expectedConfigurationRevision,
+    "expected-configuration-revision"
+  );
+  const fingerprint = options.expectedFingerprint?.trim();
+  if (policyRevision === undefined || configurationRevision === undefined || !fingerprint) {
+    throw validationError(
+      "Reactivation needs --expected-revision, --expected-configuration-revision and --expected-fingerprint from `production reactivate-preview`.",
+      { fields: ["expected-revision", "expected-configuration-revision", "expected-fingerprint"] }
+    );
+  }
+
+  const { result, concurrencyGate } = withDatabase(workspacePath, (db) => {
+    const transition = reactivateProduction(db, {
+      requestId: options.requestId.trim(),
+      grantedBy: options.grantedBy.trim(),
+      decisionRef: options.decision ?? null,
+      expected: { policyRevision, configurationRevision, fingerprint },
+      knownProviders: knownProviders(workspacePath)
+    });
+    return {
+      result: transition,
+      concurrencyGate: transition.policy.scope
+        ? resolveConcurrencyGate(db, transition.policy.scope, transition.policy.updatedAt)
+        : null
+    };
+  });
+
+  return createSuccess({
+    command: "production.reactivate",
+    workspace: workspacePath,
+    data: { result, offConsequence: PRODUCTION_OFF_CONSEQUENCE, concurrencyGate },
+    warnings: result.replayed ? ["Replayed an existing activation receipt; nothing changed."] : []
+  });
+}
+
 export function runProductionDeactivateCommand(
   options: ProductionDeactivateOptions
 ): CommandSuccess<ProductionTransitionData> {
@@ -350,6 +448,17 @@ export function renderProductionStatusSuccess(
   if (read.status === "ok") {
     const policy = read.policy;
     lines.push(`  Desired state: ${policy.desiredState} (revision ${policy.revision}, epoch ${policy.epoch})`);
+    if (!policy.scope && response.data.inactiveConfiguration) {
+      const saved = response.data.inactiveConfiguration;
+      lines.push(
+        `  Saved configuration (not active permission): revision ${saved.configurationRevision}, ` +
+          `${saved.scope.actions.length} Action(s), fingerprint ${saved.fingerprint}, saved by the Off at policy revision ${saved.savedAtPolicyRevision}`
+      );
+      if (saved.notCarried.length > 0) {
+        lines.push(`  Not carried across Off: ${saved.notCarried.join(", ")}`);
+      }
+      lines.push("  Preview a fresh activation with `arcadia production reactivate-preview`.");
+    }
     if (policy.scope) {
       lines.push(`  Intent: ${policy.scope.intent}`);
       lines.push(`  Projects: ${policy.scope.projects.join(", ")}`);
@@ -443,6 +552,46 @@ export function renderProductionPreviewSuccess(
   return lines;
 }
 
+export function renderProductionReactivatePreviewSuccess(
+  response: CommandSuccess<ProductionReactivatePreviewData>
+): string[] {
+  const { preview } = response.data;
+  const lines = [
+    "Managed production reactivation preview (nothing was written)",
+    `  Current policy: ${preview.currentPolicy.desiredState}, revision ${preview.currentPolicy.revision}, epoch ${preview.currentPolicy.epoch}`
+  ];
+  if (preview.configuration) {
+    const { scope } = preview.configuration;
+    lines.push(
+      `  Saved configuration: revision ${preview.configuration.configurationRevision}, fingerprint ${preview.configuration.fingerprint}`,
+      `  Intent: ${scope.intent}`,
+      `  Projects: ${scope.projects.join(", ")}`,
+      `  Plans: ${scope.plans.join(", ")}`,
+      `  Providers: ${scope.providers.join(", ")}`,
+      `  Concurrency: ${scope.maxConcurrentSessions} (${describeConcurrencyGate(preview.concurrencyGate)})`,
+      `  Delegated mechanics: ${scope.mechanicalTransitions.join(", ") || "none"}`,
+      `  Actions (${scope.actions.length}):`
+    );
+    for (const [index, key] of scope.actions.entries()) lines.push(`    ${index + 1}. ${key}`);
+    if (preview.notCarried.length > 0) {
+      lines.push(`  Not restored (needs a fresh grant): ${preview.notCarried.join(", ")}`);
+    }
+  }
+  if (preview.refusals.length > 0) {
+    lines.push("  Refused:");
+    for (const refusal of preview.refusals) {
+      lines.push(`    [${refusal.code}] ${refusal.reason}`, `      Remedy: ${refusal.remedy}`);
+    }
+  } else if (preview.expected) {
+    lines.push(
+      `  Ready. Reactivate with --expected-revision ${preview.expected.policyRevision} ` +
+        `--expected-configuration-revision ${preview.expected.configurationRevision} ` +
+        `--expected-fingerprint ${preview.expected.fingerprint}`
+    );
+  }
+  return lines;
+}
+
 export function renderProductionTransitionSuccess(
   response: CommandSuccess<ProductionTransitionData>
 ): string[] {
@@ -482,6 +631,19 @@ export function renderProductionResetRepairBudgetSuccess(
   }
   lines.push("  The Action may be admitted again once it is otherwise eligible to launch (production Active, its Project not paused, no competing lease).");
   return lines;
+}
+
+/** A read-only open of a store that predates the table must read as "nothing saved", not fail status. */
+function readInactiveConfigurationSafely(db: Parameters<typeof readInactiveConfiguration>[0]) {
+  try {
+    return readInactiveConfiguration(db);
+  } catch {
+    return null;
+  }
+}
+
+function knownProviders(workspacePath: string): string[] {
+  return [...new Set(loadPhase3Registries(workspacePath).codingAgents.profiles.map((profile) => profile.provider))];
 }
 
 function describeConcurrencyGate(gate: ConcurrencyGateStatus | null): string {
