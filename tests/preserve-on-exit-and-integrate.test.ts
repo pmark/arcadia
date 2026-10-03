@@ -32,7 +32,7 @@ import {
   getPreservationIndexLockAttempts, getPreservationTimeoutAttempts, guardPreservationTimeouts,
   MAX_IDENTICAL_PRESERVATION_REFUSALS, MAX_IDENTICAL_PRESERVATION_TIMEOUTS
 } from "../src/sessions/preservationRefusalBudget.js";
-import { preservationIndexLocked } from "../src/sessions/preservationStages.js";
+import { preservationIndexLocked, preservationIndexLockMalformed } from "../src/sessions/preservationStages.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -740,6 +740,37 @@ describe("preserve-on-exit and integrate", () => {
     };
     expect(receipts.budgetRows).toContainEqual(expect.objectContaining({ subject_id: `timeout:${session.id}`, attempts: MAX_IDENTICAL_PRESERVATION_TIMEOUTS }));
     if (process.env.ARCADIA_EVIDENCE_OUT) writeFileSync(process.env.ARCADIA_EVIDENCE_OUT, JSON.stringify(receipts, null, 2) + "\n");
+  });
+
+  it("withholds automatic resumption on a non-retryable malformed index lock through the real tick", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt: "2099-01-01T00:00:00.000Z", actions: [] }));
+    const session = launchFirstSession(fixture, tmux);
+    writeFileSync(path.join(session.worktree_path, "docs", "contract.md"), "# Contract\n\nBlocked by a malformed lock.\n");
+    git(session.worktree_path, ["add", "."]);
+    git(session.worktree_path, ["commit", "-m", "candidate blocked by a malformed lock"]);
+    tmux.live.delete(session.tmux_session_name);
+    const preserve: typeof preserveCandidate = () => {
+      throw preservationIndexLockMalformed(path.join(session.worktree_path, ".git", "index.lock"), "directory");
+    };
+    // The very first attempt: no budget is exhausted, yet a resumed Session
+    // (a new id with a zero count) would only hit the same lock again.
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + 60_000),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        handoff: { preserve: { validate: fixtureValidator(true), preserve } }
+      })
+    );
+    const project = result.projects.find((entry) => entry.projectSlug === "test-project")!;
+    expect(project.handoff?.preservation).toMatchObject({ kind: "refused", identicalRefusalLimitReached: true,
+      detail: { reason: "index_lock_malformed", retryable: false, lockKind: "directory" } });
+    expect(project.reconciled[0]?.outcome).toBe("incomplete_resumable");
+    const receipt = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT lease_handoff FROM session_exit_receipts WHERE session_id = ?").get(session.id)
+    ) as { lease_handoff: number };
+    expect(receipt.lease_handoff).toBe(0);
   });
 
   it("refuses to preserve when the Project declares no objective validation_commands", () => {

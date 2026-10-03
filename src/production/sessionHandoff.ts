@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
 import { preserveCandidate, systemPreservationRemote } from "../sessions/candidatePreservation.js";
@@ -189,11 +190,14 @@ export function preserveSessionCandidate(
 }
 
 /** A refused step, flagging an exhausted identical refusal, timeout or
- * index-lock budget so the tick withholds automatic resumption. */
+ * index-lock budget -- or a non-retryable preservation failure such as a
+ * malformed index lock, which a resumed Session (a new id, so a zero count)
+ * would only hit again -- so the tick withholds automatic resumption. */
 function refusedPreservation(error: unknown): PreservationStep {
   const detail = (error as { details?: unknown } | null)?.details;
-  const identicalRefusalLimitReached =
-    !!detail && typeof detail === "object" && (detail as { identicalRefusalLimitReached?: unknown }).identicalRefusalLimitReached === true;
+  const flags = !!detail && typeof detail === "object" ? detail as { identicalRefusalLimitReached?: unknown; retryable?: unknown } : {};
+  const nonRetryable = error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT" && flags.retryable === false;
+  const identicalRefusalLimitReached = flags.identicalRefusalLimitReached === true || nonRetryable;
   return { kind: "refused", reason: error instanceof Error ? error.message : String(error), detail, identicalRefusalLimitReached };
 }
 

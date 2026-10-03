@@ -144,6 +144,7 @@ function indexLockRemedy(stage: string | null, malformed: boolean): string {
   return malformed
     ? `${durable}Arcadia never removes a lock that is not a regular file. Inspect the path, remove it yourself once no Git process is using the candidate, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer.`
     : `${durable}The lock may belong to a running Git process, so it is never removed while one runs in the candidate or while it is fresh. Let that process finish, then retry the same fixed protected launcher unchanged; it reuses the same request id and recovers that commit by its trailer. ` +
+      "A long-lived `git fsmonitor--daemon` running in the candidate never finishes on its own: stop it with `git -C <candidate> fsmonitor--daemon stop`, then retry. " +
       "Index-lock refusals have their own identical-attempt limit, separate from timeouts.";
 }
 
@@ -178,29 +179,56 @@ export function preservationIndexLockMalformed(lockPath: string, lockKind: strin
   );
 }
 
+type GitLivenessProbe = { status: "none" } | { status: "live"; pids: number[] } | { status: "unknown"; error: string };
+
+/** The `/proc` reads the Linux scan needs; injectable for tests. */
+export interface ProcReader { list(): string[]; comm(pid: string): string; cwd(pid: string): string }
+const systemProc: ProcReader = {
+  list: () => readdirSync("/proc"),
+  comm: (pid) => readFileSync(`/proc/${pid}/comm`, "utf8"),
+  cwd: (pid) => readlinkSync(`/proc/${pid}/cwd`)
+};
+const errnoCode = (error: unknown) => (error as NodeJS.ErrnoException | null)?.code;
+/** A process that exited between listing and reading is simply gone. */
+const EXITED = new Set(["ENOENT", "ESRCH"]);
+
+/** Scan `/proc` for Git processes whose cwd is `within` the worktree. A
+ * listing failure, or any unreadable entry other than one that exited
+ * (including EACCES/EPERM on a Git process's cwd), is `unknown`. */
+export function scanProcForGit(within: (dir: string) => boolean, proc: ProcReader = systemProc): GitLivenessProbe {
+  let entries: string[];
+  try { entries = proc.list(); } catch (error) { return { status: "unknown", error: `/proc: ${String(error)}` }; }
+  const pids: number[] = [];
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    let dir: string;
+    try {
+      if (!proc.comm(entry).trim().startsWith("git")) continue;
+      dir = proc.cwd(entry);
+    } catch (error) {
+      if (EXITED.has(errnoCode(error) ?? "")) continue;
+      return { status: "unknown", error: `/proc/${entry}: ${String(error)}` };
+    }
+    if (within(dir)) pids.push(Number(entry));
+  }
+  return pids.length > 0 ? { status: "live", pids } : { status: "none" };
+}
+
 /**
  * Git processes whose working directory is inside `worktree` -- e.g. a
- * `git commit` still waiting on an editor, whose lock is old by mtime but
- * live. Any failure to look is reported as `unknown`, which callers must treat
- * as live: an old lock is removed only on a positive "none".
+ * `git commit` still waiting on an editor, or a long-lived
+ * `git fsmonitor--daemon`, whose lock is old by mtime but live. Linux scans
+ * `/proc`; other hosts ask `lsof`. Any failure to look (an unlistable
+ * `/proc`, an unreadable Git process, a failed or timed-out `lsof`) is
+ * reported as `unknown`, which callers must treat as live: an old lock is
+ * removed only on a positive "none".
  */
-export function gitProcessesInWorktree(worktree: string): { status: "none" } | { status: "live"; pids: number[] } | { status: "unknown"; error: string } {
+export function gitProcessesInWorktree(worktree: string): GitLivenessProbe {
   let root: string;
   try { root = realpathSync(worktree); } catch (error) { return { status: "unknown", error: String(error) }; }
   const within = (dir: string) => dir === root || dir.startsWith(root + path.sep);
-  const found = (pids: number[]) => pids.length > 0 ? { status: "live" as const, pids } : { status: "none" as const };
   preservationHeartbeat();
-  if (process.platform === "linux" && existsSync("/proc/self/cwd")) {
-    const pids: number[] = [];
-    for (const entry of readdirSync("/proc")) {
-      if (!/^\d+$/.test(entry)) continue;
-      try {
-        if (!readFileSync(`/proc/${entry}/comm`, "utf8").trim().startsWith("git")) continue;
-        if (within(readlinkSync(`/proc/${entry}/cwd`))) pids.push(Number(entry));
-      } catch { /* exited, or not ours to inspect */ }
-    }
-    return found(pids);
-  }
+  if (process.platform === "linux" && existsSync("/proc/self/cwd")) return scanProcForGit(within);
   const result = spawnSync("lsof", ["-a", "-c", "git", "-d", "cwd", "-F", "pn"], {
     encoding: "utf8", timeout: LIVENESS_PROBE_TIMEOUT_MS, killSignal: "SIGKILL", stdio: ["ignore", "pipe", "pipe"]
   });
@@ -218,5 +246,5 @@ export function gitProcessesInWorktree(worktree: string): { status: "none" } | {
       if (within(dir)) pids.push(pid);
     }
   }
-  return found(pids);
+  return pids.length > 0 ? { status: "live", pids } : { status: "none" };
 }

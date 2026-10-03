@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fixtureGit } from "../scripts/preservation-fixture.js";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { scanProcForGit } from "../src/sessions/preservationStages.js";
 import { BRANCH, installTimeoutFixtureHooks, mockValidationWithRealGit, timeoutFixture } from "./preservationTimeoutFixture.js";
 
 installTimeoutFixtureHooks();
@@ -69,6 +70,8 @@ describe("preservation index lock safety", () => {
       expectTypedLock(error, "index_locked", lockPath);
       expect(error.details).toMatchObject({ retryable: true, liveness: "live" });
       expect(error.details.liveGitPids).toContain(live.pid);
+      // A long-lived fsmonitor daemon would hold this forever: the remedy names it.
+      expect(String(error.details.remedy)).toContain("fsmonitor--daemon stop");
       expect(existsSync(lockPath)).toBe(true);
     } finally {
       live.stdin?.end();
@@ -77,4 +80,34 @@ describe("preservation index lock safety", () => {
     expect(preserve().data.receipt).toMatchObject({ commitSha: committed });
     expect(existsSync(lockPath)).toBe(false);
   }, 120_000);
+});
+
+describe("Linux /proc liveness scan", () => {
+  const within = (dir: string) => dir === "/work" || dir.startsWith("/work/");
+  const errno = (code: string) => Object.assign(new Error(code), { code });
+  const proc = (overrides: Partial<Parameters<typeof scanProcForGit>[1]> = {}) => ({
+    list: () => ["1", "self", "200", "300"],
+    comm: (pid: string) => (pid === "300" ? "bash" : "git"),
+    cwd: (pid: string) => (pid === "200" ? "/work/sub" : "/elsewhere"),
+    ...overrides
+  });
+
+  it("finds a git process whose cwd is in the worktree, and none otherwise", () => {
+    expect(scanProcForGit(within, proc())).toEqual({ status: "live", pids: [200] });
+    expect(scanProcForGit(within, proc({ cwd: () => "/elsewhere" }))).toEqual({ status: "none" });
+  });
+
+  it("reports unknown (treated live), never an untyped throw, when /proc cannot be listed", () => {
+    const result = scanProcForGit(within, proc({ list: () => { throw errno("EACCES"); } }));
+    expect(result).toMatchObject({ status: "unknown" });
+  });
+
+  it("treats a git process whose cwd cannot be read (EACCES/EPERM) as unknown, but skips one that exited", () => {
+    for (const code of ["EACCES", "EPERM"]) {
+      const result = scanProcForGit(within, proc({ cwd: (pid) => { if (pid === "1") throw errno(code); return "/elsewhere"; } }));
+      expect(result, code).toMatchObject({ status: "unknown" });
+    }
+    const exited = scanProcForGit(within, proc({ cwd: (pid) => { if (pid === "1") throw errno("ENOENT"); return "/elsewhere"; } }));
+    expect(exited).toEqual({ status: "none" });
+  });
 });
