@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { BriefStage } from "./briefSupervisor.js";
 import { ArcadiaError, normalizeError, validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
@@ -45,6 +46,14 @@ export type NextBrokerRunner = (options: { workspace: string; project: string })
 export type BrokerWorkspaceResolver = (source: string) => string;
 export type BrokerProjectSlugResolver = (source: string) => string;
 
+/** Supervision context the installed entrypoint passes to a supervised brief. */
+export interface BriefRunContext {
+  /** Called before each stage starts, so a supervisor can name the stage that stalled. */
+  reportStage?: (stage: BriefStage) => void;
+  /** Included in the receipt so retries are distinguishable. */
+  correlationId?: string;
+}
+
 export interface BriefCommandData {
   advance: AdvanceCommandData;
   workMonitor: WorkMonitorCommandData;
@@ -56,6 +65,8 @@ export interface BriefCommandData {
    * retitles by lookup as it moves from working to PR to waiting or done.
    */
   sessionTitles: Record<SessionTitleState, string>;
+  /** The supervising parent's id for this invocation, when supervised. */
+  correlationId?: string;
 }
 
 /**
@@ -82,7 +93,8 @@ function resolveProjectSlugFromRepository(source: string): string {
  * running that stage alone would have been -- only the added `stage` field is
  * new.
  */
-function runBriefStage<T>(stage: "advance" | "work-monitor" | "next", run: () => T): T {
+function runBriefStage<T>(stage: BriefStage, run: () => T, context: BriefRunContext = {}): T {
+  context.reportStage?.(stage);
   try {
     return run();
   } catch (error) {
@@ -137,7 +149,8 @@ export function runGoBroker(
   workMonitorRunner: WorkMonitorBrokerRunner = runWorkMonitorCommand,
   resolveWorkspace: BrokerWorkspaceResolver = (source) => requireResolvedWorkspace({ cwd: source }),
   nextRunner: NextBrokerRunner = runNextReadOnlyCommand,
-  resolveProjectSlug: BrokerProjectSlugResolver = resolveProjectSlugFromRepository
+  resolveProjectSlug: BrokerProjectSlugResolver = resolveProjectSlugFromRepository,
+  briefContext: BriefRunContext = {}
 ): CommandSuccess<GoCommandData | AdvanceCommandData | WorkMonitorCommandData | BriefCommandData> {
   if (request.operation === "advance") {
     return {
@@ -152,12 +165,20 @@ export function runGoBroker(
     };
   }
   if (request.operation === "brief") {
-    const workspace = resolveWorkspace(request.source);
-    const advance = runBriefStage("advance", () => advanceRunner({ workspace, repo: request.source }));
+    const workspace = runBriefStage("workspace", () => resolveWorkspace(request.source), briefContext);
+    const advance = runBriefStage("advance", () => advanceRunner({ workspace, repo: request.source }), briefContext);
     const workMonitor = runBriefStage("work-monitor", () =>
-      workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }));
-    const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source));
+      workMonitorRunner({ workspace, includePullRequests: false, repositoryPath: request.source }), briefContext);
+    const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source), briefContext);
     const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug }));
+    const rendered = runBriefStage("render", () => ({
+      dispatchBrief: renderNextSuccess(next).join("\n"),
+      sessionTitles: sessionTitlesByState({
+        kind: next.data.dispatchable ? "build" : "repair",
+        plan: next.data.context?.activePlan ?? null,
+        action: next.data.context?.action.id ?? null
+      })
+    }), briefContext);
     return {
       ok: true,
       command: "brief-broker",
@@ -166,12 +187,8 @@ export function runGoBroker(
         advance: advance.data,
         workMonitor: workMonitor.data,
         next: next.data,
-        dispatchBrief: renderNextSuccess(next).join("\n"),
-        sessionTitles: sessionTitlesByState({
-          kind: next.data.dispatchable ? "build" : "repair",
-          plan: next.data.context?.activePlan ?? null,
-          action: next.data.context?.action.id ?? null
-        })
+        ...rendered,
+        ...(briefContext.correlationId ? { correlationId: briefContext.correlationId } : {})
       },
       artifacts: [],
       warnings: []

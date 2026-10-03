@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -13,6 +14,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { renderGoBrokerStatusSuccess, runGoBrokerStatusCommand } from "../src/commands/goBrokerInstall.js";
@@ -444,14 +446,32 @@ describe("go broker agent setup", () => {
       ready: true,
       brokerIssues: [],
       agentSetup: { ready: true, checks: { preservationLauncher: true } },
-      preservationTransport: { ready: false, detail: expect.stringContaining("start the updated host worker") }
+      preservationTransport: { ready: false, detail: expect.stringContaining("start the updated host worker") },
+      briefSupervisor: { ready: true }
     });
     expect(renderGoBrokerStatusSuccess(result)).toEqual(expect.arrayContaining([
       "Protected broker setup: READY",
-      expect.stringContaining("Preservation transport: NOT READY")
+      expect.stringContaining("Preservation transport: NOT READY"),
+      expect.stringMatching(/^Brief supervisor: READY — /)
     ]));
     await expect(requestCandidatePreservation(fixture.home)).rejects.toThrow("Protected preservation request path is unavailable");
     expect(existsSync(path.join(fixture.home, ".arcadia-preserve-request"))).toBe(false);
+  });
+
+  it("reports an installed brief launcher that cannot self-spawn as NOT READY", () => {
+    const fixture = createInstalledFixture("stale");
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.home);
+    expect(() => runGoBrokerStatusCommand({ home: fixture.home, repository: path.resolve(import.meta.dirname, "..") }))
+      .toThrow(expect.objectContaining({
+        message: "Protected broker setup is not ready.",
+        details: expect.objectContaining({
+          ready: false,
+          brokerIssues: expect.arrayContaining([
+            "brief codex launcher failed its supervisor self-test: exit 0 without a structured receipt"
+          ]),
+          briefSupervisor: { ready: false, detail: expect.stringContaining("reinstall the reviewed broker") }
+        })
+      }));
   });
 
   it("still refuses a missing preserve launcher on an otherwise correct install", () => {
@@ -715,7 +735,12 @@ function write(file: string, content: string): void {
   writeFileSync(file, content);
 }
 
-function createInstalledFixture() {
+/**
+ * An installed release whose brief launchers run a real entrypoint, so status's
+ * self-test executes them: the repository's own broker (`working`), or the
+ * fixture's placeholder file a stale release would still carry (`stale`).
+ */
+function createInstalledFixture(brief: "working" | "stale" = "working") {
   const fixture = createFixture(false);
   const release = path.join(fixture.home, ".local", "share", "arcadia", "test-revision");
   const brokerEntrypoint = path.join(release, "dist", "scripts", "arcadia-go-broker.js");
@@ -726,9 +751,12 @@ function createInstalledFixture() {
     schema: "arcadia-go-broker-install-v1", revision: "test-revision", brokerEntrypoint
   }));
   for (const providers of Object.values(fixture.executables)) {
-    for (const executable of Object.values(providers)) {
+    for (const [agent, executable] of Object.entries(providers)) {
       const target = path.join(release, path.basename(executable));
-      write(target, "#!/bin/sh\n");
+      write(target, path.basename(executable).startsWith("arcadia-brief-broker-")
+        ? briefLauncher(brief === "working" ? repositoryBrokerEntrypoint : brokerEntrypoint, agent)
+        : "#!/bin/sh\n");
+      chmodSync(target, 0o755);
       mkdirSync(path.dirname(executable), { recursive: true });
       symlinkSync(target, executable);
     }
@@ -737,4 +765,13 @@ function createInstalledFixture() {
     ...fixture, skillTemplate: template, agentAskSkillTemplate: agentAskTemplate
   });
   return fixture;
+}
+
+const repositoryBrokerEntrypoint = path.resolve(import.meta.dirname, "../scripts/arcadia-go-broker.ts");
+const tsxLoader = pathToFileURL(path.resolve(import.meta.dirname, "../node_modules/tsx/dist/loader.mjs")).href;
+
+/** The installed launcher's shape; TypeScript sources need the tsx loader. */
+function briefLauncher(entrypoint: string, agent: string): string {
+  const loader = entrypoint.endsWith(".ts") ? ` --import '${tsxLoader}'` : "";
+  return `#!/bin/sh\nexec '${process.execPath}'${loader} '${entrypoint}' ${agent} brief "$@"\n`;
 }
