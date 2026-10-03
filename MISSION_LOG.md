@@ -1475,3 +1475,10 @@ updated: 2026-10-03
 - **Result:** Every declared acceptance criterion was accepted as met: "Regression tests reproduce, before the fix, that a `Review paused` success status with an old APPROVED head and a `Review rate limited` success with no review each wrongly yield verdict done."; "After the fix, paused or skipped success plus an old approval is not a completed review, and rate-limited success with no review is not a completed review."; "A genuinely completed review without approval is reported as completed-not-approved, and a genuine approval of the exact current head by the actual reviewer identity is reported as approved; an approval of an earlier head never approves a changed head."; "Unresolved review findings keep the verdict not done, and a push invalidates all earlier review evidence for that PR."; "Decision 0060 and the exact-head independent review, QA and required-check gates are unchanged, and no gate, test or branch protection is weakened."; "Show by test or code trace that the rehearsal and managed path consume the corrected classification, and state explicitly that installed verification is not claimed until the separate reviewed install.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-make-pr-review-verdict-truthful-for-current-head-2026-10-03-v2).
+
+## 2026-10-03 — Agent Ask pr-opened-arcadia-pr907
+
+- **Did:** Review rules are now written down for every coding agent, not just one: PR #907 makes an independent review the merge gate and CodeRabbit advisory, and opens Decision 0080 for your answer. https://github.com/pmark/arcadia/pull/907
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
