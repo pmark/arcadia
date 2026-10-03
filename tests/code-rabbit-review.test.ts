@@ -165,7 +165,8 @@ describe("coderabbit body helpers", () => {
 // to verdict runs exactly as it does against a real PR.
 interface GitHubScenario {
   heads: string[]; // successive PR heads `gh pr view` reports; the last one repeats
-  status: Record<string, { state: string; description: string | null } | undefined>;
+  // Each head's CodeRabbit status; `creator` defaults to the CodeRabbit bot.
+  status: Record<string, { state: string; description: string | null; creator?: string } | undefined>;
   reviews: Review[];
   threads: Thread[];
 }
@@ -184,10 +185,10 @@ async function runLoop(scenario: GitHubScenario) {
         views += 1;
         return JSON.stringify({ headRefOid: currentHead(), isDraft: false, state: "OPEN" });
       }
-      const status = /^repos\/o\/r\/commits\/(\w+)\/status$/.exec(args[1] ?? "");
+      const status = /^repos\/o\/r\/commits\/(\w+)\/statuses\?per_page=100$/.exec(args.find((arg) => arg.startsWith("repos/")) ?? "");
       if (status) {
         const entry = scenario.status[status[1]];
-        return JSON.stringify({ statuses: entry ? [{ context: "CodeRabbit", ...entry }] : [] });
+        return entry ? `${JSON.stringify({ creator: REVIEWER_LOGIN, ...entry })}\n` : "";
       }
       if (args.includes("repos/o/r/pulls/1/reviews")) {
         return scenario.reviews.map((entry) => JSON.stringify(entry)).join("\n");
@@ -311,6 +312,32 @@ describe("coderabbit loop only treats a genuinely completed review of the curren
     expect(result).toMatchObject({ head: "h2", approved: false, reviewStatus: "completed_not_approved" });
   });
 
+  it("does not let a look-alike login's review on the head clear a CodeRabbit change request", async () => {
+    // A user `coderabbitai-x` matches the old prefix filter; its COMMENTED
+    // review, as the latest on the head, used to flip `fix` to `done`.
+    const result = await runLoop({
+      heads: ["h1"],
+      status: { h1: completed },
+      reviews: [review("h1", "CHANGES_REQUESTED", "1"), { ...review("h1", "COMMENTED", "2", "Looks fine to me."), author: "coderabbitai-x" }],
+      threads: []
+    });
+    expect(result.verdict).toBe("fix");
+    expect(result.approved).toBe(false);
+  });
+
+  it("does not accept a completed CodeRabbit status that another identity posted", async () => {
+    const result = runLoop({
+      heads: ["h1"],
+      status: { h1: { ...completed, creator: "coderabbitai-x" } },
+      reviews: [review("h1", "APPROVED", "1")],
+      threads: []
+    });
+    await expect(result).rejects.toMatchObject({
+      code: "CODE_REVIEW_NOT_COMPLETED",
+      details: expect.objectContaining({ reason: "unverified_reporter", reporter: "coderabbitai-x" })
+    });
+  });
+
   it("re-reads the head after gathering evidence, so a push mid-read never yields a verdict on stale evidence", async () => {
     // h1 is approved and complete when the loop starts; a push lands h2 while
     // the reviews are being read. h2 has no finished review, so the loop must
@@ -326,23 +353,32 @@ describe("coderabbit loop only treats a genuinely completed review of the curren
 });
 
 describe("coderabbit status classification (#874, #892)", () => {
+  const bot = (entry: { state: string; description: string | null }) => ({ ...entry, creator: REVIEWER_LOGIN });
+
+  it("does not accept a CodeRabbit status posted by anyone but the CodeRabbit bot, in any state", () => {
+    for (const state of ["success", "pending", "failure"]) {
+      expect(classifyCodeRabbitStatus({ state, description: "Review completed", creator: "coderabbitai-x" })).toEqual({ kind: "not_reviewed", reason: "unverified_reporter" });
+    }
+    expect(classifyCodeRabbitStatus({ state: "success", description: "Review completed", creator: null })).toEqual({ kind: "not_reviewed", reason: "unverified_reporter" });
+  });
+
   it("counts only a completed review as a review", () => {
-    expect(classifyCodeRabbitStatus({ state: "success", description: "Review completed" })).toEqual({ kind: "completed" });
-    expect(classifyCodeRabbitStatus({ state: "success", description: "Review paused" })).toEqual({ kind: "not_reviewed", reason: "paused" });
-    expect(classifyCodeRabbitStatus({ state: "success", description: "Review skipped" })).toEqual({ kind: "not_reviewed", reason: "skipped" });
-    expect(classifyCodeRabbitStatus({ state: "success", description: "Review rate limited" })).toEqual({ kind: "not_reviewed", reason: "rate_limited" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: "Review completed" }))).toEqual({ kind: "completed" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: "Review paused" }))).toEqual({ kind: "not_reviewed", reason: "paused" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: "Review skipped" }))).toEqual({ kind: "not_reviewed", reason: "skipped" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: "Review rate limited" }))).toEqual({ kind: "not_reviewed", reason: "rate_limited" });
   });
 
   it("fails closed on a success it does not recognize, including no description", () => {
-    expect(classifyCodeRabbitStatus({ state: "success", description: "Something new" })).toEqual({ kind: "not_reviewed", reason: "unrecognized" });
-    expect(classifyCodeRabbitStatus({ state: "success", description: null })).toEqual({ kind: "not_reviewed", reason: "unrecognized" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: "Something new" }))).toEqual({ kind: "not_reviewed", reason: "unrecognized" });
+    expect(classifyCodeRabbitStatus(bot({ state: "success", description: null }))).toEqual({ kind: "not_reviewed", reason: "unrecognized" });
   });
 
   it("keeps waiting on pending or absent statuses and reports failures", () => {
     expect(classifyCodeRabbitStatus(undefined)).toEqual({ kind: "waiting" });
-    expect(classifyCodeRabbitStatus({ state: "pending", description: "Review in progress" })).toEqual({ kind: "waiting" });
-    expect(classifyCodeRabbitStatus({ state: "failure", description: "Review failed" })).toEqual({ kind: "failed" });
-    expect(classifyCodeRabbitStatus({ state: "error", description: null })).toEqual({ kind: "failed" });
+    expect(classifyCodeRabbitStatus(bot({ state: "pending", description: "Review in progress" }))).toEqual({ kind: "waiting" });
+    expect(classifyCodeRabbitStatus(bot({ state: "failure", description: "Review failed" }))).toEqual({ kind: "failed" });
+    expect(classifyCodeRabbitStatus(bot({ state: "error", description: null }))).toEqual({ kind: "failed" });
   });
 });
 
@@ -353,6 +389,11 @@ describe("pr code-review rendering", () => {
     const lines = renderPrCodeReviewSuccess(createSuccess({ command: "pr.codeReview", data }));
     expect(lines[0]).toBe("Verdict: done (completed, not approved)");
     expect(lines[1]).toContain("CodeRabbit status: Review completed");
+  });
+
+  it("shows no review-status parenthetical on a fix verdict", () => {
+    const fixData = { ...data, ...decide("h1", [review("h1", "CHANGES_REQUESTED", "1")], [thread("t1")]) };
+    expect(renderPrCodeReviewSuccess(createSuccess({ command: "pr.codeReview", data: fixData }))[0]).toBe("Verdict: fix");
   });
 
   it("says approved only for an approval of the head", () => {

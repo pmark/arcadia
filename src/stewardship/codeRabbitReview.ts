@@ -35,13 +35,13 @@ export const MAX_FIX_ROUNDS = 3;
 const BOT = "coderabbitai";
 // The exact login GitHub's REST API reports for the CodeRabbit app's bot. The
 // `[bot]` suffix cannot belong to a user account, so it identifies the actual
-// reviewer; `BOT` above is only the permissive prefix used to find reviews
-// and threads that may block.
+// reviewer: only its reviews and its commit status are review evidence. `BOT`
+// above is only the permissive prefix used to find threads that may block.
 export const REVIEWER_LOGIN = "coderabbitai[bot]";
 const POLL_MS = 30_000;
 
 export interface Review {
-  // The reviewer's login; approval counts only from REVIEWER_LOGIN.
+  // The reviewer's login; only reviews by REVIEWER_LOGIN are review evidence.
   author: string;
   state: string;
   commitId: string;
@@ -97,8 +97,11 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   // CodeRabbit posts each reply to a thread as its own empty COMMENTED
   // review (seen live on pmark/arcadia#324). Counting those would let a reply
   // mask a real CHANGES_REQUESTED review, and its missing prompt would hide
-  // the actual one, so only reviews that say something count.
+  // the actual one, so only reviews that say something count. And only the
+  // CodeRabbit bot's own reviews are evidence at all: anyone else's review --
+  // even from a look-alike login -- can neither approve nor clear a head.
   const bot = reviews
+    .filter((review) => review.author === REVIEWER_LOGIN)
     .filter((review) => review.state !== "PENDING")
     .filter((review) => review.state !== "COMMENTED" || review.body.trim() !== "")
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
@@ -134,7 +137,7 @@ export function decide(head: string, reviews: Review[], threads: Thread[]): Verd
   // head: a push invalidates it (#874).
   const latest = bot.at(-1);
   const approved =
-    latest?.state === "APPROVED" && latest.commitId === head && latest.author === REVIEWER_LOGIN && findings.length === 0;
+    latest?.state === "APPROVED" && latest.commitId === head && findings.length === 0;
   const earlierApproval = !approved && bot.some((review) => review.state === "APPROVED" && review.commitId !== head);
   if (findings.length > 0) roundHeads.add(head);
   const fixRound = roundHeads.size;
@@ -188,15 +191,19 @@ export type CodeRabbitStatus =
   | { kind: "waiting" }
   | { kind: "failed" }
   | { kind: "completed" }
-  | { kind: "not_reviewed"; reason: "paused" | "skipped" | "rate_limited" | "unrecognized" };
+  | { kind: "not_reviewed"; reason: "paused" | "skipped" | "rate_limited" | "unrecognized" | "unverified_reporter" };
 
 // CodeRabbit's commit status is `success` for far more than a finished review:
 // a paused review, a skipped one and a rate-limited head are all green (#874,
 // #892). Only the description says which, so only "Review completed" counts as
 // a review; any other success, including wording this code has never seen,
-// fails closed as not reviewed rather than passing as done.
-export function classifyCodeRabbitStatus(entry: { state: string; description: string | null } | undefined): CodeRabbitStatus {
-  if (!entry || entry.state === "pending") return { kind: "waiting" };
+// fails closed as not reviewed rather than passing as done. A status context
+// named "CodeRabbit" can be posted by anyone with write access, so one not
+// created by the CodeRabbit bot itself is not review evidence in any state.
+export function classifyCodeRabbitStatus(entry: StatusEntry | undefined): CodeRabbitStatus {
+  if (!entry) return { kind: "waiting" };
+  if (entry.creator !== REVIEWER_LOGIN) return { kind: "not_reviewed", reason: "unverified_reporter" };
+  if (entry.state === "pending") return { kind: "waiting" };
   if (entry.state === "failure" || entry.state === "error") return { kind: "failed" };
   if (entry.state !== "success") return { kind: "waiting" };
   const description = entry.description ?? "";
@@ -211,6 +218,7 @@ const NOT_REVIEWED_REMEDY: Record<Extract<CodeRabbitStatus, { kind: "not_reviewe
   paused: "CodeRabbit paused reviews on this PR. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the paused review in the handoff.",
   skipped: "CodeRabbit skipped this head. A completed review of this head is still required: request one (an `@coderabbitai review` comment, where this session has authority to post one) and rerun, or report the skipped review in the handoff.",
   rate_limited: "CodeRabbit hit its rate limit and did not review this head. Wait for the limit to reset, then request a review and rerun; reviews past the plan's limit are billed, which is the operator's spending decision. Report it rather than treating the loop as satisfied.",
+  unverified_reporter: "The latest `CodeRabbit` commit status on this head was not posted by the CodeRabbit bot (coderabbitai[bot]), so it is not review evidence. Check who posted it and report it rather than treating the loop as satisfied.",
   unrecognized: "This CodeRabbit status is not a recognized completed review, so it is not treated as one. Check the status on the PR and report it rather than treating the loop as satisfied."
 };
 
@@ -248,8 +256,7 @@ export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions):
       throw validationError(`Local HEAD ${local.slice(0, 8)} is not the PR head ${pull.headRefOid.slice(0, 8)}; push first.`, { pr });
     }
 
-    const status = ghJson<CombinedStatus>(["api", `repos/${repository}/commits/${pull.headRefOid}/status`]);
-    const coderabbit = status.statuses.find((entry) => entry.context === "CodeRabbit");
+    const coderabbit = fetchCodeRabbitStatus(gh, repository, pull.headRefOid);
     const classified = classifyCodeRabbitStatus(coderabbit);
     if (classified.kind === "failed") {
       throw new ArcadiaError("UNEXPECTED_ERROR", `CodeRabbit reported ${coderabbit?.state}: ${coderabbit?.description ?? "no description"}`, 1, { pr });
@@ -259,7 +266,14 @@ export async function waitForCodeRabbitReview(options: CodeRabbitReviewOptions):
         "CODE_REVIEW_NOT_COMPLETED",
         `CodeRabbit did not complete a review of ${pull.headRefOid.slice(0, 8)} (status: ${coderabbit?.description ?? "no description"}). This is not a completed review and never a done verdict.`,
         1,
-        { pr, head: pull.headRefOid, status: coderabbit?.description ?? null, reason: classified.reason, remedy: NOT_REVIEWED_REMEDY[classified.reason] }
+        {
+          pr,
+          head: pull.headRefOid,
+          status: coderabbit?.description ?? null,
+          reporter: coderabbit?.creator ?? null,
+          reason: classified.reason,
+          remedy: NOT_REVIEWED_REMEDY[classified.reason]
+        }
       );
     }
     if (classified.kind === "completed") {
@@ -366,8 +380,28 @@ interface PullState {
   state: string;
 }
 
-interface CombinedStatus {
-  statuses: { context: string; state: string; description: string | null }[];
+export interface StatusEntry {
+  state: string;
+  description: string | null;
+  // Login of whoever posted the status; null when GitHub reports none.
+  creator: string | null;
+}
+
+// The combined-status endpoint (`commits/<sha>/status`) omits who posted each
+// status, so read the per-commit status list instead, which carries `creator`
+// and is newest first: its first "CodeRabbit" entry is the one the combined
+// status shows.
+function fetchCodeRabbitStatus(gh: (args: string[]) => string, repository: string, sha: string): StatusEntry | undefined {
+  const first = gh([
+    "api",
+    "--paginate",
+    `repos/${repository}/commits/${sha}/statuses?per_page=100`,
+    "--jq",
+    `.[] | select(.context == "CodeRabbit") | {state, description, creator: .creator.login}`
+  ])
+    .split("\n")
+    .find((line) => line.trim() !== "");
+  return first ? (JSON.parse(first) as StatusEntry) : undefined;
 }
 
 interface ThreadNode {
@@ -395,7 +429,7 @@ function fetchReviews(gh: (args: string[]) => string, repository: string, pr: nu
     "--paginate",
     `repos/${repository}/pulls/${pr}/reviews`,
     "--jq",
-    `.[] | select(.user.login | startswith("${BOT}")) | {author: .user.login, state, commitId: .commit_id, submittedAt: (.submitted_at // ""), body}`
+    `.[] | select(.user.login == "${REVIEWER_LOGIN}") | {author: .user.login, state, commitId: .commit_id, submittedAt: (.submitted_at // ""), body}`
   ]);
   return lines
     .split("\n")

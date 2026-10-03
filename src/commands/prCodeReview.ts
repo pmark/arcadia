@@ -21,7 +21,7 @@ export async function runPrCodeReviewCommand(options: { repo: string; pr: string
 export function renderPrCodeReviewSuccess(response: CommandSuccess<CodeRabbitReviewResult>): string[] {
   const data = response.data;
   const lines = [
-    `Verdict: ${data.verdict} (${data.reviewStatus === "approved" ? "approved" : "completed, not approved"})`,
+    `Verdict: ${data.verdict}${data.verdict === "done" ? ` (${data.reviewStatus === "approved" ? "approved" : "completed, not approved"})` : ""}`,
     `PR #${data.pr} head ${data.head.slice(0, 8)} — CodeRabbit status: ${data.status ?? "none"} — fix round ${data.fixRound} of ${data.maxFixRounds}`,
     data.note
   ];
