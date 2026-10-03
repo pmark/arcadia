@@ -1459,6 +1459,28 @@ describe("a draft-only never-launched candidate: the managed tick agrees with ar
     expect(worktreeCount(fixture)).toBe(2);
   });
 
+  it("keeps the handout when a draft changes after the handout and before launch, so the next tick and Go refuse", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const { draftPath } = neverLaunchedCandidate(fixture);
+
+    const mismatch = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-mismatch", undefined, {
+      beforeDraftLaunchVerification: () => writeFileSync(draftPath, "edited by something we cannot see\n")
+    }));
+    expect(mismatch.message).toContain("holds only Agent Ask drafts");
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+    expect(liveAdmissionCount(fixture)).toBe(0);
+
+    const nextTick = captureArcadiaError(() => doStandingLaunch(fixture, tmux, "policy-req-after-mismatch"));
+    const go = captureArcadiaError(() => goFor(fixture, tmux));
+    for (const error of [nextTick, go]) {
+      expect((error.details?.disposition as { handedOut: { route: string } | null }).handedOut?.route).toBe("tick");
+    }
+    expect(tmux.launches).toHaveLength(0);
+    expect(handoutRoutes(fixture)).toEqual(["tick"]);
+  });
+
   it("refuses a code-bearing candidate with the same reason and candidateKind in both paths, creating nothing", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

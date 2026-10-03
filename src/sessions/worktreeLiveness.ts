@@ -11,6 +11,11 @@ import path from "node:path";
  * fail-closed: a probe that cannot run, errors, or returns unparseable output
  * reports `ok: false`, and the only caller treats that as "cannot tell" and
  * refuses to hand the worktree out.
+ *
+ * Residual risk, accepted and bounded by the one-shot handout marker: the
+ * probe cannot see a session whose current directory is outside the worktree
+ * (one editing it by absolute path), nor another user's process it may not
+ * inspect.
  */
 export type WorktreeLiveness =
   | { ok: true; processes: Array<{ pid: number; command: string | null; cwd: string }> }
@@ -87,8 +92,13 @@ function procCommand(pid: string): string | null {
   }
 }
 
-/** macOS and other hosts without /proc: `lsof` field output of every process's cwd. */
-function lsofProbe(root: string): WorktreeLiveness {
+/** macOS and other hosts without /proc: `lsof` field output of every process's cwd. Exported for tests. */
+export function lsofProbe(root: string): WorktreeLiveness {
+  // lsof escapes non-printable and non-ASCII bytes in names (`\xc3\xa9`), so
+  // such a path could never match and would silently read as "nothing here".
+  if (/[^\x20-\x7e]/.test(root)) {
+    return { ok: false, error: "lsof cannot be matched against a worktree path containing non-ASCII or non-printable characters." };
+  }
   const result = spawnSync("lsof", ["-a", "-d", "cwd", "-F", "pcn"], { encoding: "utf8", timeout: 5000, maxBuffer: 32 * 1024 * 1024 });
   if (result.error) return { ok: false, error: `lsof could not run: ${result.error.message}` };
   // Status 1 is lsof's ordinary "some processes could not be inspected".

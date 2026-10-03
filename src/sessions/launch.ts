@@ -85,6 +85,8 @@ export interface GuardedLaunchInput {
     afterAdmissionIssuedBeforeCommit?: () => void;
     /** Deterministic fault injection inside `prepareSession`, before its Session row insert. */
     beforeSessionInsert?: () => void;
+    /** Deterministic injection after a draft-only handout committed, before its launch-time hash verification. */
+    beforeDraftLaunchVerification?: () => void;
   };
 }
 
@@ -449,9 +451,22 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   const sessionBaseRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
   const sessionLaunchRevision = draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
+  // Outside the `prepareSession` failure path below on purpose: a mismatch is
+  // positive evidence that something is writing in the worktree, so the
+  // handout marker is KEPT and every later Go or tick attempt refuses with the
+  // disposition. Only the admission this call reserved is released.
+  if (draftResume) {
+    try {
+      input.testHooks?.beforeDraftLaunchVerification?.();
+      assertDraftRecoveryUnchanged(draftResume.receipt);
+    } catch (error) {
+      if (admission) releaseAdmission(input.db, admission.requestId, now);
+      throw error;
+    }
+  }
+
   let prepared: AgentSession;
   try {
-    if (draftResume) assertDraftRecoveryUnchanged(draftResume.receipt);
     prepared = prepareSession({
       db: input.db,
       workspace: input.workspace,

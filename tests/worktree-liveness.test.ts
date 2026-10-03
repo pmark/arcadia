@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { probeWorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
+import { lsofProbe, probeWorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 
 const roots: string[] = [];
 
@@ -34,6 +34,12 @@ describe("probeWorktreeLiveness against the real host process table (Issue #884)
 
     const after = probeWorktreeLiveness(worktree);
     expect(after).toEqual({ ok: true, processes: [] });
+  });
+
+  it("fails closed on the lsof path for a worktree path lsof would escape (non-ASCII)", () => {
+    const result = lsofProbe("/tmp/arcadia-caf\u00e9/repo");
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toContain("non-ASCII");
   });
 
   it("reports a worktree path that does not exist as unable to tell", () => {

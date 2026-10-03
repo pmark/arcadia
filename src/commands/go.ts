@@ -868,10 +868,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       // Assigned inside the claim transaction's callback, which TypeScript's
       // narrowing cannot see, so widen it back to its declared type.
       const resumedDrafts = draftRecovery as DraftRecoveryReceipt | null;
+      // A receipted draft-only candidate is verified once more at launch time:
+      // anything that changed since the receipt refuses instead of launching.
+      // Outside the try below on purpose: a mismatch is positive evidence that
+      // something is writing in the worktree, so the handout marker is kept.
+      if (resumedDrafts) assertDraftRecoveryUnchanged(resumedDrafts);
       try {
-        // A receipted draft-only candidate is verified once more at launch time:
-        // anything that changed since the receipt refuses instead of launching.
-        if (resumedDrafts) assertDraftRecoveryUnchanged(resumedDrafts);
         const prepared = withDatabase(workspacePath, (db) => prepareSession({
           db,
           workspace: workspacePath,
