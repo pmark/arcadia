@@ -3086,7 +3086,7 @@ actions:
     references: ["src/sessions/enrollment.ts", "src/production/tick.ts", "src/sessions/launch.ts", "tests/rehearsal-three-action.test.ts", "docs/reports/three-action-managed-production-scope-design-2026-10-02.md", "https://github.com/pmark/arcadia/pull/917"]
   - id: record-code-review-verdicts-for-unattended-integration
     title: Give the host a governed way to record an exact-head independent code-review verdict so the production tick can integrate a managed candidate without an operator merge.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give the host a governed way to record an exact-head independent code-review verdict so the production tick can integrate a managed candidate without an operator merge.
@@ -3104,7 +3104,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: record-code-review-verdicts-for-unattended-integration
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
