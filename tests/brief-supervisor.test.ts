@@ -80,6 +80,12 @@ if (mode === "ok") {
   stage("render");
   writeSync(1, JSON.stringify({ ok: true, command: "brief-broker", data: { dispatchBrief: "complete" } }) + "\\n");
   process.exit(0);
+} else if (mode === "truncated") {
+  const holder = spawn("sleep", ["30"], { stdio: ["ignore", "inherit", "ignore"] });
+  writeFileSync(pidFile, String(holder.pid));
+  stage("render");
+  writeSync(1, JSON.stringify({ ok: true, command: "brief-broker", data: { dispatchBrief: "short" } }));
+  process.exit(0);
 } else if (mode === "late") {
   stage("next");
   process.on("SIGTERM", () => {
@@ -160,6 +166,16 @@ describe("brief supervisor", () => {
     expect(Date.now() - started).toBeLessThan(DEADLINE_MS);
     expect(outcome).toMatchObject({ exitCode: 0, timedOut: false, stage: "render" });
     expect(outcome.receipt).toBe(`${JSON.stringify({ ok: true, command: "brief-broker", data: { dispatchBrief: "complete" } })}\n`);
+    await expectDead(Number(readFileSync(pidFile, "utf8")));
+  });
+
+  it("never settles early on bytes missing the receipt's final newline", async () => {
+    const directory = scratch();
+    const { pidFile, run } = supervise(directory, "truncated");
+    const outcome = await run;
+    expect(outcome).toMatchObject({ exitCode: 1, timedOut: true, stage: "render" });
+    expect(JSON.parse(outcome.receipt).error).toMatchObject({ code: "BRIEF_DEADLINE_EXCEEDED" });
+    expect(outcome.receipt).not.toContain("short");
     await expectDead(Number(readFileSync(pidFile, "utf8")));
   });
 
@@ -335,9 +351,13 @@ describe("fixed brief entrypoint under supervision", () => {
       env: { ...process.env, CODEX_SANDBOX: "", ARCADIA_WORKSPACE: workspace, PATH: `${shims}${path.delimiter}${process.env.PATH ?? ""}` }
     });
     try {
-      const until = Date.now() + 30_000;
-      while (!existsSync(pids) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
-      const [gitPid, childPid] = readFileSync(pids, "utf8").trim().split("\n")[0].split(" ").map(Number);
+      // `>>` creates the file before `echo` writes: wait for one whole line.
+      const line = () => (existsSync(pids) ? readFileSync(pids, "utf8") : "").match(/^(\d+) (\d+)\n/);
+      const until = Date.now() + 15_000;
+      while (!line() && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 100));
+      const [, gitPid, childPid] = (line() ?? []).map(Number);
+      expect(gitPid).toBeGreaterThan(0);
+      expect(childPid).toBeGreaterThan(0);
       expect(alive(gitPid) && alive(childPid)).toBe(true);
       process.kill(-launcher.pid!, "SIGKILL");
       await expectDead(childPid);

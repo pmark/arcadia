@@ -117,6 +117,17 @@ export function briefFailureReceipt(error: ArcadiaError, context: BriefFailureCo
   return `${JSON.stringify(createFailure("brief-broker", new ArcadiaError(error.code, error.message, error.exitCode, details)), null, 2)}\n`;
 }
 
+/** One JSON document, ending in the newline the entrypoint always writes. */
+function completeReceipt(output: string): boolean {
+  if (!output.endsWith("\n")) return false;
+  try {
+    const parsed: unknown = JSON.parse(output);
+    return Boolean(parsed) && typeof parsed === "object";
+  } catch {
+    return false;
+  }
+}
+
 export interface BriefSupervisorOptions {
   command: string;
   args: readonly string[];
@@ -173,7 +184,9 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
     const reaper = child.pid === undefined ? null : spawn(process.execPath, ["-e", REAPER_SOURCE], {
       detached: true,
       stdio: ["pipe", "ignore", "ignore"],
+      // The parent's environment, so a runtime that needs e.g. LD_LIBRARY_PATH starts.
       env: {
+        ...process.env,
         ARCADIA_BRIEF_REAPER_PGID: String(child.pid),
         ARCADIA_BRIEF_REAPER_CAP_MS: String(options.deadlineMs + 2 * grace + REAPER_MARGIN_MS)
       }
@@ -269,8 +282,14 @@ export function superviseBrief(options: BriefSupervisorOptions): Promise<BriefSu
       exitSignal = signal;
       for (const waiter of exitWaiters.splice(0)) waiter();
       // A descendant that inherited the child's stdout can hold the pipe open
-      // after a complete answer; take what arrived once a short drain passes.
-      if (accepting) drain = setTimeout(() => { if (accepting) settleFromChild(true); }, BRIEF_DRAIN_GRACE_MS);
+      // after a complete answer. Once a short drain passes, settle early only on
+      // a whole receipt (one JSON document ending in its newline); anything
+      // shorter keeps waiting for 'close' or the deadline, never accepted short.
+      if (accepting) {
+        drain = setTimeout(() => {
+          if (accepting && completeReceipt(Buffer.concat(stdout).toString("utf8"))) settleFromChild(true);
+        }, BRIEF_DRAIN_GRACE_MS);
+      }
     });
     child.on("close", () => {
       if (accepting) settleFromChild(false);
