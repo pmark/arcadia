@@ -25,6 +25,7 @@ import { NAMED_EXECUTION_PROFILES, type ResolvedExecutionRequirement } from "../
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
 import { toWorkspaceRelativePath, getWorkspacePaths } from "../workspace/paths.js";
 import { listMonitoredProjects } from "../commands/workMonitor.js";
+import { assertVerdictHead, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, lineageBoundSessionForBranch } from "../sessions/roleLineage.js";
 
 export type QaPrVerdict = "pass" | "fail" | "needs-follow-up";
 export type QaEvidenceStatus = "pass" | "fail" | "not-checked";
@@ -307,6 +308,23 @@ export function runQaPrReviewCommand(
       requiredSandbox: "read-only"
     });
   }
+  // A lineage-bound managed candidate's QA is the independent QA role: its
+  // deterministic readiness binding must name exactly this PR head before the
+  // reviewer model may run, and the reviewer is identified by its host
+  // binding, never by the developer's Session.
+  const qaActorId = `qa-reviewer:${reviewer.bindingId}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
+  const lineage = withDatabase(workspacePath, (db) => {
+    const session = lineageBoundSessionForBranch(db, { repositoryPath: project.repositoryPath, branch: pullRequest.headRefName });
+    if (!session) return null;
+    const readiness = independentVerdictReadiness(db, { session, repoRoot: project.repositoryPath });
+    if (readiness.ready) assertVerdictHead(readiness.binding, candidate.headSha);
+    const begun = beginIndependentVerdict(db, {
+      role: "qa", session, repoRoot: project.repositoryPath,
+      requestId: `qa-pr-${reference.number}-${path.basename(attemptRoot)}`.slice(0, 128),
+      actorId: qaActorId, executionCwd: process.cwd(), retryAuthorized: options.rerun === true, now: now()
+    });
+    return { session, requestId: begun.attempt.request_id };
+  });
   const sandboxProof = runQaSandboxPreflight({
     command: reviewer.profile.command,
     attemptRoot,
@@ -427,6 +445,13 @@ export function runQaPrReviewCommand(
     evidenceFingerprint,
     receiptFiles: requiredFiles
   }));
+  if (lineage) {
+    withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
+      requestId: lineage.requestId, actorId: qaActorId, session: lineage.session, repoRoot: project.repositoryPath,
+      verdict: verdict === "pass" ? "passed" : "failed", now: now(),
+      receipt: { verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint }
+    }));
+  }
   const data: QaPrReviewCommandData = {
     candidate,
     verdict,

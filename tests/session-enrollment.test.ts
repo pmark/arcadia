@@ -8,7 +8,8 @@ import {
   allocateSessionRoleAttempt,
   attemptVerdictIsCurrent,
   enrollGovernedSession,
-  nextDependencyReadyAction,
+  liveMutationOwner,
+  markSessionRoleAttemptRunning,
   recordSessionRoleAttemptTerminal,
   type EnrollmentDependencies,
   type EnrollmentRequest,
@@ -379,6 +380,8 @@ describe("durable role attempts and serial readiness", () => {
     requestId: "attempt-development-1", actorId: "developer-1", mutationOwner: true,
     authorityCurrent: true, ...overrides
   } as any);
+  const binding = (head = "a", criteria = "criteria-1", evidence = "evidence-1") =>
+    ({ targetHead: head.repeat(40), criteriaFingerprint: criteria, evidenceFingerprint: evidence });
 
   it("allocates one mutation owner, replays transport, and bounds authorized retries", () => {
     const first = allocate();
@@ -427,20 +430,30 @@ describe("durable role attempts and serial readiness", () => {
   it("keeps helpers read-only and requires independent review and QA identities across input revisions", () => {
     expect(() => allocate({ role: "planner", mutationOwner: true })).toThrow("Only the development role");
     allocate();
-    expect(() => allocate({ role: "code-review", requestId: "attempt-review-developer", actorId: "developer-1", mutationOwner: false }))
+    expect(() => allocate({ role: "code-review", requestId: "attempt-review-developer", actorId: "developer-1", mutationOwner: false, binding: binding() }))
       .toThrow("cannot be allocated to the developer");
-    expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer", actorId: "developer-1", mutationOwner: false }))
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer", actorId: "developer-1", mutationOwner: false, binding: binding() }))
       .toThrow("cannot be allocated to the developer");
-    expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer-r2", inputRevision: "revision-2", actorId: "developer-1", mutationOwner: false }))
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-developer-r2", inputRevision: "revision-2", actorId: "developer-1", mutationOwner: false, binding: binding() }))
       .toThrow("cannot be allocated to the developer");
-    const qa = allocate({ role: "qa", requestId: "attempt-qa-no-binding", actorId: "qa-1", mutationOwner: false });
+    // Deterministic readiness precedes inference: no reviewer attempt exists without its binding.
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-no-binding", actorId: "qa-1", mutationOwner: false }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "verdict_readiness_required" }) }));
+    expect(() => allocate({ role: "planner", requestId: "attempt-planner-bound", actorId: "planner-1", mutationOwner: false, binding: binding() }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "invalid_attempt_binding" }) }));
+    const qa = allocate({ role: "qa", requestId: "attempt-qa-bound", actorId: "qa-1", mutationOwner: false, binding: binding() });
+    // The developer can never finish an independent verdict, and no verdict may name another binding.
+    expect(() => recordSessionRoleAttemptTerminal(db, { requestId: qa.request_id, actorId: "developer-1", status: "passed", receipt: {} }))
+      .toThrow("allocated actor");
     expect(() => recordSessionRoleAttemptTerminal(db, {
-      requestId: qa.request_id, actorId: "qa-1", status: "passed", receipt: {}
-    })).toThrow("exact head");
+      requestId: qa.request_id, actorId: "qa-1", status: "passed", targetHead: "b".repeat(40), receipt: {}
+    })).toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_binding_changed" }) }));
+    expect(recordSessionRoleAttemptTerminal(db, { requestId: qa.request_id, actorId: "qa-1", status: "passed", receipt: {} }))
+      .toMatchObject({ status: "passed", target_head: "a".repeat(40), evidence_fingerprint: "evidence-1" });
   });
 
   it("invalidates a dependent verdict when head, criteria, or evidence changes", () => {
-    const qa = allocate({ role: "qa", requestId: "attempt-qa-1", actorId: "qa-1", mutationOwner: false });
+    const qa = allocate({ role: "qa", requestId: "attempt-qa-1", actorId: "qa-1", mutationOwner: false, binding: binding() });
     const terminal = recordSessionRoleAttemptTerminal(db, {
       requestId: qa.request_id, actorId: "qa-1", status: "passed",
       targetHead: "a".repeat(40), criteriaFingerprint: "criteria-1", evidenceFingerprint: "evidence-1", receipt: {}
@@ -449,6 +462,26 @@ describe("durable role attempts and serial readiness", () => {
     expect(attemptVerdictIsCurrent(terminal, { head: "b".repeat(40), criteriaFingerprint: "criteria-1", evidenceFingerprint: "evidence-1" })).toBe(false);
     expect(attemptVerdictIsCurrent(terminal, { head: "a".repeat(40), criteriaFingerprint: "criteria-2", evidenceFingerprint: "evidence-1" })).toBe(false);
     expect(attemptVerdictIsCurrent(terminal, { head: "a".repeat(40), criteriaFingerprint: "criteria-1", evidenceFingerprint: "evidence-2" })).toBe(false);
+    // A pushed head supersedes the old verdict: judging it is a new bounded attempt, not an unauthorized retry.
+    expect(allocate({ role: "qa", requestId: "attempt-qa-2", actorId: "qa-1", mutationOwner: false, binding: binding("b") }).ordinal).toBe(2);
+    // Re-judging the same binding while that attempt is unfinished is refused.
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-3", actorId: "qa-2", mutationOwner: false, binding: binding("b") }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_in_progress" }) }));
+    // A replay must carry the same binding.
+    expect(() => allocate({ role: "qa", requestId: "attempt-qa-2", actorId: "qa-1", mutationOwner: false, binding: binding("c") }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_request_changed" }) }));
+  });
+
+  it("marks a live owner running once, never reopens a terminal attempt, and finds the one live owner", () => {
+    const attempt = allocate();
+    expect(liveMutationOwner(db, "requirement-1")?.request_id).toBe(attempt.request_id);
+    expect(markSessionRoleAttemptRunning(db, { requestId: attempt.request_id, actorId: "developer-1" }).status).toBe("running");
+    expect(markSessionRoleAttemptRunning(db, { requestId: attempt.request_id, actorId: "developer-1" }).status).toBe("running");
+    expect(() => markSessionRoleAttemptRunning(db, { requestId: attempt.request_id, actorId: "someone-else" })).toThrow("allocated actor");
+    recordSessionRoleAttemptTerminal(db, { requestId: attempt.request_id, actorId: "developer-1", status: "passed", targetHead: "a".repeat(40), receipt: {} });
+    expect(liveMutationOwner(db, "requirement-1")).toBeNull();
+    expect(() => markSessionRoleAttemptRunning(db, { requestId: attempt.request_id, actorId: "developer-1" }))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "attempt_terminal" }) }));
   });
 
   it("replays an immutable terminal receipt and refuses a changed terminal replay", () => {
@@ -462,19 +495,10 @@ describe("durable role attempts and serial readiness", () => {
 
   it("allocates every fixed helper role as read-only and rejects unknown roles", () => {
     for (const [index, role] of ["planner", "critique", "code-review", "qa"].entries()) {
-      expect(allocate({ role, requestId: `attempt-helper-${index}`, actorId: `helper-${index}`, mutationOwner: false }).mutation_owner).toBe(0);
+      const verdict = role === "code-review" || role === "qa" ? { binding: binding() } : {};
+      expect(allocate({ role, requestId: `attempt-helper-${index}`, actorId: `helper-${index}`, mutationOwner: false, ...verdict }).mutation_owner).toBe(0);
     }
     expect(() => allocate({ role: "publisher", requestId: "attempt-unknown-1", actorId: "helper-9", mutationOwner: false }))
       .toThrow("Unknown session attempt role");
-  });
-
-  it("selects exactly the next dependency-ready Action and fences Off between Actions", () => {
-    const actions = [
-      { id: "one", status: "done" as const, dependsOn: [] },
-      { id: "two", status: "open" as const, dependsOn: ["one"] },
-      { id: "three", status: "open" as const, dependsOn: ["two"] }
-    ];
-    expect(nextDependencyReadyAction(actions, "active")?.id).toBe("two");
-    expect(nextDependencyReadyAction(actions, "off")).toBeNull();
   });
 });

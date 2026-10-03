@@ -58,7 +58,7 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinish(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
-    const integrated = rehearsal.tick();
+    const { integrated } = rehearsal.tickThroughReview();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
     expect(rehearsal.pointer()).toBe("write-marker-c");
@@ -90,7 +90,7 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(c, "MARKER.md", `${LINE_A}\n${LINE_B}\n${LINE_C}\n`);
     rehearsal.agentFinish(c, CRITERIA_C);
     rehearsal.tmux.exit(c.tmux_session_name);
-    const finished = rehearsal.tick();
+    const { integrated: finished } = rehearsal.tickThroughReview();
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-c")).toBe("done");
     expect(readFileSync(path.join(rehearsal.repo, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n${LINE_C}\n`);

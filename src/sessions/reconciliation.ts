@@ -12,6 +12,12 @@ import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { git } from "../git/worktrees.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getSession, hasWorktreeReservationTable, type AgentSession } from "./index.js";
+import { settleDevelopmentAttemptForExit } from "./roleLineage.js";
+
+/** Databases opened by narrow fixtures may predate the attempt store. */
+function hasRoleAttemptTable(db: Database.Database): boolean {
+  return db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_role_attempts'").get() !== undefined;
+}
 
 /**
  * The six outcomes a Session's exit must resolve to. A zero exit code alone
@@ -581,6 +587,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
       (id, session_id, request_id, outcome, reason, run_id, artifact_id, decision_id, candidate_revision, evidence_json, next_action_json, lease_handoff, superseded_by_session_id, is_simulated, created_at, updated_at)
       VALUES (@id, @session_id, @request_id, @outcome, @reason, @run_id, @artifact_id, @decision_id, @candidate_revision, @evidence_json, @next_action_json, @lease_handoff, @superseded_by_session_id, @is_simulated, @created_at, @updated_at)`
     ).run(row);
+    // The development attempt's terminal state commits with this receipt or
+    // not at all, so a restart either replays both or neither; a resumable
+    // exit leaves the attempt live for the next launch to resume.
+    if (hasRoleAttemptTable(db)) settleDevelopmentAttemptForExit(db, { session, outcome, exitReceiptId: row.id, now: new Date(now) });
     input.onReceiptWrite?.(row);
   });
   write();

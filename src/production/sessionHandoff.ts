@@ -7,6 +7,7 @@ import { validatePreservationCandidate } from "../sessions/preservationValidatio
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { readProductionPolicySafely } from "./policy.js";
+import type { VerdictGate } from "../sessions/roleLineage.js";
 
 /**
  * The A-to-B seam the plan's critical path leaves open: a managed-production
@@ -60,6 +61,12 @@ export interface SessionHandoffInput {
   expectedCandidateHead?: string;
   /** Recover a worker-accepted terminal completion after Off withheld preservation. */
   terminalRecovery?: boolean;
+  /**
+   * The independent-verdict gate the managed tick always supplies: checked
+   * after the policy and grant, before any Git write. When given, only the
+   * exact head its current code review and QA verdicts bind is integrated.
+   */
+  verdictGate?: () => VerdictGate;
 }
 
 function actionKey(session: AgentSession): string {
@@ -274,12 +281,16 @@ export function integrateSessionCandidate(
     return refusal(`The integration grant expired at ${grant.expiresAt}.`, merge);
   }
 
-  if (expectedCandidateHead) {
+  const assertCandidateHead = (head: string): IntegrationStep | null => {
     const branchHead = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}`])?.trim();
     const worktreeHead = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim();
-    if (branchHead !== expectedCandidateHead || worktreeHead !== expectedCandidateHead) {
-      return refusal("The terminal candidate changed after its completion settlement was checked.", merge);
-    }
+    return branchHead !== head || worktreeHead !== head
+      ? refusal("The terminal candidate changed after its completion settlement was checked.", merge)
+      : null;
+  };
+  if (expectedCandidateHead) {
+    const changed = assertCandidateHead(expectedCandidateHead);
+    if (changed) return changed;
   }
 
   const kind = integrationKind(repoRoot, baseBranch, branch);
@@ -293,7 +304,21 @@ export function integrateSessionCandidate(
     return { kind: "already_integrated", baseBranch };
   }
 
-  const commitSha = expectedCandidateHead ?? branch;
+  // Only a real fast-forward writes the base, so only it needs the verdicts:
+  // the exact head both current independent verdicts bind, nothing newer.
+  let candidateHead = expectedCandidateHead;
+  if (input.verdictGate) {
+    const gate = input.verdictGate();
+    if (!gate.satisfied) return refusal(gate.reason, merge);
+    if (candidateHead && candidateHead !== gate.binding.targetHead) {
+      return refusal("The candidate's independent verdicts bind a different head than the settled candidate.", merge);
+    }
+    candidateHead = gate.binding.targetHead;
+    const changed = assertCandidateHead(candidateHead);
+    if (changed) return changed;
+  }
+
+  const commitSha = candidateHead ?? branch;
   const commits = countCommits(repoRoot, baseBranch, commitSha);
   try {
     if (deps.fastForward) deps.fastForward({ repoRoot, branch, commitSha });

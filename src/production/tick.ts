@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
@@ -36,6 +36,7 @@ import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
+import { independentVerdictGate, requirementIdentity, runHelperAttempt } from "../sessions/roleLineage.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -212,7 +213,8 @@ function recoverTerminalHandoff(
   }
   return {
     preservation,
-    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head }, integrateDeps)
+    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head,
+      verdictGate: () => independentVerdictGate(db, { session, repoRoot }) }, integrateDeps)
   };
 }
 
@@ -427,13 +429,31 @@ function attemptAutomaticPlanningResolution(
   const requestedProfile = predictedPurpose
     ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
     : undefined;
+  // The planner is a separately identified, read-only helper attempt (it
+  // writes packet records, never the candidate), reached only after the
+  // deterministic launch preview reported `planning_required`. The Active
+  // standing policy that let this tick reach here is the explicit authority
+  // for a bounded retry after a failed attempt; a planner attempt that
+  // already passed for this exact input is never silently re-run.
+  const requirement = requirementIdentity({ projectSlug: context.projectSlug, planSlug: context.activePlan, action: context.action });
+  const now = new Date();
   try {
-    const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
-    if (prepared.data.buildInvocation) {
+    const planned = runHelperAttempt(db, { role: "planner", requirement, actorId: "host-planner:work-plan", retryAuthorized: true, now }, () => {
+      const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
+      const invocation = prepared.data.buildInvocation ?? prepared.data.codexInvocation;
+      const kind = prepared.data.buildInvocation ? "build_packet_ready" : prepared.data.planningDecision ? "planning_approval_pending" : null;
+      if (invocation) recordPacketCritique(db, requirement, invocation.id, path.resolve(input.workspace, invocation.prompt_path), now);
+      return { passed: kind !== null, receipt: { kind, invocationId: invocation?.id ?? null } };
+    });
+    if (planned.replayed) {
+      log(`The planner attempt for ${actionKey} already finished for this exact Action input (${planned.attempt.status}); not re-running it.`);
+      return null;
+    }
+    if (planned.receipt.kind === "build_packet_ready") {
       log(`Automatically prepared a build packet for ${actionKey} (was planning_required); it still needs its own build-packet approval.`);
       return "build_packet_ready";
     }
-    if (prepared.data.planningDecision) {
+    if (planned.receipt.kind === "planning_approval_pending") {
       log(`Automatically requested a Decision-gated planning run for ${actionKey} (was planning_required); its approval gate is unchanged.`);
       return "planning_approval_pending";
     }
@@ -442,6 +462,27 @@ function attemptAutomaticPlanningResolution(
     log(`Automatic planning_required resolution failed for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
+}
+
+/**
+ * The packet's deterministic stewardship critique, recorded as its own
+ * read-only critique attempt. It reads the critique the packet writer already
+ * produced (no second critic run), so it is advisory exactly as before.
+ */
+function recordPacketCritique(db: Database.Database, requirement: ReturnType<typeof requirementIdentity>, invocationId: string, promptPath: string, now: Date): void {
+  runHelperAttempt(db, { role: "critique", requirement, actorId: "host-critic:deterministic_critic", retryAuthorized: true, now }, () => {
+    type PacketCritique = { critic?: string; status?: string; findings?: unknown[] };
+    let critique: PacketCritique | null;
+    try {
+      critique = (JSON.parse(readFileSync(path.join(path.dirname(promptPath), "metadata.json"), "utf8")) as { critique?: PacketCritique }).critique ?? null;
+    } catch {
+      critique = null;
+    }
+    return {
+      passed: critique?.status === "approved",
+      receipt: { invocationId, critic: critique?.critic ?? null, status: critique?.status ?? "unreadable", findings: critique?.findings?.length ?? null }
+    };
+  });
 }
 
 /**
@@ -915,7 +956,8 @@ export function runManagedProductionTick(
         // Session is preserved and reported, never merged.
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed
-          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.integrate ?? {})
+          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now,
+              verdictGate: () => independentVerdictGate(db, { session: lease, repoRoot }) }, options.handoff?.integrate ?? {})
           : {
               kind: "refused" as const,
               reason: preservation.kind === "preserved"
@@ -1024,6 +1066,9 @@ export function runManagedProductionTick(
 
   return { policyActive: active, scheduling, schedulingError, projects };
 }
+
+/** Development-attempt refusals that only an operator can resolve: never retried in a loop, never a repair failure. */
+const ATTEMPT_LINEAGE_ESCALATIONS = new Set(["attempt_limit_exhausted", "attempt_retry_not_authorized"]);
 
 function attemptProjectLaunch(
   db: Database.Database,
@@ -1272,13 +1317,15 @@ function attemptProjectLaunch(
       // metadata clears it, so it escalates the same way rather than
       // retrying the same refusal forever (the fate `planning_required` was
       // given `NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS` to avoid).
-      const escalationKind = rawCode === "no_validation_commands"
+      const escalationKind = rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
         : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
           ? resolvedLifecycleKind
           : null;
       if (escalationKind) {
-        const remedy = rawCode === "no_validation_commands"
+        const remedy = rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode)
+          ? "The development attempt lineage for this exact Action input is finished or exhausted; an operator decides whether to amend the Action or record its outcome."
+          : rawCode === "no_validation_commands"
           ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
           : typeof error.details?.packetLifecycleRemedy === "string"
             ? error.details.packetLifecycleRemedy

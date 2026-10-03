@@ -1,6 +1,6 @@
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { validationError } from "../cli/errors.js";
+import { ArcadiaError, validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
@@ -30,6 +30,8 @@ import {
   type TmuxAdapter
 } from "./index.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
+import { liveMutationOwner, type SessionRoleAttempt } from "./enrollment.js";
+import { beginDevelopmentAttempt, markDevelopmentAttemptRunning, requirementIdFor, requirementIdentity } from "./roleLineage.js";
 import {
   assertDraftRecoveryUnchanged,
   commitDraftHandout,
@@ -184,25 +186,30 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         code: "stale_epoch", sessionId: existingLease.id, admittedEpoch: admission?.epoch ?? null, currentEpoch: input.expectedPolicyEpoch, conflict: true
       });
     }
-    // A crash between `prepareSession` and `commitAdmission` leaves the own
-    // lease prepared with its admission still issued. Commit it (idempotent
-    // for an already-committed one) before the reuse below may start the
-    // process, so a resumed Session always runs on a committed slot; an
-    // expired, fenced or released admission refuses instead.
-    const committed = admission ? commitAdmission(input.db, ownAdmission, now) : null;
-    if (!committed?.admitted) {
-      throw validationError("This request's own Session has no committable admission; it is not started.", {
-        code: committed?.code ?? "admission_missing", sessionId: existingLease.id, conflict: true
+    if (!matchesPreview(existingLease, preview)) {
+      // Checked before any admission commit: an own lease for another packet
+      // or Action is never resumed, and its issued slot is not consumed.
+      throw validationError("This request's own Session no longer matches the governed Action and packet; it is not resumed.", {
+        code: "enrollment_launch_identity_changed", sessionId: existingLease.id, conflict: true
       });
     }
+    // A crash between `prepareSession` and `commitAdmission` leaves the own
+    // lease prepared with its admission still issued. Commit it (idempotent
+    // for an already-committed one) only after the reuse checks below pass
+    // and before the process may start, so a resumed Session always runs on a
+    // committed slot; an expired, fenced or released admission refuses instead.
+    const commitOwnAdmission = () => {
+      const committed = admission ? commitAdmission(input.db, ownAdmission, now) : null;
+      if (!committed?.admitted) {
+        throw validationError("This request's own Session has no committable admission; it is not started.", {
+          code: committed?.code ?? "admission_missing", sessionId: existingLease.id, conflict: true
+        });
+      }
+    };
+    return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now, commitOwnAdmission);
   }
   if (existingLease && matchesPreview(existingLease, preview)) {
-    return {
-      reused: true,
-      session: reuseOrRefuseLease(input.db, existingLease, preview, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed),
-      preview,
-      admission: null
-    };
+    return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now);
   }
 
   if (!input.standingPolicy && preview.previewFingerprint !== input.previewFingerprint) {
@@ -264,6 +271,23 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // a signed-out provider must take no admission and no lease, so the next
   // tick can retry it for free once sign-in is restored.
   checkSignInOrRefuse(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
+
+  // The one mutation-owning development attempt this launch runs under, after
+  // every deterministic launch prerequisite above and before any admission,
+  // worktree or Session. A live attempt for the same requirement input is
+  // resumed rather than duplicated; after a terminal failure the launch grant
+  // this call carries (a standing policy or an approved preview) is the
+  // explicit authority for the next bounded ordinal.
+  const requirement = requirementIdentity({ projectSlug: preview.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
+  let development: SessionRoleAttempt;
+  try {
+    development = beginDevelopmentAttempt(input.db, { requirement, requestId: input.requestId, retryAuthorized: true, now }).attempt;
+  } catch (error) {
+    if (error instanceof ArcadiaError && typeof error.details?.code === "string" && error.details.code.startsWith("attempt_")) {
+      throw validationError(`The development attempt lineage refused this launch: ${error.message}`, { ...error.details, conflict: true });
+    }
+    throw error;
+  }
 
   const model = preview.selection.model;
   const effort = preview.selection.effort ?? null;
@@ -590,12 +614,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       // hold a concurrency slot until it expires. Release it immediately
       // rather than waiting out the TTL.
       if (admission) releaseAdmission(input.db, admission.requestId, now);
-      return {
-        reused: true,
-        session: reuseOrRefuseLease(input.db, raced, preview, tmux, registry, providerSignIn, input.workspace, onProviderSignInConfirmed),
-        preview,
-        admission: null
-      };
+      return reusedLease(input, raced, preview, tmux, registry, providerSignIn, now);
     }
     // No winning Session satisfied this request either: this admission never
     // committed to a launch and would otherwise hold its slot until it expires.
@@ -664,8 +683,9 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // (unattended), so hand `launchPreparedSession` the row as it now stands.
   const launching = admission ? { ...prepared, admission_request_id: admission.requestId } : prepared;
 
+  let launched: AgentSession;
   try {
-    return { reused: false, session: launchPreparedSession(input.db, launching, tmux, registry, input.workspace), preview, admission };
+    launched = launchPreparedSession(input.db, launching, tmux, registry, input.workspace);
   } catch (error) {
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a
@@ -689,6 +709,37 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
     throw error;
   }
+  markAttemptRunning(input.db, development, now);
+  return { reused: false, session: launched, preview, admission };
+}
+
+/** The process is already running; a failed marker write leaves the attempt pending, which exit reconciliation treats identically. */
+function markAttemptRunning(db: Database.Database, attempt: SessionRoleAttempt | null, now: Date): void {
+  if (!attempt || attempt.status === "running") return;
+  try {
+    markDevelopmentAttemptRunning(db, attempt, now);
+  } catch {
+    // Still the requirement's one live owner; nothing else may allocate around it.
+  }
+}
+
+function reusedLease(
+  input: GuardedLaunchInput,
+  lease: AgentSession,
+  preview: LaunchPreview,
+  tmux: TmuxAdapter,
+  registry: ModelTierRegistry | undefined,
+  providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
+  now: Date,
+  beforeStart?: () => void
+): GuardedLaunchResult {
+  const session = reuseOrRefuseLease(input.db, lease, preview, tmux, registry, providerSignIn, input.workspace, input.onProviderSignInConfirmed, beforeStart);
+  // A reused lease never allocates a second owner; it only marks the live
+  // attempt its original launch allocated as started.
+  if (session.status === "running") {
+    markAttemptRunning(input.db, liveMutationOwner(input.db, requirementIdFor(session.project_slug, session.plan_slug, session.action_id)), now);
+  }
+  return { reused: true, session, preview, admission: null };
 }
 
 /**
@@ -709,7 +760,8 @@ function reuseOrRefuseLease(
   registry: ModelTierRegistry | undefined,
   providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
   workspace: string,
-  onProviderSignInConfirmed?: (provider: string) => void
+  onProviderSignInConfirmed?: (provider: string) => void,
+  beforeStart?: () => void
 ): AgentSession {
   const isAlreadyRunning = session.status === "running" || tmux.hasSession(session.tmux_session_name);
   // An already-running Session (or one alive in tmux) is always handed back
@@ -728,6 +780,7 @@ function reuseOrRefuseLease(
       code: "no_validation_commands"
     });
   }
+  beforeStart?.();
   return resumeOrReturn(db, session, isAlreadyRunning, tmux, registry, providerSignIn, workspace, onProviderSignInConfirmed);
 }
 

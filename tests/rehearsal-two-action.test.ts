@@ -156,9 +156,12 @@ describe("rehearsal Steps 3-5: two dependent Actions from one activation (criter
     // Step 5: A2 finishes by the brief's completion protocol and exits.
     rehearsal.agentFinish(a2, CRITERIA_A);
     rehearsal.tmux.exit(a2.tmux_session_name);
-    const integrated = rehearsal.tick();
-    expect(integrated.reconciled).toEqual([{ sessionId: a2.id, outcome: "accepted_completion" }]);
-    expect(integrated.handoff?.preservation.kind).toBe("preserved");
+    // The exit tick preserves and accepts A but integrates only once current
+    // independent code review and QA verdicts bind A's exact head.
+    const { exited, integrated } = rehearsal.tickThroughReview();
+    expect(exited.reconciled).toEqual([{ sessionId: a2.id, outcome: "accepted_completion" }]);
+    expect(exited.handoff?.preservation.kind).toBe("preserved");
+    expect(exited.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/current independent verdicts/) });
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-a")).toBe("done");
     expect(rehearsal.pointer()).toBe("write-marker-b");
@@ -181,8 +184,8 @@ describe("rehearsal Steps 3-5: two dependent Actions from one activation (criter
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinish(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
-    const finished = rehearsal.tick();
-    expect(finished.reconciled).toEqual([{ sessionId: b.id, outcome: "accepted_completion" }]);
+    const { exited: finishedExit, integrated: finished } = rehearsal.tickThroughReview();
+    expect(finishedExit.reconciled).toEqual([{ sessionId: b.id, outcome: "accepted_completion" }]);
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
     expect(readFileSync(path.join(rehearsal.repo, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n`);
@@ -216,10 +219,10 @@ describe("rehearsal Steps 3-5: two dependent Actions from one activation (criter
     expect(preserved).toBeTruthy();
     rehearsal.agentFinish(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
-    const result = rehearsal.tick();
+    const { exited: result, integrated } = rehearsal.tickThroughReview();
     expect(result.reconciled[0]?.outcome).toBe("accepted_completion");
     expect(result.handoff?.preservation.kind).toBe("preserved");
-    expect(result.handoff?.integration.kind).toBe("integrated");
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.pointer()).toBe("write-marker-b");
   });
 
@@ -281,12 +284,12 @@ describe("rehearsal on codex-cli, with a realistically sandboxed agent", () => {
     rehearsal.agentFinishSandboxed(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
 
-    const exited = rehearsal.tick();
+    const { exited, integrated } = rehearsal.tickThroughReview();
     expect(exited.handoff?.preservation.kind).toBe("preserved");
     expect(exited.reconciled[0]?.outcome).toBe("accepted_completion");
-    expect(exited.handoff?.integration.kind).toBe("integrated");
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.pointer()).toBe("write-marker-b");
-    if (exited.launch?.outcome !== "launched") rehearsal.tickUntil((r) => r.launch?.outcome === "launched", 3);
+    if (integrated.launch?.outcome !== "launched") rehearsal.tickUntil((r) => r.launch?.outcome === "launched", 3);
     const b = rehearsal.lease()!;
     expect(b.action_id).toBe("write-marker-b");
 
@@ -294,8 +297,8 @@ describe("rehearsal on codex-cli, with a realistically sandboxed agent", () => {
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinishSandboxed(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
-    const finished = rehearsal.tick();
-    expect(finished.reconciled[0]?.outcome).toBe("accepted_completion");
+    const { exited: finishedExit, integrated: finished } = rehearsal.tickThroughReview();
+    expect(finishedExit.reconciled[0]?.outcome).toBe("accepted_completion");
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
     expect(readFileSync(path.join(rehearsal.repo, "MARKER.md"), "utf8")).toBe(`${LINE_A}\n${LINE_B}\n`);
@@ -455,9 +458,9 @@ describe("rehearsal guards: completion is recognized only when it really happene
     expect(a2.worktree_path).toBe(a1.worktree_path);
     rehearsal.agentFinish(a2, CRITERIA_A);
     rehearsal.tmux.exit(a2.tmux_session_name);
-    const result = rehearsal.tick();
+    const { exited: result, integrated } = rehearsal.tickThroughReview();
     expect(result.reconciled[0]?.outcome).toBe("accepted_completion");
-    expect(result.handoff?.integration.kind).toBe("integrated");
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.pointer()).toBe("write-marker-b");
   });
 

@@ -478,6 +478,37 @@ function completeEnrollment(
   return receipt;
 }
 
+/** The exact candidate state an independent verdict judges: head, governed criteria, and validation evidence. */
+export interface VerdictBinding {
+  targetHead: string;
+  criteriaFingerprint: string;
+  evidenceFingerprint: string;
+}
+
+export interface SessionRoleAttempt {
+  id: string;
+  requirement_id: string;
+  input_revision: string;
+  role: SessionAttemptRole;
+  ordinal: number;
+  request_id: string;
+  actor_id: string;
+  mutation_owner: number;
+  status: "pending" | "running" | "passed" | "failed";
+  target_head: string | null;
+  criteria_fingerprint: string | null;
+  evidence_fingerprint: string | null;
+  terminal_receipt_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const INDEPENDENT_VERDICT_ROLES = ["code-review", "qa"] as const;
+export type IndependentVerdictRole = typeof INDEPENDENT_VERDICT_ROLES[number];
+function isVerdictRole(role: string): role is IndependentVerdictRole {
+  return (INDEPENDENT_VERDICT_ROLES as readonly string[]).includes(role);
+}
+
 export interface AllocateAttemptInput {
   requirementId: string;
   inputRevision: string;
@@ -488,16 +519,63 @@ export interface AllocateAttemptInput {
   retryAuthorized?: boolean;
   authorityCurrent: boolean;
   maxOrdinal?: number;
+  /**
+   * Required for code review and QA: the binding a deterministic readiness
+   * check produced before any reviewer inference may start. The attempt is
+   * pinned to it, and its terminal verdict may never name another.
+   */
+  binding?: VerdictBinding;
   now?: Date;
 }
 
+function sameBinding(row: Pick<SessionRoleAttempt, "target_head" | "criteria_fingerprint" | "evidence_fingerprint">, binding: VerdictBinding | undefined): boolean {
+  return row.target_head === (binding?.targetHead ?? null) &&
+    row.criteria_fingerprint === (binding?.criteriaFingerprint ?? null) &&
+    row.evidence_fingerprint === (binding?.evidenceFingerprint ?? null);
+}
+
 /** True when this actor ever held a development attempt for the requirement, under any input revision. */
-function actedAsDeveloper(db: Database.Database, requirementId: string, actorId: string): boolean {
+export function actedAsDeveloper(db: Database.Database, requirementId: string, actorId: string): boolean {
   return db.prepare(`SELECT 1 FROM session_role_attempts
     WHERE requirement_id = ? AND role = 'development' AND actor_id = ? LIMIT 1`).get(requirementId, actorId) !== undefined;
 }
 
-export function allocateSessionRoleAttempt(db: Database.Database, input: AllocateAttemptInput) {
+/** The one pending or running mutation-owning attempt for a requirement, if any (the unique owner index allows at most one). */
+export function liveMutationOwner(db: Database.Database, requirementId: string): SessionRoleAttempt | null {
+  return (db.prepare(`SELECT * FROM session_role_attempts
+    WHERE requirement_id = ? AND mutation_owner = 1 AND status IN ('pending', 'running') LIMIT 1`)
+    .get(requirementId) as SessionRoleAttempt | undefined) ?? null;
+}
+
+/** The highest-ordinal attempt for one role of one requirement input. */
+export function latestRoleAttempt(db: Database.Database, requirementId: string, inputRevision: string, role: SessionAttemptRole): SessionRoleAttempt | null {
+  return (db.prepare(`SELECT * FROM session_role_attempts
+    WHERE requirement_id = ? AND input_revision = ? AND role = ? ORDER BY ordinal DESC LIMIT 1`)
+    .get(requirementId, inputRevision, role) as SessionRoleAttempt | undefined) ?? null;
+}
+
+export function getSessionRoleAttempt(db: Database.Database, requestId: string): SessionRoleAttempt | null {
+  return (db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(requestId) as SessionRoleAttempt | undefined) ?? null;
+}
+
+/**
+ * pending -> running once the attempt's principal actually started. Idempotent
+ * for an already-running attempt; a terminal attempt is never reopened.
+ */
+export function markSessionRoleAttemptRunning(db: Database.Database, input: { requestId: string; actorId: string; now?: Date }): SessionRoleAttempt {
+  return writeTransaction(db, () => {
+    const row = getSessionRoleAttempt(db, input.requestId);
+    if (!row) throw validationError("Attempt does not exist.", { code: "attempt_missing", requestId: input.requestId });
+    if (row.actor_id !== input.actorId) throw validationError("Only the allocated actor may run this attempt.", { code: "attempt_actor_changed" });
+    if (row.status === "running") return row;
+    if (row.status !== "pending") throw validationError("A terminal attempt is never reopened.", { code: "attempt_terminal", requestId: input.requestId, status: row.status });
+    db.prepare("UPDATE session_role_attempts SET status = 'running', updated_at = ? WHERE request_id = ? AND status = 'pending'")
+      .run((input.now ?? new Date()).toISOString(), input.requestId);
+    return getSessionRoleAttempt(db, input.requestId)!;
+  });
+}
+
+export function allocateSessionRoleAttempt(db: Database.Database, input: AllocateAttemptInput): SessionRoleAttempt {
   if (!input.authorityCurrent) throw validationError("Attempt authority is stale.", { code: "attempt_authority_stale" });
   if (!SESSION_ATTEMPT_ROLES.includes(input.role)) throw validationError("Unknown session attempt role.", { code: "unknown_attempt_role" });
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.requestId) ||
@@ -510,15 +588,25 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
   if (input.mutationOwner !== (input.role === "development")) {
     throw validationError("Only the development role may own mutations; every helper is read-only.", { code: "invalid_mutation_owner" });
   }
+  const binding = input.binding;
+  if (isVerdictRole(input.role) && (!binding?.targetHead || !binding.criteriaFingerprint || !binding.evidenceFingerprint)) {
+    // Deterministic readiness precedes inference: no reviewer attempt exists
+    // until the exact head, criteria and evidence it will judge are known.
+    throw validationError("Code review and QA attempts require the deterministic readiness binding before any reviewer runs.", { code: "verdict_readiness_required" });
+  }
+  if (!isVerdictRole(input.role) && binding) {
+    throw validationError("Only code review and QA attempts carry a verdict binding.", { code: "invalid_attempt_binding" });
+  }
   return writeTransaction(db, () => {
-    const replay = db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(input.requestId) as any;
+    const replay = getSessionRoleAttempt(db, input.requestId);
     if (replay) {
       const matches = replay.requirement_id === input.requirementId && replay.input_revision === input.inputRevision &&
-        replay.role === input.role && replay.actor_id === input.actorId && replay.mutation_owner === Number(input.mutationOwner);
+        replay.role === input.role && replay.actor_id === input.actorId && replay.mutation_owner === Number(input.mutationOwner) &&
+        (!isVerdictRole(input.role) || sameBinding(replay, binding));
       if (!matches) throw validationError("Attempt request replay changed identity or input.", { code: "attempt_request_changed" });
       return replay;
     }
-    if ((input.role === "code-review" || input.role === "qa") && actedAsDeveloper(db, input.requirementId, input.actorId)) {
+    if (isVerdictRole(input.role) && actedAsDeveloper(db, input.requirementId, input.actorId)) {
       throw validationError("Independent review and QA cannot be allocated to the developer.", { code: "independent_actor_required" });
     }
     if (input.mutationOwner) {
@@ -533,16 +621,28 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
         });
       }
     }
-    const previous = db.prepare(`SELECT * FROM session_role_attempts
-      WHERE requirement_id = ? AND input_revision = ? AND role = ? ORDER BY ordinal DESC LIMIT 1`)
-      .get(input.requirementId, input.inputRevision, input.role) as any;
-    if (previous && (previous.status !== "failed" || !input.retryAuthorized)) {
-      throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", { code: "attempt_retry_not_authorized" });
+    const previous = latestRoleAttempt(db, input.requirementId, input.inputRevision, input.role);
+    // A finished verdict on a head, criteria or evidence that has since
+    // changed is superseded: judging the new binding is a new attempt, still
+    // bounded by the ordinal limit, never a retry of the old one. Re-judging
+    // the same binding after a failure is a retry and needs authorization.
+    const supersededVerdict = previous !== null && isVerdictRole(input.role) &&
+      (previous.status === "passed" || previous.status === "failed") && !sameBinding(previous, binding);
+    if (previous && !supersededVerdict && (previous.status !== "failed" || !input.retryAuthorized)) {
+      throw validationError("A next attempt requires an explicitly authorized retry after terminal failure.", {
+        code: previous.status === "pending" || previous.status === "running" ? "attempt_in_progress" : "attempt_retry_not_authorized",
+        requestId: previous.request_id,
+        status: previous.status
+      });
     }
     const ordinal = (previous?.ordinal ?? 0) + 1;
-    if (ordinal > (input.maxOrdinal ?? 3)) throw validationError("The bounded attempt limit is exhausted.", { code: "attempt_limit_exhausted" });
+    if (ordinal > (input.maxOrdinal ?? 3)) {
+      throw validationError("The bounded attempt limit is exhausted.", {
+        code: "attempt_limit_exhausted", requirementId: input.requirementId, role: input.role, limit: input.maxOrdinal ?? 3
+      });
+    }
     const at = (input.now ?? new Date()).toISOString();
-    const row = {
+    const row: SessionRoleAttempt = {
       id: `attempt_${randomUUID().replaceAll("-", "")}`,
       requirement_id: input.requirementId,
       input_revision: input.inputRevision,
@@ -552,9 +652,9 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
       actor_id: input.actorId,
       mutation_owner: Number(input.mutationOwner),
       status: "pending",
-      target_head: null,
-      criteria_fingerprint: null,
-      evidence_fingerprint: null,
+      target_head: binding?.targetHead ?? null,
+      criteria_fingerprint: binding?.criteriaFingerprint ?? null,
+      evidence_fingerprint: binding?.evidenceFingerprint ?? null,
       terminal_receipt_json: null,
       created_at: at,
       updated_at: at
@@ -569,47 +669,47 @@ export function allocateSessionRoleAttempt(db: Database.Database, input: Allocat
 
 export function recordSessionRoleAttemptTerminal(db: Database.Database, input: {
   requestId: string; actorId: string; status: "passed" | "failed"; targetHead?: string;
-  criteriaFingerprint?: string; evidenceFingerprint?: string; receipt: unknown;
-}) {
+  criteriaFingerprint?: string; evidenceFingerprint?: string; receipt: unknown; now?: Date;
+}): SessionRoleAttempt {
   return writeTransaction(db, () => {
-    const row = db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(input.requestId) as any;
-    if (!row) throw validationError("Attempt does not exist.");
+    const row = getSessionRoleAttempt(db, input.requestId);
+    if (!row) throw validationError("Attempt does not exist.", { code: "attempt_missing", requestId: input.requestId });
     if (row.actor_id !== input.actorId) throw validationError("Only the allocated actor may finish this attempt.", { code: "attempt_actor_changed" });
+    // A verdict attempt was pinned to its readiness binding at allocation; its
+    // terminal receipt may restate that binding but never name another one.
+    const pinned = isVerdictRole(row.role) && row.target_head !== null;
+    const targetHead = input.targetHead ?? (pinned ? row.target_head : null);
+    const criteriaFingerprint = input.criteriaFingerprint ?? (pinned ? row.criteria_fingerprint : null);
+    const evidenceFingerprint = input.evidenceFingerprint ?? (pinned ? row.evidence_fingerprint : null);
     if (row.status === "passed" || row.status === "failed") {
-      const unchanged = row.status === input.status && row.target_head === (input.targetHead ?? null) &&
-        row.criteria_fingerprint === (input.criteriaFingerprint ?? null) &&
-        row.evidence_fingerprint === (input.evidenceFingerprint ?? null) &&
+      const unchanged = row.status === input.status && row.target_head === targetHead &&
+        row.criteria_fingerprint === criteriaFingerprint &&
+        row.evidence_fingerprint === evidenceFingerprint &&
         row.terminal_receipt_json === JSON.stringify(input.receipt);
       if (!unchanged) throw validationError("A terminal attempt receipt is immutable.", { code: "attempt_terminal_changed" });
       return row;
     }
-    if ((row.role === "code-review" || row.role === "qa") && actedAsDeveloper(db, row.requirement_id, input.actorId)) {
+    if (pinned && (targetHead !== row.target_head || criteriaFingerprint !== row.criteria_fingerprint || evidenceFingerprint !== row.evidence_fingerprint)) {
+      throw validationError("A verdict may judge only the binding its attempt was allocated for.", { code: "attempt_binding_changed", requestId: input.requestId });
+    }
+    if (isVerdictRole(row.role) && actedAsDeveloper(db, row.requirement_id, input.actorId)) {
       throw validationError("Independent review and QA cannot be supplied by the developer.", { code: "independent_actor_required" });
     }
-    if ((row.role === "code-review" || row.role === "qa") && input.status === "passed" &&
-      (!input.targetHead || !input.criteriaFingerprint || !input.evidenceFingerprint)) {
+    if (isVerdictRole(row.role) && input.status === "passed" && (!targetHead || !criteriaFingerprint || !evidenceFingerprint)) {
       throw validationError("A passing review or QA verdict must bind the exact head, criteria, and evidence.", { code: "verdict_binding_required" });
     }
-    const at = new Date().toISOString();
+    const at = (input.now ?? new Date()).toISOString();
     db.prepare(`UPDATE session_role_attempts SET status = ?, target_head = ?, criteria_fingerprint = ?,
       evidence_fingerprint = ?, terminal_receipt_json = ?, updated_at = ? WHERE request_id = ?`)
-      .run(input.status, input.targetHead ?? null, input.criteriaFingerprint ?? null,
-        input.evidenceFingerprint ?? null, JSON.stringify(input.receipt), at, input.requestId);
-    return db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(input.requestId);
+      .run(input.status, targetHead, criteriaFingerprint, evidenceFingerprint, JSON.stringify(input.receipt), at, input.requestId);
+    return getSessionRoleAttempt(db, input.requestId)!;
   });
 }
 
-export function attemptVerdictIsCurrent(attempt: any, current: {
+export function attemptVerdictIsCurrent(attempt: Pick<SessionRoleAttempt, "status" | "target_head" | "criteria_fingerprint" | "evidence_fingerprint"> | null | undefined, current: {
   head: string; criteriaFingerprint: string; evidenceFingerprint: string;
 }): boolean {
   return attempt?.status === "passed" && attempt.target_head === current.head &&
     attempt.criteria_fingerprint === current.criteriaFingerprint &&
     attempt.evidence_fingerprint === current.evidenceFingerprint;
-}
-
-export interface SerialAction { id: string; status: "open" | "done"; dependsOn: string[]; }
-export function nextDependencyReadyAction(actions: SerialAction[], productionState: "active" | "off"): SerialAction | null {
-  if (productionState === "off") return null;
-  const done = new Set(actions.filter(action => action.status === "done").map(action => action.id));
-  return actions.find(action => action.status !== "done" && action.dependsOn.every(dependency => done.has(dependency))) ?? null;
 }
