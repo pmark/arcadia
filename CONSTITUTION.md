@@ -12,8 +12,10 @@
   use credentials, access production, or send messages without an explicit
   Decision. Capability never grants authority.
 - Merging is a hard stop with one standing exception (Decision 0060): an agent
-  may merge a pull request once CodeRabbit has approved its current head, every
-  required check on that head is green, and the merge state is clean. A push
+  may merge a pull request once an independent review of its current head has
+  no unresolved blocking finding (Decision 0080 amends the original CodeRabbit
+  condition), every required check on that head is green, and the merge state
+  is clean. A push
   resets the condition. The exception excludes any pull request that opens or
   carries an important Decision or changes what agents are authorized to do;
   those wait for the operator.

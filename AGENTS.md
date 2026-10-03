@@ -45,8 +45,9 @@ stop the affected operation, preserve work and report the exact remedy.
 - **Authority:** `CONSTITUTION.md` outranks convenience. Deployment, publication,
   deletion, spending, credentials, production and messaging require an explicit
   Decision. Capability, urgency, proposals and review findings grant nothing.
-  Merge only under Decision 0060: CodeRabbit approves the current head, all
-  required checks on that head pass, and the merge state is clean. Important
+  Merge only under Decision 0060 as amended by Decision 0080: an
+  independent review of the current head has no unresolved blocking finding,
+  all required checks on that head pass, and the merge state is clean. Important
   Decisions and authority changes wait for the operator. A push resets proof.
 - **Governance:** never hand-edit pointers, Action status/result, Decision
   answers, Outcomes, Milestones or queues. Use an Agent Ask; previews never
@@ -77,7 +78,9 @@ stop the affected operation, preserve work and report the exact remedy.
   completion evidence and never grant authority merely by being generated.
 - **Review:** read the indexed PR procedure before opening or pushing a PR;
   include executable operator/end-user QA steps and truthful reachability.
-  Run the CodeRabbit loop and watch required checks on each pushed head. Repair
+  Launch an independent read-only review of every PR at creation (max three
+  rounds unless significant defects recur; bots such as CodeRabbit are advisory
+  and never awaited) and watch required checks on each pushed head. Repair
   valid findings, CI failures and base conflicts within authority; preserve
   unresolved blockers. Never weaken gates, tests or branch protection.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,

@@ -99,8 +99,8 @@ work has happened — running it right after `go` is a guaranteed
    distinguishable even when a session list shows only its first ~20
    characters. Retitling is a required step on every real state change, not
    an optional nicety — call it immediately, from the same map, each time:
-   `pr` once its pull request is open and in the CodeRabbit loop, `ci` once
-   that loop clears and required checks start running on the merge-ready
+   `pr` once its pull request is open and in review, `ci` once
+   that review clears and required checks start running on the merge-ready
    head, `waiting` when it stops at a picker or operator question, `blocked`
    on a recorded external blocker, and `done` once the Action is complete or
    its PR merged. This costs nothing extra: reuse the map already returned by

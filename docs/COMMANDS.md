@@ -1472,12 +1472,13 @@ Automating the actual merge on top of this assessment is a separate, explicit
 approval boundary (see the orchestration vision document's trigger table) and
 is not part of this command.
 
-## Run The CodeRabbit Review Loop On A PR
+## Read CodeRabbit's Verdict On A PR (Advisory)
 
-In a repository with a `.coderabbit.yaml`, an agent does not stop at a push.
-The "CodeRabbit loop" section of the managed `AGENTS.md` block has it wait for
-CodeRabbit's review, fix or decline each finding, push, and repeat until
-CodeRabbit approves or three fix rounds have passed.
+Every PR gets an independent agent review at creation (see the "Independent
+review gate" in `docs/agent-guidance/pull-requests.md`). CodeRabbit, where a
+repository has a `.coderabbit.yaml`, is an advisory second opinion: this
+command reads its current verdict, and an agent considers what it says but
+never waits for it and never needs its approval to merge.
 
 ```sh
 pnpm arcadia pr code-review 325 --json

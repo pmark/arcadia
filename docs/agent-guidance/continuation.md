@@ -35,8 +35,8 @@ like "Arcadia Go". The arcadia-go brief broker returns every state's title in
 
 - **kind** — 🔨 build an Action, 🔍 review or critique, 🧭 plan, 🩹 repair
   control documents;
-- **state** — 🔵 working, 🟣 PR open and in its CodeRabbit loop, 🟡 required
-  checks running on a merge-ready head (CodeRabbit loop finished, CI is the
+- **state** — 🔵 working, 🟣 PR open and in review, 🟡 required
+  checks running on a merge-ready head (review finished, CI is the
   last gate before merge), 🟠 waiting on the operator (a picker or question),
   🔴 externally blocked, 🟢 done or merged;
 - **PLAN** — the first letter of each word of the `active_plan` slug, skipping
@@ -46,7 +46,7 @@ like "Arcadia Go". The arcadia-go brief broker returns every state's title in
 
 Retitling on every state change is a required step, not a nicety — treat it
 the same as updating `PROJECT.md`: do it immediately when the state actually
-changes (pushing a PR, CodeRabbit clearing so checks start, stopping at a
+changes (pushing a PR, the review finishing so checks start, stopping at a
 picker, hitting a blocker, finishing), never batched for later and never
 skipped because the change felt minor. It is cheap: reuse the `sessionTitles`
 map already returned by the current brief and call the title tool with the
