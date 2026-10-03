@@ -136,39 +136,53 @@ describe("preservation git timeouts end to end", () => {
     withDatabase(f.workspace, db => expect(getPreservationRefusalAttempts(db, binding.reservationId)).toBe(0));
   });
 
-  it("keeps the typed timeout through the real validation wrapper and the host transport", () => {
-    const { f, binding, stages, observe } = timeoutFixture();
+  it("keeps the typed timeout through the real validation entry and the host transport", () => {
+    // No validation mock: the real validateBoundCandidate runs up to its first
+    // stalled Git call, which happens before its macOS-only Seatbelt check.
+    const { f, binding, stages, observe, timeoutAt } = timeoutFixture();
     const before = observe();
-    const error = caught(() => withPreservationProgress(stage => stages.push(stage),
-      () => runPreserveCommand({ source: f.candidate, workspace: f.workspace }),
-      { gitTimeoutMs: ({ command, args, stage }) => command === "git" && stage === "validation.materialize" && args[0] === "cat-file" ? 1 : CALL_TIMEOUT_MS }));
-    // Real validateBoundCandidate: preservationStageFailure kept the failing
-    // stage even though its finally block then reported validation.cleanup.
-    expect(stages).toEqual(expect.arrayContaining(["validation.check-definitions", "validation.materialize", "validation.cleanup"]));
-    expect(error.code).toBe("PRESERVATION_GIT_TIMEOUT");
-    expect(error.details).toMatchObject({ retryable: true, stage: "validation.materialize", gitSubcommand: "cat-file", timeoutMs: 1 });
+    const error = timeoutAt("validation.check-definitions", "ls-tree");
+    expect(stages.at(-1)).toBe("validation.check-definitions");
+    expectTypedTimeout(error, "validation.check-definitions", { subcommand: "ls-tree", cwds: [f.repo] });
     const transported = goTransportFailure(error);
     if (transported.ok) throw new Error("transport reported success");
     const received = preservationResponseError(transported.error);
     expect(received.code).toBe("PRESERVATION_GIT_TIMEOUT");
     expect(received.exitCode).toBe(1);
-    expect(received.details).toMatchObject({ retryable: true, stage: "validation.materialize", gitSubcommand: "cat-file", remedy: error.details.remedy });
+    expect(received.message).toBe(error.message);
+    expect(received.details).toEqual(error.details);
     expect(observe()).toEqual(before);
     withDatabase(f.workspace, db => expect(getPreservationRefusalAttempts(db, binding.reservationId)).toBe(0));
   });
 
+  // validateBoundCandidate refuses any non-macOS host before materializing the
+  // snapshot (Seatbelt is the only supported validation sandbox), so its
+  // try/catch/finally around materialization only runs on macOS.
+  it.skipIf(process.platform !== "darwin")("keeps the failing stage through preservationStageFailure after cleanup reports", () => {
+    const { stages, observe, timeoutAt } = timeoutFixture();
+    const before = observe();
+    const error = timeoutAt("validation.materialize", "cat-file");
+    // The finally block reported validation.cleanup after the failure, yet the
+    // typed error still names the stage that actually stalled.
+    expect(stages.slice(-2)).toEqual(["validation.materialize", "validation.cleanup"]);
+    expectTypedTimeout(error, "validation.materialize", { subcommand: "cat-file" });
+    expect(observe()).toEqual(before);
+  });
+
   it("types push and every gh call, warning that a pull-request write may already have happened", () => {
-    const { f } = timeoutFixture();
+    const { f, stageFile } = timeoutFixture();
     vi.stubEnv("ARCADIA_TEST_HANG_GH", "1");
     vi.stubEnv("ARCADIA_TEST_HANG_STAGE", "preserve.push");
     vi.stubEnv("ARCADIA_TEST_HANG_ARG", "push");
     const remote = systemPreservationRemote;
-    const run = (stage: string, call: () => unknown) => caught(() => withPreservationProgress(() => undefined, () => {
+    // Report stages to the shim, so only the deliberately stalled call hangs.
+    const run = (stage: string, call: () => unknown) => caught(() => withPreservationProgress(reported => writeFileSync(stageFile, reported), () => {
       preservationStage(stage);
       call();
     }, { gitTimeoutMs: testCallTimeout }));
 
     const pushed = run("preserve.push", () => remote.push({ repositoryPath: f.repo, branch: BRANCH }));
+    expect(pushed.code, pushed.message).toBe("PRESERVATION_GIT_TIMEOUT");
     expect(pushed.details).toMatchObject({ retryable: true, command: "git", gitSubcommand: "push", stage: "preserve.push",
       args: ["push", "--set-upstream", "origin", BRANCH], cwd: f.repo, timeoutMs: HUNG_CALL_TIMEOUT_MS });
     expect(pushed.details.remedy).toContain("already durable");
@@ -194,7 +208,7 @@ describe("preservation git timeouts end to end", () => {
 
 describe("check-definition binding timeouts", () => {
   it("surfaces a package manifest read timeout instead of treating the manifest as unparsable", () => {
-    const f = plainFixture();
+    const { f, stageFile } = timeoutFixture();
     mkdirSync(path.join(f.repo, "rules"));
     writeFileSync(path.join(f.repo, "rules", "package.json"), JSON.stringify({ main: "judge.js" }));
     writeFileSync(path.join(f.repo, "rules", "judge.js"), "export default true;\n");
@@ -204,16 +218,19 @@ describe("check-definition binding timeouts", () => {
     const head = fixtureGit(f.repo, ["rev-parse", "HEAD"]);
     const tree = fixtureGit(f.repo, ["rev-parse", "HEAD^{tree}"]);
     const manifest = fixtureGit(f.repo, ["rev-parse", "HEAD:rules/package.json"]);
-    const bind = (timeoutFor: (args: readonly string[]) => number) => withPreservationProgress(() => undefined, () => {
+    const bind = () => withPreservationProgress(stage => writeFileSync(stageFile, stage), () => {
       preservationStage("validation.check-definitions");
       return bindCheckDefinitions(f.repo, head, tree, ["node check.mjs"]);
-    }, { gitTimeoutMs: ({ args }) => timeoutFor(args) });
+    }, { gitTimeoutMs: testCallTimeout });
     // Unhung, the manifest's "main" is followed and bound.
-    expect(bind(() => CALL_TIMEOUT_MS).files.map(file => file.path)).toContain("rules/judge.js");
-    const error = caught(() => bind(args => args.includes(manifest) ? 1 : CALL_TIMEOUT_MS));
+    expect(bind().files.map(file => file.path)).toContain("rules/judge.js");
+    // Then only the manifest read hangs, in the shim.
+    vi.stubEnv("ARCADIA_TEST_HANG_STAGE", "validation.check-definitions");
+    vi.stubEnv("ARCADIA_TEST_HANG_ARG", manifest);
+    const error = caught(bind);
     expect(error.code).toBe("PRESERVATION_GIT_TIMEOUT");
     expect(error.details).toMatchObject({ retryable: true, stage: "validation.check-definitions", gitSubcommand: "cat-file",
-      args: ["cat-file", "blob", manifest], cwd: f.repo, timeoutMs: 1 });
+      args: ["cat-file", "blob", manifest], cwd: f.repo, timeoutMs: HUNG_CALL_TIMEOUT_MS });
   });
 });
 
