@@ -1419,3 +1419,10 @@ updated: 2026-10-03
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-03 — Completed arcadia/retire-legacy-operator-script-descriptors
+
+- **Did:** Completed Action arcadia/retire-legacy-operator-script-descriptors from accepted evidence (Candidate 0f6797de1eb7cba7f0a48a907af68ca5352f3d46).
+- **Result:** Every declared acceptance criterion was accepted as met: "A tracked retirement manifest names exactly the five legacy descriptors with the sha256 of each descriptor and script and a stated reason; the checker skips an id only when both hashes match, so any new, renamed or changed file still gets full validation."; "`pnpm check:operator-scripts` against the live local library exits 0, and `validateOperatorScriptContract` and runtime settlement enforcement are unchanged; a new undeclared Agent Ask script, a retired id with different bytes and a Plan with a non-null target still fail."; "No ignored local descriptor, script, run state or receipt is modified, deleted or moved; one-shot and repeatability behavior is unchanged; the retirement path is documented in the operator-actions guidance and covered by tests, and required checks pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-retire-legacy-operator-script-descriptors-887-2026-10-03-v2).
