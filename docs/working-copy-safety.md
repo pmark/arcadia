@@ -139,14 +139,22 @@ does the host point the real index at the preserved tree, so a successful
 preservation ends with a clean status. If a killed earlier sync left the
 candidate's `index.lock` behind, the host removes it only when it is a regular
 file older than five minutes, no Git process is running in the candidate
-worktree, and a fail-closed probe (`/proc/<pid>/fd` on Linux, `lsof` elsewhere)
-finds no process holding the lock file open; age alone never suffices. A
+worktree, and a fail-closed probe (`/proc/<pid>/fd` on Linux, matched by
+device and inode rather than path so a bind mount cannot hide a holder; `lsof`
+elsewhere) finds no process holding the lock file open; age alone never
+suffices. The held-open probe covers only Git's own brief lock write and
+non-Git holders: a `git commit` waiting on an editor has already closed its
+lock, so that lock is protected only by the Git-process-in-the-candidate probe,
+never by age or the held-open probe. Immediately before removal the host
+`lstat`s the lock again and keeps it if its inode or mtime changed while the
+probes ran (another preservation's fresh lock, `liveness: changed`). A
 fresher lock, one a running Git process (such as `git commit` waiting on an
 editor) may own, one a process holds open, or one whose liveness or holders
 could not be checked, is kept and the attempt refuses with its own code,
 `PRESERVATION_INDEX_LOCKED` (exit 1, `retryable: true`, `reason:
 index_locked`, naming the lock path, its age, `liveness` and any
-`holderPids` or `livenessError`). A lock path that is not a regular file (a
+`holderPids` or `livenessError`, and any `lsof` stderr warning as
+`holderProbeWarning`). A lock path that is not a regular file (a
 directory, or a symlink, dangling or not) is never removed or followed: it
 refuses as `PRESERVATION_INDEX_LOCKED` with `reason: index_lock_malformed`
 (`retryable: false`, naming `lockKind`) until an operator removes it.

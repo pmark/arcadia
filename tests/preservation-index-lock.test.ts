@@ -1,15 +1,16 @@
 import { spawn } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureGit } from "../scripts/preservation-fixture.js";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { setBeforeIndexLockRemovalForTests } from "../src/sessions/candidatePreservation.js";
 import { scanProcForGit } from "../src/sessions/preservationStages.js";
-import { fileIsHeldOpen, lsofFileHolders, procFdHolders, setFileHolderProbeForTests, type FileHolderProbe } from "../src/sessions/worktreeLiveness.js";
+import { fileIsHeldOpen, lsofFileHolders, procFdHolders, setFileHolderProbeForTests, type FileHolderProbe, type FileIdentity } from "../src/sessions/worktreeLiveness.js";
 import { BRANCH, installTimeoutFixtureHooks, mockValidationWithRealGit, timeoutFixture } from "./preservationTimeoutFixture.js";
 
 installTimeoutFixtureHooks();
-afterEach(() => setFileHolderProbeForTests(null));
+afterEach(() => { setFileHolderProbeForTests(null); setBeforeIndexLockRemovalForTests(null); });
 
 /** Make the preservation commit durable, then leave the post-commit index sync
  * blocked by whatever shape `shape` puts at the real `index.lock` path. */
@@ -131,6 +132,59 @@ describe("preservation index lock safety", () => {
     expect(fixtureGit(f.candidate, ["status", "--porcelain"])).toBe("");
   }, 120_000);
 
+  it("keeps an old lock that is replaced between the holder probes and its removal, and removes an unchanged one", () => {
+    const { f, lockPath, committed, failure, preserve } = durableCommitWithLock((lock) => { writeFileSync(lock, ""); stale(lock); });
+    setFileHolderProbeForTests(() => ({ status: "none" }));
+    const original = lstatSync(lockPath);
+
+    // Another preservation takes a new lock at the same path after the probes
+    // answered: a different inode, though its mtime matches the probed one.
+    setBeforeIndexLockRemovalForTests((lock) => {
+      writeFileSync(`${lock}.replacement`, "other preservation\n");
+      utimesSync(`${lock}.replacement`, original.atime, original.mtime);
+      renameSync(`${lock}.replacement`, lock);
+    });
+    const replaced = failure();
+    expectTypedLock(replaced, "index_locked", lockPath);
+    expect(replaced.details).toMatchObject({ retryable: true, liveness: "changed", probed: { ino: original.ino, mtimeMs: original.mtimeMs } });
+    const swapped = lstatSync(lockPath);
+    expect(swapped.ino).not.toBe(original.ino);
+    // utimes rounds sub-millisecond parts differently per filesystem (ext4 vs APFS); an exact match is not portable.
+    expect(Math.abs(swapped.mtimeMs - original.mtimeMs)).toBeLessThan(1);
+    expect((replaced.details.observed as { ino: number }).ino).toBe(swapped.ino);
+    expect(readFileSync(lockPath, "utf8")).toBe("other preservation\n");
+
+    // The same inode rewritten in the window (its mtime moves) is kept as well.
+    const rewrittenAt = new Date(swapped.mtimeMs - 60_000);
+    setBeforeIndexLockRemovalForTests((lock) => utimesSync(lock, rewrittenAt, rewrittenAt));
+    const rewritten = failure();
+    expectTypedLock(rewritten, "index_locked", lockPath);
+    expect(rewritten.details).toMatchObject({ liveness: "changed", probed: { ino: swapped.ino, mtimeMs: swapped.mtimeMs }, observed: { ino: swapped.ino } });
+    // The moved mtime is what the observation must reflect, within the filesystem's rounding.
+    expect(Math.abs((rewritten.details.observed as { mtimeMs: number }).mtimeMs - rewrittenAt.getTime())).toBeLessThan(1);
+    expect(readFileSync(lockPath, "utf8")).toBe("other preservation\n");
+    expect(fixtureGit(f.candidate, ["rev-parse", BRANCH])).toBe(committed);
+
+    // Unchanged across the window: re-checked, then removed, and the retry ends clean.
+    const reached: string[] = [];
+    setBeforeIndexLockRemovalForTests((lock) => { reached.push(lock); });
+    expect(preserve().data.receipt).toMatchObject({ commitSha: committed });
+    expect(reached).toEqual([lockPath]);
+    expect(existsSync(lockPath)).toBe(false);
+    expect(fixtureGit(f.candidate, ["rev-list", "--count", `${f.base}..${BRANCH}`])).toBe("1");
+    expect(fixtureGit(f.candidate, ["status", "--porcelain"])).toBe("");
+  }, 120_000);
+
+  it("carries an lsof stderr warning into the refusal details and still keeps the lock", () => {
+    const { lockPath, failure } = durableCommitWithLock((lock) => { writeFileSync(lock, ""); stale(lock); });
+    const warning = "lsof: WARNING: can't stat() apfs file system /Volumes/Backup\n      Output information may be incomplete.";
+    setFileHolderProbeForTests((target) => lsofFileHolders(target, () => ({ status: 1, stdout: "", stderr: warning })));
+    const error = failure();
+    expectTypedLock(error, "index_locked", lockPath);
+    expect(error.details).toMatchObject({ retryable: true, liveness: "unknown", holderProbeWarning: warning });
+    expect(existsSync(lockPath)).toBe(true);
+  }, 120_000);
+
   it("keeps an old lock while a live Git process runs in the candidate, then removes it once that process is gone", async () => {
     const { f, lockPath, committed, failure, preserve } = durableCommitWithLock((lock) => { writeFileSync(lock, ""); stale(lock); });
     // A Git process still running in the candidate (as `git commit` waiting on
@@ -188,25 +242,71 @@ describe("Linux /proc liveness scan", () => {
 describe("file-holder probe", () => {
   const errno = (code: string) => Object.assign(new Error(code), { code });
 
-  it("finds a Linux process whose descriptor names the file, skipping exited or uninspectable ones", () => {
-    const reader = (overrides: Partial<Parameters<typeof procFdHolders>[1]> = {}) => ({
-      list: () => ["1", "self", "200", "300", "400"],
-      fds: (pid: string) => { if (pid === "300") throw errno("EACCES"); if (pid === "400") throw errno("ENOENT"); return ["0", "3"]; },
-      link: (pid: string, fd: string) => (pid === "200" && fd === "3" ? "/work/.git/index.lock" : "/dev/null"),
-      ...overrides
-    });
+  // A fake /proc: each descriptor names a path (what readlink would show) and
+  // resolves to a device/inode; only the identity may decide a match.
+  const lock: FileIdentity = { dev: 64n, ino: 9001n };
+  const fdTable: Record<string, Record<string, { path: string; id: FileIdentity }>> = {
+    "200": { "0": { path: "/dev/null", id: { dev: 5n, ino: 1n } }, "3": { path: "/work/.git/index.lock", id: lock } }
+  };
+  const reader = (overrides: Partial<Parameters<typeof procFdHolders>[1]> = {}, table = fdTable) => ({
+    list: () => ["1", "self", "200", "300", "400"],
+    fds: (pid: string) => { if (pid === "300") throw errno("EACCES"); if (pid === "400") throw errno("ENOENT"); return Object.keys(table[pid] ?? {}); },
+    stat: (pid: string, fd: string) => { const entry = table[pid]?.[fd]; if (!entry) throw errno("ENOENT"); return entry.id; },
+    statFile: (file: string) => (file === "/work/.git/index.lock" ? lock : { dev: 64n, ino: 1234n }),
+    ...overrides
+  });
+
+  it("finds a Linux process whose descriptor opens the file, skipping exited or uninspectable ones", () => {
     expect(procFdHolders("/work/.git/index.lock", reader())).toEqual({ status: "held", pids: [200] });
     expect(procFdHolders("/elsewhere", reader())).toEqual({ status: "none" });
     expect(procFdHolders("/work/.git/index.lock", reader({ list: () => { throw errno("EACCES"); } }))).toMatchObject({ status: "unknown" });
     expect(procFdHolders("/work/.git/index.lock", reader({ fds: () => { throw errno("EIO"); } }))).toMatchObject({ status: "unknown" });
-    expect(procFdHolders("/work/.git/index.lock", reader({ link: () => { throw errno("ELOOP"); } }))).toMatchObject({ status: "unknown" });
+    expect(procFdHolders("/work/.git/index.lock", reader({ stat: () => { throw errno("ELOOP"); } }))).toMatchObject({ status: "unknown" });
+    expect(procFdHolders("/work/.git/index.lock", reader({ statFile: () => { throw errno("EACCES"); } }))).toMatchObject({ status: "unknown" });
+    // Another user's descriptor that cannot be inspected is skipped, as before.
+    for (const code of ["EACCES", "EPERM"]) {
+      expect(procFdHolders("/work/.git/index.lock", reader({ stat: (pid, fd) => { if (fd === "0") throw errno(code); return fdTable[pid][fd].id; } })), code)
+        .toEqual({ status: "held", pids: [200] });
+    }
+  });
+
+  it("matches a descriptor by device and inode, not by the path its link names", () => {
+    // A bind mount or another mount namespace: the holder's link names a
+    // different path, but it is the same file.
+    const bindMounted = { "200": { "3": { path: "/mnt/bind/.git/index.lock", id: { ...lock } } } };
+    expect(procFdHolders("/work/.git/index.lock", reader({}, bindMounted))).toEqual({ status: "held", pids: [200] });
+    // The link names the same path, but the file it opened is another inode
+    // (a replaced lock, or that path in another namespace): not a holder.
+    const samePathOtherInode = { "200": { "3": { path: "/work/.git/index.lock", id: { dev: 64n, ino: 9002n } } } };
+    expect(procFdHolders("/work/.git/index.lock", reader({}, samePathOtherInode))).toEqual({ status: "none" });
+    // Same inode number on another device is another file too.
+    const otherDevice = { "200": { "3": { path: "/work/.git/index.lock", id: { dev: 65n, ino: 9001n } } } };
+    expect(procFdHolders("/work/.git/index.lock", reader({}, otherDevice))).toEqual({ status: "none" });
+  });
+
+  it("finds this process holding a real file open through the host /proc (Linux only)", () => {
+    if (!existsSync("/proc/self/fd")) return;
+    const file = path.join(realpathSync(process.cwd()), `.fd-identity-probe-${process.pid}`);
+    writeFileSync(file, "");
+    const fd = openSync(file, "r");
+    try {
+      const held = procFdHolders(file);
+      expect(held.status).toBe("held");
+      expect(held.status === "held" ? held.pids : []).toContain(process.pid);
+    } finally {
+      closeSync(fd);
+      rmSync(file, { force: true });
+    }
   });
 
   it("reads lsof fail-closed: only a silent exit 1 is none", () => {
     const run = (status: number | null, stdout = "", stderr = "", error?: Error) => () => ({ status, stdout, stderr, error });
     expect(lsofFileHolders("/work/index.lock", run(1))).toEqual({ status: "none" });
     expect(lsofFileHolders("/work/index.lock", run(0, "p123\nf3\np456\nf7\n"))).toEqual({ status: "held", pids: [123, 456] });
-    expect(lsofFileHolders("/work/index.lock", run(1, "", "lsof: WARNING: can't stat()"))).toMatchObject({ status: "unknown" });
+    expect(lsofFileHolders("/work/index.lock", run(1, "", "lsof: WARNING: can't stat()"))).toMatchObject({ status: "unknown", warning: "lsof: WARNING: can't stat()" });
+    expect(lsofFileHolders("/work/index.lock", run(0, "", "lsof: WARNING: can't stat()"))).toMatchObject({ status: "unknown", warning: "lsof: WARNING: can't stat()" });
+    expect(lsofFileHolders("/work/index.lock", run(1, "", "x".repeat(5000)))).toMatchObject({ status: "unknown", warning: "x".repeat(2000) });
+    expect(lsofFileHolders("/work/index.lock", run(0, "garbage\n"))).not.toHaveProperty("warning");
     expect(lsofFileHolders("/work/index.lock", run(null, "", "", new Error("spawnSync lsof ETIMEDOUT")))).toMatchObject({ status: "unknown" });
     expect(lsofFileHolders("/work/index.lock", run(0, "garbage\n"))).toMatchObject({ status: "unknown" });
     expect(lsofFileHolders("/work/index.lock", run(0, ""))).toMatchObject({ status: "unknown" });

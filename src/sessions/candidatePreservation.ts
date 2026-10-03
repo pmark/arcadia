@@ -177,6 +177,15 @@ function canonical(value: string): string {
  * candidate or a process holds the lock open, which are checked separately. */
 const STALE_INDEX_LOCK_MS = 5 * 60 * 1000;
 
+let beforeIndexLockRemoval: ((lockPath: string) => void) | null = null;
+
+/** Test-only: run `hook` after the lock's holder probes and before it is
+ * re-checked and removed (the window two `lsof` calls can stretch to ~15s);
+ * pass null to restore. */
+export function setBeforeIndexLockRemovalForTests(hook: ((lockPath: string) => void) | null): void {
+  beforeIndexLockRemoval = hook;
+}
+
 /**
  * Point this worktree's real index at the preserved tree, so the candidate
  * reads clean against its preserved commit. Runs only once that commit is
@@ -187,6 +196,10 @@ const STALE_INDEX_LOCK_MS = 5 * 60 * 1000;
  * in the candidate and no process holds the lock open; a fresh or possibly live
  * one refuses as retryable `PRESERVATION_INDEX_LOCKED`, and a lock path that is not a
  * regular file (directory, symlink) refuses typed and is never touched.
+ * Immediately before removal the lock is `lstat`ed again: if its device, inode
+ * or mtime changed while the probes ran (another preservation's fresh live
+ * lock replaced the stale one), it is kept and the attempt refuses the same
+ * retryable way. A lock that vanished meanwhile needs no removal.
  */
 function syncIndexToPreservedTree(candidateWorktreePath: string, tree: string): void {
   preservationStage("preserve.index-sync");
@@ -213,12 +226,32 @@ function syncIndexToPreservedTree(candidateWorktreePath: string, tree: string): 
     // however old its mtime. A probe that cannot tell refuses the same way.
     const opened = fileIsHeldOpen(lock);
     if (opened.status === "held") throw preservationIndexLocked(lock, lockAgeMs, { liveness: "held", holderPids: opened.pids });
-    if (opened.status === "unknown") throw preservationIndexLocked(lock, lockAgeMs, { liveness: "unknown", livenessError: `file-holder probe: ${opened.error}` });
+    if (opened.status === "unknown") {
+      throw preservationIndexLocked(lock, lockAgeMs, {
+        liveness: "unknown",
+        livenessError: `file-holder probe: ${opened.error}`,
+        ...(opened.warning ? { holderProbeWarning: opened.warning } : {})
+      });
+    }
+    beforeIndexLockRemoval?.(lock);
+    let current: Stats | null = null;
     try {
-      rmSync(lock);
+      current = lstatSync(lock);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT") throw preservationIndexLockMalformed(lock, "unremovable", { lockAgeMs, errorCode: code ?? null, error: String(error) });
+      if (code !== "ENOENT") throw preservationIndexLockMalformed(lock, "unreadable", { lockAgeMs, errorCode: code ?? null, error: String(error) });
+    }
+    if (current) {
+      if (current.dev !== stats.dev || current.ino !== stats.ino || current.mtimeMs !== stats.mtimeMs) {
+        const identity = (s: Stats) => ({ dev: s.dev, ino: s.ino, mtimeMs: s.mtimeMs });
+        throw preservationIndexLocked(lock, lockAgeMs, { liveness: "changed", probed: identity(stats), observed: identity(current) });
+      }
+      try {
+        rmSync(lock);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT") throw preservationIndexLockMalformed(lock, "unremovable", { lockAgeMs, errorCode: code ?? null, error: String(error) });
+      }
     }
   }
   git(candidateWorktreePath, ["read-tree", tree]);
