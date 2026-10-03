@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr910","project":"arcadia","intent":"log","desired_result":"Messages now match the rule you set: PR #910 makes pr code-review and the guidance say CodeRabbit is advisory and that a rate limit never blocks a merge. https://github.com/pmark/arcadia/pull/910"}
