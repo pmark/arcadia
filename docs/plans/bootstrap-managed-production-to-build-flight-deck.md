@@ -3170,6 +3170,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/qa/prReview.ts", "src/production/independentReview.ts", "src/workMonitoring/pullRequests.ts", "tests/tick-independent-review.test.ts", "tests/qa-pr-review.test.ts", "https://github.com/pmark/arcadia/issues/899"]
+  - id: fix-rehearsal-g1-plan-and-operator-guidance
+    title: Make G1 validate its generated fixture with Arcadia's own discovery before any external mutation, fix the invalid Plan line, and put the inline-workspace requirement where the operator reads it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make G1 validate its generated fixture with Arcadia's own discovery before any external mutation, fix the invalid Plan line, and put the inline-workspace requirement where the operator reads it.
+    expected_artifact: Evidence satisfying Agent Ask fix-rehearsal-g1-plan-and-operator-guidance
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-rehearsal-g1-plan-and-operator-guidance-2026-10-04
+    acceptance_criteria:
+      - G1 renders the fixture Plan and runs Arcadia's real discovery/validation (the same code docs sync uses, with zero errors and Actions write-start-marker, transform-start-marker and verify-final-rehearsal resolving serially by depends_on) in a scratch directory BEFORE gh repo create, any push, project import or manifest write; an invalid generated fixture refuses with a receipt and failure handoff having made no external mutation; the acceptance-criterion line is valid YAML.
+      - A regression test generates the fixture from the script's own heredocs and runs the real discoverDocs/docs-sync validation on it (no faked errorCount), and fails on the pre-fix script; it also asserts G1 refuses before any create, push or import when the generated Plan is invalid, and that a half-registered earlier attempt is reported with an exact recovery instruction rather than a silent refusal.
+      - "G1's next-step text, its descriptor, START_HERE.md and the recover-arcadia-host-services descriptor state that recovery must be run with ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover inline (never exported in the shell, because exporting makes the other scripts refuse), and give the exact command; the cosmetic G6 defects (double 'none' after an HTTP error; a codex availability check that cannot fail) are fixed with tests; pnpm check:operator-scripts, the focused operator-script tests, lint, tsc, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh", "tests/three-action-rehearsal-operator-scripts.test.ts", "START_HERE.md", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
