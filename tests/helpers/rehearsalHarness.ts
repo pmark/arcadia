@@ -171,7 +171,7 @@ export interface RehearsalOptions {
   /** Simulated out-of-band reviewers before each tick (default on), the real host commands, or the tick's own review step; see the class comment. */
   independentReviewers?: boolean | "host-commands" | "tick";
   /** `"tick"` mode only: overrides for the tick's review deadlines and budget. */
-  review?: Pick<IndependentReviewDeps, "pollIntervalMs" | "checksDeadlineMs" | "maxFailures">;
+  review?: Pick<IndependentReviewDeps, "pollIntervalMs" | "checksDeadlineMs" | "maxFailures" | "rateLimitBackoffMs" | "rateLimitEscalateAfterMs">;
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
@@ -799,11 +799,11 @@ function hostPullRequest(branch: string, head: string) {
   };
 }
 
-function hostModelVerdict(verdict: "pass" | "fail", criteria: ReadonlyArray<{ id: string; name: string }>): QaPrModelVerdict {
+function hostModelVerdict(verdict: "pass" | "fail", criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect"): QaPrModelVerdict {
   return {
     verdict,
     summary: verdict === "pass" ? "No defects in the exact head." : "A defect blocks this head.",
-    findings: verdict === "pass" ? [] : [{ severity: "blocker", title: "Defect", evidence: "MARKER.md", recommendation: "Fix it." }],
+    findings: verdict === "pass" ? [] : [{ severity: "blocker", title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }],
     checks: criteria.map((criterion) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
@@ -855,6 +855,8 @@ export class FakeGitHub {
   /** Simulates the reviewer process being killed at its timeout. */
   reviewerTimesOut: (role: "code-review" | "qa") => boolean = () => false;
   verdict: (role: "code-review" | "qa") => "pass" | "fail" = () => "pass";
+  /** The title of the model's finding on a failed verdict (a model may write any title). */
+  findingTitle = "Defect";
   /** A non-zero exit simulates reviewer capacity or sandbox trouble. */
   reviewerExit: (role: "code-review" | "qa") => number = () => 0;
   /** One-shot: runs when `gh pr ready` is called, before it takes effect. */
@@ -945,7 +947,7 @@ export class FakeGitHub {
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
-      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role), criteria))}\n`, "utf8");
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role), criteria, this.findingTitle))}\n`, "utf8");
       return ok('{"type":"task.completed"}\n');
     }
     return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };

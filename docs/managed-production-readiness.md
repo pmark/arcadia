@@ -239,10 +239,13 @@ epoch or a lapsed grant; integration re-checks the policy and the grant expiry
 against a fresh clock after the gate, so a reviewer that finishes under Off or
 after expiry never lands. Three consecutive GitHub, push or reviewer
 capacity/sandbox/timeout failures per head exhaust a budget that survives
-restart (`review_budget_exhausted`; a success resets it; reset with
+restart (`review_budget_exhausted`; a success resets it, and a total of nine
+per head caps failures that alternate between steps; reset with
 `arcadia production reset-repair-budget`); a GitHub rate limit backs off 15
-minutes without spending it. A non-pass verdict is re-run automatically only
-when its own lineage receipt records `reviewerUnavailable`; a real non-pass
+minutes without spending it and escalates `review_rate_limited` after six
+unbroken hours. A non-pass verdict is re-run automatically only when its own
+lineage receipt records `reviewerUnavailable`, which `arcadia qa pr` derives
+from deterministic evidence only (never from model-written findings); a real non-pass
 verdict is never retried automatically and never integrates
 (`independent_verdict_failed`).
 
@@ -259,10 +262,11 @@ base branch remain out of scope; integration stays the local fast-forward.
 Coverage: `tests/tick-independent-review.test.ts` (exact head, settled head
 pushed as an exact commit after preservation, moved head, pending/failed/
 timed-out checks, BLOCKED while checks run, poll interval and stable
-escalations, Off, epoch change and grant expiry mid-step, consecutive-failure
-budget, rate-limit backoff, reviewer timeout, exhaustion and reset, an
-unavailable-then-real failed verdict, a PR returned to draft, no grant, LOCAL
-ONLY remedy, migration) and the `"tick"` variant of
+escalations, Off, epoch change and grant expiry mid-step, consecutive and
+total failure budgets, rate-limit backoff, its escalation and replay of an open
+escalation, reviewer timeout, exhaustion and reset, an unavailable-then-real
+failed verdict, model-spoofed unavailability titles, a PR returned to draft,
+no grant, LOCAL ONLY remedy, migration including an earlier table shape) and the `"tick"` variant of
 `tests/rehearsal-three-action.test.ts`, which drives preserve, ready, both
 reviews and local integration for three Actions through the tick with only the
 GitHub CLI and reviewer model stubbed, Off between Actions, and in-process

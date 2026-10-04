@@ -1108,9 +1108,15 @@ reviewer capacity/sandbox/timeout failures retry on later ticks; three
 the workspace database so it survives a worker restart) escalate
 `review_budget_exhausted`, and `arcadia production reset-repair-budget
 <project/action>` restarts the budget (and the checks deadline) once the cause
-is fixed. A GitHub rate limit backs off 15 minutes without spending the budget.
-A non-pass verdict is re-run automatically only when its own lineage receipt
-records that the reviewer itself was unavailable. A reviewer's real non-pass
+is fixed; failures that alternate between steps and so never form a streak are
+also capped at nine in all per head. A GitHub rate limit backs off 15 minutes
+without spending the budget, and six hours of unbroken rate limiting escalates
+`review_rate_limited` (the tick keeps backing off and resumes on its own). A
+non-pass verdict is re-run automatically only when its own lineage receipt
+records that the reviewer itself was unavailable, which is decided from
+deterministic evidence alone (sandbox preflight, the reviewer process's exit or
+timeout, a missing or invalid structured verdict, evidence that moved during
+the run), never from anything the reviewer model wrote. A reviewer's real non-pass
 verdict is never retried automatically and never integrates
 (`independent_verdict_failed`): fix the candidate, or after judging the verdict
 wrong, rerun that command with `--rerun`. Without both grants the tick does

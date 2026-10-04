@@ -7,7 +7,6 @@ import { independentVerdictReadiness } from "../sessions/roleLineage.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
   classifyPullRequestChecks,
-  reviewerUnavailableReason,
   runHostCommand,
   runQaPrReviewCommand,
   type PullRequestCheckRun,
@@ -35,10 +34,13 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  * re-reads the policy first, against a fresh clock, and is withheld on Off, a
  * changed epoch or a lapsed grant. Consecutive failures of GitHub, the push or
  * the reviewer's own infrastructure consume a per-head budget that survives
- * restart (a success resets it; a GitHub rate limit backs off without spending
- * it). A non-pass verdict is re-run only when its own lineage receipt records
- * that the reviewer was unavailable; a reviewer's real non-pass judgment is
- * never retried automatically and never integrates.
+ * restart (a success resets it, and a total cap per head bounds failures that
+ * alternate between steps; a GitHub rate limit backs off without spending it
+ * and escalates after hours of unbroken limiting). A non-pass verdict is re-run
+ * only when its own lineage receipt records that the reviewer was unavailable,
+ * which `arcadia qa pr` derives from deterministic evidence alone; a
+ * reviewer's real non-pass judgment is never retried automatically and never
+ * integrates.
  *
  * Every step, the push included, requires `policyAuthorizesPullRequestReadiness`
  * (`--remote-preservation` and a current Decision 0058 integration grant).
@@ -53,6 +55,7 @@ export type ReviewBlockCode =
   | "required_checks_failed"
   | "required_checks_timeout"
   | "review_budget_exhausted"
+  | "review_rate_limited"
   | "independent_verdict_failed";
 
 export const REVIEW_BLOCK_CODES: ReadonlySet<string> = new Set<ReviewBlockCode>([
@@ -62,6 +65,7 @@ export const REVIEW_BLOCK_CODES: ReadonlySet<string> = new Set<ReviewBlockCode>(
   "required_checks_failed",
   "required_checks_timeout",
   "review_budget_exhausted",
+  "review_rate_limited",
   "independent_verdict_failed"
 ]);
 
@@ -87,6 +91,8 @@ export interface IndependentReviewDeps {
   maxFailures?: number;
   reviewerTimeoutMs?: number;
   rateLimitBackoffMs?: number;
+  /** Continuous rate limiting this long escalates `review_rate_limited`. */
+  rateLimitEscalateAfterMs?: number;
 }
 
 export interface ReviewStepRow {
@@ -105,8 +111,12 @@ export interface ReviewStepRow {
   /** Which step the consecutive failures belong to (read, push, ready, code-review, qa). */
   failure_step: string | null;
   last_error: string | null;
+  /** Every failure on this head, never reset by a success (only by an operator reset). */
+  total_failures: number;
   /** No GitHub read before this instant (a reported rate limit). */
   backoff_until: string | null;
+  /** When the current unbroken run of rate limits began; cleared by a successful read. */
+  backoff_started_at: string | null;
   /** The last polled outcome, replayed between polls so the escalation stays stable. */
   last_outcome_json: string | null;
   created_at: string;
@@ -128,15 +138,33 @@ export function ensureProductionReviewStepTable(db: Database.Database): void {
       last_polled_at TEXT,
       failures INTEGER NOT NULL DEFAULT 0,
       failure_step TEXT,
+      total_failures INTEGER NOT NULL DEFAULT 0,
       last_error TEXT,
       backoff_until TEXT,
+      backoff_started_at TEXT,
       last_outcome_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_production_review_steps_action ON production_review_steps(action_key);
   `);
+  // A database created by an earlier candidate build of this table keeps its
+  // old shape under CREATE TABLE IF NOT EXISTS; add whatever it lacks. An
+  // obsolete column (retry_role) is left in place and ignored.
+  const present = new Set((db.prepare("PRAGMA table_info(production_review_steps)").all() as Array<{ name: string }>).map((column) => column.name));
+  for (const [name, definition] of REVIEW_STEP_ADDED_COLUMNS) {
+    if (!present.has(name)) db.exec(`ALTER TABLE production_review_steps ADD COLUMN ${name} ${definition}`);
+  }
 }
+
+const REVIEW_STEP_ADDED_COLUMNS: ReadonlyArray<readonly [string, string]> = [
+  ["last_polled_at", "TEXT"],
+  ["failure_step", "TEXT"],
+  ["total_failures", "INTEGER NOT NULL DEFAULT 0"],
+  ["backoff_until", "TEXT"],
+  ["backoff_started_at", "TEXT"],
+  ["last_outcome_json", "TEXT"]
+];
 
 /** The step row's request id: one per Session and exact settled head, so a moved head starts fresh. */
 export function reviewStepRequestId(sessionId: string, head: string): string {
@@ -155,8 +183,9 @@ export function listReviewSteps(db: Database.Database, actionKey: string): Revie
 export function resetReviewSteps(db: Database.Database, actionKey: string): number {
   ensureProductionReviewStepTable(db);
   return db.prepare(`UPDATE production_review_steps
-    SET failures = 0, failure_step = NULL, last_error = NULL, checks_started_at = NULL, last_polled_at = NULL, backoff_until = NULL
-    WHERE action_key = ? AND (failures > 0 OR checks_started_at IS NOT NULL)`).run(actionKey).changes;
+    SET failures = 0, total_failures = 0, failure_step = NULL, last_error = NULL, checks_started_at = NULL, last_polled_at = NULL,
+      backoff_until = NULL, backoff_started_at = NULL
+    WHERE action_key = ? AND (failures > 0 OR total_failures > 0 OR checks_started_at IS NOT NULL OR backoff_until IS NOT NULL)`).run(actionKey).changes;
 }
 
 function workerPreservationReceipt(db: Database.Database, session: AgentSession): CandidatePreservationReceipt | null {
@@ -247,6 +276,8 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const maxFailures = deps.maxFailures ?? PRODUCTION_CONTROL_DEADLINES.maxReviewStepFailures;
   const reviewerTimeoutMs = deps.reviewerTimeoutMs ?? PRODUCTION_CONTROL_DEADLINES.tickReviewerTimeoutMs;
   const rateLimitBackoffMs = deps.rateLimitBackoffMs ?? PRODUCTION_CONTROL_DEADLINES.reviewRateLimitBackoffMs;
+  const rateLimitEscalateAfterMs = deps.rateLimitEscalateAfterMs ?? PRODUCTION_CONTROL_DEADLINES.reviewRateLimitEscalateAfterMs;
+  const maxTotalFailures = maxFailures * 3;
   const actionKey = `${session.project_slug}/${session.action_id}`;
   ensureProductionReviewStepTable(db);
 
@@ -288,17 +319,20 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const exhausted = (): ReviewStepOutcome => ({
     kind: "blocked",
     code: "review_budget_exhausted",
-    reason: `The unattended review of ${actionKey} at ${head.slice(0, 12)} failed ${step.failures} consecutive time(s) at ${step.failure_step ?? "a step"} (budget ${maxFailures}); most recent error: ${step.last_error ?? "unknown"}.`,
+    reason: step.failures >= maxFailures
+      ? `The unattended review of ${actionKey} at ${head.slice(0, 12)} failed ${step.failures} consecutive time(s) at ${step.failure_step ?? "a step"} (budget ${maxFailures}); most recent error: ${step.last_error ?? "unknown"}.`
+      : `The unattended review of ${actionKey} at ${head.slice(0, 12)} failed ${step.total_failures} time(s) in all (cap ${maxTotalFailures}); most recent error: ${step.last_error ?? "unknown"}.`,
     remedy: `Repair the cause (GitHub CLI sign-in or reachability, the push, or reviewer capacity/sandbox), then run \`arcadia production reset-repair-budget ${actionKey}\`; the next tick resumes the review where it stopped.`
   });
-  if (step.failures >= maxFailures) return exhausted();
+  const isExhausted = () => step.failures >= maxFailures || step.total_failures >= maxTotalFailures;
+  if (isExhausted()) return exhausted();
   /** A consecutive failure of `stepName`; a different step's failure starts a new count. */
   const fail = (stepName: string, message: string): ReviewStepOutcome => {
     const failures = step.failure_step === stepName ? step.failures + 1 : 1;
-    update({ failures, failure_step: stepName, last_error: message });
+    update({ failures, failure_step: stepName, total_failures: step.total_failures + 1, last_error: message });
     step = read();
-    input.log?.(`Review step ${stepName} for ${actionKey} failed (${step.failures}/${maxFailures} consecutive): ${message}`);
-    return step.failures >= maxFailures ? exhausted() : { kind: "waiting", reason: `The ${stepName} step failed and will be retried: ${message}` };
+    input.log?.(`Review step ${stepName} for ${actionKey} failed (${step.failures}/${maxFailures} consecutive, ${step.total_failures}/${maxTotalFailures} in all): ${message}`);
+    return isExhausted() ? exhausted() : { kind: "waiting", reason: `The ${stepName} step failed and will be retried: ${message}` };
   };
   /** Any success ends a failure streak (a read only ends a streak of read failures). */
   const succeeded = (stepName?: string) => {
@@ -307,12 +341,27 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
   };
+  /** Between reads the last polled outcome stands, so a blocked step's escalation does not flap back to a plain wait. */
+  const replay = (waiting: string): ReviewStepOutcome => {
+    const last = parseOutcome(step.last_outcome_json);
+    if (last?.kind === "blocked" && last.code !== "review_budget_exhausted") return last;
+    return { kind: "waiting", reason: last ? `${waiting} (last: ${last.reason})` : waiting };
+  };
+  const rateLimitedTooLong = (): ReviewStepOutcome => ({
+    kind: "blocked",
+    code: "review_rate_limited",
+    reason: `GitHub has rate-limited the unattended review of ${actionKey} continuously since ${step.backoff_started_at}; the tick keeps backing off.`,
+    remedy: "Check the GitHub CLI account's API rate limit (`gh api rate_limit`) and what else spends it; the tick resumes on its own once GitHub answers, with no budget spent."
+  });
   const rateLimited = (stepName: string, detail: string): ReviewStepOutcome | null => {
     if (!RATE_LIMITED.test(detail)) return null;
     const until = new Date(now.getTime() + rateLimitBackoffMs).toISOString();
-    update({ backoff_until: until });
+    update({ backoff_until: until, backoff_started_at: step.backoff_started_at ?? at });
+    step = read();
     input.log?.(`GitHub rate-limited the ${stepName} step for ${actionKey}; backing off until ${until}.`);
-    return { kind: "waiting", reason: `GitHub reported a rate limit at the ${stepName} step; no GitHub read before ${until}.` };
+    if (now.getTime() - Date.parse(step.backoff_started_at!) >= rateLimitEscalateAfterMs) return rateLimitedTooLong();
+    // A rate limit is no news about the PR: an open blocked outcome stands.
+    return replay(`GitHub reported a rate limit at the ${stepName} step; no GitHub read before ${until}.`);
   };
 
   // Read GitHub at most once per poll interval (the producer tick runs every
@@ -320,12 +369,10 @@ export function advanceIndependentReview(db: Database.Database, input: {
   // the last polled outcome stands, so a blocked step's escalation does not
   // flap back to a plain wait.
   if (step.backoff_until && now.getTime() < Date.parse(step.backoff_until)) {
-    return { kind: "waiting", reason: `Backing off after a GitHub rate limit; no GitHub read before ${step.backoff_until}.` };
+    return replay(`Backing off after a GitHub rate limit; no GitHub read before ${step.backoff_until}.`);
   }
   if (step.last_polled_at && now.getTime() - Date.parse(step.last_polled_at) < pollIntervalMs) {
-    const last = parseOutcome(step.last_outcome_json);
-    if (last?.kind === "blocked") return last;
-    return { kind: "waiting", reason: last ? `Waiting for the next pull-request poll (last: ${last.reason})` : "Waiting for the next pull-request poll." };
+    return replay("Waiting for the next pull-request poll.");
   }
   update({ last_polled_at: at, backoff_until: null });
   step = read();
@@ -349,6 +396,10 @@ export function advanceIndependentReview(db: Database.Database, input: {
       return fail("read", `gh pr view ${url} returned unusable evidence: ${errorMessage(error)}`);
     }
     succeeded("read");
+    if (step.backoff_started_at) {
+      update({ backoff_started_at: null });
+      step = read();
+    }
 
     if (pr.state.toUpperCase() !== "OPEN" || pr.headRefName !== session.branch) {
       return {
@@ -514,7 +565,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
       } finally {
         input.heartbeat?.();
       }
-      const unavailable = reviewerUnavailableReason(result.data);
+      const unavailable = result.data.reviewerUnavailable;
       if (unavailable) return fail(role, `${role} reviewer unavailable for ${url}: ${unavailable}`);
       succeeded();
       if (result.data.verdict !== "pass") {

@@ -134,6 +134,13 @@ export interface QaPrReviewCommandData {
   artifact: Artifact;
   decision: ReviewItemSummary;
   reused: boolean;
+  /**
+   * Non-null only when a non-pass came from the reviewer's own infrastructure,
+   * established from deterministic evidence alone (sandbox preflight, the
+   * reviewer process's exit, a missing or invalid structured verdict, evidence
+   * that moved while it ran), never from anything the model wrote.
+   */
+  reviewerUnavailable: string | null;
 }
 
 export interface QaReviewerProvenance {
@@ -235,6 +242,8 @@ interface PersistedQaContext {
   receiptFiles: Array<{ path: string; sha256: string }>;
   /** The lineage attempt this judgment was made under, for a lineage-bound managed candidate. */
   lineageRequestId?: string | null;
+  /** See `QaPrReviewCommandData.reviewerUnavailable`; absent in receipts written before it existed. */
+  reviewerUnavailable?: string | null;
 }
 
 interface QaSandboxProof {
@@ -465,6 +474,11 @@ export function runQaPrReviewCommand(
     sandboxProof
   );
   const verdict = combineVerdicts(parsedModel.verdict, deterministic);
+  // Decided before any model finding is merged in, so a model or a PR body
+  // cannot make a judgment look like reviewer unavailability.
+  const reviewerUnavailable = verdict === "pass"
+    ? null
+    : deterministicReviewerUnavailability({ sandboxProof, reviewRun, modelError: parsedModel.error, deterministicFindings: deterministic.findings });
   const findings = [...deterministic.findings, ...parsedModel.verdict.findings];
   const checks = [...deterministic.checks, ...parsedModel.verdict.checks];
   const residualRisks = uniqueStrings([...deterministic.residualRisks, ...parsedModel.verdict.residualRisks]);
@@ -513,7 +527,8 @@ export function runQaPrReviewCommand(
     metadataPath,
     evidenceFingerprint,
     receiptFiles: requiredFiles,
-    lineageRequestId: lineage?.requestId ?? null
+    lineageRequestId: lineage?.requestId ?? null,
+    reviewerUnavailable
   }));
   const data: QaPrReviewCommandData = {
     candidate,
@@ -527,7 +542,8 @@ export function runQaPrReviewCommand(
     evidencePath: toWorkspaceRelativePath(workspacePath, evidencePath),
     artifact: persisted.artifact,
     decision: persisted.decision,
-    reused: false
+    reused: false,
+    reviewerUnavailable
   };
   const receipt: PersistedReceipt = {
     version: 6,
@@ -546,7 +562,7 @@ export function runQaPrReviewCommand(
       requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
       receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
-        reviewerUnavailable: reviewerUnavailableReason({ verdict, findings, reviewer: provenance }) })
+        reviewerUnavailable })
     }));
   }
 
@@ -596,7 +612,7 @@ function recoverInFlightVerdict(db: Database.Database, input: {
     verdict: persisted.verdict === "pass" ? "passed" : "failed", now: input.now,
     receipt: lineageVerdictReceipt({ verdict: persisted.verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id,
       headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint,
-      reviewerUnavailable: reviewerUnavailableReason({ verdict: persisted.verdict, findings: persisted.findings, reviewer: persisted.reviewer }) })
+      reviewerUnavailable: persisted.reviewerUnavailable })
   });
 }
 
@@ -701,18 +717,27 @@ export function classifyPullRequestChecks(rollup: ReadonlyArray<PullRequestCheck
 }
 
 /**
- * Why a non-pass verdict reflects the reviewer's own infrastructure (no
- * structured verdict, a failed sandbox preflight, evidence that moved while
- * it ran) rather than a judgment of the candidate, or null for a real
- * judgment. Only the former may be retried without a fix.
+ * Why a non-pass verdict reflects the reviewer's own infrastructure rather
+ * than a judgment of the candidate, from deterministic evidence only: the
+ * sandbox preflight, the reviewer process's exit (a timeout included), a
+ * missing or invalid structured verdict, and the deterministic evidence
+ * findings (evidence that moved while it ran). Model-written findings are
+ * never consulted, so no model output or PR text can claim it. Only this may
+ * be retried without a fix.
  */
-export function reviewerUnavailableReason(data: Pick<QaPrReviewCommandData, "verdict" | "findings" | "reviewer">): string | null {
-  if (data.verdict === "pass") return null;
-  const infrastructure = data.findings.find((finding) =>
-    finding.title === "Independent review unavailable" || finding.title === "Reviewer sandbox boundary is unavailable" || finding.title === "QA evidence is stale");
-  if (infrastructure) return `${infrastructure.title}: ${infrastructure.evidence}`;
-  if (data.reviewer.exitStatus !== 0) return `The reviewer exited with status ${String(data.reviewer.exitStatus)}.`;
-  return null;
+function deterministicReviewerUnavailability(input: {
+  sandboxProof: QaSandboxProof;
+  reviewRun: CommandResult;
+  modelError: string | null;
+  deterministicFindings: QaPrFinding[];
+}): string | null {
+  if (!input.sandboxProof.passed) return `Reviewer sandbox preflight failed: ${input.sandboxProof.output || input.sandboxProof.error || "no output"}`;
+  if (input.reviewRun.status !== 0) {
+    return `The reviewer process exited with status ${String(input.reviewRun.status)}: ${input.reviewRun.error ?? (input.reviewRun.stderr.trim() || "no output")}`;
+  }
+  if (input.modelError !== null) return `The reviewer produced no valid structured verdict: ${input.modelError}`;
+  const stale = input.deterministicFindings.find((finding) => finding.title === "QA evidence is stale");
+  return stale ? `${stale.title}: ${stale.evidence}` : null;
 }
 
 /** The host command runner `arcadia qa pr` uses, for callers that reuse its dependency seam. */
@@ -1149,6 +1174,7 @@ function persistQaResult(
     evidenceFingerprint: string;
     receiptFiles: Array<{ path: string; sha256: string }>;
     lineageRequestId: string | null;
+    reviewerUnavailable: string | null;
   }
 ): { artifact: Artifact; decision: ReviewItemSummary } {
   return db.transaction(() => {
@@ -1184,7 +1210,8 @@ function persistQaResult(
         metadataPath: toWorkspaceRelativePath(input.workspace, input.metadataPath),
         evidenceFingerprint: input.evidenceFingerprint,
         receiptFiles: input.receiptFiles,
-        ...(input.lineageRequestId ? { lineageRequestId: input.lineageRequestId } : {})
+        ...(input.lineageRequestId ? { lineageRequestId: input.lineageRequestId } : {}),
+        ...(input.reviewerUnavailable ? { reviewerUnavailable: input.reviewerUnavailable } : {})
       }
     });
     const decision = updateReviewItemStatus(db, created.id, {
@@ -1246,7 +1273,8 @@ function readPersistedReceipt(
         decision,
         reused: true,
         evidenceFingerprint: context.evidenceFingerprint,
-        lineageRequestId: context.lineageRequestId ?? null
+        lineageRequestId: context.lineageRequestId ?? null,
+        reviewerUnavailable: context.reviewerUnavailable ?? null
       };
     });
   } catch {
@@ -1408,12 +1436,15 @@ function parsePersistedQaContext(value: string | null): PersistedQaContext | nul
   try {
     const context = JSON.parse(value) as unknown;
     const lineageKeyed = context !== null && typeof context === "object" && "lineageRequestId" in context;
+    const unavailableKeyed = context !== null && typeof context === "object" && "reviewerUnavailable" in context;
     if (!isRecordWithExactKeys(context, [
       "schemaVersion", "candidate", "verdict", "summary", "findings", "checks", "residualRisks",
       "reviewer", "reportPath", "evidencePath", "metadataPath", "evidenceFingerprint", "receiptFiles",
-      ...(lineageKeyed ? ["lineageRequestId"] : [])
+      ...(lineageKeyed ? ["lineageRequestId"] : []),
+      ...(unavailableKeyed ? ["reviewerUnavailable"] : [])
     ])) return null;
     if (lineageKeyed && context.lineageRequestId !== null && !isNonEmptyString(context.lineageRequestId)) return null;
+    if (unavailableKeyed && !isNonEmptyString(context.reviewerUnavailable)) return null;
     if (
       context.schemaVersion !== 2 ||
       !isQaCandidate(context.candidate) ||
@@ -1610,10 +1641,13 @@ function executeCommand(input: {
 }
 
 function buildQaReviewerEnvironment(): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = {};
+  // Cast, not annotated: the dashboard's Next type-check augments ProcessEnv
+  // with a required NODE_ENV, which this deliberately minimal map omits.
+  const environment = {} as NodeJS.ProcessEnv;
   for (const key of ["PATH", "HOME", "SHELL", "TERM", "TMPDIR"]) {
-    if (process.env[key] !== undefined) {
-      environment[key] = process.env[key];
+    const value = process.env[key];
+    if (value !== undefined) {
+      environment[key] = value;
     }
   }
   return environment;

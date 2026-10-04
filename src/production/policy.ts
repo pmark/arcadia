@@ -118,7 +118,9 @@ export const PRODUCTION_CONTROL_DEADLINES = {
    */
   tickReviewerTimeoutMs: 15 * 60 * 1000,
   /** How long the tick stops reading a PR after GitHub reports a rate limit (no budget spent). */
-  reviewRateLimitBackoffMs: 15 * 60 * 1000
+  reviewRateLimitBackoffMs: 15 * 60 * 1000,
+  /** Continuous GitHub rate limiting this long escalates (still without spending the review budget). */
+  reviewRateLimitEscalateAfterMs: 6 * 60 * 60 * 1000
 } as const;
 
 /**
