@@ -196,6 +196,15 @@ interface RawPullRequest {
   }>;
 }
 
+/** One GitHub status-check entry, as `gh pr view --json statusCheckRollup` reports it. */
+export interface PullRequestCheckRun {
+  name: string;
+  status: string | null;
+  conclusion: string | null;
+  detailsUrl?: string | null;
+  workflowName?: string | null;
+}
+
 interface PersistedReceipt {
   version: 6;
   evidenceFingerprint: string;
@@ -635,37 +644,73 @@ function parsePullRequestReference(value: string): { repository: string; number:
   return { repository: `${match[1]}/${match[2]}`, number: Number(match[3]) };
 }
 
+/**
+ * The same check rule `arcadia qa pr` applies before any reviewer runs, split
+ * so the worker tick can tell checks that are still running (wait) from
+ * checks that finished unsuccessfully (escalate). An empty rollup is
+ * `none`: GitHub may not have registered the checks yet.
+ */
+export function classifyPullRequestChecks(rollup: ReadonlyArray<PullRequestCheckRun>): {
+  state: "none" | "pending" | "failed" | "green";
+  blockers: string[];
+} {
+  if (rollup.length === 0) return { state: "none", blockers: ["GitHub reported no validation checks."] };
+  const blockers: string[] = [];
+  let failed = false;
+  let pending = false;
+  const grouped = new Map<string, PullRequestCheckRun[]>();
+  for (const check of rollup) {
+    const group = grouped.get(check.name) ?? [];
+    group.push(check);
+    grouped.set(check.name, group);
+  }
+  for (const [name, group] of grouped) {
+    const completedConclusions = new Set(group
+      .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
+      .map((check) => check.conclusion!.toUpperCase()));
+    const evidence = group
+      .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
+      .join(", ");
+    if (completedConclusions.size > 1) {
+      failed = true;
+      blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
+    } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {
+      pending = true;
+      blockers.push(`${name} validation is pending: ${evidence}.`);
+    } else if (!group.every((check) => check.conclusion?.toUpperCase() === "SUCCESS")) {
+      failed = true;
+      blockers.push(`${name} validation did not succeed: ${evidence}.`);
+    }
+  }
+  return { state: failed ? "failed" : pending ? "pending" : "green", blockers };
+}
+
+/**
+ * Why a non-pass verdict reflects the reviewer's own infrastructure (no
+ * structured verdict, a failed sandbox preflight, evidence that moved while
+ * it ran) rather than a judgment of the candidate, or null for a real
+ * judgment. Only the former may be retried without a fix.
+ */
+export function reviewerUnavailableReason(data: Pick<QaPrReviewCommandData, "verdict" | "findings" | "reviewer">): string | null {
+  if (data.verdict === "pass") return null;
+  const infrastructure = data.findings.find((finding) =>
+    finding.title === "Independent review unavailable" || finding.title === "Reviewer sandbox boundary is unavailable" || finding.title === "QA evidence is stale");
+  if (infrastructure) return `${infrastructure.title}: ${infrastructure.evidence}`;
+  if (data.reviewer.exitStatus !== 0) return `The reviewer exited with status ${String(data.reviewer.exitStatus)}.`;
+  return null;
+}
+
+/** The host command runner `arcadia qa pr` uses, for callers that reuse its dependency seam. */
+export const runHostCommand: NonNullable<QaPrReviewDependencies["runCommand"]> = (input) => executeCommand(input);
+
 function assertPullRequestReadyForQa(pullRequest: RawPullRequest): void {
   const blockers: string[] = [];
   if (pullRequest.isDraft) {
     blockers.push("Pull request is still a draft.");
   }
 
-  if (pullRequest.statusCheckRollup.length === 0) {
-    blockers.push("GitHub reported no validation checks.");
-  } else {
-    const grouped = new Map<string, RawPullRequest["statusCheckRollup"]>();
-    for (const check of pullRequest.statusCheckRollup) {
-      const group = grouped.get(check.name) ?? [];
-      group.push(check);
-      grouped.set(check.name, group);
-    }
-    for (const [name, group] of grouped) {
-      const completedConclusions = new Set(group
-        .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
-        .map((check) => check.conclusion!.toUpperCase()));
-      const evidence = group
-        .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
-        .join(", ");
-      if (completedConclusions.size > 1) {
-        blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
-      } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {
-        blockers.push(`${name} validation is pending: ${evidence}.`);
-      } else if (!group.every((check) => check.conclusion?.toUpperCase() === "SUCCESS")) {
-        blockers.push(`${name} validation did not succeed: ${evidence}.`);
-      }
-    }
-  }
+  const checks = classifyPullRequestChecks(pullRequest.statusCheckRollup);
+  if (checks.state !== "green") blockers.push(...checks.blockers);
 
   if (["DIRTY", "BLOCKED"].includes(pullRequest.mergeStateStatus?.toUpperCase() ?? "")) {
     blockers.push(`Merge state is ${pullRequest.mergeStateStatus}.`);

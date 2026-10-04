@@ -37,6 +37,15 @@ import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
 import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
+import {
+  advanceIndependentReview,
+  ensureProductionReviewStepTable,
+  REVIEW_BLOCK_CODES,
+  resetReviewSteps,
+  reviewApplicability,
+  type IndependentReviewDeps,
+  type ReviewStepOutcome
+} from "./independentReview.js";
 
 /**
  * The continuous half of managed production: on every worker tick, while the
@@ -75,6 +84,13 @@ export interface ManagedProductionTickOptions {
   boardFactory?: BoardFactory;
   /** Test overrides for the terminal-session preservation/integration handoff. */
   handoff?: { preserve?: PreserveSessionDeps; integrate?: IntegrateSessionDeps };
+  /**
+   * Overrides for the unattended review of a preserved candidate PR (the
+   * GitHub CLI and reviewer runner, the reviewer selection, deadlines). The
+   * push of a settled head reuses `handoff.preserve.remote` unless `remote`
+   * is given here.
+   */
+  review?: IndependentReviewDeps;
 }
 
 export interface BaseBranchAdvanceObservation {
@@ -126,7 +142,8 @@ function recoverTerminalHandoff(
   now: Date,
   preserveDeps: PreserveSessionDeps,
   integrateDeps: IntegrateSessionDeps,
-  log?: (message: string) => void
+  log?: (message: string) => void,
+  review?: { deps: IndependentReviewDeps; heartbeat?: () => void }
 ): SessionHandoffResult | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
     .all() as Array<{ name: string }>;
@@ -215,23 +232,36 @@ function recoverTerminalHandoff(
   return {
     preservation,
     integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head,
-      verdictGate: () => escalatingVerdictGate(db, { session, repoRoot, now, log }) }, integrateDeps)
+      // Called only once policy, scope, grant and an exact fast-forward all
+      // hold: the one place the tick may advance the candidate's unattended
+      // review by a step before the gate decides.
+      verdictGate: () => {
+        const waiting = independentVerdictGate(db, { session, repoRoot });
+        const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
+          ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat, deps: review.deps })
+          : undefined;
+        return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
+      } }, integrateDeps)
   };
 }
 
-const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed"]);
+const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed", ...REVIEW_BLOCK_CODES]);
 
 /**
  * The integration gate, plus a deduped operator escalation while it refuses,
  * so `production status` (not only the worker log) shows a candidate that is
- * accepted but cannot land. The escalation names the exact host command for
- * each missing verdict (`arcadia qa code-review`, `arcadia qa pr`) and keeps
- * the exact operator merge as the manual fallback; it clears the moment the
- * gate is satisfied and the tick integrates with no operator merge.
+ * accepted but cannot land. When the tick drives the candidate's review
+ * itself (a host-created PR under a grant that authorizes readying it), the
+ * `awaiting_independent_verdicts` remedy says so and names what it waits on;
+ * a review step that cannot proceed records its own escalation kind with the
+ * exact remedy. Otherwise the remedy names the host command for each missing
+ * verdict (`arcadia qa code-review`, `arcadia qa pr`). Either way the exact
+ * operator merge stays the manual fallback, and the escalation clears the
+ * moment the gate is satisfied and the tick integrates with no operator merge.
  */
 function escalatingVerdictGate(
   db: Database.Database,
-  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void }
+  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void; review?: ReviewStepOutcome }
 ): VerdictGate {
   const { session, repoRoot } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
@@ -252,25 +282,43 @@ function escalatingVerdictGate(
   const merge = gate.head
     ? `git -C ${repoRoot} merge --ff-only ${gate.head}   # then push ${baseBranch}`
     : operatorMergeCommand({ repoRoot, branch: session.branch, baseBranch });
+  const fallback = `Manual fallback: after an independent review of exactly that head, an operator may land it with \`${merge}\`.`;
   const url = pullRequestUrl ?? "<the candidate's PR URL>";
   const commands = gate.code === "awaiting_independent_verdicts"
     ? gate.missing.map((entry) => entry.startsWith("code-review:")
       ? `code review with \`arcadia qa code-review ${url}\``
       : `QA with \`arcadia qa pr ${url}\``)
     : [];
-  const remedy = gate.code === "awaiting_independent_verdicts"
-    ? `Record ${commands.join(" and ")} once that PR is ready for review (not a draft, checks green) and its head is ${gate.head}, `
-      + `with managed production On; a failed verdict needs a fix or \`--rerun\`. The next tick then integrates it with no operator merge. `
-      + `Manual fallback: after an independent review of exactly that head, an operator may land it with \`${merge}\`.`
-    : `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
+  const blocked = input.review?.kind === "blocked" ? input.review : null;
+  const applicability = gate.code === "awaiting_independent_verdicts" && !blocked ? reviewApplicability(db, session, input.now) : null;
+  let kind: string = gate.code;
+  let message = gate.reason;
+  let remedy: string;
+  if (blocked) {
+    kind = blocked.code;
+    message = `${gate.reason} ${blocked.reason}`;
+    remedy = `${blocked.remedy} ${fallback}`;
+  } else if (applicability?.applicable) {
+    const progress = input.review && input.review.kind !== "not_applicable" ? ` Now: ${input.review.reason}` : "";
+    remedy = `No operator step is needed: the worker tick readies ${url}, waits for its required checks on head ${gate.head}, then runs `
+      + `the independent code review and QA itself, and integrates once both pass.${progress} `
+      + `To record a verdict by hand instead: ${commands.join(" and ")}. ${fallback}`;
+  } else if (gate.code === "awaiting_independent_verdicts") {
+    const why = applicability && !applicability.applicable ? ` The tick does not request them itself: ${applicability.reason}` : "";
+    remedy = `Record ${commands.join(" and ")} once that PR is ready for review (not a draft, checks green) and its head is ${gate.head}, `
+      + `with managed production On; a failed verdict needs a fix or \`--rerun\`. The next tick then integrates it with no operator merge.${why} `
+      + fallback;
+  } else {
+    remedy = `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
+  }
   if (previous && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) {
     // One row per Action: never overwrite a different, still-open escalation.
-    input.log?.(`${actionKey} also waits on independent verdicts (${gate.reason}); keeping its open ${previous.kind} escalation.`);
+    input.log?.(`${actionKey} also waits on independent verdicts (${message}); keeping its open ${previous.kind} escalation.`);
     return gate;
   }
-  const newlyDetected = recordOperatorEscalation(db, { actionKey, kind: gate.code, message: gate.reason, remedy, now: input.now });
-  if (newlyDetected || previous?.kind !== gate.code) input.log?.(`Escalated ${actionKey} to the operator (${gate.code}): ${gate.reason}`);
+  const newlyDetected = recordOperatorEscalation(db, { actionKey, kind, message, remedy, now: input.now });
+  if (newlyDetected || previous?.kind !== kind) input.log?.(`Escalated ${actionKey} to the operator (${kind}): ${message}`);
   return gate;
 }
 
@@ -322,6 +370,7 @@ export function ensureProductionTickTables(db: Database.Database): void {
   `);
   ensureProductionLaunchBlockersTable(db);
   ensureProductionLaunchRefusalDedupeKeyColumn(db);
+  ensureProductionReviewStepTable(db);
   ensureRedAlertTables(db);
 }
 
@@ -1087,7 +1136,8 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
-        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log);
+        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
+          { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat });
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1518,15 +1568,18 @@ export function getProductionRepairAttempts(db: Database.Database, actionKey: st
  * (e.g. `no_validation_commands`) sharing the same `actionKey` is left alone,
  * since resetting the repair budget never answers it (CodeRabbit, PR #708).
  */
-export function resetProductionRepairBudget(db: Database.Database, actionKey: string): void {
+export function resetProductionRepairBudget(db: Database.Database, actionKey: string): { reviewStepsCleared: number } {
   ensureProductionTickTables(db);
   resetRepairAttempts(db, actionKey);
+  // The unattended review's per-head budget and checks deadline start afresh too.
+  const reviewStepsCleared = resetReviewSteps(db, actionKey);
   const existing = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
     | { kind: string }
     | undefined;
-  if (existing?.kind === "repair_budget_exhausted") {
+  if (existing?.kind === "repair_budget_exhausted" || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout") {
     clearOperatorEscalation(db, actionKey);
   }
+  return { reviewStepsCleared };
 }
 
 /**

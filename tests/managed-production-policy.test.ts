@@ -815,7 +815,7 @@ describe("production reset-repair-budget (Issue #703)", () => {
     });
 
     const result = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });
-    expect(result.data).toEqual({ actionKey: "demo/migrate", attemptsCleared: 2, lastError: "Launch failed: boom" });
+    expect(result.data).toEqual({ actionKey: "demo/migrate", attemptsCleared: 2, lastError: "Launch failed: boom", reviewStepsCleared: 0 });
     expect(result.warnings).toEqual([]);
 
     const after = runProductionResetRepairBudgetCommand({ workspace: target, actionKey: "demo/migrate" });

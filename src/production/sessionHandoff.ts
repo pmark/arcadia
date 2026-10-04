@@ -310,6 +310,12 @@ export function integrateSessionCandidate(
   if (input.verdictGate) {
     const gate = input.verdictGate();
     if (!gate.satisfied) return refusal(gate.reason, merge);
+    // The gate may have run a reviewer for minutes: Off or a new epoch in the
+    // meantime withholds the fast-forward (the verdict itself stays recorded).
+    const after = readProductionPolicySafely(db);
+    if (after.status !== "ok" || after.policy.desiredState !== "active" || after.policy.epoch !== policy.epoch) {
+      return refusal("Production authority changed while the independent verdicts were checked; integration is withheld until a later tick.", merge);
+    }
     if (candidateHead && candidateHead !== gate.binding.targetHead) {
       return refusal("The candidate's independent verdicts bind a different head than the settled candidate.", merge);
     }

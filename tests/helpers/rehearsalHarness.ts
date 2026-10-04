@@ -30,10 +30,13 @@ import { initWorkspace } from "../../src/workspace/initWorkspace.js";
 import type { SessionRoleAttempt } from "../../src/sessions/enrollment.js";
 import { beginIndependentVerdict, finishIndependentVerdict, independentVerdictGate, independentVerdictReadiness } from "../../src/sessions/roleLineage.js";
 import type { SelectedCodingAgentConfiguration } from "../../src/codingAgents/providerAdapters.js";
+import type { CandidatePreservationRemote } from "../../src/sessions/candidatePreservation.js";
+import type { IndependentReviewDeps } from "../../src/production/independentReview.js";
 import {
   CODE_REVIEW_PR_CRITERIA,
   QA_PR_REVIEW_CRITERIA,
   runQaPrReviewCommand,
+  type PullRequestCheckRun,
   type QaPrModelVerdict,
   type QaPrReviewDependencies
 } from "../../src/qa/prReview.js";
@@ -68,7 +71,12 @@ import {
  *   developer's. `independentReviewers: false` turns them off;
  *   `"host-commands"` instead runs the real host commands
  *   (`arcadia qa code-review`, `arcadia qa pr`) with only GitHub and the
- *   read-only reviewer model stubbed ({@link hostReviewHost}).
+ *   read-only reviewer model stubbed ({@link hostReviewHost}). `"tick"` runs
+ *   no reviewer from the harness at all: the activation adds
+ *   `--remote-preservation`, preservation pushes to a real bare `origin` and
+ *   opens a draft PR on {@link FakeGitHub}, and the worker tick itself readies
+ *   the PR, waits for its checks and runs both host review commands, with
+ *   only the GitHub CLI and the reviewer model stubbed.
  *
  * Nothing else is stubbed: preservation runs the real Seatbelt validator,
  * reconciliation and integration run real Git, and settlement writes real
@@ -160,8 +168,10 @@ export interface RehearsalOptions {
    * script's shape.
    */
   thirdAction?: boolean;
-  /** Simulated out-of-band reviewers before each tick (default on), or the real host commands; see the class comment. */
-  independentReviewers?: boolean | "host-commands";
+  /** Simulated out-of-band reviewers before each tick (default on), the real host commands, or the tick's own review step; see the class comment. */
+  independentReviewers?: boolean | "host-commands" | "tick";
+  /** `"tick"` mode only: overrides for the tick's review deadlines and budget. */
+  review?: Pick<IndependentReviewDeps, "pollIntervalMs" | "checksDeadlineMs" | "maxFailures">;
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
@@ -201,6 +211,8 @@ export class Rehearsal {
   beforeAdmission: (() => void) | null = null;
   now = new Date("2026-09-26T21:00:00.000Z");
   private tickCount = 0;
+  /** `"tick"` mode: the stubbed GitHub (PRs, checks, readiness) and reviewer model. */
+  readonly github: FakeGitHub;
 
   constructor(readonly options: RehearsalOptions = {}) {
     this.root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-rehearsal-")));
@@ -210,6 +222,7 @@ export class Rehearsal {
     this.validationCommand = options.validationCommand ?? DEFAULT_VALIDATION_COMMAND;
     this.provider = options.provider?.id ?? PROVIDER;
     this.profile = options.provider?.profile ?? AGENT_PROFILE;
+    this.github = new FakeGitHub(path.join(this.root, "origin.git"));
     initWorkspace(this.workspace);
   }
 
@@ -325,7 +338,7 @@ Disposable fixture plan.
     git(this.repo, ["config", "user.email", "agent@rehearsal.test"]);
     git(this.repo, ["add", "-A"]);
     commit(this.repo, "Bootstrap two-action-rehearsal-v4 fixture");
-    if (this.options.withOrigin) {
+    if (this.options.withOrigin || this.options.independentReviewers === "tick") {
       const origin = path.join(this.root, "origin.git");
       git(this.root, ["init", "-q", "--bare", "-b", "main", origin]);
       git(this.repo, ["remote", "add", "origin", origin]);
@@ -388,6 +401,7 @@ Disposable fixture plan.
       concurrency: "1",
       transitions,
       intent: "Prove two-Action unattended production with a deliberate split-session continuation.",
+      ...(this.options.independentReviewers === "tick" ? { remotePreservation: true } : {}),
       ...(this.options.withoutIntegrationGrant
         ? {}
         : { integrationGrantDecision: "0058", integrationGrantExpiresAt: grantExpiresAt }),
@@ -419,7 +433,12 @@ Disposable fixture plan.
     const registries = loadPhase3Registries(this.workspace);
     // `arcadia worker` services agent preservation requests immediately before each tick.
     withDatabase(this.workspace, (db) => processPreservationRequests(db, this.workspace));
-    if (this.options.independentReviewers !== false) this.review();
+    const tickReviews = this.options.independentReviewers === "tick";
+    if (this.options.independentReviewers !== false && !tickReviews) this.review();
+    const preserve = {
+      ...(HOST_SEATBELT ? {} : { validate: unsandboxedValidator }),
+      ...(tickReviews ? { remote: this.github.remote } : {})
+    };
     const result = withDatabase(this.workspace, (db) =>
       runManagedProductionTick(db, this.workspace, {
         profiles: registries.codingAgents.profiles,
@@ -435,7 +454,8 @@ Disposable fixture plan.
         },
         agentWorktreeRoot: this.worktrees,
         log: (message) => this.log.push(`[tick ${this.tickCount}] ${message}`),
-        ...(HOST_SEATBELT ? {} : { handoff: { preserve: { validate: unsandboxedValidator } } })
+        ...(Object.keys(preserve).length ? { handoff: { preserve } } : {}),
+        ...(tickReviews ? { review: { runCommand: this.github.runCommand, selectReviewer: () => hostReviewer(), ...this.options.review } } : {})
       })
     );
     const project = result.projects.find((entry) => entry.projectSlug === this.projectSlug);
@@ -449,10 +469,13 @@ Disposable fixture plan.
    * independent verdicts; the simulated reviewers judge the exact head before
    * the next tick, which integrates it (and may launch the next Action).
    */
-  tickThroughReview(): { exited: ManagedProductionTickProjectResult; integrated: ManagedProductionTickProjectResult } {
+  tickThroughReview(limit = 6): { exited: ManagedProductionTickProjectResult; integrated: ManagedProductionTickProjectResult } {
     const exited = this.tick();
     if (exited.handoff?.integration.kind === "integrated" || this.options.independentReviewers === false) return { exited, integrated: exited };
-    return { exited, integrated: this.tick() };
+    if (this.options.independentReviewers !== "tick") return { exited, integrated: this.tick() };
+    // The tick readies the PR, then runs one reviewer per tick, then integrates.
+    const results = this.tickUntil((r) => r.handoff?.integration.kind === "integrated", limit);
+    return { exited, integrated: results.at(-1)! };
   }
 
   /** The guarded standing-policy launcher called directly, with the same registries, capacity and paths as `tick()`. */
@@ -789,4 +812,122 @@ function hostModelVerdict(verdict: "pass" | "fail", criteria: ReadonlyArray<{ id
 
 function ok(stdout: string) {
   return { status: 0, stdout, stderr: "", error: null };
+}
+
+const GREEN_CHECKS: PullRequestCheckRun[] = [{ name: "fast", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/fast", workflowName: "CI" }];
+
+export interface FakePullRequest {
+  number: number;
+  url: string;
+  branch: string;
+  baseBranch: string;
+  isDraft: boolean;
+}
+
+/**
+ * The GitHub CLI and the read-only reviewer model, stubbed for `"tick"` mode
+ * and nothing else: pushes are real `git push`es to the fixture's bare
+ * `origin`, a PR's head is whatever `origin` holds for its branch, and `gh pr
+ * ready` flips the draft flag. Checks, the reviewer's verdict and its exit
+ * status are test-controlled; one-shot hooks inject Off, an epoch change or
+ * a crash at an exact step.
+ */
+export class FakeGitHub {
+  prs: FakePullRequest[] = [];
+  readyCalls: string[] = [];
+  /** Every `gh` invocation, in order, as `gh <args>`. */
+  ghCalls: string[] = [];
+  /** Every reviewer-model invocation, with the PR head it judged. */
+  reviewerCalls: Array<{ role: "code-review" | "qa"; url: string; head: string }> = [];
+  checks: (pr: FakePullRequest) => PullRequestCheckRun[] = () => GREEN_CHECKS;
+  verdict: (role: "code-review" | "qa") => "pass" | "fail" = () => "pass";
+  /** A non-zero exit simulates reviewer capacity or sandbox trouble. */
+  reviewerExit: (role: "code-review" | "qa") => number = () => 0;
+  /** One-shot: runs when `gh pr ready` is called, before it takes effect. */
+  beforeReady: (() => void) | null = null;
+  /** One-shot: runs after `gh pr ready` took effect (throw to crash mid-step). */
+  afterReady: (() => void) | null = null;
+  /** One-shot: runs inside the reviewer-model call (throw to crash mid-review). */
+  duringReview: ((role: "code-review" | "qa") => void) | null = null;
+
+  constructor(readonly origin: string) {}
+
+  headOf(branch: string): string {
+    return git(this.origin, ["rev-parse", `refs/heads/${branch}`]).trim();
+  }
+
+  readonly remote: CandidatePreservationRemote = {
+    hasRemote: (repositoryPath) => git(repositoryPath, ["remote"]).split("\n").includes("origin"),
+    push: ({ repositoryPath, branch }) => {
+      git(repositoryPath, ["push", "-q", "origin", `refs/heads/${branch}:refs/heads/${branch}`]);
+      return { remote: "origin" };
+    },
+    findPullRequest: ({ branch }) => {
+      const pr = this.prs.find((entry) => entry.branch === branch);
+      return pr ? { number: pr.number, url: pr.url } : null;
+    },
+    upsertDraftPullRequest: ({ branch, baseBranch, existing }) => {
+      if (existing) return existing;
+      const number = 7 + this.prs.length;
+      const pr = { number, url: `https://github.com/pmark/rehearsal/pull/${number}`, branch, baseBranch, isDraft: true };
+      this.prs.push(pr);
+      return { number, url: pr.url };
+    }
+  };
+
+  private view(pr: FakePullRequest) {
+    return {
+      number: pr.number,
+      title: `Candidate ${pr.branch}`,
+      url: pr.url,
+      state: "OPEN",
+      isDraft: pr.isDraft,
+      mergeStateStatus: "CLEAN",
+      headRefName: pr.branch,
+      headRefOid: this.headOf(pr.branch),
+      baseRefName: pr.baseBranch,
+      baseRefOid: this.headOf(pr.baseBranch),
+      body: "## QA plan\nRead MARKER.md.",
+      files: [{ path: "MARKER.md", additions: 1, deletions: 0, changeType: "MODIFIED" }],
+      statusCheckRollup: this.checks(pr)
+    };
+  }
+
+  private find(reference: string): FakePullRequest | undefined {
+    return this.prs.find((pr) => pr.url === reference || String(pr.number) === reference);
+  }
+
+  readonly runCommand: NonNullable<QaPrReviewDependencies["runCommand"]> = ({ command, args, stdin }) => {
+    if (command === "git") return ok("https://github.com/pmark/rehearsal.git\n");
+    if (command === "gh") this.ghCalls.push(`gh ${args.join(" ")}`);
+    if (command === "gh" && args[0] === "pr" && args[1] === "view") {
+      const pr = this.find(args[2]);
+      return pr ? ok(`${JSON.stringify(this.view(pr))}\n`) : { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "ready") {
+      const pr = this.find(args[2]);
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      const before = this.beforeReady; this.beforeReady = null; before?.();
+      pr.isDraft = false;
+      this.readyCalls.push(pr.url);
+      const after = this.afterReady; this.afterReady = null; after?.();
+      return ok("");
+    }
+    if (command === "gh" && args[0] === "api") return ok(`diff --git a/MARKER.md b/MARKER.md\n+candidate\n`);
+    if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
+    if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
+    if (command === "codex") {
+      const prompt = stdin ?? "";
+      const role = prompt.includes("Exact-Head Code Review") ? "code-review" as const : "qa" as const;
+      const pr = this.prs.find((entry) => prompt.includes(entry.url));
+      this.reviewerCalls.push({ role, url: pr?.url ?? "unknown", head: pr ? this.headOf(pr.branch) : "unknown" });
+      const during = this.duringReview; this.duringReview = null; during?.(role);
+      const exit = this.reviewerExit(role);
+      if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
+      const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role), criteria))}\n`, "utf8");
+      return ok('{"type":"task.completed"}\n');
+    }
+    return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };
+  };
 }

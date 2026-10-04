@@ -99,7 +99,17 @@ export const PRODUCTION_CONTROL_DEADLINES = {
    * flagged still holds its repository lease, so this bounds only how long
    * an operator waits to be told something looks wedged, not any budget.
    */
-  stalledSessionDeadlineMs: 20 * 60 * 1000
+  stalledSessionDeadlineMs: 20 * 60 * 1000,
+  /**
+   * The worker tick's unattended review of a preserved candidate PR: GitHub is
+   * read at most once per poll interval per candidate, required checks get
+   * this long after the PR is first seen ready before the wait escalates, and
+   * this many failed review steps (GitHub CLI, push, reviewer capacity or
+   * sandbox) on one exact head exhaust its budget until an operator resets it.
+   */
+  reviewPollIntervalMs: 60_000,
+  requiredChecksDeadlineMs: 60 * 60 * 1000,
+  maxReviewStepFailures: 3
 } as const;
 
 /**
@@ -702,6 +712,39 @@ export function policyAuthorizesRemotePreservation(
     policy.scope?.remotePreservation === true &&
     policy.scope.actions.includes(actionKey)
   );
+}
+
+/**
+ * The one gate the worker tick reads before it marks a host-preserved draft
+ * pull request ready, waits on its checks and runs the independent code-review
+ * and QA reviewers for it. Readiness is not part of `--remote-preservation`
+ * (push and draft PR only); it is a step of landing that exact candidate, so
+ * it needs both: the remote-preservation authority under which the host
+ * created the PR, and a current Decision 0058 candidate-integration grant
+ * naming the Action, i.e. the operator already delegated landing this
+ * candidate with no per-Action operator step. Merge on GitHub and pushing the
+ * base branch stay outside every grant.
+ */
+export function policyAuthorizesPullRequestReadiness(
+  policy: Pick<ProductionPolicyRecord, "desiredState" | "scope">,
+  actionKey: string,
+  now: Date
+): { authorized: true } | { authorized: false; reason: string } {
+  if (policy.desiredState !== "active" || !policy.scope) return { authorized: false, reason: "Managed production is Off." };
+  const scope = policy.scope;
+  if (!scope.actions.includes(actionKey)) return { authorized: false, reason: `${actionKey} is outside the active production scope.` };
+  if (!policyAuthorizesRemotePreservation(policy, actionKey)) {
+    return { authorized: false, reason: "The active grant does not include `--remote-preservation`, so the host created no pull request it may ready." };
+  }
+  const grant = scope.integrationGrant;
+  if (!grant) return { authorized: false, reason: "The active grant records no candidate-integration grant (Decision 0058)." };
+  if (!(grant.actions.length > 0 ? grant.actions : scope.actions).includes(actionKey)) {
+    return { authorized: false, reason: `The candidate-integration grant does not name ${actionKey}.` };
+  }
+  if (Number.isNaN(Date.parse(grant.expiresAt)) || Date.parse(grant.expiresAt) <= now.getTime()) {
+    return { authorized: false, reason: `The candidate-integration grant expired at ${grant.expiresAt}.` };
+  }
+  return { authorized: true };
 }
 
 export function readProductionPolicy(db: Database.Database): ProductionPolicyRecord {

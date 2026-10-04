@@ -160,6 +160,8 @@ export interface ProductionResetRepairBudgetData {
   actionKey: string;
   attemptsCleared: number;
   lastError: string | null;
+  /** Unattended-review step rows cleared: their failure budget and checks deadline restart. */
+  reviewStepsCleared: number;
 }
 
 export function runProductionStatusCommand(
@@ -413,11 +415,11 @@ export function runProductionResetRepairBudgetCommand(
 
   const data = withDatabase(workspacePath, (db) => {
     const before = getProductionRepairAttempts(db, actionKey);
-    resetProductionRepairBudget(db, actionKey);
-    return { actionKey, attemptsCleared: before.attempts, lastError: before.lastError };
+    const { reviewStepsCleared } = resetProductionRepairBudget(db, actionKey);
+    return { actionKey, attemptsCleared: before.attempts, lastError: before.lastError, reviewStepsCleared };
   });
 
-  const warnings = data.attemptsCleared === 0
+  const warnings = data.attemptsCleared === 0 && data.reviewStepsCleared === 0
     ? [`${actionKey} had no recorded repair attempts; nothing was exhausted.`]
     : [];
 
@@ -642,6 +644,9 @@ export function renderProductionResetRepairBudgetSuccess(
   const { actionKey, attemptsCleared, lastError } = response.data;
   const lines = [`Reset ${actionKey}'s repair budget.`];
   lines.push(`  Cleared ${attemptsCleared} failed launch attempt(s).`);
+  if (response.data.reviewStepsCleared > 0) {
+    lines.push(`  Restarted the unattended review budget and checks deadline (${response.data.reviewStepsCleared} step record(s)).`);
+  }
   if (lastError) {
     lines.push(`  Last error before reset: ${lastError}`);
   }
