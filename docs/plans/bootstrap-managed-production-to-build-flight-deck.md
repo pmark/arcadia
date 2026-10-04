@@ -3187,6 +3187,25 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh", "tests/three-action-rehearsal-operator-scripts.test.ts", "START_HERE.md", "https://github.com/pmark/arcadia/issues/899"]
+  - id: close-completed-board-mirrors
+    title: In src/scheduling/github.ts, close the mirror Issue for a governed Action that leaves the scheduled set with status done, matched by its stored githubIssueNumber/githubIssueUrl, idempotently.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: In src/scheduling/github.ts, close the mirror Issue for a governed Action that leaves the scheduled set with status done, matched by its stored githubIssueNumber/githubIssueUrl, idempotently.
+    expected_artifact: Evidence satisfying Agent Ask close-completed-board-mirrors
+    clarification: clarified
+    confidence: high
+    source: Agent Ask close-completed-board-mirror-issues-2026-10-04
+    acceptance_criteria:
+      - When a scheduled Action transitions to done (or otherwise leaves the scheduled set completed), reconcileBoard closes its mirror Issue matched by the Action's stored githubIssueNumber/githubIssueUrl, not by rediscovering it.
+      - "Closing is idempotent: when the mirror Issue is already closed, a re-projection issues no close call and does not error; a projection with no completed Actions is unchanged."
+      - A deterministic test with a stubbed board drives create -> done and asserts exactly one close, then re-projects and asserts a no-op; it also asserts an open Action's mirror is never closed.
+      - The behavior is documented in src/scheduling/github.ts and does not change Issue creation or status/push projection for live Actions.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/scheduling/github.ts", "docs/decisions/0055-log-defects-with-github-issues.md", "https://github.com/pmark/arcadia/issues/490"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
