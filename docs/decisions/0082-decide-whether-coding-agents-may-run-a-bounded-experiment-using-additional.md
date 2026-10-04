@@ -4,7 +4,7 @@ type: decision
 id: "0082"
 slug: decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional
 project: arcadia
-status: open
+status: approved
 question: Decide whether coding agents may run a bounded experiment using additional experiment workspaces, separate from the exclusive live martianrover workspace, to gain freedom of movement.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-04
+answer: Experiment workspaces on disposable fixtures, guard first
+decided: 2026-10-04
 ---
 
 # Decision 0082: Decide whether coding agents may run a bounded experiment using additional experiment workspaces, separate from the exclusive live martianrover workspace, to gain freedom of movement.
