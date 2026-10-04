@@ -3585,6 +3585,40 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/codingAgents/agentIdentity.ts", "src/commands/identity.ts", "src/sessions/index.ts", "src/agentWatch/contract.ts", "docs/agent-guidance/git-identity.md"]
+  - id: guard-experiment-workspaces
+    title: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
+    expected_artifact: Evidence satisfying Agent Ask guard-experiment-workspaces
+    clarification: clarified
+    confidence: high
+    source: Agent Ask experiment-workspace-guard-and-trial-2026-10-04
+    acceptance_criteria:
+      - "`arcadia init --profile experiment` creates a workspace flagged experimental in its config (with an allowed repository root under the workspace), refuses the name martianrover and any existing database, and never seeds the real Arcadia Project; `config set defaultWorkspace` refuses an experiment workspace; a Project registered in an experiment workspace must have a repository path inside its allowed root and equal to no path registered in the live workspace."
+      - A single guard module is called by every command that can touch host-global or production state (production activate, grants and reactivation, go-broker install and ensure, worker, dashboard and ingress service install or restart, GitHub PR and issue posting, notification and Discord senders, trust writes to the Codex and Claude configuration) and refuses with a named reason and the exact supported alternative when the resolved workspace is experimental; a test enumerates the command registry so a newly added command that is not classified (allowed, guarded or exempt) fails the build.
+      - "The activity recorder stores an error code with each failed command so contention (SQLITE_BUSY, queue-revision conflicts, dirty-checkout refusals, stale preview fingerprints) can be measured; a leak-check command or script compares the live workspace's project count and queue revision, the user config and Codex/Claude configuration hashes and the launchd plist list before and after a session and reports any change; the guidance (docs/agent-guidance/arcadia-repository.md 'Experiment workspaces', and docs/agents-context.md regenerated into AGENTS.md within its budget) states the bounded exception and the rule that experiment workspaces are addressed only inline and never exported; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/workspace/config.ts", "src/workspace/initWorkspace.ts", "src/commands/init.ts", "src/commands/goBrokerInstall.ts", "src/commands/worker.ts", "src/commands/ingressService.ts", "src/activity/recorder.ts", "docs/decisions/0082-decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional.md"]
+  - id: run-multi-workspace-experiment-trial
+    title: Run the first bounded trial of one experiment workspace per agent platform and report whether contention fell and nothing leaked.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Run the first bounded trial of one experiment workspace per agent platform and report whether contention fell and nothing leaked.
+    expected_artifact: Evidence satisfying Agent Ask run-multi-workspace-experiment-trial
+    clarification: clarified
+    confidence: high
+    source: Agent Ask experiment-workspace-guard-and-trial-2026-10-04
+    acceptance_criteria:
+      - "Only after Decision 0082 is approved with an option permitting the experiment and guard-experiment-workspaces is merged and installed: three experiment workspaces (one each for Claude Code, Codex and OpenCode) are created with `arcadia init --profile experiment` under the experiment root, each registering one fresh disposable no-remote fixture repository, addressed only inline, with the leak check passing before and after every session."
+      - Each platform's agent runs a scripted mix of Asks, queue and pointer moves, settlements and docs syncs in its own workspace in parallel, and a written report compares settle, preview and make-next error rates, the contention error codes and queue receipts per hour against the live workspace's seven-day baseline (settle 16.7%, preview 30%, make-next 12.7% errors), lists every refused guarded command, and records the operator-readable stop or continue recommendation; any leak-check change or write to the live workspace stops the trial and is reported.
+      - The report names which Arcadia flows still require the live workspace and what would have to change for agents to do real work in more than one workspace, as proposed Actions; the experiment workspaces and their fixture repositories are retained until the operator says to delete them, with the exact rollback command in the report.
+    depends_on: [guard-experiment-workspaces]
+    decisions: []
+    references: ["docs/decisions/0082-decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional.md", "/private/tmp/claude-501/-Users-pmark-Dev-MR-Arcadia-arcadia/8b3c388d-2a2c-4a1b-bfb8-165c1289534c/scratchpad/ws-experiment/design.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
