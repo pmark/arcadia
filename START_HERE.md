@@ -1125,6 +1125,10 @@ push, needs **both** grants (`policyAuthorizesPullRequestReadiness`); with only
    Polling continues either way, so a GitHub re-run that turns green resumes.
    A `DIRTY` (conflicted) PR escalates at once; a `BLOCKED` merge state is
    treated as waiting while checks run and escalates only once they are green.
+   Each check is read by its real shape (a GitHub Actions CheckRun or a commit
+   StatusContext); an unrecognised entry blocks by name instead of waiting.
+   Only `ADVISORY_CHECK_CONTEXTS` (just `CodeRabbit`, advisory under Decision
+   0080) never gates, whatever its state; `arcadia qa pr` applies the same rule.
 4. It runs `arcadia qa code-review`, then on a later tick `arcadia qa pr`,
    against that PR, each reviewer bounded to 15 minutes (under the worker's
    30-minute tick ceiling, which the tick re-stamps right before the reviewer
