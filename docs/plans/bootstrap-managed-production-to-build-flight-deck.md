@@ -3467,7 +3467,7 @@ actions:
     references: ["src/qa/prReview.ts", "src/qa/patchApplicability.ts", "tests/code-review-not-applicable.test.ts", "tests/fixtures/rehearsal-code-review/", "https://github.com/pmark/arcadia/issues/899"]
   - id: code-review-tests-criterion-stability
     title: Tell the code reviewer how to judge the Tests criterion when a patch contains no executable code and no test files, and pin the stability with a live measurement.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Tell the code reviewer how to judge the Tests criterion when a patch contains no executable code and no test files, and pin the stability with a live measurement.
@@ -3486,7 +3486,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: code-review-tests-criterion-stability
+current_action: fix-decision-approve-resolution-body
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
