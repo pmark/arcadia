@@ -1785,6 +1785,15 @@ a `Critic` title onto the name (e.g. `Critic Claudia Mason`) and signs the
 posted comment with the resolved `signature` instead of the builder identity.
 See AGENTS.md's "Agent Git Identity" section.
 
+Because every agent posts through your one GitHub login, the signature line is
+how you tell them apart. Each prompt and brief Arcadia generates (`go`, the
+dispatch brief, enrollment, the launched Session brief, work packets and the
+PR reviewer) carries one short Identity block naming the agent's own
+signature, its teammates on the other platforms, and — when Session and claim
+rows can be read — the partners live on the same Project. `arcadia identity
+roster` prints the whole roster; the signature rule itself lives once, in
+`docs/agent-guidance/git-identity.md`.
+
 The dashboard exposes the same guarded operation for an explicitly approved
 operator request. The route is reachable only where the dashboard is reachable;
 the launch request itself must be same-origin, and the server resolves the

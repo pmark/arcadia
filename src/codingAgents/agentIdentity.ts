@@ -202,3 +202,224 @@ export function resolveSessionAgentIdentity(input: SessionAgentIdentityInput): A
   }
   return resolveAgentIdentity(input.agent, tier, input.role ?? "builder");
 }
+
+/**
+ * The human the agents work for. Agents often post through the operator's
+ * account (one GitHub login for everyone), so the signature line is the only
+ * thing that says who is speaking; the operator is therefore a principal, not
+ * a teammate, and has no agent identity to impersonate or be impersonated by.
+ */
+export const OPERATOR_PRINCIPAL = {
+  role: "operator",
+  kind: "human",
+  rule: "The operator is the human principal, not an agent: never sign as the operator, and the operator never signs as an agent."
+} as const;
+
+/** The one rule that settles a disagreement between names. */
+export const IDENTITY_AUTHORITY_RULE =
+  "The identity resolved for this session's own model tier and role is authoritative; if the model actually doing the work differs, run `arcadia identity resolve` for that model instead of inventing or reusing a name.";
+
+export interface RosterIdentity {
+  tier: ModelTier;
+  role: AgentRole;
+  name: string;
+  email: string;
+}
+
+export interface RosterPlatform {
+  agent: TierAgent;
+  givenName: string;
+  /** Every tier × role identity this platform can sign as, in tier then role order. */
+  identities: RosterIdentity[];
+}
+
+export interface AgentRoster {
+  platforms: RosterPlatform[];
+  tierSurnames: Record<ModelTier, string>;
+  criticTitle: string;
+  emailDomain: string;
+  operator: typeof OPERATOR_PRINCIPAL;
+  rule: string;
+}
+
+/**
+ * The whole roster as data: every platform's given name, the tier surnames,
+ * the critic title and the local address domain. Pure — derived from the same
+ * tables `resolveAgentIdentity` uses, so the two can never disagree.
+ */
+export function agentRoster(): AgentRoster {
+  return {
+    platforms: TIER_AGENTS.map((agent) => ({
+      agent,
+      givenName: AGENT_GIVEN_NAMES[agent],
+      identities: MODEL_TIERS.flatMap((tier) =>
+        AGENT_ROLES.map((role) => {
+          const { name, email } = resolveAgentIdentity(agent, tier, role);
+          return { tier, role, name, email };
+        })
+      )
+    })),
+    tierSurnames: { ...TIER_SURNAMES },
+    criticTitle: ROLE_TITLES.critic ?? "Critic",
+    emailDomain: AGENT_GIT_EMAIL_DOMAIN,
+    operator: OPERATOR_PRINCIPAL,
+    rule: IDENTITY_AUTHORITY_RULE
+  };
+}
+
+export interface AgentTeammates {
+  self: AgentGitIdentity;
+  signature: string;
+  /** The other platforms, each with every identity (tier × role) it signs as. */
+  teammates: RosterPlatform[];
+  operator: typeof OPERATOR_PRINCIPAL;
+  rule: string;
+}
+
+/** For one resolved identity: who it is, who its teammates are, and which name wins. */
+export function agentTeammates(identity: AgentGitIdentity): AgentTeammates {
+  const self = resolveAgentIdentity(identity.agent, identity.tier, identity.role);
+  return {
+    self,
+    signature: agentIdentitySignature(self),
+    teammates: agentRoster().platforms.filter((platform) => platform.agent !== self.agent),
+    operator: OPERATOR_PRINCIPAL,
+    rule: IDENTITY_AUTHORITY_RULE
+  };
+}
+
+/**
+ * Another agent working on the same Project now, read from existing Session
+ * and claim rows. `identity` is null when the row does not say which
+ * platform/tier holds it (a bare worktree claim, or a Session whose model no
+ * tier binds): that partner is reported without a name rather than guessed.
+ */
+export interface AgentPartner {
+  source: "session" | "claim";
+  actionId: string | null;
+  agent: TierAgent | null;
+  identity: AgentGitIdentity | null;
+}
+
+const IDENTITY_HEADING = "Identity:";
+
+function describeIdentity(identity: AgentGitIdentity): string {
+  return `${agentIdentitySignature(identity)} (${identity.agent}, ${identity.tier}, ${identity.role})`;
+}
+
+function describeTeammate(platform: RosterPlatform): string {
+  const surnames = MODEL_TIERS.map((tier) => TIER_SURNAMES[tier]).join("/");
+  return `${platform.givenName} ${surnames} (${platform.agent})`;
+}
+
+/** An Action id as the Plan schema shapes it; anything else from a row is never echoed into a prompt. */
+const SAFE_ACTION_ID = /^[A-Za-z0-9._:-]+$/;
+
+function describePartner(partner: AgentPartner): string {
+  if (partner.actionId !== null && !SAFE_ACTION_ID.test(partner.actionId)) return "an unattributed claim";
+  const where = partner.actionId ? ` on Action ${partner.actionId}` : "";
+  if (partner.identity) return `${describeIdentity(partner.identity)}${where}`;
+  const who = partner.agent ? `${partner.agent} Session (tier unresolved)` : "an unattributed claim";
+  return `${who}${where}`;
+}
+
+/**
+ * The one compact Identity block every generated prompt and brief carries.
+ * `partners` null means the Session and claim rows could not be read, so the
+ * partners sentence is omitted rather than guessed; an empty list says so.
+ */
+export function renderIdentityBlock(identity: AgentGitIdentity, partners: AgentPartner[] | null = null): string[] {
+  const { self, teammates } = agentTeammates(identity);
+  const lines = [
+    IDENTITY_HEADING,
+    `You are ${describeIdentity(self)}; sign every comment and commit exactly so, never as another tier or name.`,
+    IDENTITY_AUTHORITY_RULE,
+    `Your teammates are ${teammates.map(describeTeammate).join(" and ")}, by tier ${MODEL_TIERS.join("/")}, ` +
+      `titled "${ROLE_TITLES.critic}" when critiquing, at <name.in.dots>@${AGENT_GIT_EMAIL_DOMAIN}. ${OPERATOR_PRINCIPAL.rule}`
+  ];
+  if (partners) {
+    lines.push(
+      `Your current partners on this Project, from live claims and Sessions, are: ${
+        partners.length > 0 ? partners.map(describePartner).join("; ") : "none"
+      }.`
+    );
+  }
+  return lines;
+}
+
+export interface SessionIdentityBlockInput {
+  agent: string;
+  /** A tier, when the caller already knows it; otherwise resolved from model/effort. */
+  tier?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  role?: string | null;
+  registry?: ModelTierRegistry;
+  partners?: AgentPartner[] | null;
+}
+
+/**
+ * The Identity block for a session that is about to be briefed, from whatever
+ * the caller knows about its platform and model. When no identity can be
+ * resolved the block still appears, but names nobody: it tells the agent to
+ * resolve its own identity and never to fall back to the operator's.
+ */
+export function renderSessionIdentityBlock(input: SessionIdentityBlockInput): string[] {
+  const role = input.role ?? "builder";
+  let identity: AgentGitIdentity | null = null;
+  try {
+    if (input.tier) identity = resolveAgentIdentity(input.agent, input.tier, role);
+    else if ((TIER_AGENTS as readonly string[]).includes(input.agent) && input.model) {
+      identity = resolveSessionAgentIdentity({
+        agent: input.agent as TierAgent,
+        model: input.model,
+        effort: input.effort ?? null,
+        role,
+        registry: input.registry
+      });
+    }
+  } catch {
+    identity = null;
+  }
+  if (identity) return renderIdentityBlock(identity, input.partners ?? null);
+  return [
+    IDENTITY_HEADING,
+    `Your identity is unresolved for platform "${input.agent}"${input.model ? ` and model "${input.model}"` : ""}: ` +
+      `before any commit or comment run \`arcadia identity resolve --agent <platform> --tier <light|standard|heavy> --role ${role}\` ` +
+      "for the model actually doing the work " +
+      `and sign exactly as it prints; ${OPERATOR_PRINCIPAL.rule.charAt(0).toLowerCase()}${OPERATOR_PRINCIPAL.rule.slice(1)}`
+  ];
+}
+
+/**
+ * The reviewer's variant of the Identity block. A read-only reviewer runs no
+ * commands, posts nothing and only returns a structured verdict, so it is told
+ * only which critic identity the verdict is attributed to and that it is
+ * independent of the developer: no signing instruction, no command, no
+ * partners, and no developer named.
+ */
+export function renderReviewerIdentityBlock(input: Omit<SessionIdentityBlockInput, "role" | "partners">): string[] {
+  let identity: AgentGitIdentity | null;
+  try {
+    identity = input.tier
+      ? resolveAgentIdentity(input.agent, input.tier, "critic")
+      : (TIER_AGENTS as readonly string[]).includes(input.agent) && input.model
+        ? resolveSessionAgentIdentity({
+            agent: input.agent as TierAgent,
+            model: input.model,
+            effort: input.effort ?? null,
+            role: "critic",
+            registry: input.registry
+          })
+        : null;
+  } catch {
+    identity = null;
+  }
+  const independence = "you are independent of the Candidate's developer and judge its work only from the evidence below.";
+  return [
+    IDENTITY_HEADING,
+    identity
+      ? `You are ${describeIdentity(identity)}; ${independence}`
+      : `Your critic identity is unresolved for platform "${input.agent}"; ${independence}`
+  ];
+}

@@ -256,7 +256,11 @@ describe("protected Arcadia go broker", () => {
         advance: advanceResponse.data,
         workMonitor: workMonitorResponse.data,
         next: nextResponse.data,
-        dispatchBrief: "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work.",
+        dispatchBrief: [
+          "No current action could be resolved.\n\n\nRepairing the control documentation is the immediate work.",
+          "",
+          ...broker.renderBriefIdentity(nextResponse.data as never, "claude", "/tmp/arcadia-workspace", "/tmp/prepared")
+        ].join("\n"),
         sessionTitles: {
           working: "🩹🔵 repair",
           pr: "🩹🟣 repair",

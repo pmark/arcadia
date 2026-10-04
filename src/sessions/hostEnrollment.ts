@@ -26,10 +26,12 @@ import {
   type GovernedEnrollmentContext,
   type NativeRuntimeAdapter
 } from "./enrollment.js";
-import { canonicalPath, getActiveActionClaim, getRepositoryLease, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
+import { canonicalPath, getActiveActionClaim, getRepositoryLease, sessionAgentForProvider, type AgentSession, type AgentWorktreeReservation, type TmuxAdapter } from "./index.js";
 import { launchGuardedHostSession, type GuardedLaunchInput } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { requirementIdentity } from "./roleLineage.js";
+import { readProjectPartners, renderDispatchIdentityBlock } from "./partners.js";
+import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
 
 export interface HostEnrollmentInput {
   source: string;
@@ -156,7 +158,17 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
         projectSlug: dispatch.projectSlug,
         planSlug: dispatch.activePlan,
         actionId: dispatch.action.id,
-        canonicalBrief: renderNextSuccess(next).join("\n"),
+        // The dispatch brief, then the enrolling agent's Identity block for the
+        // model this enrollment selected (or the Plan's recommendation).
+        canonicalBrief: [...renderNextSuccess(next), "", ...renderDispatchIdentityBlock({
+          agent: (selection ? sessionAgentForProvider(selection.provider) : null) ?? agent,
+          model: selection?.model ?? null,
+          effort: selection?.effort ?? null,
+          recommendedModel: dispatch.planRecommendedModel ?? null,
+          recommendedEffort: dispatch.planRecommendedReasoningEffort ?? null,
+          registry: (() => { try { return loadModelTierRegistry(workspace); } catch { return undefined; } })(),
+          partners: readProjectPartners(db, { projectSlug: dispatch.projectSlug, excludeWorktree: source })
+        })].join("\n"),
         operatorGates: next.data.operatorAlerts.map(item => `${item.kind}:${item.id}`),
         packet: preview?.packet ? { invocationId: preview.packet.invocationId, sha256: preview.packet.sha256 } : null,
         provider: selection?.provider ?? agent,

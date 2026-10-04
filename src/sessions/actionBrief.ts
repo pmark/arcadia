@@ -4,6 +4,7 @@ import { discoverDocs } from "../docs/discover.js";
 import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
+import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
 import type { SessionAgent } from "./index.js";
 
 /**
@@ -37,6 +38,14 @@ export interface ActionBriefInput {
   baseRevision: string;
   /** The canonical incomplete handoff consumed by this Session, when resuming. */
   continuation?: { sessionId: string; candidateRevision: string | null };
+  /**
+   * The identity the Session's launch environment commits under. Absent, the
+   * brief still carries an Identity block, but one that names nobody and
+   * tells the agent to resolve its own.
+   */
+  identity?: AgentGitIdentity | null;
+  /** Other agents live on this Project; null when unreadable (the sentence is omitted). */
+  partners?: AgentPartner[] | null;
 }
 
 /**
@@ -86,6 +95,10 @@ export function renderActionBrief(input: ActionBriefInput): string {
     `Title: ${action.title}`,
     `Candidate worktree: ${input.worktreePath}`,
     `Branch: ${input.branch}`,
+    "",
+    ...(input.identity
+      ? renderIdentityBlock(input.identity, input.partners ?? null)
+      : renderSessionIdentityBlock({ agent: input.agent, partners: input.partners ?? null })),
     "",
     "Next action:",
     action.nextAction ?? "(none declared)",

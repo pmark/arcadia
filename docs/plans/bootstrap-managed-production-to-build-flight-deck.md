@@ -3570,7 +3570,7 @@ actions:
     references: []
   - id: agents-know-names-and-teammates
     title: Add a roster to agentIdentity.ts, surface it in `arcadia identity`, and inject an Identity block with self, teammates and partners into every launched session's prompt and brief.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a roster to agentIdentity.ts, surface it in `arcadia identity`, and inject an Identity block with self, teammates and partners into every launched session's prompt and brief.
@@ -3623,7 +3623,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: agents-know-names-and-teammates
+current_action: build-production-control-page-preview-first
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

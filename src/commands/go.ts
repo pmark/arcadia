@@ -74,6 +74,8 @@ import {
   type DraftRecoveryReceipt
 } from "../sessions/draftOnlyCandidate.js";
 import { readPreservationReadiness, type PreservationReadiness } from "../sessions/preservationReadiness.js";
+import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { readProjectPartners } from "../sessions/partners.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 
@@ -168,6 +170,12 @@ export interface GoCommandData {
   sourceWorktreeRemoved: boolean;
   sourceBranchDeleted: boolean;
   nextWorktree: PreparedAgentWorktree | null;
+  /**
+   * The Identity block for the prepared agent's session: who it signs as for
+   * the resolved model, its teammates and its live partners. Null when no
+   * agent worktree was prepared (or it is the fixture, which has no identity).
+   */
+  identity?: string[] | null;
   /**
    * How the handoff model was chosen for the next agent. Null until an agent is
    * prepared. `note` is set whenever the plan's recommended_model was
@@ -986,6 +994,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       }))
     : resolveProjectTransition({ repoRoot: dispatchRoot, projectSlug, actionId: transitionActionId });
 
+  const identity = nextWorktree && nextWorktree.agent !== "fixture"
+    ? goIdentityBlock(nextWorktree, projectSlug, options.workspace)
+    : null;
+
   return createSuccess({
     command: "go",
     data: {
@@ -1003,6 +1015,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       sourceWorktreeRemoved,
       sourceBranchDeleted,
       nextWorktree,
+      identity,
       modelResolution,
       dispatch,
       queueFallback,
@@ -1062,6 +1075,40 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
  * table must never fail `go`. Returning nothing only costs the nudge some
  * precision, which is the same precision it had before this existed.
  */
+/**
+ * The prepared agent's Identity block, resolved from the same model and effort
+ * its launch command pins. Partners are read from the workspace's Session and
+ * claim rows when it can be opened, excluding this candidate's own claim, and
+ * omitted otherwise.
+ */
+function goIdentityBlock(candidate: PreparedAgentWorktree, projectSlug: string, workspace: string | undefined): string[] {
+  let workspacePath: string | null = null;
+  try {
+    // The same resolution the launch path uses, including the default
+    // workspace when --workspace is omitted, so the tier registry (and hence
+    // the name) matches the GIT_AUTHOR_* the Session will commit under.
+    workspacePath = resolveReadyWorkspace(workspace).workspacePath;
+  } catch {
+    workspacePath = null;
+  }
+  const partners = workspacePath
+    ? (() => {
+        try {
+          return withReadOnlyDatabase(workspacePath, (db) => readProjectPartners(db, { projectSlug, excludeWorktree: candidate.path }));
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  return renderSessionIdentityBlock({
+    agent: candidate.agent,
+    model: candidate.model,
+    effort: candidate.effort,
+    registry: workspacePath ? loadModelTierRegistry(workspacePath) : undefined,
+    partners
+  });
+}
+
 function protectedWorktreePaths(repo: string, workspace: string | undefined, tmux: Pick<TmuxAdapter, "hasSession">): string[] {
   try {
     const workspacePath = resolveWorkspace({ workspace, cwd: repo }).workspacePath;
@@ -1346,6 +1393,7 @@ export function renderGoSuccess(response: CommandSuccess<GoCommandData>): string
     if (data.modelResolution?.note) lines.push(`  ${data.modelResolution.note}`);
     else if (data.modelResolution?.tier) lines.push(`  Resolved the ${data.modelResolution.tier} tier for ${data.nextWorktree.agent}.`);
     lines.push(`Launch: ${data.nextWorktree.command}`);
+    if (data.identity?.length) lines.push(...data.identity);
   }
   if (data.draftRecovery) {
     lines.push(`Handed out the never-launched candidate in place, once; its Agent Ask drafts stay untouched (receipt ${data.draftRecovery.requestId}):`);

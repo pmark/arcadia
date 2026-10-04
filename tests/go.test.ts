@@ -6,7 +6,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
-import { runGoCommand } from "../src/commands/go.js";
+import { renderGoSuccess, runGoCommand } from "../src/commands/go.js";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
@@ -142,9 +143,46 @@ describe("arcadia go", () => {
     expect(result.data.nextWorktree?.model).toBe("claude-sonnet-5");
     expect(result.data.nextWorktree?.effort).toBeNull();
     expect(result.data.nextWorktree?.command).toContain('claude --model "claude-sonnet-5" "arcadia advance"');
+    // "claude-sonnet-5" binds no tier and no effort was given, so the Identity
+    // block names nobody rather than guessing a tier.
+    expect(result.data.identity?.[0]).toBe("Identity:");
+    expect(result.data.identity?.join("\n")).not.toMatch(/^You are /m);
+    expect(result.data.identity?.join("\n")).toContain("arcadia identity resolve");
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
     expect(git(result.data.nextWorktree!.path, ["branch", "--show-current"]).trim()).toBe(result.data.nextWorktree!.branch);
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
+  });
+
+  it("resolves the go Identity block from the default workspace's tier registry and live partners when --workspace is omitted", () => {
+    const fixture = createFixture("codex/prepare-default-workspace");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    // A workspace override binds this concrete model to Claude's heavy tier,
+    // so the launch environment commits as Claudia Atlas; the bundled mapping
+    // alone would not resolve it at all.
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(
+      path.join(fixture.workspace, "config", "coding-agent-models.json"),
+      JSON.stringify({ tiers: { heavy: { claude: "claude-sonnet-5" } } })
+    );
+    withDatabase(fixture.workspace, (db) => db.prepare(`INSERT INTO agent_worktree_reservations
+      (id, repository_path, worktree_path, branch, created_at, expires_at, project, action_id, claim_generation)
+      VALUES ('other-claim', ?, '/elsewhere/peer', 'codex/peer', '2026-08-05T00:00:00.000Z', '2999-01-01T00:00:00.000Z', 'test-project', 'peer-action', 'g-peer')`)
+      .run(fixture.main));
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.workspace);
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees"),
+      now: new Date("2026-08-05T12:34:56.000Z")
+    });
+
+    const block = (result.data.identity ?? []).join("\n");
+    expectIdentityBlock(block, "claude", "heavy");
+    expect(block).toContain("Your current partners on this Project, from live claims and Sessions, are: an unattributed claim on Action peer-action.");
   });
 
   it("prepares an opencode worktree on the opencode branch with the pinned model and variant", () => {
@@ -170,6 +208,11 @@ describe("arcadia go", () => {
       'opencode run --model "opencode-go/deepseek-v4.1-flash" --variant "high" "arcadia advance"'
     );
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
+    // The pinned model is OpenCode's standard binding; this candidate's own
+    // claim is not its partner, and nobody else is live.
+    const rendered = renderGoSuccess(result).join("\n");
+    expectIdentityBlock(rendered, "opencode", "standard");
+    expect(rendered).toContain("Your current partners on this Project, from live claims and Sessions, are: none.");
   });
 
   it("keeps the zero-commit handoff when tidy --apply runs immediately after go --apply", () => {
