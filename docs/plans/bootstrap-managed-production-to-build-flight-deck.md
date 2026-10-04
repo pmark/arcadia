@@ -3433,7 +3433,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/916", "https://github.com/pmark/arcadia/issues/918", "https://github.com/pmark/arcadia/issues/921", "https://github.com/pmark/arcadia/issues/930", "https://github.com/pmark/arcadia/issues/933"]
   - id: code-review-not-applicable-criteria
     title: Add a not-applicable criterion status for the code-review role, bounded so it cannot weaken real review, and teach the reviewer prompt about governed records.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a not-applicable criterion status for the code-review role, bounded so it cannot weaken real review, and teach the reviewer prompt about governed records.
@@ -3452,7 +3452,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: code-review-not-applicable-criteria
+current_action: fix-decision-approve-resolution-body
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
