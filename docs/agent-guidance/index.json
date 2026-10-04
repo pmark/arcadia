@@ -77,6 +77,13 @@
       "path": "docs/working-copy-safety.md",
       "read_before": "Before editing code or reconciling Git, and before stopping.",
       "sha256": "0ddc42e2923281a9d4ad455565eec7ef46b8c047739c1e7707c2b1cffd313db1"
+    },
+    {
+      "id": "agent-peer-watch",
+      "trigger": "peer watch, heartbeat, stalled, exhausted, out of tokens, takeover, released ownership",
+      "path": "docs/agent-guidance/agent-peer-watch.md",
+      "read_before": "Before judging, offering help to or continuing another agent's work; silence never proves release.",
+      "sha256": "1cafb1171117fadd3c6d46e7efcd0bc03be51664e127d221512bc2eb951fe08b"
     }
   ]
 }
