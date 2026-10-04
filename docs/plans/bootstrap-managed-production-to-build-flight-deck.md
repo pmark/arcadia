@@ -3623,7 +3623,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: build-production-control-page-preview-first
+current_action: guard-experiment-workspaces
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
