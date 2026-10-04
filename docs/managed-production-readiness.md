@@ -186,6 +186,35 @@ candidate's settled head, which needs the later publication/PR-readiness
 Grant. This is candidate evidence only: it is not installed-host enrollment
 proof, production activation, a rehearsal, or completion evidence.
 
+### Remote-preservation grant option — 2026-10-03 candidate
+
+Before this candidate, `scope.remotePreservation` was validated and read by
+both preservation paths, but no command could set it, so every managed
+preservation stayed `LOCAL ONLY` and no draft PR could exist. The candidate for
+`let-production-grant-request-remote-preservation` adds
+`arcadia production preview|activate --remote-preservation`. It is the only way
+to set the field; no other flag, environment variable or dashboard control can
+turn it on. The option authorizes exactly two things for an Action in the
+active scope: pushing the preserved candidate branch and opening (or updating)
+its **draft** pull request. It does not authorize marking a PR ready, merging,
+or pushing the base branch; those stay separate gates and later work
+(`ready-pr-and-run-independent-reviews-from-the-tick`). Without the option,
+preservation stays `LOCAL ONLY`.
+
+The option is bound into the scope fingerprint, printed as
+`Remote preservation: on|off` by the preview, `production status` and the
+activation receipt, and a replayed request id under a different setting is
+refused. Off clears it from the active policy immediately; the saved reviewed
+configuration keeps it, so a fingerprint-bound reactivation (CLI or the
+dashboard On switch) restores exactly what was granted and never adds it to a
+configuration granted without it. Coverage: the `remote preservation
+(--remote-preservation)` block in `tests/managed-production-policy.test.ts`,
+`tests/production-reactivation.test.ts`, and the dashboard contracts in
+`apps/dashboard/app/api/production-control/route.test.ts` and
+`apps/dashboard/lib/production-reactivation.test.ts`. This is candidate code
+only: it grants nothing, no live policy was activated with it, and the live
+Grant for any rehearsal remains an operator decision.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`

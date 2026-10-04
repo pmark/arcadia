@@ -295,10 +295,14 @@ const REVIEWED_SCOPE_FIELDS = [
   "actions",
   "providers",
   "maxConcurrentSessions",
-  "mechanicalTransitions"
+  "mechanicalTransitions",
+  // Granted only by `production activate --remote-preservation` and bound into
+  // the fingerprint, so a reactivation replays exactly what was reviewed; it is
+  // never added by Off, reactivation or the dashboard toggle.
+  "remotePreservation"
 ] as const satisfies ReadonlyArray<keyof ProductionScope>;
 
-/** The names of scope fields an Off dropped (grants, exceptions, delegation expiry, remote preservation). */
+/** The names of scope fields an Off dropped (grants, exceptions, delegation expiry). */
 export type InactiveConfigurationNotCarried = string;
 
 /**
@@ -306,7 +310,8 @@ export type InactiveConfigurationNotCarried = string;
  * so it can never be mistaken for active authority: every admission gate reads
  * the policy row and requires `desiredState === "active"`. It records what was
  * reviewed (Project, Plan, exact Action allowlist, providers, concurrency,
- * mechanical transitions), never a grant.
+ * mechanical transitions, and remote preservation when it was granted), never a
+ * time-bound grant.
  */
 export interface ProductionInactiveConfiguration {
   /** Increments each time an Off from an Active policy saves a configuration. */
@@ -363,7 +368,9 @@ export function reviewedConfigurationOf(scope: ProductionScope): {
   notCarried: InactiveConfigurationNotCarried[];
 } {
   const reviewed = {} as Record<string, unknown>;
-  for (const field of REVIEWED_SCOPE_FIELDS) reviewed[field] = scope[field];
+  for (const field of REVIEWED_SCOPE_FIELDS) {
+    if (scope[field] !== undefined) reviewed[field] = scope[field];
+  }
   const notCarried = Object.entries(scope)
     .filter(([field, value]) => !(REVIEWED_SCOPE_FIELDS as readonly string[]).includes(field) && value !== undefined && value !== false)
     .map(([field]) => field)
@@ -536,7 +543,7 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   }
 
   const normalized: ProductionScope = { intent, projects, plans, actions, providers, maxConcurrentSessions, mechanicalTransitions };
-  if (input.remotePreservation) normalized.remotePreservation = true;
+  if (input.remotePreservation === true) normalized.remotePreservation = true;
   if (input.integrationGrant !== undefined) normalized.integrationGrant = normalizeIntegrationGrant(input.integrationGrant);
   if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
   const packetApprovalExpiresAt = normalizePacketApprovalExpiry(mechanicalTransitions, input.packetApprovalExpiresAt);
@@ -676,6 +683,25 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
     ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+}
+
+/**
+ * The one gate both preservation paths (the worker's terminal handoff and
+ * `arcadia preserve`) read before pushing a candidate and opening its draft pull
+ * request. Only an Active policy whose scope was granted with
+ * `--remote-preservation`, and only for an Action that scope names, qualifies;
+ * there is no environment or dashboard override. It never authorizes marking a
+ * pull request ready or merging it.
+ */
+export function policyAuthorizesRemotePreservation(
+  policy: Pick<ProductionPolicyRecord, "desiredState" | "scope">,
+  actionKey: string
+): boolean {
+  return (
+    policy.desiredState === "active" &&
+    policy.scope?.remotePreservation === true &&
+    policy.scope.actions.includes(actionKey)
+  );
 }
 
 export function readProductionPolicy(db: Database.Database): ProductionPolicyRecord {

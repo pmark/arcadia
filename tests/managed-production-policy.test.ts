@@ -14,15 +14,22 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { buildProgram } from "../src/cli.js";
 import {
   buildProductionActivationPreview,
   describeProductionState
 } from "../src/production/activation.js";
 import { buildJudgmentRequest } from "../src/production/judgment.js";
 import {
+  renderProductionPreviewSuccess,
+  renderProductionReactivatePreviewSuccess,
+  renderProductionStatusSuccess,
+  renderProductionTransitionSuccess,
   runProductionActivateCommand,
   runProductionPreviewCommand,
   runProductionDeactivateCommand,
+  runProductionReactivateCommand,
+  runProductionReactivatePreviewCommand,
   runProductionResetRepairBudgetCommand,
   runProductionStatusCommand
 } from "../src/commands/production.js";
@@ -38,6 +45,7 @@ import {
   issueAdmission,
   listAdmissions,
   normalizeProductionScope,
+  policyAuthorizesRemotePreservation,
   readProductionPolicy,
   readProductionPolicySafely,
   releaseAdmission,
@@ -1112,6 +1120,144 @@ describe("activation preview", () => {
     // scope validation, so it must replay its receipt rather than refuse.
     const retry = runProductionActivateCommand({ ...request, project: ["demo", "ghost"] });
     expect(retry.data.result.replayed).toBe(true);
+  });
+
+  describe("remote preservation (--remote-preservation)", () => {
+    function grantRequest(target: string, overrides: Partial<Parameters<typeof runProductionActivateCommand>[0]> = {}) {
+      return {
+        workspace: target,
+        project: ["demo"],
+        plan: ["demo/queue-plan"],
+        provider: ["opencode-cli"],
+        intent: "Authorize the fixture Plan.",
+        grantedBy: "operator",
+        requestId: "grant-remote-1",
+        ...overrides
+      };
+    }
+
+    it("is a plain opt-in flag on preview and activate only, with no environment fallback", () => {
+      const production = buildProgram().commands.find((command) => command.name() === "production")!;
+      const byName = (name: string) => production.commands.find((command) => command.name() === name)!;
+      for (const name of ["preview", "activate"]) {
+        const flag = byName(name).options.find((option) => option.long === "--remote-preservation");
+        expect(flag?.attributeName()).toBe("remotePreservation");
+        expect(flag?.required || flag?.optional).toBeFalsy();
+        expect(flag?.defaultValue).toBeUndefined();
+      }
+      for (const name of ["reactivate-preview", "reactivate", "deactivate"]) {
+        expect(byName(name).options.some((option) => option.long === "--remote-preservation")).toBe(false);
+      }
+      for (const command of production.commands) {
+        expect(command.options.filter((option) => option.envVar !== undefined).map((option) => option.long)).toEqual([]);
+      }
+    });
+
+    it("binds the option into the preview's scope and fingerprint and shows what it does not grant", () => {
+      const target = fixtureWorkspace();
+      const local = runProductionPreviewCommand(grantRequest(target));
+      const remote = runProductionPreviewCommand(grantRequest(target, { remotePreservation: true }));
+
+      expect(local.data.preview.scope.remotePreservation).toBeUndefined();
+      expect(remote.data.preview.scope.remotePreservation).toBe(true);
+      expect(remote.data.preview.scopeFingerprint).toBe(fingerprintProductionScope(remote.data.preview.scope));
+      expect(remote.data.preview.scopeFingerprint).not.toBe(local.data.preview.scopeFingerprint);
+
+      const remoteLines = renderProductionPreviewSuccess(remote).join("\n");
+      expect(remoteLines).toContain("Remote preservation: on");
+      expect(remoteLines).toContain("never mark it ready or merge");
+      expect(renderProductionPreviewSuccess(local).join("\n")).toContain("Remote preservation: off — preservation stays LOCAL ONLY");
+      expect(remote.data.preview.explicitStops.join(" ")).toContain("never marks a pull request ready or merges it");
+    });
+
+    it("activates exactly the previewed fingerprint and shows it in the receipt and status", () => {
+      const target = fixtureWorkspace();
+      const preview = runProductionPreviewCommand(grantRequest(target, { remotePreservation: true }));
+      const activated = runProductionActivateCommand(grantRequest(target, { remotePreservation: true }));
+
+      const policy = activated.data.result.policy;
+      expect(policy.scope?.remotePreservation).toBe(true);
+      expect(policy.authority?.scopeFingerprint).toBe(preview.data.preview.scopeFingerprint);
+      expect(policyAuthorizesRemotePreservation(policy, "demo/migrate")).toBe(true);
+      // Only for an Action the scope names.
+      expect(policyAuthorizesRemotePreservation(policy, "demo/not-in-scope")).toBe(false);
+
+      const receipt = renderProductionTransitionSuccess(activated).join("\n");
+      expect(receipt).toContain("Remote preservation: on");
+      expect(receipt).toContain(`Scope fingerprint: ${preview.data.preview.scopeFingerprint}`);
+      expect(renderProductionStatusSuccess(runProductionStatusCommand({ workspace: target })).join("\n")).toContain(
+        "Remote preservation: on"
+      );
+    });
+
+    it("replays a request id with the option, and refuses that id for a scope without it", () => {
+      const target = fixtureWorkspace();
+      expect(runProductionActivateCommand(grantRequest(target, { remotePreservation: true })).data.result.replayed).toBe(false);
+      expect(runProductionActivateCommand(grantRequest(target, { remotePreservation: true })).data.result.replayed).toBe(true);
+      expect(() => runProductionActivateCommand(grantRequest(target))).toThrow(/already activated a different scope/);
+      expect(withDatabase(target, readProductionPolicy).scope?.remotePreservation).toBe(true);
+    });
+
+    it("leaves preservation local only without the option, whatever the environment says", () => {
+      const target = fixtureWorkspace();
+      const saved = { ...process.env };
+      process.env.ARCADIA_REMOTE_PRESERVATION = "true";
+      process.env.ARCADIA_PRODUCTION_REMOTE_PRESERVATION = "1";
+      try {
+        const activated = runProductionActivateCommand(grantRequest(target));
+        const policy = activated.data.result.policy;
+        expect(policy.desiredState).toBe("active");
+        expect(policy.scope?.remotePreservation).toBeUndefined();
+        expect(policyAuthorizesRemotePreservation(policy, "demo/migrate")).toBe(false);
+        expect(renderProductionTransitionSuccess(activated).join("\n")).toContain("Remote preservation: off");
+      } finally {
+        process.env = saved;
+      }
+    });
+
+    it("Off clears the authority; reactivation replays it only from the saved reviewed configuration", () => {
+      const target = fixtureWorkspace();
+      runProductionActivateCommand(grantRequest(target, { remotePreservation: true }));
+      runProductionDeactivateCommand({ workspace: target, requestId: "off-remote-1" });
+
+      const off = withDatabase(target, readProductionPolicy);
+      expect(off.scope).toBeNull();
+      expect(policyAuthorizesRemotePreservation(off, "demo/migrate")).toBe(false);
+
+      const reactivatePreview = runProductionReactivatePreviewCommand({ workspace: target });
+      const { configuration, expected } = reactivatePreview.data.preview;
+      expect(configuration?.scope.remotePreservation).toBe(true);
+      expect(configuration?.notCarried).not.toContain("remotePreservation");
+      expect(renderProductionReactivatePreviewSuccess(reactivatePreview).join("\n")).toContain("Remote preservation: on");
+
+      const reactivated = runProductionReactivateCommand({
+        workspace: target,
+        requestId: "on-remote-1",
+        grantedBy: "operator",
+        expectedRevision: String(expected!.policyRevision),
+        expectedConfigurationRevision: String(expected!.configurationRevision),
+        expectedFingerprint: expected!.fingerprint
+      });
+      expect(reactivated.data.result.policy.scope?.remotePreservation).toBe(true);
+      expect(reactivated.data.result.policy.authority?.scopeFingerprint).toBe(configuration!.fingerprint);
+    });
+
+    it("never adds remote preservation on reactivation of a configuration granted without it", () => {
+      const target = fixtureWorkspace();
+      runProductionActivateCommand(grantRequest(target));
+      runProductionDeactivateCommand({ workspace: target, requestId: "off-local-1" });
+      const { expected } = runProductionReactivatePreviewCommand({ workspace: target }).data.preview;
+      const reactivated = runProductionReactivateCommand({
+        workspace: target,
+        requestId: "on-local-1",
+        grantedBy: "operator",
+        expectedRevision: String(expected!.policyRevision),
+        expectedConfigurationRevision: String(expected!.configurationRevision),
+        expectedFingerprint: expected!.fingerprint
+      });
+      expect(reactivated.data.result.policy.scope?.remotePreservation).toBeUndefined();
+      expect(policyAuthorizesRemotePreservation(reactivated.data.result.policy, "demo/migrate")).toBe(false);
+    });
   });
 });
 

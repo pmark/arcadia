@@ -220,7 +220,7 @@ describe("Off retains the reviewed configuration apart from active authority", (
     expect(status.read.status === "ok" && status.read.policy.scope).toBeNull();
   });
 
-  it("does not carry grants, exceptions, delegation expiry or remote preservation", () => {
+  it("does not carry grants, exceptions or delegation expiry, but keeps reviewed remote preservation", () => {
     const { workspace } = fixture();
     activate(workspace, "grant-1", {
       remotePreservation: true,
@@ -235,9 +235,12 @@ describe("Off retains the reviewed configuration apart from active authority", (
     expect(saved.scope.integrationGrant).toBeUndefined();
     expect(saved.scope.rehearsalException).toBeUndefined();
     expect(saved.scope.packetApprovalExpiresAt).toBeUndefined();
-    expect(saved.scope.remotePreservation).toBeUndefined();
+    // Remote preservation is a reviewed, fingerprinted bound (granted only by
+    // `activate --remote-preservation`), so Off retains it for an exact replay.
+    expect(saved.scope.remotePreservation).toBe(true);
+    expect(saved.fingerprint).toBe(fingerprintProductionScope(saved.scope));
     expect([...saved.notCarried].sort()).toEqual(
-      ["integrationGrant", "packetApprovalExpiresAt", "rehearsalException", "remotePreservation"]
+      ["integrationGrant", "packetApprovalExpiresAt", "rehearsalException"]
     );
   });
 
@@ -302,7 +305,7 @@ describe("reactivation replays only the exact validated configuration", () => {
     expect(result.policy.authority?.scopeFingerprint).toBe(fingerprintProductionScope(scope()));
   });
 
-  it("never revives a grant, exception or delegation that Off dropped", () => {
+  it("never revives a grant, exception or delegation that Off dropped, and replays reviewed remote preservation", () => {
     const { workspace } = fixture();
     activate(workspace, "grant-1", {
       remotePreservation: true,
@@ -313,7 +316,7 @@ describe("reactivation replays only the exact validated configuration", () => {
     const result = reactivate(workspace, "on-1");
     expect(result.policy.scope?.integrationGrant).toBeUndefined();
     expect(result.policy.scope?.rehearsalException).toBeUndefined();
-    expect(result.policy.scope?.remotePreservation).toBeUndefined();
+    expect(result.policy.scope?.remotePreservation).toBe(true);
   });
 
   it("refuses a delegated packet approval, which needs its own fresh grant (Decision 0072)", () => {

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 
@@ -43,8 +44,17 @@ describe("dashboard production reactivation (Issues #392, #883)", () => {
       "abc123",
       "--json"
     ]);
-    for (const flag of ["--action", "--project", "--plan", "--provider", "--transitions", "--concurrency"]) {
+    // Remote preservation is replayed only from the saved fingerprint; the
+    // dashboard has no way to request it.
+    for (const flag of ["--action", "--project", "--plan", "--provider", "--transitions", "--concurrency", "--remote-preservation"]) {
       expect(args).not.toContain(flag);
     }
+  });
+
+  it("has no dashboard path that can request remote preservation", () => {
+    // The only grant is `arcadia production activate --remote-preservation`;
+    // no dashboard CLI wrapper may spell it.
+    const source = readFileSync(new URL("./arcadia-cli.ts", import.meta.url), "utf8");
+    expect(source).not.toMatch(/remote-preservation|remotePreservation/);
   });
 });

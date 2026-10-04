@@ -39,6 +39,12 @@ export interface ProductionActivationPreviewInput {
   actions?: string[];
   maxConcurrentSessions?: number;
   mechanicalTransitions?: MechanicalTransition[];
+  /**
+   * Operator-requested remote candidate preservation (`--remote-preservation`):
+   * push the preserved branch and open its draft pull request. Never a merge,
+   * never marking a pull request ready. Absent keeps preservation LOCAL ONLY.
+   */
+  remotePreservation?: boolean;
   /** Optional Decision 0058 bounded candidate-integration grant. */
   integrationGrant?: ProductionIntegrationGrant;
   /** Optional expiring rehearsal exception that raises the concurrency gate's cap. */
@@ -90,6 +96,7 @@ export const PRODUCTION_OFF_CONSEQUENCE =
 
 const EXPLICIT_STOPS: readonly string[] = [
   "Merging, deploying, publishing, deleting, spending, using credentials, reaching production, or sending messages still needs its own Decision.",
+  "Remote preservation, when granted with --remote-preservation, only pushes a preserved candidate branch and opens its draft pull request; it never marks a pull request ready or merges it. Without it, preservation stays LOCAL ONLY.",
   "A Plan not listed here is never activated automatically, even when it is next in the queue.",
   "Expanded scope, a new draft Plan, or changed consequential authority ends this authorization and needs a fresh grant.",
   "Product and UX judgment stays with the operator; only the listed mechanical transitions are delegated.",
@@ -152,6 +159,7 @@ export function buildProductionActivationPreview(
     providers: input.providers,
     maxConcurrentSessions: input.maxConcurrentSessions ?? 1,
     mechanicalTransitions: input.mechanicalTransitions ?? [...MECHANICAL_TRANSITIONS],
+    ...(input.remotePreservation === true ? { remotePreservation: true } : {}),
     ...(input.integrationGrant ? { integrationGrant: input.integrationGrant } : {}),
     ...(input.rehearsalException ? { rehearsalException: input.rehearsalException } : {}),
     ...(input.packetApprovalExpiresAt ? { packetApprovalExpiresAt: input.packetApprovalExpiresAt } : {})

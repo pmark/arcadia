@@ -1057,6 +1057,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
       .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer (the default), none, or any list that may add packet_approval (never implied; Decision 0072)")
+      .option("--remote-preservation", "Also push preserved candidate branches and open their draft pull requests (never marks a PR ready or merges); omitted keeps preservation LOCAL ONLY")
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
@@ -1077,6 +1078,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--intent <text>", "The operator's whole-Plan intent, carried in the policy scope")
       .option("--concurrency <n>", "Maximum concurrent admitted Sessions", "1")
       .option("--transitions <list>", "Delegated mechanics: validation,acceptance,pointer (the default), none, or any list that may add packet_approval (never implied; Decision 0072)")
+      .option("--remote-preservation", "Also push preserved candidate branches and open their draft pull requests (never marks a PR ready or merges); omitted keeps preservation LOCAL ONLY")
       .option("--integration-grant-decision <ref>", "Decision authorizing bounded candidate integration (Decision 0058)")
       .option("--integration-grant-expires-at <iso>", "Expiry instant for the candidate-integration grant")
       .option("--integration-grant-action <project/action>", "Action the grant covers (repeatable; default the scope's Actions)", collectRepeatable, [])
@@ -4621,6 +4623,7 @@ interface ProductionCliOptions {
   intent?: string;
   concurrency?: string;
   transitions?: string;
+  remotePreservation?: boolean;
   integrationGrantDecision?: string;
   integrationGrantExpiresAt?: string;
   integrationGrantAction?: string[];

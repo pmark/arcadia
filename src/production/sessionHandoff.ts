@@ -6,7 +6,7 @@ import { preserveCandidate, systemPreservationRemote } from "../sessions/candida
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
-import { readProductionPolicySafely } from "./policy.js";
+import { policyAuthorizesRemotePreservation, readProductionPolicySafely } from "./policy.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 
 /**
@@ -154,7 +154,7 @@ export function preserveSessionCandidate(
   }
 
   const remotePreservation: RemotePreservationAuthorization =
-    policy.desiredState === "active" && scope?.remotePreservation === true
+    policyAuthorizesRemotePreservation(policy, actionKey(session))
       ? { authorized: true, qaPlan: `Preserved candidate for ${actionKey(session)} on ${baseBranch}.` }
       : { authorized: false, reason: "The Active policy does not authorize remote preservation." };
 
