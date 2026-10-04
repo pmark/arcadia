@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import type Database from "better-sqlite3";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
@@ -640,7 +641,7 @@ describe("runManagedProductionTick", () => {
     ) as { id: string; prompt_path: string };
     const promptText = readFileSync(path.join(fixture.workspace, invocation.prompt_path), "utf8");
     expect(promptText).toMatch(/^# Arcadia .* Build Packet/);
-    expect(promptText.match(/^Identity:$/gm)).toHaveLength(1);
+    expectIdentityBlock(promptText, "codex", "standard");
 
     const pendingApprovalId = withReadOnlyDatabase(fixture.workspace, (db) =>
       (db

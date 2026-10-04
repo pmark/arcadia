@@ -153,6 +153,38 @@ describe("arcadia go", () => {
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
   });
 
+  it("resolves the go Identity block from the default workspace's tier registry and live partners when --workspace is omitted", () => {
+    const fixture = createFixture("codex/prepare-default-workspace");
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    // A workspace override binds this concrete model to Claude's heavy tier,
+    // so the launch environment commits as Claudia Atlas; the bundled mapping
+    // alone would not resolve it at all.
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(
+      path.join(fixture.workspace, "config", "coding-agent-models.json"),
+      JSON.stringify({ tiers: { heavy: { claude: "claude-sonnet-5" } } })
+    );
+    withDatabase(fixture.workspace, (db) => db.prepare(`INSERT INTO agent_worktree_reservations
+      (id, repository_path, worktree_path, branch, created_at, expires_at, project, action_id, claim_generation)
+      VALUES ('other-claim', ?, '/elsewhere/peer', 'codex/peer', '2026-08-05T00:00:00.000Z', '2999-01-01T00:00:00.000Z', 'test-project', 'peer-action', 'g-peer')`)
+      .run(fixture.main));
+    vi.stubEnv("ARCADIA_WORKSPACE", fixture.workspace);
+
+    const result = runGoCommand({
+      repo: fixture.main,
+      source: fixture.feature,
+      apply: true,
+      agent: "claude",
+      model: "claude-sonnet-5",
+      agentWorktreeRoot: path.join(fixture.root, "agent-worktrees"),
+      now: new Date("2026-08-05T12:34:56.000Z")
+    });
+
+    const block = (result.data.identity ?? []).join("\n");
+    expectIdentityBlock(block, "claude", "heavy");
+    expect(block).toContain("Your current partners on this Project, from live claims and Sessions, are: an unattributed claim on Action peer-action.");
+  });
+
   it("prepares an opencode worktree on the opencode branch with the pinned model and variant", () => {
     const fixture = createFixture("codex/prepare-opencode");
     commitFeature(fixture.feature, "proof.txt", "proof\n");

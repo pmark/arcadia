@@ -7,7 +7,8 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
-import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
 import {
   selectCompliantCodingAgent,
@@ -417,12 +418,13 @@ export function runQaPrReviewCommand(
     runCommand
   });
   writeFileSync(sandboxProofPath, `${sandboxProof.output}\n`, "utf8");
-  const prompt = buildReviewPrompt(profile, candidate, pullRequest, patchResult.stdout, sandboxProof, renderSessionIdentityBlock({
-    // The reviewer judges someone else's work, so it is briefed in the critic role.
+  const prompt = buildReviewPrompt(profile, candidate, pullRequest, patchResult.stdout, sandboxProof, renderReviewerIdentityBlock({
+    // The reviewer judges someone else's work: named in the critic role, from
+    // the same workspace tier registry a launched Session resolves through.
     agent: sessionAgentForProvider(reviewer.provider) ?? reviewer.provider,
     model: reviewer.model,
     effort: reviewer.effort,
-    role: "critic"
+    registry: loadModelTierRegistry(workspacePath)
   }));
   writeFileSync(promptPath, prompt, "utf8");
   const preReviewPullRequest = sandboxProof.passed

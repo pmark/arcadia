@@ -312,7 +312,11 @@ function describeTeammate(platform: RosterPlatform): string {
   return `${platform.givenName} ${surnames} (${platform.agent})`;
 }
 
+/** An Action id as the Plan schema shapes it; anything else from a row is never echoed into a prompt. */
+const SAFE_ACTION_ID = /^[A-Za-z0-9._:-]+$/;
+
 function describePartner(partner: AgentPartner): string {
+  if (partner.actionId !== null && !SAFE_ACTION_ID.test(partner.actionId)) return "an unattributed claim";
   const where = partner.actionId ? ` on Action ${partner.actionId}` : "";
   if (partner.identity) return `${describeIdentity(partner.identity)}${where}`;
   const who = partner.agent ? `${partner.agent} Session (tier unresolved)` : "an unattributed claim";
@@ -384,5 +388,38 @@ export function renderSessionIdentityBlock(input: SessionIdentityBlockInput): st
       `before any commit or comment run \`arcadia identity resolve --agent <platform> --tier <light|standard|heavy> --role ${role}\` ` +
       "for the model actually doing the work " +
       `and sign exactly as it prints; ${OPERATOR_PRINCIPAL.rule.charAt(0).toLowerCase()}${OPERATOR_PRINCIPAL.rule.slice(1)}`
+  ];
+}
+
+/**
+ * The reviewer's variant of the Identity block. A read-only reviewer runs no
+ * commands, posts nothing and only returns a structured verdict, so it is told
+ * only which critic identity the verdict is attributed to and that it is
+ * independent of the developer: no signing instruction, no command, no
+ * partners, and no developer named.
+ */
+export function renderReviewerIdentityBlock(input: Omit<SessionIdentityBlockInput, "role" | "partners">): string[] {
+  let identity: AgentGitIdentity | null;
+  try {
+    identity = input.tier
+      ? resolveAgentIdentity(input.agent, input.tier, "critic")
+      : (TIER_AGENTS as readonly string[]).includes(input.agent) && input.model
+        ? resolveSessionAgentIdentity({
+            agent: input.agent as TierAgent,
+            model: input.model,
+            effort: input.effort ?? null,
+            role: "critic",
+            registry: input.registry
+          })
+        : null;
+  } catch {
+    identity = null;
+  }
+  const independence = "you are independent of the Candidate's developer and judge its work only from the evidence below.";
+  return [
+    IDENTITY_HEADING,
+    identity
+      ? `You are ${describeIdentity(identity)}; ${independence}`
+      : `Your critic identity is unresolved for platform "${input.agent}"; ${independence}`
   ];
 }

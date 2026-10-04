@@ -1084,7 +1084,10 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 function goIdentityBlock(candidate: PreparedAgentWorktree, projectSlug: string, workspace: string | undefined): string[] {
   let workspacePath: string | null = null;
   try {
-    workspacePath = workspace ? resolveReadyWorkspace(workspace).workspacePath : null;
+    // The same resolution the launch path uses, including the default
+    // workspace when --workspace is omitted, so the tier registry (and hence
+    // the name) matches the GIT_AUTHOR_* the Session will commit under.
+    workspacePath = resolveReadyWorkspace(workspace).workspacePath;
   } catch {
     workspacePath = null;
   }

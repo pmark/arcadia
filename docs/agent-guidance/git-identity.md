@@ -85,4 +85,7 @@ principal, not a teammate: never sign as the operator, and the operator never
 signs as an agent. Every prompt and brief Arcadia generates carries one
 Identity block stating your signature, your teammates and, when the Session
 and claim rows can be read, your current partners; `arcadia identity resolve`
-prints the same block.
+prints the same block. A read-only reviewer, which runs no commands and posts
+nothing, is told only its critic identity and its independence. Every block
+resolves the tier through the workspace's own tier registry, exactly as the
+launch environment does.
