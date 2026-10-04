@@ -3549,6 +3549,25 @@ actions:
     depends_on: [publish-agent-peer-heartbeats-and-offers]
     decisions: []
     references: ["scripts/arcadia-go-broker.ts", "src/goBroker.ts", "tests/rehearsal-three-action.test.ts"]
+  - id: build-production-control-page-preview-first
+    title: Build a dedicated Production page that makes current production state, next safe action and exact post-click evidence legible without bypassing production authority.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Build a dedicated Production page that makes current production state, next safe action and exact post-click evidence legible without bypassing production authority.
+    expected_artifact: Evidence satisfying Agent Ask build-production-control-page-preview-first
+    clarification: clarified
+    confidence: high
+    source: Agent Ask production-control-page-preview-first-2026-10-04
+    acceptance_criteria:
+      - The dashboard has a dedicated responsive Production page that derives state solely from existing production status, saved-configuration preview, worker observation, operator-action descriptors and durable receipts; it shows desired state, policy/configuration identity and expiry, worker health, live admissions, current Action/candidate evidence when available, and the first unmet gate. Missing or stale data is unknown or unavailable, never safe or complete.
+      - Exactly one primary control is displayed at a time. Before press, it states the selected existing reviewed /runs action or read-only preview, exact effect, preconditions, authority.does, authority.never_does, replay behavior and expected receipt. A click uses the audited operator-action launch path with a stable result identity and displays its durable terminal receipt or refusal; it never shells out from the browser or invokes an undeclared command.
+      - When no reviewed compatible action exists, or a Decision, fresh Grant, stale preview, drift, running operation or unknown state blocks progress, the control is disabled and names the first unmet gate and bounded recovery. The page never activates production, consumes a Grant, restarts a service, merges, deploys, publishes, spends, uses credentials or creates an Action by itself.
+      - The prior ambiguous direct dashboard activation interaction is removed from the Production interaction or made preview-first and replay-safe under the same authority contract; no UI label or test treats a click as authority by itself.
+      - Focused route, component and API tests cover active, inactive-with-saved-configuration, unknown/stale, compatible action, no compatible action, conflict/refusal, duplicate/replayed click and receipt rendering. Dashboard build, relevant focused tests, lint/type checks, operator-script contract checks and preservation self-check pass; START_HERE.md explains the flow and limits.
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
