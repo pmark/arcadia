@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0081"
+slug: decide-whether-arcadia-may-close-a-github-issue-that-only-mirrors-a-governed
+project: arcadia
+status: open
+question: Decide whether Arcadia may close a GitHub Issue that only mirrors a governed Action once that Action is done and its acceptance is verified at the governed base revision, preserving the Action reference, so the Project board reflects only live work.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Authorize closing verified done-Action mirror Issues, preserving the Action reference, and make the board projection close/archive future completed mirrors
+options:
+  - label: Authorize closing verified done-Action mirror Issues, preserving the Action reference, and make the board projection close/archive future completed mirrors
+    consequence: The open backlog drops to live work, and the accumulation does not recur. Requires re-verifying each linked Action's acceptance against the governed base revision before its Issue is closed; the projection change ships through the normal reviewed PR path.
+    recommended: true
+  - label: Authorize a one-time closure of verified done-Action mirror Issues only, leaving the projection unchanged
+    consequence: The count drops now, but new mirror Issues for completed Actions keep accumulating until the projection is fixed separately.
+    recommended: false
+  - label: Do not close existing mirrors; only change the projection to close future completed mirrors
+    consequence: No immediate backlog reduction; the 116 legacy mirrors stay open.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-10-04
+---
+
+# Decision 0081: Decide whether Arcadia may close a GitHub Issue that only mirrors a governed Action once that Action is done and its acceptance is verified at the governed base revision, preserving the Action reference, so the Project board reflects only live work.
+
+## Options
+
+- **Authorize closing verified done-Action mirror Issues, preserving the Action reference, and make the board projection close/archive future completed mirrors** (recommended): The open backlog drops to live work, and the accumulation does not recur. Requires re-verifying each linked Action's acceptance against the governed base revision before its Issue is closed; the projection change ships through the normal reviewed PR path.
+- **Authorize a one-time closure of verified done-Action mirror Issues only, leaving the projection unchanged**: The count drops now, but new mirror Issues for completed Actions keep accumulating until the projection is fixed separately.
+- **Do not close existing mirrors; only change the projection to close future completed mirrors**: No immediate backlog reduction; the 116 legacy mirrors stay open.
+
+## Rationale
+
+The 2026-10-04 triage inventoried 178 open Issues in pmark/arcadia; 155 map explicitly to a governed Action, and 116 of those mirror an Action already marked done in checked-in plans. src/scheduling/github.ts issueBody creates one Issue per scheduled Action and reconcileBoard only creates Issues and updates card status; nothing closes a mirror Issue when its Action leaves the scheduled set as done, so completed cards accumulate. Only the eight code-level defects promoted to done Actions were closeable under Decision 0055 (closed 2026-10-04); the remaining 116 are feature mirrors, outside 0055's defect scope. Decision 0015 leaves closing attention/remote Issues to the operator and adds no agent closure authority. Closing a mirror Issue is externally visible but reversible (the Issue can be reopened), and the canonical work state already lives in the checked-in Plan, so a bulk closure is hygiene over a projection rather than a gate. It still needs a Decision because it is external publication/messaging performed at volume.
+
+Proposed by Agent Ask authorize-close-done-action-mirror-issues-2026-10-04.
