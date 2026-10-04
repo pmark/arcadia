@@ -91,7 +91,7 @@ describe("go broker agent setup", () => {
     expect(first.backups.length).toBeGreaterThanOrEqual(4);
     const codexConfig = readFileSync(paths.codexConfig, "utf8");
     expect(codexConfig).toContain('approval_policy = "on-request"');
-    expect(codexConfig).toContain('default_permissions = "arcadia-unattended"');
+    expect(codexConfig).not.toMatch(/^default_permissions\s*=/m);
     expect(codexConfig).not.toContain('sandbox_mode = "workspace-write"');
     expect(codexConfig).toContain("[permissions.arcadia-unattended]");
     expect(codexConfig).toContain('".env" = "deny"');
@@ -172,6 +172,30 @@ describe("go broker agent setup", () => {
     expect(second).toMatchObject({ changed: [], backups: [], status: { ready: true } });
   });
 
+  it.each([null, ":workspace", "personal", "arcadia-unattended"])(
+    "preserves the interactive default %s while installing the separate Go profile",
+    (defaultProfile) => {
+      const fixture = createFixture();
+      const paths = resolveAgentSetupPaths(fixture.home);
+      const selection = defaultProfile === null ? "" : `default_permissions = "${defaultProfile}"\n`;
+      write(paths.codexConfig, `${selection}model = "gpt-test"\n`);
+      const options = {
+        home: fixture.home,
+        executables: fixture.executables,
+        skillTemplate: template,
+        agentAskSkillTemplate: agentAskTemplate
+      };
+      expect(configureGoBrokerAgents(options).status.ready).toBe(true);
+      const config = readFileSync(paths.codexConfig, "utf8");
+      if (defaultProfile === null) expect(config).not.toMatch(/^default_permissions\s*=/m);
+      else expect(config).toContain(selection.trim());
+      expect(config).toContain("[permissions.arcadia-unattended]");
+      expect(config).toContain("[permissions.arcadia-unattended.network]\nenabled = false");
+      expect(inspectGoBrokerAgentSetup(options).checks.codexNativeProfile).toBe(true);
+      expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+    }
+  );
+
   it("migrates the legacy unattended layer to the native Desktop permission profile", () => {
     const fixture = createFixture();
     const profile = path.join(fixture.home, ".codex", "arcadia-unattended.config.toml");
@@ -187,7 +211,7 @@ describe("go broker agent setup", () => {
     expect(result.status.ready).toBe(true);
     const config = readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8");
     expect(config).toContain('approval_policy = "on-request"');
-    expect(config).toContain('default_permissions = "arcadia-unattended"');
+    expect(config).not.toMatch(/^default_permissions\s*=/m);
     expect(config).toContain("[permissions.arcadia-unattended]");
     expect(readFileSync(profile, "utf8")).toContain("Retired by `arcadia go-broker install`");
   });

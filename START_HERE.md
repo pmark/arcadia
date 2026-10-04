@@ -1435,6 +1435,10 @@ trusts the home directory, a shared worktree root, or a parent directory of
 another Project; `status` lists any such configured path as `never trusted`.
 Verify installation with:
 
+Installing Go adds this named profile without changing Codex's global default.
+Ordinary interactive tasks use your existing default; only Go CLI handoffs
+select `arcadia-unattended` explicitly. For Desktop Go tasks, select it as above.
+
 ```sh
 pnpm arcadia go-broker status
 ```

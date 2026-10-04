@@ -222,6 +222,10 @@ __ARCADIA_CODEX_WORK_MONITOR_BROKER__ # work-monitor preflight alone
   where the host process can find it, or retry under `dangerouslyDisableSandbox`
   for that single command as the named exception, not a pattern to repeat
   going forward.
+- Installing Go adds the named `arcadia-unattended` permission profile without
+  selecting it as Codex's global default. Interactive sessions keep their existing
+  default; CLI Go handoffs select the profile explicitly, and Desktop Go tasks
+  require the operator selection above. Reinstalling must preserve that separation.
 - The protected broker installer configures the default `~/.codex/config.toml`
   and every present named `~/.codex/*.config.toml` profile with the exact
   `~/.codex/worktrees`, `~/.claude/worktrees`, and `~/.opencode/worktrees`
