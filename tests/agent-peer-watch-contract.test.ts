@@ -286,8 +286,18 @@ describe("peer classification", () => {
     }
     const released = classifyPeer(input({ ownership: ok(releasedOwnership()) }));
     expect(released).toMatchObject({ state: "idle", ownership: { state: "released", releaseRef: "asksettle_released_1" }, takeover: { eligible: true, basis: "claim_released" } });
-    // A terminal Session with no claim and no other owner is released too.
-    expect(classifyPeer(input({ ownership: ok({ claim: null, principal: { kind: "managed-session", session: session({ status: "completed", exitReceipt: exitReceipt({ outcome: "accepted_completion", leaseHandoff: false }) }) }, releaseFacts: NO_OWNER }) })).ownership.state).toBe("released");
+    // A managed Session principal without a claim never proves release, whatever its state.
+    for (const [label, principalSession] of [
+      ["completed and reconciled", session({ status: "completed", exitReceipt: exitReceipt({ outcome: "accepted_completion", leaseHandoff: false }) })],
+      ["failed, unreconciled", session({ status: "failed", exitReceipt: null })],
+      ["needs_input", session({ status: "needs_input", exitReceipt: exitReceipt({ outcome: "needs_input", leaseHandoff: false }) })],
+      ["different agent", session({ agent: "claude", status: "completed", exitReceipt: exitReceipt() })],
+      ["different branch", session({ status: "completed", branch: "codex/other", exitReceipt: exitReceipt() })]
+    ] as const) {
+      const result = classifyPeer(input({ ownership: ok({ claim: null, principal: { kind: "managed-session", session: principalSession }, releaseFacts: NO_OWNER }) }));
+      expect(result.ownership.state, label).toBe("unknown");
+      expectNotReleased(result);
+    }
   });
 
   it("proves a principal terminal only for a real, unsuperseded incomplete_resumable lease handoff (B2)", () => {
@@ -440,32 +450,184 @@ describe("takeover requests (I1, I3)", () => {
     }
   });
 
-  it("documents the residual window: a release without a release reference validates only within takeoverMaxAgeMs", () => {
-    const unref: ReleaseFacts = { ...NO_OWNER, releaseRef: null };
-    const first = buildTakeoverRequest(classifyPeer(input({ ownership: ok({ ...releasedOwnership(), releaseFacts: unref }) })), { agent: "codex", tier: "standard" });
-    if (!first.ok) throw new Error("expected a request");
-    // Re-claimed and released again without any reference: indistinguishable inside the window.
-    expect(validateTakeoverRequest(first.request, releasedNow(later(30_000), unref), context()).ok).toBe(true);
-    // Beyond the window the same request is refused.
-    expect(validateTakeoverRequest(first.request, releasedNow(later(PEER_WATCH_WINDOWS.takeoverMaxAgeMs + 30_000), unref), context({ now: later(PEER_WATCH_WINDOWS.takeoverMaxAgeMs + 60_000) })).ok).toBe(false);
+  it("never makes a release without a release reference takeover-eligible", () => {
+    const unref = classifyPeer(input({ ownership: ok({ ...releasedOwnership(), releaseFacts: { ...NO_OWNER, releaseRef: null } }) }));
+    expect(unref).toMatchObject({ state: "idle", ownership: { state: "released", releaseRef: null }, takeover: { eligible: false, basis: null }, permittedActions: ["observe", "escalate_to_operator"] });
+    expect(buildTakeoverRequest(unref, { agent: "codex", tier: "standard" }).ok).toBe(false);
+    const request = built();
+    expect(validateTakeoverRequest(request, releasedNow(later(30_000), { ...NO_OWNER, releaseRef: null }), context()).ok).toBe(false);
+  });
+
+  it("refuses an invalid validation clock or classification times, and returns a normalized copy", () => {
+    const stale = { ...built(), observed: { ...built().observed, classifiedAt: "2020-01-01T00:00:00Z" } };
+    const staleCurrent = { ...releasedNow(), classifiedAt: "2020-01-01T00:00:00Z" };
+    for (const now of [new Date(Number.NaN), "2026-10-04T21:00:00Z" as unknown as Date, undefined as unknown as Date]) {
+      expect(validateTakeoverRequest(stale, staleCurrent, { now, pointer: POINTER })).toMatchObject({ ok: false, reasons: [expect.stringMatching(/clock/)] });
+    }
+    expect(validateTakeoverRequest({ ...built(), observed: { ...built().observed, classifiedAt: "not a time" } }, releasedNow(), context()).ok).toBe(false);
+    expect(validateTakeoverRequest(built(), { ...releasedNow(), classifiedAt: "" }, context()).ok).toBe(false);
+    const extras = { ...built(), evil: 1, requester: { ...built().requester, extra: 1 }, observed: { ...built().observed, state: "healthy", evidenceRefs: ["commit:x", 1, {}] } };
+    const decision = validateTakeoverRequest(extras, releasedNow(), context());
+    expect(decision.ok).toBe(true);
+    if (decision.ok) {
+      expect(decision.request).not.toBe(extras);
+      expect(decision.request).not.toHaveProperty("evil");
+      expect(decision.request.requester).toEqual({ agent: "opencode", tier: "standard" });
+      expect(decision.request.observed).toMatchObject({ state: "idle", evidenceRefs: ["commit:x"] });
+    }
   });
 });
 
-/** One fixture per classification-table row, so the published table is the behaviour. */
-const TABLE_FIXTURES: Record<(typeof PEER_WATCH_CLASSIFICATION_TABLE)[number]["id"], { input: PeerWatchInput; actions: string[] | null }> = {
-  "ownership-unreadable": { input: input({ ownership: { readable: false, reason: "locked" } }), actions: ["observe", "escalate_to_operator"] },
-  "principal-mismatch": { input: input({ ownership: ok(owned({ principal: { kind: "managed-session", session: session({ agent: "claude" }) } })) }), actions: ["observe", "escalate_to_operator"] },
-  "no-claim-unaffirmed": { input: input({ ownership: ok({ claim: null, principal: { kind: "none" }, releaseFacts: null }) }), actions: ["observe", "escalate_to_operator"] },
-  "no-claim-owner-exists": { input: input({ ownership: ok({ claim: null, principal: { kind: "managed-session", session: session() }, releaseFacts: NO_OWNER }) }), actions: ["observe", "escalate_to_operator"] },
-  released: { input: input({ ownership: ok(releasedOwnership()) }), actions: ["observe", "continue_released_work"] },
-  "principal-terminal": { input: input({ ownership: ok(terminalOwnership()) }), actions: ["observe", "continue_released_work"] },
-  "exited-not-resumable": { input: input({ ownership: ok(terminalOwnership({}, { outcome: "missing_evidence", leaseHandoff: false })), commits: ok([commit({ committedAt: minutes(60) })]) }), actions: null },
-  exhausted: { input: input({ capacity: ok(receipt({ availability: "budget_limited" })) }), actions: ["observe", "offer_help", "escalate_to_operator"] },
-  healthy: { input: input({ commits: ok([commit()]) }), actions: ["observe"] },
-  idle: { input: input({ commits: ok([commit({ committedAt: minutes(60) })]) }), actions: ["observe", "offer_help"] },
-  "silence-unproven": { input: input({ commits: { readable: false, reason: "git unavailable" } }), actions: ["observe", "escalate_to_operator"] },
-  stalled: { input: input(), actions: ["observe", "offer_help", "escalate_to_operator"] }
+/**
+ * Real fixtures for every classification-table row, including the review
+ * probes, so the published table is the behaviour and cannot drift.
+ */
+type TableFixture = { label: string; input: PeerWatchInput; actions: string[] | null };
+const fx = (label: string, overrides: Partial<PeerWatchInput>, actions: string[] | null): TableFixture => ({ label, input: input(overrides), actions });
+const ESCALATE = ["observe", "escalate_to_operator"];
+const CONTINUE = ["observe", "continue_released_work"];
+const raw = (value: unknown): PeerWatchInput["ownership"] => ({ readable: true, value }) as unknown as PeerWatchInput["ownership"];
+const TABLE_FIXTURES: Record<(typeof PEER_WATCH_CLASSIFICATION_TABLE)[number]["id"], TableFixture[]> = {
+  "ownership-unreadable": [
+    fx("rows unreadable", { ownership: { readable: false, reason: "locked" } }, ESCALATE),
+    fx("releaseFacts {}", { ownership: raw({ claim: null, principal: { kind: "none" }, releaseFacts: {} }) }, ESCALATE),
+    fx("claim undefined", { ownership: raw({ claim: undefined, principal: { kind: "none" }, releaseFacts: NO_OWNER }) }, ESCALATE),
+    fx("principal without kind", { ownership: raw({ claim: null, principal: {}, releaseFacts: NO_OWNER }) }, ESCALATE),
+    fx("receipt missing isSimulated", { ownership: raw(owned({ principal: { kind: "managed-session", session: { ...session({ status: "completed" }), exitReceipt: { id: "x", outcome: "incomplete_resumable", leaseHandoff: true, supersededBySessionId: null } as unknown as ExitReceiptObservation } } })) }, ESCALATE),
+    fx("receipt leaseHandoff 1", { ownership: raw(terminalOwnership({}, { leaseHandoff: 1 as unknown as boolean })) }, ESCALATE),
+    fx("receipt superseded ''", { ownership: raw(terminalOwnership({}, { supersededBySessionId: "" })) }, ESCALATE),
+    fx("Session status queued", { ownership: raw(terminalOwnership({ status: "queued" as SessionObservation["status"] })) }, ESCALATE)
+  ],
+  "principal-mismatch": [
+    fx("running claude Session for codex", { ownership: ok(owned({ principal: { kind: "managed-session", session: session({ agent: "claude" }) } })) }, ESCALATE),
+    fx("terminal claude Session for codex", { ownership: ok(terminalOwnership({ agent: "claude" })) }, ESCALATE),
+    fx("native principal with no agent", { ownership: ok(owned({ principal: { kind: "native-runtime", agent: null, id: "rt" } })) }, ESCALATE),
+    fx("no claim, prepared principal of another agent", { ownership: ok({ claim: null, principal: { kind: "prepared", agent: "opencode", id: "h" }, releaseFacts: NO_OWNER }) }, ESCALATE),
+    fx("no claim, reservation without a principal", { ownership: ok({ claim: null, principal: { kind: "none" }, releaseFacts: { ...NO_OWNER, reservation: true } }) }, ESCALATE)
+  ],
+  "no-claim-unaffirmed": [
+    fx("facts not read", { ownership: ok({ claim: null, principal: { kind: "none" }, releaseFacts: null }) }, ESCALATE),
+    fx("principal unknown", { ownership: ok({ claim: null, principal: { kind: "unknown" }, releaseFacts: NO_OWNER }) }, ESCALATE),
+    fx("terminal Session principal", { ownership: ok({ claim: null, principal: { kind: "managed-session", session: session({ status: "failed", exitReceipt: null }) }, releaseFacts: NO_OWNER }) }, ESCALATE)
+  ],
+  "no-claim-owner-exists": [
+    fx("running Session", { ownership: ok({ claim: null, principal: { kind: "managed-session", session: session() }, releaseFacts: NO_OWNER }) }, ESCALATE),
+    fx("manual handoff", { ownership: ok({ claim: null, principal: { kind: "prepared", agent: "codex", id: "manual" }, releaseFacts: { ...NO_OWNER, manualHandoff: true } }) }, ESCALATE)
+  ],
+  released: [fx("affirmed release", { ownership: ok(releasedOwnership()) }, CONTINUE)],
+  "released-unreferenced": [fx("no release reference", { ownership: ok({ ...releasedOwnership(), releaseFacts: { ...NO_OWNER, releaseRef: null } }) }, ESCALATE)],
+  "principal-terminal": [
+    fx("resumable handoff", { ownership: ok(terminalOwnership()) }, CONTINUE),
+    fx("resumable handoff, refs/heads/ claim branch", { ownership: ok({ ...terminalOwnership(), claim: claim({ branch: `refs/heads/${BRANCH}` }) }) }, CONTINUE)
+  ],
+  "exited-not-resumable": [
+    fx("missing_evidence", { ownership: ok(terminalOwnership({}, { outcome: "missing_evidence", leaseHandoff: false })), commits: ok([commit({ committedAt: minutes(60) })]) }, null),
+    fx("terminal beside an affirmed live Session", { ownership: ok({ ...terminalOwnership(), releaseFacts: { ...NO_OWNER, liveSession: true } }) }, null),
+    fx("terminal beside an affirmed manual handoff", { ownership: ok({ ...terminalOwnership(), releaseFacts: { ...NO_OWNER, manualHandoff: true } }) }, null)
+  ],
+  exhausted: [fx("budget limited", { capacity: ok(receipt({ availability: "budget_limited" })) }, ["observe", "offer_help", "escalate_to_operator"])],
+  healthy: [fx("fresh commit", { commits: ok([commit()]) }, ["observe"])],
+  idle: [fx("quiet hour", { commits: ok([commit({ committedAt: minutes(60) })]) }, ["observe", "offer_help"])],
+  "silence-unproven": [fx("commits unreadable", { commits: { readable: false, reason: "git unavailable" } }, ESCALATE)],
+  stalled: [fx("silent", {}, ["observe", "offer_help", "escalate_to_operator"])]
 };
+
+describe("fail-closed input", () => {
+  it("classifies an invalid clock or subject as unknown without throwing", () => {
+    for (const now of [new Date(Number.NaN), "2026-10-04T21:00:00Z", undefined]) {
+      const result = classifyPeer({ ...input({ ownership: ok(releasedOwnership()) }), now: now as unknown as Date });
+      expect(result).toMatchObject({ state: "unknown", ownership: { state: "unknown" }, takeover: { eligible: false } });
+    }
+    expect(classifyPeer({ ...input(), subject: { agent: "gemini", project: "arcadia", actionId: "x" } as unknown as PeerWatchInput["subject"] }).state).toBe("unknown");
+    expect(classifyPeer({ ...input(), commits: { readable: true, value: [{ sha: 1 }] } as unknown as PeerWatchInput["commits"] }).state).toBe("unknown");
+    expect(classifyPeer(null as unknown as PeerWatchInput).state).toBe("unknown");
+  });
+
+  it("never grants takeover when any ownership field is missing, mistyped or outside its value set", () => {
+    const generic = [undefined, null, "", 0, 1, Number.NaN, "true"];
+    const without = (values: unknown[], ...drop: unknown[]) => values.filter((value) => !drop.some((d) => Object.is(d, value)));
+    // [path, values that must fail closed]; values valid for a field (null where nullable, "true" for a free id) are excluded.
+    const terminalFields: Array<[string[], unknown[]]> = [
+      [["claim"], without(generic, null)], [["principal"], generic], [["releaseFacts"], without(generic, null)],
+      ...["reservationId", "generation"].map((key): [string[], unknown[]] => [["claim", key], without(generic, "true")]),
+      ...["project", "actionId", "branch", "worktreePath", "createdAt"].map((key): [string[], unknown[]] => [["claim", key], generic]),
+      [["principal", "kind"], generic], [["principal", "session"], generic],
+      [["principal", "session", "id"], without(generic, "true")],
+      ...["agent", "status", "branch", "worktreePath"].map((key): [string[], unknown[]] => [["principal", "session", key], generic]),
+      ...["startedAt", "lastActivityAt", "stallFlaggedAt"].map((key): [string[], unknown[]] => [["principal", "session", key], without(generic, null)]),
+      [["principal", "session", "exitReceipt"], without(generic, null)],
+      [["principal", "session", "exitReceipt", "id"], without(generic, "true")],
+      ...["outcome", "leaseHandoff", "isSimulated"].map((key): [string[], unknown[]] => [["principal", "session", "exitReceipt", key], generic]),
+      [["principal", "session", "exitReceipt", "supersededBySessionId"], without(generic, null, "true")]
+    ];
+    const releasedFields: Array<[string[], unknown[]]> = [
+      [["claim"], without(generic, null)], [["principal"], generic], [["principal", "kind"], generic], [["releaseFacts"], generic],
+      ...["liveSession", "reservation", "manualHandoff"].map((key): [string[], unknown[]] => [["releaseFacts", key], generic]),
+      [["releaseFacts", "releaseRef"], without(generic, "true")]
+    ];
+    const set = (target: Record<string, unknown>, keys: string[], value: unknown): Record<string, unknown> => {
+      const copy = structuredClone(target);
+      let node: Record<string, unknown> = copy;
+      for (const key of keys.slice(0, -1)) node = node[key] as Record<string, unknown>;
+      if (value === undefined) delete node[keys.at(-1)!]; else node[keys.at(-1)!] = value;
+      return copy;
+    };
+    let checked = 0;
+    for (const [base, fields] of [[terminalOwnership(), terminalFields], [releasedOwnership(), releasedFields]] as const) {
+      expect(classifyPeer(input({ ownership: ok(base) })).takeover.eligible).toBe(true);
+      for (const [keys, values] of fields) for (const value of values) {
+        const result = classifyPeer(input({ ownership: raw(set(base as unknown as Record<string, unknown>, keys, value)) }));
+        expect(result.takeover.eligible, `${keys.join(".")} = ${String(value)}`).toBe(false);
+        expect(result.ownership.state, `${keys.join(".")} = ${String(value)}`).not.toBe("principal_terminal");
+        if (result.ownership.state === "released") expect(result.ownership.releaseRef, `${keys.join(".")} = ${String(value)}`).toBeNull();
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(150);
+  });
+});
+
+describe("takeover eligibility exhaustive sweep", () => {
+  it("grants takeover only under the full release or Decision 0051 conditions across every principal, receipt and fact combination", () => {
+    const claims: Array<ClaimObservation | null> = [null, claim(), claim({ branch: `refs/heads/${BRANCH}` }), claim({ worktreePath: "/w/other" })];
+    const agents = ["codex", "claude", "opencode", null, undefined];
+    const statuses = ["prepared", "running", "completed", "failed", "needs_input"];
+    const outcomes = ["successful_exit", "failed_execution", "missing_evidence", "needs_input", "incomplete_resumable", "accepted_completion"];
+    const receipts: unknown[] = [null];
+    for (const outcome of outcomes) for (const leaseHandoff of [true, false]) for (const supersededBySessionId of [null, "sess_2"]) for (const isSimulated of [true, false]) receipts.push({ id: "e", outcome, leaseHandoff, supersededBySessionId, isSimulated });
+    const principals: Array<Record<string, unknown>> = [{ kind: "none" }, { kind: "unknown" }];
+    for (const agent of agents) {
+      principals.push({ kind: "native-runtime", agent, id: null }, { kind: "prepared", agent, id: "x" });
+      for (const status of statuses) for (const exit of receipts) for (const branch of [BRANCH, "codex/other"]) for (const worktreePath of ["/w/enroll", "/w/other"]) {
+        principals.push({ kind: "managed-session", session: { ...session({ status: status as SessionObservation["status"], branch, worktreePath }), agent, exitReceipt: exit } });
+      }
+    }
+    const facts: Array<ReleaseFacts | null> = [null];
+    for (const liveSession of [true, false]) for (const reservation of [true, false]) for (const manualHandoff of [true, false]) for (const releaseRef of [null, "rel_1"]) facts.push({ liveSession, reservation, manualHandoff, releaseRef });
+    let eligible = 0;
+    for (const c of claims) for (const principal of principals) for (const releaseFacts of facts) {
+      const result = classifyPeer(input({ ownership: raw({ claim: c, principal, releaseFacts }) }));
+      if (!result.takeover.eligible) continue;
+      eligible++;
+      const s = principal.kind === "managed-session" ? principal.session as Record<string, unknown> : null;
+      const exit = s?.exitReceipt as Record<string, unknown> | null | undefined;
+      if (result.ownership.state === "released") {
+        expect(c).toBeNull();
+        expect(principal.kind).toBe("none");
+        expect(releaseFacts).toMatchObject({ liveSession: false, reservation: false, manualHandoff: false, releaseRef: "rel_1" });
+      } else {
+        expect(result.ownership.state).toBe("principal_terminal");
+        expect(c).not.toBeNull();
+        expect(s).toMatchObject({ agent: "codex", branch: BRANCH, worktreePath: c!.worktreePath });
+        expect(["completed", "failed", "needs_input"]).toContain(s!.status);
+        expect(s!.status).not.toBe("needs_input");
+        expect(exit).toMatchObject({ outcome: "incomplete_resumable", leaseHandoff: true, supersededBySessionId: null, isSimulated: false });
+        expect(releaseFacts?.liveSession === true || releaseFacts?.manualHandoff === true).toBe(false);
+      }
+    }
+    expect(eligible).toBeGreaterThan(0);
+  });
+});
 
 describe("procedure and code agree", () => {
   const doc = readFileSync(path.join(root, "docs/agent-guidance/agent-peer-watch.md"), "utf8");
@@ -481,16 +643,16 @@ describe("procedure and code agree", () => {
       .map((match) => ({ evidence: match[1], state: match[2], ownership: match[3], watcher: match[4] }));
     expect(rows).toEqual(PEER_WATCH_CLASSIFICATION_TABLE.map(({ evidence, state, ownership, watcher }) => ({ evidence, state, ownership, watcher })));
     for (const row of PEER_WATCH_CLASSIFICATION_TABLE) {
-      const fixture = TABLE_FIXTURES[row.id];
-      const result = classifyPeer(fixture.input);
-      if (row.state !== "by activity") expect(result.state, row.id).toBe(row.state);
-      expect(result.ownership.state, row.id).toBe(row.ownership);
-      if (fixture.actions) expect(result.permittedActions, row.id).toEqual(fixture.actions);
-      else {
-        expect(result.permittedActions, row.id).toContain("escalate_to_operator");
-        expect(result.takeover.eligible, row.id).toBe(false);
+      expect(TABLE_FIXTURES[row.id].length, row.id).toBeGreaterThan(0);
+      for (const fixture of TABLE_FIXTURES[row.id]) {
+        const label = `${row.id}: ${fixture.label}`;
+        const result = classifyPeer(fixture.input);
+        if (row.state !== "by activity") expect(result.state, label).toBe(row.state);
+        expect(result.ownership.state, label).toBe(row.ownership);
+        if (fixture.actions) expect(result.permittedActions, label).toEqual(fixture.actions);
+        else expect(result.permittedActions, label).toContain("escalate_to_operator");
+        expect(result.takeover.eligible, label).toBe(row.id === "released" || row.id === "principal-terminal");
       }
-      expect(result.takeover.eligible, row.id).toBe(row.ownership === "released" || row.ownership === "principal_terminal");
     }
   });
 

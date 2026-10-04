@@ -508,6 +508,6 @@ export function parseIsoInstant(value: string | null | undefined): number | null
 
 /** Git and the GitHub API name the same branch with or without `refs/heads/`. */
 export function normalizeBranch(branch: string | null | undefined): string | null {
-  if (typeof branch !== "string" || !branch.trim()) return null;
-  return branch.trim().replace(/^refs\/heads\//, "");
+  if (typeof branch !== "string" || !branch.trim() || branch !== branch.trim()) return null;
+  return branch.replace(/^refs\/heads\//, "");
 }

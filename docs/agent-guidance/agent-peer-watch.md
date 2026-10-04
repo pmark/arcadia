@@ -32,15 +32,19 @@ it fails closed: when they do not affirmatively show a release, it is `held`
 or `unknown`, never `released`.
 
 - **Released** needs three things. There is no Action claim (as
-  `getActiveActionClaim` reads it). No principal is observed. And the watcher
-  read and affirmed all of these for the Action and its candidate:
+  `getActiveActionClaim` reads it). The principal is `none`: a managed Session
+  without a claim, whether live, exited, unreconciled or `needs_input`, never
+  proves release. And the watcher read and affirmed, each as an explicit
+  `false`, all of these for the Action and its candidate:
   - no `prepared` or `running` `agent_sessions` row;
   - no `agent_worktree_reservations` row, with or without claim columns;
   - no manual or native handoff, and no pending enrollment.
 
   A null claim alone proves nothing. A reservation without claim columns, a
   claim whose worktree is gone, or a handoff that was never launched can all
-  still have an owner.
+  still have an owner. A release is takeover-eligible only when it carries a
+  release reference, such as a settlement or release receipt id. Without one,
+  the watcher escalates.
 - **Principal proven terminal** is the term from Decision 0051. It means
   exactly the receipt `arcadia go` resumes from (`getResumableLeaseHandoff`):
   - the claim's managed Session is terminal;
@@ -54,6 +58,17 @@ or `unknown`, never `released`.
   `needs_input` (an operator question), `failed_execution`,
   `missing_evidence`, `successful_exit`, `accepted_completion`, superseded or
   simulated.
+- **Positive affirmation only.** Ownership input is parsed strictly before
+  classification. Every field must be present, with exactly its type and value
+  set; absent rows are `null`, never omitted. These all fail closed to
+  `unknown`:
+  - `undefined`, `0`, `1`, `""`, `NaN` or `"true"` where a boolean, enum or
+    instant belongs;
+  - an unknown principal kind or Session status;
+  - an incomplete claim, Session or receipt row;
+  - an invalid watcher clock.
+
+  An affirmed live Session or manual handoff beside a claim keeps it `held`.
 - **Principal agent.** The principal must be the watched agent for every
   state other than released. A mismatch, or an agent that cannot be
   established, is `unknown`.
@@ -231,13 +246,14 @@ Rows are checked in order.
 
 | Evidence | State | Ownership | Watcher may |
 |---|---|---|---|
-| Ownership rows unreadable | unknown | unknown | observe, escalate |
-| Principal agent unknown or a different agent than the watched one (any claim state) | unknown | unknown | observe, escalate |
-| No claim; release facts not read, or principal unknown | unknown | unknown | observe, escalate |
-| No claim; a prepared or running Session, a reservation, a manual handoff or a native/prepared principal exists | unknown | held | observe, escalate |
-| No claim; no principal; caller affirms no live Session, no reservation and no manual handoff | idle | released | observe, continue released work (pointer must name the Action) |
-| Claim held; its managed Session is terminal with a real, unsuperseded `incomplete_resumable` lease handoff on this candidate | idle | principal_terminal | observe, continue released work (pointer must name the Action) |
-| Claim held; its Session exited but is unreconciled, `needs_input`, simulated, superseded or reconciled with any other outcome | by activity | held | the activity row's actions, plus escalate |
+| Ownership rows unreadable, or any ownership field missing, mistyped or outside its value set | unknown | unknown | observe, escalate |
+| A principal or owner signal whose agent is unknown or not the watched agent (any claim state) | unknown | unknown | observe, escalate |
+| No claim; principal unknown or a managed Session (a Session without a claim never proves release), or release facts not read | unknown | unknown | observe, escalate |
+| No claim; the watched agent's live Session, or its native or prepared principal, exists | unknown | held | observe, escalate |
+| No claim; principal `none`; release facts all `false`; a release reference | idle | released | observe, continue released work (pointer must name the Action) |
+| No claim; principal `none`; release facts all `false`; no release reference | idle | released | observe, escalate |
+| Claim held; no other live Session or manual handoff affirmed; its managed Session is terminal with a real, unsuperseded `incomplete_resumable` lease handoff on this candidate | idle | principal_terminal | observe, continue released work (pointer must name the Action) |
+| Claim held; its Session exited but is unreconciled, `needs_input`, simulated, superseded or reconciled with any other outcome, or another live Session or manual handoff is affirmed | by activity | held | the activity row's actions, plus escalate |
 | Claim held; fresh `real` capacity evidence of a spent window, `usage_limited` or `budget_limited` | exhausted | held | observe, offer help, escalate |
 | Claim held; latest counted activity within `activityFreshMs` | healthy | held | observe |
 | Claim held; latest counted activity within `stallAfterMs` | idle | held | observe, offer help |
@@ -303,12 +319,14 @@ requires all of these:
   pointer's Action, not the watched one. An Action already settled or landed
   has moved off the pointer, and nothing remains to continue.
 
-A release with no release reference cannot be told apart from a later
-re-claim and re-release. `takeoverMaxAgeMs` bounds that window.
+A release with no release reference cannot be told apart from a later re-claim
+and re-release, so it is never takeover-eligible. Validation returns a
+normalized copy of the request with only the contract's fields, takes the
+state from the fresh classification, and refuses an invalid clock.
 
 | Basis | Existing recovery |
 |---|---|
-| Released (pointer still names the Action) | Preview with `arcadia go --agent <agent>`, which changes nothing. Then `arcadia go --agent <agent> --apply` dispatches it with a fresh claim. |
+| Released with a release reference (pointer still names the Action) | Preview with `arcadia go --agent <agent>`, which changes nothing. Then `arcadia go --agent <agent> --apply` dispatches it with a fresh claim. |
 | Principal proven terminal (pointer still names the Action) | Same preview and `--apply`. `go` resumes the same candidate from the `incomplete_resumable` handoff (Decision 0051). |
 | Session exited, not reconciled | Escalate. The operator judges and may run `arcadia session reconcile <session-id>`. |
 | `needs_input` | Escalate. The operator answers the question and the owner resumes. |
