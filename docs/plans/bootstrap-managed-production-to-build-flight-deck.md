@@ -3482,6 +3482,73 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/qa/prReview.ts", "tests/code-review-not-applicable.test.ts", "/private/tmp/claude-501/-Users-pmark-Dev-MR-Arcadia-arcadia/8b3c388d-2a2c-4a1b-bfb8-165c1289534c/scratchpad/na-smoke-935/", "https://github.com/pmark/arcadia/issues/899"]
+  - id: define-agent-peer-watch-contract
+    title: "Write the agent-agnostic peer-watch contract: what evidence each agent publishes, how stalls and exhaustion are classified, and how takeover is requested without stealing ownership."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Write the agent-agnostic peer-watch contract: what evidence each agent publishes, how stalls and exhaustion are classified, and how takeover is requested without stealing ownership."
+    expected_artifact: Evidence satisfying Agent Ask define-agent-peer-watch-contract
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-peer-watch-2026-10-04
+    acceptance_criteria:
+      - "A checked-in contract (docs/agent-guidance/ procedure registered in index.json plus a typed schema in code) defines the evidence an agent publishes and a watcher reads, using only channels every supported agent already has: Git commits on its candidate branch (a machine-readable trailer such as Arcadia-Agent, Arcadia-Action and Arcadia-Heartbeat on commits and on an optional empty heartbeat commit), GitHub issue comments on the coordination issue (one fenced machine-readable block per comment), the existing session/lease rows, and the coding-agent capacity telemetry; it names which of these each of Claude Code, Codex and OpenCode can produce today."
+      - The contract classifies each watched agent as healthy, idle, stalled, exhausted (out of tokens or capacity), or unknown from that evidence with explicit freshness windows, and states in code and prose that a coding turn ending, a missing process, a preserved local head, or silence alone is never proof of released ownership; takeover is requested through the existing claim/ownership recovery with the old principal proven terminal or released, and a watcher may only offer help, escalate to the operator, or continue work the owner has released.
+      - Tests cover the schema, trailer and comment-block parsing with malformed, forged and stale input, the classification table including the 2026-10-03 enrollment-collision case (turn ended, no process, local head preserved, orchestrator still owning) classified as not released, and the agent-guidance index and fingerprint checks pass.
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/index.json", "docs/agent-guidance/continuation.md", "src/codingAgents/capacity.ts", "src/sessions/", "https://github.com/pmark/arcadia/issues/899"]
+  - id: implement-agent-peer-watch-reader
+    title: Build the deterministic read-only watcher that gathers peer evidence and reports each agent's state.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Build the deterministic read-only watcher that gathers peer evidence and reports each agent's state.
+    expected_artifact: Evidence satisfying Agent Ask implement-agent-peer-watch-reader
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-peer-watch-2026-10-04
+    acceptance_criteria:
+      - A read-only command (for example arcadia agents watch) gathers the contract's evidence for every agent with an active claim, candidate or lease (candidate branch commits and their trailers, issue comments on a named coordination issue via the GitHub CLI with bounded polling and rate-limit awareness, session and lease rows, capacity telemetry), classifies each agent per the contract, and prints a typed status with the evidence and its age; it never mutates the workspace, repositories or GitHub, and unknown or unreadable evidence is reported as unknown, not healthy.
+      - "The production tick and the operator surfaces that already show escalations consume the classification: a stalled or exhausted owner of the current Action raises a deduplicated operator escalation with an accurate remedy, and nothing is dispatched to or taken from the owner."
+      - "Hermetic tests with fake Git history, fake issue comments and capacity fixtures cover healthy, idle, stalled, exhausted and unknown agents, forged or stale heartbeats, GitHub rate limiting, and the 2026-10-03 collision; focused suites, lint, tsc, build, check:agent-guidance and the preservation self-check pass."
+    depends_on: [define-agent-peer-watch-contract]
+    decisions: []
+    references: ["src/production/tick.ts", "src/commands/workMonitor.ts", "src/codingAgents/capacity.ts"]
+  - id: publish-agent-peer-heartbeats-and-offers
+    title: Have agents publish heartbeats and peers post help offers through commits and issue comments, only under an explicit operator Decision.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Have agents publish heartbeats and peers post help offers through commits and issue comments, only under an explicit operator Decision.
+    expected_artifact: Evidence satisfying Agent Ask publish-agent-peer-heartbeats-and-offers
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-peer-watch-2026-10-04
+    acceptance_criteria:
+      - Agent launch and exit paths add the contract's trailers to commits the agent already makes and can emit one bounded heartbeat (an empty commit or a fenced issue-comment block) at a finite interval while a Session is live, and a peer's watcher can read those heartbeats; no heartbeat is posted unless the owner's candidate is live.
+      - Posting a heartbeat or help offer to GitHub is gated by an explicit operator Decision naming the repository and issue, a request-id replay guard, a rate budget and an Off fence; without the Decision the same text is written as a local draft only, never posted; an offer carries the observed evidence and the exact claim-release request a peer would need, and never takes over a claim.
+      - "Hermetic tests cover trailer injection on real commits, the heartbeat interval and rate budget, the Decision gate, replay, Off, a forged peer comment being ignored, and a handoff offer accepted by the owner through the existing claim-release path; focused suites, lint, tsc, build and check:agent-guidance pass."
+    depends_on: [implement-agent-peer-watch-reader]
+    decisions: []
+    references: ["src/sessions/launch.ts", "src/sessions/reconciliation.ts", "docs/agent-guidance/pull-requests.md"]
+  - id: enroll-opencode-in-agent-peer-watch
+    title: Make OpenCode a full participant in peer watch through the same Git and issue-comment channels.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make OpenCode a full participant in peer watch through the same Git and issue-comment channels.
+    expected_artifact: Evidence satisfying Agent Ask enroll-opencode-in-agent-peer-watch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-peer-watch-2026-10-04
+    acceptance_criteria:
+      - OpenCode sessions launched through the fixed OpenCode launcher publish the contract's commit trailers and heartbeats, are watched by the Claude Code and Codex peers, and can watch them, using only Git commits and GitHub issue comments plus the existing capacity telemetry; the contract's table lists what OpenCode can and cannot produce and degrades to unknown rather than healthy where it cannot.
+      - A hermetic three-agent scenario (Claude Code, Codex, OpenCode fakes) shows one agent exhausting its capacity mid-Action, the others classifying it exhausted from commits, comments and telemetry, offering help through a comment draft (or a posted comment when the Decision exists), the owner releasing the claim through the existing recovery path, and a peer continuing the same Action with no duplicate candidate, claim or settlement; a stalled-but-owning agent is never taken over; the operator guide explains how to read the watch output and approve the posting Decision.
+    depends_on: [publish-agent-peer-heartbeats-and-offers]
+    decisions: []
+    references: ["scripts/arcadia-go-broker.ts", "src/goBroker.ts", "tests/rehearsal-three-action.test.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
