@@ -3153,6 +3153,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/reports/three-action-managed-production-scope-design-2026-10-02.md", "docs/managed-production-readiness.md", "docs/agent-guidance/operator-actions.md", "tests/rehearsal-three-action.test.ts", "tests/grant-rehearsal-preflight.test.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/923", "https://github.com/pmark/arcadia/issues/925"]
+  - id: normalize-check-contexts-in-review-readiness
+    title: Normalize every pull-request check entry (CheckRun and StatusContext) before classification at every call site, and make advisory bot contexts never gate readiness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Normalize every pull-request check entry (CheckRun and StatusContext) before classification at every call site, and make advisory bot contexts never gate readiness.
+    expected_artifact: Evidence satisfying Agent Ask normalize-check-contexts-in-review-readiness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask normalize-check-contexts-in-review-readiness-2026-10-04
+    acceptance_criteria:
+      - "classifyPullRequestChecks and every caller (the tick's independent review step, assertPullRequestReadyForQa and evaluateDeterministicEvidence) pass the statusCheckRollup through the existing normalizeCheck (src/workMonitoring/pullRequests.ts) or one shared normalizer, so a StatusContext entry (context, state, targetUrl, description) is read by its real state: SUCCESS passes; PENDING and EXPECTED wait; FAILURE and ERROR block; and an unrecognised entry shape is reported by name as unknown rather than silently pending."
+      - The CodeRabbit context is treated as advisory under Decision 0080 and never gates readiness, whatever its state (including rate limited, pending or failed), while every other check, including required GitHub Actions jobs, still gates exactly as before; the exemption is one named list with a test and a docs line, not a general bypass.
+      - "Tests use real payload shapes captured from this repository's pull requests (a CheckRun-only list, a CheckRun plus CodeRabbit StatusContext list, a pending StatusContext, a failed non-advisory StatusContext, an empty list) through classifyPullRequestChecks, the tick step in tests/tick-independent-review.test.ts, and qa pr readiness; the empty-rollup refusal is unchanged; focused suites, lint, tsc, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "src/production/independentReview.ts", "src/workMonitoring/pullRequests.ts", "tests/tick-independent-review.test.ts", "tests/qa-pr-review.test.ts", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
