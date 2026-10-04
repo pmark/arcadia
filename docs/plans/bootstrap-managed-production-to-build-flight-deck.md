@@ -3553,7 +3553,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-decision-approve-resolution-body
+current_action: define-agent-peer-watch-contract
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
