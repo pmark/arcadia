@@ -3452,7 +3452,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prove-literal-split-browser-and-ledger
+current_action: code-review-not-applicable-criteria
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
