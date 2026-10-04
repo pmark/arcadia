@@ -77,8 +77,12 @@ export interface CandidatePreservationHooks {
 /** The network half, injected so the local path is proven without a real remote. */
 export interface CandidatePreservationRemote {
   hasRemote(repositoryPath: string): boolean;
-  /** Push the exact agent branch. Returns the remote name used. */
-  push(input: { repositoryPath: string; branch: string }): { remote: string };
+  /**
+   * Push the exact agent branch. Returns the remote name used. With
+   * `commitSha`, push exactly that commit to the branch (never whatever the
+   * local tip became in the meantime).
+   */
+  push(input: { repositoryPath: string; branch: string; commitSha?: string }): { remote: string };
   findPullRequest(input: { repositoryPath: string; branch: string }): { number: number; url: string } | null;
   upsertDraftPullRequest(input: {
     repositoryPath: string;
@@ -668,8 +672,10 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   hasRemote(repositoryPath) {
     return tryGit(repositoryPath, ["remote", "get-url", "origin"]) !== null;
   },
-  push({ repositoryPath, branch }) {
-    git(repositoryPath, ["push", "--set-upstream", "origin", branch]);
+  push({ repositoryPath, branch, commitSha }) {
+    git(repositoryPath, commitSha
+      ? ["push", "origin", `${commitSha}:refs/heads/${branch}`]
+      : ["push", "--set-upstream", "origin", branch]);
     return { remote: "origin" };
   },
   findPullRequest({ repositoryPath, branch }) {

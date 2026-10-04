@@ -4,7 +4,7 @@ import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { independentVerdictReadiness } from "../sessions/roleLineage.js";
-import { isAncestor } from "../git/worktrees.js";
+import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
   classifyPullRequestChecks,
   reviewerUnavailableReason,
@@ -21,22 +21,27 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  * each later tick advances that PR by at most one side effect toward the two
  * exact-head verdicts integration needs:
  *
- * 1. push the settled head when a settlement commit landed after preservation
- *    (the PR still shows the preserved commit), under `--remote-preservation`;
+ * 1. push exactly the settled head commit when a settlement commit landed after
+ *    preservation (the PR still shows the preserved commit);
  * 2. `gh pr ready` the draft;
  * 3. poll required checks (read-only) until green, failed or past a deadline;
  * 4. run `arcadia qa code-review`, then `arcadia qa pr`, one reviewer per tick.
  *
  * Nothing here sleeps: every tick re-derives where the candidate stands from
  * GitHub, the role lineage and one persisted step row per exact head, so a
- * restart resumes mid-step and a replayed step is a no-op (a ready PR is not
- * readied again; a recorded verdict is reused by its per-head receipt, and an
- * interrupted one resumes its own lineage attempt). Every side effect re-reads
- * the policy first and is withheld on Off, a changed epoch or a lapsed grant.
- * Failures of GitHub, the push or the reviewer's own infrastructure consume a
- * per-head budget that survives restart; a reviewer's real non-pass judgment is
- * never retried and never integrates.
+ * restarted worker resumes mid-step and a replayed step is a no-op (a ready PR
+ * is not readied again; a recorded verdict is reused by its per-head receipt,
+ * and an interrupted one resumes its own lineage attempt). Every side effect
+ * re-reads the policy first, against a fresh clock, and is withheld on Off, a
+ * changed epoch or a lapsed grant. Consecutive failures of GitHub, the push or
+ * the reviewer's own infrastructure consume a per-head budget that survives
+ * restart (a success resets it; a GitHub rate limit backs off without spending
+ * it). A non-pass verdict is re-run only when its own lineage receipt records
+ * that the reviewer was unavailable; a reviewer's real non-pass judgment is
+ * never retried automatically and never integrates.
  *
+ * Every step, the push included, requires `policyAuthorizesPullRequestReadiness`
+ * (`--remote-preservation` and a current Decision 0058 integration grant).
  * Out of scope by design: merging the PR on GitHub and pushing the base
  * branch. Integration remains the tick's local fast-forward.
  */
@@ -44,6 +49,7 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
 export type ReviewBlockCode =
   | "review_head_moved"
   | "review_pull_request_unavailable"
+  | "review_paused_as_draft"
   | "required_checks_failed"
   | "required_checks_timeout"
   | "review_budget_exhausted"
@@ -52,6 +58,7 @@ export type ReviewBlockCode =
 export const REVIEW_BLOCK_CODES: ReadonlySet<string> = new Set<ReviewBlockCode>([
   "review_head_moved",
   "review_pull_request_unavailable",
+  "review_paused_as_draft",
   "required_checks_failed",
   "required_checks_timeout",
   "review_budget_exhausted",
@@ -73,9 +80,13 @@ export interface IndependentReviewDeps {
   selectReviewer?: QaPrReviewDependencies["selectReviewer"];
   /** The push half of preservation's network adapter, reused to publish a settled head. */
   remote?: CandidatePreservationRemote;
+  /** A fresh reading of the time for authority checks; defaults to the tick's `now`. */
+  clock?: () => Date;
   pollIntervalMs?: number;
   checksDeadlineMs?: number;
   maxFailures?: number;
+  reviewerTimeoutMs?: number;
+  rateLimitBackoffMs?: number;
 }
 
 export interface ReviewStepRow {
@@ -89,9 +100,13 @@ export interface ReviewStepRow {
   ready_at: string | null;
   checks_started_at: string | null;
   last_polled_at: string | null;
+  /** Consecutive failures; any success resets it. */
   failures: number;
+  /** Which step the consecutive failures belong to (read, push, ready, code-review, qa). */
+  failure_step: string | null;
   last_error: string | null;
-  retry_role: string | null;
+  /** No GitHub read before this instant (a reported rate limit). */
+  backoff_until: string | null;
   /** The last polled outcome, replayed between polls so the escalation stays stable. */
   last_outcome_json: string | null;
   created_at: string;
@@ -112,8 +127,9 @@ export function ensureProductionReviewStepTable(db: Database.Database): void {
       checks_started_at TEXT,
       last_polled_at TEXT,
       failures INTEGER NOT NULL DEFAULT 0,
+      failure_step TEXT,
       last_error TEXT,
-      retry_role TEXT,
+      backoff_until TEXT,
       last_outcome_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -134,14 +150,12 @@ export function listReviewSteps(db: Database.Database, actionKey: string): Revie
 
 /**
  * Operator reset (`arcadia production reset-repair-budget`): a fresh failure
- * budget, checks deadline and poll for the Action. The row itself stays, so a
- * reviewer-infrastructure failure is still known to be retryable rather than
- * read as a real failed verdict.
+ * budget, checks deadline, backoff and poll for the Action.
  */
 export function resetReviewSteps(db: Database.Database, actionKey: string): number {
   ensureProductionReviewStepTable(db);
   return db.prepare(`UPDATE production_review_steps
-    SET failures = 0, last_error = NULL, checks_started_at = NULL, last_polled_at = NULL
+    SET failures = 0, failure_step = NULL, last_error = NULL, checks_started_at = NULL, last_polled_at = NULL, backoff_until = NULL
     WHERE action_key = ? AND (failures > 0 OR checks_started_at IS NOT NULL)`).run(actionKey).changes;
 }
 
@@ -192,9 +206,23 @@ function parseOutcome(json: string | null): ReviewStepOutcome | null {
   try { return JSON.parse(json) as ReviewStepOutcome; } catch { return null; }
 }
 
+const RATE_LIMITED = /rate limit|secondary rate|abuse detection|HTTP 429/i;
+
+/** Whether a non-pass lineage verdict records that the reviewer itself was unavailable (or went stale), never a judgment. */
+function retryableVerdictReceipt(json: string | null): boolean {
+  if (!json) return false;
+  try {
+    const receipt = JSON.parse(json) as { reviewerUnavailable?: unknown; stale?: unknown };
+    return (typeof receipt.reviewerUnavailable === "string" && receipt.reviewerUnavailable.length > 0) || receipt.stale === true;
+  } catch {
+    return false;
+  }
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
 
 /**
  * Advance one candidate's unattended review by at most one side effect.
@@ -213,24 +241,27 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const { session, repoRoot, now } = input;
   const deps = input.deps ?? {};
   const runCommand = deps.runCommand ?? runHostCommand;
+  const clock = deps.clock ?? (() => now);
   const pollIntervalMs = deps.pollIntervalMs ?? PRODUCTION_CONTROL_DEADLINES.reviewPollIntervalMs;
   const checksDeadlineMs = deps.checksDeadlineMs ?? PRODUCTION_CONTROL_DEADLINES.requiredChecksDeadlineMs;
   const maxFailures = deps.maxFailures ?? PRODUCTION_CONTROL_DEADLINES.maxReviewStepFailures;
+  const reviewerTimeoutMs = deps.reviewerTimeoutMs ?? PRODUCTION_CONTROL_DEADLINES.tickReviewerTimeoutMs;
+  const rateLimitBackoffMs = deps.rateLimitBackoffMs ?? PRODUCTION_CONTROL_DEADLINES.reviewRateLimitBackoffMs;
   const actionKey = `${session.project_slug}/${session.action_id}`;
   ensureProductionReviewStepTable(db);
 
-  const applicability = reviewApplicability(db, session, now);
+  const applicability = reviewApplicability(db, session, clock());
   if (!applicability.applicable) return { kind: "not_applicable", reason: applicability.reason };
   const url = applicability.pullRequestUrl;
   const policyRead = readProductionPolicySafely(db);
   if (policyRead.status !== "ok") return { kind: "not_applicable", reason: "The production policy is unreadable." };
   const epoch = policyRead.policy.epoch;
-  /** Re-read before every side effect: Off, a new epoch or a lapsed grant withholds it. */
+  /** Re-read before every side effect, at a fresh time: Off, a new epoch or a lapsed grant withholds it. */
   const authorityChanged = (): string | null => {
     const current = readProductionPolicySafely(db);
     if (current.status !== "ok" || current.policy.desiredState !== "active") return "managed production is Off";
     if (current.policy.epoch !== epoch) return `the production epoch changed (${epoch} -> ${current.policy.epoch})`;
-    const authorized = policyAuthorizesPullRequestReadiness(current.policy, actionKey, now);
+    const authorized = policyAuthorizesPullRequestReadiness(current.policy, actionKey, clock());
     return authorized.authorized ? null : authorized.reason;
   };
 
@@ -257,26 +288,46 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const exhausted = (): ReviewStepOutcome => ({
     kind: "blocked",
     code: "review_budget_exhausted",
-    reason: `The unattended review of ${actionKey} at ${head.slice(0, 12)} failed ${step.failures} time(s) (budget ${maxFailures}); most recent error: ${step.last_error ?? "unknown"}.`,
+    reason: `The unattended review of ${actionKey} at ${head.slice(0, 12)} failed ${step.failures} consecutive time(s) at ${step.failure_step ?? "a step"} (budget ${maxFailures}); most recent error: ${step.last_error ?? "unknown"}.`,
     remedy: `Repair the cause (GitHub CLI sign-in or reachability, the push, or reviewer capacity/sandbox), then run \`arcadia production reset-repair-budget ${actionKey}\`; the next tick resumes the review where it stopped.`
   });
   if (step.failures >= maxFailures) return exhausted();
-  const fail = (message: string, retryRole?: IndependentVerdictRole): ReviewStepOutcome => {
-    update({ failures: step.failures + 1, last_error: message, ...(retryRole ? { retry_role: retryRole } : {}) });
+  /** A consecutive failure of `stepName`; a different step's failure starts a new count. */
+  const fail = (stepName: string, message: string): ReviewStepOutcome => {
+    const failures = step.failure_step === stepName ? step.failures + 1 : 1;
+    update({ failures, failure_step: stepName, last_error: message });
     step = read();
-    input.log?.(`Review step for ${actionKey} failed (${step.failures}/${maxFailures}): ${message}`);
-    return step.failures >= maxFailures ? exhausted() : { kind: "waiting", reason: `A review step failed and will be retried: ${message}` };
+    input.log?.(`Review step ${stepName} for ${actionKey} failed (${step.failures}/${maxFailures} consecutive): ${message}`);
+    return step.failures >= maxFailures ? exhausted() : { kind: "waiting", reason: `The ${stepName} step failed and will be retried: ${message}` };
+  };
+  /** Any success ends a failure streak (a read only ends a streak of read failures). */
+  const succeeded = (stepName?: string) => {
+    if (step.failures > 0 && (stepName === undefined || step.failure_step === stepName)) {
+      update({ failures: 0, failure_step: null, last_error: null });
+      step = read();
+    }
+  };
+  const rateLimited = (stepName: string, detail: string): ReviewStepOutcome | null => {
+    if (!RATE_LIMITED.test(detail)) return null;
+    const until = new Date(now.getTime() + rateLimitBackoffMs).toISOString();
+    update({ backoff_until: until });
+    input.log?.(`GitHub rate-limited the ${stepName} step for ${actionKey}; backing off until ${until}.`);
+    return { kind: "waiting", reason: `GitHub reported a rate limit at the ${stepName} step; no GitHub read before ${until}.` };
   };
 
-  // Read GitHub at most once per poll interval: the producer tick runs every
-  // few seconds. Between polls the last polled outcome stands, so a blocked
-  // step's escalation does not flap back to a plain wait.
+  // Read GitHub at most once per poll interval (the producer tick runs every
+  // few seconds), and not at all during a rate-limit backoff. Between polls
+  // the last polled outcome stands, so a blocked step's escalation does not
+  // flap back to a plain wait.
+  if (step.backoff_until && now.getTime() < Date.parse(step.backoff_until)) {
+    return { kind: "waiting", reason: `Backing off after a GitHub rate limit; no GitHub read before ${step.backoff_until}.` };
+  }
   if (step.last_polled_at && now.getTime() - Date.parse(step.last_polled_at) < pollIntervalMs) {
     const last = parseOutcome(step.last_outcome_json);
     if (last?.kind === "blocked") return last;
     return { kind: "waiting", reason: last ? `Waiting for the next pull-request poll (last: ${last.reason})` : "Waiting for the next pull-request poll." };
   }
-  update({ last_polled_at: at });
+  update({ last_polled_at: at, backoff_until: null });
   step = read();
   const outcome = ((): ReviewStepOutcome => {
     const viewed = runCommand({
@@ -285,15 +336,19 @@ export function advanceIndependentReview(db: Database.Database, input: {
       cwd: repoRoot,
       timeoutMs: 30_000
     });
-    if (viewed.status !== 0) return fail(`gh pr view ${url} failed: ${viewed.error ?? (viewed.stderr.trim() || `exit ${String(viewed.status)}`)}`);
+    if (viewed.status !== 0) {
+      const detail = viewed.error ?? (viewed.stderr.trim() || `exit ${String(viewed.status)}`);
+      return rateLimited("read", detail) ?? fail("read", `gh pr view ${url} failed: ${detail}`);
+    }
     let pr: PullRequestView;
     try {
       pr = JSON.parse(viewed.stdout) as PullRequestView;
       if (typeof pr.headRefOid !== "string" || !/^[0-9a-f]{40,64}$/.test(pr.headRefOid) || typeof pr.state !== "string"
         || !Array.isArray(pr.statusCheckRollup)) throw new Error("required fields are absent or malformed");
     } catch (error) {
-      return fail(`gh pr view ${url} returned unusable evidence: ${errorMessage(error)}`);
+      return fail("read", `gh pr view ${url} returned unusable evidence: ${errorMessage(error)}`);
     }
+    succeeded("read");
 
     if (pr.state.toUpperCase() !== "OPEN" || pr.headRefName !== session.branch) {
       return {
@@ -308,7 +363,13 @@ export function advanceIndependentReview(db: Database.Database, input: {
       // A settlement commit landed after preservation pushed the PR: publish the
       // exact settled head (a fast-forward of the agent branch) before any
       // verdict. Anything else is a moved head and never receives a verdict.
-      if (!isAncestor(repoRoot, pr.headRefOid, head)) {
+      let descends: boolean;
+      try {
+        descends = isAncestor(repoRoot, pr.headRefOid, head);
+      } catch (error) {
+        return fail("push", `Comparing the PR head with the settled head failed: ${errorMessage(error)}`);
+      }
+      if (!descends) {
         return {
           kind: "blocked",
           code: "review_head_moved",
@@ -318,22 +379,46 @@ export function advanceIndependentReview(db: Database.Database, input: {
       }
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld pushing the settled head: ${fenced}.` };
+      // Push exactly the settled head, and only while the local branch still is it.
+      if (tryGit(repoRoot, ["rev-parse", `refs/heads/${session.branch}`])?.trim() !== head) {
+        return {
+          kind: "blocked",
+          code: "review_head_moved",
+          reason: `The local candidate branch ${session.branch} no longer points at the settled head ${head.slice(0, 12)}; nothing is pushed.`,
+          remedy: `Restore ${session.branch} to ${head}; a moved head never receives a verdict.`
+        };
+      }
       try {
-        (deps.remote ?? systemPreservationRemote).push({ repositoryPath: repoRoot, branch: session.branch });
+        (deps.remote ?? systemPreservationRemote).push({ repositoryPath: repoRoot, branch: session.branch, commitSha: head });
       } catch (error) {
-        return fail(`Pushing the settled head of ${session.branch} failed: ${errorMessage(error)}`);
+        return fail("push", `Pushing the settled head of ${session.branch} failed: ${errorMessage(error)}`);
       }
       update({ pushed_at: at });
+      succeeded();
       input.log?.(`Pushed settled head ${head.slice(0, 12)} of ${session.branch} for ${actionKey}; PR ${url} showed ${pr.headRefOid.slice(0, 12)}.`);
       return { kind: "advanced", step: "pushed", reason: `Pushed the settled head ${head.slice(0, 12)} to ${url}.` };
     }
 
+    if (pr.isDraft && step.ready_at) {
+      // The tick readied it once; someone converted it back to draft. That is
+      // a person pausing the review, never something to undo every minute.
+      return {
+        kind: "blocked",
+        code: "review_paused_as_draft",
+        reason: `PR ${url} was returned to draft after the tick marked it ready at ${step.ready_at}; no reviewer runs while it is a draft.`,
+        remedy: `When the candidate may be reviewed, mark it ready yourself (\`gh pr ready ${url}\`); the next tick resumes.`
+      };
+    }
     if (pr.isDraft) {
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld marking the PR ready: ${fenced}.` };
       const ready = runCommand({ command: "gh", args: ["pr", "ready", url], cwd: repoRoot, timeoutMs: 30_000 });
-      if (ready.status !== 0) return fail(`gh pr ready ${url} failed: ${ready.error ?? (ready.stderr.trim() || `exit ${String(ready.status)}`)}`);
+      if (ready.status !== 0) {
+        const detail = ready.error ?? (ready.stderr.trim() || `exit ${String(ready.status)}`);
+        return rateLimited("ready", detail) ?? fail("ready", `gh pr ready ${url} failed: ${detail}`);
+      }
       update({ ready_at: at, checks_started_at: step.checks_started_at ?? at });
+      succeeded();
       input.log?.(`Marked ${url} ready for review at ${head.slice(0, 12)} for ${actionKey}.`);
       return { kind: "advanced", step: "ready", reason: `Marked ${url} ready for review.` };
     }
@@ -342,6 +427,15 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
 
+    const mergeState = pr.mergeStateStatus?.toUpperCase() ?? "";
+    if (mergeState === "DIRTY") {
+      return {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url} has merge conflicts (merge state DIRTY); \`arcadia qa pr\` refuses to review it.`,
+        remedy: "Resolve the conflict with the base branch (a new candidate head); the tick keeps polling."
+      };
+    }
     const checks = classifyPullRequestChecks(pr.statusCheckRollup);
     if (checks.state === "failed") {
       return {
@@ -351,15 +445,9 @@ export function advanceIndependentReview(db: Database.Database, input: {
         remedy: "A failed check needs a fix (a new candidate head) or a GitHub re-run of the check; the tick keeps polling and reviews as soon as every check is green. No reviewer runs meanwhile."
       };
     }
-    if (["DIRTY", "BLOCKED"].includes(pr.mergeStateStatus?.toUpperCase() ?? "")) {
-      return {
-        kind: "blocked",
-        code: "review_pull_request_unavailable",
-        reason: `PR ${url} merge state is ${String(pr.mergeStateStatus)}; \`arcadia qa pr\` refuses to review it.`,
-        remedy: "Resolve the PR's conflict or branch-protection block; the tick keeps polling."
-      };
-    }
     if (checks.state !== "green") {
+      // Branch protection reports BLOCKED while required checks still run, so
+      // BLOCKED only means something once they are all green.
       const waited = now.getTime() - Date.parse(step.checks_started_at!);
       if (waited >= checksDeadlineMs) {
         return {
@@ -371,6 +459,14 @@ export function advanceIndependentReview(db: Database.Database, input: {
       }
       return { kind: "waiting", reason: `Waiting for required checks on ${url}: ${checks.blockers.join(" ")}` };
     }
+    if (mergeState === "BLOCKED") {
+      return {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url} is BLOCKED by branch protection although its checks are green; \`arcadia qa pr\` refuses to review it.`,
+        remedy: "Satisfy or relax the branch-protection requirement that still blocks the PR (for example a required approving review); the tick keeps polling."
+      };
+    }
 
     // Checks are green on the exact settled head: the next missing verdict, one per tick.
     for (const role of INDEPENDENT_VERDICT_ROLES) {
@@ -380,7 +476,10 @@ export function advanceIndependentReview(db: Database.Database, input: {
         && latest.evidence_fingerprint === readiness.binding.evidenceFingerprint;
       if (sameBinding && latest.status === "passed") continue;
       const rerun = sameBinding && latest.status === "failed";
-      if (rerun && step.retry_role !== role) {
+      // Only the failed attempt's own receipt can authorize re-judging the same
+      // binding: the reviewer was unavailable (or the run went stale). A real
+      // non-pass judgment is never re-run automatically.
+      if (rerun && !retryableVerdictReceipt(latest.terminal_receipt_json)) {
         return {
           kind: "blocked",
           code: "independent_verdict_failed",
@@ -390,11 +489,14 @@ export function advanceIndependentReview(db: Database.Database, input: {
       }
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld the ${role} reviewer: ${fenced}.` };
+      // A progress point right before the bounded reviewer run: the worker
+      // re-stamps its heartbeat and tick-ceiling marker here, and the reviewer
+      // timeout is well under that ceiling.
       input.heartbeat?.();
       let result: ReturnType<typeof runQaPrReviewCommand>;
       try {
         result = runQaPrReviewCommand(
-          { workspace: input.workspace, pullRequest: url, role, rerun },
+          { workspace: input.workspace, pullRequest: url, role, rerun, reviewerTimeoutMs },
           { runCommand, ...(deps.selectReviewer ? { selectReviewer: deps.selectReviewer } : {}), now: () => now }
         );
       } catch (error) {
@@ -408,12 +510,13 @@ export function advanceIndependentReview(db: Database.Database, input: {
             remedy: `Restore ${session.branch} on the remote to ${head}; a moved head never receives a verdict.`
           };
         }
-        return fail(`${role} review of ${url} failed: ${errorMessage(error)}`, role);
+        return fail(role, `${role} review of ${url} failed: ${errorMessage(error)}`);
       } finally {
         input.heartbeat?.();
       }
       const unavailable = reviewerUnavailableReason(result.data);
-      if (unavailable) return fail(`${role} reviewer unavailable for ${url}: ${unavailable}`, role);
+      if (unavailable) return fail(role, `${role} reviewer unavailable for ${url}: ${unavailable}`);
+      succeeded();
       if (result.data.verdict !== "pass") {
         input.log?.(`Independent ${role} of ${actionKey} at ${head.slice(0, 12)}: ${result.data.verdict}.`);
         return {
@@ -423,7 +526,6 @@ export function advanceIndependentReview(db: Database.Database, input: {
           remedy: `Read ${result.data.reportPath}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
         };
       }
-      if (step.retry_role === role) update({ retry_role: null });
       input.log?.(`Independent ${role} of ${actionKey} at ${head.slice(0, 12)} passed${result.data.reused ? " (existing receipt)" : ""}.`);
       return { kind: "advanced", step: role, reason: `Recorded a passing independent ${role} verdict for ${head.slice(0, 12)}.` };
     }

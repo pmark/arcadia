@@ -6,7 +6,7 @@ import { preserveCandidate, systemPreservationRemote } from "../sessions/candida
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
-import { policyAuthorizesRemotePreservation, readProductionPolicySafely } from "./policy.js";
+import { policyAuthorizesRemotePreservation, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 
 /**
@@ -67,6 +67,12 @@ export interface SessionHandoffInput {
    * exact head its current code review and QA verdicts bind is integrated.
    */
   verdictGate?: () => VerdictGate;
+  /**
+   * The current time, read again after the verdict gate (which may run a
+   * reviewer for minutes) so a grant that expired meanwhile refuses the
+   * fast-forward. Defaults to the fixed `now`.
+   */
+  clock?: () => Date;
 }
 
 function actionKey(session: AgentSession): string {
@@ -218,6 +224,39 @@ function integrationKind(repoRoot: string, baseBranch: string, branch: string): 
   return null;
 }
 
+/** Decision 0058's integration authority for this exact Session's Action, at `at`. */
+function integrationAuthority(db: Database.Database, session: AgentSession, at: Date):
+  { ok: true; policy: ProductionPolicyRecord } | { ok: false; reason: string } {
+  const policyRead = readProductionPolicySafely(db);
+  if (policyRead.status !== "ok") {
+    return { ok: false, reason: `Candidate integration requires a readable production policy: ${policyRead.reason}` };
+  }
+  const policy = policyRead.policy;
+  const scope = policy.scope;
+  if (policy.desiredState !== "active" || !scope) {
+    return { ok: false, reason: "Managed production is Inactive; no candidate integration is authorized." };
+  }
+  if (
+    !scope.projects.includes(session.project_slug) ||
+    !scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) ||
+    !scope.actions.includes(actionKey(session))
+  ) {
+    return { ok: false, reason: `${actionKey(session)} is outside the authorized production scope.` };
+  }
+  const grant = scope.integrationGrant;
+  if (!grant) {
+    return { ok: false, reason: "No candidate-integration grant is recorded in the Active policy (Decision 0058)." };
+  }
+  const grantedActions = grant.actions.length > 0 ? grant.actions : scope.actions;
+  if (!grantedActions.includes(actionKey(session))) {
+    return { ok: false, reason: `The integration grant does not name ${actionKey(session)}.` };
+  }
+  if (Number.isNaN(Date.parse(grant.expiresAt)) || Date.parse(grant.expiresAt) <= at.getTime()) {
+    return { ok: false, reason: `The integration grant expired at ${grant.expiresAt}.` };
+  }
+  return { ok: true, policy };
+}
+
 function refusal(reason: string, merge: string | null): IntegrationStep {
   return { kind: "refused", reason, operatorMergeCommand: merge };
 }
@@ -252,34 +291,9 @@ export function integrateSessionCandidate(
     return refusal(`The Session worktree is no longer on its own branch ${branch}.`, merge);
   }
 
-  const policyRead = readProductionPolicySafely(db);
-  if (policyRead.status !== "ok") {
-    return refusal(`Candidate integration requires a readable production policy: ${policyRead.reason}`, merge);
-  }
-  const policy = policyRead.policy;
-  const scope = policy.scope;
-  if (policy.desiredState !== "active" || !scope) {
-    return refusal("Managed production is Inactive; no candidate integration is authorized.", merge);
-  }
-  if (
-    !scope.projects.includes(session.project_slug) ||
-    !scope.plans.includes(`${session.project_slug}/${session.plan_slug}`) ||
-    !scope.actions.includes(actionKey(session))
-  ) {
-    return refusal(`${actionKey(session)} is outside the authorized production scope.`, merge);
-  }
-
-  const grant = scope.integrationGrant;
-  if (!grant) {
-    return refusal("No candidate-integration grant is recorded in the Active policy (Decision 0058).", merge);
-  }
-  const grantedActions = grant.actions.length > 0 ? grant.actions : scope.actions;
-  if (!grantedActions.includes(actionKey(session))) {
-    return refusal(`The integration grant does not name ${actionKey(session)}.`, merge);
-  }
-  if (Number.isNaN(Date.parse(grant.expiresAt)) || Date.parse(grant.expiresAt) <= now.getTime()) {
-    return refusal(`The integration grant expired at ${grant.expiresAt}.`, merge);
-  }
+  const authorized = integrationAuthority(db, session, now);
+  if (!authorized.ok) return refusal(authorized.reason, merge);
+  const policy = authorized.policy;
 
   const assertCandidateHead = (head: string): IntegrationStep | null => {
     const branchHead = tryGit(repoRoot, ["rev-parse", `refs/heads/${branch}`])?.trim();
@@ -310,11 +324,13 @@ export function integrateSessionCandidate(
   if (input.verdictGate) {
     const gate = input.verdictGate();
     if (!gate.satisfied) return refusal(gate.reason, merge);
-    // The gate may have run a reviewer for minutes: Off or a new epoch in the
-    // meantime withholds the fast-forward (the verdict itself stays recorded).
-    const after = readProductionPolicySafely(db);
-    if (after.status !== "ok" || after.policy.desiredState !== "active" || after.policy.epoch !== policy.epoch) {
-      return refusal("Production authority changed while the independent verdicts were checked; integration is withheld until a later tick.", merge);
+    // The gate may have run a reviewer for minutes: Off, a new epoch, a
+    // narrowed scope or a grant that expired in the meantime (checked against
+    // a fresh clock) withholds the fast-forward, before any write. The
+    // verdict itself stays recorded.
+    const after = integrationAuthority(db, session, (input.clock ?? (() => now))());
+    if (!after.ok || after.policy.epoch !== policy.epoch) {
+      return refusal(`Production authority changed while the independent verdicts were checked; integration is withheld until a later tick${after.ok ? "" : ` (${after.reason})`}.`, merge);
     }
     if (candidateHead && candidateHead !== gate.binding.targetHead) {
       return refusal("The candidate's independent verdicts bind a different head than the settled candidate.", merge);

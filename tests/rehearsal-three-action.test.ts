@@ -76,9 +76,11 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinish(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
-    // The worker host dies right after `gh pr ready` took effect on B's PR,
-    // before the tick recorded it; the restarted tick must not ready it again.
-    if (reviewers === "tick") rehearsal.github.afterReady = () => { throw new Error("worker host crashed after gh pr ready"); };
+    // A thrown exception right after `gh pr ready` took effect on B's PR aborts
+    // the tick before it records the step (simulated in-process; not a real
+    // process death). The next tick, on fresh connections, resumes from the
+    // persisted state and GitHub and must not ready it again.
+    if (reviewers === "tick") rehearsal.github.afterReady = () => { throw new Error("simulated abort after gh pr ready"); };
     const { integrated } = rehearsal.tickThroughReview();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
@@ -116,9 +118,10 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(c, "MARKER.md", `${LINE_A}\n${LINE_B}\n${LINE_C}\n`);
     rehearsal.agentFinish(c, CRITERIA_C);
     rehearsal.tmux.exit(c.tmux_session_name);
-    // The host dies inside C's code-review model call; the restarted tick
-    // resumes that same lineage attempt instead of allocating a second one.
-    if (reviewers === "tick") rehearsal.github.duringReview = () => { throw new Error("worker host crashed mid-review"); };
+    // A thrown exception inside C's code-review model call leaves its lineage
+    // attempt running (simulated in-process, like the one above); the next
+    // tick resumes that same attempt instead of allocating a second one.
+    if (reviewers === "tick") rehearsal.github.duringReview = () => { throw new Error("simulated abort mid-review"); };
     const { integrated: finished } = rehearsal.tickThroughReview();
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-c")).toBe("done");
@@ -172,7 +175,7 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
       const { github } = rehearsal;
       expect(github.prs.map((pr) => pr.isDraft)).toEqual([false, false, false]);
       expect(github.readyCalls).toEqual(github.prs.map((pr) => pr.url));
-      // C's code-review model ran twice (the crash lost its judgment) but
+      // C's code-review model ran twice (the abort lost its judgment) but
       // recorded one verdict attempt; every other reviewer ran exactly once.
       const [prA, prB, prC] = github.prs;
       expect(github.reviewerCalls.map((call) => [call.role, call.url])).toEqual([
@@ -181,8 +184,8 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
       ]);
       expect(github.reviewerCalls.map((call) => call.head)).toEqual([developmentHeads[0], developmentHeads[0], developmentHeads[1],
         developmentHeads[1], developmentHeads[2], developmentHeads[2], developmentHeads[2]]);
-      expect(rehearsal.log.some((line) => line.includes("worker host crashed after gh pr ready"))).toBe(true);
-      expect(rehearsal.log.some((line) => line.includes("worker host crashed mid-review"))).toBe(true);
+      expect(rehearsal.log.some((line) => line.includes("simulated abort after gh pr ready"))).toBe(true);
+      expect(rehearsal.log.some((line) => line.includes("simulated abort mid-review"))).toBe(true);
       expect(github.ghCalls.some((call) => / merge\b/.test(call))).toBe(false);
       expect(github.headOf("main")).toBe(git(rehearsal.repo, ["rev-list", "--max-parents=0", "refs/heads/main"]).trim());
     }

@@ -222,42 +222,54 @@ The candidate for `ready-pr-and-run-independent-reviews-from-the-tick`
 managed candidate from its host-created draft PR to integration with no
 operator step. While the verdict gate waits, and only where integration is
 otherwise authorized and would fast-forward, each tick advances at most one
-side effect: push the settled head when a settlement commit landed after
-preservation (the PR head must be that settled head or an ancestor of it;
-anything else is `review_head_moved` and never gets a verdict), `gh pr ready`,
-poll required checks (once a minute, one-hour deadline after ready), then
-`arcadia qa code-review` and on a later tick `arcadia qa pr`. State is
-re-derived from GitHub, the role lineage and one `production_review_steps` row
-per exact head, so a restart resumes mid-step without a second `gh pr ready`
-or a second verdict attempt. Every side effect re-reads the policy and is
-withheld on Off, a new epoch or a lapsed grant, and integration re-checks the
-policy after the gate, so a reviewer that finishes under Off never lands.
-GitHub, push and reviewer capacity/sandbox failures share a budget of three per
-head that survives restart (`review_budget_exhausted`; reset with
-`arcadia production reset-repair-budget`); a real non-pass verdict is never
-retried (`independent_verdict_failed`).
+side effect: push exactly the settled head commit when a settlement commit
+landed after preservation (the PR head must be that settled head or an
+ancestor of it; anything else is `review_head_moved` and never gets a
+verdict), `gh pr ready` once (a PR returned to draft afterwards escalates
+`review_paused_as_draft` instead of being readied again), poll required checks
+(once a minute, one-hour deadline after ready; `BLOCKED` counts only once
+checks are green), then `arcadia qa code-review` and on a later tick
+`arcadia qa pr`, each reviewer bounded to 15 minutes under the worker's
+30-minute tick ceiling, which is re-stamped right before the reviewer starts.
+State is re-derived from GitHub, the role lineage and one
+`production_review_steps` row per exact head, so a restarted worker resumes
+mid-step without a second `gh pr ready` or a second verdict attempt. Every side
+effect re-reads the policy at the current time and is withheld on Off, a new
+epoch or a lapsed grant; integration re-checks the policy and the grant expiry
+against a fresh clock after the gate, so a reviewer that finishes under Off or
+after expiry never lands. Three consecutive GitHub, push or reviewer
+capacity/sandbox/timeout failures per head exhaust a budget that survives
+restart (`review_budget_exhausted`; a success resets it; reset with
+`arcadia production reset-repair-budget`); a GitHub rate limit backs off 15
+minutes without spending it. A non-pass verdict is re-run automatically only
+when its own lineage receipt records `reviewerUnavailable`; a real non-pass
+verdict is never retried automatically and never integrates
+(`independent_verdict_failed`).
 
-What authorizes each step: pushing the settled head uses the existing
-`--remote-preservation` authority (push of the agent branch). Marking the PR
-ready and running its reviewers needs that authority **and** a current
-Decision 0058 integration grant naming the Action
-(`policyAuthorizesPullRequestReadiness`): readiness is treated as a step of
-landing the exact candidate the operator already delegated landing for.
-`--remote-preservation` alone still never readies a PR. Whether Decision
-0058's grant should be read to cover readying a host-created PR, or a separate
-grant option should exist, is an operator question this candidate does not
-settle. Merging on GitHub and pushing the base branch remain out of scope;
-integration stays the local fast-forward.
+What authorizes each step: every step, including the push of the settled
+head, requires `policyAuthorizesPullRequestReadiness`: an Active policy with
+**both** `--remote-preservation` and a current Decision 0058 integration grant
+naming the Action. This is stricter than `--remote-preservation` alone, which
+still never readies a PR or runs a reviewer. Whether Decision 0058's grant
+should be read to cover the push, readying a host-created PR and the
+reviewer-model spend, or a separate grant option should exist, is an operator
+question this candidate does not settle. Merging on GitHub and pushing the
+base branch remain out of scope; integration stays the local fast-forward.
 
 Coverage: `tests/tick-independent-review.test.ts` (exact head, settled head
-pushed after preservation, moved head, pending/failed/timed-out checks, poll
-interval, Off and epoch change mid-step, budget exhaustion and reset, failed
-verdict, no grant, LOCAL ONLY remedy, migration) and the `"tick"` variant of
+pushed as an exact commit after preservation, moved head, pending/failed/
+timed-out checks, BLOCKED while checks run, poll interval and stable
+escalations, Off, epoch change and grant expiry mid-step, consecutive-failure
+budget, rate-limit backoff, reviewer timeout, exhaustion and reset, an
+unavailable-then-real failed verdict, a PR returned to draft, no grant, LOCAL
+ONLY remedy, migration) and the `"tick"` variant of
 `tests/rehearsal-three-action.test.ts`, which drives preserve, ready, both
 reviews and local integration for three Actions through the tick with only the
-GitHub CLI and reviewer model stubbed, Off between Actions, and host crashes
-after `gh pr ready` and inside a code-review call. Candidate code only: it is
-not installed, and no live grant was activated with it.
+GitHub CLI and reviewer model stubbed, Off between Actions, and in-process
+aborts (thrown exceptions, not process death) after `gh pr ready` and inside a
+code-review call, each resumed by a later tick on fresh connections from
+persisted state. Candidate code only: it is not installed, and no live grant
+was activated with it.
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

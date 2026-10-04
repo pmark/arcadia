@@ -150,6 +150,12 @@ export interface QaPrReviewOptions {
   pullRequest: string;
   reviewerProfile?: string;
   rerun?: boolean;
+  /**
+   * Bound on the reviewer-model process. The CLI keeps its 30-minute default;
+   * the worker tick passes a shorter bound so one review cannot outlive the
+   * worker's tick ceiling. A timeout is a reviewer-unavailable result.
+   */
+  reviewerTimeoutMs?: number;
   /** `code-review` records the exact-head code-review verdict instead of QA. */
   role?: PrReviewRole;
 }
@@ -427,7 +433,7 @@ export function runQaPrReviewCommand(
         ],
         cwd: attemptRoot,
         stdin: prompt,
-        timeoutMs: 30 * 60_000,
+        timeoutMs: options.reviewerTimeoutMs ?? 30 * 60_000,
         environment: buildQaReviewerEnvironment()
       })
     : {
@@ -539,7 +545,8 @@ export function runQaPrReviewCommand(
     withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
       requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
-      receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint })
+      receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
+        reviewerUnavailable: reviewerUnavailableReason({ verdict, findings, reviewer: provenance }) })
     }));
   }
 
@@ -550,8 +557,15 @@ function reviewerActorIdFor(profile: PrReviewRoleProfile, bindingId: string): st
   return `${profile.role}-reviewer:${bindingId}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
 }
 
-function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string }) {
-  return { verdict: input.verdict, artifactId: input.artifactId, decisionId: input.decisionId, headSha: input.headSha, evidenceFingerprint: input.evidenceFingerprint };
+/**
+ * The lineage attempt's terminal receipt. `reviewerUnavailable` is non-null
+ * only when the non-pass came from the reviewer's own infrastructure, never a
+ * judgment of the candidate: it is the one fact that authorizes the worker
+ * tick to re-run that same binding without a fix.
+ */
+function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string; reviewerUnavailable: string | null }) {
+  return { verdict: input.verdict, artifactId: input.artifactId, decisionId: input.decisionId, headSha: input.headSha, evidenceFingerprint: input.evidenceFingerprint,
+    reviewerUnavailable: input.reviewerUnavailable };
 }
 
 /**
@@ -581,7 +595,8 @@ function recoverInFlightVerdict(db: Database.Database, input: {
     requestId: attempt.request_id, actorId, session, repoRoot: input.repositoryPath,
     verdict: persisted.verdict === "pass" ? "passed" : "failed", now: input.now,
     receipt: lineageVerdictReceipt({ verdict: persisted.verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id,
-      headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint })
+      headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint,
+      reviewerUnavailable: reviewerUnavailableReason({ verdict: persisted.verdict, findings: persisted.findings, reviewer: persisted.reviewer }) })
   });
 }
 

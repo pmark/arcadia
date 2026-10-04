@@ -109,7 +109,16 @@ export const PRODUCTION_CONTROL_DEADLINES = {
    */
   reviewPollIntervalMs: 60_000,
   requiredChecksDeadlineMs: 60 * 60 * 1000,
-  maxReviewStepFailures: 3
+  maxReviewStepFailures: 3,
+  /**
+   * The tick-driven reviewer process bound: well under the worker's 30-minute
+   * tick ceiling (`MAX_TICK_DURATION_MS`), which the tick re-stamps right
+   * before the reviewer starts, so the overlong-tick recovery cannot kill a
+   * worker mid-review. A timeout is a reviewer-unavailable failure.
+   */
+  tickReviewerTimeoutMs: 15 * 60 * 1000,
+  /** How long the tick stops reading a PR after GitHub reports a rate limit (no budget spent). */
+  reviewRateLimitBackoffMs: 15 * 60 * 1000
 } as const;
 
 /**
@@ -715,15 +724,16 @@ export function policyAuthorizesRemotePreservation(
 }
 
 /**
- * The one gate the worker tick reads before it marks a host-preserved draft
- * pull request ready, waits on its checks and runs the independent code-review
- * and QA reviewers for it. Readiness is not part of `--remote-preservation`
- * (push and draft PR only); it is a step of landing that exact candidate, so
- * it needs both: the remote-preservation authority under which the host
- * created the PR, and a current Decision 0058 candidate-integration grant
- * naming the Action, i.e. the operator already delegated landing this
- * candidate with no per-Action operator step. Merge on GitHub and pushing the
- * base branch stay outside every grant.
+ * The one gate the worker tick reads before it pushes a later settled head to a
+ * host-preserved draft pull request, marks it ready, waits on its checks and
+ * runs the independent code-review and QA reviewers for it. Readiness is not
+ * part of `--remote-preservation` (push and draft PR at preservation only); it
+ * is treated as a step of landing that exact candidate, so it needs both: the
+ * remote-preservation authority under which the host created the PR, and a
+ * current Decision 0058 candidate-integration grant naming the Action. Whether
+ * Decision 0058 should be read to cover this push, readiness and reviewer
+ * spend is an operator question this gate does not settle. Merge on GitHub
+ * and pushing the base branch stay outside every grant.
  */
 export function policyAuthorizesPullRequestReadiness(
   policy: Pick<ProductionPolicyRecord, "desiredState" | "scope">,

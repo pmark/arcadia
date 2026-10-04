@@ -91,6 +91,12 @@ export interface ManagedProductionTickOptions {
    * is given here.
    */
   review?: IndependentReviewDeps;
+  /**
+   * The current time, re-read after long steps (a reviewer run) so a grant
+   * that expired meanwhile is honored. Defaults to `now` when one is given
+   * (deterministic tests), else the wall clock.
+   */
+  clock?: () => Date;
 }
 
 export interface BaseBranchAdvanceObservation {
@@ -143,7 +149,7 @@ function recoverTerminalHandoff(
   preserveDeps: PreserveSessionDeps,
   integrateDeps: IntegrateSessionDeps,
   log?: (message: string) => void,
-  review?: { deps: IndependentReviewDeps; heartbeat?: () => void }
+  review?: { deps: IndependentReviewDeps; heartbeat?: () => void; clock?: () => Date }
 ): SessionHandoffResult | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
     .all() as Array<{ name: string }>;
@@ -231,14 +237,15 @@ function recoverTerminalHandoff(
   }
   return {
     preservation,
-    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head,
+    integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head, clock: review?.clock,
       // Called only once policy, scope, grant and an exact fast-forward all
       // hold: the one place the tick may advance the candidate's unattended
       // review by a step before the gate decides.
       verdictGate: () => {
         const waiting = independentVerdictGate(db, { session, repoRoot });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
-          ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat, deps: review.deps })
+          ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
+            deps: { ...(review.clock ? { clock: review.clock } : {}), ...review.deps } })
           : undefined;
         return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
       } }, integrateDeps)
@@ -944,6 +951,7 @@ export function runManagedProductionTick(
 ): ManagedProductionTickResult {
   ensureProductionTickTables(db);
   const now = options.now ?? new Date();
+  const clock = options.clock ?? (options.now ? () => now : () => new Date());
   const log = options.log ?? (() => {});
   const tmux = options.tmux ?? systemTmux;
   const policyRead = readProductionPolicySafely(db);
@@ -1081,7 +1089,7 @@ export function runManagedProductionTick(
         // Session is preserved and reported, never merged.
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed
-          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now,
+          ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now, clock,
               verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, options.handoff?.integrate ?? {})
           : {
               kind: "refused" as const,
@@ -1137,7 +1145,7 @@ export function runManagedProductionTick(
           observeReconcileSuccess(alertCtx);
         });
         handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
-          { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat });
+          { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);

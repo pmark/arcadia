@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runProductionResetRepairBudgetCommand } from "../src/commands/production.js";
 import { withDatabase } from "../src/db/connection.js";
 import { listReviewSteps } from "../src/production/independentReview.js";
-import { policyAuthorizesPullRequestReadiness } from "../src/production/policy.js";
+import { policyAuthorizesPullRequestReadiness, PRODUCTION_CONTROL_DEADLINES } from "../src/production/policy.js";
+import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 import { ensureProductionTickTables } from "../src/production/tick.js";
 import type { PullRequestCheckRun } from "../src/qa/prReview.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
@@ -145,6 +146,8 @@ describe("tick-driven independent review", () => {
 
     rehearsal.tick();
     expect(rehearsal.github.headOf(a.branch)).toBe(settled);
+    // The push names the exact settled commit, never whatever the local tip is.
+    expect(rehearsal.github.pushes.at(-1)).toEqual({ branch: a.branch, commitSha: settled });
     expect(rehearsal.github.readyCalls).toEqual([]);
     expect(rehearsal.github.reviewerCalls).toEqual([]);
     expect(rehearsal.log.some((line) => line.includes(`Pushed settled head ${settled.slice(0, 12)}`))).toBe(true);
@@ -272,7 +275,7 @@ describe("tick-driven independent review", () => {
     for (let i = 0; i < 2; i += 1) rehearsal.tick();
     expect(rehearsal.github.reviewerCalls).toHaveLength(3);
     expect(withDatabase(rehearsal.workspace, (db) => { ensureProductionTickTables(db); return listReviewSteps(db, rehearsal.actionA); }))
-      .toEqual([expect.objectContaining({ failures: 3, retry_role: "code-review" })]);
+      .toEqual([expect.objectContaining({ failures: 3, failure_step: "code-review" })]);
 
     rehearsal.github.reviewerExit = () => 0;
     const reset = runProductionResetRepairBudgetCommand({ workspace: rehearsal.workspace, actionKey: rehearsal.actionA });
@@ -281,6 +284,113 @@ describe("tick-driven independent review", () => {
     const { integrated } = rehearsal.tickThroughReview();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"], [2, "failed"], [3, "failed"], [4, "passed"]]);
+  });
+
+  it("re-runs a reviewer-unavailable verdict once, but never re-runs or integrates the real failed verdict that follows", () => {
+    const { rehearsal } = finishedA();
+    let calls = 0;
+    rehearsal.github.reviewerExit = () => (calls++ === 0 ? 1 : 0);
+    rehearsal.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.tick(); // code review: reviewer unavailable
+    rehearsal.tick(); // authorized re-run: a real failed judgment
+    for (let i = 0; i < 4; i += 1) expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+    expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review"]);
+    expect(verdicts(rehearsal, "code-review").map((x) => [x.ordinal, x.status])).toEqual([[1, "failed"], [2, "failed"]]);
+    expect(verdicts(rehearsal, "code-review").map((x) => typeof JSON.parse(x.terminal_receipt_json!).reviewerUnavailable)).toEqual(["string", "object"]);
+    expect(verdicts(rehearsal, "qa")).toEqual([]);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed" });
+  });
+
+  it("bounds the tick's reviewer well under the worker tick ceiling, reports progress before it, and spends the budget on timeouts", () => {
+    expect(PRODUCTION_CONTROL_DEADLINES.tickReviewerTimeoutMs).toBeLessThanOrEqual(MAX_TICK_DURATION_MS / 2);
+    const { rehearsal } = finishedA();
+    rehearsal.github.reviewerTimesOut = () => true;
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    let heartbeatsBeforeReviewer = -1;
+    rehearsal.github.duringReview = () => { heartbeatsBeforeReviewer = rehearsal.heartbeats; };
+    const before = rehearsal.heartbeats;
+    rehearsal.tick();
+    // The progress point (which re-stamps the worker's tick-ceiling marker) came right before the reviewer started.
+    expect(heartbeatsBeforeReviewer).toBeGreaterThan(before);
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(rehearsal.github.reviewerTimeouts).toEqual([1, 2, 3].map(() => PRODUCTION_CONTROL_DEADLINES.tickReviewerTimeoutMs));
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_budget_exhausted", message: expect.stringMatching(/ETIMEDOUT/) });
+    expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+    expect(rehearsal.github.reviewerCalls).toHaveLength(3);
+  });
+
+  it("treats BLOCKED as waiting while required checks run, and escalates it only once they are green", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => PENDING;
+    rehearsal.github.mergeState = () => "BLOCKED";
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "awaiting_independent_verdicts", remedy: expect.stringContaining("Waiting for required checks") });
+    rehearsal.github.checks = () => GREEN;
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_pull_request_unavailable", message: expect.stringMatching(/branch protection/) });
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    rehearsal.github.mergeState = () => "CLEAN";
+    rehearsal.tick();
+    expect(rehearsal.tick().handoff?.integration.kind).toBe("integrated");
+  });
+
+  it("counts only consecutive failures, and backs off on a GitHub rate limit without spending the budget", () => {
+    const { rehearsal } = finishedA();
+    exitTick(rehearsal);
+    rehearsal.github.viewFailures = ["HTTP 502: bad gateway", "HTTP 502: bad gateway"];
+    rehearsal.tick();
+    rehearsal.tick();
+    rehearsal.tick(); // read succeeds: the streak resets, and the PR is readied
+    expect(rehearsal.github.readyCalls).toHaveLength(1);
+    rehearsal.github.viewFailures = ["HTTP 502: bad gateway", "HTTP 502: bad gateway"];
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(escalation(rehearsal)?.kind).toBe("awaiting_independent_verdicts");
+    rehearsal.github.viewFailures = ["API rate limit exceeded for installation"];
+    rehearsal.tick();
+    const steps = () => withDatabase(rehearsal.workspace, (db) => listReviewSteps(db, rehearsal.actionA));
+    expect(steps()[0]).toMatchObject({ failures: 2, failure_step: "read", backoff_until: expect.any(String) });
+    const calls = rehearsal.github.ghCalls.length;
+    for (let i = 0; i < 5; i += 1) rehearsal.tick();
+    expect(rehearsal.github.ghCalls).toHaveLength(calls);
+    const { integrated } = rehearsal.tickThroughReview(20);
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+    expect(steps()[0]).toMatchObject({ failures: 0 });
+  });
+
+  it("does not re-ready a PR a person returned to draft; it escalates and resumes once it is ready again", () => {
+    const { rehearsal } = finishedA();
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.github.prs[0].isDraft = true;
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_paused_as_draft", remedy: expect.stringContaining("gh pr ready") });
+    expect(rehearsal.github.readyCalls).toHaveLength(1);
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    rehearsal.github.prs[0].isDraft = false;
+    const { integrated } = rehearsal.tickThroughReview();
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+    expect(rehearsal.github.readyCalls).toHaveLength(1);
+  });
+
+  it("refuses the fast-forward when the integration grant expires while a reviewer runs", () => {
+    const { rehearsal, a } = finishedA();
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.tick(); // code review
+    rehearsal.github.duringReview = () => { rehearsal.now = new Date(rehearsal.now.getTime() + 13 * 3_600_000); };
+    const expired = rehearsal.tick();
+    expect(verdicts(rehearsal, "qa").map((x) => x.status)).toEqual(["passed"]);
+    expect(expired.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/authority changed.*expired/) });
+    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).not.toBe(head(rehearsal, a));
   });
 
   it("never retries or integrates a real failed verdict", () => {
@@ -363,6 +473,6 @@ describe("production_review_steps migration", () => {
       ensureProductionTickTables(db);
       return (db.prepare("PRAGMA table_info(production_review_steps)").all() as Array<{ name: string }>).map((column) => column.name);
     });
-    expect(columns).toEqual(expect.arrayContaining(["request_id", "target_head", "policy_epoch", "ready_at", "checks_started_at", "failures", "retry_role"]));
+    expect(columns).toEqual(expect.arrayContaining(["request_id", "target_head", "policy_epoch", "ready_at", "checks_started_at", "failures", "failure_step", "backoff_until"]));
   });
 });

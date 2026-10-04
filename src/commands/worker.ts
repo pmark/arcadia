@@ -65,7 +65,9 @@ const WORKER_KILL_GRACE_MS = 2_000;
 const WORKER_EXIT_POLL_MS = 100;
 
 /**
- * A ceiling on a single tick iteration, independent of the heartbeat beacon.
+ * A ceiling on a single tick iteration -- measured since the iteration's last
+ * reported progress point (see `markTickStarted`) -- independent of the
+ * heartbeat beacon.
  *
  * The beacon (see `workerHeartbeatBeaconExecutor.ts`) proves the worker
  * process is alive and its event loop has not exited; a separate OS process
@@ -79,7 +81,7 @@ const WORKER_EXIT_POLL_MS = 100;
  * 292s) so a slow-but-finite step is never caught by it, while still bounding
  * how long a truly hung tick can hold the workspace.
  */
-const MAX_TICK_DURATION_MS = 30 * 60_000;
+export const MAX_TICK_DURATION_MS = 30 * 60_000;
 
 /**
  * A transient tick failure should be loud; a persistent one must not become an
@@ -373,8 +375,12 @@ function isStaleWorkerHeartbeat(record: WorkerRecord | null, now = Date.now()): 
   return record !== null && now - record.at >= WORKER_HEARTBEAT_FRESHNESS_MS;
 }
 
-/** Stamped once, synchronously, at the very start of a tick iteration --
- * before any blocking work -- and removed once that iteration ends. */
+/** Stamped synchronously at the very start of a tick iteration -- before any
+ * blocking work -- re-stamped at each progress point the iteration reports
+ * (the tick's heartbeat, called between steps and right before a bounded
+ * reviewer run), and removed once that iteration ends. The ceiling therefore
+ * bounds the time since the event loop last proved progress, not the whole
+ * iteration. */
 function markTickStarted(workspacePath: string, identity: WorkerIdentity, at = Date.now()): void {
   try { writeFileSync(tickMarkerPath(workspacePath), JSON.stringify({ ...identity, at }), "utf8"); } catch {}
 }
@@ -525,8 +531,12 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
           // minutes, so the 5s timer above cannot fire while it runs. Without
           // this the worker's own record would age past the freshness window
           // during a perfectly healthy tick, and `start` would replace a worker
-          // that is merely busy.
+          // that is merely busy. Reaching this callback is itself proof the
+          // iteration is progressing, so the tick-ceiling marker is re-stamped
+          // too: a bounded step (such as a reviewer run) after it gets the
+          // full ceiling.
           try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
+          markTickStarted(options.workspacePath, identity);
         });
       } finally {
         db.close();

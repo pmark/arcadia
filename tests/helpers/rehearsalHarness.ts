@@ -213,6 +213,8 @@ export class Rehearsal {
   private tickCount = 0;
   /** `"tick"` mode: the stubbed GitHub (PRs, checks, readiness) and reviewer model. */
   readonly github: FakeGitHub;
+  /** How many progress heartbeats the tick reported. */
+  heartbeats = 0;
 
   constructor(readonly options: RehearsalOptions = {}) {
     this.root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-rehearsal-")));
@@ -445,6 +447,8 @@ Disposable fixture plan.
         adapters: registries.providerAdapters,
         tmux: this.tmux,
         now: this.now,
+        clock: () => this.now,
+        heartbeat: () => { this.heartbeats += 1; },
         capacityObservation: capacity(this.provider),
         providerSignIn: () => {
           const hook = this.beforeAdmission;
@@ -840,6 +844,16 @@ export class FakeGitHub {
   /** Every reviewer-model invocation, with the PR head it judged. */
   reviewerCalls: Array<{ role: "code-review" | "qa"; url: string; head: string }> = [];
   checks: (pr: FakePullRequest) => PullRequestCheckRun[] = () => GREEN_CHECKS;
+  /** GitHub's mergeStateStatus; branch protection reports BLOCKED while required checks run. */
+  mergeState: (pr: FakePullRequest) => string = () => "CLEAN";
+  /** Every push, with the exact commit it named (null: the local tip). */
+  pushes: Array<{ branch: string; commitSha: string | null }> = [];
+  /** Each entry fails one `gh pr view` with that stderr, in order. */
+  viewFailures: string[] = [];
+  /** Every reviewer-model invocation's process timeout. */
+  reviewerTimeouts: Array<number | undefined> = [];
+  /** Simulates the reviewer process being killed at its timeout. */
+  reviewerTimesOut: (role: "code-review" | "qa") => boolean = () => false;
   verdict: (role: "code-review" | "qa") => "pass" | "fail" = () => "pass";
   /** A non-zero exit simulates reviewer capacity or sandbox trouble. */
   reviewerExit: (role: "code-review" | "qa") => number = () => 0;
@@ -858,8 +872,9 @@ export class FakeGitHub {
 
   readonly remote: CandidatePreservationRemote = {
     hasRemote: (repositoryPath) => git(repositoryPath, ["remote"]).split("\n").includes("origin"),
-    push: ({ repositoryPath, branch }) => {
-      git(repositoryPath, ["push", "-q", "origin", `refs/heads/${branch}:refs/heads/${branch}`]);
+    push: ({ repositoryPath, branch, commitSha }) => {
+      this.pushes.push({ branch, commitSha: commitSha ?? null });
+      git(repositoryPath, ["push", "-q", "origin", `${commitSha ?? `refs/heads/${branch}`}:refs/heads/${branch}`]);
       return { remote: "origin" };
     },
     findPullRequest: ({ branch }) => {
@@ -882,7 +897,7 @@ export class FakeGitHub {
       url: pr.url,
       state: "OPEN",
       isDraft: pr.isDraft,
-      mergeStateStatus: "CLEAN",
+      mergeStateStatus: this.mergeState(pr),
       headRefName: pr.branch,
       headRefOid: this.headOf(pr.branch),
       baseRefName: pr.baseBranch,
@@ -897,9 +912,12 @@ export class FakeGitHub {
     return this.prs.find((pr) => pr.url === reference || String(pr.number) === reference);
   }
 
-  readonly runCommand: NonNullable<QaPrReviewDependencies["runCommand"]> = ({ command, args, stdin }) => {
+  readonly runCommand: NonNullable<QaPrReviewDependencies["runCommand"]> = ({ command, args, stdin, timeoutMs }) => {
     if (command === "git") return ok("https://github.com/pmark/rehearsal.git\n");
     if (command === "gh") this.ghCalls.push(`gh ${args.join(" ")}`);
+    if (command === "gh" && args[0] === "pr" && args[1] === "view" && this.viewFailures.length > 0) {
+      return { status: 1, stdout: "", stderr: this.viewFailures.shift()!, error: null };
+    }
     if (command === "gh" && args[0] === "pr" && args[1] === "view") {
       const pr = this.find(args[2]);
       return pr ? ok(`${JSON.stringify(this.view(pr))}\n`) : { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
@@ -921,7 +939,9 @@ export class FakeGitHub {
       const role = prompt.includes("Exact-Head Code Review") ? "code-review" as const : "qa" as const;
       const pr = this.prs.find((entry) => prompt.includes(entry.url));
       this.reviewerCalls.push({ role, url: pr?.url ?? "unknown", head: pr ? this.headOf(pr.branch) : "unknown" });
+      this.reviewerTimeouts.push(timeoutMs);
       const during = this.duringReview; this.duringReview = null; during?.(role);
+      if (this.reviewerTimesOut(role)) return { status: null, stdout: "", stderr: "", error: `spawnSync codex ETIMEDOUT after ${String(timeoutMs)}ms` };
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;

@@ -897,8 +897,9 @@ to both `production preview` and `production activate` to let preservation also
 push the candidate branch and open a **draft** pull request for an Action in the
 scope. That is all it authorizes on its own: it never marks a pull request
 ready for review, never merges, and never pushes the base branch. Marking the
-host-created PR ready (and then running its reviewers) additionally needs a
-current Decision 0058 integration grant naming the Action; see "Independent
+host-created PR ready, pushing a later settled head to it, and running its
+reviewers additionally need a current Decision 0058 integration grant naming
+the Action; see "Independent
 verdicts, run by the tick" below. Merging on GitHub and pushing the base
 branch stay outside every grant. The preview, `production status` and the activation receipt each print a
 `Remote preservation: on|off` line, and the option is part of the scope
@@ -1073,35 +1074,53 @@ When the candidate was preserved behind a host-created draft PR and the active
 grant includes both `--remote-preservation` and a current Decision 0058
 integration grant naming the Action, no operator step is needed: the worker
 tick drives the review itself, at most one side effect per tick, re-deriving
-where it stands from GitHub and its receipts each time (so a restart resumes
-mid-step, and nothing is done twice):
+where it stands from GitHub and its receipts each time (so a restarted worker
+resumes mid-step, and nothing is done twice). Every step below, including the
+push, needs **both** grants (`policyAuthorizesPullRequestReadiness`); with only
+`--remote-preservation` the tick touches nothing on GitHub.
 
 1. If a settlement commit landed after preservation, so the PR still shows the
-   preserved commit, it pushes the exact settled head (a fast-forward of the
-   agent branch, under `--remote-preservation`). A PR head that is neither the
-   settled head nor an ancestor of it is a moved head: it is never readied or
-   reviewed (`review_head_moved`).
-2. It runs `gh pr ready` on the draft (under the integration grant).
+   preserved commit, it pushes exactly the settled head commit to the agent
+   branch (a fast-forward, only while the local branch still points at it). A
+   PR head that is neither the settled head nor an ancestor of it is a moved
+   head: it is never readied or reviewed (`review_head_moved`).
+2. It runs `gh pr ready` on the draft, once. A PR a person returns to draft
+   afterwards is not readied again (`review_paused_as_draft`); mark it ready
+   yourself when it may be reviewed.
 3. It polls the PR's checks at most once a minute. Pending checks wait; a failed
    check escalates `required_checks_failed` and no reviewer runs; checks still
    not green an hour after the PR is ready escalate `required_checks_timeout`.
    Polling continues either way, so a GitHub re-run that turns green resumes.
+   A `DIRTY` (conflicted) PR escalates at once; a `BLOCKED` merge state is
+   treated as waiting while checks run and escalates only once they are green.
 4. It runs `arcadia qa code-review`, then on a later tick `arcadia qa pr`,
-   against that PR, then fast-forwards the base locally once both pass.
+   against that PR, each reviewer bounded to 15 minutes (under the worker's
+   30-minute tick ceiling, which the tick re-stamps right before the reviewer
+   starts), then fast-forwards the base locally once both pass.
 
-Every step re-reads the policy first and is withheld on Off, a changed epoch or
-a lapsed grant; a reviewer that finishes after Off records its verdict, but the
-fast-forward waits for a later On tick. GitHub CLI, push and reviewer
-capacity/sandbox failures retry on later ticks within a budget of three per
-exact head, kept in the workspace database so it survives a worker restart;
-when it is exhausted the escalation is `review_budget_exhausted`, and
-`arcadia production reset-repair-budget <project/action>` restarts the budget
-(and the checks deadline) once the cause is fixed. A reviewer's real non-pass
+Every step re-reads the policy first, at the current time, and is withheld on
+Off, a changed epoch or a lapsed grant; after a reviewer returns, the policy
+and the grant's expiry are checked again before the fast-forward, so a
+reviewer that finishes after Off or after the grant expired records its
+verdict but nothing lands until a later authorized tick. GitHub CLI, push and
+reviewer capacity/sandbox/timeout failures retry on later ticks; three
+*consecutive* failures on one exact head (any success resets the count, kept in
+the workspace database so it survives a worker restart) escalate
+`review_budget_exhausted`, and `arcadia production reset-repair-budget
+<project/action>` restarts the budget (and the checks deadline) once the cause
+is fixed. A GitHub rate limit backs off 15 minutes without spending the budget.
+A non-pass verdict is re-run automatically only when its own lineage receipt
+records that the reviewer itself was unavailable. A reviewer's real non-pass
 verdict is never retried automatically and never integrates
 (`independent_verdict_failed`): fix the candidate, or after judging the verdict
 wrong, rerun that command with `--rerun`. Without both grants the tick does
 not touch GitHub, the PR stays a draft, and the escalation's remedy names the
 two commands above and why the tick is not running them.
+
+Authority note: whether Decision 0058's integration grant should cover the
+push, `gh pr ready` and the reviewer-model spend is an operator question this
+change does not settle; until it is answered, activate both grants only if you
+accept that reading.
 
 Out of scope: the tick never merges the PR on GitHub and never pushes the base
 branch. Integration is the local fast-forward; publishing the base stays an
