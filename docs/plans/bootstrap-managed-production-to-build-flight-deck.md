@@ -3206,6 +3206,231 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/scheduling/github.ts", "docs/decisions/0055-log-defects-with-github-issues.md", "https://github.com/pmark/arcadia/issues/490"]
+  - id: fix-decision-approve-resolution-body
+    title: "`arcadia decision approve` replaces the body's `## Resolution` placeholder (`Open.`) with the recorded answer, so the document never reads approved in frontmatter while the prose says Open."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`arcadia decision approve` replaces the body's `## Resolution` placeholder (`Open.`) with the recorded answer, so the document never reads approved in frontmatter while the prose says Open."
+    expected_artifact: Evidence satisfying Agent Ask fix-decision-approve-resolution-body
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - "After approving a Decision, its body's `## Resolution` section contains the recorded answer text (or a one-line pointer to it) and no longer contains the literal `Open.`."
+      - "`--dry-run` still writes nothing, and re-approving or reverse leaves the body in a consistent state."
+      - A deterministic test approves a `decision new` document and asserts the body changed with the answer and no longer reads `Open.`.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/decision.ts", "https://github.com/pmark/arcadia/issues/746"]
+  - id: fix-tidy-torn-tail-byte-offset
+    title: "`repairTornTail` in `src/git/quarantine.ts` truncates the journal at a byte offset, not a UTF-16 string index."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`repairTornTail` in `src/git/quarantine.ts` truncates the journal at a byte offset, not a UTF-16 string index."
+    expected_artifact: Evidence satisfying Agent Ask fix-tidy-torn-tail-byte-offset
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - "`repairTornTail` derives the truncation offset from a byte-accurate measure (Buffer/`Buffer.byteLength`) so a multi-byte character before the torn tail never causes `ftruncateSync` to cut mid-character or leave a torn tail."
+      - A deterministic test writes a journal whose last complete line contains a multi-byte character, tears the tail, repairs it, and asserts the repaired file is valid UTF-8 and ends at a newline.
+      - Existing journal recovery and tidy behavior is unchanged; `pnpm test` passes.
+    depends_on: []
+    decisions: []
+    references: ["src/git/quarantine.ts", "https://github.com/pmark/arcadia/issues/749"]
+  - id: narrow-db-write-transactions-across-fs-calls
+    title: Workspace write transactions in the hot paths no longer hold the SQLite write lock across local filesystem calls.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Workspace write transactions in the hot paths no longer hold the SQLite write lock across local filesystem calls.
+    expected_artifact: Evidence satisfying Agent Ask narrow-db-write-transactions-across-fs-calls
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - The write transactions named by the `tests/db-contention.test.ts` measurement perform their filesystem reads/writes outside the transaction, or hold the lock only for the database mutation, so a slow disk or network mount cannot block every other writer.
+      - A measured assertion or documented receipt shows the transaction lock hold no longer scales with filesystem latency.
+      - Concurrency and correctness tests (`pnpm test`) pass; no lost update is introduced.
+    depends_on: []
+    decisions: []
+    references: ["src/db/connection.ts", "tests/db-contention.test.ts", "https://github.com/pmark/arcadia/issues/757"]
+  - id: allow-manual-preservation-first-binding-after-base-advance
+    title: Manual preservation can create its first binding after a clean base advance when the old base is an ancestor of the new base and the candidate merges cleanly.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Manual preservation can create its first binding after a clean base advance when the old base is an ancestor of the new base and the candidate merges cleanly.
+    expected_artifact: Evidence satisfying Agent Ask allow-manual-preservation-first-binding-after-base-advance
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - A reserved manual candidate whose first binding was delayed until after the governed base advanced can be preserved when the prepared base is an ancestor of the current base and the merge is clean; the binding records the actual merge base.
+      - The existing refusal for diverged or conflicting history is preserved; a genuinely incompatible candidate still refuses with a named reason.
+      - A deterministic test advances the base between reservation and first binding and asserts preservation succeeds and produces a validation receipt.
+      - "`pnpm test` and the core, Discord and Dashboard builds pass."
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/manualPreservation.ts", "https://github.com/pmark/arcadia/issues/811"]
+  - id: report-missing-validation-commands-in-broker-readiness
+    title: "`go-broker status` reports not-ready when manual preservation has no `validation_commands`, matching the guaranteed refusal, instead of reporting ready."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`go-broker status` reports not-ready when manual preservation has no `validation_commands`, matching the guaranteed refusal, instead of reporting ready."
+    expected_artifact: Evidence satisfying Agent Ask report-missing-validation-commands-in-broker-readiness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - Broker readiness surfaces a named `validation_commands` prerequisite when manual preservation is enabled but no host-configured objective commands exist, consistent with `readPreservationChecksStatus`.
+      - A deterministic test configures manual preservation without validation commands and asserts readiness is false with a remedy naming the missing commands.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/goBrokerInstall.ts", "src/sessions/manualPreservation.ts", "https://github.com/pmark/arcadia/issues/813"]
+  - id: keep-inactive-plan-acceptance-fingerprint-stable
+    title: Accepting an inactive draft Plan is not refused by unrelated portfolio queue movement, since the acceptance changes no pointer, dispatch authority, or queue state.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Accepting an inactive draft Plan is not refused by unrelated portfolio queue movement, since the acceptance changes no pointer, dispatch authority, or queue state.
+    expected_artifact: Evidence satisfying Agent Ask keep-inactive-plan-acceptance-fingerprint-stable
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - The acceptance fingerprint for an inactive Plan hashes only the state the acceptance actually depends on, so unrelated queue revisions do not expire it; the apply still refuses if the Plan or its own inputs changed.
+      - A deterministic test accepts an inactive Plan after unrelated queue movement and asserts success; a test that mutates the Plan's own content still refuses.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/docs/operatorGate.ts", "https://github.com/pmark/arcadia/issues/823"]
+  - id: support-action-deferral-via-agent-ask
+    title: An Agent Ask can create an actionable Action deferral (the effect is accepted and the target Action resolved), so deferring an Action is a governed, phone-friendly operation.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: An Agent Ask can create an actionable Action deferral (the effect is accepted and the target Action resolved), so deferring an Action is a governed, phone-friendly operation.
+    expected_artifact: Evidence satisfying Agent Ask support-action-deferral-via-agent-ask
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - "An Agent Ask whose effect is `defer` with a `target_ref` naming an Action is accepted, applies `status: deferred`, and advances the governed pointer as `decision approve` does; it is rejected only for a genuinely unsupported combination."
+      - The preview matches the applied effect, and a replayed settlement is idempotent.
+      - A deterministic test previews and applies an Action deferral and asserts the Action is deferred and the pointer advanced.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/ask/agentAsk.ts", "src/ask/settlement.ts", "docs/agent-guidance/agent-asks.md", "https://github.com/pmark/arcadia/issues/844"]
+  - id: diagnose-manual-preservation-response-budget-timeout
+    title: A manual preservation that exhausts its response budget without a receipt or named failure produces a durable diagnosis and is not silently retried forever.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A manual preservation that exhausts its response budget without a receipt or named failure produces a durable diagnosis and is not silently retried forever.
+    expected_artifact: Evidence satisfying Agent Ask diagnose-manual-preservation-response-budget-timeout
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - When the preservation broker exhausts its response budget, the requester records a durable refusal naming the budget, the transport freshness, and the host-claim state, rather than leaving no evidence.
+      - An identical subsequent request does not repeat the same silent timeout; a retry requires a changed input or an explicit operator action.
+      - A deterministic test drives a budget exhaustion and asserts a durable evidence artifact and a single bounded retry behavior.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/manualPreservation.ts", "src/sessions/preservationTransport.ts", "https://github.com/pmark/arcadia/issues/848"]
+  - id: withdraw-superseded-847-activation-asks
+    title: "Superseded #847 activation Ask inputs are withdrawn so stale Grant choices cannot resurface, while the live v3 scope is preserved."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Superseded #847 activation Ask inputs are withdrawn so stale Grant choices cannot resurface, while the live v3 scope is preserved."
+    expected_artifact: Evidence satisfying Agent Ask withdraw-superseded-847-activation-asks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - The superseded `agent-ask-activate-scoped-container-audit-847-*.yaml` inputs are removed from the active scan directory (archived or deleted) so they cannot surface a stale Grant choice; the live v3 scope settled into Decision 0079 is untouched.
+      - A scan of the ask directory surfaces exactly the current activation input.
+      - The change is recorded so the withdrawal is auditable.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/875", "docs/decisions/0079-decide-whether-to-activate-exactly-one-bounded-docker-host-audit-of-the.md"]
+  - id: silence-sandbox-certificate-copy-errors
+    title: Every `arcadia`/`mise` invocation in a Claude Code sandbox stops printing repeated 'failed to copy trust settings' lines to stderr.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Every `arcadia`/`mise` invocation in a Claude Code sandbox stops printing repeated 'failed to copy trust settings' lines to stderr.
+    expected_artifact: Evidence satisfying Agent Ask silence-sandbox-certificate-copy-errors
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - The `security`/certificate step is guarded so a sandbox-denied trust-settings copy is suppressed or emitted once at a debug level, without hiding real errors; `arcadia ... --json` stdout stays clean.
+      - "A test or documented receipt in the sandboxed environment shows `ok: true` with no repeated stderr noise."
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/cli.ts", "scripts/", "https://github.com/pmark/arcadia/issues/890"]
+  - id: preserve-global-agent-defaults-in-go-install
+    title: "`arcadia go-broker install` provides its named `arcadia-unattended` profile without changing the operator's ordinary global Codex/Claude defaults."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "`arcadia go-broker install` provides its named `arcadia-unattended` profile without changing the operator's ordinary global Codex/Claude defaults."
+    expected_artifact: Evidence satisfying Agent Ask preserve-global-agent-defaults-in-go-install
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - Install no longer writes the restricted profile as the global Codex default; readiness resolves the named profile explicitly instead of depending on a global selection.
+      - A deterministic test installs against a home with existing interactive defaults and asserts those defaults are preserved while the named profile is available.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/agentSetup/goBrokerAgentSetup.ts", "https://github.com/pmark/arcadia/issues/927"]
+  - id: stabilize-flaky-test-suite
+    title: "Remove the remaining test-suite flakiness: Playwright mission-control flakes, decision-deferral teardown ENOTEMPTY, the completion-pointer fault-matrix timeout, the Corepack/undici install crash, and the CLI missing-workspace resolution."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Remove the remaining test-suite flakiness: Playwright mission-control flakes, decision-deferral teardown ENOTEMPTY, the completion-pointer fault-matrix timeout, the Corepack/undici install crash, and the CLI missing-workspace resolution."
+    expected_artifact: Evidence satisfying Agent Ask stabilize-flaky-test-suite
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - "Each named flake (#765 Playwright mission-control; #766 decision-deferral ENOTEMPTY; #768 completion-pointer 300s timeout; #778 Corepack/undici assert; #831 CLI missing-workspace workspace resolution) is reproduced deterministically or fixed by a targeted change, with the fix named per issue."
+      - A full `pnpm test` and the e2e job pass repeatedly on a loaded host without reruns.
+      - No test timeout is raised merely to mask a real hang; any timeout change cites the issue.
+    depends_on: []
+    decisions: []
+    references: ["vitest.config.ts", "tests/", "https://github.com/pmark/arcadia/issues/765", "https://github.com/pmark/arcadia/issues/766", "https://github.com/pmark/arcadia/issues/768", "https://github.com/pmark/arcadia/issues/778", "https://github.com/pmark/arcadia/issues/831"]
+  - id: resolve-merged-pr-review-followups
+    title: "Resolve the non-blocking review follow-ups carried from merged PRs #912/#915/#917/#920/#922/#932: #916, #918, #921, #930, #933."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Resolve the non-blocking review follow-ups carried from merged PRs #912/#915/#917/#920/#922/#932: #916, #918, #921, #930, #933."
+    expected_artifact: Evidence satisfying Agent Ask resolve-merged-pr-review-followups
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-backlog-fixes-and-batches-2026-10-04
+    acceptance_criteria:
+      - "Each of #916, #918, #921, #930 and #933 is either fixed with a test/doc change or explicitly declined with a reason, and the choice is recorded on the Issue."
+      - "#921's receipt-vs-verdict race (concurrent `qa code-review` runs) is fixed so the gate cannot see pass while a later call returns a fail receipt."
+      - Fixes for the named call sites ship with focused tests where the note identified a testable behavior.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/916", "https://github.com/pmark/arcadia/issues/918", "https://github.com/pmark/arcadia/issues/921", "https://github.com/pmark/arcadia/issues/930", "https://github.com/pmark/arcadia/issues/933"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
