@@ -4,7 +4,7 @@ type: decision
 id: "0081"
 slug: decide-whether-arcadia-may-close-a-github-issue-that-only-mirrors-a-governed
 project: arcadia
-status: open
+status: approved
 question: Decide whether Arcadia may close a GitHub Issue that only mirrors a governed Action once that Action is done and its acceptance is verified at the governed base revision, preserving the Action reference, so the Project board reflects only live work.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-04
+answer: Authorize closing verified done-Action mirror Issues, preserving the Action reference, and make the board projection close/archive future completed mirrors
+decided: 2026-10-04
 ---
 
 # Decision 0081: Decide whether Arcadia may close a GitHub Issue that only mirrors a governed Action once that Action is done and its acceptance is verified at the governed base revision, preserving the Action reference, so the Project board reflects only live work.
