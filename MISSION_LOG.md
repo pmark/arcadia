@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # Mission Log: Arcadia
@@ -1580,3 +1580,10 @@ updated: 2026-10-03
 - **Result:** Every declared acceptance criterion was accepted as met: "Persist a requirement identity/input revision and distinct attempt ordinal/request ID for planner, critique, development, exact-head code review and independent QA. Transport replay returns the same receipt; an explicitly authorized retry after terminal failure atomically allocates the next bounded ordinal."; "A host command or worker step records a passed or failed exact-head code-review verdict through beginIndependentVerdict/finishIndependentVerdict for a preserved managed candidate, refuses any developer-supplied or stale-head verdict, and the production tick then integrates a candidate with both current code-review and QA verdicts with no operator merge; the awaiting_independent_verdicts escalation clears; focused replay/stale/independence/Off tests and the three-Action rehearsal pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-record-code-review-verdicts-2026-10-03).
+
+## 2026-10-04 — Completed arcadia/let-production-grant-request-remote-preservation
+
+- **Did:** Completed Action arcadia/let-production-grant-request-remote-preservation from accepted evidence (Candidate dce2d98967251ba904da2caa71b8ef55b7613457).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia production preview and activate accept a remote-preservation option that sets scope.remotePreservation, shows it in the preview, status and receipt, and binds it into the scope fingerprint so an activation cannot differ from its preview; reactivation preserves it from the saved reviewed configuration."; "An activation without the option leaves preservation local only; no other flag, environment variable or dashboard control can turn it on; and tests in tests/managed-production-policy.test.ts and the dashboard production-control contract cover the preview fingerprint, replay, Off clearing authority, and refusal without the option."; "START_HERE.md and docs/managed-production-readiness.md document the option and that it authorizes only push and draft PR creation, not merge or marking a PR ready.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-let-production-grant-request-remote-preservation-2026-10-04).

@@ -3102,7 +3102,7 @@ actions:
     references: ["src/sessions/roleLineage.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/qa/prReview.ts", "https://github.com/pmark/arcadia/pull/919"]
   - id: let-production-grant-request-remote-preservation
     title: Let an operator preview and activate a production Grant that requests remote candidate preservation, through the existing fingerprinted preview/activate path.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Let an operator preview and activate a production Grant that requests remote candidate preservation, through the existing fingerprinted preview/activate path.
@@ -3138,7 +3138,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: let-production-grant-request-remote-preservation
+current_action: ready-pr-and-run-independent-reviews-from-the-tick
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
