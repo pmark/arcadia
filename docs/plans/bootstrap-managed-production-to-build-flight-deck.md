@@ -3450,7 +3450,7 @@ actions:
     references: ["src/qa/prReview.ts", "src/sessions/roleLineage.ts", "src/production/independentReview.ts", "tests/code-review-verdict-recorder.test.ts", "tests/qa-pr-review.test.ts", "tests/rehearsal-three-action.test.ts", "https://github.com/pmark/arcadia/issues/899"]
   - id: code-review-not-applicable-naming
     title: Stop refusing honest not-applicable claims for generic wording while the deterministic classifier still decides applicability, and tell the model to name files.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Stop refusing honest not-applicable claims for generic wording while the deterministic classifier still decides applicability, and tell the model to name files.
@@ -3469,7 +3469,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: code-review-not-applicable-naming
+current_action: fix-decision-approve-resolution-body
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
