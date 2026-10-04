@@ -38,7 +38,9 @@ export const PEER_WATCH_WINDOWS = {
   /** Capacity evidence older than this cannot classify an agent exhausted. */
   capacityFreshMs: CAPACITY_ADMISSION_LIMITS.observationFreshnessMs,
   /** A publisher's heartbeat interval may not exceed this (half the fresh window). */
-  heartbeatMaxIntervalMs: 10 * 60_000
+  heartbeatMaxIntervalMs: 10 * 60_000,
+  /** A takeover request, and the classification it is revalidated against, may be at most this old. */
+  takeoverMaxAgeMs: 5 * 60_000
 } as const;
 
 export const PEER_WATCH_LIMITS = {
@@ -125,12 +127,7 @@ export function parseActionRef(value: string): ActionRef | null {
 
 /** A strict UTC instant; anything else (offsets, dates alone, impossible dates) is null. */
 export function parseUtcTimestamp(value: string): number | null {
-  if (!UTC_TIMESTAMP.test(value)) return null;
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) return null;
-  // Round-trip guard: Date.parse accepts 2026-02-31 by rolling it over.
-  if (new Date(ms).toISOString().slice(0, 19) !== value.slice(0, 19)) return null;
-  return ms;
+  return UTC_TIMESTAMP.test(value) ? parseIsoInstant(value) : null;
 }
 
 /**
@@ -375,7 +372,7 @@ export interface CommitObservation {
   branch: string;
   authorEmail: string;
   committerEmail: string;
-  /** Committer date, as Git reports it. Forgeable; bounded by clock skew against the watcher's clock. */
+  /** Committer date as Git's `%cI` reports it (strict ISO 8601 with zone). Forgeable; bounded by clock skew against the watcher's clock. */
   committedAt: string;
   message: string;
 }
@@ -424,7 +421,8 @@ export function bindCommitEvidence(commit: CommitObservation, expected: BindingE
   const at = parseIsoInstant(commit.committedAt);
   const refuse = (reason: string): BoundEvidence => ({ channel: "commits", ref, at, counted: false, reason });
   if (!SHA.test(commit.sha)) return refuse("not a full commit sha");
-  if (!expected.branch || commit.branch !== expected.branch) return refuse("not on the claim's candidate branch");
+  const expectedBranch = normalizeBranch(expected.branch);
+  if (!expectedBranch || normalizeBranch(commit.branch) !== expectedBranch) return refuse("not on the claim's candidate branch");
   const owners = builderIdentityEmails(expected.agent);
   const author = commit.authorEmail.trim().toLowerCase();
   const committer = commit.committerEmail.trim().toLowerCase();
@@ -485,8 +483,31 @@ export function bindCommentEvidence(comments: IssueCommentObservation[], expecte
   return results;
 }
 
+const STRICT_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * A strict ISO 8601 / RFC 3339 instant with an explicit zone, the shape Git's
+ * `%cI` and the GitHub API emit. `Date.parse` is not used to accept input: it
+ * takes many other shapes and rolls an impossible date such as 2026-02-31 over
+ * into March. Anything else is null, which callers treat as unreadable.
+ */
 export function parseIsoInstant(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
+  if (typeof value !== "string") return null;
+  const match = STRICT_INSTANT.exec(value);
+  if (!match) return null;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const offsetHours = match[10] === undefined ? 0 : Number(match[10]);
+  const offsetMinutes = match[11] === undefined ? 0 : Number(match[11]);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59 || offsetHours > 23 || offsetMinutes > 59) return null;
+  const local = Date.UTC(year, month - 1, day, hour, minute, second);
+  if (new Date(local).getUTCDate() !== day) return null;
+  const millis = match[7] ? Number(match[7].slice(0, 3).padEnd(3, "0")) : 0;
+  const sign = match[9] === "-" ? -1 : 1;
+  return local + millis - sign * (offsetHours * 60 + offsetMinutes) * 60_000;
+}
+
+/** Git and the GitHub API name the same branch with or without `refs/heads/`. */
+export function normalizeBranch(branch: string | null | undefined): string | null {
+  if (typeof branch !== "string" || !branch.trim()) return null;
+  return branch.trim().replace(/^refs\/heads\//, "");
 }

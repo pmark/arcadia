@@ -27,14 +27,36 @@ block exists only as a local draft.
 - a comment that says `release_requested`.
 
 The owner may be waiting for independent review, QA or a procedure, with the
-same writer due to resume. Ownership comes only from the governed rows:
+same writer due to resume. Ownership comes only from the governed rows, and
+it fails closed: when they do not affirmatively show a release, it is `held`
+or `unknown`, never `released`.
 
-- the Action claim in `agent_worktree_reservations`, as `getActiveActionClaim`
-  reads it;
-- the claim's principal;
-- for a managed Session, the Session's `agent_sessions` status together with
-  its `session_exit_receipts` row. Reconciled counts as proven terminal (the
-  term from Decision 0051); merely exited does not.
+- **Released** needs three things. There is no Action claim (as
+  `getActiveActionClaim` reads it). No principal is observed. And the watcher
+  read and affirmed all of these for the Action and its candidate:
+  - no `prepared` or `running` `agent_sessions` row;
+  - no `agent_worktree_reservations` row, with or without claim columns;
+  - no manual or native handoff, and no pending enrollment.
+
+  A null claim alone proves nothing. A reservation without claim columns, a
+  claim whose worktree is gone, or a handoff that was never launched can all
+  still have an owner.
+- **Principal proven terminal** is the term from Decision 0051. It means
+  exactly the receipt `arcadia go` resumes from (`getResumableLeaseHandoff`):
+  - the claim's managed Session is terminal;
+  - its `session_exit_receipts` row has outcome `incomplete_resumable` with a
+    lease handoff;
+  - the handoff is not superseded;
+  - the receipt is not simulated;
+  - it is bound to the claim's candidate.
+
+  Every other outcome stays `held`, with an escalation: unreconciled,
+  `needs_input` (an operator question), `failed_execution`,
+  `missing_evidence`, `successful_exit`, `accepted_completion`, superseded or
+  simulated.
+- **Principal agent.** The principal must be the watched agent for every
+  state other than released. A mismatch, or an agent that cannot be
+  established, is `unknown`.
 
 A watcher that cannot verify release stays read-only. It reports the state,
 the exact head, the first gate and the recovery to the nearest orchestrator or
@@ -65,7 +87,9 @@ A watcher reads only channels every supported agent already has:
 4. **Coding-agent capacity telemetry.** This is the `ProviderCapacityReceipt`
    from `src/codingAgents/capacity.ts`: source, `real` or `simulated`
    evidence, `observedAt`, freshness, availability (`available`, `unknown`,
-   `usage_limited`, `budget_limited`) and windows.
+   `usage_limited`, `budget_limited`) and windows. Only `real` evidence
+   counts. A simulated receipt is listed with its reason and never classifies
+   an agent.
 
 ### What each agent can produce today
 
@@ -172,7 +196,12 @@ issued_at: <UTC timestamp>
 
 Agents share the operator's GitHub credential and can set any Git author. So
 a forged comment or commit can make an owner look active. That can delay an
-escalation, but it can never release ownership or show exhaustion.
+escalation, but it can never release ownership or show exhaustion. Exhaustion
+comes only from the host's own `real` capacity telemetry.
+
+Timestamps are parsed strictly: ISO 8601 or RFC 3339 with an explicit zone,
+as Git's `%cI` and the GitHub API emit them. Impossible dates are refused.
+Branch names are compared with any `refs/heads/` prefix removed.
 
 ## Freshness windows
 
@@ -183,6 +212,7 @@ escalation, but it can never release ownership or show exhaustion.
 | `clockSkewMs` | 300000 | Tolerated disagreement between a claimed and an observed time. |
 | `capacityFreshMs` | 900000 | Capacity evidence older than this cannot show exhaustion. |
 | `heartbeatMaxIntervalMs` | 600000 | Longest interval a publisher may leave between heartbeats. |
+| `takeoverMaxAgeMs` | 300000 | Oldest a takeover request, or the classification it is revalidated against, may be. |
 
 ## Classification
 
@@ -193,27 +223,39 @@ Every result carries:
 - the latest counted activity;
 - the unreadable channels;
 - the non-proof observations, each marked `provesRelease: false`;
-- the ownership state (`held`, `principal_terminal`, `released` or `unknown`).
+- the ownership state, with the claim generation, branch, Session, exit
+  receipt and release reference it rests on.
+
+The table is `PEER_WATCH_CLASSIFICATION_TABLE` in `src/agentWatch/classify.ts`.
+Rows are checked in order.
 
 | Evidence | State | Ownership | Watcher may |
 |---|---|---|---|
-| Claim or session rows unreadable, principal agent unknown, or claim held by another agent | unknown | unknown or held | observe, escalate |
-| Fresh observed or attested capacity evidence of a spent window, `usage_limited` or `budget_limited` (its `real` or `simulated` mode is shown in the evidence) | exhausted | unchanged | offer help, escalate (if held) |
-| No active claim | idle | released | continue released work |
-| Claim held; managed Session terminal and reconciled on this candidate | idle | principal_terminal | continue released work |
+| Ownership rows unreadable | unknown | unknown | observe, escalate |
+| Principal agent unknown or a different agent than the watched one (any claim state) | unknown | unknown | observe, escalate |
+| No claim; release facts not read, or principal unknown | unknown | unknown | observe, escalate |
+| No claim; a prepared or running Session, a reservation, a manual handoff or a native/prepared principal exists | unknown | held | observe, escalate |
+| No claim; no principal; caller affirms no live Session, no reservation and no manual handoff | idle | released | observe, continue released work (pointer must name the Action) |
+| Claim held; its managed Session is terminal with a real, unsuperseded `incomplete_resumable` lease handoff on this candidate | idle | principal_terminal | observe, continue released work (pointer must name the Action) |
+| Claim held; its Session exited but is unreconciled, `needs_input`, simulated, superseded or reconciled with any other outcome | by activity | held | the activity row's actions, plus escalate |
+| Claim held; fresh `real` capacity evidence of a spent window, `usage_limited` or `budget_limited` | exhausted | held | observe, offer help, escalate |
 | Claim held; latest counted activity within `activityFreshMs` | healthy | held | observe |
-| Claim held; latest counted activity within `stallAfterMs` | idle | held | offer help |
-| Claim held; nothing counted within `stallAfterMs` on any channel; some channel unreadable | unknown | held | escalate |
-| Claim held; nothing counted within `stallAfterMs`; every channel read | stalled | held | offer help, escalate |
+| Claim held; latest counted activity within `stallAfterMs` | idle | held | observe, offer help |
+| Claim held; nothing counted within `stallAfterMs`; some channel unreadable | unknown | held | observe, escalate |
+| Claim held; nothing counted within `stallAfterMs`; every channel read | stalled | held | observe, offer help, escalate |
 
 **Exhausted** requires all of these:
 
 - capacity evidence for the owner's own provider;
+- evidence mode `real`;
 - freshness `fresh`, observed within `capacityFreshMs`;
 - not `none` or unmetered configuration;
 - a window that has not reset since.
 
-Stale or unknown capacity never shows exhaustion.
+Simulated, stale or unknown capacity never shows exhaustion. Exhausted takes
+precedence over healthy, even when the owner committed seconds ago, because
+fresh capacity evidence predicts no further progress. `latestActivity` still
+reports that commit.
 
 **Stalled** requires all of these:
 
@@ -237,24 +279,40 @@ A watcher may only:
 - **escalate to the operator** with the exact remedy;
 - **continue work the owner has released.**
 
-Continuing goes only through existing recovery. The watcher presents a
-takeover request (`arcadia-peer-takeover-request-v1`) carrying:
+Continuing goes only through existing recovery. The watcher builds a takeover
+request (`arcadia-peer-takeover-request-v1`), which carries:
 
-- the observed evidence references;
+- the requester;
+- the target Action;
+- the observed evidence references and classification time;
 - the claim generation and branch;
 - the basis: `claim_released` or `principal_proven_terminal`;
-- the terminal Session id;
-- the existing command it relies on.
+- the terminal Session and exit receipt, or the release reference;
+- the governed command it relies on.
 
-Revalidate the request against a fresh classification immediately before
-acting. The claim generation is the fence.
+Immediately before acting, the watcher revalidates the request against a fresh
+classification. Validation refuses malformed input; it never throws. It
+requires all of these:
+
+- the claim generation, branch, Session, exit receipt and release reference
+  are unchanged;
+- the recovery is exactly the governed command for the requester;
+- the request and the classification are both within `takeoverMaxAgeMs`, and
+  in order;
+- the Project pointer names the target Action. `arcadia go` starts the
+  pointer's Action, not the watched one. An Action already settled or landed
+  has moved off the pointer, and nothing remains to continue.
+
+A release with no release reference cannot be told apart from a later
+re-claim and re-release. `takeoverMaxAgeMs` bounds that window.
 
 | Basis | Existing recovery |
 |---|---|
-| No active claim (settled or released) | `arcadia go --agent <agent>` dispatches the Action with a fresh claim |
-| Managed Session terminal and reconciled | `arcadia go --agent <agent>` resumes the same candidate (Decision 0051) |
-| Session exited, not reconciled | Escalate. The operator judges and may run `arcadia session reconcile <session-id>` |
-| Native or prepared principal with no Session row | Escalate. Only the owner's or its orchestrator's explicit release, plus a handoff receipt, hands it over |
+| Released (pointer still names the Action) | Preview with `arcadia go --agent <agent>`, which changes nothing. Then `arcadia go --agent <agent> --apply` dispatches it with a fresh claim. |
+| Principal proven terminal (pointer still names the Action) | Same preview and `--apply`. `go` resumes the same candidate from the `incomplete_resumable` handoff (Decision 0051). |
+| Session exited, not reconciled | Escalate. The operator judges and may run `arcadia session reconcile <session-id>`. |
+| `needs_input` | Escalate. The operator answers the question and the owner resumes. |
+| Any other reconciled outcome, a superseded or simulated receipt, or a native or prepared principal | Escalate. Only the owner's or its orchestrator's explicit release, plus a handoff receipt, hands it over. |
 
 A watcher never does any of these:
 
