@@ -3448,6 +3448,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/qa/prReview.ts", "src/sessions/roleLineage.ts", "src/production/independentReview.ts", "tests/code-review-verdict-recorder.test.ts", "tests/qa-pr-review.test.ts", "tests/rehearsal-three-action.test.ts", "https://github.com/pmark/arcadia/issues/899"]
+  - id: code-review-not-applicable-naming
+    title: Stop refusing honest not-applicable claims for generic wording while the deterministic classifier still decides applicability, and tell the model to name files.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Stop refusing honest not-applicable claims for generic wording while the deterministic classifier still decides applicability, and tell the model to name files.
+    expected_artifact: Evidence satisfying Agent Ask code-review-not-applicable-naming
+    clarification: clarified
+    confidence: high
+    source: Agent Ask code-review-not-applicable-naming-2026-10-04
+    acceptance_criteria:
+      - "The per-claim 'names a touched file' check is replaced by a verdict-level rule: the not-applicable claims are accepted only if every claim's evidence is substantive (existing length rule) and at least one not-applicable claim names a touched file path or basename (or, for a docs-only patch, the review summary names one); the deterministic per-file classification of the patch remains the sole decision on whether a claim can be accepted, every refusal for touched executable, configuration, authority or unknown files is unchanged, and correctness is still never not-applicable."
+      - "The code-review prompt's not-applicable rule tells the model that each not-applicable check's own evidence should name every touched file by exact path (for example MARKER.md, PROJECT.md) and must not refer to files only generically ('all touched files', 'the marker', 'governed records'); tests lock the new rule and keep all of #934's refusal tests passing."
+      - "A regression test uses the real model-verdict from the live smoke (five not-applicable claims where state-and-concurrency, security-and-authority and tests evidence names no file, copied from the smoke's out-exact receipt under /private/tmp/claude-501/-Users-pmark-Dev-MR-Arcadia-arcadia/8b3c388d-2a2c-4a1b-bfb8-165c1289534c/scratchpad/na-smoke/) and shows it now derives to pass on the captured patch while a code, workflow, config or docs/ patch with the same wording is still refused; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "src/qa/patchApplicability.ts", "tests/code-review-not-applicable.test.ts", "tests/fixtures/rehearsal-code-review/", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
