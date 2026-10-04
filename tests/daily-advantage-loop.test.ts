@@ -165,6 +165,7 @@ describe("Daily Advantage existing-Action planning preparation", () => {
     const promptPath = path.join(fixture.workspace, prepared.data.codexInvocation!.prompt_path);
     const finalPath = path.join(fixture.workspace, prepared.data.codexInvocation!.final_message_path);
     expect(readFileSync(promptPath, "utf8")).toContain("# Arcadia Claude Code Planning Packet");
+    expect(readFileSync(promptPath, "utf8").match(/^Identity:$/gm)).toHaveLength(1);
     expect(readFileSync(finalPath, "utf8")).toBe("Claude Code has not been invoked yet.\n");
 
     const context = JSON.parse(prepared.data.planningDecision!.context_json) as Record<string, unknown>;

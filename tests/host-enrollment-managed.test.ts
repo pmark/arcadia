@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
@@ -194,7 +195,11 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
       admission: { requestId: "enroll:claude:runtime-0001:admission", status: "committed" }
     });
     expect(receipt.canonicalBrief).toContain("Current action: define-contract");
+    // The enrolling brief and the launched Session's brief both name the
+    // identity the selected model (sonnet, Claude's standard tier) commits under.
+    expectIdentityBlock(receipt.canonicalBrief, "claude", "standard");
     expect(f.tmux.launches).toHaveLength(1);
+    expectIdentityBlock(String(f.tmux.launches[0].args.at(-1)), "claude", "standard");
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, enrollments: 1, pending: 0 });
 
     expect(enroll(f)).toEqual(receipt);

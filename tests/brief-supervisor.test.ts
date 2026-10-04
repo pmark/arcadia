@@ -14,6 +14,7 @@ import {
   superviseBrief
 } from "../src/briefSupervisor.js";
 import { renderNextSuccess, runNextReadOnlyCommand } from "../src/commands/next.js";
+import { renderBriefIdentity } from "../src/goBroker.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { processPreservationRequests } from "../src/sessions/preservationTransport.js";
@@ -302,7 +303,9 @@ describe("fixed brief entrypoint under supervision", () => {
 
   it("returns the literal dispatch brief, writes nothing, and repeats cleanly across a worker restart", () => {
     const { repo, workspace } = candidateFixture();
-    const canonical = renderNextSuccess(runNextReadOnlyCommand({ workspace, project: "demo" })).join("\n");
+    const next = runNextReadOnlyCommand({ workspace, project: "demo" });
+    // The literal `next` brief, then the requesting agent's Identity block.
+    const canonical = [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, "codex", workspace, repo)].join("\n");
     const statusBefore = git(repo, ["status", "--porcelain=v1", "--untracked-files=all"]);
     const headBefore = git(repo, ["rev-parse", "HEAD"]);
     const before = databaseSnapshot(workspace);
@@ -314,6 +317,7 @@ describe("fixed brief entrypoint under supervision", () => {
     expect(firstReceipt.data.dispatchBrief).toBe(canonical);
     expect(sha256(firstReceipt.data.dispatchBrief)).toBe(sha256(canonical));
     expect(firstReceipt.data.dispatchBrief).toContain("Capability never grants authority.");
+    expect(firstReceipt.data.dispatchBrief).toMatch(/^Identity:$/m);
     expect(databaseSnapshot(workspace)).toEqual(before);
     expect(git(repo, ["status", "--porcelain=v1", "--untracked-files=all"])).toBe(statusBefore);
 

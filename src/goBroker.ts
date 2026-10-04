@@ -11,6 +11,9 @@ import { existingDirectory } from "./git/worktrees.js";
 import { SESSION_AGENTS, type SessionAgent } from "./sessions/index.js";
 import { sessionTitlesByState, type SessionTitleState } from "./sessions/sessionTitle.js";
 import { requireResolvedWorkspace } from "./workspace/resolve.js";
+import { withReadOnlyDatabase } from "./db/connection.js";
+import { loadModelTierRegistry } from "./codingAgents/modelTiers.js";
+import { readProjectPartners, renderDispatchIdentityBlock } from "./sessions/partners.js";
 
 /** The protected broker carries the same agent union the Session registry does. */
 export type GoBrokerAgent = SessionAgent;
@@ -58,7 +61,10 @@ export interface BriefCommandData {
   advance: AdvanceCommandData;
   workMonitor: WorkMonitorCommandData;
   next: NextCommandData;
-  /** The exact lines `pnpm arcadia next` would render, joined for a single paste. */
+  /**
+   * The exact lines `pnpm arcadia next` would render, then the requesting
+   * agent's Identity block (`renderBriefIdentity`), joined for a single paste.
+   */
   dispatchBrief: string;
   /**
    * The session title for each state this session can be in, so the agent
@@ -67,6 +73,37 @@ export interface BriefCommandData {
   sessionTitles: Record<SessionTitleState, string>;
   /** The supervising parent's id for this invocation, when supervised. */
   correlationId?: string;
+}
+
+/**
+ * The requesting agent's Identity block for a dispatch brief. The tier comes
+ * from the Plan's recommendation resolved for this agent; partners from the
+ * workspace's live Session and claim rows (read-only), excluding the calling
+ * worktree, and are omitted when those rows cannot be read.
+ */
+export function renderBriefIdentity(next: NextCommandData, agent: GoBrokerAgent, workspace: string, source: string): string[] {
+  const projectSlug = next.context?.projectSlug ?? null;
+  let partners = null;
+  if (projectSlug) {
+    try {
+      partners = withReadOnlyDatabase(workspace, (db) => readProjectPartners(db, { projectSlug, excludeWorktree: source }));
+    } catch {
+      partners = null;
+    }
+  }
+  let registry;
+  try {
+    registry = loadModelTierRegistry(workspace);
+  } catch {
+    registry = undefined;
+  }
+  return renderDispatchIdentityBlock({
+    agent,
+    recommendedModel: next.context?.planRecommendedModel ?? null,
+    recommendedEffort: next.context?.planRecommendedReasoningEffort ?? null,
+    registry,
+    partners
+  });
 }
 
 /**
@@ -173,7 +210,7 @@ export function runGoBroker(
     const projectSlug = runBriefStage("next", () => resolveProjectSlug(request.source), briefContext);
     const next = runBriefStage("next", () => nextRunner({ workspace, project: projectSlug }));
     const rendered = runBriefStage("render", () => ({
-      dispatchBrief: renderNextSuccess(next).join("\n"),
+      dispatchBrief: [...renderNextSuccess(next), "", ...renderBriefIdentity(next.data, request.agent, workspace, request.source)].join("\n"),
       sessionTitles: sessionTitlesByState({
         kind: next.data.dispatchable ? "build" : "repair",
         plan: next.data.context?.activePlan ?? null,

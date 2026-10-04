@@ -8,7 +8,7 @@ import { runReviewApproveCommand } from "../src/commands/review.js";
 import { runWorkPlanCommand } from "../src/commands/work.js";
 import { withDatabase } from "../src/db/connection.js";
 import * as connection from "../src/db/connection.js";
-import { runGoBroker, type BriefCommandData } from "../src/goBroker.js";
+import { renderBriefIdentity, runGoBroker, type BriefCommandData } from "../src/goBroker.js";
 import {
   createWorkItemWithOptionalArtifact,
   createBackBurnerItem,
@@ -377,7 +377,12 @@ describe("sandbox-callable broker dispatch brief", () => {
       const data = result.data as BriefCommandData;
       expect(data.next).toEqual(canonical.data);
       expect(data.next.dispatchable).toBe(!blocked);
-      expect(data.dispatchBrief).toBe(renderNextSuccess(canonical).join("\n"));
+      expect(data.dispatchBrief).toBe(
+        [...renderNextSuccess(canonical), "", ...renderBriefIdentity(canonical.data, "codex", workspace, repo)].join("\n")
+      );
+      // The Plan recommends gpt-5.6-terra, Codex's standard binding.
+      expect(data.dispatchBrief).toContain("You are Cody Mason <cody.mason@agents.arcadia.local> (codex, standard, builder);");
+      expect(data.dispatchBrief).toContain("Your current partners on this Project, from live claims and Sessions, are: none.");
       expect(data.dispatchBrief).toContain("Capability never grants authority.");
       expect(data.sessionTitles.working).toContain("ship-it");
       expect(writable).not.toHaveBeenCalled();

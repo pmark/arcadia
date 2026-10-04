@@ -640,6 +640,7 @@ describe("runManagedProductionTick", () => {
     ) as { id: string; prompt_path: string };
     const promptText = readFileSync(path.join(fixture.workspace, invocation.prompt_path), "utf8");
     expect(promptText).toMatch(/^# Arcadia .* Build Packet/);
+    expect(promptText.match(/^Identity:$/gm)).toHaveLength(1);
 
     const pendingApprovalId = withReadOnlyDatabase(fixture.workspace, (db) =>
       (db

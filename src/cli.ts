@@ -165,7 +165,12 @@ import {
   runDogfoodReviewShowCommand,
   runDogfoodStatusCommand
 } from "./commands/dogfood.js";
-import { renderIdentityResolveSuccess, runIdentityResolveCommand } from "./commands/identity.js";
+import {
+  renderIdentityResolveSuccess,
+  renderIdentityRosterSuccess,
+  runIdentityResolveCommand,
+  runIdentityRosterCommand
+} from "./commands/identity.js";
 import { renderInboxImportSuccess, runInboxAddCommand, runInboxImportCommand } from "./commands/inbox.js";
 import { renderInitSuccess, runInitCommand } from "./commands/init.js";
 import {
@@ -3878,9 +3883,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("path", options, () => runPathCommand({ workspace: options.workspace }), renderPathSuccess)
   );
 
+  const identityCommand = program
+    .command("identity")
+    .description("Semantic agent identities: who each coding agent signs commits and comments as");
   addJsonOption(
-    program
-      .command("identity")
+    identityCommand
       .command("resolve")
       .description(
         "The semantic identity one coding agent commits or posts comments under, for a session Arcadia did not " +
@@ -3905,6 +3912,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         }),
       renderIdentityResolveSuccess
     )
+  );
+
+  addJsonOption(
+    identityCommand
+      .command("roster")
+      .description("Every platform's given name, tier surnames, critic title and local address, plus the operator rule")
+  ).action((options: { json?: boolean }) =>
+    runCliAction("identity roster", options, () => runIdentityRosterCommand(), renderIdentityRosterSuccess)
   );
 
   addJsonOption(

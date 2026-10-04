@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
+import { renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
+import { sessionAgentForProvider } from "../sessions/index.js";
 import { validationError } from "../cli/errors.js";
 import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
@@ -494,6 +496,8 @@ ${input.request}
 ## Execution Profile
 ${executionProfile}
 
+${renderPacketIdentity(input)}
+
 ## Target Project Context
 ${projectContext}
 
@@ -552,6 +556,23 @@ ${validationGuidance}
 ## Final Reporting Requirements
 ${finalReportingRequirements}
 `;
+}
+
+/**
+ * The packet's Identity block, for the provider and model this packet binds.
+ * A packet is written once and replayed later, so it never names partners:
+ * who else is live is a launch-time fact, not a packet fact.
+ */
+function renderPacketIdentity(input: {
+  agentProfile: CodingAgentProfile;
+  agentConfiguration?: SelectedCodingAgentConfiguration | null;
+}): string {
+  const provider = input.agentConfiguration?.provider ?? input.agentProfile.provider;
+  return renderSessionIdentityBlock({
+    agent: sessionAgentForProvider(provider) ?? provider,
+    model: input.agentConfiguration?.model ?? null,
+    effort: input.agentConfiguration?.effort ?? null
+  }).join("\n");
 }
 
 function renderExecutionProfile(

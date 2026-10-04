@@ -6,7 +6,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
-import { runGoCommand } from "../src/commands/go.js";
+import { renderGoSuccess, runGoCommand } from "../src/commands/go.js";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import { runTidyCommand } from "../src/commands/tidy.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { SAFE_TASK_BRANCH, SAFE_TASK_BRANCH_PREFIXES } from "../src/git/worktrees.js";
@@ -142,6 +143,11 @@ describe("arcadia go", () => {
     expect(result.data.nextWorktree?.model).toBe("claude-sonnet-5");
     expect(result.data.nextWorktree?.effort).toBeNull();
     expect(result.data.nextWorktree?.command).toContain('claude --model "claude-sonnet-5" "arcadia advance"');
+    // "claude-sonnet-5" binds no tier and no effort was given, so the Identity
+    // block names nobody rather than guessing a tier.
+    expect(result.data.identity?.[0]).toBe("Identity:");
+    expect(result.data.identity?.join("\n")).not.toMatch(/^You are /m);
+    expect(result.data.identity?.join("\n")).toContain("arcadia identity resolve");
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
     expect(git(result.data.nextWorktree!.path, ["branch", "--show-current"]).trim()).toBe(result.data.nextWorktree!.branch);
     expect(git(result.data.nextWorktree!.path, ["merge-base", "--is-ancestor", "main", "HEAD"])).toBe("");
@@ -170,6 +176,11 @@ describe("arcadia go", () => {
       'opencode run --model "opencode-go/deepseek-v4.1-flash" --variant "high" "arcadia advance"'
     );
     expect(existsSync(result.data.nextWorktree!.path)).toBe(true);
+    // The pinned model is OpenCode's standard binding; this candidate's own
+    // claim is not its partner, and nobody else is live.
+    const rendered = renderGoSuccess(result).join("\n");
+    expectIdentityBlock(rendered, "opencode", "standard");
+    expect(rendered).toContain("Your current partners on this Project, from live claims and Sessions, are: none.");
   });
 
   it("keeps the zero-commit handoff when tidy --apply runs immediately after go --apply", () => {

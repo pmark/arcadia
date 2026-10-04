@@ -8,7 +8,8 @@ import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
-import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
+import { agentIdentityEnvironmentArgs, resolveSessionAgentIdentity, type AgentGitIdentity } from "../codingAgents/agentIdentity.js";
+import { readProjectPartners } from "./partners.js";
 import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { readClaudeCodeTokenFile } from "../codingAgents/claudeCodeToken.js";
 import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
@@ -1257,7 +1258,7 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
     effort: session.effort,
     registry
   });
-  const inner = buildProviderLaunch(db, session, agent, workspace);
+  const inner = buildProviderLaunch(db, session, agent, workspace, identity, registry);
   // A newly admitted Session has its own governed authority. Its candidate
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
@@ -1265,7 +1266,14 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
   return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), inner.command, ...inner.args] };
 }
 
-function buildProviderLaunch(db: Database.Database, session: AgentSession, agent: SessionAgent, workspace?: string): { command: string; args: string[] } {
+function buildProviderLaunch(
+  db: Database.Database,
+  session: AgentSession,
+  agent: SessionAgent,
+  workspace: string | undefined,
+  identity: AgentGitIdentity,
+  registry?: ModelTierRegistry
+): { command: string; args: string[] } {
   const continuation = getSessionContinuation(db, session);
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,
@@ -1276,7 +1284,16 @@ function buildProviderLaunch(db: Database.Database, session: AgentSession, agent
     branch: session.branch,
     agent,
     baseRevision: session.base_revision,
-    continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision } : undefined
+    continuation: continuation ? { sessionId: continuation.session_id, candidateRevision: continuation.candidate_revision } : undefined,
+    // The same identity the launch environment below commits under, so the
+    // name the agent is told and the name on its commits cannot diverge.
+    identity,
+    partners: readProjectPartners(db, {
+      projectSlug: session.project_slug,
+      excludeSessionId: session.id,
+      excludeWorktree: session.worktree_path,
+      registry
+    })
   });
   if (session.provider === "codex-cli") {
     // A Session launched under a standing-policy admission has no operator at

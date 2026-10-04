@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { renderIdentityResolveSuccess, runIdentityResolveCommand } from "../src/commands/identity.js";
+import {
+  renderIdentityResolveSuccess,
+  renderIdentityRosterSuccess,
+  runIdentityResolveCommand,
+  runIdentityRosterCommand
+} from "../src/commands/identity.js";
+import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 
 describe("arcadia identity resolve", () => {
   it("resolves an identity directly from --tier without needing a model", () => {
@@ -17,8 +23,17 @@ describe("arcadia identity resolve", () => {
         GIT_COMMITTER_NAME: "Claudia Mason",
         GIT_COMMITTER_EMAIL: "claudia.mason@agents.arcadia.local"
       },
-      signature: "Claudia Mason <claudia.mason@agents.arcadia.local>"
+      signature: "Claudia Mason <claudia.mason@agents.arcadia.local>",
+      teammates: {
+        teammates: expect.arrayContaining([
+          expect.objectContaining({ agent: "codex", givenName: "Cody" }),
+          expect.objectContaining({ agent: "opencode", givenName: "Owen" })
+        ]),
+        operator: expect.objectContaining({ role: "operator", kind: "human" }),
+        rule: expect.stringContaining("authoritative")
+      }
     });
+    expect(response.data.teammates.teammates.map((platform) => platform.agent)).toEqual(["codex", "opencode"]);
   });
 
   it("resolves the critic role to a titled identity distinct from the builder", () => {
@@ -62,5 +77,36 @@ describe("arcadia identity resolve", () => {
     // No dangling placeholder token: this is a real command Git will run as-is.
     expect(lines[1].endsWith("...")).toBe(false);
     expect(lines[2]).toBe("Comment signature: — Claudia Mason <claudia.mason@agents.arcadia.local>");
+  });
+
+  it("prints its own signature and its teammates after the commit prefix", () => {
+    const lines = renderIdentityResolveSuccess(runIdentityResolveCommand({ agent: "codex", tier: "heavy", role: "critic" }));
+    const text = lines.join("\n");
+    expect(text).toContain(
+      "You are Critic Cody Atlas <critic.cody.atlas@agents.arcadia.local> (codex, heavy, critic); sign every comment and commit exactly so"
+    );
+    expect(text).toContain("Your teammates are Claudia Swift/Mason/Atlas (claude) and Owen Swift/Mason/Atlas (opencode)");
+    expect(text).toContain("never sign as the operator");
+    // No live rows were read, so no partners are claimed.
+    expect(text).not.toContain("partners");
+  });
+});
+
+describe("arcadia identity roster", () => {
+  it("prints every platform's identities, agreeing with resolveAgentIdentity", () => {
+    const response = runIdentityRosterCommand();
+    expect(response.command).toBe("identity roster");
+    const text = renderIdentityRosterSuccess(response).join("\n");
+    for (const agent of ["codex", "claude", "opencode"]) {
+      for (const tier of ["light", "standard", "heavy"]) {
+        for (const role of ["builder", "critic"]) {
+          const identity = resolveAgentIdentity(agent, tier, role);
+          expect(text).toContain(`  ${tier} ${role}: ${identity.name} <${identity.email}>`);
+        }
+      }
+    }
+    expect(text).toContain('critic title "Critic"');
+    expect(text).toContain("@agents.arcadia.local");
+    expect(text).toContain("never sign as the operator");
   });
 });

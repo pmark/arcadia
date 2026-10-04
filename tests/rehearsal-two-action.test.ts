@@ -9,6 +9,20 @@ import { withDatabase } from "../src/db/connection.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { git, HOST_SEATBELT, LINE_A, LINE_B, Rehearsal, type RehearsalOptions } from "./helpers/rehearsalHarness.js";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
+import { resolveSessionAgentIdentity } from "../src/codingAgents/agentIdentity.js";
+import type { AgentSession } from "../src/sessions/index.js";
+import type { TierAgent } from "../src/codingAgents/modelTiers.js";
+
+/**
+ * The launched brief's Identity block names exactly the identity the launch
+ * environment commits under: the tier the Session's own model resolves to.
+ */
+function expectLaunchIdentity(argv: string[], session: AgentSession, agent: TierAgent): void {
+  const { tier, name } = resolveSessionAgentIdentity({ agent, model: session.model, effort: session.effort });
+  expectIdentityBlock(String(argv.at(-1)), agent, tier);
+  expect(argv).toContain(`GIT_AUTHOR_NAME=${name}`);
+}
 
 /**
  * The operator's two-Action rehearsal (`prove-two-action-unattended-production`),
@@ -249,10 +263,11 @@ describe("rehearsal provider: the launched process must be able to run and exit 
   it("runs the whole two-Action path on opencode-cli, launched headless with `opencode run`", () => {
     const { rehearsal } = activated({ provider: { id: "opencode-cli", profile: "opencode_build" } });
     const { a, b } = runThroughBLaunch(rehearsal);
-    for (const launch of rehearsal.tmux.launches) {
+    for (const [index, launch] of rehearsal.tmux.launches.entries()) {
       const argv = [launch.command, ...launch.args];
       expect(argv).toContain("opencode");
       expect(argv[argv.indexOf("opencode") + 1]).toBe("run");
+      expectLaunchIdentity(argv, rehearsal.sessions()[index], "opencode");
     }
     expect([a.provider, b.provider]).toEqual(["opencode-cli", "opencode-cli"]);
   });
@@ -262,9 +277,10 @@ describe("rehearsal provider: the launched process must be able to run and exit 
   // worktree and exits after its turn, so the tick can reconcile it and launch B.
   it("launches a standing-policy Claude Session with `--print` and `acceptEdits`, never bypassing approvals", () => {
     const { rehearsal } = activated();
-    launchA(rehearsal);
+    const a = launchA(rehearsal);
     const launch = rehearsal.tmux.launches[0];
     const argv = [launch.command, ...launch.args];
+    expectLaunchIdentity(argv, a, "claude");
     const claude = argv.indexOf("claude");
     expect(claude).toBeGreaterThanOrEqual(0);
     expect(argv[claude + 1]).toBe("--print");
@@ -309,6 +325,7 @@ describe("rehearsal on codex-cli, with a realistically sandboxed agent", () => {
     const { rehearsal } = activated(CODEX);
     const a = launchA(rehearsal);
     const argv = [rehearsal.tmux.launches[0].command, ...rehearsal.tmux.launches[0].args];
+    expectLaunchIdentity(argv, a, "codex");
     const codex = argv.indexOf("codex");
     expect(codex).toBeGreaterThanOrEqual(0);
     expect(argv[codex + 1]).toBe("exec");

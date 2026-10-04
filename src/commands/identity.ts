@@ -4,9 +4,14 @@ import { createSuccess } from "../cli/response.js";
 import {
   agentIdentityEnvironment,
   agentIdentitySignature,
+  agentRoster,
+  agentTeammates,
+  renderIdentityBlock,
   resolveAgentIdentity,
   resolveSessionAgentIdentity,
-  type AgentGitIdentity
+  type AgentGitIdentity,
+  type AgentRoster,
+  type AgentTeammates
 } from "../codingAgents/agentIdentity.js";
 import { TIER_AGENTS } from "../codingAgents/modelTiers.js";
 
@@ -24,6 +29,8 @@ export interface IdentityResolveData extends AgentGitIdentity {
   gitEnv: Record<string, string>;
   /** `<name> <<email>>`, to sign a posted GitHub PR comment with this identity. */
   signature: string;
+  /** The other platforms, the operator principal and the authority rule. */
+  teammates: Omit<AgentTeammates, "self" | "signature">;
 }
 
 /**
@@ -74,7 +81,12 @@ export function runIdentityResolveCommand(options: IdentityResolveOptions): Comm
 
   return createSuccess({
     command: "identity resolve",
-    data: { ...identity, gitEnv: agentIdentityEnvironment(identity), signature: agentIdentitySignature(identity) }
+    data: {
+      ...identity,
+      gitEnv: agentIdentityEnvironment(identity),
+      signature: agentIdentitySignature(identity),
+      teammates: (({ self: _self, signature: _signature, ...rest }) => rest)(agentTeammates(identity))
+    }
   });
 }
 
@@ -101,5 +113,35 @@ export function renderIdentityResolveSuccess(response: CommandSuccess<IdentityRe
   const prefix = Object.entries(gitEnv)
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join(" ");
-  return [`${name} <${email}>`, `${prefix} git commit`, `Comment signature: — ${signature}`];
+  return [
+    `${name} <${email}>`,
+    `${prefix} git commit`,
+    `Comment signature: — ${signature}`,
+    "",
+    ...renderIdentityBlock(response.data)
+  ];
+}
+
+/**
+ * `arcadia identity roster` — every identity any agent can sign as, from the
+ * same tables `identity resolve` uses. A noun: it reads and prints.
+ */
+export function runIdentityRosterCommand(): CommandSuccess<AgentRoster> {
+  return createSuccess({ command: "identity roster", data: agentRoster() });
+}
+
+export function renderIdentityRosterSuccess(response: CommandSuccess<AgentRoster>): string[] {
+  const roster = response.data;
+  const lines = [
+    `Tier surnames: ${Object.entries(roster.tierSurnames).map(([tier, surname]) => `${tier} ${surname}`).join(", ")}; ` +
+      `critic title "${roster.criticTitle}"; addresses @${roster.emailDomain}.`
+  ];
+  for (const platform of roster.platforms) {
+    lines.push(`${platform.givenName} (${platform.agent}):`);
+    for (const identity of platform.identities) {
+      lines.push(`  ${identity.tier} ${identity.role}: ${identity.name} <${identity.email}>`);
+    }
+  }
+  lines.push(roster.operator.rule, roster.rule);
+  return lines;
 }

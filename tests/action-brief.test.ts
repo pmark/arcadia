@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { renderActionBrief } from "../src/sessions/actionBrief.js";
+import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
+import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
 const roots: string[] = [];
 
@@ -33,6 +35,45 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("Candidate worktree: /worktrees/define-contract");
     expect(brief).toContain("Branch: opencode/define-contract");
     expect(brief).toContain("Define the bounded contract.");
+  });
+
+  it.each([
+    ["codex", "heavy", "builder"],
+    ["claude", "standard", "builder"],
+    ["opencode", "light", "critic"]
+  ] as const)("carries one Identity block naming the %s %s %s identity the launch commits under", (agent, tier, role) => {
+    const repo = briefRepo();
+    const brief = renderActionBrief({
+      repoRoot: repo,
+      projectSlug: "test-project",
+      planSlug: "copy-proof",
+      actionId: "define-contract",
+      worktreePath: "/worktrees/define-contract",
+      branch: `${agent}/define-contract`,
+      agent,
+      baseRevision: head(repo),
+      identity: resolveAgentIdentity(agent, tier, role),
+      partners: [{ source: "session", actionId: "other", agent: "codex", identity: resolveAgentIdentity("codex", "light") }]
+    });
+    expectIdentityBlock(brief, agent, tier, role);
+    expect(brief).toContain("partners on this Project, from live claims and Sessions, are: Cody Swift <cody.swift@agents.arcadia.local>");
+  });
+
+  it("still carries an Identity block, naming nobody, when no identity was supplied", () => {
+    const repo = briefRepo();
+    const brief = renderActionBrief({
+      repoRoot: repo,
+      projectSlug: "test-project",
+      planSlug: "copy-proof",
+      actionId: "define-contract",
+      worktreePath: "/worktrees/define-contract",
+      branch: "codex/define-contract",
+      agent: "codex",
+      baseRevision: head(repo)
+    });
+    expect(brief.match(/^Identity:$/gm)).toHaveLength(1);
+    expect(brief).not.toMatch(/^You are /m);
+    expect(brief).toContain("arcadia identity resolve");
   });
 
   it("carries every acceptance criterion verbatim and in the plan's order", () => {

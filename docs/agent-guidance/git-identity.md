@@ -58,3 +58,31 @@ refuses (an unrecognized platform, tier, or role) means the commit or comment
 must not proceed under the operator's identity either — fix the
 `--agent`/`--tier`/`--role` first.
 
+## Roster and signature rule
+
+Agents often post through the operator's one GitHub login, so the signature
+line is the only record of who is speaking. Sign every commit and posted
+comment exactly as the identity resolved for your own model tier and role —
+never as another tier, another name, or the operator. That resolved identity
+is authoritative: if the model actually doing the work differs from the one a
+brief named, run `arcadia identity resolve` for that model instead of
+inventing or reusing a name.
+
+The roster is data in `src/codingAgents/agentIdentity.ts`; print it with
+`arcadia identity roster`. A name is the platform's given name plus the tier
+surname, with a `Critic` title for the critic role, at a matching
+`<name.in.dots>@agents.arcadia.local` address:
+
+| Platform | Given name | light / standard / heavy |
+| --- | --- | --- |
+| codex | Cody | Swift / Mason / Atlas |
+| claude | Claudia | Swift / Mason / Atlas |
+| opencode | Owen | Swift / Mason / Atlas |
+
+Teammates are the other platforms in this roster; partners are the agents
+holding live Sessions or claims on the same Project. The operator is the human
+principal, not a teammate: never sign as the operator, and the operator never
+signs as an agent. Every prompt and brief Arcadia generates carries one
+Identity block stating your signature, your teammates and, when the Session
+and claim rows can be read, your current partners; `arcadia identity resolve`
+prints the same block.
