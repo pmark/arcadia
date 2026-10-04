@@ -1,0 +1,57 @@
+{
+  "baseRefName": "main",
+  "baseRefOid": "5e0e183f6bb9be3aa31152de4106fba8f1897374",
+  "body": "Preserved candidate for three-action-rehearsal/write-start-marker on main.",
+  "files": [
+    {
+      "path": ".arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-04.yaml",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "MARKER.md",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "MISSION_LOG.md",
+      "additions": 16,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "PROJECT.md",
+      "additions": 1,
+      "deletions": 1,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "docs/plans/autonomous-three-action-rehearsal.md",
+      "additions": 2,
+      "deletions": 2,
+      "changeType": "MODIFIED"
+    }
+  ],
+  "headRefName": "claude/write-start-marker-20261004T170245861Z",
+  "headRefOid": "58bcd9155cf64836994045ca63a7707d8b9ebe75",
+  "isDraft": false,
+  "mergeStateStatus": "CLEAN",
+  "number": 1,
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-04T17:04:50Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/actions/runs/37219141969/job/111485728452",
+      "name": "check",
+      "startedAt": "2026-10-04T17:04:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "title": "Candidate: write-start-marker",
+  "url": "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/1"
+}

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { git, HOST_REVIEWER_BINDING, LINE_A, LINE_B, LINE_C, Rehearsal } from "./helpers/rehearsalHarness.js";
@@ -24,6 +24,14 @@ import { git, HOST_REVIEWER_BINDING, LINE_A, LINE_B, LINE_C, Rehearsal } from ".
  * fast-forward, and `origin`'s base branch never moves.
  */
 const rehearsals: Rehearsal[] = [];
+
+/** Every code-review report the host review wrote for one fixture PR number. */
+function codeReviewReports(workspace: string, number: number): string[] {
+  const root = path.join(workspace, "artifacts", "code-review", "pull-requests", "pmark-rehearsal", String(number));
+  return readdirSync(root, { recursive: true, encoding: "utf8" })
+    .filter((entry) => entry.endsWith("qa-report.md"))
+    .map((entry) => readFileSync(path.join(root, entry), "utf8"));
+}
 afterEach(() => {
   for (const rehearsal of rehearsals.splice(0)) rehearsal.dispose();
 });
@@ -53,6 +61,13 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.createFixtureRepository();
     rehearsal.approve(rehearsal.registerProject());
     rehearsal.activate();
+    // A is a marker-only candidate (MARKER.md plus Arcadia's governed records),
+    // like the live rehearsal's first Action: in tick mode its code reviewer
+    // judges correctness and reports every other criterion not-applicable,
+    // which the deterministic patch check accepts, so it integrates unattended.
+    if (reviewers === "tick") {
+      rehearsal.github.verdict = (role, pr) => (role === "code-review" && pr?.branch.includes("write-marker-a") ? "not-applicable" : "pass");
+    }
 
     // A is the only dependency-ready Action; B and C wait on it.
     rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
@@ -188,6 +203,14 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
       expect(rehearsal.log.some((line) => line.includes("simulated abort mid-review"))).toBe(true);
       expect(github.ghCalls.some((call) => / merge\b/.test(call))).toBe(false);
       expect(github.headOf("main")).toBe(git(rehearsal.repo, ["rev-list", "--max-parents=0", "refs/heads/main"]).trim());
+      // A's passing code review rests on accepted not-applicable claims over
+      // its real compare patch: five criteria, no operator step.
+      const reportsA = codeReviewReports(rehearsal.workspace, prA.number);
+      expect(reportsA).toHaveLength(1);
+      expect(reportsA[0]).toContain("**Verdict: PASS**");
+      expect(reportsA[0]).toMatch(/\| Not-applicable claims \| pass \| Accepted for Failure handling, State and concurrency, Security and authority, Compatibility, Tests: .*MARKER\.md \(inert-document\)/);
+      expect(reportsA[0].match(/\| not-applicable \|/g)).toHaveLength(5);
+      expect(reportsA[0]).toMatch(/PROJECT\.md \(governed-record\)/);
     }
     if (reviewers === "host-commands" || reviewers === "tick") {
       for (const actionId of ["write-marker-a", "write-marker-b", "write-marker-c"]) {

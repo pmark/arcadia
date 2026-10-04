@@ -799,16 +799,25 @@ function hostPullRequest(branch: string, head: string) {
   };
 }
 
-function hostModelVerdict(verdict: "pass" | "fail", criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect"): QaPrModelVerdict {
+/**
+ * `not-applicable` simulates a code reviewer that judges correctness and
+ * reports every other criterion not-applicable to a marker-only candidate,
+ * naming the files the patch touches (the honest answer for such a patch).
+ */
+export type HostModelVerdict = "pass" | "fail" | "not-applicable";
+
+function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect"): QaPrModelVerdict {
   return {
-    verdict,
-    summary: verdict === "pass" ? "No defects in the exact head." : "A defect blocks this head.",
-    findings: verdict === "pass" ? [] : [{ severity: "blocker", title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }],
+    verdict: verdict === "fail" ? "fail" : "pass",
+    summary: verdict === "fail" ? "A defect blocks this head." : "No defects in the exact head.",
+    findings: verdict === "fail" ? [{ severity: "blocker", title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
     checks: criteria.map((criterion) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
-      status: verdict === "pass" ? "pass" : "fail",
-      evidence: `${criterion.name} judged against the patch.`
+      status: verdict === "fail" ? "fail" : verdict === "not-applicable" && criterion.id !== "correctness" ? "not-applicable" : "pass",
+      evidence: verdict === "not-applicable" && criterion.id !== "correctness"
+        ? `The patch touches only MARKER.md and Arcadia's governed settlement records, none of which can affect ${criterion.name.toLowerCase()}.`
+        : `${criterion.name} judged against the patch.`
     })),
     residualRisks: []
   };
@@ -854,7 +863,7 @@ export class FakeGitHub {
   reviewerTimeouts: Array<number | undefined> = [];
   /** Simulates the reviewer process being killed at its timeout. */
   reviewerTimesOut: (role: "code-review" | "qa") => boolean = () => false;
-  verdict: (role: "code-review" | "qa") => "pass" | "fail" = () => "pass";
+  verdict: (role: "code-review" | "qa", pr: FakePullRequest | undefined) => HostModelVerdict = () => "pass";
   /** The title of the model's finding on a failed verdict (a model may write any title). */
   findingTitle = "Defect";
   /** A non-zero exit simulates reviewer capacity or sandbox trouble. */
@@ -910,6 +919,18 @@ export class FakeGitHub {
     };
   }
 
+  /**
+   * GitHub's compare patch (`repos/<repo>/compare/<base>...<head>` with the
+   * patch media type) for the exact revisions asked for: the real
+   * `git format-patch` series of the fixture's origin, so a reviewer and the
+   * deterministic patch check see the candidate's real commits and files.
+   */
+  private comparePatch(args: string[]): string {
+    const range = /\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/.exec(args.find((arg) => arg.includes("/compare/")) ?? "");
+    if (!range) throw new Error(`Unexpected gh api call: ${args.join(" ")}`);
+    return git(this.origin, ["format-patch", "--stdout", "--no-signature", `${range[1]}..${range[2]}`]);
+  }
+
   private find(reference: string): FakePullRequest | undefined {
     return this.prs.find((pr) => pr.url === reference || String(pr.number) === reference);
   }
@@ -933,7 +954,7 @@ export class FakeGitHub {
       const after = this.afterReady; this.afterReady = null; after?.();
       return ok("");
     }
-    if (command === "gh" && args[0] === "api") return ok(`diff --git a/MARKER.md b/MARKER.md\n+candidate\n`);
+    if (command === "gh" && args[0] === "api") return ok(this.comparePatch(args));
     if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
     if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
     if (command === "codex") {
@@ -947,7 +968,7 @@ export class FakeGitHub {
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
-      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role), criteria, this.findingTitle))}\n`, "utf8");
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle))}\n`, "utf8");
       return ok('{"type":"task.completed"}\n');
     }
     return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };

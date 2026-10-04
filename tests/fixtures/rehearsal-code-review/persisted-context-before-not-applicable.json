@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 2,
+  "candidate": {
+    "projectId": "proj_f9af573185984c4bb1",
+    "projectName": "Three Action Rehearsal",
+    "repository": "pmark/arcadia-three-action-rehearsal-20261004",
+    "number": 1,
+    "title": "Candidate: write-start-marker",
+    "url": "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/1",
+    "headSha": "58bcd9155cf64836994045ca63a7707d8b9ebe75",
+    "headBranch": "claude/write-start-marker-20261004T170245861Z",
+    "baseSha": "5e0e183f6bb9be3aa31152de4106fba8f1897374",
+    "baseBranch": "main",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN"
+  },
+  "verdict": "needs-follow-up",
+  "summary": "The marker content is correct in the patch, but the supplied evidence does not establish several required review properties or test coverage.",
+  "findings": [],
+  "checks": [
+    {
+      "name": "Reviewer sandbox boundary",
+      "status": "pass",
+      "evidence": "permission-profile-accepted: arcadia-qa-evidence\nhost-home-readable\nhost-repository-readable\nhost-network-reachable\nsandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied"
+    },
+    {
+      "name": "GitHub: check",
+      "status": "pass",
+      "evidence": "SUCCESS (https://github.com/pmark/arcadia-three-action-rehearsal-20261004/actions/runs/37219141969/job/111485728452)"
+    },
+    {
+      "criterion": "correctness",
+      "name": "Correctness",
+      "status": "pass",
+      "evidence": "The complete patch adds MARKER.md with exactly `three-action rehearsal start` as its sole line, matching the stated acceptance criterion; the CI `check` run completed successfully."
+    },
+    {
+      "criterion": "failure-handling",
+      "name": "Failure handling",
+      "status": "not-checked",
+      "evidence": "The immutable patch contains no executable failure, retry, crash, or restart behavior, and no evidence demonstrates settlement idempotency or partial-failure recovery."
+    },
+    {
+      "criterion": "state-and-concurrency",
+      "name": "State and concurrency",
+      "status": "not-checked",
+      "evidence": "The patch changes managed action-state documents, but provides no evidence of atomicity, ordering guarantees, race handling, or persistence behavior for the settlement process."
+    },
+    {
+      "criterion": "security-and-authority",
+      "name": "Security and authority",
+      "status": "not-checked",
+      "evidence": "No credential, command, or access-control behavior is included in the patch, and the supplied evidence does not establish authority-boundary safety of the managed settlement updates."
+    },
+    {
+      "criterion": "compatibility",
+      "name": "Compatibility",
+      "status": "not-checked",
+      "evidence": "The successful CI check is validation evidence, but the patch and evidence do not show compatibility coverage for existing callers, stored data, configuration, or Linux CI behavior."
+    },
+    {
+      "criterion": "tests",
+      "name": "Tests",
+      "status": "not-checked",
+      "evidence": "A successful CI check is reported and the archived ask states that `scripts/check-rehearsal.mjs` passed, but neither the test implementation nor output establishes that it exercises this change and would fail on regression."
+    }
+  ],
+  "residualRisks": [
+    "Managed action-state updates may rely on unshown settlement behavior whose failure, concurrency, authority, and compatibility properties cannot be assessed from this evidence.",
+    "Regression-detecting coverage for the marker requirement is not demonstrated."
+  ],
+  "reviewer": {
+    "profile": "codex_planning",
+    "provider": "codex-cli",
+    "model": "gpt-5.6-terra",
+    "mappingId": "bundled-2026-07-25.1",
+    "bindingId": "codex-terra",
+    "exitStatus": 0
+  },
+  "reportPath": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/qa-report.md",
+  "evidencePath": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/evidence.json",
+  "metadataPath": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/metadata.json",
+  "evidenceFingerprint": "2898740e8dcb9fbab9adc60cc1e25ddf69335c74e4a681b0167da27a3bf2918b",
+  "receiptFiles": [
+    {
+      "path": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/evidence.json",
+      "sha256": "901714a25ba090b8666c3bce1efaa2bcdf950825d6aeb8ebc829d23b832e8581"
+    },
+    {
+      "path": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/candidate.patch",
+      "sha256": "4735243546392dfa5156b2d7e7a71f8d869f0283a402b7c521b23672c6948f31"
+    },
+    {
+      "path": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/sandbox-proof.txt",
+      "sha256": "2aa48071110a8c0b09551a33e5fc1f4ccdc9a4ab87f2b1b1462bbb58498b8a2f"
+    },
+    {
+      "path": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/qa-report.md",
+      "sha256": "d1e5e8407db8de9af65bd0828f319b7564cddd1a43dc7486c3d5f2f5117d4206"
+    },
+    {
+      "path": "artifacts/code-review/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/1/58bcd9155cf64836994045ca63a7707d8b9ebe75/attempts/2026-10-04T17-06-32-074Z-2898740e8dcb/metadata.json",
+      "sha256": "c0848b278fc10742b773bd8ad31022c71467e89a465ea5dd60bed7166a3c3087"
+    }
+  ],
+  "lineageRequestId": "code-review-pr-1-2026-10-04T17-06-32-074Z-2898740e8dcb"
+}
