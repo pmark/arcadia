@@ -3136,7 +3136,7 @@ actions:
     references: ["src/production/tick.ts", "src/production/sessionHandoff.ts", "src/qa/prReview.ts", "src/sessions/candidatePreservation.ts", "tests/rehearsal-three-action.test.ts", "docs/managed-production-readiness.md"]
   - id: prepare-three-action-rehearsal-operator-runbooks
     title: Prepare the bounded G1, G6, G7, and G8 operator-script pairs for the disposable three-Action rehearsal.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prepare the bounded G1, G6, G7, and G8 operator-script pairs for the disposable three-Action rehearsal.
@@ -3157,7 +3157,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-three-action-rehearsal-operator-runbooks
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

@@ -1,0 +1,34 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "preflight-three-action-rehearsal-2026-10-04",
+  "title": "G6: Preflight the three-Action rehearsal (observation only; refuses on unknown, stale, paid or unavailable evidence)",
+  "script": "preflight-three-action-rehearsal-2026-10-04.sh",
+  "repeatable": true,
+  "problem": "The G7 Grant must not activate production unless the host can actually run the rehearsal: current production state and installed release, a worker-context Claude Code sign-in, a read-only Codex reviewer with real included capacity, and a GitHub fixture repository whose checks report. Guessing any of these spends tokens or stalls unattended work.",
+  "desired_effect": "Make only bounded observations and write one timestamped receipt listing every check and its verdict, bound to the main revision, installed release, workspace, policy revision and fixture it observed. The receipt succeeds only when every check passes; G7 accepts it for 30 minutes.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh run",
+  "authority": {
+    "does": [
+      "Reads Git state of the Arcadia checkout and the fixture, observes origin main afresh with a 30-second git ls-remote that must equal local main (unknown or ahead refuses), the configured workspace, production status, go-broker status, worker status and active Session leases (read-only database probe)",
+      "Runs the worker-context claude-code-cli sign-in check and records only its verdict (signed_in, signed_out, unknown or unavailable); refuses when ANTHROPIC_API_KEY is set, without reading its value",
+      "Runs codex --version and codex login status with 20-second bounds and records only whether sign-in is a ChatGPT subscription, an API key (paid, refused) or unknown (refused)",
+      "Observes Codex capacity directly, ignoring the workspace's unmetered standing choice, and refuses unless it is admitted, fresh, observed or attested, included, not simulated and not unavailable; checks a read-only codex reviewer profile exists",
+      "With this explicit operator press as authorization, reads GitHub only through gh auth status, the exact fixture repository, its main branch and the check runs of its genesis commit, waiting at most five minutes for those checks",
+      "Writes the receipt and, on any refusal, a failure handoff under runs/<timestamp-pid>/"
+    ],
+    "never_does": [
+      "Never prints, copies or logs a token value or the raw codex or gh sign-in output",
+      "Never previews or activates production, presses G7, or changes any policy, packet, Decision or capacity receipt",
+      "Never writes to GitHub, starts or restarts a service, installs anything, or invokes a model",
+      "Never treats unknown, stale, paid, simulated or unavailable evidence as passing"
+    ]
+  },
+  "success": {
+    "effect": "Every check passed; the receipt binds the observed main, installed release, workspace, policy revision and fixture.",
+    "next": "Within 30 minutes, press the one-shot G7 Grant (grant-production-three-action-rehearsal-2026-10-04) after reading its operator acknowledgement."
+  },
+  "failure": {
+    "effect": "Nothing changed. The receipt lists each refused check and why; the failure handoff says not to press G7.",
+    "next": "Fix each refused check through its reviewed path (for example reinstall-go-broker or recover-arcadia-host-services for a stale release, verify-claude-code-token for sign-in), then rerun this preflight."
+  }
+}

@@ -275,6 +275,32 @@ code-review call, each resumed by a later tick on fresh connections from
 persisted state. Candidate code only: it is not installed, and no live grant
 was activated with it.
 
+### Three-Action rehearsal operator pairs — 2026-10-04 candidate
+
+`prepare-three-action-rehearsal-operator-runbooks` drafts four pairs in
+`artifacts/generated/operator-scripts/`: G1 fixture preparation (one
+operator-supplied private repository, one ubuntu-latest CI job, Project
+`three-action-rehearsal`, Plan `autonomous-three-action-rehearsal`, serial
+Actions `write-start-marker`, `transform-start-marker`, `verify-final-rehearsal`,
+provider `claude-code-cli`), G6 read-only preflight, the one-shot G7 Grant (12-hour
+packet-approval and Decision 0058 expiries, `--remote-preservation`,
+concurrency one, current revision and installed release, hermetic replay first),
+and G8 terminal Off (governed deactivate first, only of G7's own policy with the
+exact fixture scope, three quiet observations before
+and after the hash-pinned `recover-arcadia-host-services` restart with its
+override variables unset, work
+reconciliation, restart receipt and intervention ledger).
+This PR also publishes the reviewed `recover-arcadia-host-services` pair into
+the tracked library at its exact existing bytes, because G8 pins and runs it.
+G6 and G7 require a fresh bounded `git ls-remote` of origin main equal to local main.
+`tests/three-action-rehearsal-operator-scripts.test.ts` covers the contract,
+static safety and refusals against fake CLIs. They are unpublished candidate
+files: none was run, no repository was created and no Grant exists. G6 observes
+Codex capacity ignoring `capacityGateEnabled: false`, so an unmetered-only
+observation refuses as unknown. Whether Decision 0058 covers PR readiness and
+reviewer spend (#925) stays an operator acknowledgement stated in G7's
+always-visible title and effect.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`
