@@ -29,11 +29,17 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
  * criteria not-checked, zero findings). The persisted context is that
  * attempt's Decision context as the code before this change wrote it,
  * reconstructed from the same attempt's metadata, report and receipt.
+ * smoke-not-applicable-verdict.json is the real codex reviewer's verdict on
+ * that same patch under #934's prompt (the live smoke's out-exact attempt
+ * 2026-10-04T19-01-46-044Z, model-verdict.json verbatim): correctness pass and
+ * five not-applicable claims, three of whose evidence (state and concurrency,
+ * security and authority, tests) names no file.
  */
 const FIXTURES = path.join(import.meta.dirname, "fixtures", "rehearsal-code-review");
 const REAL_PATCH = readFileSync(path.join(FIXTURES, "candidate.patch"), "utf8");
 const REAL_EVIDENCE = JSON.parse(readFileSync(path.join(FIXTURES, "evidence.json"), "utf8")) as Record<string, unknown> & { files: Array<{ path: string }> };
 const REAL_VERDICT = JSON.parse(readFileSync(path.join(FIXTURES, "model-verdict.json"), "utf8")) as QaPrModelVerdict;
+const SMOKE_VERDICT = JSON.parse(readFileSync(path.join(FIXTURES, "smoke-not-applicable-verdict.json"), "utf8")) as QaPrModelVerdict;
 const PR_URL = REAL_EVIDENCE.url as string;
 
 const temporaryPaths: string[] = [];
@@ -239,6 +245,11 @@ describe("the live rehearsal's captured code review", () => {
     expect(prompt).toContain("`not-applicable` means the change cannot affect that criterion at all");
     expect(prompt).toContain("`not-checked` means the change can affect that criterion but the supplied evidence cannot show whether it holds");
     expect(prompt).toContain("Correctness is never not-applicable");
+    // Each claim should name every touched file by exact path, never generically.
+    expect(prompt).toContain("Each not-applicable check's own evidence should name every touched file by exact path (for example `MARKER.md`, `PROJECT.md`)");
+    expect(prompt).toContain("do not refer to files only generically (such as \"all touched files\", \"the marker\" or \"governed records\")");
+    expect(prompt).toContain("refuses every not-applicable check, blocking the verdict, when no check's evidence (nor your summary) names a touched file by path");
+    expect(prompt).not.toContain("Its evidence must name the files the patch touches");
     expect(prompt).toContain("`Arcadia-Preservation-Request:` or `Arcadia-Candidate-Fingerprint:` trailer");
     expect(prompt).toContain("Written by `arcadia agent-ask settle --apply`");
     expect(prompt).toContain("Judge those commits only for consistency with the stated Action and its acceptance, not for how they were generated");
@@ -331,12 +342,25 @@ describe("not-applicable pass/fail matrix through the code-review verdict", () =
     expect(result.data.checks.find((check) => check.name === "Not-applicable claims")).toMatchObject({ status: "fail" });
   });
 
-  it("refuses not-applicable with missing, thin or unanchored evidence", () => {
-    for (const evidence of ["Not applicable.", "n/a", "No impact on this criterion at all here.", "This change cannot possibly affect this criterion in any way at all."]) {
+  it("refuses not-applicable with missing or thin evidence, and every claim when none of them (nor the summary) names a touched file", () => {
+    for (const evidence of ["Not applicable.", "n/a", "No impact on this criterion at all.", "This change cannot affect it."]) {
       const { result } = review({ verdict: notApplicableFromReal({ tests: { evidence } }), patch: MARKER_ONLY, files: ["MARKER.md"] });
       expect(result.data.verdict).toBe("needs-follow-up");
       expect(result.data.findings.map((finding) => finding.title)).toEqual(["Refused not-applicable claim: Tests"]);
     }
+    // Substantive generic wording beside a claim that names the touched file is accepted: naming is verdict-level.
+    for (const evidence of ["No impact on this criterion at all here.", "This change cannot possibly affect this criterion in any way at all."]) {
+      expect(review({ verdict: notApplicableFromReal({ tests: { evidence } }), patch: MARKER_ONLY, files: ["MARKER.md"] }).result.data.verdict).toBe("pass");
+    }
+    const generic = "This change cannot possibly affect this criterion in any way at all.";
+    // No claim and no summary names a touched file: every claim is refused.
+    const unanchored = notApplicableFromReal(Object.fromEntries(["failure-handling", "state-and-concurrency", "security-and-authority", "compatibility", "tests"].map((id) => [id, { evidence: generic }])));
+    const { result } = review({ verdict: { ...unanchored, summary: "The change is a single documentation line with nothing else in it." }, patch: MARKER_ONLY, files: ["MARKER.md"] });
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.findings.map((finding) => finding.title)).toEqual(["Refused not-applicable claim: Failure handling, State and concurrency, Security and authority, Compatibility, Tests"]);
+    expect(refusal(result)).toContain("no not-applicable claim's evidence, nor the review summary, names a file the patch touches; name each touched file by exact path, such as MARKER.md.");
+    // On that docs-only patch a summary naming the touched file anchors the claims.
+    expect(review({ verdict: unanchored, patch: MARKER_ONLY, files: ["MARKER.md"] }).result.data.verdict).toBe("pass");
   });
 
   it("refuses correctness not-applicable", () => {
@@ -440,6 +464,53 @@ describe("not-applicable pass/fail matrix through the code-review verdict", () =
   });
 });
 
+describe("the live smoke's real not-applicable verdict", () => {
+  /** The smoke's exact wording on the captured patch plus one file of another kind, added in its unattested first commit. */
+  const withExtraFile = (file: string) => REAL_PATCH.replace(
+    "+three-action rehearsal start\n",
+    `+three-action rehearsal start\ndiff --git a/${file} b/${file}\nindex 1111111..2222222 100644\n--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-old\n+new\n`
+  );
+  const realFiles = REAL_EVIDENCE.files.map((file) => file.path);
+
+  it("is the receipt the smoke recorded: five not-applicable claims, three naming no touched file", () => {
+    expect(SMOKE_VERDICT.findings).toEqual([]);
+    expect(SMOKE_VERDICT.checks.map((check) => [check.criterion, check.status])).toEqual([
+      ["correctness", "pass"], ["failure-handling", "not-applicable"], ["state-and-concurrency", "not-applicable"],
+      ["security-and-authority", "not-applicable"], ["compatibility", "not-applicable"], ["tests", "not-applicable"]
+    ]);
+    const lowered = (text: string) => text.toLowerCase();
+    const names = (text: string) => realFiles.some((file) => lowered(text).includes(lowered(file)) || lowered(text).includes(lowered(path.basename(file))));
+    expect(SMOKE_VERDICT.checks.filter((check) => check.status === "not-applicable" && !names(check.evidence)).map((check) => check.criterion))
+      .toEqual(["state-and-concurrency", "security-and-authority", "tests"]);
+  });
+
+  it("now derives to pass on the captured patch", () => {
+    const { result } = review({ verdict: SMOKE_VERDICT });
+    expect(result.data.verdict).toBe("pass");
+    expect(result.data.findings).toEqual([]);
+    expect(result.data.decision.status).toBe("approved");
+    expect(result.data.checks.find((check) => check.name === "Not-applicable claims")).toMatchObject({
+      status: "pass",
+      evidence: expect.stringContaining("Accepted for Failure handling, State and concurrency, Security and authority, Compatibility, Tests")
+    });
+  });
+
+  it.each([
+    ["code", "src/settle.ts", "executable"],
+    ["a workflow", ".github/workflows/ci.yml", "authority"],
+    ["configuration", "config/production.yaml", "configuration"],
+    ["a docs/ document", "docs/guide.md", "authority"]
+  ])("is still refused, with the same wording, on a patch that also changes %s", (_label, file, cls) => {
+    const { result } = review({ verdict: SMOKE_VERDICT, patch: withExtraFile(file), files: [...realFiles, file] });
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.reviewerUnavailable).toBeNull();
+    const finding = result.data.findings.find((entry) => entry.title.startsWith("Refused not-applicable claim"));
+    expect(finding?.title).toBe("Refused not-applicable claim: Failure handling, State and concurrency, Security and authority, Compatibility, Tests");
+    expect(finding?.evidence).toContain(`${file} (${cls}:`);
+    expect(finding?.evidence).not.toContain("names a file the patch touches");
+  });
+});
+
 describe("deterministic patch applicability", () => {
   const claim = (criterion: string, evidence = "The patch touches only MARKER.md, a documentation file that cannot affect this criterion.") =>
     ({ criterion, name: CODE_REVIEW_PR_CRITERIA.find((entry) => entry.id === criterion)!.name, status: "not-applicable", evidence });
@@ -462,6 +533,36 @@ describe("deterministic patch applicability", () => {
       "docs/plans/autonomous-three-action-rehearsal.md": "governed-record"
     });
     expect(evaluateNotApplicableClaims([claim("failure-handling"), claim("tests")], applicability)).toEqual({ accepted: ["failure-handling", "tests"], refused: [] });
+  });
+
+  it("applies the naming rule once per verdict, after the per-file classification, and reads the summary only on a docs-only patch", () => {
+    const generic = "All touched files are Markdown or governed records, so nothing here can affect it.";
+    const markerOnly = classifyPatchApplicability(MARKER_ONLY, { declaredCommits: boundaries(MARKER_ONLY) });
+    expect(markerOnly.inert).toBe(true);
+    // One named claim anchors the generic one.
+    expect(evaluateNotApplicableClaims([claim("failure-handling"), claim("tests", generic)], markerOnly)).toEqual({ accepted: ["failure-handling", "tests"], refused: [] });
+    // Basenames count: the plan's file name without its directory.
+    const settled = classifyPatchApplicability(settlePatch(), { declaredCommits: boundaries(settlePatch()) });
+    expect(evaluateNotApplicableClaims([claim("tests", "Only fixture-plan.md changed, a governed record whose shape cannot affect tests.")], settled).accepted).toEqual(["tests"]);
+    // None named: all refused, unless the summary names a touched file.
+    const unnamed = evaluateNotApplicableClaims([claim("failure-handling", generic), claim("tests", generic)], markerOnly);
+    expect(unnamed.accepted).toEqual([]);
+    expect(unnamed.refused.map((entry) => entry.criterion)).toEqual(["failure-handling", "tests"]);
+    expect(evaluateNotApplicableClaims([claim("failure-handling", generic), claim("tests", generic)], markerOnly, { summary: "MARKER.md carries the stated line." }).accepted)
+      .toEqual(["failure-handling", "tests"]);
+    // A thin claim neither stands nor anchors the others.
+    expect(evaluateNotApplicableClaims([claim("failure-handling", "MARKER.md only."), claim("tests", generic)], markerOnly).refused.map((entry) => entry.reason))
+      .toEqual([expect.stringContaining("too thin"), expect.stringContaining("names a file the patch touches")]);
+    // Naming never rescues a non-inert patch, from a claim or the summary.
+    const code = formatPatch([{ message: "Change", diff: `${MARKER_DIFF}diff --git a/src/run.ts b/src/run.ts\nindex 1111111..2222222 100644\n--- a/src/run.ts\n+++ b/src/run.ts\n@@ -1 +1 @@\n-a\n+b\n` }]);
+    const codeApplicability = classifyPatchApplicability(code, { declaredCommits: boundaries(code) });
+    const refusedCode = evaluateNotApplicableClaims([claim("failure-handling", "Only MARKER.md and src/run.ts changed, neither of which can affect it."), claim("tests", generic)], codeApplicability, { summary: "MARKER.md and src/run.ts." });
+    expect(refusedCode.accepted).toEqual([]);
+    expect(refusedCode.refused.map((entry) => entry.reason)).toEqual([expect.stringContaining("src/run.ts (executable:"), expect.stringContaining("src/run.ts (executable:")]);
+    // Correctness stays never-not-applicable whatever names a file.
+    expect(evaluateNotApplicableClaims([claim("correctness"), claim("tests")], markerOnly)).toEqual({
+      accepted: ["tests"], refused: [{ criterion: "correctness", name: "Correctness", reason: "Correctness can never be not-applicable; judge it pass or fail." }]
+    });
   });
 
   it("shape-limits every governed record whatever its attestation says", () => {

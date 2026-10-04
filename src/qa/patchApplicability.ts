@@ -25,6 +25,12 @@
  * and the claim is refused. Attestations are author-controlled text, so they
  * never excuse a file on their own: the shape limit is checked regardless.
  *
+ * Each claim also needs substantive evidence of its own, and the verdict's
+ * claims need at least one that names a touched file by path or basename (or,
+ * on such a docs-only patch, a review summary that does). That naming rule is
+ * verdict-level and only anchors the claims to this patch: the per-file
+ * classification above alone decides whether any claim can be accepted.
+ *
  * Residual: a forged attestation can still make shape-limited governed edits
  * pass this check (add Agent Ask data files or archive them, append to the
  * Mission Log, mark the current Action done and move current_action to any
@@ -194,27 +200,65 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
   };
 }
 
+export interface NotApplicableContext {
+  /**
+   * The reviewer's verdict summary. It is consulted only on a docs-only patch
+   * (every touched file an inert document or a shape-limited governed record,
+   * the classifier's `inert` verdict) and only for the naming rule below.
+   */
+  summary?: string;
+}
+
 /**
- * Judges each not-applicable claim: never for correctness, only with
- * substantive evidence that names a file the patch touches, and only when the
- * patch is deterministically inert.
+ * Judges the not-applicable claims of one verdict. The deterministic per-file
+ * classification is the sole decision on whether any claim can stand: each
+ * claim is refused for correctness, for thin evidence, for patch-level
+ * problems, for any touched file that is not inert, or for a patch that shows
+ * no file. The claims left standing then face one verdict-level naming rule:
+ * they are accepted only when at least one of them names a touched file's
+ * path or basename (or, on a docs-only patch, the review summary does), and
+ * are all refused otherwise. Naming is only an anchor that the reviewer read
+ * this patch; it never widens which files can be not-applicable, so a claim
+ * worded generically ("all touched files", "governed records") is accepted
+ * beside a claim that names the files, and refused on a patch the classifier
+ * does not judge inert whatever its wording.
  */
 export function evaluateNotApplicableClaims(
   checks: readonly NotApplicableClaim[],
-  applicability: PatchApplicability
+  applicability: PatchApplicability,
+  context: NotApplicableContext = {}
 ): NotApplicableEvaluation {
+  const affecting = applicability.files.filter((file) => file.class !== "inert-document" && file.class !== "governed-record");
+  const judged = checks
+    .filter((check) => check.status === "not-applicable")
+    .map((check) => ({ check, reason: refusalReason(check, applicability, affecting) }));
+  const standing = judged.filter((entry) => entry.reason === null).map((entry) => entry.check);
+  // Only reached when the classifier found the patch inert (refusalReason
+  // refuses every claim otherwise); the guard keeps the summary fallback to
+  // docs-only patches even if that ordering ever changes.
+  const anchors = [
+    ...standing.map((check) => check.evidence),
+    ...(applicability.inert && context.summary ? [context.summary] : [])
+  ];
+  const unanchored = standing.length > 0 && !anchors.some((text) => namesTouchedFile(text, applicability.files))
+    ? `no not-applicable claim's evidence, nor the review summary, names a file the patch touches; name each touched file by exact path, such as ${applicability.files[0]?.path ?? "MARKER.md"}.`
+    : null;
   const accepted: string[] = [];
   const refused: NotApplicableEvaluation["refused"] = [];
-  const affecting = applicability.files.filter((file) => file.class !== "inert-document" && file.class !== "governed-record");
-  for (const check of checks) {
-    if (check.status !== "not-applicable") continue;
-    const reason = refusalReason(check, applicability, affecting);
-    if (reason) refused.push({ criterion: check.criterion, name: check.name, reason });
+  for (const { check, reason } of judged) {
+    const refusal = reason ?? unanchored;
+    if (refusal) refused.push({ criterion: check.criterion, name: check.name, reason: refusal });
     else accepted.push(check.criterion);
   }
   return { accepted, refused };
 }
 
+function namesTouchedFile(text: string, files: readonly PatchFileClassification[]): boolean {
+  const lowered = text.toLowerCase();
+  return files.some((file) => lowered.includes(file.path.toLowerCase()) || lowered.includes(basename(file.path).toLowerCase()));
+}
+
+/** A single claim's refusal, before the verdict-level naming rule; null when it may stand. */
 function refusalReason(
   check: NotApplicableClaim,
   applicability: PatchApplicability,
@@ -232,10 +276,6 @@ function refusalReason(
     return `the patch touches files that can affect it: ${shown}${affecting.length > 5 ? `; and ${affecting.length - 5} more` : ""}.`;
   }
   if (applicability.files.length === 0) return "the patch shows no touched file, so nothing establishes that the change cannot affect it.";
-  const lowered = evidence.toLowerCase();
-  const named = applicability.files.some((file) => lowered.includes(file.path.toLowerCase()) ||
-    lowered.includes(basename(file.path).toLowerCase()));
-  if (!named) return "the evidence names no file the patch touches.";
   return null;
 }
 
