@@ -42,11 +42,18 @@ run `recover-arcadia-host-services`. **G6** `preflight-three-action-rehearsal-20
 only observes and refuses unknown, stale, paid or unavailable evidence. **G7**
 `grant-production-three-action-rehearsal-2026-10-04` (one-shot, from `/runs`,
 within 30 minutes of a passing G6) replays the hermetic rehearsal, then previews
-and activates the exact scope; read its operator acknowledgement (#925) first.
-It never authorizes a GitHub merge or base push. **G8**
-`restore-terminal-off-three-action-rehearsal-2026-10-04` restores and proves
-terminal Off through the governed Off and the reviewed restart, never killing a
-process or discarding a candidate.
+twice and activates the exact scope. Its rendered problem statement opens with the
+#925 acknowledgement: pressing it accepts Decision 0058 for PR readiness and
+reviewer spend on these three fixture Actions only. It never authorizes a GitHub
+merge or base push. **G8**
+`restore-terminal-off-three-action-rehearsal-2026-10-04` (from `/runs`) restores and
+proves terminal Off through the governed Off and the hash-pinned reviewed restart
+(`recover-arcadia-host-services`, now published beside it). It turns Off only
+G7's own policy with the exact fixture scope; any other Active policy refuses
+untouched and needs its own Off (dashboard switch or `arcadia production deactivate`). It
+sends no process signal itself (that restart path may SIGTERM Arcadia's own
+service processes and rewrites `~/.codex`/`~/.claude` configuration with
+backups) and never discards a candidate.
 
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the

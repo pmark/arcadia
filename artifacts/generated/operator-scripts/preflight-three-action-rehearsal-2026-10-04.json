@@ -9,7 +9,7 @@
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh run",
   "authority": {
     "does": [
-      "Reads Git state of the Arcadia checkout and the fixture, the configured workspace, production status, go-broker status, worker status and active Session leases (read-only database probe)",
+      "Reads Git state of the Arcadia checkout and the fixture, observes origin main afresh with a 30-second git ls-remote that must equal local main (unknown or ahead refuses), the configured workspace, production status, go-broker status, worker status and active Session leases (read-only database probe)",
       "Runs the worker-context claude-code-cli sign-in check and records only its verdict (signed_in, signed_out, unknown or unavailable); refuses when ANTHROPIC_API_KEY is set, without reading its value",
       "Runs codex --version and codex login status with 20-second bounds and records only whether sign-in is a ChatGPT subscription, an API key (paid, refused) or unknown (refused)",
       "Observes Codex capacity directly, ignoring the workspace's unmetered standing choice, and refuses unless it is admitted, fresh, observed or attested, included, not simulated and not unavailable; checks a read-only codex reviewer profile exists",

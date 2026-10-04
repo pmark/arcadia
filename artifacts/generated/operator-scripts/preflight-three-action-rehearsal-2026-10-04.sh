@@ -22,6 +22,7 @@ REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58
 # A broker release counts as current only when no runtime code differs from main.
 RUNTIME_PATHS="src scripts apps package.json pnpm-lock.yaml tsconfig.json"
 CHECK_WAIT_SECONDS=300
+REPO_PATTERN='^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?/arcadia-three-action-rehearsal(-[a-z0-9]{1,24})?$'
 
 case "${1:-run}" in
   run) ;;
@@ -103,6 +104,18 @@ if [[ "$(git -C "$ARCADIA_REPO" branch --show-current 2>/dev/null)" == main && -
 else
   check arcadia_checkout refuse "the Arcadia checkout must be clean on main and level with its last-fetched origin/main"
 fi
+# A fresh, bounded remote observation: last-fetched origin/main can be stale.
+REMOTE_HEAD=""
+if [[ -n "$HEAD" ]] && REMOTE_LINE="$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main 2>/dev/null)" && REMOTE_HEAD="${REMOTE_LINE%%[[:space:]]*}" && [[ "$REMOTE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+  if [[ "$REMOTE_HEAD" == "$HEAD" ]]; then
+    check remote_main pass "origin main observed now at $REMOTE_HEAD, equal to local main"
+  else
+    check remote_main refuse "origin main is $REMOTE_HEAD now but local main is $HEAD; fetch and fast-forward main, reinstall, then rerun"
+  fi
+else
+  check remote_main refuse "origin main could not be observed within 30 seconds (unknown is not current)"
+fi
+record_str remoteHead "$REMOTE_HEAD"
 MISSING=""
 for commit in $REQUIRED_COMMITS; do git -C "$ARCADIA_REPO" merge-base --is-ancestor "$commit" HEAD 2>/dev/null || MISSING="$MISSING $commit"; done
 if [[ -z "$MISSING" ]]; then check installed_features pass "remote preservation (#922) and tick-driven reviews (#924) are on main"; else check installed_features refuse "main lacks required commits:$MISSING"; fi
@@ -165,6 +178,7 @@ ROOT_COMMIT=""
 if [[ -f "$MANIFEST" ]] && jq -e --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE_PLAN" --argjson actions "$ACTIONS_JSON" --arg provider "$PROVIDER" \
     '.schema == "arcadia-three-action-rehearsal-fixture-v1" and .fixtureProject == $p and .fixturePlan == $plan and .actions == $actions and .provider == $provider' "$MANIFEST" >/dev/null; then
   REPO="$(jq -r '.githubRepository' "$MANIFEST")"
+  [[ "$REPO" =~ $REPO_PATTERN ]] || REPO=""
   ROOT_COMMIT="$(git -C "$FIXTURE_REPO" rev-list --max-parents=0 HEAD 2>/dev/null || true)"
   ORIGIN="$(git -C "$FIXTURE_REPO" remote get-url origin 2>/dev/null || true)"
   if [[ "$(git -C "$FIXTURE_REPO" branch --show-current 2>/dev/null)" == main && -z "$(git -C "$FIXTURE_REPO" status --porcelain 2>/dev/null)" \
@@ -177,6 +191,9 @@ if [[ -f "$MANIFEST" ]] && jq -e --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE
   fi
 else
   check fixture refuse "fixture manifest $MANIFEST is missing or names a different scope; run G1 first"
+fi
+if [[ -f "$MANIFEST" && -z "$REPO" ]]; then
+  check fixture_repository_identifier refuse "the manifest's GitHub repository does not match the disposable-fixture pattern; no GitHub read was made for it"
 fi
 record_str githubRepository "$REPO"
 record_str rootCommit "$ROOT_COMMIT"
@@ -294,11 +311,14 @@ if [[ -n "$REPO" && -n "$ROOT_COMMIT" ]] && REPO_VIEW="$(ghx api "repos/$REPO" 2
     check github_repository refuse "$REPO must be private, writable, unarchived, without branch protection, with main at genesis $ROOT_COMMIT"
   fi
   CHECKS_STATE=unknown
-  for ((attempt = 0; attempt * 15 <= CHECK_WAIT_SECONDS; attempt++)); do
-    RUNS="$(ghx api "repos/$REPO/commits/$ROOT_COMMIT/check-runs" 2>/dev/null || echo '{}')"
+  # Wall-clock bound: each read is capped at 20 seconds and no read starts after the deadline.
+  CHECK_DEADLINE=$(( $(date -u +%s) + CHECK_WAIT_SECONDS ))
+  while :; do
+    RUNS="$(timeout 20 gh api "repos/$REPO/commits/$ROOT_COMMIT/check-runs" 2>/dev/null || echo '{}')"
     CHECKS_STATE="$(jq -r 'if (.total_count // 0) == 0 then "none" elif all(.check_runs[]; .status == "completed" and .conclusion == "success") then "success" elif any(.check_runs[]; .status == "completed" and .conclusion != "success") then "failed" else "pending" end' <<<"$RUNS" 2>/dev/null || echo unknown)"
-    [[ "$CHECKS_STATE" == success || "$CHECKS_STATE" == failed ]] && break
-    if (( attempt * 15 < CHECK_WAIT_SECONDS )); then sleep 15; fi
+    if [[ "$CHECKS_STATE" == success || "$CHECKS_STATE" == failed ]]; then break; fi
+    if (( $(date -u +%s) + 15 >= CHECK_DEADLINE )); then break; fi
+    sleep 15
   done
   if [[ "$CHECKS_STATE" == success ]]; then
     check github_checks pass "genesis CI check runs completed successfully"

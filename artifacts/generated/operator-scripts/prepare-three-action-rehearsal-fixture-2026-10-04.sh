@@ -130,6 +130,10 @@ if [[ -e "$FIXTURE_REPO" ]]; then
   [[ "$(git -C "$FIXTURE_REPO" rev-list --max-parents=0 HEAD | wc -l | tr -d ' ')" == 1 ]] || refuse "the existing local fixture must have exactly one root commit"
   ROOT_COMMIT="$(git -C "$FIXTURE_REPO" rev-list --max-parents=0 HEAD)"
   [[ "$(git -C "$FIXTURE_REPO" rev-parse HEAD)" == "$ROOT_COMMIT" ]] || refuse "the local fixture has advanced past its genesis commit, so a rehearsal already ran on it; supply a new repository name"
+  # Checked before any GitHub mutation: a fixture wired to another remote never creates a repository.
+  if EXISTING_URL="$(git -C "$FIXTURE_REPO" remote get-url origin 2>/dev/null)"; then
+    [[ "$EXISTING_URL" == "https://github.com/$REPO.git" || "$EXISTING_URL" == "git@github.com:$REPO.git" ]] || refuse "the local fixture origin is $EXISTING_URL, not $REPO"
+  fi
   echo "Reusing local fixture $FIXTURE_REPO at genesis $ROOT_COMMIT"
 fi
 

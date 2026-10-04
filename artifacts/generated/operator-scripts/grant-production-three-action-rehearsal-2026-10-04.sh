@@ -47,6 +47,7 @@ STAGE=launch_context
 REASON=""
 EXTRA=""
 ACTIVATED=false
+ACTIVATION_ATTEMPTED=false
 json_string() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\t'/\\t}; s=${s//$'\r'/}; printf '"%s"' "$s"; }
 record() { EXTRA="$EXTRA,$(json_string "$1"):$2"; }
 record_str() { record "$1" "$(json_string "$2")"; }
@@ -58,24 +59,35 @@ write_receipt() {
 refuse() { REASON="$*"; echo "REFUSED: $*" >&2; return 1; }
 arcadia() { (cd "$ARCADIA_REPO" && timeout 180 mise exec -- pnpm -s arcadia "$@"); }
 
-# Returns only this Grant to Off; another request's active policy is never revoked here.
-turn_own_grant_off() {
+# After an activation attempt, the CLI's exit status is not proof of the
+# outcome: activation can commit and the CLI still time out, fail or print
+# unparsable output. Observe production status instead and return only this
+# Grant to Off. Sets OFF_RESULT to one of: not_attempted, not_active, other_grant_active,
+# returned_off, OFF_FAILED, UNKNOWN.
+reconcile_activation() {
   local status
-  status="$(arcadia production status --json)" || return 1
-  if jq -e '.data.read.policy.desiredState == "inactive"' <<<"$status" >/dev/null; then return 0; fi
-  jq -e --arg id "$SCRIPT_ID" '.data.read.policy.authority.requestId == $id' <<<"$status" >/dev/null || return 1
-  arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID-off" --reason 'G7 post-activation verification failed; return this exact Grant to Off and preserve evidence.' --json > "$RUN_DIR/off.json" || return 1
-  jq -e '.ok == true and .data.result.policy.desiredState == "inactive"' "$RUN_DIR/off.json" >/dev/null
-}
-on_error() {
-  local code=$? command="$BASH_COMMAND" off=not_needed
-  if (( BASH_SUBSHELL > 0 )); then exit "$code"; fi
-  trap - ERR
-  set +e
-  [[ -n "$REASON" ]] || REASON="command failed (exit $code): $command"
-  if [[ "$ACTIVATED" == true ]]; then
-    if turn_own_grant_off; then off=returned_off; else off=OFF_FAILED; fi
+  [[ "$ACTIVATION_ATTEMPTED" == true ]] || { OFF_RESULT=not_attempted; return 0; }
+  if ! status="$(arcadia production status --json)" || ! jq -e '.ok == true and .data.read.status == "ok"' <<<"$status" >/dev/null 2>&1; then
+    OFF_RESULT=UNKNOWN; return 0
   fi
+  printf '%s\n' "$status" > "$RUN_DIR/status-after-failure.json"
+  if jq -e '.data.read.policy.desiredState == "inactive"' <<<"$status" >/dev/null; then OFF_RESULT=not_active; return 0; fi
+  if ! jq -e --arg id "$SCRIPT_ID" '.data.read.policy.authority.requestId == $id' <<<"$status" >/dev/null; then OFF_RESULT=other_grant_active; return 0; fi
+  ACTIVATED=true
+  if arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID-off" --reason 'G7 did not complete verification after an activation attempt; return this exact Grant to Off and preserve evidence.' --json > "$RUN_DIR/off.json" \
+    && jq -e '.ok == true and .data.result.policy.desiredState == "inactive"' "$RUN_DIR/off.json" >/dev/null 2>&1; then
+    OFF_RESULT=returned_off
+  else
+    OFF_RESULT=OFF_FAILED
+  fi
+}
+finish_refused() {
+  local code="$1" off
+  trap - ERR TERM INT
+  set +e
+  OFF_RESULT=UNKNOWN
+  reconcile_activation
+  off="$OFF_RESULT"
   record_str offCleanup "$off"
   write_receipt refused
   {
@@ -86,20 +98,34 @@ on_error() {
     echo "- reason: $REASON"
     echo "- run log: $LOG"
     echo "- receipt: $RECEIPT"
-    echo "- Off cleanup: $off"
+    echo "- observed Off cleanup: $off"
     echo
-    if [[ "$ACTIVATED" == true ]]; then
-      echo "Activation had been confirmed before this failure. The script attempted to return only its own Grant to Off."
-      if [[ "$off" == OFF_FAILED ]]; then echo "That Off was NOT confirmed: run the G8 terminal-Off action now and read production status."; fi
-    else
-      echo "The Grant was not applied: production policy is unchanged."
-    fi
+    case "$off" in
+      not_attempted) echo "No activation was attempted: production policy was not changed by this run." ;;
+      not_active) echo "An activation was attempted, and production status afterwards reads Inactive. This Grant is not active." ;;
+      returned_off) echo "An activation by this Grant was observed Active after the failure; the script returned only this Grant to Off and the Off was confirmed." ;;
+      other_grant_active) echo "Production is Active under ANOTHER request id, not this Grant; this script did not touch it. Read production status and run G8 if that is not intended." ;;
+      OFF_FAILED) echo "This Grant was observed Active and the Off was NOT confirmed. Run the G8 terminal-Off action NOW and read production status." ;;
+      *) echo "Production status could not be read after the activation attempt: the policy may be ACTIVE. Run the G8 terminal-Off action NOW." ;;
+    esac
     echo "Do not press this one-shot Grant again blindly. Resolve the named drift, rerun G6, and ask for a fresh G7 if the scope changed."
   } > "$HANDOFF"
   echo "Failure handoff: $HANDOFF" >&2
   exit "$code"
 }
+on_error() {
+  local code=$? command="$BASH_COMMAND"
+  if (( BASH_SUBSHELL > 0 )); then exit "$code"; fi
+  [[ -n "$REASON" ]] || REASON="command failed (exit $code): $command"
+  finish_refused "$code"
+}
+on_signal() {
+  if (( BASH_SUBSHELL > 0 )); then exit 143; fi
+  REASON="interrupted by a signal during stage $STAGE"
+  finish_refused 143
+}
 trap on_error ERR
+trap on_signal TERM INT
 
 echo "== G7: one-shot three-Action rehearsal Grant =="
 # A one-shot Grant runs only through /runs, whose lifecycle disables it after success.
@@ -115,6 +141,8 @@ WORKSPACE="$(arcadia workspace resolve --json | jq -er '.data | select(.source =
 [[ "$(git -C "$ARCADIA_REPO" branch --show-current)" == main && -z "$(git -C "$ARCADIA_REPO" status --porcelain)" ]] || refuse "the Arcadia checkout must be clean on main"
 HEAD="$(git -C "$ARCADIA_REPO" rev-parse HEAD)"
 [[ "$HEAD" == "$(git -C "$ARCADIA_REPO" rev-parse origin/main)" ]] || refuse "main is not level with its last-fetched origin/main"
+REMOTE_LINE="$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main)" || refuse "origin main could not be observed within 30 seconds"
+[[ "${REMOTE_LINE%%[[:space:]]*}" == "$HEAD" ]] || refuse "origin main has moved past local main; fetch, fast-forward and reinstall, then rerun G6"
 for commit in $REQUIRED_COMMITS; do git -C "$ARCADIA_REPO" merge-base --is-ancestor "$commit" HEAD || refuse "main lacks required commit $commit"; done
 grep -q '^status: approved$' "$ARCADIA_REPO/$DECISION_FILE" || refuse "Decision $INTEGRATION_DECISION is not approved in $DECISION_FILE"
 BROKER="$(arcadia go-broker status --json)" || refuse "go-broker status is not ready"
@@ -209,6 +237,24 @@ if (parsed.numFailedTests !== 0 || assertions.length < 3 || assertions.some((ent
 console.log(`Hermetic three-Action rehearsal passed: ${assertions.length} variants, including the tick-driven review variant.`);
 PREFLIGHT
 
+STAGE=recheck_after_replay
+# The replay can take minutes; nothing it relied on may have moved meanwhile.
+[[ "$(git -C "$ARCADIA_REPO" branch --show-current)" == main && -z "$(git -C "$ARCADIA_REPO" status --porcelain)" && "$(git -C "$ARCADIA_REPO" rev-parse HEAD)" == "$HEAD" ]] || refuse "main moved or became dirty during the hermetic replay"
+BROKER="$(arcadia go-broker status --json)" || refuse "go-broker status is not ready after the replay"
+jq -e --arg r "$BROKER_REVISION" '.ok == true and .data.ready == true and .data.revision == $r and .data.preservationTransport.ready == true and .data.agentGoTransport.ready == true' <<<"$BROKER" >/dev/null || refuse "the installed release or host transports changed during the hermetic replay"
+[[ -z "$(git -C "$FIXTURE_REPO" status --porcelain)" && "$(git -C "$FIXTURE_REPO" rev-parse HEAD)" == "$ROOT_COMMIT" ]] || refuse "the fixture changed during the hermetic replay"
+cat > "$RUN_DIR/probe-leases.mjs" <<'NODE'
+import { withReadOnlyDatabase } from "./src/db/connection.ts";
+import { listActiveAgentSessions } from "./src/sessions/index.ts";
+const [workspace, project] = process.argv.slice(2);
+const active = withReadOnlyDatabase(workspace, (db) => listActiveAgentSessions(db));
+console.log(JSON.stringify({ active: active.length, fixtureActive: active.filter((s) => s.project_slug === project).map((s) => s.id) }));
+NODE
+LEASES="$(cd "$ARCADIA_REPO" && timeout 120 mise exec -- node --import tsx --input-type=module - "$WORKSPACE" "$PROJECT" < "$RUN_DIR/probe-leases.mjs")" || refuse "repository leases could not be observed"
+jq -e '.fixtureActive == []' <<<"$LEASES" >/dev/null || refuse "a fixture Session is already prepared or running"
+STATUS="$(arcadia production status --json)"
+jq -e --argjson r "$REVISION" '.ok == true and .data.read.status == "ok" and .data.read.policy.desiredState == "inactive" and .data.read.policy.revision == $r and .data.liveAdmissions == 0' <<<"$STATUS" >/dev/null || refuse "production state or revision changed during the hermetic replay"
+
 STAGE=preview
 EXPIRES="$(node -e 'process.stdout.write(new Date(Date.now() + Number(process.argv[1]) * 3600e3).toISOString())' "$GRANT_HOURS")"
 ARGS=(--project "$PROJECT" --plan "$PROJECT/$PLAN"
@@ -240,18 +286,29 @@ FINGERPRINT="$(jq -r '.data.preview.scopeFingerprint' <<<"$PREVIEW")"
 record_str scopeFingerprint "$FINGERPRINT"
 record_str expiresAt "$EXPIRES"
 
+# `production activate` recomputes its scope from the queue and has no
+# expected-fingerprint option, so preview again immediately before activating
+# and require the identical fingerprint and revision; after activation the
+# recorded fingerprint is verified and a mismatch returns this Grant to Off.
+STAGE=preview_recheck
+RECHECK="$(arcadia production preview "${ARGS[@]}" --json)"
+printf '%s\n' "$RECHECK" > "$RUN_DIR/preview-recheck.json"
+jq -e --arg f "$FINGERPRINT" --argjson rev "$REVISION" '.ok == true and .data.preview.scopeFingerprint == $f and .data.preview.expectedRevision == $rev' <<<"$RECHECK" >/dev/null || refuse "the scope fingerprint or policy revision changed between preview and activation"
+
 STAGE=activate
-ACTIVATION="$(arcadia production activate "${ARGS[@]}" --expected-revision "$REVISION" --request-id "$SCRIPT_ID" --granted-by 'P. Mark Anderson' --json)" || refuse "activation refused; policy unchanged unless production status says otherwise"
+ACTIVATION_ATTEMPTED=true
+ACTIVATION="$(arcadia production activate "${ARGS[@]}" --expected-revision "$REVISION" --request-id "$SCRIPT_ID" --granted-by 'P. Mark Anderson' --json)" || refuse "the activate command failed or timed out; its outcome is read back from production status"
 printf '%s\n' "$ACTIVATION" > "$RUN_DIR/activation.json"
-if jq -e '.ok == true and .data.result.policy.desiredState == "active"' <<<"$ACTIVATION" >/dev/null; then ACTIVATED=true; fi
-[[ "$ACTIVATED" == true ]] || refuse "activation was not confirmed Active"
-jq -e --arg id "$SCRIPT_ID" --arg f "$FINGERPRINT" '.data.result.policy.authority.requestId == $id and .data.result.policy.authority.scopeFingerprint == $f' <<<"$ACTIVATION" >/dev/null || refuse "the active policy is not the exact previewed fingerprint"
+if jq -e '.ok == true and .data.result.policy.desiredState == "active"' <<<"$ACTIVATION" >/dev/null 2>&1; then ACTIVATED=true; fi
+[[ "$ACTIVATED" == true ]] || refuse "activation output did not confirm Active; its outcome is read back from production status"
+jq -e --arg id "$SCRIPT_ID" --arg f "$FINGERPRINT" '.data.result.policy.authority.requestId == $id and .data.result.policy.authority.scopeFingerprint == $f' <<<"$ACTIVATION" >/dev/null || refuse "the active policy is not the previewed fingerprint"
 record "policyRevisionAfter" "$(jq '.data.result.policy.revision' <<<"$ACTIVATION")"
 
 STAGE=complete
 REASON=""
-record_str authorizes "Only the previewed scope: Project $PROJECT, Plan $PLAN, Actions $ACTION_A, $ACTION_B, $ACTION_C in order; provider $PROVIDER; concurrency 1; validation, acceptance, pointer and packet_approval until $EXPIRES; draft-PR remote preservation; and, where policyAuthorizesPullRequestReadiness holds, pushing the settled head, readying the host-created PR and running both independent reviews before local fast-forward integration under Decision 0058 until $EXPIRES."
+record_str authorizes "Only the previewed scope: Project $PROJECT, Plan $PLAN, Actions $ACTION_A, $ACTION_B, $ACTION_C in order; provider $PROVIDER; concurrency 1; validation, acceptance, pointer and packet_approval until $EXPIRES; draft-PR remote preservation; and, if Decision 0058 is accepted for this use (open question #925), pushing the settled head, readying the host-created PR and running both independent reviews before local fast-forward integration until $EXPIRES."
 record_str neverAuthorizes "GitHub merge, a base-branch push, another Project/Plan/Action/provider, concurrency above one, a Session launched by this script, or reactivation after Off."
+record_str operatorAcknowledgement "Pressed after the #925 acknowledgement that opens this Grant's rendered problem statement and first authority entry."
 write_receipt succeeded
 cat > "$RUN_DIR/receipt.md" <<EOF
 # G7 three-Action rehearsal Grant receipt
@@ -262,16 +319,17 @@ cat > "$RUN_DIR/receipt.md" <<EOF
 - provider $PROVIDER; concurrency 1; transitions $TRANSITIONS
 - remote preservation: on (draft PRs); integration Grant: Decision $INTEGRATION_DECISION naming each Action
 - packet-approval and integration expiry: $EXPIRES
-- policy revision before: $REVISION; scope fingerprint: $FINGERPRINT
+- policy revision before: $REVISION; scope fingerprint: $FINGERPRINT (previewed twice, verified after activation)
 - installed release: $BROKER_REVISION; main: $HEAD
 - G6 receipt: $LATEST
 - run log: $LOG
 
-Authorized: only the reviewed scope above, draft preservation, and PR readiness
-plus both independent reviews before local fast-forward integration where the
-policy carries both remote preservation and this Decision 0058 grant.
-Never authorized: GitHub merge or a base-branch push. The operator acknowledged
-open question #925 (whether Decision 0058 covers the push, PR readiness and
-reviewer spend) by pressing this Grant. Use G8 for terminal Off.
+Within the scope above the policy permits draft preservation and, if Decision
+0058 is accepted for this use (open question #925), PR readiness plus both
+independent reviews before local fast-forward integration; the tick runs those
+only while the policy carries both remote preservation and this Decision 0058
+grant. It never permits a GitHub merge or a base-branch push. The operator
+pressed this Grant after the #925 acknowledgement that opens its rendered
+problem statement. Use G8 for terminal Off.
 EOF
 echo "GRANTED: exact three-Action rehearsal scope only, until $EXPIRES. Do not press again. Receipt: $RUN_DIR/receipt.md"

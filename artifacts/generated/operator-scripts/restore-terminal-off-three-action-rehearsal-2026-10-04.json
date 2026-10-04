@@ -1,26 +1,29 @@
 {
   "schema": "arcadia-operator-script-v1",
   "id": "restore-terminal-off-three-action-rehearsal-2026-10-04",
-  "title": "G8: Restore and prove terminal Off after the three-Action rehearsal (governed Off, reviewed restart, no kills)",
+  "title": "G8: Restore and prove terminal Off after the three-Action rehearsal (governed Off first, pinned reviewed restart)",
   "script": "restore-terminal-off-three-action-rehearsal-2026-10-04.sh",
   "repeatable": true,
   "problem": "When the three-Action rehearsal ends, fails or looks wrong, production must reach a proven terminal Off: no new admission, no live Session or lease, a clean restart through the reviewed host-service path, and every committed candidate accounted for. Killing processes or discarding candidates would lose work and evidence.",
-  "desired_effect": "Turn production Off through arcadia production deactivate (or record that it already was), prove Inactive with zero live admissions and zero prepared or running Sessions across three consecutive bounded observations, restart only through the hash-pinned recover-arcadia-host-services action, prove the same after restart, classify every fixture Session's work as integrated, preserved or empty, and write an inactive receipt, a restart receipt and an intervention ledger.",
+  "desired_effect": "When launched from /runs, turn production Off through arcadia production deactivate as the first Arcadia command only if the Active policy is the rehearsal's own G7 Grant (request id grant-production-three-action-rehearsal-2026-10-04 with exactly the fixture Project, Plan and three Actions), or record that it is already Inactive; any other Active policy refuses without being touched, prove Inactive with zero live admissions and zero prepared or running Sessions across three consecutive bounded observations, restart only through the hash-pinned recover-arcadia-host-services action and its hash-pinned restart implementation with override variables unset, prove the same after restart, classify every fixture Session's work as integrated, preserved or empty, and write an inactive receipt, a restart receipt and an intervention ledger.",
   "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh run",
   "authority": {
     "does": [
-      "Turns any Active production policy Off through arcadia production deactivate with a per-run request id, first, before any other check can delay it, and records which authority it revoked",
+      "Runs only from the main-library /runs launcher (exact id and descriptor) outside any agent sandbox. As its first Arcadia command it turns production Off through arcadia production deactivate with a per-run request id ONLY when the Active policy's request id is grant-production-three-action-rehearsal-2026-10-04 and its scope is exactly Project three-action-rehearsal, Plan autonomous-three-action-rehearsal and its three Actions; the ledger records the revoked request id and scope. An already-Inactive policy proceeds to the observations and restart",
+      "Refuses WITHOUT deactivating when any other policy is Active, and its handoff names the separate governed Off path that policy needs: the dashboard production Off switch or arcadia production deactivate run by the operator",
       "Observes production status and a read-only Session database probe every 15 seconds, requiring three consecutive quiet observations within 30 minutes after Off and within 5 minutes after restart; committed work is allowed to finish",
-      "Restarts services only by running recover-arcadia-host-services after verifying its script and descriptor sha256 match the reviewed bytes, with ARCADIA_WORKSPACE set to the resolved martianrover path and a 15-minute bound; that reviewed action reinstalls the broker from clean main and restarts the managed services",
-      "Classifies each fixture Session as integrated, preserved (matching canonical preservation receipt), no committed work, still live, uncommitted changes retained, or committed but unreconciled, and refuses unless every one is integrated, preserved or empty",
+      "Restarts services only by running recover-arcadia-host-services (published in this library beside G8 at its reviewed bytes) after verifying its script and descriptor sha256 and the sha256 of the restart implementation scripts/services.sh delegates to (~/.codex/skills/restart-arcadia-services/scripts/restart-services.sh), with ARCADIA_WORKSPACE set to the resolved martianrover path, ARCADIA_RESTART_SCRIPT, ARCADIA_RESTART_ATTEMPTS, ARCADIA_RESTART_RETRY_DELAY, ARCADIA_MISE_BIN, ARCADIA_NODE_BIN and ARCADIA_WORKSPACE_DEFAULT unset, and a 15-minute bound",
+      "That reviewed restart path runs go-broker install, which rewrites host ~/.codex and ~/.claude configuration and shared skills (with timestamped backups), then unloads Arcadia's launchd services and may SIGTERM Arcadia's own service processes; this script itself sends no process signal",
+      "Classifies each fixture Session as integrated, preserved (matching canonical preservation receipt), no committed work (only when no preservation commit exists), still live, uncommitted changes retained, or committed but unreconciled, and refuses unless every one is integrated, preserved or empty",
       "Writes inactive-receipt.json, restart-receipt.json, intervention-ledger.jsonl, observation logs, work-reconciliation.jsonl, a timestamped receipt and, on refusal, a failure handoff under runs/<timestamp-pid>/"
     ],
     "never_does": [
-      "Never signals, kills or stops a process by PID, and never stops a tmux Session directly",
+      "This script never runs kill, pkill or another process signal and never stops a tmux Session directly (the pinned restart path may SIGTERM Arcadia's own service processes)",
       "Never removes, resets, rebases or force-updates a worktree, branch or candidate, and never discards uncommitted changes",
+      "Never turns Off a production policy it does not own (any request id other than the rehearsal's G7 Grant, or a different scope)",
       "Never turns production back On, reactivates a saved configuration, or presses any Grant",
       "Never merges, pushes, deploys or changes GitHub, credentials or Decisions",
-      "Never runs an unreviewed restart path: a changed or missing recover-arcadia-host-services refuses"
+      "Never runs an unreviewed restart path: a changed or missing recover-arcadia-host-services or restart implementation refuses"
     ]
   },
   "success": {

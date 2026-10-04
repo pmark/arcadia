@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # G8: restore and prove terminal Off after the three-Action rehearsal. It uses
 # only governed paths: `arcadia production deactivate` for Off and the reviewed,
-# hash-pinned recover-arcadia-host-services action for the restart. It never
-# signals a process by PID, removes a worktree or branch, resets Git, or turns
-# production back on. Committed work is observed and classified, never discarded.
+# hash-pinned recover-arcadia-host-services action (and its pinned restart
+# implementation) for the restart. This script sends no process signal itself;
+# that reviewed restart path unloads Arcadia's launchd services and may SIGTERM
+# Arcadia's own service processes. It never removes a worktree or branch, resets
+# Git, or turns production back on. Committed work is observed, never discarded.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -12,10 +14,17 @@ ARCADIA_REPO="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 FIXTURE_REPO="$HOME/tmp/arcadia-three-action-rehearsal"
 MANIFEST="$FIXTURE_REPO/.arcadia-three-action-rehearsal.json"
 FIXTURE_PROJECT="three-action-rehearsal"
+FIXTURE_PLAN="autonomous-three-action-rehearsal"
+FIXTURE_ACTIONS_JSON='["three-action-rehearsal/write-start-marker","three-action-rehearsal/transform-start-marker","three-action-rehearsal/verify-final-rehearsal"]'
+# G8 owns only the policy the rehearsal's G7 Grant activated.
+GRANT_ID="grant-production-three-action-rehearsal-2026-10-04"
 RECOVER_ID="recover-arcadia-host-services"
 # The reviewed host-service path, pinned to its exact reviewed bytes.
 RECOVER_SCRIPT_SHA256="d48ad928b578010f6de10f51bf971168db21713f2a99daf22354559afb500a63"
 RECOVER_DESCRIPTOR_SHA256="3fa28275bee58c597a0df6575613466d6e1229bdca388be89c2d2fdb7ee4e7c8"
+# scripts/services.sh (tracked, clean main) delegates to this implementation.
+RESTART_IMPL="$HOME/.codex/skills/restart-arcadia-services/scripts/restart-services.sh"
+RESTART_IMPL_SHA256="ac0c60a1d8282f9413e92e77066f44f58257cc6a8d979f1d1e4fe8097b8b53b6"
 DRAIN_DEADLINE_SECONDS=1800
 OBSERVATION_INTERVAL_SECONDS=15
 REQUIRED_CONSECUTIVE_OBSERVATIONS=3
@@ -39,7 +48,7 @@ mkdir -p "$RUN_DIR"
 : > "$LEDGER"
 exec > >(tee -a "$LOG") 2>&1
 
-STAGE=preconditions
+STAGE=launch_context
 REASON=""
 EXTRA=""
 OFF_STATE=unknown
@@ -50,7 +59,7 @@ record() { EXTRA="$EXTRA,$(json_string "$1"):$2"; }
 record_str() { record "$1" "$(json_string "$2")"; }
 ledger() { printf '{"at":%s,"intervention":%s,"detail":%s}\n' "$(json_string "$(now)")" "$(json_string "$1")" "$(json_string "$2")" >> "$LEDGER"; }
 write_receipt() {
-  printf '{"schema":"arcadia-operator-run-receipt-v1","id":%s,"runId":%s,"startedAt":%s,"finishedAt":%s,"outcome":%s,"stage":%s,"reason":%s,"runLog":%s,"offState":%s,"restarted":%s,"interventionLedger":%s,"rawProcessSignals":0,"candidatesDiscarded":0%s}\n' \
+  printf '{"schema":"arcadia-operator-run-receipt-v1","id":%s,"runId":%s,"startedAt":%s,"finishedAt":%s,"outcome":%s,"stage":%s,"reason":%s,"runLog":%s,"offState":%s,"restarted":%s,"interventionLedger":%s%s}\n' \
     "$(json_string "$SCRIPT_ID")" "$(json_string "$RUN_ID")" "$(json_string "$STARTED_AT")" "$(json_string "$(now)")" \
     "$(json_string "$1")" "$(json_string "$STAGE")" "$(json_string "$REASON")" "$(json_string "$LOG")" "$(json_string "$OFF_STATE")" "$RESTARTED" "$(json_string "$LEDGER")" "$EXTRA" > "$RECEIPT"
 }
@@ -75,8 +84,14 @@ on_error() {
     echo "- run log: $LOG"
     echo "- receipt: $RECEIPT"
     echo
-    echo "No process was signalled by PID, no worktree, branch or candidate was removed, and production was not turned back on."
-    if [[ "$OFF_STATE" != confirmed ]]; then
+    echo "This script sent no process signal and removed no worktree, branch or candidate; production was not turned back on."
+    if [[ "$RESTARTED" == true ]]; then echo "The reviewed restart path ran: it unloads Arcadia's launchd services and may SIGTERM Arcadia's own service processes."; fi
+    if [[ "$OFF_STATE" == not_owned ]]; then
+      echo "Production is Active under a policy G8 does not own (not request id $GRANT_ID with the exact fixture scope). G8 did NOT turn it Off."
+      echo "If it should stop, turn it Off through its own governed path: the dashboard production Off switch, or run"
+      echo "  arcadia production deactivate --request-id <your-request-id> --reason '<why>'"
+      echo "yourself after reading arcadia production status. Rerun G8 afterwards to prove the rehearsal's terminal Off."
+    elif [[ "$OFF_STATE" != confirmed ]]; then
       echo "Off is NOT confirmed. Rerun this action, or turn production Off from the dashboard switch, before anything else."
     fi
     echo "Live work still draining or unreconciled candidates are retained exactly as observed; give this handoff to a coding agent"
@@ -92,10 +107,13 @@ probe() { (cd "$ARCADIA_REPO" && timeout 120 mise exec -- node --import tsx --in
 sha256_of() { if command -v shasum >/dev/null; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
 
 echo "== G8: restore and prove terminal Off =="
-for tool in git jq mise timeout node; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
-WORKSPACE="$(arcadia workspace resolve --json | jq -er '.data | select(.source == "user config") | .workspacePath')" || refuse "the configured default workspace did not resolve"
-[[ "${WORKSPACE##*/}" == martianrover ]] || refuse "the configured default workspace is not martianrover"
-record_str workspace "$WORKSPACE"
+# Same launch guards as G7: only the main-library /runs launcher, never an agent sandbox.
+DESCRIPTOR_PATH="${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}"
+[[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$SCRIPT_ID" && -n "$DESCRIPTOR_PATH" && -f "$DESCRIPTOR_PATH" ]] || refuse "launch this action through the /runs operator-action library"
+[[ "$(cd "$(dirname "$DESCRIPTOR_PATH")" && pwd -P)/$(basename "$DESCRIPTOR_PATH")" == "$SCRIPT_DIR/$SCRIPT_ID.json" ]] || refuse "the launching descriptor is not this action's descriptor"
+[[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only action: an agent sandbox may not run it"
+STAGE=preconditions
+for tool in jq mise timeout; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
 
 cat > "$RUN_DIR/probe-sessions.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
@@ -120,7 +138,8 @@ NODE
 
 read_status() { arcadia production status --json; }
 
-# 1. Governed Off first: nothing below may delay it.
+# 1. Governed Off is the first Arcadia command (the CLI resolves its own default
+# workspace); workspace and every other check come after it.
 STAGE=production_off
 STATUS="$(read_status)"
 printf '%s\n' "$STATUS" > "$RUN_DIR/status-before.json"
@@ -128,10 +147,17 @@ jq -e '.ok == true and .data.read.status == "ok"' <<<"$STATUS" >/dev/null || ref
 if jq -e '.data.read.policy.desiredState == "inactive"' <<<"$STATUS" >/dev/null; then
   ledger none "production was already Inactive at revision $(jq -r '.data.read.policy.revision' <<<"$STATUS"); no Off issued"
 else
+  # Only the rehearsal's own G7 policy, with exactly the fixture scope, is turned Off here.
   REVOKED="$(jq -r '.data.read.policy.authority.requestId // "unknown"' <<<"$STATUS")"
+  if ! jq -e --arg id "$GRANT_ID" --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE_PROJECT/$FIXTURE_PLAN" --argjson actions "$FIXTURE_ACTIONS_JSON" \
+      '.data.read.policy.authority.requestId == $id and .data.read.policy.scope.projects == [$p] and .data.read.policy.scope.plans == [$plan] and .data.read.policy.scope.actions == $actions' <<<"$STATUS" >/dev/null; then
+    OFF_STATE=not_owned
+    refuse "production is Active under request id $REVOKED, which is not the rehearsal's $GRANT_ID with the exact fixture scope; G8 does not own it and did not turn it Off"
+  fi
+  REVOKED_SCOPE="$(jq -c '.data.read.policy.scope | if . == null then null else {projects, actions, providers} end' <<<"$STATUS")"
   arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID" --reason 'Terminal Off after the three-Action rehearsal; let committed work finish and preserve every candidate.' --json > "$RUN_DIR/off.json" || refuse "production deactivate failed"
   jq -e '.ok == true and .data.result.policy.desiredState == "inactive"' "$RUN_DIR/off.json" >/dev/null || refuse "the Off acknowledgement did not report Inactive"
-  ledger production_off "revoked active policy $REVOKED at revision $(jq -r '.data.read.policy.revision' <<<"$STATUS") with request id $SCRIPT_ID-$RUN_ID"
+  ledger production_off "revoked active policy $REVOKED (scope $REVOKED_SCOPE) at revision $(jq -r '.data.read.policy.revision' <<<"$STATUS") with request id $SCRIPT_ID-$RUN_ID"
 fi
 STATUS="$(read_status)"
 jq -e '.data.read.policy.desiredState == "inactive"' <<<"$STATUS" >/dev/null || refuse "production is not Inactive after Off"
@@ -141,6 +167,12 @@ OFF_REVISION="$(jq -r '.data.read.policy.revision' <<<"$STATUS")"
 OFF_EPOCH="$(jq -r '.data.read.policy.epoch' <<<"$STATUS")"
 record offRevision "$OFF_REVISION"
 record offEpoch "$OFF_EPOCH"
+
+STAGE=preconditions
+for tool in git node; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
+WORKSPACE="$(arcadia workspace resolve --json | jq -er '.data | select(.source == "user config") | .workspacePath')" || refuse "the configured default workspace did not resolve"
+[[ "${WORKSPACE##*/}" == martianrover ]] || refuse "the configured default workspace is not martianrover"
+record_str workspace "$WORKSPACE"
 
 # Repeated observations: Inactive at the Off revision and epoch, zero live
 # admissions and zero prepared or running Sessions host-wide.
@@ -182,14 +214,19 @@ STAGE=restart_preconditions
 RECOVER="$SCRIPT_DIR/$RECOVER_ID.sh"
 [[ -x "$RECOVER" && -f "$SCRIPT_DIR/$RECOVER_ID.json" ]] || refuse "the reviewed host-service action $RECOVER_ID is missing from the library"
 [[ "$(sha256_of "$RECOVER")" == "$RECOVER_SCRIPT_SHA256" && "$(sha256_of "$SCRIPT_DIR/$RECOVER_ID.json")" == "$RECOVER_DESCRIPTOR_SHA256" ]] || refuse "$RECOVER_ID differs from its reviewed bytes; refusing an unreviewed restart path"
+[[ -f "$RESTART_IMPL" && "$(sha256_of "$RESTART_IMPL")" == "$RESTART_IMPL_SHA256" ]] || refuse "the restart implementation $RESTART_IMPL is missing or differs from its reviewed bytes"
 
 STAGE=restart
 SERVICES_BEFORE="$(cd "$ARCADIA_REPO" && timeout 60 scripts/services.sh status 2>&1 || true)"
 printf '%s\n' "$SERVICES_BEFORE" > "$RUN_DIR/services-before.txt"
 RESTART_STARTED="$(now)"
 RESTART_EXIT=0
-# The nested action gets the workspace path and none of this action's /runs identity.
-(cd "$ARCADIA_REPO" && env -u ARCADIA_OPERATOR_SCRIPT_ID -u ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR ARCADIA_WORKSPACE="$WORKSPACE" \
+# The nested action gets the workspace path, none of this action's /runs
+# identity, and none of the variables that would redirect the pinned restart
+# path to another implementation, toolchain or retry policy.
+(cd "$ARCADIA_REPO" && env -u ARCADIA_OPERATOR_SCRIPT_ID -u ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR \
+  -u ARCADIA_RESTART_SCRIPT -u ARCADIA_RESTART_ATTEMPTS -u ARCADIA_RESTART_RETRY_DELAY \
+  -u ARCADIA_MISE_BIN -u ARCADIA_NODE_BIN -u ARCADIA_WORKSPACE_DEFAULT ARCADIA_WORKSPACE="$WORKSPACE" \
   timeout "$RESTART_TIMEOUT_SECONDS" "$RECOVER" run) > "$RUN_DIR/restart-output.log" 2>&1 || RESTART_EXIT=$?
 RESTARTED=true
 SERVICES_AFTER="$(cd "$ARCADIA_REPO" && timeout 60 scripts/services.sh status 2>&1 || true)"
@@ -197,7 +234,8 @@ printf '%s\n' "$SERVICES_AFTER" > "$RUN_DIR/services-after.txt"
 WORKER_AFTER="$(arcadia worker status 2>&1 || true)"
 jq -n --arg started "$RESTART_STARTED" --arg finished "$(now)" --argjson exit "$RESTART_EXIT" --arg path "$RECOVER_ID" --arg sha "$RECOVER_SCRIPT_SHA256" \
   --arg output "$RUN_DIR/restart-output.log" --arg before "$SERVICES_BEFORE" --arg after "$SERVICES_AFTER" --arg worker "$WORKER_AFTER" \
-  '{schema: "arcadia-three-action-restart-receipt-v1", path: $path, scriptSha256: $sha, startedAt: $started, finishedAt: $finished, exitStatus: $exit, output: $output, servicesBefore: $before, servicesAfter: $after, workerAfter: $worker}' > "$RESTART_RECEIPT"
+  --arg impl "$RESTART_IMPL" --arg implSha "$RESTART_IMPL_SHA256" \
+  '{schema: "arcadia-three-action-restart-receipt-v1", path: $path, scriptSha256: $sha, implementation: $impl, implementationSha256: $implSha, mayTerminateArcadiaServiceProcesses: true, startedAt: $started, finishedAt: $finished, exitStatus: $exit, output: $output, servicesBefore: $before, servicesAfter: $after, workerAfter: $worker}' > "$RESTART_RECEIPT"
 ledger service_restart "ran $RECOVER_ID (sha256 $RECOVER_SCRIPT_SHA256) with exit $RESTART_EXIT; receipt $RESTART_RECEIPT"
 record_str restartReceipt "$RESTART_RECEIPT"
 (( RESTART_EXIT == 0 )) || refuse "$RECOVER_ID exited $RESTART_EXIT; read $RUN_DIR/restart-output.log and its own failure handoff"
@@ -231,12 +269,14 @@ for ((i = 0; i < COUNT; i++)); do
     STATE=still_live
   elif [[ "$DIRTY" == true ]]; then
     STATE=uncommitted_changes_retained
-  elif [[ -z "$TIP" || "$TIP" == "$BASE" ]]; then
-    STATE=no_committed_work
-  elif git -C "$FIXTURE_REPO" merge-base --is-ancestor "$TIP" "$FIXTURE_MAIN" 2>/dev/null; then
+  elif [[ -n "$TIP" && "$TIP" != "$BASE" ]] && git -C "$FIXTURE_REPO" merge-base --is-ancestor "$TIP" "$FIXTURE_MAIN" 2>/dev/null; then
     STATE=integrated
-  elif [[ -n "$PRESERVED" && "$PRESERVED" == "$TIP" ]]; then
+  elif [[ -n "$PRESERVED" ]] && git -C "$FIXTURE_REPO" merge-base --is-ancestor "$PRESERVED" "$FIXTURE_MAIN" 2>/dev/null && [[ -z "$TIP" || "$TIP" == "$PRESERVED" ]]; then
+    STATE=integrated
+  elif [[ -n "$PRESERVED" && ( -z "$TIP" || "$TIP" == "$PRESERVED" ) ]]; then
     STATE=preserved
+  elif [[ -z "$PRESERVED" && ( -z "$TIP" || "$TIP" == "$BASE" ) ]]; then
+    STATE=no_committed_work
   else
     STATE=committed_unreconciled
   fi
@@ -251,7 +291,7 @@ record_str fixtureMain "$FIXTURE_MAIN"
 
 STAGE=complete
 REASON=""
-ledger completed "terminal Off proven; no raw process signal sent and no candidate discarded"
+ledger completed "terminal Off proven; this script sent no process signal and only read candidate worktrees and branches"
 write_receipt succeeded
 echo "TERMINAL OFF PROVEN: Inactive at revision $OFF_REVISION, zero live admissions and Sessions before and after the reviewed restart; every fixture candidate is integrated, preserved or empty."
 echo "Receipt: $RECEIPT"

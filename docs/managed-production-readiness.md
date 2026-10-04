@@ -285,15 +285,21 @@ Actions `write-start-marker`, `transform-start-marker`, `verify-final-rehearsal`
 provider `claude-code-cli`), G6 read-only preflight, the one-shot G7 Grant (12-hour
 packet-approval and Decision 0058 expiries, `--remote-preservation`,
 concurrency one, current revision and installed release, hermetic replay first),
-and G8 terminal Off (governed deactivate, three quiet observations before and
-after the hash-pinned `recover-arcadia-host-services` restart, work
+and G8 terminal Off (governed deactivate first, only of G7's own policy with the
+exact fixture scope, three quiet observations before
+and after the hash-pinned `recover-arcadia-host-services` restart with its
+override variables unset, work
 reconciliation, restart receipt and intervention ledger).
+This PR also publishes the reviewed `recover-arcadia-host-services` pair into
+the tracked library at its exact existing bytes, because G8 pins and runs it.
+G6 and G7 require a fresh bounded `git ls-remote` of origin main equal to local main.
 `tests/three-action-rehearsal-operator-scripts.test.ts` covers the contract,
 static safety and refusals against fake CLIs. They are unpublished candidate
 files: none was run, no repository was created and no Grant exists. G6 observes
 Codex capacity ignoring `capacityGateEnabled: false`, so an unmetered-only
 observation refuses as unknown. Whether Decision 0058 covers PR readiness and
-reviewer spend (#925) stays an operator acknowledgement in the G7 descriptor.
+reviewer spend (#925) stays an operator acknowledgement that opens G7's rendered
+problem statement.
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

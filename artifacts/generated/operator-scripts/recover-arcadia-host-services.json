@@ -1,0 +1,30 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "recover-arcadia-host-services",
+  "title": "Recover Arcadia host services and protected transport",
+  "script": "recover-arcadia-host-services.sh",
+  "repeatable": true,
+  "workspace": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover",
+  "problem": "The managed worker may be stopped, the Go-broker profile may be stale, or preservation and Go routing may lack a fresh heartbeat. That prevents safe session-to-session continuation.",
+  "desired_effect": "The managed worker, preservation transport, and Go transport are all freshly verified before Arcadia resumes protected continuation.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh",
+  "authority": {
+    "does": [
+      "Refresh the local Go-broker installation",
+      "Restart Arcadia's local managed services",
+      "Read worker and transport readiness"
+    ],
+    "never_does": [
+      "Fetch, merge, push, checkout, or otherwise change Git state",
+      "Deploy, publish, settle governance, or bypass protected preservation"
+    ]
+  },
+  "success": {
+    "effect": "Protected preservation and Go routing are ready for a fresh Arcadia continuation.",
+    "next": "Start a new session and run arcadia advance."
+  },
+  "failure": {
+    "effect": "The script exits non-zero and writes a failure handoff plus its complete run log under runs/<timestamp-pid>/.",
+    "next": "Give the handoff and run log to Arcadia. A coding agent should diagnose the first failing command and generate a narrower follow-up script only if safe."
+  }
+}
