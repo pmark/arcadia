@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-03
+updated: 2026-10-04
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -3100,6 +3100,40 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/sessions/roleLineage.ts", "src/production/sessionHandoff.ts", "src/production/tick.ts", "src/qa/prReview.ts", "https://github.com/pmark/arcadia/pull/919"]
+  - id: let-production-grant-request-remote-preservation
+    title: Let an operator preview and activate a production Grant that requests remote candidate preservation, through the existing fingerprinted preview/activate path.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let an operator preview and activate a production Grant that requests remote candidate preservation, through the existing fingerprinted preview/activate path.
+    expected_artifact: Evidence satisfying Agent Ask let-production-grant-request-remote-preservation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask unattended-rehearsal-blockers-remote-preservation-and-review-step-2026-10-04
+    acceptance_criteria:
+      - arcadia production preview and activate accept a remote-preservation option that sets scope.remotePreservation, shows it in the preview, status and receipt, and binds it into the scope fingerprint so an activation cannot differ from its preview; reactivation preserves it from the saved reviewed configuration.
+      - An activation without the option leaves preservation local only; no other flag, environment variable or dashboard control can turn it on; and tests in tests/managed-production-policy.test.ts and the dashboard production-control contract cover the preview fingerprint, replay, Off clearing authority, and refusal without the option.
+      - START_HERE.md and docs/managed-production-readiness.md document the option and that it authorizes only push and draft PR creation, not merge or marking a PR ready.
+    depends_on: []
+    decisions: []
+    references: ["src/production/policy.ts", "src/commands/production.ts", "src/production/sessionHandoff.ts", "src/commands/preserve.ts"]
+  - id: ready-pr-and-run-independent-reviews-from-the-tick
+    title: After a managed candidate is preserved with a draft PR, have the production tick ready the PR, wait for its required checks, and run the independent code-review and QA host commands so integration needs no operator step.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: After a managed candidate is preserved with a draft PR, have the production tick ready the PR, wait for its required checks, and run the independent code-review and QA host commands so integration needs no operator step.
+    expected_artifact: Evidence satisfying Agent Ask ready-pr-and-run-independent-reviews-from-the-tick
+    clarification: clarified
+    confidence: high
+    source: Agent Ask unattended-rehearsal-blockers-remote-preservation-and-review-step-2026-10-04
+    acceptance_criteria:
+      - For an Action awaiting verdicts the tick (or worker step) marks the exact-head PR ready, waits a bounded time for required checks, then runs arcadia qa code-review and arcadia qa pr against that PR; every step is idempotent by request id, bounded by a retry budget that survives restart, fenced by Off and the policy epoch, and escalates with an accurate remedy when the budget, checks or reviewer capacity are exhausted.
+      - The PR head is proven equal to the settled candidate head before verdicts are requested, with a hermetic assertion covering a settlement commit that lands after preservation; a head that moved never receives a verdict, and a failed verdict never integrates.
+      - A hermetic three-Action rehearsal drives preserve, ready, both reviews and local fast-forward integration through the tick with only the GitHub CLI and reviewer model stubbed, with no operator step, the awaiting_independent_verdicts escalation clearing, Off fencing between Actions, and restart resuming mid-step without duplicate PR readiness or duplicate verdicts; GitHub-side merge and base push stay out of scope and are documented as such.
+    depends_on: [let-production-grant-request-remote-preservation]
+    decisions: []
+    references: ["src/production/tick.ts", "src/production/sessionHandoff.ts", "src/qa/prReview.ts", "src/sessions/candidatePreservation.ts", "tests/rehearsal-three-action.test.ts", "docs/managed-production-readiness.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
