@@ -3568,6 +3568,23 @@ actions:
     depends_on: []
     decisions: []
     references: []
+  - id: agents-know-names-and-teammates
+    title: Add a roster to agentIdentity.ts, surface it in `arcadia identity`, and inject an Identity block with self, teammates and partners into every launched session's prompt and brief.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a roster to agentIdentity.ts, surface it in `arcadia identity`, and inject an Identity block with self, teammates and partners into every launched session's prompt and brief.
+    expected_artifact: Evidence satisfying Agent Ask agents-know-names-and-teammates
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agents-know-names-and-teammates-2026-10-04
+    acceptance_criteria:
+      - src/codingAgents/agentIdentity.ts exposes a pure roster (every platform's given name, tier surnames, critic title and local address) and a teammates function that, for a resolved identity, lists the other platforms' identities and roles, the operator as a non-agent principal who never signs as an agent, and the rule that the resolved identity for the session's own model tier is authoritative; `arcadia identity resolve` prints the agent's own signature string and its teammates, and a new `arcadia identity roster` prints the whole roster; both agree with resolveAgentIdentity and refuse to fall back to the operator's identity.
+      - "Every session prompt and brief Arcadia generates for Claude Code, Codex and OpenCode (go, brief, enroll, the managed worker packet and reviewer/critic launches) includes one Identity block built from that function: 'You are <name> <<email>> (platform, tier, role); sign every comment and commit exactly so, never as another tier or name; your teammates are ...; your current partners on this Project, from live claims and Sessions, are ...', where partners come from existing session and claim rows when they can be read and are omitted (not guessed) when they cannot; tests cover each provider, the critic role, an unknown tier refusing, no live partners, and a partner with a different platform."
+      - "The operator and agent guidance (docs/agent-guidance/git-identity.md and the instructions the brief links) state the signature rule and the roster once, agent-agnostically; a deterministic test fails if a generated prompt for any platform lacks the Identity block or names a self identity that differs from resolveAgentIdentity for that session's tier and role; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/codingAgents/agentIdentity.ts", "src/commands/identity.ts", "src/sessions/index.ts", "src/agentWatch/contract.ts", "docs/agent-guidance/git-identity.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
