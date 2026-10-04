@@ -27,11 +27,11 @@ vi.mock("../../../lib/system-status", () => ({ readManagedRunWorker: vi.fn() }))
 
 import { POST } from "./route";
 
-function toggle(action: string): Request {
+function toggle(action: string, extra: Record<string, unknown> = {}): Request {
   return new Request("http://arcadia.test/api/production-control", {
     method: "POST",
     headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
-    body: JSON.stringify({ action })
+    body: JSON.stringify({ action, ...extra })
   });
 }
 
@@ -116,6 +116,21 @@ describe("POST /api/production-control On", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("cannot turn remote preservation on: a request asking for it reaches the CLI as the bare previewed replay", async () => {
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview: { ready: true, refusals: [], expected } } });
+    cli.reactivateProduction.mockResolvedValue({ data: {} });
+
+    const response = await POST(toggle("activate", { remotePreservation: true, "remote-preservation": true }));
+
+    expect(response.status).toBe(200);
+    // Only the request id, the toggle's identity and the previewed expectations
+    // cross into the CLI; the saved fingerprint decides whether it was granted.
+    const [input] = cli.reactivateProduction.mock.calls[0];
+    expect(Object.keys(input).sort()).toEqual(["expected", "grantedBy", "requestId"]);
+    expect(input.expected).toEqual(expected);
+    expect(cli.previewProductionReactivation).toHaveBeenCalledWith();
   });
 
   it("refuses a cross-origin toggle before reading anything", async () => {

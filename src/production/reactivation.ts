@@ -33,8 +33,13 @@ import {
  *   that was reviewed; a moved pointer or queue produces a refusal naming the
  *   Actions that no longer match, never a narrower or wider scope.
  * - Nothing time-bound or delegated is carried. Integration grants, rehearsal
- *   exceptions, packet-approval delegation and remote preservation are authority,
- *   not configuration, so each needs a fresh grant (Decision 0072).
+ *   exceptions and packet-approval delegation are authority, not configuration,
+ *   so each needs a fresh grant (Decision 0072).
+ *
+ * Remote preservation is the one reviewed bound that is replayed: it is part of
+ * the fingerprint the operator activated with `--remote-preservation` and the
+ * reactivation preview shows, so a replay restores exactly that and never adds
+ * it to a configuration that lacked it.
  */
 
 export type ReactivationRefusalCode =

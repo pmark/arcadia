@@ -890,6 +890,19 @@ pnpm arcadia production activate \
   --request-id bootstrap-grant-1 --granted-by "$USER" --expected-revision 0
 ```
 
+**Remote preservation is opt-in.** Without `--remote-preservation`, managed
+preservation stays `LOCAL ONLY`: the candidate commit is kept on this host and
+the receipt names the push/draft-PR recovery step. Pass `--remote-preservation`
+to both `production preview` and `production activate` to let preservation also
+push the candidate branch and open a **draft** pull request for an Action in the
+scope. That is all it authorizes: it never marks a pull request ready for
+review, never merges, and never pushes the base branch; those stay separate
+gates. The preview, `production status` and the activation receipt each print a
+`Remote preservation: on|off` line, and the option is part of the scope
+fingerprint, so an activation (or a replayed `--request-id`) that differs from
+its preview is refused. No other flag, environment variable or dashboard
+control can turn it on.
+
 Switch it Off at any time:
 
 ```sh
@@ -905,14 +918,19 @@ grant it lost.
 
 **Saved configuration is not active permission.** When Off clears an active
 scope it also saves, in the same transaction, the exact reviewed configuration
-(Projects, Plans, the ordered Action allowlist, providers, concurrency and
-delegated mechanics) in a separate store with its own revision and fingerprint.
+(Projects, Plans, the ordered Action allowlist, providers, concurrency,
+delegated mechanics and, when it was granted, remote preservation) in a separate
+store with its own revision and fingerprint.
 Nothing reads that store as authority: every admission gate still requires
 `desiredState: active`, and `production status` shows it under "Saved
 configuration (not active permission)". Off does **not** save, and On never
 restores, anything time-bound or delegated: a candidate-integration grant, a
-rehearsal exception, the `packet_approval` delegation and its expiry, or remote
-preservation. Each needs a fresh grant from the CLI. A second Off keeps the
+rehearsal exception, or the `packet_approval` delegation and its expiry. Each
+needs a fresh grant from the CLI. Off does clear remote preservation from the
+active policy at once (no candidate is pushed while Off); a reactivation of a
+configuration activated with `--remote-preservation` restores it, because it is
+part of the fingerprint `reactivate-preview` shows (`Remote preservation: on`),
+and never adds it to a configuration that lacked it. A second Off keeps the
 first save; an Off from a policy that was never active has nothing to save.
 
 To switch back On, preview first, then reactivate bound to what the preview
@@ -1521,9 +1539,10 @@ Action-completion and PR-QA gate outside the sandbox; host-side dependency-aware
 validation is separate governed work (`preserve-on-exit-and-integrate`).
 
 Passing checks prove those checks passed. Preservation does not accept,
-integrate, complete, or advance the Action. Remote preservation still requires
-its existing separate grant; otherwise the receipt names the local commit and
-its exact LOCAL ONLY recovery step. Retries return the preserved commit.
+integrate, complete, or advance the Action. Remote preservation (push plus a
+draft pull request, never ready-for-review or merge) still requires an Active
+policy granted with `production activate --remote-preservation`; otherwise the
+receipt names the local commit and its exact LOCAL ONLY recovery step. Retries return the preserved commit.
 
 Claimed preservation now runs in a separate host child, so validation and capture
 cannot stop the worker's heartbeat. An attempt is bounded to 22 minutes, with

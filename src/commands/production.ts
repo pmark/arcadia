@@ -63,6 +63,12 @@ export interface ProductionPreviewOptions {
   intent?: string;
   concurrency?: string;
   transitions?: string;
+  /**
+   * From `--remote-preservation`: push preserved candidates and open their draft
+   * pull requests. The only way to set `scope.remotePreservation`; never a merge
+   * or ready-for-review.
+   */
+  remotePreservation?: boolean;
   /** Decision 0058 bounded candidate-integration grant, when the operator records one. */
   integrationGrantDecision?: string;
   integrationGrantExpiresAt?: string;
@@ -454,6 +460,7 @@ export function renderProductionStatusSuccess(
         `  Saved configuration (not active permission): revision ${saved.configurationRevision}, ` +
           `${saved.scope.actions.length} Action(s), fingerprint ${saved.fingerprint}, saved by the Off at policy revision ${saved.savedAtPolicyRevision}`
       );
+      lines.push(`  Saved remote preservation: ${describeRemotePreservation(saved.scope.remotePreservation)}`);
       if (saved.notCarried.length > 0) {
         lines.push(`  Not carried across Off: ${saved.notCarried.join(", ")}`);
       }
@@ -469,6 +476,7 @@ export function renderProductionStatusSuccess(
       lines.push(`  Concurrency gate: ${describeConcurrencyGate(response.data.concurrencyGate)}`);
       lines.push(`  Delegated mechanics: ${policy.scope.mechanicalTransitions.join(", ") || "none"}`);
       if (policy.scope.packetApprovalExpiresAt) lines.push(`  Packet approval expires: ${policy.scope.packetApprovalExpiresAt}`);
+      lines.push(`  Remote preservation: ${describeRemotePreservation(policy.scope.remotePreservation)}`);
       lines.push(`  Candidate integration grant: ${describeIntegrationGrant(policy.scope.integrationGrant)}`);
     }
     if (policy.authority) {
@@ -536,6 +544,7 @@ export function renderProductionPreviewSuccess(
     `  Concurrency gate: ${describeConcurrencyGate(preview.concurrencyGate)}`,
     `  Delegated mechanics: ${preview.scope.mechanicalTransitions.join(", ") || "none"}`,
     ...(preview.scope.packetApprovalExpiresAt ? [`  Packet approval expires: ${preview.scope.packetApprovalExpiresAt}`] : []),
+    `  Remote preservation: ${describeRemotePreservation(preview.scope.remotePreservation)}`,
     `  Candidate integration grant: ${describeIntegrationGrant(preview.scope.integrationGrant)}`,
     `  Scope fingerprint: ${preview.scopeFingerprint}`,
     `  Expected revision: ${preview.expectedRevision ?? "unknown"}`,
@@ -570,6 +579,7 @@ export function renderProductionReactivatePreviewSuccess(
       `  Providers: ${scope.providers.join(", ")}`,
       `  Concurrency: ${scope.maxConcurrentSessions} (${describeConcurrencyGate(preview.concurrencyGate)})`,
       `  Delegated mechanics: ${scope.mechanicalTransitions.join(", ") || "none"}`,
+      `  Remote preservation: ${describeRemotePreservation(scope.remotePreservation)}`,
       `  Actions (${scope.actions.length}):`
     );
     for (const [index, key] of scope.actions.entries()) lines.push(`    ${index + 1}. ${key}`);
@@ -601,6 +611,12 @@ export function renderProductionTransitionSuccess(
     `  Revision: ${result.revisionBefore} → ${result.policy.revision} (epoch ${result.policy.epoch})`,
     `  Acknowledged in ${result.elapsedMs}ms${result.withinAcknowledgementDeadline ? "" : " — past the control target"}`
   ];
+  if (result.policy.scope) {
+    lines.push(`  Remote preservation: ${describeRemotePreservation(result.policy.scope.remotePreservation)}`);
+  }
+  if (result.policy.authority?.scopeFingerprint) {
+    lines.push(`  Scope fingerprint: ${result.policy.authority.scopeFingerprint}`);
+  }
   if (result.fenced.length > 0) {
     lines.push(`  Fenced before launch (${result.fenced.length}):`);
     for (const admission of result.fenced) {
@@ -676,6 +692,7 @@ function previewInput(options: ProductionPreviewOptions, workspacePath: string) 
     intent: options.intent ?? "",
     maxConcurrentSessions: parseOptionalInteger(options.concurrency, "concurrency") ?? 1,
     mechanicalTransitions: parseTransitions(options.transitions),
+    ...(options.remotePreservation === true ? { remotePreservation: true } : {}),
     ...(integrationGrant ? { integrationGrant } : {}),
     ...(rehearsalException ? { rehearsalException } : {}),
     ...(options.packetApprovalExpiresAt?.trim() ? { packetApprovalExpiresAt: options.packetApprovalExpiresAt.trim() } : {})
@@ -710,6 +727,12 @@ function parseRehearsalException(options: ProductionPreviewOptions) {
   const expiresAt = options.rehearsalExceptionExpiresAt?.trim();
   if (!expiresAt) return null;
   return { actionRef: CONCURRENT_READY_SET_ADMISSION_PROOF_REF, expiresAt };
+}
+
+function describeRemotePreservation(enabled: boolean | undefined): string {
+  return enabled === true
+    ? "on — push the preserved candidate branch and open a draft pull request only; never mark it ready or merge"
+    : "off — preservation stays LOCAL ONLY (grant with --remote-preservation)";
 }
 
 function describeIntegrationGrant(grant: ProductionIntegrationGrant | undefined): string {

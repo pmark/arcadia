@@ -14,7 +14,7 @@ import { assertManualPreservationBinding, bindManualPreservation, manualBindingF
 import { resolveDispatch } from "../docs/dispatch.js";
 import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
-import { readProductionPolicy } from "../production/policy.js";
+import { policyAuthorizesRemotePreservation, readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import {
   preserveCandidate,
@@ -101,9 +101,7 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
     const policy = readProductionPolicy(db);
     const actionKey = `${lease.project_slug}/${lease.action_id}`;
     const remotePreservation: RemotePreservationAuthorization =
-      policy.desiredState === "active" &&
-      policy.scope?.remotePreservation === true &&
-      policy.scope.actions.includes(actionKey)
+      policyAuthorizesRemotePreservation(policy, actionKey)
         ? {
             authorized: true,
             qaPlan: buildQaPlan({ actionId: lease.action_id, branch, baseBranch })
