@@ -45,8 +45,20 @@ For the disposable three-Action rehearsal, four operator pairs run in order;
 each writes a receipt under its `runs/<timestamp-pid>/` and a failure handoff
 when it refuses. **G1** `prepare-three-action-rehearsal-fixture-2026-10-04`
 (terminal, with `ARCADIA_REHEARSAL_GITHUB_REPO=<you>/arcadia-three-action-rehearsal-<suffix>`)
-creates or reuses only that private repository and registers the fixture; then
-run `recover-arcadia-host-services`. **G6** `preflight-three-action-rehearsal-2026-10-04`
+first validates the generated fixture with Arcadia's own discovery and docs-sync
+code in a scratch directory, then creates or reuses only that private repository
+and registers the fixture; a half-registered earlier attempt is reported with its
+exact recovery instead. Then run `recover-arcadia-host-services` from a terminal
+with `ARCADIA_WORKSPACE` set inline on that one command, exactly:
+
+```sh
+ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run
+```
+
+Never `export ARCADIA_WORKSPACE`: the workspace would then resolve from the
+environment variable instead of user config, and G1, G6, G7 and G8 refuse
+(`unset ARCADIA_WORKSPACE` repairs it). Without it the restart falls back to a
+workspace that does not exist. **G6** `preflight-three-action-rehearsal-2026-10-04`
 only observes and refuses unknown, stale, paid or unavailable evidence. **G7**
 `grant-production-three-action-rehearsal-2026-10-04` (one-shot, from `/runs`,
 within 30 minutes of a passing G6) replays the hermetic rehearsal, then previews

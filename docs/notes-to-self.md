@@ -289,7 +289,8 @@ Keep normal Git hooks enabled. Verify the recovered tree against the landed comm
 
 ## Test operator scripts behaviorally outside the agent sandbox
 
-keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise
+keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise, fixture, docs sync, passthrough
 
 The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
 Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
+A generated managed document is judged by real Arcadia code, never a canned `errorCount`: the fake's `{ passthrough: "probe" | "cli" }` reply runs the checkout's code (G1's fixture once hid invalid YAML behind a faked docs sync).

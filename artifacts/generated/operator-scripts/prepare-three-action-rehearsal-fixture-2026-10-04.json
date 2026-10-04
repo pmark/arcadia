@@ -4,8 +4,8 @@
   "title": "G1: Prepare the disposable three-Action rehearsal fixture (no production change)",
   "script": "prepare-three-action-rehearsal-fixture-2026-10-04.sh",
   "repeatable": true,
-  "problem": "The installed three-Action autonomous rehearsal needs a fresh disposable private GitHub repository with one CI check (arcadia qa pr refuses an empty statusCheckRollup) and one registered fixture Project with Plan autonomous-three-action-rehearsal and serial Actions write-start-marker, transform-start-marker and verify-final-rehearsal. The repository identifier is operator input; nothing may guess it.",
-  "desired_effect": "Validate the one operator-supplied owner/name, prove it is safe to create or reuse, create the local fixture at ~/tmp/arcadia-three-action-rehearsal with only its genesis files and a single ubuntu-latest CI job, create or reuse the private GitHub repository and push only the genesis commit, register and sync the fixture Project, and seed only the first Action's build packet. Production policy is never previewed or activated.",
+  "problem": "The installed three-Action autonomous rehearsal needs a fresh disposable private GitHub repository with one CI check (arcadia qa pr refuses an empty statusCheckRollup) and one registered fixture Project with Plan autonomous-three-action-rehearsal and serial Actions write-start-marker, transform-start-marker and verify-final-rehearsal. The repository identifier is operator input; nothing may guess it. The generated Plan must pass Arcadia's own discovery and docs-sync validation before anything outside a scratch directory changes: an earlier draft wrote an invalid YAML criterion that would only have been found after the repository was created, pushed and imported.",
+  "desired_effect": "Validate the one operator-supplied owner/name; render the fixture into a scratch directory and validate it with Arcadia's own discovery and docs-sync code (zero errors, write-start-marker ready, transform-start-marker and verify-final-rehearsal waiting only on depends_on) before any GitHub create, push, Project import or manifest write; report a half-registered earlier attempt with its exact recovery instead of refusing silently; then create the local fixture at ~/tmp/arcadia-three-action-rehearsal from those same bytes with a single ubuntu-latest CI job, create or reuse the private GitHub repository and push only the genesis commit, register and sync the fixture Project, and seed only the first Action's build packet. Production policy is never previewed or activated. Next, run recover-arcadia-host-services with ARCADIA_WORKSPACE set inline, never exported (exporting it makes G1, G6, G7 and G8 refuse): ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run",
   "operator_command": "ARCADIA_REHEARSAL_GITHUB_REPO=<your-login>/arcadia-three-action-rehearsal-<suffix> /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh run",
   "parameters": {
     "ARCADIA_REHEARSAL_GITHUB_REPO": "Required environment variable: the exact owner/name. The owner must be the authenticated gh user; the name must match ^arcadia-three-action-rehearsal(-[a-z0-9]{1,24})?$. Launched from /runs without it, the script refuses with a receipt and changes nothing."
@@ -14,9 +14,11 @@
     "does": [
       "Refuses before any other step unless ARCADIA_REHEARSAL_GITHUB_REPO is exactly owner/name, the owner is the authenticated gh user, and the name matches the disposable-fixture pattern",
       "Requires the Arcadia checkout clean on main and production Inactive with a readable store",
+      "Before any GitHub create, push, Project import or manifest write, renders the fixture into its run directory and runs Arcadia's real discoverDocs, a dry-run syncProjectDocs in a throwaway workspace (no Project registered, live workspace untouched) and resolveReadySet; any docs-sync error, rejected document or non-serial depends_on ordering refuses with a receipt and failure handoff",
+      "Before any GitHub call, reports a half-registered earlier attempt (Project three-action-rehearsal registered without this fixture's registration marker, or registered from a local genesis whose Plan fails validation) and an invalid existing local fixture, naming what exists and the exact recovery in the receipt and handoff",
       "Reuses a repository only when it is private, not archived or a fork, and either empty or a repository this script created whose main is exactly the local fixture genesis; anything else refuses",
       "Creates the repository private with a disposable-fixture description only when GitHub confirms it does not exist; an unknown GitHub answer refuses",
-      "Writes only AGENTS.md, CONSTITUTION.md, PROJECT.md, the fixture Plan, scripts/check-rehearsal.mjs, .github/workflows/ci.yml and the fixture manifest, then pushes only that genesis commit without force",
+      "Writes only AGENTS.md, CONSTITUTION.md, PROJECT.md, the fixture Plan, scripts/check-rehearsal.mjs, .github/workflows/ci.yml and the fixture manifest, copied from the validated scratch render, then pushes only that genesis commit without force",
       "Imports and syncs only Project three-action-rehearsal with Plan autonomous-three-action-rehearsal and Actions write-start-marker, transform-start-marker and verify-final-rehearsal, and seeds only write-start-marker's build packet for claude-code-cli",
       "Writes a timestamped receipt under runs/<timestamp-pid>/ on success and refusal, plus a failure handoff on refusal"
     ],
@@ -25,15 +27,17 @@
       "Never starts, stops or restarts a service or worker, and never launches a Session",
       "Never deletes, renames, archives or changes the visibility of any repository, never force-pushes, and never adds branch protection, CodeRabbit or other integrations",
       "Never reuses a public, foreign, non-empty or advanced repository, and never repoints an existing Project it did not register",
-      "Never guesses or defaults the repository identifier"
+      "Never guesses or defaults the repository identifier",
+      "Never creates, pushes, imports or writes the local fixture before the generated fixture passes validation, and never repairs, deletes or adopts a half-registered earlier attempt",
+      "Never exports or sets ARCADIA_WORKSPACE; an exported value makes it refuse by name"
     ]
   },
   "success": {
     "effect": "A private disposable repository holds exactly the fixture genesis with one CI workflow, and the fixture Project, Plan and three serial Actions are registered with the first packet seeded. Production is unchanged.",
-    "next": "Run recover-arcadia-host-services so the reinstalled broker trusts the new fixture repository and the worker runs current code, then run the G6 preflight (preflight-three-action-rehearsal-2026-10-04)."
+    "next": "Run recover-arcadia-host-services from a terminal with ARCADIA_WORKSPACE set inline on that one command, never exported in your shell (an exported ARCADIA_WORKSPACE makes G1, G6, G7 and G8 refuse because the workspace then resolves from the environment variable, not user config), exactly: ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run . It reinstalls the broker so it trusts the new fixture repository and restarts the worker on current code. Then run the G6 preflight (preflight-three-action-rehearsal-2026-10-04)."
   },
   "failure": {
     "effect": "The receipt and failure handoff name the failed precondition and whether this run created or pushed to the repository. Nothing was deleted or force-pushed and production was not touched.",
-    "next": "Correct the named precondition and rerun with the same identifier; a different identifier requires moving the old local fixture aside yourself first."
+    "next": "Follow the handoff's Recovery section when it has one (a half-registered earlier attempt or an invalid existing local fixture); otherwise correct the named precondition and rerun with the same identifier. A different identifier requires moving the old local fixture aside yourself first."
   }
 }

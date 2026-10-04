@@ -304,6 +304,19 @@ observation refuses as unknown. Whether Decision 0058 covers PR readiness and
 reviewer spend (#925) stays an operator acknowledgement stated in G7's
 always-visible title and effect.
 
+`fix-rehearsal-g1-plan-and-operator-guidance` (candidate, 2026-10-04): a
+read-only smoke found G1's generated Plan invalid YAML, which docs sync would
+only have reported after the repository was created, pushed and imported. G1
+now renders the fixture into its run directory and runs the real `discoverDocs`,
+a dry-run `syncProjectDocs` in a throwaway workspace and `resolveReadySet`
+before any GitHub, push, import or manifest write, and reports a half-registered
+earlier attempt with an exact recovery (no governed command removes a registered
+Project, so that recovery is an Agent Ask). `recover-arcadia-host-services` needs
+`ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover` inline,
+never exported; G8's pin of its descriptor moved with the new text. G6 now
+reports an unreadable check-runs read once and judges Codex availability by its
+real enum. Still unrun live: no repository was created and no Grant exists.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`

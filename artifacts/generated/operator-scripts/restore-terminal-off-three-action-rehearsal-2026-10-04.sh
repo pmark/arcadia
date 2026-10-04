@@ -21,7 +21,7 @@ GRANT_ID="grant-production-three-action-rehearsal-2026-10-04"
 RECOVER_ID="recover-arcadia-host-services"
 # The reviewed host-service path, pinned to its exact reviewed bytes.
 RECOVER_SCRIPT_SHA256="d48ad928b578010f6de10f51bf971168db21713f2a99daf22354559afb500a63"
-RECOVER_DESCRIPTOR_SHA256="3fa28275bee58c597a0df6575613466d6e1229bdca388be89c2d2fdb7ee4e7c8"
+RECOVER_DESCRIPTOR_SHA256="4e6186613c03c86a67f8ee8cccdeb6adaf1a979e677ab621d07cc15fb3f1c0f1"
 # scripts/services.sh (tracked, clean main) delegates to this implementation.
 RESTART_IMPL="$HOME/.codex/skills/restart-arcadia-services/scripts/restart-services.sh"
 RESTART_IMPL_SHA256="ac0c60a1d8282f9413e92e77066f44f58257cc6a8d979f1d1e4fe8097b8b53b6"
