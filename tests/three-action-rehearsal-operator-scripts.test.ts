@@ -728,10 +728,15 @@ describe("G7 Grant previews and activates only the exact bound scope", () => {
   it("runs the same cleanup when SIGTERM arrives during activation", async () => {
     const { box, env } = grantBox();
     const marker = path.join(box.root, "activate-started");
+    const release = path.join(box.root, "activate-release");
     const activated = JSON.stringify({ ok: true, data: { result: { policy: { desiredState: "active", revision: 6, authority: { requestId: G7, scopeFingerprint: "fp-1" } } } } });
-    // The fake activate commits (status reads Active afterwards) and then stalls; bash runs the trap once it returns.
+    // The fake activate commits (status reads Active afterwards) and then stalls until the test
+    // releases it, using the real /bin/sleep (the box's fake `sleep` returns at once). Bash runs
+    // the TERM trap only after this foreground command returns, so killing before releasing is
+    // deterministic. The stall is capped at about 20 seconds.
+    const stall = `touch ${JSON.stringify(marker)}; i=0; while [ ! -e ${JSON.stringify(release)} ] && [ $i -lt 200 ]; do /bin/sleep 0.1; i=$((i+1)); done; printf '%s' '${activated}'`;
     override(box, {
-      "arcadia production activate": { exec: `touch ${JSON.stringify(marker)}; sleep 2; printf '%s' '${activated}'` },
+      "arcadia production activate": { exec: stall },
       "arcadia production status": [status("inactive"), status("inactive"), ownActive]
     });
     const child = spawn("bash", [path.join(box.scripts, `${G7}.sh`), "run"], {
@@ -739,10 +744,18 @@ describe("G7 Grant previews and activates only the exact bound scope", () => {
       stdio: "ignore"
     });
     const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
-    for (let i = 0; i < 300 && !existsSync(marker); i++) await new Promise((r) => setTimeout(r, 100));
-    expect(existsSync(marker)).toBe(true);
-    child.kill("SIGTERM");
-    expect(await exited).not.toBe(0);
+    try {
+      for (let i = 0; i < 300 && !existsSync(marker); i++) await new Promise((r) => setTimeout(r, 100));
+      expect(existsSync(marker)).toBe(true);
+      expect(child.exitCode).toBeNull();
+      child.kill("SIGTERM");
+      await new Promise((r) => setTimeout(r, 200));
+      writeFileSync(release, "");
+      expect(await exited).not.toBe(0);
+    } finally {
+      writeFileSync(release, "");
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
     const { json, handoff } = g7Receipt(box);
     expect(json.reason).toContain("interrupted by a signal");
     expect(json).toMatchObject({ outcome: "refused", activated: true, offCleanup: "returned_off" });
