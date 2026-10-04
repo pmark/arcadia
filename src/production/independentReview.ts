@@ -489,11 +489,14 @@ export function advanceIndependentReview(db: Database.Database, input: {
     }
     const checks = classifyPullRequestChecks(pr.statusCheckRollup);
     if (checks.state === "failed") {
+      const unknown = checks.unknown.length > 0
+        ? ` Unknown check entry shape(s) ${checks.unknown.join(", ")}: Arcadia cannot read their state; extend normalizeStatusCheck (src/workMonitoring/pullRequests.ts) for that shape or remove the reporter.`
+        : "";
       return {
         kind: "blocked",
         code: "required_checks_failed",
         reason: `Required checks on ${url} at ${head.slice(0, 12)} did not succeed: ${checks.blockers.join(" ")}`,
-        remedy: "A failed check needs a fix (a new candidate head) or a GitHub re-run of the check; the tick keeps polling and reviews as soon as every check is green. No reviewer runs meanwhile."
+        remedy: `A failed check needs a fix (a new candidate head) or a GitHub re-run of the check; the tick keeps polling and reviews as soon as every check is green. No reviewer runs meanwhile.${unknown}`
       };
     }
     if (checks.state !== "green") {

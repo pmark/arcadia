@@ -228,7 +228,10 @@ ancestor of it; anything else is `review_head_moved` and never gets a
 verdict), `gh pr ready` once (a PR returned to draft afterwards escalates
 `review_paused_as_draft` instead of being readied again), poll required checks
 (once a minute, one-hour deadline after ready; `BLOCKED` counts only once
-checks are green), then `arcadia qa code-review` and on a later tick
+checks are green; every rollup entry, CheckRun or StatusContext, is read by its
+real state through the shared `normalizeStatusCheck`, an unrecognised entry
+blocks by name, and only `ADVISORY_CHECK_CONTEXTS`, which is `CodeRabbit`
+under Decision 0080, never gates), then `arcadia qa code-review` and on a later tick
 `arcadia qa pr`, each reviewer bounded to 15 minutes under the worker's
 30-minute tick ceiling, which is re-stamped right before the reviewer starts.
 State is re-derived from GitHub, the role lineage and one

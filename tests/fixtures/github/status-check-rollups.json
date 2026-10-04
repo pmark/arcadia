@@ -1,0 +1,944 @@
+{
+  "_about": "statusCheckRollup entries captured read-only with 'gh pr view <n> --repo pmark/arcadia --json statusCheckRollup,mergeStateStatus' on 2026-10-04, redacted to entry names, states and public URLs (timestamps dropped). A 'captured' case is verbatim GitHub output. A 'derived' case is the captured #929 list with only the named change, in the captured StatusContext field shape, because no non-advisory StatusContext, failed CodeRabbit context or unknown entry appears in this repository's 593 most recent pull requests.",
+  "cases": {
+    "checkRunOnly": {
+      "origin": "captured",
+      "pullRequest": 322,
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712774026"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712773990"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712773872"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712774043"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712773743"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712774133"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/35379723853/job/105712773930"
+        }
+      ]
+    },
+    "checkRunsWithCodeRabbitSuccess": {
+      "origin": "captured",
+      "pullRequest": 929,
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "checkRunsWithCodeRabbitPending": {
+      "origin": "captured",
+      "pullRequest": 926,
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373584885"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373584997"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585040"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585008"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585034"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585041"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585046"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "PENDING",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "failedCheckRunWithCodeRabbit": {
+      "origin": "captured",
+      "pullRequest": 653,
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651052"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "FAILURE",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651094"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651110"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651044"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651075"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651147"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/36204382984/job/108297651205"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "codeRabbitOnly": {
+      "origin": "captured",
+      "pullRequest": 702,
+      "rollup": [
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "empty": {
+      "origin": "captured",
+      "pullRequest": 33,
+      "rollup": []
+    },
+    "pendingNonAdvisoryStatusContext": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds StatusContext external/gate in state PENDING",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "external/gate",
+          "state": "PENDING",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "expectedNonAdvisoryStatusContext": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds StatusContext external/gate in state EXPECTED",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "external/gate",
+          "state": "EXPECTED",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "failedNonAdvisoryStatusContext": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds StatusContext external/gate in state FAILURE",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "external/gate",
+          "state": "FAILURE",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "erroredNonAdvisoryStatusContext": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds StatusContext external/gate in state ERROR",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "external/gate",
+          "state": "ERROR",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "successfulNonAdvisoryStatusContext": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds StatusContext external/gate in state SUCCESS",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "external/gate",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "codeRabbitFailed": {
+      "origin": "derived",
+      "from": 929,
+      "change": "CodeRabbit state FAILURE",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "FAILURE",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "codeRabbitErrored": {
+      "origin": "derived",
+      "from": 929,
+      "change": "CodeRabbit state ERROR, as a rate-limited review reports",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "ERROR",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "codeRabbitPendingWithPendingCheckRun": {
+      "origin": "derived",
+      "from": 926,
+      "change": "unit-1 still IN_PROGRESS",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373584885"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "IN_PROGRESS",
+          "conclusion": "",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373584997"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585040"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585008"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585034"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585041"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37181067292/job/111373585046"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "PENDING",
+          "targetUrl": ""
+        }
+      ]
+    },
+    "unknownEntryShape": {
+      "origin": "derived",
+      "from": 929,
+      "change": "adds an entry that matches neither the CheckRun nor the StatusContext shape",
+      "rollup": [
+        {
+          "__typename": "CheckRun",
+          "name": "lint",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422002"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-1",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422042"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-2",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422020"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-3",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422056"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "unit-4",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422054"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "dashboard",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379421857"
+        },
+        {
+          "__typename": "CheckRun",
+          "name": "e2e",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "workflowName": "CI",
+          "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/37183095659/job/111379422009"
+        },
+        {
+          "__typename": "StatusContext",
+          "context": "CodeRabbit",
+          "state": "SUCCESS",
+          "targetUrl": ""
+        },
+        {
+          "__typename": "FutureCheckSuite",
+          "title": "deploy-preview",
+          "result": "OK"
+        }
+      ]
+    }
+  }
+}

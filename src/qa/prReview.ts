@@ -28,6 +28,7 @@ import { listMonitoredProjects } from "../commands/workMonitor.js";
 import { assertVerdictHead, beginIndependentVerdict, finishIndependentVerdict, independentVerdictReadiness, lineageBoundSessionForBranch } from "../sessions/roleLineage.js";
 import { getSessionRoleAttempt, latestRoleAttempt, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { readProductionPolicySafely } from "../production/policy.js";
+import { normalizeStatusCheck, type NormalizedStatusCheck, type RawStatusCheck } from "../workMonitoring/pullRequests.js";
 
 export type QaPrVerdict = "pass" | "fail" | "needs-follow-up";
 export type QaEvidenceStatus = "pass" | "fail" | "not-checked";
@@ -200,23 +201,16 @@ interface RawPullRequest {
   baseRefOid: string;
   body: string;
   files: Array<{ path: string; additions: number; deletions: number; changeType: string }>;
-  statusCheckRollup: Array<{
-    name: string;
-    status: string | null;
-    conclusion: string | null;
-    detailsUrl: string | null;
-    workflowName?: string | null;
-  }>;
+  statusCheckRollup: PullRequestCheckRun[];
 }
 
-/** One GitHub status-check entry, as `gh pr view --json statusCheckRollup` reports it. */
-export interface PullRequestCheckRun {
-  name: string;
-  status: string | null;
-  conclusion: string | null;
-  detailsUrl?: string | null;
-  workflowName?: string | null;
-}
+/**
+ * One GitHub statusCheckRollup entry exactly as `gh pr view --json
+ * statusCheckRollup` reports it: a CheckRun (`name`, `status`, `conclusion`)
+ * or a commit StatusContext (`context`, `state`, `targetUrl`). Read it only
+ * through `normalizeStatusCheck`.
+ */
+export type PullRequestCheckRun = RawStatusCheck;
 
 interface PersistedReceipt {
   version: 6;
@@ -676,21 +670,64 @@ function parsePullRequestReference(value: string): { repository: string; number:
 }
 
 /**
+ * Every rollup entry read through the shared `normalizeStatusCheck`, split
+ * into the checks that gate review readiness and the advisory ones
+ * (ADVISORY_CHECK_CONTEXTS, Decision 0080) that never do, whatever their state.
+ */
+export function readPullRequestChecks(rollup: ReadonlyArray<PullRequestCheckRun>): {
+  gating: NormalizedStatusCheck[];
+  advisory: NormalizedStatusCheck[];
+} {
+  const normalized = rollup.map(normalizeStatusCheck);
+  return {
+    gating: normalized.filter((check) => !check.advisory),
+    advisory: normalized.filter((check) => check.advisory)
+  };
+}
+
+function describeAdvisoryCheck(check: NormalizedStatusCheck): string {
+  return `${check.name}: ${check.conclusion ?? check.status ?? "unknown"} (advisory under Decision 0080; never gates readiness).`;
+}
+
+function describeUnknownCheck(check: NormalizedStatusCheck): string {
+  return `${check.name} is an unknown check entry shape (${check.unknownShape ?? "unrecognised"}); Arcadia cannot read its state, so it blocks instead of waiting.`;
+}
+
+/**
  * The same check rule `arcadia qa pr` applies before any reviewer runs, split
  * so the worker tick can tell checks that are still running (wait) from
  * checks that finished unsuccessfully (escalate). An empty rollup is
- * `none`: GitHub may not have registered the checks yet.
+ * `none`: GitHub may not have registered the checks yet; so is a rollup with
+ * only advisory entries. An unknown entry shape is `failed` and named in
+ * `unknown`, never a silent wait.
  */
 export function classifyPullRequestChecks(rollup: ReadonlyArray<PullRequestCheckRun>): {
   state: "none" | "pending" | "failed" | "green";
   blockers: string[];
+  /** Names of entries whose shape is neither a CheckRun nor a StatusContext. */
+  unknown: string[];
+  /** One line per advisory entry that was read and deliberately not gated. */
+  advisory: string[];
 } {
-  if (rollup.length === 0) return { state: "none", blockers: ["GitHub reported no validation checks."] };
+  if (rollup.length === 0) return { state: "none", blockers: ["GitHub reported no validation checks."], unknown: [], advisory: [] };
+  const { gating, advisory: advisoryChecks } = readPullRequestChecks(rollup);
+  const advisory = advisoryChecks.map(describeAdvisoryCheck);
+  if (gating.length === 0) {
+    const names = [...new Set(advisoryChecks.map((check) => check.name))].join(", ");
+    return { state: "none", blockers: [`GitHub reported no validation checks other than advisory ${names}.`], unknown: [], advisory };
+  }
   const blockers: string[] = [];
+  const unknown: string[] = [];
   let failed = false;
   let pending = false;
-  const grouped = new Map<string, PullRequestCheckRun[]>();
-  for (const check of rollup) {
+  const grouped = new Map<string, NormalizedStatusCheck[]>();
+  for (const check of gating) {
+    if (check.shape === "unknown") {
+      failed = true;
+      unknown.push(check.name);
+      blockers.push(describeUnknownCheck(check));
+      continue;
+    }
     const group = grouped.get(check.name) ?? [];
     group.push(check);
     grouped.set(check.name, group);
@@ -713,7 +750,7 @@ export function classifyPullRequestChecks(rollup: ReadonlyArray<PullRequestCheck
       blockers.push(`${name} validation did not succeed: ${evidence}.`);
     }
   }
-  return { state: failed ? "failed" : pending ? "pending" : "green", blockers };
+  return { state: failed ? "failed" : pending ? "pending" : "green", blockers, unknown, advisory };
 }
 
 /**
@@ -1078,13 +1115,25 @@ function evaluateDeterministicEvidence(
     reasons.push("the independent reviewer failed");
   }
 
+  // Advisory entries (ADVISORY_CHECK_CONTEXTS) are read and deliberately left out of the gate.
+  const gatingChecks = readPullRequestChecks(pullRequest.statusCheckRollup).gating;
   if (pullRequest.statusCheckRollup.length === 0) {
     gate = "needs-follow-up";
     reasons.push("GitHub reported no validation checks");
     checks.push({ name: "GitHub validation", status: "not-checked", evidence: "No status checks were reported for the head revision." });
+  } else if (gatingChecks.length === 0) {
+    gate = "needs-follow-up";
+    reasons.push("GitHub reported no validation checks other than advisory ones");
+    checks.push({ name: "GitHub validation", status: "not-checked", evidence: "Only advisory status checks were reported for the head revision." });
   } else {
-    const grouped = new Map<string, RawPullRequest["statusCheckRollup"]>();
-    for (const check of pullRequest.statusCheckRollup) {
+    const grouped = new Map<string, NormalizedStatusCheck[]>();
+    for (const check of gatingChecks) {
+      if (check.shape === "unknown") {
+        gate = "needs-follow-up";
+        reasons.push(`${check.name} is an unknown check entry shape`);
+        checks.push({ name: `GitHub: ${check.name}`, status: "not-checked", evidence: describeUnknownCheck(check) });
+        continue;
+      }
       const group = grouped.get(check.name) ?? [];
       group.push(check);
       grouped.set(check.name, group);
@@ -1094,7 +1143,7 @@ function evaluateDeterministicEvidence(
       const hasSuccess = conclusions.has("SUCCESS");
       const hasFailure = [...conclusions].some((conclusion) => FAILED_CONCLUSIONS.has(conclusion));
       const hasPending = group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion);
-      const evidence = group.map((check) => `${check.conclusion ?? check.status ?? "unknown"}${check.detailsUrl ? ` (${check.detailsUrl})` : ""}`).join("; ");
+      const evidence = group.map((check) => `${check.conclusion ?? check.status ?? "unknown"}${check.url ? ` (${check.url})` : ""}`).join("; ");
       if (hasSuccess && hasFailure) {
         gate = "needs-follow-up";
         reasons.push(`duplicate ${name} checks conflict`);
@@ -1296,7 +1345,10 @@ function fingerprintPullRequestEvidence(pullRequest: RawPullRequest): string {
     baseRefOid: pullRequest.baseRefOid,
     body: pullRequest.body,
     files: pullRequest.files,
-    statusCheckRollup: pullRequest.statusCheckRollup
+    // An advisory entry never gates, so its state changing mid-review (CodeRabbit
+    // finishing) does not make the evidence stale. A rollup without one hashes
+    // exactly as before.
+    statusCheckRollup: pullRequest.statusCheckRollup.filter((check) => !normalizeStatusCheck(check).advisory)
   })).digest("hex");
 }
 

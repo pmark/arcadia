@@ -5,6 +5,7 @@ import {
   normalizeCheck,
   normalizePullRequest
 } from "../src/workMonitoring/pullRequests.js";
+import { rollup } from "./helpers/statusCheckRollups.js";
 
 describe("outstanding pull-request readiness", () => {
   it("rates an approved clean PR as merge-ready", () => {
@@ -109,5 +110,12 @@ describe("outstanding pull-request readiness", () => {
     expect(normalizeCheck({ context: "CodeRabbit", state: "PENDING" })).toMatchObject({ status: "PENDING", conclusion: null });
     expect(normalizeCheck({ context: "CodeRabbit", state: "EXPECTED" })).toMatchObject({ status: "PENDING", conclusion: null });
     expect(normalizeCheck({ name: "lint", status: "COMPLETED", conclusion: "SUCCESS" })).toMatchObject({ name: "lint", status: "COMPLETED", conclusion: "SUCCESS" });
+  });
+
+  it("keeps the work monitor's projection of a captured rollup to name, status, conclusion and url", () => {
+    expect(rollup("checkRunsWithCodeRabbitPending").map(normalizeCheck).slice(-2)).toEqual([
+      { name: "e2e", status: "COMPLETED", conclusion: "SUCCESS", url: expect.stringMatching(/^https:\/\/github\.com\/pmark\/arcadia\/actions\/runs\//) },
+      { name: "CodeRabbit", status: "PENDING", conclusion: null, url: null }
+    ]);
   });
 });

@@ -8,6 +8,7 @@ import { ensureProductionTickTables, resetProductionRepairBudget } from "../src/
 import type { PullRequestCheckRun } from "../src/qa/prReview.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
 import { git, LINE_A, Rehearsal, type RehearsalOptions } from "./helpers/rehearsalHarness.js";
+import { rollup } from "./helpers/statusCheckRollups.js";
 
 /**
  * The worker tick's unattended review of a preserved managed candidate: it
@@ -209,6 +210,59 @@ describe("tick-driven independent review", () => {
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(escalation(rehearsal)).toBeUndefined();
     expect(rehearsal.github.readyCalls).toHaveLength(1);
+  });
+
+  it("reads captured rollups by their real state: waits on empty and pending contexts, blocks failed and unknown ones by name, and never waits on CodeRabbit", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("empty");
+    exitTick(rehearsal);
+    rehearsal.tick(); // ready
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "awaiting_independent_verdicts", remedy: expect.stringContaining("GitHub reported no validation checks.") });
+
+    rehearsal.github.checks = () => rollup("pendingNonAdvisoryStatusContext");
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "awaiting_independent_verdicts", remedy: expect.stringContaining("external/gate validation is pending: PENDING.") });
+
+    rehearsal.github.checks = () => rollup("unknownEntryShape");
+    rehearsal.tick();
+    const steps = () => withDatabase(rehearsal.workspace, (db) => listReviewSteps(db, rehearsal.actionA));
+    expect(escalation(rehearsal)).toMatchObject({
+      kind: "required_checks_failed",
+      remedy: expect.stringContaining("Unknown check entry shape(s) unnamed FutureCheckSuite")
+    });
+    expect(steps()[0].last_outcome_json).toContain("unnamed FutureCheckSuite is an unknown check entry shape (FutureCheckSuite with fields result, title)");
+
+    rehearsal.github.checks = () => rollup("failedNonAdvisoryStatusContext");
+    rehearsal.tick();
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_failed" });
+    expect(steps()[0].last_outcome_json).toContain("external/gate validation did not succeed: FAILURE.");
+    expect(steps()[0].last_outcome_json).not.toContain("CodeRabbit");
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+
+    // pmark/arcadia#926 (CodeRabbit PENDING) and #929 (CodeRabbit SUCCESS), verbatim:
+    // `arcadia qa code-review` and `arcadia qa pr` both accept them.
+    rehearsal.github.checks = () => rollup("checkRunsWithCodeRabbitPending");
+    rehearsal.tick();
+    expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
+    rehearsal.github.checks = () => rollup("checkRunsWithCodeRabbitSuccess");
+    const integrated = rehearsal.tick();
+    expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "qa"]);
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+    expect(escalation(rehearsal)).toBeUndefined();
+  });
+
+  it("reviews and integrates a captured CheckRun-only rollup and a CodeRabbit-only failure never stops it", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("checkRunOnly");
+    exitTick(rehearsal);
+    const { integrated } = rehearsal.tickThroughReview();
+    expect(integrated.handoff?.integration.kind).toBe("integrated");
+
+    const second = finishedA();
+    second.rehearsal.github.checks = () => rollup("codeRabbitErrored");
+    exitTick(second.rehearsal);
+    expect(second.rehearsal.tickThroughReview().integrated.handoff?.integration.kind).toBe("integrated");
   });
 
   it("withholds every step while Off, integrates nothing that a reviewer finished under Off, and resumes under the next epoch", () => {

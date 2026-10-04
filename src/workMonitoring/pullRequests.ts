@@ -83,14 +83,41 @@ export interface OutstandingPullRequestsSnapshot {
 
 /** One entry of GitHub's statusCheckRollup: a CheckRun or a commit StatusContext. */
 export interface RawStatusCheck {
+  __typename?: unknown;
   name?: unknown;
   status?: unknown;
   conclusion?: unknown;
+  workflowName?: unknown;
   context?: unknown;
   state?: unknown;
+  description?: unknown;
   targetUrl?: unknown;
   detailsUrl?: unknown;
 }
+
+/**
+ * The only checks that never gate review readiness, matched exactly on the
+ * entry's StatusContext `context` or CheckRun `name`. External reviewer bots
+ * are advisory under Decision 0080, so their state (success, pending, failed,
+ * rate limited) is never a readiness condition. Every other check gates.
+ */
+export const ADVISORY_CHECK_CONTEXTS: readonly string[] = Object.freeze(["CodeRabbit"]);
+
+/** Which statusCheckRollup entry shape a check was read from; `unknown` is neither readable shape. */
+export type StatusCheckShape = "CheckRun" | "StatusContext" | "unknown";
+
+/** A rollup entry read by its real shape, for review readiness. */
+export interface NormalizedStatusCheck extends PullRequestCheck {
+  shape: StatusCheckShape;
+  /** The entry is on ADVISORY_CHECK_CONTEXTS and never gates readiness. */
+  advisory: boolean;
+  /** For an `unknown` entry: its typename and field names, so the report can name it. */
+  unknownShape: string | null;
+}
+
+/** Every state GitHub's StatusState enum defines for a commit StatusContext. */
+const STATUS_CONTEXT_STATES = new Set(["SUCCESS", "FAILURE", "ERROR", "PENDING", "EXPECTED"]);
+const SETTLED_STATUS_CONTEXT_STATES = new Set(["SUCCESS", "FAILURE", "ERROR"]);
 
 interface RawPullRequest {
   number?: unknown;
@@ -250,15 +277,42 @@ export function listOutstandingPullRequests(
  * pending forever.
  */
 export function normalizeCheck(check: RawStatusCheck): PullRequestCheck {
-  const state = stringValue(check.state)?.toUpperCase() ?? null;
-  const settled = state !== null && ["SUCCESS", "FAILURE", "ERROR"].includes(state);
-  const isContext = stringValue(check.context) !== null && stringValue(check.status) === null;
+  const { name, status, conclusion, url } = normalizeStatusCheck(check);
+  return { name, status, conclusion, url };
+}
+
+/**
+ * The one shared reading of a statusCheckRollup entry, used by the work
+ * monitor and by every review-readiness gate (`classifyPullRequestChecks`,
+ * the tick's independent review step and `arcadia qa pr`). A StatusContext's
+ * SUCCESS, FAILURE and ERROR are complete with that conclusion; PENDING and
+ * EXPECTED are still running. A CheckRun keeps its own status and conclusion
+ * (an empty one is still running). An entry that is neither a CheckRun (a
+ * `name`) nor a StatusContext (a `context` and a StatusState) is `unknown`,
+ * named by whatever identifies it, never silently read as pending by a gate.
+ */
+export function normalizeStatusCheck(check: RawStatusCheck): NormalizedStatusCheck {
+  const typename = stringValue(check.__typename);
+  const name = stringValue(check.name);
   const context = stringValue(check.context);
+  const status = stringValue(check.status);
+  const state = stringValue(check.state)?.toUpperCase() ?? null;
+  const isContext = context !== null && status === null;
+  const settled = state !== null && SETTLED_STATUS_CONTEXT_STATES.has(state);
+  const shape: StatusCheckShape = isContext
+    ? (state !== null && STATUS_CONTEXT_STATES.has(state) && (typename === null || typename === "StatusContext") ? "StatusContext" : "unknown")
+    : (name !== null && (typename === null || typename === "CheckRun") ? "CheckRun" : "unknown");
+  const fields = Object.keys(check).filter((key) => key !== "__typename").sort();
   return {
-    name: stringValue(check.name) ?? context ?? "Unnamed check",
-    status: isContext ? (settled ? "COMPLETED" : "PENDING") : stringValue(check.status),
+    name: name ?? context ?? (typename ? `unnamed ${typename}` : "Unnamed check"),
+    status: isContext ? (settled ? "COMPLETED" : "PENDING") : status,
     conclusion: isContext ? (settled ? state : null) : stringValue(check.conclusion),
-    url: stringValue(check.detailsUrl) ?? stringValue(check.targetUrl)
+    url: stringValue(check.detailsUrl) ?? stringValue(check.targetUrl),
+    shape,
+    advisory: ADVISORY_CHECK_CONTEXTS.some((advisory) => check.context === advisory || check.name === advisory),
+    unknownShape: shape === "unknown"
+      ? `${typename ?? "untyped entry"} with ${fields.length > 0 ? `fields ${fields.join(", ")}` : "no fields"}${state !== null && isContext ? ` and state ${state}` : ""}`
+      : null
   };
 }
 

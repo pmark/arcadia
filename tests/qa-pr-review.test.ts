@@ -8,11 +8,15 @@ import { withDatabase } from "../src/db/connection.js";
 import { countRows, createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
 import { ArcadiaError } from "../src/cli/errors.js";
 import {
+  classifyPullRequestChecks,
   QA_PR_REVIEW_CRITERIA,
   runQaPrReviewCommand,
+  type PullRequestCheckRun,
   type QaPrModelVerdict,
   type QaPrReviewDependencies
 } from "../src/qa/prReview.js";
+import { ADVISORY_CHECK_CONTEXTS, normalizeStatusCheck } from "../src/workMonitoring/pullRequests.js";
+import { rollup, rollupOrigin } from "./helpers/statusCheckRollups.js";
 import { allocateSessionRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -632,6 +636,139 @@ describe("minimal independent pull-request QA", () => {
     ]));
   });
 });
+
+describe("review readiness reads real statusCheckRollup shapes", () => {
+  it("normalizes a captured CheckRun and the captured CodeRabbit StatusContext through one shared reader", () => {
+    expect(rollupOrigin("checkRunsWithCodeRabbitSuccess")).toBe("captured");
+    const [lint] = rollup("checkRunsWithCodeRabbitSuccess");
+    expect(normalizeStatusCheck(lint)).toMatchObject({ name: "lint", shape: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS", advisory: false, unknownShape: null });
+    const codeRabbit = rollup("checkRunsWithCodeRabbitSuccess").at(-1)!;
+    expect(codeRabbit).toMatchObject({ __typename: "StatusContext", context: "CodeRabbit" });
+    expect(normalizeStatusCheck(codeRabbit)).toMatchObject({ name: "CodeRabbit", shape: "StatusContext", status: "COMPLETED", conclusion: "SUCCESS", advisory: true });
+    for (const [state, status, conclusion] of [["PENDING", "PENDING", null], ["EXPECTED", "PENDING", null], ["FAILURE", "COMPLETED", "FAILURE"], ["ERROR", "COMPLETED", "ERROR"]] as const) {
+      expect(normalizeStatusCheck({ __typename: "StatusContext", context: "external/gate", state, targetUrl: "" }))
+        .toMatchObject({ name: "external/gate", shape: "StatusContext", status, conclusion, advisory: false });
+    }
+    expect(normalizeStatusCheck(rollup("unknownEntryShape").at(-1)!)).toMatchObject({
+      name: "unnamed FutureCheckSuite",
+      shape: "unknown",
+      unknownShape: "FutureCheckSuite with fields result, title"
+    });
+    expect(normalizeStatusCheck({ __typename: "StatusContext", context: "external/gate", state: "QUEUED" })).toMatchObject({ shape: "unknown", unknownShape: expect.stringContaining("state QUEUED") });
+  });
+
+  it("exempts exactly the one named advisory list, matched exactly", () => {
+    expect(ADVISORY_CHECK_CONTEXTS).toEqual(["CodeRabbit"]);
+    expect(Object.isFrozen(ADVISORY_CHECK_CONTEXTS)).toBe(true);
+    for (const near of ["coderabbit", "CodeRabbit ", "CodeRabbit/review", "Code Rabbit"]) {
+      expect(normalizeStatusCheck({ __typename: "StatusContext", context: near, state: "PENDING" }).advisory).toBe(false);
+    }
+  });
+
+  it("classifies every captured and derived rollup by its real state", () => {
+    const ok = { state: "green", blockers: [], unknown: [] };
+    expect(classifyPullRequestChecks(rollup("checkRunOnly"))).toEqual({ ...ok, advisory: [] });
+    // pmark/arcadia#929: the live smoke classified this "undefined validation is pending: unknown."
+    expect(classifyPullRequestChecks(rollup("checkRunsWithCodeRabbitSuccess"))).toEqual({
+      ...ok,
+      advisory: ["CodeRabbit: SUCCESS (advisory under Decision 0080; never gates readiness)."]
+    });
+    expect(classifyPullRequestChecks(rollup("successfulNonAdvisoryStatusContext"))).toMatchObject(ok);
+    for (const name of ["checkRunsWithCodeRabbitPending", "codeRabbitFailed", "codeRabbitErrored"] as const) {
+      expect(classifyPullRequestChecks(rollup(name)), name).toMatchObject(ok);
+    }
+    expect(classifyPullRequestChecks(rollup("checkRunsWithCodeRabbitPending")).advisory).toEqual(["CodeRabbit: PENDING (advisory under Decision 0080; never gates readiness)."]);
+    expect(classifyPullRequestChecks(rollup("codeRabbitErrored")).advisory).toEqual(["CodeRabbit: ERROR (advisory under Decision 0080; never gates readiness)."]);
+
+    expect(classifyPullRequestChecks(rollup("pendingNonAdvisoryStatusContext"))).toMatchObject({ state: "pending", blockers: ["external/gate validation is pending: PENDING."] });
+    expect(classifyPullRequestChecks(rollup("expectedNonAdvisoryStatusContext"))).toMatchObject({ state: "pending", blockers: ["external/gate validation is pending: PENDING."] });
+    expect(classifyPullRequestChecks(rollup("failedNonAdvisoryStatusContext"))).toMatchObject({ state: "failed", blockers: ["external/gate validation did not succeed: FAILURE."] });
+    expect(classifyPullRequestChecks(rollup("erroredNonAdvisoryStatusContext"))).toMatchObject({ state: "failed", blockers: ["external/gate validation did not succeed: ERROR."] });
+    // Required GitHub Actions jobs gate exactly as before, CodeRabbit or not.
+    expect(classifyPullRequestChecks(rollup("failedCheckRunWithCodeRabbit"))).toMatchObject({ state: "failed", blockers: ["unit-1 validation did not succeed: FAILURE."] });
+    expect(classifyPullRequestChecks(rollup("codeRabbitPendingWithPendingCheckRun"))).toMatchObject({ state: "pending", blockers: ["unit-1 validation is pending: IN_PROGRESS."] });
+    expect(classifyPullRequestChecks(rollup("unknownEntryShape"))).toEqual({
+      state: "failed",
+      blockers: ["unnamed FutureCheckSuite is an unknown check entry shape (FutureCheckSuite with fields result, title); Arcadia cannot read its state, so it blocks instead of waiting."],
+      unknown: ["unnamed FutureCheckSuite"],
+      advisory: ["CodeRabbit: SUCCESS (advisory under Decision 0080; never gates readiness)."]
+    });
+    // The empty-rollup refusal is unchanged; an advisory-only rollup proves no validation either.
+    expect(classifyPullRequestChecks(rollup("empty"))).toEqual({ state: "none", blockers: ["GitHub reported no validation checks."], unknown: [], advisory: [] });
+    expect(classifyPullRequestChecks(rollup("codeRabbitOnly"))).toMatchObject({ state: "none", blockers: ["GitHub reported no validation checks other than advisory CodeRabbit."] });
+  });
+
+  it("passes qa pr readiness for a real CodeRabbit-touched rollup and refuses every non-advisory blocker before any reviewer", () => {
+    for (const name of ["checkRunOnly", "checkRunsWithCodeRabbitSuccess", "checkRunsWithCodeRabbitPending", "codeRabbitFailed", "codeRabbitErrored"] as const) {
+      const run = runQaWithRollup(() => rollup(name));
+      expect(run.error, name).toBeNull();
+      expect(run.result?.data.verdict, name).toBe("pass");
+      expect(run.reviewerInvocations, name).toBe(1);
+      expect(run.result?.data.checks.some((check) => check.name.includes("CodeRabbit")), name).toBe(false);
+    }
+    const refusals: Array<[Parameters<typeof rollup>[0], unknown[]]> = [
+      ["pendingNonAdvisoryStatusContext", ["external/gate validation is pending: PENDING."]],
+      ["failedNonAdvisoryStatusContext", ["external/gate validation did not succeed: FAILURE."]],
+      ["failedCheckRunWithCodeRabbit", ["unit-1 validation did not succeed: FAILURE."]],
+      ["unknownEntryShape", [expect.stringMatching(/^unnamed FutureCheckSuite is an unknown check entry shape/)]],
+      ["empty", ["GitHub reported no validation checks."]],
+      ["codeRabbitOnly", ["GitHub reported no validation checks other than advisory CodeRabbit."]]
+    ];
+    for (const [name, blockers] of refusals) {
+      const run = runQaWithRollup(() => rollup(name));
+      expect(run.error, name).toMatchObject({
+        message: "Pull request is not ready for independent QA; no reviewer was invoked.",
+        details: { reviewerInvoked: false, blockers }
+      });
+      expect(run.reviewerInvocations, name).toBe(0);
+    }
+  });
+
+  it("does not mark the evidence stale when only CodeRabbit finishes during the review", () => {
+    // The captured #929 list, with CodeRabbit still PENDING until the reviewer runs.
+    let reviewed = false;
+    const run = runQaWithRollup(() => rollup("checkRunsWithCodeRabbitSuccess")
+      .map((check) => check.context === "CodeRabbit" && !reviewed ? { ...check, state: "PENDING" } : check), () => { reviewed = true; });
+    expect(run.error).toBeNull();
+    expect(run.result?.data.verdict).toBe("pass");
+
+    let changed = false;
+    const gated = runQaWithRollup(() => rollup(changed ? "failedNonAdvisoryStatusContext" : "successfulNonAdvisoryStatusContext"), () => { changed = true; });
+    expect(gated.result?.data.verdict).toBe("needs-follow-up");
+    expect(gated.result?.data.summary).toContain("mutable pull-request evidence changed during QA");
+  });
+});
+
+function runQaWithRollup(read: () => PullRequestCheckRun[], duringReview: () => void = () => undefined): {
+  result: ReturnType<typeof runQaPrReviewCommand> | null;
+  error: unknown;
+  reviewerInvocations: number;
+} {
+  const fixture = createFixture();
+  let reviewerInvocations = 0;
+  try {
+    const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, {
+      selectReviewer: () => fakeReviewer(),
+      runCommand: ({ command, args }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view") return success(`${JSON.stringify(rawPullRequest(read() as Array<Record<string, unknown>>))}\n`);
+        if (command === "gh" && args[0] === "api") return success("diff --git a/a.ts b/a.ts\n+safe\n");
+        if (command === "/bin/zsh") return hostBaselineSuccess();
+        if (command === "codex" && args[0] === "sandbox") return sandboxSuccess();
+        if (command === "codex") {
+          reviewerInvocations += 1;
+          duringReview();
+          writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(passingModelVerdict("All applicable evidence passes."))}\n`, "utf8");
+          return success();
+        }
+        return failure("unexpected command");
+      }
+    });
+    return { result, error: null, reviewerInvocations };
+  } catch (error) {
+    return { result: null, error, reviewerInvocations };
+  }
+}
 
 const HEAD_SHA = "82b50cfd5d55a47b2d2750f8001df07d95e415e0";
 const BASE_SHA = "5e41cf757912474496705060abf5421aeda3236f";
