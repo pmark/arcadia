@@ -1,0 +1,129 @@
+From 636eb106b3cb20b14d10bac1ab2d33bcea211904 Mon Sep 17 00:00:00 2001
+From: Claudia Mason <claudia.mason@agents.arcadia.local>
+Date: Sun, 4 Oct 2026 10:03:15 -0700
+Subject: [PATCH 1/3] Add MARKER.md start marker for three-action rehearsal
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ MARKER.md | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 MARKER.md
+
+diff --git a/MARKER.md b/MARKER.md
+new file mode 100644
+index 0000000..4c42e32
+--- /dev/null
++++ b/MARKER.md
+@@ -0,0 +1 @@
++three-action rehearsal start
+
+From 9ed639d91114d51109fb7cadbf7f1583092f909d Mon Sep 17 00:00:00 2001
+From: Arcadia Controller <controller@arcadia.local>
+Date: Sun, 4 Oct 2026 17:04:02 +0000
+Subject: [PATCH 2/3] chore(candidate): preserve write-start-marker candidate
+ for handoff
+
+Arcadia-Preservation-Request: worker-tick-preserve-session_8fcb0f876e2749999d
+Arcadia-Candidate-Fingerprint: b22478c7c12a8d1ddb62db707b0d5a754e25a5fc
+---
+ .../asks/agent-ask-complete-write-start-marker-2026-10-04.yaml   | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 .arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml
+
+diff --git a/.arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml b/.arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml
+new file mode 100644
+index 0000000..f9a7dab
+--- /dev/null
++++ b/.arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml
+@@ -0,0 +1 @@
++{"agent_ask":"v1","request_id":"complete-write-start-marker-2026-10-04","project":"three-action-rehearsal","intent":"complete","target_ref":"action/write-start-marker","candidate_revision":"636eb106b3cb20b14d10bac1ab2d33bcea211904","evidence":[{"criterion":"MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline, with no other content.","status":"met"},{"criterion":"The genesis check node scripts/check-rehearsal.mjs passes.","status":"met"}],"desired_result":"Mark write-start-marker complete."}
+
+From 58bcd9155cf64836994045ca63a7707d8b9ebe75 Mon Sep 17 00:00:00 2001
+From: "P. Mark Anderson" <mark@martianrover.com>
+Date: Sun, 4 Oct 2026 10:04:28 -0700
+Subject: [PATCH 3/3] chore(arcadia): settle
+ auto-settle-three-action-rehearsal-write-start-marker-4c1e5e3c1d39
+
+- Marked Action three-action-rehearsal/write-start-marker done with accepted evidence for all 2 criteria.
+- Advanced to the next eligible Action in the explicit queue order. Pointer: three-action-rehearsal/transform-start-marker.
+- Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-04.yaml.
+
+Written by `arcadia agent-ask settle --apply` (asksettle_bb9ebe9310814f3ab1).
+Arcadia writes and lands its own managed documents; it did not author the
+decision they record.
+---
+ ...k-complete-write-start-marker-2026-10-04.yaml |  2 +-
+ MISSION_LOG.md                                   | 16 ++++++++++++++++
+ PROJECT.md                                       |  2 +-
+ docs/plans/autonomous-three-action-rehearsal.md  |  4 ++--
+ 4 files changed, 20 insertions(+), 4 deletions(-)
+ rename .arcadia/asks/{ => archive}/agent-ask-complete-write-start-marker-2026-10-04.yaml (76%)
+ create mode 100644 MISSION_LOG.md
+
+diff --git a/.arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml b/.arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-04.yaml
+similarity index 76%
+rename from .arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml
+rename to .arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-04.yaml
+index f9a7dab..c789698 100644
+--- a/.arcadia/asks/agent-ask-complete-write-start-marker-2026-10-04.yaml
++++ b/.arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-04.yaml
+@@ -1 +1 @@
+-{"agent_ask":"v1","request_id":"complete-write-start-marker-2026-10-04","project":"three-action-rehearsal","intent":"complete","target_ref":"action/write-start-marker","candidate_revision":"636eb106b3cb20b14d10bac1ab2d33bcea211904","evidence":[{"criterion":"MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline, with no other content.","status":"met"},{"criterion":"The genesis check node scripts/check-rehearsal.mjs passes.","status":"met"}],"desired_result":"Mark write-start-marker complete."}
++{"agent_ask":"v1","request_id":"complete-write-start-marker-2026-10-04","project":"three-action-rehearsal","intent":"complete","target_ref":"action/write-start-marker","candidate_revision":"9ed639d91114d51109fb7cadbf7f1583092f909d","evidence":[{"criterion":"MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline, with no other content.","status":"met"},{"criterion":"The genesis check node scripts/check-rehearsal.mjs passes.","status":"met"}],"desired_result":"Mark write-start-marker complete."}
+diff --git a/MISSION_LOG.md b/MISSION_LOG.md
+new file mode 100644
+index 0000000..dd7687d
+--- /dev/null
++++ b/MISSION_LOG.md
+@@ -0,0 +1,16 @@
++---
++arcadia: v1
++type: log
++slug: three-action-rehearsal-mission-log
++project: three-action-rehearsal
++updated: 2026-10-04
++---
++
++# Mission Log: three-action-rehearsal
++
++## 2026-10-04 — Completed three-action-rehearsal/write-start-marker
++
++- **Did:** Completed Action three-action-rehearsal/write-start-marker from accepted evidence (Candidate 9ed639d91114d51109fb7cadbf7f1583092f909d).
++- **Result:** Every declared acceptance criterion was accepted as met: "MARKER.md exists and contains exactly the line "three-action rehearsal start" followed by a trailing newline, with no other content."; "The genesis check node scripts/check-rehearsal.mjs passes.".
++- **Next:** Advanced to the next eligible Action in the explicit queue order.
++- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-three-action-rehearsal-write-start-marker-4c1e5e3c1d39).
+diff --git a/PROJECT.md b/PROJECT.md
+index 4fd39cd..043db03 100644
+--- a/PROJECT.md
++++ b/PROJECT.md
+@@ -8,7 +8,7 @@ goal: Disposable fixture proving three serial Actions run unattended from one bo
+ outcome: Demonstrate three dependent Actions preserved, independently reviewed and integrated by the production tick; delete after recorded review.
+ milestone: Run the bounded three-Action rehearsal
+ active_plan: autonomous-three-action-rehearsal
+-current_action: write-start-marker
++current_action: transform-start-marker
+ updated: 2026-10-04
+ ---
+ 
+diff --git a/docs/plans/autonomous-three-action-rehearsal.md b/docs/plans/autonomous-three-action-rehearsal.md
+index 9772e98..61ffa70 100644
+--- a/docs/plans/autonomous-three-action-rehearsal.md
++++ b/docs/plans/autonomous-three-action-rehearsal.md
+@@ -11,7 +11,7 @@ updated: 2026-10-04
+ actions:
+   - id: write-start-marker
+     title: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline.
+-    status: open
++    status: done
+     responsibility: agent
+     effort: session
+     next_action: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline.
+@@ -55,7 +55,7 @@ questions: []
+ decisions: []
+ recommended_model: claude-sonnet-5
+ recommended_reasoning_effort: medium
+-current_action: write-start-marker
++current_action: transform-start-marker
+ ---
+ 
+ # Autonomous three-Action rehearsal
