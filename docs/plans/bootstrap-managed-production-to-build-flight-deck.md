@@ -3172,7 +3172,7 @@ actions:
     references: ["src/qa/prReview.ts", "src/production/independentReview.ts", "src/workMonitoring/pullRequests.ts", "tests/tick-independent-review.test.ts", "tests/qa-pr-review.test.ts", "https://github.com/pmark/arcadia/issues/899"]
   - id: fix-rehearsal-g1-plan-and-operator-guidance
     title: Make G1 validate its generated fixture with Arcadia's own discovery before any external mutation, fix the invalid Plan line, and put the inline-workspace requirement where the operator reads it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make G1 validate its generated fixture with Arcadia's own discovery before any external mutation, fix the invalid Plan line, and put the inline-workspace requirement where the operator reads it.
@@ -3191,7 +3191,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-rehearsal-g1-plan-and-operator-guidance
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
