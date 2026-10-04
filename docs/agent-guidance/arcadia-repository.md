@@ -184,6 +184,59 @@ never authorizes merging the PR, bypassing branch protection, weakening tests,
 falsifying checks, or crossing any approval gate; automatic recovery ends with
 a clean, reviewed, mergeable PR ready for the operator's normal merge decision.
 
+## Experiment workspaces
+
+Decision 0082 permits disposable experiment workspaces beside the exclusive live
+`martianrover` workspace, so agents can exercise Asks, queue and pointer moves,
+settlement, docs sync and Project import without contending on the live queue.
+They are the one bounded exception to "resolve the configured workspace".
+`martianrover` stays the sole authority for every real Project; findings return
+through ordinary Agent Asks there, and no experiment result changes governed state.
+
+- **Create** fresh: `arcadia init --profile experiment
+  /Users/pmark/Dev/MR/Arcadia/workspaces/exp-<agent>-<yyyymmdd>`. It refuses the
+  name `martianrover` and any existing workspace or database, never seeds the
+  Arcadia Project, and writes `experiment: { enabled: true, allowedRepoRoot:
+  "projects" }` into its `config/arcadia.json`.
+- **Address it only inline**: `ARCADIA_WORKSPACE=<exp> arcadia <command>` or
+  `--workspace <exp>` on that one command. Never `export` it in a shell and never
+  make it the default (`config set defaultWorkspace` refuses): the four live
+  launchd services follow the user config default, and the restart script
+  follows `ARCADIA_WORKSPACE`.
+- **Register only disposable fixtures** with no Git remote under
+  `<exp>/projects/`. Registration refuses any other path and any repository the
+  live workspace has registered.
+- **The guard is allow-by-default** (`src/workspace/experimentGuard.ts`). While
+  an experiment workspace is resolved it refuses only: production activate and
+  reactivate (Grants), `production capacity attest`, `go-broker install|ensure`
+  and their Codex/Claude trust writes, `worker start|stop|install|uninstall`,
+  `ingress service install|uninstall|run`, ingress writes to the shared iCloud
+  folder, `qa restart|refresh`, `scripts/services.sh restart|stop`, `schedule
+  github link`, `pr decline-finding`, `way propagate`, `push-unpushed --apply`,
+  delivery receipts (`agent-ask notification-sent`, `digest mark-posted`,
+  `orientation packet mark-sent`), the Discord bot, `config set
+  defaultWorkspace` and the `/runs` operator runner. Each refusal
+  (`EXPERIMENT_WORKSPACE_REFUSED`) names the reason and the supported
+  alternative. Read-only commands, `gh` reads, local Git, tests and everything
+  else inside the experiment are never refused. A new CLI command fails
+  `tests/experiment-workspace-guard.test.ts` until it is classified allowed,
+  guarded or exempt in `COMMAND_CLASSIFICATION`.
+- **Leak check every session**: `arcadia workspace leak-check --record
+  <before.json>` before, `arcadia workspace leak-check --baseline <before.json>`
+  after. It compares the live Project count and queue revision (read-only, no
+  activity row), hashes of the user config, `~/.codex/config.toml`,
+  `~/.claude/settings.json` and the trusted-folder list in `~/.claude.json`, and
+  the `com.arcadia.*` launch agents. Any change exits with
+  `WORKSPACE_LEAK_DETECTED`; attribute it (another agent may have settled in the
+  live workspace) before calling it a leak, and stop the trial if it is one.
+- **Measure contention** from `activity_events.error_code` (`SQLITE_BUSY*`,
+  `QUEUE_REVISION_CONFLICT`, `STALE_PREVIEW_FINGERPRINT`, `DIRTY_CHECKOUT`, or
+  the CLI code): `sqlite3 -readonly <db> "SELECT command, error_code, COUNT(*)
+  FROM activity_events WHERE outcome = 'error' GROUP BY 1, 2 ORDER BY 3 DESC"`.
+- **Rollback** only when the operator says so: confirm a clean leak check and that
+  no launch agent, user config or trust entry names the workspace, then remove
+  its directory.
+
 ## Claude Code specifics
 
 - `@AGENTS.md` above is a Claude Code import. Codex ignores it and reads

@@ -502,7 +502,15 @@ import {
   writeFailure,
   writeSuccess
 } from "./cli/response.js";
-import { loadUserConfig, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
+import { loadUserConfig, readExperimentWorkspace, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
+import { guardCommandInvocation } from "./workspace/experimentGuard.js";
+import { activityErrorCode } from "./activity/errorCodes.js";
+import {
+  renderLeakCheckSuccess,
+  renderWorkspaceGuardSuccess,
+  runLeakCheckCommand,
+  runWorkspaceGuardCommand
+} from "./commands/workspaceExperiment.js";
 import { getWorkspacePaths } from "./workspace/paths.js";
 import { resolveWorkspace, type WorkspaceResolution } from "./workspace/resolve.js";
 
@@ -516,6 +524,8 @@ interface WorkspaceResolveData {
   workspacePath: string | null;
   detail?: string;
   warning?: string;
+  /** True when the resolved workspace is a Decision 0082 experiment workspace. */
+  experiment: boolean;
 }
 
 /**
@@ -558,7 +568,7 @@ export function buildProgram(): Command {
     .command("init")
     .description("Initialize an Arcadia workspace")
       .argument("<workspace>", "Workspace path")
-      .option("--profile <name>", "Optional workspace profile: arcadia")
+      .option("--profile <name>", "Optional workspace profile: arcadia, or experiment (a fresh, disposable workspace; Decision 0082)")
   ).action((workspace: string, options: { profile?: string; json?: boolean }) =>
     runCliAction("init", options, () => runInitCommand(workspace, options), renderInitSuccess)
   );
@@ -629,11 +639,37 @@ export function buildProgram(): Command {
             source: resolution.source,
             workspacePath: resolution.workspacePath,
             detail: resolution.detail,
-            warning: resolution.warning
+            warning: resolution.warning,
+            experiment: resolution.workspacePath ? readExperimentWorkspace(resolution.workspacePath) !== null : false
           }
         });
       },
       renderWorkspaceResolveSuccess
+    )
+  );
+  addJsonOption(
+    workspace
+      .command("leak-check")
+      .description("Snapshot what an experiment workspace must never change (live Project count and queue revision, host config hashes, Arcadia launch agents); read-only and unrecorded")
+      .option("--record <file>", "Write the snapshot to this file")
+      .option("--baseline <file>", "Compare with an earlier snapshot; any change fails the command")
+      .option("--live <path>", "Live workspace to read (default: the user config defaultWorkspace, never ARCADIA_WORKSPACE)")
+  ).action((options: { record?: string; baseline?: string; live?: string; json?: boolean }) =>
+    runCliAction("workspace.leak-check", options, () => runLeakCheckCommand(options), renderLeakCheckSuccess, { recordActivity: "never" })
+  );
+  addJsonOption(
+    workspace
+      .command("guard")
+      .description("Check whether a guarded operation may run against the resolved workspace; refuses inside an experiment workspace (for shell callers)")
+      .argument("<operation>", "Guarded operation, e.g. services.restart")
+      .option("--workspace <path>", "Workspace path")
+  ).action((operation: string, options: { workspace?: string; json?: boolean }) =>
+    runCliAction(
+      "workspace.guard",
+      options,
+      () => runWorkspaceGuardCommand({ operation, workspace: options.workspace }),
+      renderWorkspaceGuardSuccess,
+      { recordActivity: "errors" }
     )
   );
 
@@ -4590,6 +4626,23 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     )
   );
 
+  // Decision 0082: one choke point refuses the short named list of host-global
+  // and production commands while an experiment workspace is resolved. It
+  // runs before every action, and allowed commands pass without resolving
+  // anything (src/workspace/experimentGuard.ts).
+  program.hook("preAction", (_program, actionCommand) => {
+    const verdict = guardCommandInvocation(actionCommand);
+    if (!verdict) return;
+    recordCliActivity({
+      command: verdict.key.replaceAll(" ", "."),
+      workspace: verdict.workspace,
+      outcome: "error",
+      durationMs: 0,
+      errorCode: verdict.refused.code
+    });
+    throw verdict.refused;
+  });
+
   return program;
 }
 
@@ -4826,10 +4879,14 @@ async function runCliAction<TData>(
   command: string,
   options: { workspace?: string; json?: boolean },
   action: () => CommandSuccess<TData> | Promise<CommandSuccess<TData>>,
-  renderHuman: HumanRenderer<TData>
+  renderHuman: HumanRenderer<TData>,
+  // "never" is for observers that must not write the workspace they observe
+  // (the leak check reads the live workspace); "errors" skips routine passes.
+  settings: { recordActivity?: "always" | "errors" | "never" } = {}
 ): Promise<void> {
   const context = { json: Boolean(options.json) };
   const startedAt = Date.now();
+  const recordActivity = settings.recordActivity ?? "always";
 
   try {
     const response = await action();
@@ -4837,23 +4894,28 @@ async function runCliAction<TData>(
     // Every surface reaches Arcadia through this one function, so recording
     // here is the whole of the interaction log — no per-command wiring, and
     // nothing that can drift out of date as commands are added.
-    recordCliActivity({
-      command,
-      workspace: response.workspace ?? options.workspace,
-      outcome: "ok",
-      durationMs: Date.now() - startedAt,
-      data: response.data
-    });
+    if (recordActivity === "always") {
+      recordCliActivity({
+        command,
+        workspace: response.workspace ?? options.workspace,
+        outcome: "ok",
+        durationMs: Date.now() - startedAt,
+        data: response.data
+      });
+    }
   } catch (error) {
     const normalized = normalizeError(error);
     writeFailure(createFailure(command, normalized, options.workspace ? path.resolve(options.workspace) : undefined), context);
     process.exitCode = normalized.exitCode;
-    recordCliActivity({
-      command,
-      workspace: options.workspace,
-      outcome: "error",
-      durationMs: Date.now() - startedAt
-    });
+    if (recordActivity !== "never") {
+      recordCliActivity({
+        command,
+        workspace: options.workspace,
+        outcome: "error",
+        durationMs: Date.now() - startedAt,
+        errorCode: activityErrorCode(error, normalized)
+      });
+    }
   }
 }
 
@@ -5047,6 +5109,7 @@ function renderWorkspaceResolveSuccess(response: CommandSuccess<WorkspaceResolve
     `Source: ${response.data.source}`,
     `Workspace: ${response.data.workspacePath ?? "Not resolved"}`,
     ...(response.data.detail ? [`Detail: ${response.data.detail}`] : []),
-    ...(response.data.warning ? [`Warning: ${response.data.warning}`] : [])
+    ...(response.data.warning ? [`Warning: ${response.data.warning}`] : []),
+    ...(response.data.experiment ? ["Experiment workspace: yes (address it inline only; never export or make it the default)"] : [])
   ];
 }

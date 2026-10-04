@@ -55,7 +55,10 @@ stop the affected operation, preserve work and report the exact remedy.
   approve themselves. Document hygiene may be edited when it claims neither
   work nor a decision. Resolve the configured workspace; never guess a path,
   substitute a dogfood workspace, bypass a refusal or edit SQLite directly.
-  Preserve a validated Ask when its workspace preview is blocked.
+  Preserve a validated Ask when its workspace preview is blocked. The one
+  bounded exception is an experiment workspace (`init --profile experiment`)
+  holding only disposable fixtures: address it inline on each command
+  (`--workspace` or `ARCADIA_WORKSPACE=`), never export it or make it default.
 - **Preservation:** run `arcadia work monitor --no-pull-requests` before code
   edits. Work in a clean isolated candidate, never on main or in another live
   Session's checkout. Use the host's prepared/resumed worktree and preservation
@@ -107,6 +110,8 @@ an explicit failure requiring a smaller file or repaired adoption, not silence.
 
 The exclusive live workspace is `martianrover`; let Arcadia resolve its default.
 Never derive a workspace from the Project slug or use `.arcadia-workspace/`.
+Decision 0082's experiment workspaces are the bounded exception; read
+`arcadia-repository.md` "Experiment workspaces" before creating or using one.
 
 Before Arcadia-specific operations, read matching sections of
 `docs/agent-guidance/arcadia-repository.md`: Orientation (database, Intelligence,

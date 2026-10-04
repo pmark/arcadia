@@ -28,6 +28,7 @@ import {
   validateGoBrokerAgentSetupInputs,
   type AgentSetupStatus
 } from "../agentSetup/goBrokerAgentSetup.js";
+import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
@@ -38,7 +39,7 @@ import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { samePath } from "../git/worktrees.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { requireResolvedWorkspace } from "../workspace/resolve.js";
+import { requireResolvedWorkspace, resolveWorkspace } from "../workspace/resolve.js";
 
 const BROKER_AGENTS = SESSION_AGENTS as readonly (keyof ProviderExecutables)[];
 
@@ -138,6 +139,12 @@ export function runGoBrokerInstallCommand(
 ): CommandSuccess<GoBrokerInstallData> {
   const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
   const repository = realpathSync(requestedRepository);
+  // The trust this install writes lands in ~/.codex/config.toml and
+  // ~/.claude.json, which every workspace shares (Decision 0082). Status only
+  // reads it, so the refusal belongs here and not in the shared reader.
+  if (!options.projectRepositories) {
+    refuseInExperimentWorkspace("go-broker.trust-write", resolveWorkspace({ cwd: repository }).workspacePath);
+  }
   assertReviewedSnapshot(repository);
   const revision = git(repository, ["rev-parse", "HEAD"]).trim();
   const installHome = path.resolve(options.home ?? homedir());

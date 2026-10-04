@@ -27,6 +27,22 @@ case "$ACTION" in
     ;;
 esac
 
+# Decision 0082: the restart script points the live worker and Intelligence
+# launchd services at ARCADIA_WORKSPACE, so restarting or stopping with an
+# experiment workspace there would repoint or stop production. The CLI's
+# experiment guard decides; status is read-only and never refused. Only a
+# workspace whose config carries an experiment block is sent to the guard, so
+# an ordinary restart never depends on the CLI being runnable (a recovery
+# restart is often exactly when it is not).
+EXPERIMENT_CONFIG="${ARCADIA_WORKSPACE:-}/config/arcadia.json"
+if [[ "$ACTION" != "status" && -n "${ARCADIA_WORKSPACE:-}" && -f "$EXPERIMENT_CONFIG" ]] &&
+  grep -q '"experiment"' "$EXPERIMENT_CONFIG"; then
+  if ! (cd "$REPO" && pnpm -s arcadia workspace guard "services.$ACTION" --workspace "$ARCADIA_WORKSPACE") >&2; then
+    echo "Refused: the experiment guard did not allow services.$ACTION for ARCADIA_WORKSPACE=$ARCADIA_WORKSPACE (see above)." >&2
+    exit 3
+  fi
+fi
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   # Honest refusal rather than a confusing launchctl error. The contract is
   # portable; this particular implementation is not, which is exactly why the

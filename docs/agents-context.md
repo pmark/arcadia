@@ -49,7 +49,10 @@ stop the affected operation, preserve work and report the exact remedy.
   approve themselves. Document hygiene may be edited when it claims neither
   work nor a decision. Resolve the configured workspace; never guess a path,
   substitute a dogfood workspace, bypass a refusal or edit SQLite directly.
-  Preserve a validated Ask when its workspace preview is blocked.
+  Preserve a validated Ask when its workspace preview is blocked. The one
+  bounded exception is an experiment workspace (`init --profile experiment`)
+  holding only disposable fixtures: address it inline on each command
+  (`--workspace` or `ARCADIA_WORKSPACE=`), never export it or make it default.
 - **Preservation:** run `arcadia work monitor --no-pull-requests` before code
   edits. Work in a clean isolated candidate, never on main or in another live
   Session's checkout. Use the host's prepared/resumed worktree and preservation

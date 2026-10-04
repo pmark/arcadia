@@ -21,6 +21,8 @@ export function recordCliActivity(input: {
   durationMs: number;
   /** The command's response payload, inspected only for an obvious subject. */
   data?: unknown;
+  /** For a failed command, the code `activityErrorCode` derived. */
+  errorCode?: string | null;
 }): void {
   try {
     const resolved = resolveWorkspace({ workspace: input.workspace });
@@ -43,7 +45,8 @@ export function recordCliActivity(input: {
         entryId: subject.entryId,
         projectId: subject.projectId,
         outcome: input.outcome,
-        durationMs: Math.round(input.durationMs)
+        durationMs: Math.round(input.durationMs),
+        errorCode: input.errorCode ?? null
       });
     } finally {
       db.close();

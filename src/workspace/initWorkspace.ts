@@ -4,6 +4,7 @@ import { WORKSPACE_FOLDERS } from "../domain/constants.js";
 import { openDatabase } from "../db/connection.js";
 import { applyInitialSchema } from "../db/schema.js";
 import { getDefaultRegistryPath } from "../intent/registries.js";
+import type { WorkspaceExperimentConfig } from "./config.js";
 import { getWorkspacePaths } from "./paths.js";
 
 export interface InitWorkspaceResult {
@@ -13,7 +14,12 @@ export interface InitWorkspaceResult {
   createdConfig: boolean;
 }
 
-export function initWorkspace(workspace: string): InitWorkspaceResult {
+export interface InitWorkspaceOptions {
+  /** Written into a newly created config only; never added to an existing one. */
+  experiment?: WorkspaceExperimentConfig;
+}
+
+export function initWorkspace(workspace: string, options: InitWorkspaceOptions = {}): InitWorkspaceResult {
   const paths = getWorkspacePaths(workspace);
 
   mkdirSync(paths.root, { recursive: true });
@@ -27,7 +33,8 @@ export function initWorkspace(workspace: string): InitWorkspaceResult {
       name: "Arcadia Workspace",
       version: 1,
       createdAt: new Date().toISOString(),
-      database: "database/arcadia.sqlite3"
+      database: "database/arcadia.sqlite3",
+      ...(options.experiment ? { experiment: options.experiment } : {})
     };
     writeFileSync(paths.configFile, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   }

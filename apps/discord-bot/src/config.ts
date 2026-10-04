@@ -40,8 +40,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   }
 
+  const arcadiaWorkspace = resolveConfiguredWorkspace(env);
+  refuseExperimentWorkspace(arcadiaWorkspace);
+
   return {
-    arcadiaWorkspace: resolveConfiguredWorkspace(env),
+    arcadiaWorkspace,
     discordBotToken: requireEnv(env, "DISCORD_BOT_TOKEN"),
     discordClientId: requireEnv(env, "DISCORD_CLIENT_ID"),
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
@@ -111,6 +114,29 @@ function parseCheckInterval(raw: string | undefined, name: string, fallback = 60
 
 function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]): string {
   return env[name]?.trim() ?? "";
+}
+
+/**
+ * Decision 0082: the bot posts to the operator's real channel, so it never
+ * runs against an experiment workspace. This mirrors the `discord-bot.start`
+ * entry of Arcadia's guard (src/workspace/experimentGuard.ts); the bot is a
+ * separate package and reads the same `experiment` flag directly.
+ */
+export function refuseExperimentWorkspace(workspace: string): void {
+  const configPath = path.join(workspace, "config", "arcadia.json");
+  if (!existsSync(configPath)) return;
+  let experiment: unknown;
+  try {
+    experiment = (JSON.parse(readFileSync(configPath, "utf8")) as { experiment?: unknown }).experiment;
+  } catch {
+    // Unreadable config: the CLI the bot shells out to refuses it on first use.
+    return;
+  }
+  if (experiment === undefined) return;
+  throw new Error(
+    `Refused in experiment workspace ${workspace}: discord-bot.start. The Discord bot posts to the operator's real channel. ` +
+      "Read the outbox with `arcadia agent-ask notifications` instead; only the live workspace has a Discord sender."
+  );
 }
 
 function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string {
