@@ -895,9 +895,13 @@ preservation stays `LOCAL ONLY`: the candidate commit is kept on this host and
 the receipt names the push/draft-PR recovery step. Pass `--remote-preservation`
 to both `production preview` and `production activate` to let preservation also
 push the candidate branch and open a **draft** pull request for an Action in the
-scope. That is all it authorizes: it never marks a pull request ready for
-review, never merges, and never pushes the base branch; those stay separate
-gates. The preview, `production status` and the activation receipt each print a
+scope. That is all it authorizes on its own: it never marks a pull request
+ready for review, never merges, and never pushes the base branch. Marking the
+host-created PR ready, pushing a later settled head to it, and running its
+reviewers additionally need a current Decision 0058 integration grant naming
+the Action; see "Independent
+verdicts, run by the tick" below. Merging on GitHub and pushing the base
+branch stay outside every grant. The preview, `production status` and the activation receipt each print a
 `Remote preservation: on|off` line, and the option is part of the scope
 fingerprint, so an activation (or a replayed `--request-id`) that differs from
 its preview is refused. No other flag, environment variable or dashboard
@@ -1063,6 +1067,70 @@ no operator merge. A failed verdict never integrates. While a candidate waits,
 `verdict_readiness_failed`) escalation. Its remedy names the command for each
 missing verdict and, as the manual fallback, the exact `git merge --ff-only
 <head>` command. It clears once the tick integrates.
+
+#### Independent verdicts, run by the tick
+
+When the candidate was preserved behind a host-created draft PR and the active
+grant includes both `--remote-preservation` and a current Decision 0058
+integration grant naming the Action, no operator step is needed: the worker
+tick drives the review itself, at most one side effect per tick, re-deriving
+where it stands from GitHub and its receipts each time (so a restarted worker
+resumes mid-step, and nothing is done twice). Every step below, including the
+push, needs **both** grants (`policyAuthorizesPullRequestReadiness`); with only
+`--remote-preservation` the tick touches nothing on GitHub.
+
+1. If a settlement commit landed after preservation, so the PR still shows the
+   preserved commit, it pushes exactly the settled head commit to the agent
+   branch (a fast-forward, only while the local branch still points at it). A
+   PR head that is neither the settled head nor an ancestor of it is a moved
+   head: it is never readied or reviewed (`review_head_moved`).
+2. It runs `gh pr ready` on the draft, once. A PR a person returns to draft
+   afterwards is not readied again (`review_paused_as_draft`); mark it ready
+   yourself when it may be reviewed.
+3. It polls the PR's checks at most once a minute. Pending checks wait; a failed
+   check escalates `required_checks_failed` and no reviewer runs; checks still
+   not green an hour after the PR is ready escalate `required_checks_timeout`.
+   Polling continues either way, so a GitHub re-run that turns green resumes.
+   A `DIRTY` (conflicted) PR escalates at once; a `BLOCKED` merge state is
+   treated as waiting while checks run and escalates only once they are green.
+4. It runs `arcadia qa code-review`, then on a later tick `arcadia qa pr`,
+   against that PR, each reviewer bounded to 15 minutes (under the worker's
+   30-minute tick ceiling, which the tick re-stamps right before the reviewer
+   starts), then fast-forwards the base locally once both pass.
+
+Every step re-reads the policy first, at the current time, and is withheld on
+Off, a changed epoch or a lapsed grant; after a reviewer returns, the policy
+and the grant's expiry are checked again before the fast-forward, so a
+reviewer that finishes after Off or after the grant expired records its
+verdict but nothing lands until a later authorized tick. GitHub CLI, push and
+reviewer capacity/sandbox/timeout failures retry on later ticks; three
+*consecutive* failures on one exact head (any success resets the count, kept in
+the workspace database so it survives a worker restart) escalate
+`review_budget_exhausted`, and `arcadia production reset-repair-budget
+<project/action>` restarts the budget (and the checks deadline) once the cause
+is fixed; failures that alternate between steps and so never form a streak are
+also capped at nine in all per head. A GitHub rate limit backs off 15 minutes
+without spending the budget, and six hours of unbroken rate limiting escalates
+`review_rate_limited` (the tick keeps backing off and resumes on its own). A
+non-pass verdict is re-run automatically only when its own lineage receipt
+records that the reviewer itself was unavailable, which is decided from
+deterministic evidence alone (sandbox preflight, the reviewer process's exit or
+timeout, a missing or invalid structured verdict, evidence that moved during
+the run), never from anything the reviewer model wrote. A reviewer's real non-pass
+verdict is never retried automatically and never integrates
+(`independent_verdict_failed`): fix the candidate, or after judging the verdict
+wrong, rerun that command with `--rerun`. Without both grants the tick does
+not touch GitHub, the PR stays a draft, and the escalation's remedy names the
+two commands above and why the tick is not running them.
+
+Authority note: whether Decision 0058's integration grant should cover the
+push, `gh pr ready` and the reviewer-model spend is an operator question this
+change does not settle; until it is answered, activate both grants only if you
+accept that reading.
+
+Out of scope: the tick never merges the PR on GitHub and never pushes the base
+branch. Integration is the local fast-forward; publishing the base stays an
+operator step.
 
 Re-running either command: a plain run on unchanged evidence reuses its earlier
 result. `--rerun` is the authorized retry after a failed verdict on the same
@@ -1540,7 +1608,7 @@ validation is separate governed work (`preserve-on-exit-and-integrate`).
 
 Passing checks prove those checks passed. Preservation does not accept,
 integrate, complete, or advance the Action. Remote preservation (push plus a
-draft pull request, never ready-for-review or merge) still requires an Active
+draft pull request, never merge) still requires an Active
 policy granted with `production activate --remote-preservation`; otherwise the
 receipt names the local commit and its exact LOCAL ONLY recovery step. Retries return the preserved commit.
 

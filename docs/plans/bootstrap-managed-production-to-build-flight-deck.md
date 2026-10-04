@@ -3119,7 +3119,7 @@ actions:
     references: ["src/production/policy.ts", "src/commands/production.ts", "src/production/sessionHandoff.ts", "src/commands/preserve.ts"]
   - id: ready-pr-and-run-independent-reviews-from-the-tick
     title: After a managed candidate is preserved with a draft PR, have the production tick ready the PR, wait for its required checks, and run the independent code-review and QA host commands so integration needs no operator step.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: After a managed candidate is preserved with a draft PR, have the production tick ready the PR, wait for its required checks, and run the independent code-review and QA host commands so integration needs no operator step.
@@ -3138,7 +3138,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: ready-pr-and-run-independent-reviews-from-the-tick
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

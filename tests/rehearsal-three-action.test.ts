@@ -13,10 +13,15 @@ import { git, HOST_REVIEWER_BINDING, LINE_A, LINE_B, LINE_C, Rehearsal } from ".
  * database connections and registries but share this process, so they are
  * not a full worker-process restart.
  *
- * It runs twice: with the harness's simulated reviewers, and with the real
+ * It runs three times: with the harness's simulated reviewers; with the real
  * host review path (`arcadia qa code-review` and `arcadia qa pr`, only GitHub
- * and the reviewer model stubbed), where every Action integrates through the
- * tick with no operator merge once both exact-head verdicts are recorded.
+ * and the reviewer model stubbed) invoked by the harness between ticks; and
+ * with no reviewer invoked by the harness at all, where the tick itself
+ * readies each host-created draft PR, waits for its checks and runs both host
+ * review commands. Every Action integrates through the tick with no operator
+ * merge once both exact-head verdicts are recorded. GitHub-side merge and
+ * the base-branch push stay out of scope: integration is the local
+ * fast-forward, and `origin`'s base branch never moves.
  */
 const rehearsals: Rehearsal[] = [];
 afterEach(() => {
@@ -40,7 +45,8 @@ test("marker lines are in order", () => {
 describe("three-Action rehearsal: serial selection, between-Action Off, later ticks", () => {
   it.each([
     { reviewers: true as const, label: "simulated reviewers" },
-    { reviewers: "host-commands" as const, label: "the real host review commands" }
+    { reviewers: "host-commands" as const, label: "the real host review commands" },
+    { reviewers: "tick" as const, label: "the tick readying each PR and running both host review commands" }
   ])("launches only the next dependency-ready Action, fences Off between B and C, and launches C exactly once after On across later ticks ($label)", ({ reviewers }) => {
     const rehearsal = new Rehearsal({ thirdAction: true, independentReviewers: reviewers });
     rehearsals.push(rehearsal);
@@ -60,7 +66,8 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.tmux.exit(a.tmux_session_name);
 
     // After A integrates, B -- never C -- is selected next.
-    rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionB, 4);
+    const reviewTicks = reviewers === "tick" ? 4 : 0;
+    rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionB, 4 + reviewTicks);
     const b = rehearsal.lease()!;
     expect(b.action_id).toBe("write-marker-b");
     expect(rehearsal.sessions().map((s) => s.action_id)).toEqual(["write-marker-a", "write-marker-b"]);
@@ -69,6 +76,11 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(b, "tests/marker.test.mjs", MARKER_TEST);
     rehearsal.agentFinish(b, CRITERIA_B);
     rehearsal.tmux.exit(b.tmux_session_name);
+    // A thrown exception right after `gh pr ready` took effect on B's PR aborts
+    // the tick before it records the step (simulated in-process; not a real
+    // process death). The next tick, on fresh connections, resumes from the
+    // persisted state and GitHub and must not ready it again.
+    if (reviewers === "tick") rehearsal.github.afterReady = () => { throw new Error("simulated abort after gh pr ready"); };
     const { integrated } = rehearsal.tickThroughReview();
     expect(integrated.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-b")).toBe("done");
@@ -106,6 +118,10 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
     rehearsal.agentEdit(c, "MARKER.md", `${LINE_A}\n${LINE_B}\n${LINE_C}\n`);
     rehearsal.agentFinish(c, CRITERIA_C);
     rehearsal.tmux.exit(c.tmux_session_name);
+    // A thrown exception inside C's code-review model call leaves its lineage
+    // attempt running (simulated in-process, like the one above); the next
+    // tick resumes that same attempt instead of allocating a second one.
+    if (reviewers === "tick") rehearsal.github.duringReview = () => { throw new Error("simulated abort mid-review"); };
     const { integrated: finished } = rehearsal.tickThroughReview();
     expect(finished.handoff?.integration.kind).toBe("integrated");
     expect(rehearsal.planAction(rehearsal.repo, "write-marker-c")).toBe("done");
@@ -152,7 +168,28 @@ describe("three-Action rehearsal: serial selection, between-Action Off, later ti
       .map((actionId) => rehearsal.attempts(actionId).find((x) => x.role === "development")!.target_head!);
     for (const head of developmentHeads) git(rehearsal.repo, ["merge-base", "--is-ancestor", head, "refs/heads/main"]);
     expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(developmentHeads[2]);
-    if (reviewers === "host-commands") {
+    if (reviewers === "tick") {
+      // Each Action's draft PR was readied exactly once, by the tick, at the
+      // exact head both verdicts bind; each reviewer ran once per Action, and
+      // only against that head. Nothing was merged or pushed to origin's base.
+      const { github } = rehearsal;
+      expect(github.prs.map((pr) => pr.isDraft)).toEqual([false, false, false]);
+      expect(github.readyCalls).toEqual(github.prs.map((pr) => pr.url));
+      // C's code-review model ran twice (the abort lost its judgment) but
+      // recorded one verdict attempt; every other reviewer ran exactly once.
+      const [prA, prB, prC] = github.prs;
+      expect(github.reviewerCalls.map((call) => [call.role, call.url])).toEqual([
+        ["code-review", prA.url], ["qa", prA.url], ["code-review", prB.url], ["qa", prB.url],
+        ["code-review", prC.url], ["code-review", prC.url], ["qa", prC.url]
+      ]);
+      expect(github.reviewerCalls.map((call) => call.head)).toEqual([developmentHeads[0], developmentHeads[0], developmentHeads[1],
+        developmentHeads[1], developmentHeads[2], developmentHeads[2], developmentHeads[2]]);
+      expect(rehearsal.log.some((line) => line.includes("simulated abort after gh pr ready"))).toBe(true);
+      expect(rehearsal.log.some((line) => line.includes("simulated abort mid-review"))).toBe(true);
+      expect(github.ghCalls.some((call) => / merge\b/.test(call))).toBe(false);
+      expect(github.headOf("main")).toBe(git(rehearsal.repo, ["rev-list", "--max-parents=0", "refs/heads/main"]).trim());
+    }
+    if (reviewers === "host-commands" || reviewers === "tick") {
       for (const actionId of ["write-marker-a", "write-marker-b", "write-marker-c"]) {
         expect(rehearsal.attempts(actionId).filter((x) => x.role === "code-review" || x.role === "qa").map((x) => [x.role, x.actor_id]))
           .toEqual([["code-review", `code-review-reviewer:${HOST_REVIEWER_BINDING}`], ["qa", `qa-reviewer:${HOST_REVIEWER_BINDING}`]]);

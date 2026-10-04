@@ -134,6 +134,13 @@ export interface QaPrReviewCommandData {
   artifact: Artifact;
   decision: ReviewItemSummary;
   reused: boolean;
+  /**
+   * Non-null only when a non-pass came from the reviewer's own infrastructure,
+   * established from deterministic evidence alone (sandbox preflight, the
+   * reviewer process's exit, a missing or invalid structured verdict, evidence
+   * that moved while it ran), never from anything the model wrote.
+   */
+  reviewerUnavailable: string | null;
 }
 
 export interface QaReviewerProvenance {
@@ -150,6 +157,12 @@ export interface QaPrReviewOptions {
   pullRequest: string;
   reviewerProfile?: string;
   rerun?: boolean;
+  /**
+   * Bound on the reviewer-model process. The CLI keeps its 30-minute default;
+   * the worker tick passes a shorter bound so one review cannot outlive the
+   * worker's tick ceiling. A timeout is a reviewer-unavailable result.
+   */
+  reviewerTimeoutMs?: number;
   /** `code-review` records the exact-head code-review verdict instead of QA. */
   role?: PrReviewRole;
 }
@@ -196,6 +209,15 @@ interface RawPullRequest {
   }>;
 }
 
+/** One GitHub status-check entry, as `gh pr view --json statusCheckRollup` reports it. */
+export interface PullRequestCheckRun {
+  name: string;
+  status: string | null;
+  conclusion: string | null;
+  detailsUrl?: string | null;
+  workflowName?: string | null;
+}
+
 interface PersistedReceipt {
   version: 6;
   evidenceFingerprint: string;
@@ -220,6 +242,8 @@ interface PersistedQaContext {
   receiptFiles: Array<{ path: string; sha256: string }>;
   /** The lineage attempt this judgment was made under, for a lineage-bound managed candidate. */
   lineageRequestId?: string | null;
+  /** See `QaPrReviewCommandData.reviewerUnavailable`; absent in receipts written before it existed. */
+  reviewerUnavailable?: string | null;
 }
 
 interface QaSandboxProof {
@@ -418,7 +442,7 @@ export function runQaPrReviewCommand(
         ],
         cwd: attemptRoot,
         stdin: prompt,
-        timeoutMs: 30 * 60_000,
+        timeoutMs: options.reviewerTimeoutMs ?? 30 * 60_000,
         environment: buildQaReviewerEnvironment()
       })
     : {
@@ -450,6 +474,11 @@ export function runQaPrReviewCommand(
     sandboxProof
   );
   const verdict = combineVerdicts(parsedModel.verdict, deterministic);
+  // Decided before any model finding is merged in, so a model or a PR body
+  // cannot make a judgment look like reviewer unavailability.
+  const reviewerUnavailable = verdict === "pass"
+    ? null
+    : deterministicReviewerUnavailability({ sandboxProof, reviewRun, modelError: parsedModel.error, deterministicFindings: deterministic.findings });
   const findings = [...deterministic.findings, ...parsedModel.verdict.findings];
   const checks = [...deterministic.checks, ...parsedModel.verdict.checks];
   const residualRisks = uniqueStrings([...deterministic.residualRisks, ...parsedModel.verdict.residualRisks]);
@@ -498,7 +527,8 @@ export function runQaPrReviewCommand(
     metadataPath,
     evidenceFingerprint,
     receiptFiles: requiredFiles,
-    lineageRequestId: lineage?.requestId ?? null
+    lineageRequestId: lineage?.requestId ?? null,
+    reviewerUnavailable
   }));
   const data: QaPrReviewCommandData = {
     candidate,
@@ -512,7 +542,8 @@ export function runQaPrReviewCommand(
     evidencePath: toWorkspaceRelativePath(workspacePath, evidencePath),
     artifact: persisted.artifact,
     decision: persisted.decision,
-    reused: false
+    reused: false,
+    reviewerUnavailable
   };
   const receipt: PersistedReceipt = {
     version: 6,
@@ -530,7 +561,8 @@ export function runQaPrReviewCommand(
     withDatabase(workspacePath, (db) => finishIndependentVerdict(db, {
       requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
-      receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint })
+      receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
+        reviewerUnavailable })
     }));
   }
 
@@ -541,8 +573,15 @@ function reviewerActorIdFor(profile: PrReviewRoleProfile, bindingId: string): st
   return `${profile.role}-reviewer:${bindingId}`.replace(/[^A-Za-z0-9._:-]/g, "-").slice(0, 128);
 }
 
-function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string }) {
-  return { verdict: input.verdict, artifactId: input.artifactId, decisionId: input.decisionId, headSha: input.headSha, evidenceFingerprint: input.evidenceFingerprint };
+/**
+ * The lineage attempt's terminal receipt. `reviewerUnavailable` is non-null
+ * only when the non-pass came from the reviewer's own infrastructure, never a
+ * judgment of the candidate: it is the one fact that authorizes the worker
+ * tick to re-run that same binding without a fix.
+ */
+function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string; reviewerUnavailable: string | null }) {
+  return { verdict: input.verdict, artifactId: input.artifactId, decisionId: input.decisionId, headSha: input.headSha, evidenceFingerprint: input.evidenceFingerprint,
+    reviewerUnavailable: input.reviewerUnavailable };
 }
 
 /**
@@ -572,7 +611,8 @@ function recoverInFlightVerdict(db: Database.Database, input: {
     requestId: attempt.request_id, actorId, session, repoRoot: input.repositoryPath,
     verdict: persisted.verdict === "pass" ? "passed" : "failed", now: input.now,
     receipt: lineageVerdictReceipt({ verdict: persisted.verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id,
-      headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint })
+      headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint,
+      reviewerUnavailable: persisted.reviewerUnavailable })
   });
 }
 
@@ -635,37 +675,82 @@ function parsePullRequestReference(value: string): { repository: string; number:
   return { repository: `${match[1]}/${match[2]}`, number: Number(match[3]) };
 }
 
+/**
+ * The same check rule `arcadia qa pr` applies before any reviewer runs, split
+ * so the worker tick can tell checks that are still running (wait) from
+ * checks that finished unsuccessfully (escalate). An empty rollup is
+ * `none`: GitHub may not have registered the checks yet.
+ */
+export function classifyPullRequestChecks(rollup: ReadonlyArray<PullRequestCheckRun>): {
+  state: "none" | "pending" | "failed" | "green";
+  blockers: string[];
+} {
+  if (rollup.length === 0) return { state: "none", blockers: ["GitHub reported no validation checks."] };
+  const blockers: string[] = [];
+  let failed = false;
+  let pending = false;
+  const grouped = new Map<string, PullRequestCheckRun[]>();
+  for (const check of rollup) {
+    const group = grouped.get(check.name) ?? [];
+    group.push(check);
+    grouped.set(check.name, group);
+  }
+  for (const [name, group] of grouped) {
+    const completedConclusions = new Set(group
+      .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
+      .map((check) => check.conclusion!.toUpperCase()));
+    const evidence = group
+      .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
+      .join(", ");
+    if (completedConclusions.size > 1) {
+      failed = true;
+      blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
+    } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {
+      pending = true;
+      blockers.push(`${name} validation is pending: ${evidence}.`);
+    } else if (!group.every((check) => check.conclusion?.toUpperCase() === "SUCCESS")) {
+      failed = true;
+      blockers.push(`${name} validation did not succeed: ${evidence}.`);
+    }
+  }
+  return { state: failed ? "failed" : pending ? "pending" : "green", blockers };
+}
+
+/**
+ * Why a non-pass verdict reflects the reviewer's own infrastructure rather
+ * than a judgment of the candidate, from deterministic evidence only: the
+ * sandbox preflight, the reviewer process's exit (a timeout included), a
+ * missing or invalid structured verdict, and the deterministic evidence
+ * findings (evidence that moved while it ran). Model-written findings are
+ * never consulted, so no model output or PR text can claim it. Only this may
+ * be retried without a fix.
+ */
+function deterministicReviewerUnavailability(input: {
+  sandboxProof: QaSandboxProof;
+  reviewRun: CommandResult;
+  modelError: string | null;
+  deterministicFindings: QaPrFinding[];
+}): string | null {
+  if (!input.sandboxProof.passed) return `Reviewer sandbox preflight failed: ${input.sandboxProof.output || input.sandboxProof.error || "no output"}`;
+  if (input.reviewRun.status !== 0) {
+    return `The reviewer process exited with status ${String(input.reviewRun.status)}: ${input.reviewRun.error ?? (input.reviewRun.stderr.trim() || "no output")}`;
+  }
+  if (input.modelError !== null) return `The reviewer produced no valid structured verdict: ${input.modelError}`;
+  const stale = input.deterministicFindings.find((finding) => finding.title === "QA evidence is stale");
+  return stale ? `${stale.title}: ${stale.evidence}` : null;
+}
+
+/** The host command runner `arcadia qa pr` uses, for callers that reuse its dependency seam. */
+export const runHostCommand: NonNullable<QaPrReviewDependencies["runCommand"]> = (input) => executeCommand(input);
+
 function assertPullRequestReadyForQa(pullRequest: RawPullRequest): void {
   const blockers: string[] = [];
   if (pullRequest.isDraft) {
     blockers.push("Pull request is still a draft.");
   }
 
-  if (pullRequest.statusCheckRollup.length === 0) {
-    blockers.push("GitHub reported no validation checks.");
-  } else {
-    const grouped = new Map<string, RawPullRequest["statusCheckRollup"]>();
-    for (const check of pullRequest.statusCheckRollup) {
-      const group = grouped.get(check.name) ?? [];
-      group.push(check);
-      grouped.set(check.name, group);
-    }
-    for (const [name, group] of grouped) {
-      const completedConclusions = new Set(group
-        .filter((check) => check.status?.toUpperCase() === "COMPLETED" && check.conclusion)
-        .map((check) => check.conclusion!.toUpperCase()));
-      const evidence = group
-        .map((check) => check.conclusion?.trim() || check.status?.trim() || "unknown")
-        .join(", ");
-      if (completedConclusions.size > 1) {
-        blockers.push(`Duplicate ${name} checks conflict: ${evidence}.`);
-      } else if (group.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion)) {
-        blockers.push(`${name} validation is pending: ${evidence}.`);
-      } else if (!group.every((check) => check.conclusion?.toUpperCase() === "SUCCESS")) {
-        blockers.push(`${name} validation did not succeed: ${evidence}.`);
-      }
-    }
-  }
+  const checks = classifyPullRequestChecks(pullRequest.statusCheckRollup);
+  if (checks.state !== "green") blockers.push(...checks.blockers);
 
   if (["DIRTY", "BLOCKED"].includes(pullRequest.mergeStateStatus?.toUpperCase() ?? "")) {
     blockers.push(`Merge state is ${pullRequest.mergeStateStatus}.`);
@@ -1089,6 +1174,7 @@ function persistQaResult(
     evidenceFingerprint: string;
     receiptFiles: Array<{ path: string; sha256: string }>;
     lineageRequestId: string | null;
+    reviewerUnavailable: string | null;
   }
 ): { artifact: Artifact; decision: ReviewItemSummary } {
   return db.transaction(() => {
@@ -1124,7 +1210,8 @@ function persistQaResult(
         metadataPath: toWorkspaceRelativePath(input.workspace, input.metadataPath),
         evidenceFingerprint: input.evidenceFingerprint,
         receiptFiles: input.receiptFiles,
-        ...(input.lineageRequestId ? { lineageRequestId: input.lineageRequestId } : {})
+        ...(input.lineageRequestId ? { lineageRequestId: input.lineageRequestId } : {}),
+        ...(input.reviewerUnavailable ? { reviewerUnavailable: input.reviewerUnavailable } : {})
       }
     });
     const decision = updateReviewItemStatus(db, created.id, {
@@ -1186,7 +1273,8 @@ function readPersistedReceipt(
         decision,
         reused: true,
         evidenceFingerprint: context.evidenceFingerprint,
-        lineageRequestId: context.lineageRequestId ?? null
+        lineageRequestId: context.lineageRequestId ?? null,
+        reviewerUnavailable: context.reviewerUnavailable ?? null
       };
     });
   } catch {
@@ -1348,12 +1436,15 @@ function parsePersistedQaContext(value: string | null): PersistedQaContext | nul
   try {
     const context = JSON.parse(value) as unknown;
     const lineageKeyed = context !== null && typeof context === "object" && "lineageRequestId" in context;
+    const unavailableKeyed = context !== null && typeof context === "object" && "reviewerUnavailable" in context;
     if (!isRecordWithExactKeys(context, [
       "schemaVersion", "candidate", "verdict", "summary", "findings", "checks", "residualRisks",
       "reviewer", "reportPath", "evidencePath", "metadataPath", "evidenceFingerprint", "receiptFiles",
-      ...(lineageKeyed ? ["lineageRequestId"] : [])
+      ...(lineageKeyed ? ["lineageRequestId"] : []),
+      ...(unavailableKeyed ? ["reviewerUnavailable"] : [])
     ])) return null;
     if (lineageKeyed && context.lineageRequestId !== null && !isNonEmptyString(context.lineageRequestId)) return null;
+    if (unavailableKeyed && !isNonEmptyString(context.reviewerUnavailable)) return null;
     if (
       context.schemaVersion !== 2 ||
       !isQaCandidate(context.candidate) ||
@@ -1550,10 +1641,13 @@ function executeCommand(input: {
 }
 
 function buildQaReviewerEnvironment(): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = {};
+  // Cast, not annotated: the dashboard's Next type-check augments ProcessEnv
+  // with a required NODE_ENV, which this deliberately minimal map omits.
+  const environment = {} as NodeJS.ProcessEnv;
   for (const key of ["PATH", "HOME", "SHELL", "TERM", "TMPDIR"]) {
-    if (process.env[key] !== undefined) {
-      environment[key] = process.env[key];
+    const value = process.env[key];
+    if (value !== undefined) {
+      environment[key] = value;
     }
   }
   return environment;
