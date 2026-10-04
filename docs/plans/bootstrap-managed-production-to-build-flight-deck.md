@@ -3587,7 +3587,7 @@ actions:
     references: ["src/codingAgents/agentIdentity.ts", "src/commands/identity.ts", "src/sessions/index.ts", "src/agentWatch/contract.ts", "docs/agent-guidance/git-identity.md"]
   - id: guard-experiment-workspaces
     title: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
@@ -3623,7 +3623,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: guard-experiment-workspaces
+current_action: run-multi-workspace-experiment-trial
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
