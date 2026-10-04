@@ -33,6 +33,30 @@ the action; you do not need a terminal or to paste a receipt. Follow
 [`morning-runbook.md`](artifacts/generated/operator-scripts/morning-runbook.md)
 for the live split and Off/restart observations.
 
+For the disposable three-Action rehearsal, four operator pairs run in order;
+each writes a receipt under its `runs/<timestamp-pid>/` and a failure handoff
+when it refuses. **G1** `prepare-three-action-rehearsal-fixture-2026-10-04`
+(terminal, with `ARCADIA_REHEARSAL_GITHUB_REPO=<you>/arcadia-three-action-rehearsal-<suffix>`)
+creates or reuses only that private repository and registers the fixture; then
+run `recover-arcadia-host-services`. **G6** `preflight-three-action-rehearsal-2026-10-04`
+only observes and refuses unknown, stale, paid or unavailable evidence. **G7**
+`grant-production-three-action-rehearsal-2026-10-04` (one-shot, from `/runs`,
+within 30 minutes of a passing G6) replays the hermetic rehearsal, then previews
+twice and activates the exact scope. Its always-visible title and effect say that
+pressing accepts Decision 0058 for these three fixture Actions only (#925):
+readying the PR, pushing the settled head and reviewer spend; the full
+acknowledgement is under "What this action does". It never authorizes a GitHub
+merge or base push. **G8**
+`restore-terminal-off-three-action-rehearsal-2026-10-04` (preferably from a terminal,
+since its restart also restarts the dashboard behind `/runs`) restores and
+proves terminal Off through the governed Off and the hash-pinned reviewed restart
+(`recover-arcadia-host-services`, now published beside it). It turns Off only
+G7's own policy with the exact fixture scope; any other Active policy refuses
+untouched and needs its own Off (dashboard switch or `arcadia production deactivate`). It
+sends no signal itself beyond bounded timeouts (that restart path may SIGTERM Arcadia's own
+service processes and rewrites `~/.codex`/`~/.claude` configuration with
+backups) and never discards a candidate.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every
