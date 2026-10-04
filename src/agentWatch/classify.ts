@@ -1,0 +1,722 @@
+import type { ProviderCapacityReceipt } from "../codingAgents/capacity.js";
+import {
+  PEER_WATCH_CONTRACT_VERSION,
+  PEER_WATCH_WINDOWS,
+  WATCHED_AGENTS,
+  bindCommentEvidence,
+  bindCommitEvidence,
+  normalizeBranch,
+  parseActionRef,
+  parseAgentRef,
+  parseIsoInstant,
+  type AgentRef,
+  type BindingExpectation,
+  type BoundEvidence,
+  type CommitObservation,
+  type IssueCommentObservation,
+  type PeerWatchChannel,
+  type WatchedAgent
+} from "./contract.js";
+
+/**
+ * Pure peer-watch classification. Given evidence a watcher already gathered,
+ * say what state the owner of one governed Action is in, which evidence that
+ * rests on and how old it is, and what a watcher may do about it.
+ *
+ * The rule this module exists to enforce: **a coding turn ending, a missing
+ * process, a preserved local head, an absent pull request, or silence is never
+ * proof that ownership was released.** Those observations are carried through
+ * as `nonProof` and never change `ownership`. Ownership comes only from the
+ * governed rows: the Action claim (`agent_worktree_reservations`, as
+ * `getActiveActionClaim` reads it), the claim's principal, and for a managed
+ * Session its `agent_sessions` status plus its `session_exit_receipts` row.
+ * Everything fails closed: when the rows do not affirmatively show a release
+ * or a resumable terminal handoff, ownership is `held` or `unknown`, never
+ * `released`. A `stalled` owner still owns its work; a watcher escalates, it
+ * never takes over.
+ */
+
+export type Readable<T> = { readable: true; value: T } | { readable: false; reason: string };
+
+export const PEER_WATCH_STATES = ["healthy", "idle", "stalled", "exhausted", "unknown"] as const;
+export type PeerWatchState = (typeof PEER_WATCH_STATES)[number];
+
+export type OwnershipState =
+  /** A principal owns the work (with or without a readable Action claim). */
+  | "held"
+  /**
+   * The claim's managed Session is terminal with an unsuperseded, real
+   * `incomplete_resumable` lease handoff: the exact receipt `arcadia go`
+   * resumes from (`getResumableLeaseHandoff`, Decision 0051).
+   */
+  | "principal_terminal"
+  /** No claim, and the caller affirmed no live Session, no reservation and no manual handoff for this Action. */
+  | "released"
+  | "unknown";
+
+export const WATCHER_ACTIONS = ["observe", "offer_help", "escalate_to_operator", "continue_released_work"] as const;
+export type WatcherAction = (typeof WATCHER_ACTIONS)[number];
+
+export type SessionStatus = "prepared" | "running" | "completed" | "failed" | "needs_input";
+const LIVE_SESSION_STATUSES: readonly SessionStatus[] = ["prepared", "running"];
+const TERMINAL_SESSION_STATUSES: readonly SessionStatus[] = ["completed", "failed", "needs_input"];
+
+/** The claim as `getActiveActionClaim` returned it (null: no active claim). */
+export interface ClaimObservation {
+  reservationId: string;
+  project: string;
+  actionId: string;
+  generation: string;
+  branch: string;
+  worktreePath: string;
+  createdAt: string;
+}
+
+/** The `session_exit_receipts` row for a Session, present only once its exit was reconciled. */
+export interface ExitReceiptObservation {
+  id: string;
+  outcome: "successful_exit" | "failed_execution" | "missing_evidence" | "needs_input" | "incomplete_resumable" | "accepted_completion";
+  leaseHandoff: boolean;
+  supersededBySessionId: string | null;
+  /** A fixture receipt is never live proof. */
+  isSimulated: boolean;
+}
+
+export interface SessionObservation {
+  id: string;
+  agent: WatchedAgent;
+  status: SessionStatus;
+  branch: string;
+  worktreePath: string;
+  startedAt: string | null;
+  lastActivityAt: string | null;
+  stallFlaggedAt: string | null;
+  exitReceipt: ExitReceiptObservation | null;
+}
+
+/** Who holds the work, in the vocabulary of `EnrollmentReceipt.principal`; `none` means the caller observed no principal. */
+export type PrincipalObservation =
+  | { kind: "managed-session"; session: SessionObservation }
+  | { kind: "native-runtime" | "prepared"; agent: WatchedAgent | null; id: string | null }
+  | { kind: "none" }
+  | { kind: "unknown" };
+
+/**
+ * Facts a caller must read and affirm before an absent claim can mean
+ * released. `getActiveActionClaim` returns null in cases where an owner still
+ * exists (a reservation without claim columns, a claim whose worktree is gone,
+ * a manual or native handoff), so null alone proves nothing.
+ */
+export interface ReleaseFacts {
+  /** A `prepared` or `running` `agent_sessions` row for this Action or its candidate. */
+  liveSession: boolean;
+  /** Any `agent_worktree_reservations` row for this Action or its candidate, with or without claim columns. */
+  reservation: boolean;
+  /** A manual or native handoff, or a pending enrollment, for this Action. */
+  manualHandoff: boolean;
+  /** An identity for the release (a settlement or release receipt id), when one exists; it fences takeover requests across re-claims. */
+  releaseRef: string | null;
+}
+
+export interface OwnershipObservation {
+  claim: ClaimObservation | null;
+  principal: PrincipalObservation;
+  /** Required for `released`; null means not read, which fails closed. */
+  releaseFacts: ReleaseFacts | null;
+}
+
+/** Host and runtime observations that are recorded but can never prove release (or activity). */
+export interface NonProofObservations {
+  codingTurnEnded?: boolean;
+  processInCandidate?: boolean | null;
+  localHeadPreserved?: boolean;
+  pullRequestOpen?: boolean | null;
+  /** The owner posted `release_requested`; a request is not a release. */
+  ownerRequestedRelease?: boolean;
+}
+
+export interface PeerWatchInput {
+  now: Date;
+  subject: { agent: WatchedAgent; project: string; actionId: string };
+  ownership: Readable<OwnershipObservation>;
+  commits: Readable<CommitObservation[]>;
+  comments: Readable<IssueCommentObservation[]>;
+  /** Null when the host has no receipt for this provider at all. */
+  capacity: Readable<ProviderCapacityReceipt | null>;
+  /** Comment author logins an operator Decision trusts; empty means comments never count. */
+  trustedCommentAuthors: readonly string[];
+  nonProof?: NonProofObservations;
+}
+
+export interface EvidenceItem {
+  channel: PeerWatchChannel | "claim";
+  ref: string;
+  at: string | null;
+  ageMs: number | null;
+  counted: boolean;
+  reason: string;
+}
+
+export interface NonProofItem { observation: keyof NonProofObservations; value: boolean | null; provesRelease: false }
+
+export interface OwnershipResult {
+  state: OwnershipState;
+  reason: string;
+  claimGeneration: string | null;
+  branch: string | null;
+  sessionId: string | null;
+  exitReceiptId: string | null;
+  releaseRef: string | null;
+}
+
+export interface PeerWatchClassification {
+  contractVersion: typeof PEER_WATCH_CONTRACT_VERSION;
+  classifiedAt: string;
+  subject: PeerWatchInput["subject"];
+  state: PeerWatchState;
+  reason: string;
+  ownership: OwnershipResult;
+  latestActivity: EvidenceItem | null;
+  evidence: EvidenceItem[];
+  unreadable: Array<PeerWatchChannel | "ownership">;
+  nonProof: NonProofItem[];
+  takeover: { eligible: boolean; basis: TakeoverBasis | null };
+  permittedActions: WatcherAction[];
+  /** The remedy an operator escalation names, when one is warranted. */
+  escalation: string | null;
+}
+
+export type TakeoverBasis = "claim_released" | "principal_proven_terminal";
+
+/** Provider ids as `agent_sessions.provider` and capacity receipts name them. */
+export const PEER_WATCH_PROVIDER_IDS: Record<WatchedAgent, string> = {
+  claude: "claude-code-cli",
+  codex: "codex-cli",
+  opencode: "opencode-cli"
+};
+
+/**
+ * The existing recovery a takeover relies on. `arcadia go` without `--apply`
+ * is a preview and changes nothing; with `--apply` it dispatches (or, for a
+ * resumable handoff, resumes) the Action the Project pointer names, not the
+ * watched one, so a takeover is valid only while the pointer names it.
+ */
+export function takeoverRecovery(requester: WatchedAgent): { preview: string; apply: string } {
+  return { preview: `arcadia go --agent ${requester}`, apply: `arcadia go --agent ${requester} --apply` };
+}
+
+export const PEER_WATCH_ESCALATIONS = {
+  reconcile: "arcadia session reconcile <session-id>",
+  ownerRelease: "the owner or its orchestrator releases or settles its own claim through its governed path and records a handoff receipt"
+} as const;
+
+/**
+ * The classification table, as data. The procedure's table is this table, a
+ * test holds them equal, and a test realizes every row with a fixture.
+ */
+export const PEER_WATCH_CLASSIFICATION_TABLE = [
+  { id: "ownership-unreadable", evidence: "Ownership rows unreadable, or any ownership field missing, mistyped or outside its value set", state: "unknown", ownership: "unknown", watcher: "observe, escalate" },
+  { id: "principal-mismatch", evidence: "A principal or owner signal whose agent is unknown or not the watched agent (any claim state)", state: "unknown", ownership: "unknown", watcher: "observe, escalate" },
+  { id: "no-claim-unaffirmed", evidence: "No claim; principal unknown or a managed Session (a Session without a claim never proves release), or release facts not read", state: "unknown", ownership: "unknown", watcher: "observe, escalate" },
+  { id: "no-claim-owner-exists", evidence: "No claim; the watched agent's live Session, or its native or prepared principal, exists", state: "unknown", ownership: "held", watcher: "observe, escalate" },
+  { id: "released", evidence: "No claim; principal `none`; release facts all `false`; a release reference", state: "idle", ownership: "released", watcher: "observe, continue released work (pointer must name the Action)" },
+  { id: "released-unreferenced", evidence: "No claim; principal `none`; release facts all `false`; no release reference", state: "idle", ownership: "released", watcher: "observe, escalate" },
+  { id: "principal-terminal", evidence: "Claim held; no other live Session or manual handoff affirmed; its managed Session is terminal with a real, unsuperseded `incomplete_resumable` lease handoff on this candidate", state: "idle", ownership: "principal_terminal", watcher: "observe, continue released work (pointer must name the Action)" },
+  { id: "exited-not-resumable", evidence: "Claim held; its Session exited but is unreconciled, `needs_input`, simulated, superseded or reconciled with any other outcome, or another live Session or manual handoff is affirmed", state: "by activity", ownership: "held", watcher: "the activity row's actions, plus escalate" },
+  { id: "exhausted", evidence: "Claim held; fresh `real` capacity evidence of a spent window, `usage_limited` or `budget_limited`", state: "exhausted", ownership: "held", watcher: "observe, offer help, escalate" },
+  { id: "healthy", evidence: "Claim held; latest counted activity within `activityFreshMs`", state: "healthy", ownership: "held", watcher: "observe" },
+  { id: "idle", evidence: "Claim held; latest counted activity within `stallAfterMs`", state: "idle", ownership: "held", watcher: "observe, offer help" },
+  { id: "silence-unproven", evidence: "Claim held; nothing counted within `stallAfterMs`; some channel unreadable", state: "unknown", ownership: "held", watcher: "observe, escalate" },
+  { id: "stalled", evidence: "Claim held; nothing counted within `stallAfterMs`; every channel read", state: "stalled", ownership: "held", watcher: "observe, offer help, escalate" }
+] as const;
+
+const NON_PROOF_KEYS: Array<keyof NonProofObservations> = ["codingTurnEnded", "processInCandidate", "localHeadPreserved", "pullRequestOpen", "ownerRequestedRelease"];
+
+interface OwnershipDerivation { result: OwnershipResult; principalAgent: WatchedAgent | null; escalation: string | null }
+
+/**
+ * Classify one watched owner. Total: the input is validated first (it will be
+ * built from database rows and JSON, so a missing or mistyped field is
+ * expected), and anything malformed classifies `unknown` with its reason. It
+ * never throws and never defaults open.
+ */
+export function classifyPeer(input: PeerWatchInput): PeerWatchClassification {
+  const raw = input as unknown;
+  const now = isRecord(raw) && raw.now instanceof Date ? raw.now.getTime() : Number.NaN;
+  const subject = isRecord(raw) ? parseSubject(raw.subject) : null;
+  if (!Number.isFinite(now)) return malformed(subject, "the watcher clock (`now`) is not a valid instant");
+  if (!subject) return malformed(null, "the subject is not a supported agent with a project and Action id");
+  try {
+    return classifyValid(input, subject);
+  } catch (error) {
+    return malformed(subject, `classification failed on malformed input (${error instanceof Error ? error.message : String(error)})`, input.now);
+  }
+}
+
+function parseSubject(value: unknown): PeerWatchInput["subject"] | null {
+  if (!isRecord(value) || typeof value.agent !== "string" || !(WATCHED_AGENTS as readonly string[]).includes(value.agent)) return null;
+  if (typeof value.project !== "string" || typeof value.actionId !== "string" || !parseActionRef(`${value.project}/${value.actionId}`)) return null;
+  return { agent: value.agent as WatchedAgent, project: value.project, actionId: value.actionId };
+}
+
+function malformed(subject: PeerWatchInput["subject"] | null, reason: string, now?: Date): PeerWatchClassification {
+  return {
+    contractVersion: PEER_WATCH_CONTRACT_VERSION,
+    classifiedAt: now && Number.isFinite(now.getTime()) ? now.toISOString() : "",
+    subject: subject ?? { agent: "claude", project: "", actionId: "" },
+    state: "unknown",
+    reason: `Malformed watch input: ${reason}.`,
+    ownership: emptyOwnership("unknown", `Malformed watch input: ${reason}.`),
+    latestActivity: null, evidence: [], unreadable: ["ownership"], nonProof: [],
+    takeover: { eligible: false, basis: null },
+    permittedActions: ["observe", "escalate_to_operator"],
+    escalation: "Repair the watcher's input and watch again."
+  };
+}
+
+/** A channel wrapper that is not exactly `{ readable: true, value }` of the right shape reads as unreadable. */
+function channel<T>(value: unknown, valid: (inner: unknown) => inner is T): Readable<T> {
+  if (isRecord(value) && value.readable === true && valid(value.value)) return { readable: true, value: value.value };
+  return { readable: false, reason: isRecord(value) && value.readable === false && typeof value.reason === "string" ? value.reason : "malformed channel input" };
+}
+
+function classifyValid(input: PeerWatchInput, subject: PeerWatchInput["subject"]): PeerWatchClassification {
+  const now = input.now.getTime();
+  const commits = channel(input.commits, (inner): inner is CommitObservation[] => Array.isArray(inner));
+  const comments = channel(input.comments, (inner): inner is IssueCommentObservation[] => Array.isArray(inner));
+  const capacityChannel = channel(input.capacity, (inner): inner is ProviderCapacityReceipt | null => inner === null || isRecord(inner));
+  const trusted = Array.isArray(input.trustedCommentAuthors) ? input.trustedCommentAuthors.filter((login): login is string => typeof login === "string") : [];
+  const ownershipChannel: Readable<unknown> = isRecord(input.ownership) && input.ownership.readable === true
+    ? { readable: true, value: (input.ownership as { value: unknown }).value }
+    : { readable: false, reason: isRecord(input.ownership) && typeof input.ownership.reason === "string" ? input.ownership.reason : "malformed ownership input" };
+  const evidence: EvidenceItem[] = [];
+  const unreadable: PeerWatchClassification["unreadable"] = [];
+  const item = (bound: Omit<BoundEvidence, "channel"> & { channel: EvidenceItem["channel"] }): EvidenceItem => ({
+    channel: bound.channel, ref: bound.ref, counted: bound.counted, reason: bound.reason,
+    at: bound.at === null ? null : new Date(bound.at).toISOString(),
+    ageMs: bound.at === null ? null : Math.max(0, now - bound.at)
+  });
+  const nonProof: NonProofItem[] = NON_PROOF_KEYS
+    .filter((key) => isRecord(input.nonProof) && key in input.nonProof)
+    .map((key) => ({ observation: key, value: typeof input.nonProof?.[key] === "boolean" ? input.nonProof[key] : null, provesRelease: false }));
+  let ownershipEscalation: string | null = null;
+  const result = (state: PeerWatchState, reason: string, ownership: OwnershipResult, latestActivity: EvidenceItem | null, escalation: string | null): PeerWatchClassification => {
+    // A release with no reference cannot be fenced against a later re-claim and re-release, so it is never takeover-eligible.
+    const basis: TakeoverBasis | null = ownership.state === "released" ? (ownership.releaseRef !== null ? "claim_released" : null) : ownership.state === "principal_terminal" ? "principal_proven_terminal" : null;
+    const combined = [escalation, ownershipEscalation].filter((text): text is string => !!text);
+    const actions = basis === null && ownership.state === "released" ? ["observe", "escalate_to_operator"] as WatcherAction[] : permittedActions(state, ownership.state);
+    if (combined.length && !actions.includes("escalate_to_operator")) actions.push("escalate_to_operator");
+    return {
+      contractVersion: PEER_WATCH_CONTRACT_VERSION,
+      classifiedAt: input.now.toISOString(),
+      subject,
+      state, reason, ownership, latestActivity, evidence, unreadable, nonProof,
+      takeover: { eligible: basis !== null, basis },
+      permittedActions: actions,
+      escalation: combined.length ? [...new Set(combined)].join(" ") : null
+    };
+  };
+
+  for (const [name, value] of [["commits", commits], ["issue_comments", comments], ["capacity", capacityChannel]] as const) {
+    if (!value.readable) unreadable.push(name);
+  }
+
+  if (!ownershipChannel.readable) {
+    unreadable.push("ownership");
+    return result("unknown", `Ownership is unreadable (${ownershipChannel.reason}); nothing can be concluded about release or stall.`,
+      emptyOwnership("unknown", ownershipChannel.reason), null,
+      "Restore read access to the workspace claim and session rows, then watch again.");
+  }
+  const parsedOwnership = parseOwnership(ownershipChannel.value);
+  if (!parsedOwnership.ok) {
+    unreadable.push("ownership");
+    return result("unknown", `Ownership input is malformed (${parsedOwnership.reason}); it fails closed.`,
+      emptyOwnership("unknown", `malformed ownership input: ${parsedOwnership.reason}`), null,
+      "Repair how the watcher reads the claim, principal and release facts, then watch again.");
+  }
+
+  const derived = deriveOwnership(parsedOwnership.value, subject);
+  const ownership = derived.result;
+  ownershipEscalation = derived.escalation;
+  const { claim, principal } = parsedOwnership.value;
+  const session = principal.kind === "managed-session" ? principal.session : null;
+
+  // Capacity: only fresh, real evidence for the owner's own provider can show exhaustion.
+  const capacity = capacityChannel.readable ? capacityEvidence(capacityChannel.value, subject.agent, now) : null;
+  if (capacity) evidence.push(capacity.item);
+
+  if (ownership.state === "unknown") {
+    return result("unknown", ownership.reason, ownership, null, "Resolve the durable Action, reservation and principal before reading activity.");
+  }
+  if (ownership.state === "released" || ownership.state === "principal_terminal") {
+    if (capacity?.exhausted) return result("exhausted", `${capacity.item.reason}; ${ownership.reason}`, ownership, null, null);
+    return result("idle", ownership.reason, ownership, null, null);
+  }
+  if (!claim) {
+    return result("unknown", `${ownership.reason} Without a claim, activity cannot be bound to a candidate.`, ownership, null,
+      `An owner exists without an Action claim; report it to the operator. Only ${PEER_WATCH_ESCALATIONS.ownerRelease} hands it over.`);
+  }
+
+  // Held with a claim: gather activity across every channel.
+  const expected: BindingExpectation = {
+    agent: subject.agent, project: subject.project, actionId: subject.actionId,
+    branch: claim.branch, claimGeneration: claim.generation
+  };
+  const claimAt = parseIsoInstant(claim.createdAt);
+  evidence.push(item({ channel: "claim", ref: `claim:${claim.reservationId}`, at: claimAt, counted: claimAt !== null && claimAt <= now + PEER_WATCH_WINDOWS.clockSkewMs, reason: "claim acquired" }));
+  if (session) {
+    for (const [field, value] of [["startedAt", session.startedAt], ["lastActivityAt", session.lastActivityAt]] as const) {
+      const at = parseIsoInstant(value);
+      if (at !== null) evidence.push(item({ channel: "session_rows", ref: `session:${session.id}#${field}`, at, counted: at <= now + PEER_WATCH_WINDOWS.clockSkewMs, reason: `session ${field}` }));
+    }
+    if (session.stallFlaggedAt) evidence.push(item({ channel: "session_rows", ref: `session:${session.id}#stallFlaggedAt`, at: parseIsoInstant(session.stallFlaggedAt), counted: false, reason: "managed stall flag set (lease preserved)" }));
+  }
+  if (commits.readable) for (const commit of commits.value) evidence.push(item(bindCommitEvidence(commit, expected, now)));
+  if (comments.readable) for (const bound of bindCommentEvidence(comments.value, expected, trusted, now)) evidence.push(item(bound));
+
+  const counted = evidence.filter((entry) => entry.counted && entry.at !== null && entry.channel !== "capacity");
+  const latest = counted.reduce<EvidenceItem | null>((best, entry) => (!best || Date.parse(entry.at!) > Date.parse(best.at!) ? entry : best), null);
+  const age = latest?.ageMs ?? Number.POSITIVE_INFINITY;
+
+  // Exhausted takes precedence over healthy even when the owner committed
+  // seconds ago: fresh capacity evidence predicts no further progress.
+  // `latestActivity` still reports that commit.
+  if (capacity?.exhausted) {
+    return result("exhausted", `${capacity.item.reason}; the owner still holds the claim.`, ownership, latest,
+      `Owner is out of capacity until ${capacity.retryAfter ?? "a fresh observation"}; wait for the reset, or ${PEER_WATCH_ESCALATIONS.ownerRelease}.`);
+  }
+  if (age <= PEER_WATCH_WINDOWS.activityFreshMs) return result("healthy", `Fresh owner activity (${latest!.reason}).`, ownership, latest, null);
+  if (age <= PEER_WATCH_WINDOWS.stallAfterMs) return result("idle", `Owner is quiet but within the stall window (latest: ${latest?.reason ?? "none"}); waiting for review, QA or a procedure is normal.`, ownership, latest, null);
+  const missing = (["commits", "issue_comments", "capacity"] as const).filter((channel) => unreadable.includes(channel));
+  if (missing.length) {
+    return result("unknown", `No fresh activity on the readable channels, but ${missing.join(", ")} could not be read, so silence across all channels is unproven.`, ownership, latest,
+      `Restore ${missing.join(", ")} and watch again.`);
+  }
+  return result("stalled", `No fresh owner activity on any channel for more than ${PEER_WATCH_WINDOWS.stallAfterMs / 60_000} minutes; the owner still holds the claim.`, ownership, latest,
+    `Ask the owner's orchestrator or the operator; only ${PEER_WATCH_ESCALATIONS.ownerRelease} hands the work over.`);
+}
+
+const PRINCIPAL_KINDS = ["managed-session", "native-runtime", "prepared", "none", "unknown"] as const;
+const SESSION_STATUSES: readonly SessionStatus[] = [...LIVE_SESSION_STATUSES, ...TERMINAL_SESSION_STATUSES];
+const EXIT_OUTCOMES: ReadonlyArray<ExitReceiptObservation["outcome"]> = ["successful_exit", "failed_execution", "missing_evidence", "needs_input", "incomplete_resumable", "accepted_completion"];
+
+type Parsed<T> = { ok: true; value: T } | { ok: false; reason: string };
+const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+const nullableNonEmpty = (value: unknown): value is string | null => value === null || nonEmpty(value);
+const nullableString = (value: unknown): value is string | null => value === null || typeof value === "string";
+const isInstant = (value: unknown): value is string => typeof value === "string" && parseIsoInstant(value) !== null;
+const nullableInstant = (value: unknown): value is string | null => value === null || isInstant(value);
+const isAgent = (value: unknown): value is WatchedAgent => typeof value === "string" && (WATCHED_AGENTS as readonly string[]).includes(value);
+
+/**
+ * Positive affirmation only. Every field must be present with exactly the
+ * type and value set the contract names; `undefined`, `0`, `1`, `""`, `NaN`,
+ * `"true"` or an unknown enum member is malformed, and malformed fails closed.
+ */
+export function parseOwnership(value: unknown): Parsed<OwnershipObservation> {
+  if (!isRecord(value)) return { ok: false, reason: "ownership is not an object" };
+  if (!("claim" in value) || !("principal" in value) || !("releaseFacts" in value)) return { ok: false, reason: "claim, principal and releaseFacts must all be present (null when absent)" };
+  let claim: ClaimObservation | null = null;
+  if (value.claim !== null) {
+    const c = value.claim;
+    if (!isRecord(c) || !["reservationId", "project", "actionId", "generation", "branch", "worktreePath"].every((key) => nonEmpty(c[key])) || !isInstant(c.createdAt)) return { ok: false, reason: "claim is not null and not a complete claim row" };
+    claim = { reservationId: c.reservationId as string, project: c.project as string, actionId: c.actionId as string, generation: c.generation as string, branch: c.branch as string, worktreePath: c.worktreePath as string, createdAt: c.createdAt };
+  }
+  const principal = parsePrincipal(value.principal);
+  if (!principal.ok) return principal;
+  let releaseFacts: ReleaseFacts | null = null;
+  if (value.releaseFacts !== null) {
+    const f = value.releaseFacts;
+    if (!isRecord(f) || typeof f.liveSession !== "boolean" || typeof f.reservation !== "boolean" || typeof f.manualHandoff !== "boolean" || !nullableNonEmpty(f.releaseRef)) {
+      return { ok: false, reason: "releaseFacts is not null and not three booleans plus a releaseRef (string or null)" };
+    }
+    releaseFacts = { liveSession: f.liveSession, reservation: f.reservation, manualHandoff: f.manualHandoff, releaseRef: f.releaseRef };
+  }
+  return { ok: true, value: { claim, principal: principal.value, releaseFacts } };
+}
+
+function parsePrincipal(value: unknown): Parsed<PrincipalObservation> {
+  if (!isRecord(value) || typeof value.kind !== "string" || !(PRINCIPAL_KINDS as readonly string[]).includes(value.kind)) return { ok: false, reason: "principal has no recognized kind" };
+  if (value.kind === "none" || value.kind === "unknown") return { ok: true, value: { kind: value.kind } };
+  if (value.kind === "native-runtime" || value.kind === "prepared") {
+    if (!(value.agent === null || isAgent(value.agent)) || !nullableString(value.id)) return { ok: false, reason: `${value.kind} principal needs an agent (or null) and an id (or null)` };
+    return { ok: true, value: { kind: value.kind, agent: value.agent, id: value.id } };
+  }
+  const s = value.session;
+  if (!isRecord(s) || !nonEmpty(s.id) || !isAgent(s.agent) || typeof s.status !== "string" || !(SESSION_STATUSES as readonly string[]).includes(s.status)
+    || !nonEmpty(s.branch) || !nonEmpty(s.worktreePath) || !nullableInstant(s.startedAt) || !nullableInstant(s.lastActivityAt) || !nullableInstant(s.stallFlaggedAt)) {
+    return { ok: false, reason: "managed-session principal is not a complete Session row" };
+  }
+  let exitReceipt: ExitReceiptObservation | null = null;
+  if (s.exitReceipt !== null) {
+    const r = s.exitReceipt;
+    if (!isRecord(r) || !nonEmpty(r.id) || typeof r.outcome !== "string" || !(EXIT_OUTCOMES as readonly string[]).includes(r.outcome)
+      || typeof r.leaseHandoff !== "boolean" || !nullableNonEmpty(r.supersededBySessionId) || typeof r.isSimulated !== "boolean") {
+      return { ok: false, reason: "exit receipt is not null and not a complete receipt row" };
+    }
+    exitReceipt = { id: r.id, outcome: r.outcome as ExitReceiptObservation["outcome"], leaseHandoff: r.leaseHandoff, supersededBySessionId: r.supersededBySessionId, isSimulated: r.isSimulated };
+  }
+  return {
+    ok: true,
+    value: { kind: "managed-session", session: { id: s.id, agent: s.agent, status: s.status as SessionStatus, branch: s.branch, worktreePath: s.worktreePath, startedAt: s.startedAt, lastActivityAt: s.lastActivityAt, stallFlaggedAt: s.stallFlaggedAt, exitReceipt } }
+  };
+}
+
+function emptyOwnership(state: OwnershipState, reason: string): OwnershipResult {
+  return { state, reason, claimGeneration: null, branch: null, sessionId: null, exitReceiptId: null, releaseRef: null };
+}
+
+function principalAgentOf(principal: PrincipalObservation): WatchedAgent | null {
+  if (principal.kind === "managed-session") return principal.session.agent;
+  if (principal.kind === "native-runtime" || principal.kind === "prepared") return principal.agent;
+  return null;
+}
+
+function deriveOwnership(observed: OwnershipObservation, subject: PeerWatchInput["subject"]): OwnershipDerivation {
+  const { claim, principal, releaseFacts } = observed;
+  const session = principal.kind === "managed-session" ? principal.session : null;
+  const principalAgent = principalAgentOf(principal);
+  const base: OwnershipResult = {
+    ...emptyOwnership("unknown", ""),
+    claimGeneration: claim?.generation ?? null,
+    branch: normalizeBranch(claim?.branch ?? session?.branch ?? null),
+    sessionId: session?.id ?? null
+  };
+  const unknown = (reason: string): OwnershipDerivation => ({ result: { ...base, state: "unknown", reason }, principalAgent, escalation: null });
+  const held = (reason: string, escalation: string | null = null): OwnershipDerivation => {
+    // B3: a held work unit can only be bound to the watched agent when its principal is that agent.
+    if (principalAgent !== subject.agent) {
+      return unknown(principalAgent === null
+        ? `${reason} Its principal agent cannot be established, so no evidence can be bound to it.`
+        : `${reason} It is held by ${principalAgent}, not the watched ${subject.agent}.`);
+    }
+    return { result: { ...base, state: "held", reason }, principalAgent, escalation };
+  };
+
+  if (claim !== null && (claim.project !== subject.project || claim.actionId !== subject.actionId)) return unknown("The claim read for this watch names a different Action.");
+
+  if (claim === null) {
+    const liveSession = session !== null && LIVE_SESSION_STATUSES.includes(session.status);
+    const ownerSignals = [
+      liveSession ? `Session ${session.id} is ${session.status}` : null,
+      releaseFacts?.liveSession === true ? "a prepared or running Session row exists" : null,
+      releaseFacts?.reservation === true ? "a worktree reservation exists" : null,
+      releaseFacts?.manualHandoff === true ? "a manual or native handoff exists" : null,
+      principal.kind === "native-runtime" || principal.kind === "prepared" ? `a ${principal.kind} principal exists` : null
+    ].filter((signal): signal is string => !!signal);
+    if (ownerSignals.length) return held(`No Action claim, but ${ownerSignals.join("; ")}: an absent claim does not prove release.`);
+    if (principal.kind === "managed-session") return unknown(`No Action claim, but Session ${principal.session.id} is the principal; a Session without a claim never proves release.`);
+    if (principal.kind !== "none") return unknown("No Action claim, and the principal is unknown; an absent claim alone does not prove release.");
+    if (releaseFacts === null) return unknown("No Action claim, but the release facts (no live Session, no reservation, no manual handoff) were not read.");
+    if (releaseFacts.liveSession !== false || releaseFacts.reservation !== false || releaseFacts.manualHandoff !== false) return unknown("No Action claim, but the release facts do not affirm that no owner exists.");
+    return {
+      result: { ...base, state: "released", releaseRef: releaseFacts.releaseRef, reason: releaseFacts.releaseRef === null
+        ? "No active claim, no principal, no live Session, no reservation and no manual handoff, but the release has no reference to fence a takeover with."
+        : `No active claim, no principal, no live Session, no reservation and no manual handoff for this Action (release ${releaseFacts.releaseRef}).` },
+      principalAgent, escalation: releaseFacts.releaseRef === null ? "The release has no reference; the operator confirms it before anyone continues the Action." : null
+    };
+  }
+
+  if (principal.kind === "unknown" || principal.kind === "none") return unknown("The claim's principal cannot be established.");
+  if (principal.kind !== "managed-session") {
+    return held(`The claim's ${principal.kind} principal has no Session row that could prove it terminal; only its own or its orchestrator's explicit release counts.`);
+  }
+  const live = principal.session;
+  if (LIVE_SESSION_STATUSES.includes(live.status)) return held(`Session ${live.id} is ${live.status}.`);
+  if (!TERMINAL_SESSION_STATUSES.includes(live.status)) return unknown(`Session ${live.id} has an unrecognized status.`);
+  if (releaseFacts?.liveSession === true || releaseFacts?.manualHandoff === true) {
+    return held(`Session ${live.id} is ${live.status}, but another live Session or a manual handoff is affirmed for this Action.`,
+      "Another live Session or manual handoff exists beside the claim's terminal Session; the operator reconciles them.");
+  }
+  const receipt = live.exitReceipt;
+  const reconcile = PEER_WATCH_ESCALATIONS.reconcile.replace("<session-id>", live.id);
+  if (!receipt) return held(`Session ${live.id} is ${live.status} but not reconciled; exited is not proven terminal.`, `Session ${live.id} exited but is not reconciled; the operator may judge it and run ${reconcile}.`);
+  if (live.status === "needs_input" || receipt.outcome === "needs_input") {
+    return held(`Session ${live.id} is waiting on an operator question (needs_input).`, `Session ${live.id} is waiting on an operator question; answer it through the operator surface and the owner resumes.`);
+  }
+  if (receipt.isSimulated !== false) return held(`Session ${live.id}'s exit receipt ${receipt.id} is a fixture receipt, never live proof.`, `Exit receipt ${receipt.id} is simulated; the operator judges the real Session state.`);
+  if (receipt.outcome !== "incomplete_resumable" || receipt.leaseHandoff !== true) {
+    return held(`Session ${live.id} reconciled as ${receipt.outcome}${receipt.leaseHandoff ? "" : " without a lease handoff"}, which is not a resumable handoff.`,
+      `Session ${live.id} reconciled as ${receipt.outcome}; it is not a resumable lease handoff, so the operator judges the next move.`);
+  }
+  if (receipt.supersededBySessionId !== null) return held(`Session ${live.id}'s handoff was already taken by Session ${receipt.supersededBySessionId}.`, `The handoff from ${live.id} is superseded by ${receipt.supersededBySessionId}; watch that Session instead.`);
+  const claimBranch = normalizeBranch(claim.branch);
+  if (live.worktreePath !== claim.worktreePath || claimBranch === null || normalizeBranch(live.branch) !== claimBranch) {
+    return held(`Session ${live.id}'s handoff is not bound to this claim's candidate.`, `Session ${live.id}'s handoff names a different candidate than the claim; the operator reconciles them.`);
+  }
+  const terminal = held(`Session ${live.id} is ${live.status} with an unsuperseded incomplete_resumable lease handoff (exit receipt ${receipt.id}); the same Action resumes its candidate (Decision 0051).`);
+  if (terminal.result.state !== "held") return terminal;
+  return { ...terminal, result: { ...terminal.result, state: "principal_terminal", exitReceiptId: receipt.id } };
+}
+
+function capacityEvidence(receipt: ProviderCapacityReceipt | null, agent: WatchedAgent, now: number): { item: EvidenceItem; exhausted: boolean; retryAfter: string | null } | null {
+  if (!receipt) return null;
+  const observedAt = parseIsoInstant(receipt.observedAt);
+  const ageMs = observedAt === null ? null : Math.max(0, now - observedAt);
+  const make = (counted: boolean, reason: string): EvidenceItem => ({
+    channel: "capacity", ref: `capacity:${receipt.providerId}:${receipt.source}:${receipt.evidence}`,
+    at: observedAt === null ? null : new Date(observedAt).toISOString(), ageMs, counted, reason
+  });
+  const none = (reason: string) => ({ item: make(false, reason), exhausted: false, retryAfter: null });
+  if (receipt.providerId !== PEER_WATCH_PROVIDER_IDS[agent]) return none(`capacity receipt is for ${receipt.providerId}, not ${PEER_WATCH_PROVIDER_IDS[agent]}`);
+  if (receipt.evidence !== "real") return none(`capacity evidence is ${String(receipt.evidence)}, never live proof`);
+  if (receipt.source === "none" || receipt.source === "operator_config" || receipt.confidence === "unknown") return none(`no capacity observation (${receipt.source})`);
+  if (observedAt === null || ageMs === null || receipt.freshness !== "fresh" || ageMs > PEER_WATCH_WINDOWS.capacityFreshMs || observedAt > now + PEER_WATCH_WINDOWS.clockSkewMs) {
+    return none("capacity evidence is not fresh, so it cannot show exhaustion");
+  }
+  const spent = receipt.windows.filter((window) => {
+    const resetsAt = parseIsoInstant(window.resetsAt);
+    return window.usedPercentage >= 100 && !(resetsAt !== null && resetsAt <= now);
+  });
+  const limited = receipt.availability === "usage_limited" || receipt.availability === "budget_limited";
+  if (!spent.length && !limited) return { item: make(true, `capacity available (${receipt.availability})`), exhausted: false, retryAfter: null };
+  const reason = spent.length
+    ? `${receipt.providerLabel}'s ${spent[0].label} window is spent (${spent[0].usedPercentage}% used)`
+    : `${receipt.providerLabel} reports ${receipt.availability}`;
+  return { item: make(true, reason), exhausted: true, retryAfter: spent[0]?.resetsAt ?? receipt.nextResetAt };
+}
+
+function permittedActions(state: PeerWatchState, ownership: OwnershipState): WatcherAction[] {
+  if (ownership === "released" || ownership === "principal_terminal") return ["observe", "continue_released_work"];
+  if (ownership === "unknown" || state === "unknown") return ["observe", "escalate_to_operator"];
+  if (state === "healthy") return ["observe"];
+  if (state === "idle") return ["observe", "offer_help"];
+  return ["observe", "offer_help", "escalate_to_operator"];
+}
+
+// ---------------------------------------------------------------------------
+// Takeover requests
+// ---------------------------------------------------------------------------
+
+export const PEER_TAKEOVER_REQUEST_SCHEMA = "arcadia-peer-takeover-request-v1" as const;
+
+/** What a peer must present before continuing another agent's Action. */
+export interface PeerTakeoverRequest {
+  schema: typeof PEER_TAKEOVER_REQUEST_SCHEMA;
+  requester: AgentRef;
+  subject: PeerWatchInput["subject"];
+  /** The Action `arcadia go --apply` must start; valid only while the Project pointer names it. */
+  target: { project: string; actionId: string };
+  claim: { generation: string | null; branch: string | null };
+  basis: TakeoverBasis;
+  proof: { sessionId: string | null; exitReceiptId: string | null; releaseRef: string | null };
+  observed: { state: PeerWatchState; classifiedAt: string; evidenceRefs: string[] };
+  /** The existing governed command it relies on; this contract adds no new release path. */
+  recovery: { preview: string; apply: string };
+}
+
+export type TakeoverDecision = { ok: true; request: PeerTakeoverRequest } | { ok: false; reasons: string[] };
+
+/** Build a takeover request from a classification, refusing unless ownership was released or its principal proven terminal. */
+export function buildTakeoverRequest(classification: PeerWatchClassification, requester: AgentRef): TakeoverDecision {
+  const { takeover, ownership } = classification;
+  if (!takeover.eligible || !takeover.basis) {
+    return { ok: false, reasons: [`Ownership is ${ownership.state}: ${ownership.reason} A watcher may only ${classification.permittedActions.join(", ")}.`] };
+  }
+  return {
+    ok: true,
+    request: {
+      schema: PEER_TAKEOVER_REQUEST_SCHEMA,
+      requester,
+      subject: classification.subject,
+      target: { project: classification.subject.project, actionId: classification.subject.actionId },
+      claim: { generation: ownership.claimGeneration, branch: ownership.branch },
+      basis: takeover.basis,
+      proof: { sessionId: ownership.sessionId, exitReceiptId: ownership.exitReceiptId, releaseRef: ownership.releaseRef },
+      observed: { state: classification.state, classifiedAt: classification.classifiedAt, evidenceRefs: classification.evidence.filter((entry) => entry.counted).map((entry) => entry.ref) },
+      recovery: takeoverRecovery(requester.agent)
+    }
+  };
+}
+
+export interface TakeoverValidationContext {
+  now: Date;
+  /** The Project pointer's current Action, read immediately before acting; null when unreadable. */
+  pointer: { project: string; actionId: string } | null;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isStringOrNull = (value: unknown): value is string | null => value === null || typeof value === "string";
+
+/**
+ * Re-validate a request (untrusted input: it may have travelled through a
+ * comment or a file) against a classification re-read immediately before
+ * acting. The claim generation, terminal Session and release identity are the
+ * fence, exactly as `assertActionClaimGeneration` uses the generation; both
+ * the request and the classification must be recent and in order; the
+ * recovery must be exactly the governed command for the requester; and the
+ * Project pointer must name the target Action, because `arcadia go` starts
+ * the pointer's Action. Malformed input is refused, never thrown on.
+ *
+ * A release without a `releaseRef` is never takeover-eligible, so a
+ * `claim_released` request is always fenced by the release identity as well
+ * as by `takeoverMaxAgeMs`.
+ */
+export function validateTakeoverRequest(request: unknown, current: PeerWatchClassification, context: TakeoverValidationContext): TakeoverDecision {
+  const shape = takeoverShape(request);
+  if (shape.length) return { ok: false, reasons: shape };
+  const valid = request as PeerTakeoverRequest;
+  const reasons: string[] = [];
+  const now = isRecord(context) && context.now instanceof Date ? context.now.getTime() : Number.NaN;
+  if (!Number.isFinite(now)) return { ok: false, reasons: ["the validation clock (`now`) is not a valid instant"] };
+  if (!isRecord(current) || !isRecord(current.ownership) || !isRecord(current.takeover) || !isRecord(current.subject)) return { ok: false, reasons: ["current classification is malformed"] };
+  const pointer = isRecord(context.pointer) && typeof context.pointer.project === "string" && typeof context.pointer.actionId === "string" ? context.pointer : null;
+  const requester = parseAgentRef(`${valid.requester.agent}/${valid.requester.tier}`);
+  if (!requester) reasons.push("requester is not a supported agent and tier");
+  if (valid.subject.project !== current.subject.project || valid.subject.actionId !== current.subject.actionId || valid.subject.agent !== current.subject.agent) reasons.push("request names a different subject");
+  if (valid.target.project !== valid.subject.project || valid.target.actionId !== valid.subject.actionId) reasons.push("target Action differs from the watched Action");
+  if (!pointer || pointer.project !== valid.target.project || pointer.actionId !== valid.target.actionId) reasons.push("the Project pointer does not name the target Action, so arcadia go would start different work");
+  if (!current.takeover.eligible || current.takeover.basis !== valid.basis) reasons.push(`ownership is now ${current.ownership.state}, not ${valid.basis}`);
+  if (valid.claim.generation !== current.ownership.claimGeneration) reasons.push("claim generation moved since the request was built");
+  if (valid.claim.branch !== current.ownership.branch) reasons.push("candidate branch changed since the request was built");
+  if (valid.proof.sessionId !== current.ownership.sessionId || valid.proof.exitReceiptId !== current.ownership.exitReceiptId) reasons.push("terminal principal changed since the request was built");
+  if (valid.proof.releaseRef !== current.ownership.releaseRef) reasons.push("release identity changed since the request was built (re-claimed and released again)");
+  if (requester) {
+    const expected = takeoverRecovery(requester.agent);
+    if (valid.recovery.preview !== expected.preview || valid.recovery.apply !== expected.apply) reasons.push("recovery is not the governed command for this requester");
+  }
+  const observedAt = parseIsoInstant(valid.observed.classifiedAt);
+  const currentAt = parseIsoInstant(current.classifiedAt);
+  if (observedAt === null || currentAt === null || !Number.isFinite(observedAt) || !Number.isFinite(currentAt)) reasons.push("classification time unreadable");
+  else {
+    if (currentAt < observedAt) reasons.push("current classification is older than the request");
+    if (now - currentAt > PEER_WATCH_WINDOWS.takeoverMaxAgeMs || currentAt > now + PEER_WATCH_WINDOWS.clockSkewMs) reasons.push("current classification is not fresh");
+    if (now - observedAt > PEER_WATCH_WINDOWS.takeoverMaxAgeMs || observedAt > now + PEER_WATCH_WINDOWS.clockSkewMs) reasons.push("request is not fresh");
+  }
+  if (reasons.length || !requester) return { ok: false, reasons };
+  // A normalized copy: only the contract's fields, never the untrusted object with extras.
+  return {
+    ok: true,
+    request: {
+      schema: PEER_TAKEOVER_REQUEST_SCHEMA,
+      requester,
+      subject: { agent: valid.subject.agent, project: valid.subject.project, actionId: valid.subject.actionId },
+      target: { project: valid.target.project, actionId: valid.target.actionId },
+      claim: { generation: valid.claim.generation, branch: valid.claim.branch },
+      basis: valid.basis,
+      proof: { sessionId: valid.proof.sessionId, exitReceiptId: valid.proof.exitReceiptId, releaseRef: valid.proof.releaseRef },
+      observed: {
+        state: current.state,
+        classifiedAt: valid.observed.classifiedAt,
+        evidenceRefs: valid.observed.evidenceRefs.filter((ref): ref is string => typeof ref === "string")
+      },
+      recovery: takeoverRecovery(requester.agent)
+    }
+  };
+}
+
+function takeoverShape(request: unknown): string[] {
+  if (!isRecord(request)) return ["request is not an object"];
+  const reasons: string[] = [];
+  if (request.schema !== PEER_TAKEOVER_REQUEST_SCHEMA) reasons.push("unknown takeover request schema");
+  const { requester, subject, target, claim, proof, observed, recovery } = request;
+  if (!isRecord(requester) || typeof requester.agent !== "string" || typeof requester.tier !== "string") reasons.push("requester is malformed");
+  if (!isRecord(subject) || typeof subject.agent !== "string" || typeof subject.project !== "string" || typeof subject.actionId !== "string") reasons.push("subject is malformed");
+  if (!isRecord(target) || typeof target.project !== "string" || typeof target.actionId !== "string" || !parseActionRef(`${String(target.project)}/${String(target.actionId)}`)) reasons.push("target is malformed");
+  if (!isRecord(claim) || !isStringOrNull(claim.generation) || !isStringOrNull(claim.branch)) reasons.push("claim is malformed");
+  if (request.basis !== "claim_released" && request.basis !== "principal_proven_terminal") reasons.push("basis is malformed");
+  if (!isRecord(proof) || !isStringOrNull(proof.sessionId) || !isStringOrNull(proof.exitReceiptId) || !isStringOrNull(proof.releaseRef)) reasons.push("proof is malformed");
+  if (!isRecord(observed) || typeof observed.state !== "string" || typeof observed.classifiedAt !== "string" || !Array.isArray(observed.evidenceRefs)) reasons.push("observed is malformed");
+  if (!isRecord(recovery) || typeof recovery.preview !== "string" || typeof recovery.apply !== "string") reasons.push("recovery is malformed");
+  return reasons;
+}

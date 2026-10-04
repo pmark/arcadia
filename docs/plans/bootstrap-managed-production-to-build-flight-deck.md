@@ -3484,7 +3484,7 @@ actions:
     references: ["src/qa/prReview.ts", "tests/code-review-not-applicable.test.ts", "/private/tmp/claude-501/-Users-pmark-Dev-MR-Arcadia-arcadia/8b3c388d-2a2c-4a1b-bfb8-165c1289534c/scratchpad/na-smoke-935/", "https://github.com/pmark/arcadia/issues/899"]
   - id: define-agent-peer-watch-contract
     title: "Write the agent-agnostic peer-watch contract: what evidence each agent publishes, how stalls and exhaustion are classified, and how takeover is requested without stealing ownership."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Write the agent-agnostic peer-watch contract: what evidence each agent publishes, how stalls and exhaustion are classified, and how takeover is requested without stealing ownership."
@@ -3572,7 +3572,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: define-agent-peer-watch-contract
+current_action: implement-agent-peer-watch-reader
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
