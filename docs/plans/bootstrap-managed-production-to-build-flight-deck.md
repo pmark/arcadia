@@ -3431,6 +3431,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/916", "https://github.com/pmark/arcadia/issues/918", "https://github.com/pmark/arcadia/issues/921", "https://github.com/pmark/arcadia/issues/930", "https://github.com/pmark/arcadia/issues/933"]
+  - id: code-review-not-applicable-criteria
+    title: Add a not-applicable criterion status for the code-review role, bounded so it cannot weaken real review, and teach the reviewer prompt about governed records.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a not-applicable criterion status for the code-review role, bounded so it cannot weaken real review, and teach the reviewer prompt about governed records.
+    expected_artifact: Evidence satisfying Agent Ask code-review-not-applicable-criteria
+    clarification: clarified
+    confidence: high
+    source: Agent Ask code-review-not-applicable-criteria-2026-10-04
+    acceptance_criteria:
+      - The reviewer schema, parser, receipts, lineage binding and persisted-receipt reading accept a not-applicable check status that is non-blocking only when it carries concrete evidence that the change cannot affect that criterion; the correctness criterion can never be not-applicable; a deterministic check on the files the patch touches refuses not-applicable for a criterion the patch demonstrably affects (for example failure handling, state, security or compatibility claimed not-applicable on a diff that changes executable code, configuration, or authority-bearing documents); an all-not-applicable-but-correctness verdict on a marker/docs-only patch passes, and not-checked still blocks as needs-follow-up.
+      - The reviewer prompt distinguishes not-applicable (the change cannot affect the criterion) from not-checked (the change affects it but the evidence cannot show it), and states that commits carrying Arcadia-Preservation-Request or Arcadia-Candidate-Fingerprint trailers or a 'Written by arcadia agent-ask settle' body are governed records to judge only for consistency with the stated Action, not for how they were generated; qa pr's own role is unchanged except for any shared schema.
+      - "Tests use the real captured result from the rehearsal (the exact patch and model verdict for PR #1 head 58bcd9155: five not-checked criteria, zero findings) as a fixture, plus a pass/fail matrix (marker-only patch passes with all-not-applicable-but-correctness; not-applicable on a changed executable file is refused; missing evidence text is refused; a real finding still fails), the hermetic three-Action tick rehearsal with a marker-only candidate integrates without an operator step, and persisted receipts from before this change still read; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "src/sessions/roleLineage.ts", "src/production/independentReview.ts", "tests/code-review-verdict-recorder.test.ts", "tests/qa-pr-review.test.ts", "tests/rehearsal-three-action.test.ts", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
