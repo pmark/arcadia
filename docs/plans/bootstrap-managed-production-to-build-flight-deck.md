@@ -3465,6 +3465,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/qa/prReview.ts", "src/qa/patchApplicability.ts", "tests/code-review-not-applicable.test.ts", "tests/fixtures/rehearsal-code-review/", "https://github.com/pmark/arcadia/issues/899"]
+  - id: code-review-tests-criterion-stability
+    title: Tell the code reviewer how to judge the Tests criterion when a patch contains no executable code and no test files, and pin the stability with a live measurement.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Tell the code reviewer how to judge the Tests criterion when a patch contains no executable code and no test files, and pin the stability with a live measurement.
+    expected_artifact: Evidence satisfying Agent Ask code-review-tests-criterion-stability
+    clarification: clarified
+    confidence: high
+    source: Agent Ask code-review-tests-criterion-stability-2026-10-04
+    acceptance_criteria:
+      - "The code-review prompt's rule for the Tests criterion states that when the patch touches no executable or test files the Tests criterion is not-applicable (with evidence naming the touched files) rather than pass or not-checked, that a successful required CI check named in the evidence counts as concrete validation evidence for a patch that does change code, and that missing CI command output alone is never a reason for not-checked or a finding on a patch that adds no executable behavior; QA's prompt and every deterministic classifier rule are unchanged and the #934 and #935 refusal tests still pass."
+      - Tests lock the new prompt sentences and show that the deterministic gate still refuses a Tests not-applicable claim on a patch that touches an executable or test file.
+      - "A live measurement with the real codex reviewer on the exact captured rehearsal patch (at least five runs, recorded in the PR with per-run verdicts and Tests statuses; stubbing only gh as the earlier smokes did) shows at least four of five pass with no medium or higher finding, a code-change control still does not pass, and the numbers and receipt paths are in the pull request body; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "tests/code-review-not-applicable.test.ts", "/private/tmp/claude-501/-Users-pmark-Dev-MR-Arcadia-arcadia/8b3c388d-2a2c-4a1b-bfb8-165c1289534c/scratchpad/na-smoke-935/", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
