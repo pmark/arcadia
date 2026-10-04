@@ -9,10 +9,14 @@
  *   outside code, agent and dot directories), or is one of Arcadia's governed
  *   records changed only within the exact shape Arcadia's governed commands
  *   write, by commits that carry their attestation and touch nothing else;
- * - the patch is a complete `git format-patch` series whose commit count
- *   equals the pull request's (GitHub's compare patch omits merge commits and
- *   their conflict resolutions), and every file the pull request declares is
- *   in it, below the GitHub CLI's 100-file and 100-commit caps.
+ * - the patch is a complete `git format-patch` series whose commit
+ *   boundaries are pairwise distinct, consistently numbered `[PATCH i/N]`, and
+ *   exactly the pull request's commit ids (GitHub's compare patch omits merge
+ *   commits and their conflict resolutions, so a pull request containing any
+ *   merge commit, including a base-branch merge, never qualifies; a boundary
+ *   line forged inside a commit message breaks the numbering), and every file
+ *   the pull request declares is in it, below the GitHub CLI's 100-file and
+ *   100-commit caps.
  *
  * Anything else (code, scripts, workflows, configuration, manifests,
  * authority-bearing or agent-instruction documents, any dot directory, an
@@ -20,6 +24,14 @@
  * governed record changed beyond its shape) makes every criterion applicable,
  * and the claim is refused. Attestations are author-controlled text, so they
  * never excuse a file on their own: the shape limit is checked regardless.
+ *
+ * Residual: a forged attestation can still make shape-limited governed edits
+ * pass this check (add Agent Ask data files or archive them, append to the
+ * Mission Log, mark the current Action done and move current_action to any
+ * well-formed Action id, which can skip Actions or change which Actions are
+ * dependency-ready). The code reviewer's correctness judgment and QA's
+ * managed-document and approval-boundary criteria (never not-applicable) are
+ * the backstops for those.
  */
 
 export type PatchFileClass =
@@ -48,11 +60,11 @@ export interface PatchEvidence {
   /** The paths the pull request declares (`gh pr view --json files`). */
   declaredFiles?: readonly string[];
   /**
-   * The pull request's commit count (`gh pr view --json commits`); null when
-   * it could not be read, which fails closed. Omitted only by callers that
-   * classify a patch without pull-request evidence.
+   * The pull request's commit ids (`gh pr view --json commits`), merges
+   * included; null when they could not be read, which fails closed. Omitted
+   * only by callers that classify a patch without pull-request evidence.
    */
-  declaredCommitCount?: number | null;
+  declaredCommits?: readonly string[] | null;
 }
 
 export interface NotApplicableClaim {
@@ -105,7 +117,29 @@ interface ParsedFile {
 }
 
 interface ParsedCommit {
+  sha: string | null;
   attested: boolean;
+  /** `[PATCH i/N]` from the Subject header; null for a bare `[PATCH]`, undefined when absent. */
+  numbering: { index: number; total: number } | null | undefined;
+}
+
+const SUBJECT_NUMBERING = /^Subject: \[PATCH(?: (\d+)\/(\d+))?\]/;
+
+/**
+ * Every boundary is a distinct commit, and `[PATCH i/N]` agrees with the
+ * boundaries actually parsed: git numbers the real commits, so a boundary
+ * forged inside a commit message (format-patch emits bodies verbatim) breaks
+ * the count, whatever headers the forger writes after it.
+ */
+function boundaryProblems(commits: ParsedCommit[]): string[] {
+  const problems: string[] = [];
+  const shas = commits.map((commit) => commit.sha);
+  if (new Set(shas).size !== shas.length) problems.push("the compare patch repeats a commit boundary");
+  const numbered = commits.every((commit, index) => commits.length === 1
+    ? commit.numbering === null || (commit.numbering?.index === 1 && commit.numbering.total === 1)
+    : commit.numbering?.index === index + 1 && commit.numbering.total === commits.length);
+  if (!numbered) problems.push("the compare patch's [PATCH i/N] numbering does not match its commit boundaries, as when a commit message carries a forged boundary");
+  return problems;
 }
 
 export function classifyPatchApplicability(patch: string, evidence: PatchEvidence = {}): PatchApplicability {
@@ -116,13 +150,16 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
   if (declaredFiles.length >= GITHUB_CLI_LIST_CAP) {
     problems.push(`the pull request declares ${declaredFiles.length} files, at the GitHub CLI's ${GITHUB_CLI_LIST_CAP}-file cap, so its file list may be truncated`);
   }
-  if (evidence.declaredCommitCount === null) {
-    problems.push("the pull request's commit count could not be read, so omitted merge commits cannot be ruled out");
-  } else if (evidence.declaredCommitCount !== undefined) {
-    if (evidence.declaredCommitCount >= GITHUB_CLI_LIST_CAP) {
-      problems.push(`the pull request reports ${evidence.declaredCommitCount} commits, at the GitHub CLI's ${GITHUB_CLI_LIST_CAP}-commit cap`);
-    } else if (evidence.declaredCommitCount !== commits.length) {
-      problems.push(`the pull request has ${evidence.declaredCommitCount} commits but the compare patch shows ${commits.length}; GitHub omits merge commits and their conflict resolutions from it`);
+  if (formatPatch) problems.push(...boundaryProblems(commits));
+  if (evidence.declaredCommits === null) {
+    problems.push("the pull request's commits could not be read, so omitted merge commits cannot be ruled out");
+  } else if (evidence.declaredCommits !== undefined) {
+    const declared = evidence.declaredCommits;
+    const shown = commits.map((commit) => commit.sha);
+    if (declared.length >= GITHUB_CLI_LIST_CAP) {
+      problems.push(`the pull request reports ${declared.length} commits, at the GitHub CLI's ${GITHUB_CLI_LIST_CAP}-commit cap`);
+    } else if (new Set(declared).size !== declared.length || declared.length !== shown.length || !declared.every((oid) => shown.includes(oid))) {
+      problems.push(`the pull request's ${declared.length} commits are not exactly the compare patch's ${shown.length}; GitHub omits merge commits and their conflict resolutions from it`);
     }
   }
 
@@ -208,7 +245,7 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
   const files: ParsedFile[] = [];
   const formatPatch = lines.some((line) => FORMAT_PATCH_BOUNDARY.test(line));
   // A plain diff is one commit with no message: nothing in it is attested.
-  if (!formatPatch) commits.push({ attested: false });
+  if (!formatPatch) commits.push({ sha: null, attested: false, numbering: undefined });
   let messageLines: string[] | null = null;
   let current: ParsedFile | null = null;
   let inExtendedHeader = false;
@@ -216,7 +253,13 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
   const finishMessage = () => {
     if (messageLines === null) return;
     const message = messageLines.join("\n");
-    commits[commits.length - 1] = { attested: GOVERNED_ATTESTATIONS.some((pattern) => pattern.test(message)) };
+    const subject = messageLines.find((line) => line.startsWith("Subject: "));
+    const numbering = subject ? SUBJECT_NUMBERING.exec(subject) : null;
+    commits[commits.length - 1] = {
+      ...commits[commits.length - 1],
+      attested: GOVERNED_ATTESTATIONS.some((pattern) => pattern.test(message)),
+      numbering: !numbering ? undefined : numbering[1] ? { index: Number(numbering[1]), total: Number(numbering[2]) } : null
+    };
     messageLines = null;
   };
   const endHunk = () => {
@@ -224,10 +267,11 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
     hunk = null;
   };
   for (const line of lines) {
-    if (FORMAT_PATCH_BOUNDARY.test(line)) {
+    const boundary = FORMAT_PATCH_BOUNDARY.exec(line);
+    if (boundary) {
       endHunk();
       finishMessage();
-      commits.push({ attested: false });
+      commits.push({ sha: boundary[1], attested: false, numbering: undefined });
       messageLines = [];
       current = null;
       inExtendedHeader = false;
@@ -336,7 +380,8 @@ function isGovernedRecordPath(filePath: string): boolean {
     /^docs\/plans\/[^/]+\.md$/.test(filePath);
 }
 
-const PLAN_POINTER = /^current_action: (\S+)$/;
+/** An Action id: a plain slug, never YAML syntax (anchors, aliases, tags, flow or block scalars). */
+const PLAN_POINTER = /^current_action: ([A-Za-z0-9][\w.-]*)$/;
 const UPDATED = /^updated: \d{4}-\d{2}-\d{2}$/;
 const ACTION_STATUS = /^ {4}status: (\S+)$/;
 const ACTION_ID = /^ {2}- id: (\S+)$/;
@@ -375,7 +420,15 @@ function governedShapeViolations(files: ParsedFile[]): Map<string, string> {
       continue;
     }
     if (target === "MISSION_LOG.md") {
-      if (removed.length > 0) violateFile("the Mission Log may only be appended to");
+      // Appends only, at the end of the file. The compare patch carries three
+      // lines of trailing context, so added lines followed by no context are
+      // at the end of the file; a patch made with less context would defeat
+      // this inference, but GitHub's compare patch is not.
+      const trailingOnly = file.hunks.length <= 1 && file.hunks.every((lines) => {
+        const firstAdded = lines.findIndex((line) => line.startsWith("+"));
+        return firstAdded === -1 || lines.slice(firstAdded).every((line) => line.startsWith("+") || line.startsWith("\\"));
+      });
+      if (removed.length > 0 || !trailingOnly) violateFile("the Mission Log may only be appended to, at its end");
       continue;
     }
     const keyOf = (line: string): string | null => PLAN_POINTER.test(line) ? "current_action" : UPDATED.test(line) ? "updated"
@@ -439,8 +492,13 @@ interface PathEntry {
 
 const AUTHORITY_BASENAMES = new Set([
   "constitution.md", "agents.md", "agent.md", "claude.md", "gemini.md", "codex.md", "qwen.md", "warp.md", "crush.md",
-  "opencode.md", "copilot-instructions.md", "conventions.md", "skill.md", "project.md", "mission_log.md", "codeowners"
+  "opencode.md", "copilot-instructions.md", "conventions.md", "skill.md", "project.md", "mission_log.md", "codeowners",
+  "agents.override.md", "claude.local.md", "agent_context_policy.md", "repo-context.md", "notes-to-self.md",
+  // Binding operator and Project documents Arcadia reads or installs.
+  "operator_context.md", "operator-context.md", "north_star.md", "start_here.md", "setup.md", "install_with_a_coding_agent.md"
 ]);
+/** The only documentation under docs/ that is pure prose: dated reports. Every other docs/ document may be binding. */
+const DOCS_PROSE_PREFIXES = ["docs/reports/"];
 const AUTHORITY_PREFIXES = ["docs/agent-guidance/", "docs/decisions/", "docs/plans/", "runs/"];
 const AUTHORITY_PATHS = new Set([
   "docs/agents-context.md", "docs/managed-documents.md", "docs/planning-process.md",
@@ -500,6 +558,9 @@ function classifyPath(filePath: string, entry: PathEntry): PatchFileClassificati
   if (!inertType) return as("unknown", "not on the inert document allowlist");
   if (directories.some((segment) => AGENT_DIRECTORIES.has(segment))) return as("authority", "document inside an agent-instruction directory");
   if (directories.some((segment) => CODE_DIRECTORIES.has(segment))) return as("unknown", "document inside a code directory, which code may load");
+  if (lowered.startsWith("docs/") && !DOCS_PROSE_PREFIXES.some((prefix) => lowered.startsWith(prefix))) {
+    return as("authority", "documentation under docs/ outside the docs/reports/ prose allowlist, which may be binding guidance");
+  }
   return as("inert-document", `.${extension} document`);
 }
 
