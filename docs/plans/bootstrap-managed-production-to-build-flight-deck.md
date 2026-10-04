@@ -3134,6 +3134,25 @@ actions:
     depends_on: [let-production-grant-request-remote-preservation]
     decisions: []
     references: ["src/production/tick.ts", "src/production/sessionHandoff.ts", "src/qa/prReview.ts", "src/sessions/candidatePreservation.ts", "tests/rehearsal-three-action.test.ts", "docs/managed-production-readiness.md"]
+  - id: prepare-three-action-rehearsal-operator-runbooks
+    title: Prepare the bounded G1, G6, G7, and G8 operator-script pairs for the disposable three-Action rehearsal.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prepare the bounded G1, G6, G7, and G8 operator-script pairs for the disposable three-Action rehearsal.
+    expected_artifact: Evidence satisfying Agent Ask prepare-three-action-rehearsal-operator-runbooks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask prepare-three-action-rehearsal-operator-runbooks-2026-10-04
+    acceptance_criteria:
+      - A G1 paired operator descriptor and script accept one exact operator-supplied disposable private GitHub repository identifier, verify it is safe to create or reuse, create only the minimal CI/check-rollup fixture, import and sync one Project with Plan autonomous-three-action-rehearsal and serial Actions write-start-marker, transform-start-marker and verify-final-rehearsal, and never preview or activate production.
+      - "A G6 paired preflight descriptor and script make only bounded observations: current production status/release, Claude worker-context token verdict without token disclosure, Codex capacity evidence, and explicitly authorized GitHub readiness; unknown, stale, paid, or unavailable evidence refuses with a receipt and no activation."
+      - A fresh G7 paired descriptor and script run the hermetic three-Action rehearsal check before a current-revision production preview and one-shot activation; they bind the exact fixture, provider, concurrency one, packet approval expiry, --remote-preservation, and an unexpired Decision 0058 integration Grant naming each Action, and state that they authorize only the reviewed scope, draft preservation, readiness/review integration where the Grant permits, never GitHub merge or base push.
+      - "A G8 paired descriptor and script use only the reviewed host-service path to restore and prove terminal Off: an inactive receipt, zero live admissions and leases across repeated observations, preserved/reconciled committed work, a restart receipt, and an intervention ledger; they never kill a raw PID or discard a candidate."
+      - The pairs have bounded waits, fail-closed preconditions, timestamped receipts and failure handoffs, pass the operator-script checker and focused three-Action/preflight tests, and are independently reviewed at their frozen head before publication; unrelated existing library failures are retained as named blockers rather than weakened or hidden.
+    depends_on: []
+    decisions: []
+    references: ["docs/reports/three-action-managed-production-scope-design-2026-10-02.md", "docs/managed-production-readiness.md", "docs/agent-guidance/operator-actions.md", "tests/rehearsal-three-action.test.ts", "tests/grant-rehearsal-preflight.test.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/923", "https://github.com/pmark/arcadia/issues/925"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
