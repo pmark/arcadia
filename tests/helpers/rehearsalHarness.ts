@@ -928,7 +928,12 @@ export class FakeGitHub {
   private comparePatch(args: string[]): string {
     const range = /\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/.exec(args.find((arg) => arg.includes("/compare/")) ?? "");
     if (!range) throw new Error(`Unexpected gh api call: ${args.join(" ")}`);
-    return git(this.origin, ["format-patch", "--stdout", "--no-signature", `${range[1]}..${range[2]}`]);
+    // Pinned so the host's Git configuration cannot change the patch's headers.
+    return git(this.origin, [
+      "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "-c", "core.quotepath=true", "-c", "diff.renames=true",
+      "-c", "diff.relative=false", "-c", "format.signature=", "-c", "format.numbered=auto", "-c", "color.ui=false",
+      "format-patch", "--stdout", "--no-signature", "--no-color", "--no-ext-diff", `${range[1]}..${range[2]}`
+    ]);
   }
 
   private find(reference: string): FakePullRequest | undefined {
@@ -943,7 +948,13 @@ export class FakeGitHub {
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "view") {
       const pr = this.find(args[2]);
-      return pr ? ok(`${JSON.stringify(this.view(pr))}\n`) : { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      if (args[args.indexOf("--json") + 1] === "commits") {
+        // GitHub's PR commit list, merges included (the compare patch omits them).
+        const oids = git(this.origin, ["rev-list", "--reverse", `${this.headOf(pr.baseBranch)}..${this.headOf(pr.branch)}`]).split("\n").filter(Boolean);
+        return ok(`${JSON.stringify({ commits: oids.map((oid) => ({ oid })) })}\n`);
+      }
+      return ok(`${JSON.stringify(this.view(pr))}\n`);
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "ready") {
       const pr = this.find(args[2]);
