@@ -125,7 +125,11 @@ if RESOLVED="$(arcadia workspace resolve --json 2>/dev/null)" && WORKSPACE="$(jq
   check workspace pass "$WORKSPACE"
 else
   WORKSPACE=""
-  check workspace refuse "the configured default workspace did not resolve to martianrover"
+  if [[ -n "${ARCADIA_WORKSPACE+x}" ]]; then
+    check workspace refuse "ARCADIA_WORKSPACE is set in this shell, so the workspace does not resolve from user config; run 'unset ARCADIA_WORKSPACE' and rerun (set it only inline on the recover-arcadia-host-services command)"
+  else
+    check workspace refuse "the configured default workspace did not resolve from user config to martianrover"
+  fi
 fi
 record_str workspace "$WORKSPACE"
 
@@ -285,7 +289,11 @@ if [[ -n "$WORKSPACE" ]] && CAPACITY="$(probe "$WORKSPACE" < "$RUN_DIR/probe-cod
   else
     check codex_reviewer_profile refuse "no codex-cli profile with a read-only sandbox exists; arcadia qa pr would refuse"
   fi
-  if jq -e '.codex != null and .codex.admitted == true and .codex.freshness == "fresh" and (.codex.confidence == "observed" or .codex.confidence == "attested") and .codex.usagePolicy == "included" and .codex.evidence != "simulated" and .codex.availability != "unavailable"' <<<"$CAPACITY" >/dev/null; then
+  # Enumerated values from src/codingAgents/capacity.ts and availability.ts:
+  # evidence real|simulated; availability available|unknown|usage_limited|budget_limited.
+  # An observation must report the provider available; only an operator
+  # attestation, which carries no provider telemetry, may leave it unknown.
+  if jq -e '.codex != null and .codex.admitted == true and .codex.freshness == "fresh" and (.codex.confidence == "observed" or .codex.confidence == "attested") and .codex.usagePolicy == "included" and .codex.evidence == "real" and (.codex.availability == "available" or (.codex.confidence == "attested" and .codex.availability == "unknown"))' <<<"$CAPACITY" >/dev/null; then
     check codex_capacity pass "fresh $(jq -r '.codex.confidence' <<<"$CAPACITY") included capacity (unattended proof: $(jq -r '.codex.unattendedProof' <<<"$CAPACITY"))"
   else
     check codex_capacity refuse "codex capacity evidence is not fresh, included and available: $(jq -c '.codex | if . == null then "no observation" else {admitted, freshness, confidence, usagePolicy, evidence, availability, reason} end' <<<"$CAPACITY")"
@@ -303,7 +311,9 @@ else
   check github_auth refuse "gh is not authenticated or GitHub is unreachable"
 fi
 if [[ -n "$REPO" && -n "$ROOT_COMMIT" ]] && REPO_VIEW="$(ghx api "repos/$REPO" 2>/dev/null)"; then
-  BRANCH_VIEW="$(ghx api "repos/$REPO/branches/main" 2>/dev/null || echo '{}')"
+  # On an HTTP error gh prints the error body on stdout; discard it rather than
+  # appending a second document to it.
+  BRANCH_VIEW="$(ghx api "repos/$REPO/branches/main" 2>/dev/null)" || BRANCH_VIEW='{}'
   if jq -e '.private == true and .archived == false and .fork == false and (.permissions.push == true or .permissions.admin == true) and .default_branch == "main"' <<<"$REPO_VIEW" >/dev/null \
     && jq -e --arg root "$ROOT_COMMIT" '.commit.sha == $root and .protected == false' <<<"$BRANCH_VIEW" >/dev/null; then
     check github_repository pass "$REPO is private, writable, unprotected, and main is the genesis"
@@ -314,8 +324,13 @@ if [[ -n "$REPO" && -n "$ROOT_COMMIT" ]] && REPO_VIEW="$(ghx api "repos/$REPO" 2
   # Wall-clock bound: each read is capped at 20 seconds and no read starts after the deadline.
   CHECK_DEADLINE=$(( $(date -u +%s) + CHECK_WAIT_SECONDS ))
   while :; do
-    RUNS="$(timeout 20 gh api "repos/$REPO/commits/$ROOT_COMMIT/check-runs" 2>/dev/null || echo '{}')"
-    CHECKS_STATE="$(jq -r 'if (.total_count // 0) == 0 then "none" elif all(.check_runs[]; .status == "completed" and .conclusion == "success") then "success" elif any(.check_runs[]; .status == "completed" and .conclusion != "success") then "failed" else "pending" end' <<<"$RUNS" 2>/dev/null || echo unknown)"
+    # A failed read is "unreadable", never "none": gh's error body on stdout is discarded.
+    if RUNS="$(timeout 20 gh api "repos/$REPO/commits/$ROOT_COMMIT/check-runs" 2>/dev/null)"; then
+      CHECKS_STATE="$(jq -r 'if (.total_count // 0) == 0 then "none" elif all(.check_runs[]; .status == "completed" and .conclusion == "success") then "success" elif any(.check_runs[]; .status == "completed" and .conclusion != "success") then "failed" else "pending" end' <<<"$RUNS" 2>/dev/null)" || CHECKS_STATE=unknown
+      [[ "$CHECKS_STATE" =~ ^(none|success|failed|pending)$ ]] || CHECKS_STATE=unknown
+    else
+      CHECKS_STATE="unreadable (the GitHub check-runs read failed)"
+    fi
     if [[ "$CHECKS_STATE" == success || "$CHECKS_STATE" == failed ]]; then break; fi
     if (( $(date -u +%s) + 15 >= CHECK_DEADLINE )); then break; fi
     sleep 15

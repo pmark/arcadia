@@ -5,13 +5,13 @@
   "script": "recover-arcadia-host-services.sh",
   "repeatable": true,
   "workspace": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover",
-  "problem": "The managed worker may be stopped, the Go-broker profile may be stale, or preservation and Go routing may lack a fresh heartbeat. That prevents safe session-to-session continuation.",
-  "desired_effect": "The managed worker, preservation transport, and Go transport are all freshly verified before Arcadia resumes protected continuation.",
-  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh",
+  "problem": "The managed worker may be stopped, the Go-broker profile may be stale, or preservation and Go routing may lack a fresh heartbeat. That prevents safe session-to-session continuation. The restart implementation behind scripts/services.sh defaults to a workspace that does not exist (workspaces/arcadia), so the restart fails unless ARCADIA_WORKSPACE names the martianrover workspace by its absolute path; the managed launch agents behind /runs do not set it.",
+  "desired_effect": "The managed worker, preservation transport, and Go transport are all freshly verified before Arcadia resumes protected continuation. Run it from a terminal with ARCADIA_WORKSPACE set inline on this one command, never exported in your shell (an exported ARCADIA_WORKSPACE makes the G1, G6, G7 and G8 rehearsal actions refuse, because the workspace then resolves from the environment variable instead of user config): ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run",
+  "operator_command": "ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run",
   "authority": {
     "does": [
       "Refresh the local Go-broker installation",
-      "Restart Arcadia's local managed services",
+      "Restart Arcadia's local managed services for the workspace named by an inline ARCADIA_WORKSPACE (exactly /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover)",
       "Read worker and transport readiness"
     ],
     "never_does": [
@@ -21,10 +21,10 @@
   },
   "success": {
     "effect": "Protected preservation and Go routing are ready for a fresh Arcadia continuation.",
-    "next": "Start a new session and run arcadia advance."
+    "next": "Start a new session and run arcadia advance. Leave ARCADIA_WORKSPACE unexported in your shell."
   },
   "failure": {
     "effect": "The script exits non-zero and writes a failure handoff plus its complete run log under runs/<timestamp-pid>/.",
-    "next": "Give the handoff and run log to Arcadia. A coding agent should diagnose the first failing command and generate a narrower follow-up script only if safe."
+    "next": "Give the handoff and run log to Arcadia. If the log says 'Arcadia workspace not found', rerun exactly: ARCADIA_WORKSPACE=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run (absolute path, inline, never exported). Otherwise a coding agent should diagnose the first failing command and generate a narrower follow-up script only if safe."
   }
 }
