@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "grant-production-three-action-rehearsal-2026-10-04",
+  "kind": "grant",
+  "title": "G7: Grant the disposable three-Action rehearsal (12h; draft PRs, tick reviews, local integration; never GitHub merge)",
+  "script": "grant-production-three-action-rehearsal-2026-10-04.sh",
+  "repeatable": false,
+  "problem": "The installed three-Action rehearsal needs one bounded live authorization: the production tick must preserve each fixture Action to a draft PR, ready it, run both independent reviews and integrate by local fast-forward with no operator step. A generic activation would be too broad, and a stale preview, release or preflight must not be activated.",
+  "desired_effect": "After fail-closed preconditions, a passing G6 receipt no older than 30 minutes bound to the same main, installed release, workspace, fixture and policy revision, and a passing host replay of tests/rehearsal-three-action.test.ts (all three variants including the tick-driven review variant, five-minute bound), preview at the current policy revision and activate only that exact previewed fingerprint, one-shot: Project three-action-rehearsal, Plan autonomous-three-action-rehearsal, Actions write-start-marker, transform-start-marker and verify-final-rehearsal in order, provider claude-code-cli, concurrency one, transitions validation, acceptance, pointer and packet_approval with a 12-hour packet-approval expiry, --remote-preservation, and a 12-hour Decision 0058 integration grant naming each of the three Actions.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-04.sh run",
+  "operator_acknowledgement": "Required before pressing (open question https://github.com/pmark/arcadia/issues/925): the tick pushes the settled head, marks the host-created PR ready and spends reviewer-model tokens only when the policy carries BOTH --remote-preservation AND a current Decision 0058 integration grant naming the Action. Whether Decision 0058 should be read to cover those three effects is not settled. Pressing this Grant is the operator's explicit acknowledgement that, for these three disposable fixture Actions only and until the 12-hour expiry, Decision 0058's grant is being used for them. If you do not accept that reading, do not press; ask for a separate grant option instead.",
+  "authority": {
+    "does": [
+      "Runs only when launched from /runs (exact id and descriptor) outside any agent sandbox",
+      "Requires main clean and level with last-fetched origin/main containing #922 and #924, Decision 0058 approved, an installed broker release that is ready and runtime-identical to main, and fresh host transports",
+      "Requires the G1 fixture clean at its single genesis commit with the exact manifest and origin, production Inactive with zero live admissions, and the latest G6 receipt succeeded, at most 30 minutes old and bound to the same main, release, workspace, fixture and policy revision",
+      "Runs the hermetic three-Action rehearsal on the host before any preview; failure, timeout, a missing tick variant or an agent sandbox prevents activation",
+      "Previews at the current policy revision and activates only that exact scope fingerprint with request id grant-production-three-action-rehearsal-2026-10-04",
+      "Authorizes only the reviewed scope, draft-PR remote preservation, and, where the policy carries both --remote-preservation and the Decision 0058 grant naming the Action, pushing the settled head, readying the host-created PR and running arcadia qa code-review and arcadia qa pr before local fast-forward integration",
+      "Returns only its own Grant to Off if post-activation verification fails, and writes a timestamped receipt and failure handoff"
+    ],
+    "never_does": [
+      "Never authorizes a GitHub merge or a push to any base branch; integration is the local fast-forward and origin main never moves",
+      "Never grants another Project, Plan, Action, provider, transition or a concurrency above one, and never lifts the concurrency gate",
+      "Never launches, terminates or resumes a Session, restarts a service, or reactivates production after Off",
+      "Never reapplies itself: a recorded request id refuses, and the one-shot button stays disabled after success",
+      "Never changes credentials, branch protection, repository settings or any Decision"
+    ]
+  },
+  "success": {
+    "effect": "One scoped, expiring policy is Active whose fingerprint equals the preview; the receipt names the only admitted Actions, the expiry, the installed release and the G6 receipt it relied on.",
+    "next": "Observe the tick admit write-start-marker, then each dependent Action in turn, through production status and the dashboard. When the rehearsal ends or anything looks wrong, run G8 (restore-terminal-off-three-action-rehearsal-2026-10-04)."
+  },
+  "failure": {
+    "effect": "Before activation, policy is unchanged. After a confirmed activation, the script tried to return only its own Grant to Off and records whether that Off was confirmed.",
+    "next": "Do not press again blindly. Read the handoff; if Off was not confirmed run G8 now. Otherwise resolve the named drift, rerun G6 and request a fresh G7."
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "restore-terminal-off-three-action-rehearsal-2026-10-04",
+  "title": "G8: Restore and prove terminal Off after the three-Action rehearsal (governed Off, reviewed restart, no kills)",
+  "script": "restore-terminal-off-three-action-rehearsal-2026-10-04.sh",
+  "repeatable": true,
+  "problem": "When the three-Action rehearsal ends, fails or looks wrong, production must reach a proven terminal Off: no new admission, no live Session or lease, a clean restart through the reviewed host-service path, and every committed candidate accounted for. Killing processes or discarding candidates would lose work and evidence.",
+  "desired_effect": "Turn production Off through arcadia production deactivate (or record that it already was), prove Inactive with zero live admissions and zero prepared or running Sessions across three consecutive bounded observations, restart only through the hash-pinned recover-arcadia-host-services action, prove the same after restart, classify every fixture Session's work as integrated, preserved or empty, and write an inactive receipt, a restart receipt and an intervention ledger.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh run",
+  "authority": {
+    "does": [
+      "Turns any Active production policy Off through arcadia production deactivate with a per-run request id, first, before any other check can delay it, and records which authority it revoked",
+      "Observes production status and a read-only Session database probe every 15 seconds, requiring three consecutive quiet observations within 30 minutes after Off and within 5 minutes after restart; committed work is allowed to finish",
+      "Restarts services only by running recover-arcadia-host-services after verifying its script and descriptor sha256 match the reviewed bytes, with ARCADIA_WORKSPACE set to the resolved martianrover path and a 15-minute bound; that reviewed action reinstalls the broker from clean main and restarts the managed services",
+      "Classifies each fixture Session as integrated, preserved (matching canonical preservation receipt), no committed work, still live, uncommitted changes retained, or committed but unreconciled, and refuses unless every one is integrated, preserved or empty",
+      "Writes inactive-receipt.json, restart-receipt.json, intervention-ledger.jsonl, observation logs, work-reconciliation.jsonl, a timestamped receipt and, on refusal, a failure handoff under runs/<timestamp-pid>/"
+    ],
+    "never_does": [
+      "Never signals, kills or stops a process by PID, and never stops a tmux Session directly",
+      "Never removes, resets, rebases or force-updates a worktree, branch or candidate, and never discards uncommitted changes",
+      "Never turns production back On, reactivates a saved configuration, or presses any Grant",
+      "Never merges, pushes, deploys or changes GitHub, credentials or Decisions",
+      "Never runs an unreviewed restart path: a changed or missing recover-arcadia-host-services refuses"
+    ]
+  },
+  "success": {
+    "effect": "Production is proven Inactive at a stable revision and epoch with zero live admissions and Sessions before and after the reviewed restart, and every fixture candidate is integrated, preserved or empty; the receipts and ledger record each intervention.",
+    "next": "Hand the run directory to the agent assessing prove-installed-three-action-autonomous-rehearsal; leave production Off."
+  },
+  "failure": {
+    "effect": "The handoff states whether Off is confirmed, whether this run restarted services, and which Sessions or candidates remain live or unreconciled; everything was retained untouched.",
+    "next": "If Off is not confirmed, rerun this action or use the dashboard Off switch immediately. Otherwise give the handoff to a coding agent; rerunning is safe."
+  }
+}

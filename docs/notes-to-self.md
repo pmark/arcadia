@@ -286,3 +286,10 @@ Check the clean primary branch, worktree inventory, and local-only commits first
 An `intent: proposal` recovery Ask preserves evidence; accepting it does not execute recovery. Use protected Go first; any manual exception requires explicit operator authority and preservation of every history.
 For the authorized PPN overlap, the merged Plan already contained the beta Action marked done: retain both histories and take the exact landed records, rather than writing new completion state or resetting away commits.
 Keep normal Git hooks enabled. Verify the recovered tree against the landed commit, publish authorized settlements, then rerun protected Go; hand off its exact returned path with `arcadia advance`, model, effort, and required profile.
+
+## Test operator scripts behaviorally outside the agent sandbox
+
+keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitution, receipt, fake gh, fake mise
+
+The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
+Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
