@@ -3155,7 +3155,7 @@ actions:
     references: ["docs/reports/three-action-managed-production-scope-design-2026-10-02.md", "docs/managed-production-readiness.md", "docs/agent-guidance/operator-actions.md", "tests/rehearsal-three-action.test.ts", "tests/grant-rehearsal-preflight.test.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/923", "https://github.com/pmark/arcadia/issues/925"]
   - id: normalize-check-contexts-in-review-readiness
     title: Normalize every pull-request check entry (CheckRun and StatusContext) before classification at every call site, and make advisory bot contexts never gate readiness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Normalize every pull-request check entry (CheckRun and StatusContext) before classification at every call site, and make advisory bot contexts never gate readiness.
@@ -3174,7 +3174,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: normalize-check-contexts-in-review-readiness
+current_action: prove-literal-split-browser-and-ledger
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
