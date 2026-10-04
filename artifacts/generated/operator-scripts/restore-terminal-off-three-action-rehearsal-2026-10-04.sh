@@ -2,8 +2,8 @@
 # G8: restore and prove terminal Off after the three-Action rehearsal. It uses
 # only governed paths: `arcadia production deactivate` for Off and the reviewed,
 # hash-pinned recover-arcadia-host-services action (and its pinned restart
-# implementation) for the restart. This script sends no process signal itself;
-# that reviewed restart path unloads Arcadia's launchd services and may SIGTERM
+# implementation) for the restart. This script sends no signal itself except the
+# SIGTERM a bounded `timeout` sends on expiry; that reviewed restart path unloads Arcadia's launchd services and may SIGTERM
 # Arcadia's own service processes. It never removes a worktree or branch, resets
 # Git, or turns production back on. Committed work is observed, never discarded.
 set -Eeuo pipefail
@@ -84,7 +84,8 @@ on_error() {
     echo "- run log: $LOG"
     echo "- receipt: $RECEIPT"
     echo
-    echo "This script sent no process signal and removed no worktree, branch or candidate; production was not turned back on."
+    echo "This script sent no signal except a bounded timeout's SIGTERM on expiry, removed no worktree, branch or candidate, and did not turn production back on."
+    if [[ "$STAGE" == restart && "${RESTART_EXIT:-0}" == 124 ]]; then echo "The 15-minute restart bound expired mid-restart: Arcadia services may be left STOPPED. Check scripts/services.sh status and rerun this action from a terminal."; fi
     if [[ "$RESTARTED" == true ]]; then echo "The reviewed restart path ran: it unloads Arcadia's launchd services and may SIGTERM Arcadia's own service processes."; fi
     if [[ "$OFF_STATE" == not_owned ]]; then
       echo "Production is Active under a policy G8 does not own (not request id $GRANT_ID with the exact fixture scope). G8 did NOT turn it Off."
@@ -107,10 +108,16 @@ probe() { (cd "$ARCADIA_REPO" && timeout 120 mise exec -- node --import tsx --in
 sha256_of() { if command -v shasum >/dev/null; then shasum -a 256 "$1" | cut -d' ' -f1; else sha256sum "$1" | cut -d' ' -f1; fi; }
 
 echo "== G8: restore and prove terminal Off =="
-# Same launch guards as G7: only the main-library /runs launcher, never an agent sandbox.
+# Launch guards: the main-library /runs launcher (exact id and descriptor), or an
+# interactive host terminal, which is preferred because the restart also restarts
+# the dashboard that runs /runs actions. Never an agent sandbox.
 DESCRIPTOR_PATH="${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}"
-[[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$SCRIPT_ID" && -n "$DESCRIPTOR_PATH" && -f "$DESCRIPTOR_PATH" ]] || refuse "launch this action through the /runs operator-action library"
-[[ "$(cd "$(dirname "$DESCRIPTOR_PATH")" && pwd -P)/$(basename "$DESCRIPTOR_PATH")" == "$SCRIPT_DIR/$SCRIPT_ID.json" ]] || refuse "the launching descriptor is not this action's descriptor"
+if [[ -n "${ARCADIA_OPERATOR_SCRIPT_ID:-}" || -n "$DESCRIPTOR_PATH" ]]; then
+  [[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$SCRIPT_ID" && -n "$DESCRIPTOR_PATH" && -f "$DESCRIPTOR_PATH" ]] || refuse "launched by another operator action; run this one from /runs or a terminal"
+  [[ "$(cd "$(dirname "$DESCRIPTOR_PATH")" && pwd -P)/$(basename "$DESCRIPTOR_PATH")" == "$SCRIPT_DIR/$SCRIPT_ID.json" ]] || refuse "the launching descriptor is not this action's descriptor"
+else
+  [[ -t 0 ]] || refuse "launch this action through /runs or from an interactive host terminal"
+fi
 [[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only action: an agent sandbox may not run it"
 STAGE=preconditions
 for tool in jq mise timeout; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
@@ -291,7 +298,7 @@ record_str fixtureMain "$FIXTURE_MAIN"
 
 STAGE=complete
 REASON=""
-ledger completed "terminal Off proven; this script sent no process signal and only read candidate worktrees and branches"
+ledger completed "terminal Off proven; this script issued no signal of its own beyond bounded timeouts and only read candidate worktrees and branches"
 write_receipt succeeded
 echo "TERMINAL OFF PROVEN: Inactive at revision $OFF_REVISION, zero live admissions and Sessions before and after the reviewed restart; every fixture candidate is integrated, preserved or empty."
 echo "Receipt: $RECEIPT"

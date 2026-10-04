@@ -88,6 +88,12 @@ finish_refused() {
   OFF_RESULT=UNKNOWN
   reconcile_activation
   off="$OFF_RESULT"
+  # The receipt reports what was observed: an unreadable status is not "not activated".
+  case "$off" in
+    returned_off | OFF_FAILED) ACTIVATED=true ;;
+    UNKNOWN) ACTIVATED='"unknown"' ;;
+    *) ACTIVATED=false ;;
+  esac
   record_str offCleanup "$off"
   write_receipt refused
   {
@@ -308,7 +314,7 @@ STAGE=complete
 REASON=""
 record_str authorizes "Only the previewed scope: Project $PROJECT, Plan $PLAN, Actions $ACTION_A, $ACTION_B, $ACTION_C in order; provider $PROVIDER; concurrency 1; validation, acceptance, pointer and packet_approval until $EXPIRES; draft-PR remote preservation; and, if Decision 0058 is accepted for this use (open question #925), pushing the settled head, readying the host-created PR and running both independent reviews before local fast-forward integration until $EXPIRES."
 record_str neverAuthorizes "GitHub merge, a base-branch push, another Project/Plan/Action/provider, concurrency above one, a Session launched by this script, or reactivation after Off."
-record_str operatorAcknowledgement "Pressed after the #925 acknowledgement that opens this Grant's rendered problem statement and first authority entry."
+record_str operatorAcknowledgement "Pressed with the always-visible statement in this Grant's title and effect that pressing accepts Decision 0058 for these three fixture Actions only (#925): readying the PR, pushing the settled head and reviewer-model spend; the full acknowledgement is under 'What this action does'."
 write_receipt succeeded
 cat > "$RUN_DIR/receipt.md" <<EOF
 # G7 three-Action rehearsal Grant receipt
@@ -328,8 +334,9 @@ Within the scope above the policy permits draft preservation and, if Decision
 0058 is accepted for this use (open question #925), PR readiness plus both
 independent reviews before local fast-forward integration; the tick runs those
 only while the policy carries both remote preservation and this Decision 0058
-grant. It never permits a GitHub merge or a base-branch push. The operator
-pressed this Grant after the #925 acknowledgement that opens its rendered
-problem statement. Use G8 for terminal Off.
+grant. It never permits a GitHub merge or a base-branch push. The Grant's
+always-visible title and effect state that pressing accepts Decision 0058 for
+these three fixture Actions only (#925); the operator pressed it. Use G8 for
+terminal Off.
 EOF
 echo "GRANTED: exact three-Action rehearsal scope only, until $EXPIRES. Do not press again. Receipt: $RUN_DIR/receipt.md"

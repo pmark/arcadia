@@ -298,8 +298,8 @@ static safety and refusals against fake CLIs. They are unpublished candidate
 files: none was run, no repository was created and no Grant exists. G6 observes
 Codex capacity ignoring `capacityGateEnabled: false`, so an unmetered-only
 observation refuses as unknown. Whether Decision 0058 covers PR readiness and
-reviewer spend (#925) stays an operator acknowledgement that opens G7's rendered
-problem statement.
+reviewer spend (#925) stays an operator acknowledgement stated in G7's
+always-visible title and effect.
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

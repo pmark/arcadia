@@ -114,6 +114,10 @@ for tool in git jq mise gh timeout node; do command -v "$tool" >/dev/null || ref
 STATUS="$(arcadia production status --json)"
 printf '%s\n' "$STATUS" > "$RUN_DIR/production-status.json"
 jq -e '.ok == true and .data.read.status == "ok"' <<<"$STATUS" >/dev/null || refuse "production status is unreadable; an unreadable store is not a confirmed Off"
+# Import and sync use the CLI's default workspace; it must be the live martianrover workspace.
+WORKSPACE="$(arcadia workspace resolve --json | jq -er '.data | select(.source == "user config") | .workspacePath')" || refuse "the configured default workspace did not resolve"
+[[ "${WORKSPACE##*/}" == martianrover ]] || refuse "the CLI's default workspace is $WORKSPACE, not martianrover; refusing to register the fixture elsewhere"
+record_str workspace "$WORKSPACE"
 POLICY_STATE="$(jq -r '.data.read.policy.desiredState' <<<"$STATUS")"
 [[ "$POLICY_STATE" == inactive ]] || refuse "production must be Inactive while the fixture is prepared; it is $POLICY_STATE"
 record "policyRevisionObserved" "$(jq '.data.read.policy.revision' <<<"$STATUS")"

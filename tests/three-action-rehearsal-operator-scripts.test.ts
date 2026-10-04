@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -186,6 +186,10 @@ describe("three-Action rehearsal operator pairs: contract and static safety", ()
     expect(descriptor.operator_acknowledgement).toBeUndefined();
     expect(descriptor.problem).toMatch(/^OPERATOR ACKNOWLEDGEMENT REQUIRED BEFORE PRESSING .*issues\/925/);
     expect(descriptor.authority.does[0]).toContain("#925");
+    // /runs shows title and desired_effect beside the Run button; problem and the lists are collapsed.
+    expect(descriptor.title).toContain("#925");
+    expect(descriptor.desired_effect).toMatch(/^Pressing accepts Decision 0058 for these three fixture Actions only \(#925\): readying the PR, pushing the settled head and reviewer-model spend/);
+    expect(descriptor.authority.does.join(" ")).toContain("SIGKILL");
     expect(text.split("arcadia production preview").length).toBe(3);
     expect(text.lastIndexOf("arcadia production preview")).toBeLessThan(activate);
     expect(descriptor.authority.never_does.join(" ")).toMatch(/GitHub merge.*base branch/);
@@ -222,6 +226,7 @@ describe("G1 fixture preparation refuses unsafe or missing input with a receipt"
 
   const ready = (repoView: Reply, extra: Replies = {}): Replies => ({
     "arcadia production status": status("inactive"),
+    "arcadia workspace resolve": { stdout: JSON.stringify({ ok: true, data: { source: "user config", workspacePath: "/w/martianrover" } }) },
     "gh api user": { stdout: "pmark\n" },
     "gh repo view": repoView,
     ...extra
@@ -247,6 +252,14 @@ describe("G1 fixture preparation refuses unsafe or missing input with a receipt"
     const box = sandboxFor(G1, ready(view({}), { "gh api user": { stdout: "someone-else\n" } }));
     expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: "pmark/arcadia-three-action-rehearsal" }).status).not.toBe(0);
     expect(box.receipt().json).toMatchObject({ outcome: "refused", stage: "github_identity" });
+  });
+
+  it("refuses before any GitHub call when the CLI's default workspace is not martianrover", () => {
+    const box = sandboxFor(G1, ready(view({}), { "arcadia workspace resolve": { stdout: JSON.stringify({ ok: true, data: { source: "user config", workspacePath: "/w/arcadia" } }) } }));
+    expect(box.run({ ARCADIA_REHEARSAL_GITHUB_REPO: "pmark/arcadia-three-action-rehearsal" }).status).not.toBe(0);
+    expect(box.receipt().json).toMatchObject({ outcome: "refused", stage: "preflight" });
+    expect(box.receipt().json.reason).toContain("not martianrover");
+    expect(box.calls()).not.toMatch(/^gh |"project","import"|"docs","sync"/m);
   });
 
   it("refuses while production is Active", () => {
@@ -712,12 +725,37 @@ describe("G7 Grant previews and activates only the exact bound scope", () => {
     expect(arcadiaCalls(box, "deactivate")).toHaveLength(1);
   });
 
+  it("runs the same cleanup when SIGTERM arrives during activation", async () => {
+    const { box, env } = grantBox();
+    const marker = path.join(box.root, "activate-started");
+    const activated = JSON.stringify({ ok: true, data: { result: { policy: { desiredState: "active", revision: 6, authority: { requestId: G7, scopeFingerprint: "fp-1" } } } } });
+    // The fake activate commits (status reads Active afterwards) and then stalls; bash runs the trap once it returns.
+    override(box, {
+      "arcadia production activate": { exec: `touch ${JSON.stringify(marker)}; sleep 2; printf '%s' '${activated}'` },
+      "arcadia production status": [status("inactive"), status("inactive"), ownActive]
+    });
+    const child = spawn("bash", [path.join(box.scripts, `${G7}.sh`), "run"], {
+      env: { ...process.env, PATH: `${path.join(box.root, "bin")}:${process.env.PATH}`, HOME: box.home, FAKE_ROOT: box.root, ...env, CODEX_SANDBOX: "" },
+      stdio: "ignore"
+    });
+    const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
+    for (let i = 0; i < 300 && !existsSync(marker); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(existsSync(marker)).toBe(true);
+    child.kill("SIGTERM");
+    expect(await exited).not.toBe(0);
+    const { json, handoff } = g7Receipt(box);
+    expect(json.reason).toContain("interrupted by a signal");
+    expect(json).toMatchObject({ outcome: "refused", activated: true, offCleanup: "returned_off" });
+    expect(handoff).toContain("returned only this Grant to Off");
+    expect(arcadiaCalls(box, "deactivate")).toHaveLength(1);
+  });
+
   it("records UNKNOWN and directs G8 when production status cannot be read after a failed activate", () => {
     const { box, env } = grantBox();
     override(box, { "arcadia production activate": { status: 124 }, "arcadia production status": [status("inactive"), status("inactive"), { status: 1, stderr: "database locked" }] });
     expect(box.run(env).status).not.toBe(0);
     const { json, handoff } = g7Receipt(box);
-    expect(json).toMatchObject({ outcome: "refused", stage: "activate", activated: false, offCleanup: "UNKNOWN" });
+    expect(json).toMatchObject({ outcome: "refused", stage: "activate", activated: "unknown", offCleanup: "UNKNOWN" });
     expect(handoff).toContain("may be ACTIVE. Run the G8 terminal-Off action NOW");
     expect(arcadiaCalls(box, "deactivate")).toHaveLength(0);
   });
@@ -848,6 +886,7 @@ describe("G1 creates only the named private repository and reuses it only at gen
   const workItems = ["write-start-marker", "transform-start-marker", "verify-final-rehearsal"].map((a, i) => ({ id: `work_${i}`, doc_ref: `plan/autonomous-three-action-rehearsal#${a}` }));
   const common = (): Replies => ({
     "arcadia production status": status("inactive"),
+    "arcadia workspace resolve": { stdout: JSON.stringify({ ok: true, data: { source: "user config", workspacePath: "/w/martianrover" } }) },
     "gh api user": { stdout: "pmark\n" },
     "gh config get git_protocol": { stdout: "https\n" },
     [`gh api repos/${REPO}/commits/main`]: { exec: ROOT_EXEC },
