@@ -1,12 +1,27 @@
-# Using Arcadia Codex Skills
+# Using Arcadia Skills
 
 These examples show how to use the local Codex skills for real Arcadia work.
 Installed skills are personal agent configuration under `~/.codex/skills/`;
 Arcadia keeps the `arcadia-go` source template in the repository and installs a
 rendered, machine-specific copy.
 
+Repository-owned, agent-neutral skills live in `.agents/skills/`. The entrypoint
+and supporting files stay together so agents can load them directly without
+changing global configuration.
+
 ## Skills
 
+- [`arcadia-github-issues`](../.agents/skills/arcadia-github-issues/SKILL.md):
+  classify the complete issue backlog, reconcile Issues with governed Actions in
+  both directions, and propose evidence-backed closures or coherent repair
+  batches. The first pass classifies all Issues; deep verification focuses on
+  the vital few and leaves the remainder explicitly unknown. GitHub changes and
+  governed corrections remain separately authorized. Use the
+  [OpenCode/DeepSeek handoff prompt](../.agents/skills/arcadia-github-issues/references/opencode-prompt.md)
+  from a fresh session in the repository root. Codex and OpenCode discover the
+  `.agents/skills/` source; Claude Code uses the checked-in `.claude/skills/`
+  symlink. Follow the [installation instructions](../.agents/skills/arcadia-github-issues/references/installation.md)
+  for exact invocation and personal installation across other projects.
 - `arcadia-dogfood-workflow`: use only when explicitly managing the repo-local `.arcadia-workspace/` compatibility workflow.
 - `arcadia-workspace-operator`: use when inspecting or operating any Arcadia workspace.
 - `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.

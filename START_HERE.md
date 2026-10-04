@@ -15,6 +15,14 @@ configured instance; they are not portable installation defaults.
 
 This is the canonical brief operator guide. From an iPhone, iPad, or any device on the tailnet, open **Mission Control** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/> — this is the link that actually works from a phone, verified live rather than assumed. On this Mac only, <http://127.0.0.1:3020/> reaches the same dashboard without going through Tailscale.
 
+To categorize the GitHub backlog and reconcile Issues with governed Actions,
+use the repository-owned [Arcadia GitHub Issues skill](.agents/skills/arcadia-github-issues/SKILL.md).
+Its [OpenCode/DeepSeek prompt](.agents/skills/arcadia-github-issues/references/opencode-prompt.md)
+produces a complete triage report and proposed changes, with bounded validity
+checks. Follow the [installation instructions](.agents/skills/arcadia-github-issues/references/installation.md)
+for Claude Code, OpenCode and Codex;
+triage does not change the Project pointer or apply GitHub updates.
+
 Open **Now** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/now> (on this Mac: <http://127.0.0.1:3020/now>). This is the screen to bookmark. It answers one question — how far away is the single thing that matters, and what is the one next move toward it — and refuses to answer any other. The target, the Project that owns it, and the gates that stand between you and it are declared in `NORTH_STAR.md` at the workspace root; edit that file to change what the screen measures. Below the distance, local Intelligence writes a short, specific account of what actually happened this week from the commit subjects in each Project's repository, followed by the share of the week's commits that landed in the target Project. One action is offered at full size, and one fifteen-minute alternative that is still on the target. The same brief is available in the terminal:
 
 ```bash
