@@ -46,6 +46,37 @@ describe("GET /api/operator-script projects the next-action inputs", () => {
     expect(next).toMatchObject({ status: "next", reason: "window_open", scriptId: "grant-run", deadline: "2026-10-05T15:37:30.000Z" });
   });
 
+  it("keeps the latest succeeded receipt of a one-shot after a later refused run, so G7 stays consumed", async () => {
+    const root = fixtureLibrary();
+    const write = (dir: string, value: Record<string, unknown>) => { mkdirSync(path.join(root, "runs", dir), { recursive: true }); writeFileSync(path.join(root, "runs", dir, "receipt.json"), JSON.stringify(value)); };
+    write("20261005T151511Z-65567", { id: "grant-run", outcome: "succeeded", startedAt: "2026-10-05T15:15:11Z", finishedAt: "2026-10-05T15:17:17Z" });
+    write("20261005T153000Z-70000", { id: "grant-run", outcome: "refused", startedAt: "2026-10-05T15:30:00Z", finishedAt: "2026-10-05T15:30:05Z" });
+    write("20261005T153100Z-70001", { id: "check-host", outcome: "succeeded", startedAt: "2026-10-05T15:31:00Z", finishedAt: "2026-10-05T15:31:20Z" });
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_LIBRARY", root); vi.resetModules();
+    const { GET } = await import("./route");
+    const { scripts } = await (await GET()).json() as { scripts: SequencedScript[] };
+    expect(scripts.find((script) => script.id === "grant-run")?.lastRunReceipt).toMatchObject({ outcome: "refused", succeededAt: "2026-10-05T15:17:17Z" });
+    expect(deriveNextOperatorAction(scripts, { active: false }, Date.parse("2026-10-05T15:32:00Z"))).toMatchObject({ status: "none", message: "Nothing needs you right now." });
+  });
+
+  it("never fails the whole listing when runs/ cannot be read", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-next-action-unreadable-")); roots.push(root);
+    writeFileSync(path.join(root, "solo.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    writeFileSync(path.join(root, "solo.json"), JSON.stringify({ ...base, id: "solo", title: "Solo", script: "solo.sh" }));
+    writeFileSync(path.join(root, "runs"), "not a directory");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_LIBRARY", root); vi.resetModules();
+    const { GET } = await import("./route");
+    const response = await GET();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toHaveProperty("scripts");
+    expect(logged).toHaveBeenCalledWith("Could not read operator run receipts; listing without them.", expect.anything());
+    // The loader itself degrades to no receipts rather than throwing.
+    const { loadLatestRunReceipts } = await import("../../../lib/operatorRunReceipts");
+    await expect(loadLatestRunReceipts(root)).resolves.toEqual(new Map());
+    logged.mockRestore();
+  });
+
   it("lists normally when the library has no runs directory", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-next-action-empty-")); roots.push(root);
     writeFileSync(path.join(root, "solo.sh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });

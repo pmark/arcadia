@@ -7,6 +7,8 @@ export interface RunReceiptSummary {
   outcome: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /** finishedAt (or startedAt) of the latest succeeded receipt for this id, from any run. */
+  succeededAt: string | null;
 }
 
 const RUN_DIRECTORY = /^\d{8}T[0-9A-Za-z-]+$/;
@@ -23,8 +25,9 @@ export async function loadLatestRunReceipts(library: string): Promise<Map<string
   try {
     entries = (await readdir(path.join(library, "runs"))).filter((entry) => RUN_DIRECTORY.test(entry)).sort();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return latest;
-    throw error;
+    // Receipts only inform the next-action panel; an unreadable runs/ must never fail the listing.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error("Could not read operator run receipts; listing without them.", error);
+    return latest;
   }
   const receipts = await Promise.all(entries.map(async (entry) => {
     try {
@@ -38,7 +41,10 @@ export async function loadLatestRunReceipts(library: string): Promise<Map<string
     const id = text(receipt.value.id);
     const outcome = text(receipt.value.outcome);
     if (!id || !outcome) continue;
-    latest.set(id, { runDirectory: `runs/${receipt.entry}`, outcome, startedAt: text(receipt.value.startedAt), finishedAt: text(receipt.value.finishedAt) });
+    const startedAt = text(receipt.value.startedAt);
+    const finishedAt = text(receipt.value.finishedAt);
+    const succeededAt = outcome === "succeeded" ? finishedAt ?? startedAt ?? receipt.entry : latest.get(id)?.succeededAt ?? null;
+    latest.set(id, { runDirectory: `runs/${receipt.entry}`, outcome, startedAt, finishedAt, succeededAt });
   }
   return latest;
 }

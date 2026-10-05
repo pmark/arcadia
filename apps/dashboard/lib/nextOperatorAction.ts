@@ -22,7 +22,7 @@ export interface SequencedScript {
   state: { status: OperatorRunStatus; startedAt?: string; finishedAt?: string };
   failure?: { effect: string; next: string };
   nextAfter?: NextAfterRule | null;
-  lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null } | null;
+  lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null; succeededAt?: string | null } | null;
 }
 
 /** `null` when production status could not be read. */
@@ -35,7 +35,7 @@ export interface NextActionChain {
 }
 
 export type NextOperatorAction =
-  | { status: "none"; message: string; note: string | null }
+  | { status: "none"; message: string; note: string | null; /** True when the next action cannot be known. */ unknown?: boolean }
   | {
       status: "next";
       reason: "window_open" | "prerequisite_expired" | "prerequisite_voided" | "prerequisite_failed" | "dependent_failed";
@@ -96,6 +96,7 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
   const candidates: Array<{ action: Extract<NextOperatorAction, { status: "next" }>; at: number }> = [];
   let running: SequencedScript | null = null;
   let productionActive = false;
+  let productionUnknown = false;
 
   for (const dependent of scripts) {
     const rule = dependent.nextAfter;
@@ -106,7 +107,8 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
     // The chain starts only once its prerequisite has run; until then nothing in it is pending.
     if (!pass || passAt === null) continue;
     const own = lastRun(dependent);
-    if (dependent.state.status === "succeeded" && !dependent.repeatable) continue;
+    // A one-shot that ever succeeded is consumed, even when a later refused press is its latest run.
+    if (!dependent.repeatable && (dependent.state.status === "succeeded" || dependent.lastRunReceipt?.succeededAt)) continue;
     if (own?.status === "succeeded" && (!dependent.repeatable || own.startedAt >= passAt)) continue;
     const prerequisiteRun = lastRun(prerequisite);
     if (own?.status === "running" || prerequisiteRun?.status === "running") { running = own?.status === "running" ? dependent : prerequisite; continue; }
@@ -114,7 +116,9 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
     const chain: NextActionChain = { dependentId: dependent.id, prerequisiteId: prerequisite.id, voidedBy: rule.voided_by ?? [] };
     const d = shortName(dependent.title);
     const p = shortName(prerequisite.title);
-    const note = production === null && rule.when_production === "inactive" ? "Production status could not be read; the action checks it again before it acts." : null;
+    // Unreadable production status is never treated as Off: nothing in a production-bound chain is offered.
+    if (rule.when_production === "inactive" && production === null) { productionUnknown = true; continue; }
+    const note: string | null = null;
 
     if (own?.status === "failed" && own.startedAt >= passAt) {
       candidates.push({ at: own.startedAt, action: { status: "next", reason: "dependent_failed", scriptId: dependent.id, title: dependent.title, deadline: null, chain,
@@ -150,6 +154,7 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
 
   const chosen = candidates.sort((a, b) => RANK[a.action.reason] - RANK[b.action.reason] || b.at - a.at)[0];
   if (chosen) return chosen.action;
+  if (productionUnknown) return { status: "none", unknown: true, message: "Your next action is unknown right now.", note: "Production status could not be read, so steps that need production Off are not offered until it can be read." };
   if (running) return { status: "none", message: "Nothing needs you right now.", note: `${shortName(running.title)} is running; this panel updates when it finishes.` };
   if (productionActive) return { status: "none", message: "Nothing needs you right now.", note: "Production is Active, so the rehearsal steps that need it Off are not offered." };
   return { status: "none", message: "Nothing needs you right now.", note: null };
@@ -189,4 +194,14 @@ export function formatCountdown(deadline: string, now: number): string | null {
   const seconds = Math.ceil(remaining / 1000);
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Reads `/api/production-control?part=core`. Anything but a readable policy
+ * (`read.status === "ok"`) is unknown (`null`), never Off.
+ */
+export function productionObservation(ok: boolean, body: unknown): ProductionObservation {
+  const read = (body as { production?: { read?: { status?: unknown; policy?: { desiredState?: unknown } | null } } } | null)?.production?.read;
+  if (!ok || !read || read.status !== "ok") return null;
+  return { active: read.policy?.desiredState === "active" };
 }

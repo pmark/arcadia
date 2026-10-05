@@ -9,6 +9,7 @@ import {
   formatCountdown,
   formatLocalTime,
   offPathConfirmation,
+  productionObservation,
   shortName,
   type NextAfterRule,
   type NextOperatorAction,
@@ -29,7 +30,7 @@ interface OperatorScript {
   state: { status: ScriptStatus; startedAt?: string; finishedAt?: string; exitCode?: number | null; message?: string; runId?: string };
   failure?: { effect: string; next: string };
   nextAfter?: NextAfterRule | null;
-  lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null } | null;
+  lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null; succeededAt?: string | null } | null;
   modifiedAt: string;
 }
 
@@ -83,9 +84,8 @@ export default function OperatorActionsPage() {
     const load = async () => {
       try {
         const response = await fetch("/api/production-control?part=core", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
-        const body = await response.json() as { production?: { read?: { policy?: { desiredState?: string } | null } } };
-        if (!response.ok || !body.production?.read) throw new Error("Production status unavailable.");
-        if (!disposed) setProduction({ active: body.production.read.policy?.desiredState === "active" });
+        const observation = productionObservation(response.ok, await response.json());
+        if (!disposed) setProduction(observation);
       } catch {
         if (!disposed) setProduction(null);
       }
@@ -270,9 +270,13 @@ function NextActionPanel({ unavailable, next, script, now, launching, onLaunch }
   }
   if (!next) return <div className="mb-6 h-28 animate-pulse rounded-md border-2 border-line bg-panel" aria-hidden="true" />;
   if (next.status === "none" || !script) {
+    const unknown = next.status === "none" && next.unknown === true;
     return (
-      <section aria-label="Do this next" className="mb-6 rounded-md border-2 border-moss/40 bg-moss/5 p-4">
-        <p className="flex items-center gap-2 text-lg font-semibold text-moss"><CheckCircle2 className="h-5 w-5" aria-hidden="true" />Nothing needs you right now.</p>
+      <section aria-label="Do this next" className={`mb-6 rounded-md border-2 p-4 ${unknown ? "border-clay/40 bg-clay/5" : "border-moss/40 bg-moss/5"}`}>
+        <p className={`flex items-center gap-2 text-lg font-semibold ${unknown ? "text-clay" : "text-moss"}`}>
+          {unknown ? <AlertTriangle className="h-5 w-5" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
+          {next.status === "none" ? next.message : "Nothing needs you right now."}
+        </p>
         {next.status === "none" && next.note ? <p className="mt-1 text-sm text-muted">{next.note}</p> : null}
       </section>
     );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveNextOperatorAction, formatCountdown, offPathConfirmation, type SequencedScript } from "./nextOperatorAction";
+import { deriveNextOperatorAction, formatCountdown, offPathConfirmation, productionObservation, type SequencedScript } from "./nextOperatorAction";
 
 const G6 = "preflight-three-action-rehearsal-2026-10-05";
 const G7 = "grant-production-three-action-rehearsal-2026-10-05";
@@ -75,10 +75,39 @@ describe("deriveNextOperatorAction", () => {
     });
   });
 
-  it("waits quietly while a chain member is running and notes an unreadable production status", () => {
+  it("waits quietly while a chain member is running", () => {
     const running = library({ [G7]: { state: { status: "running", startedAt: "2026-10-05T15:10:00.000Z" } } });
     expect(deriveNextOperatorAction(running, inactive, passMs + minutes(3))).toMatchObject({ status: "none", note: expect.stringContaining("G7 (run 2) is running") });
-    expect(deriveNextOperatorAction(library(), null, passMs + minutes(3))).toMatchObject({ status: "next", scriptId: G7, note: expect.stringContaining("could not be read") });
+  });
+
+  it("never offers G6 or G7 while production status is unreadable, and says the next action is unknown", () => {
+    const cases: Array<[SequencedScript[], number]> = [
+      [library(), passMs + minutes(3)],
+      [library(), passMs + minutes(31)],
+      [library({ [G8]: { state: { status: "succeeded", startedAt: "2026-10-05T15:10:00Z" }, lastRunReceipt: null } }), passMs + minutes(5)],
+      [library({ [G6]: { lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:07:13Z", finishedAt: PASS_AT } } }), passMs + minutes(1)],
+      [library({ [G7]: { state: { status: "failed", startedAt: "2026-10-05T15:20:00.000Z" }, lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:20:01Z", finishedAt: "2026-10-05T15:21:00Z" } } }), passMs + minutes(14)]
+    ];
+    for (const [scripts, now] of cases) {
+      const next = deriveNextOperatorAction(scripts, null, now);
+      expect(next).toMatchObject({ status: "none", unknown: true, message: "Your next action is unknown right now.", note: expect.stringContaining("could not be read") });
+    }
+  });
+
+  it("reads production as unknown unless its policy read is ok, never as Off", () => {
+    expect(productionObservation(true, { production: { read: { status: "unavailable", reason: "locked", policy: null } } })).toBeNull();
+    expect(productionObservation(true, { production: { read: { policy: { desiredState: "inactive" } } } })).toBeNull();
+    expect(productionObservation(false, { production: { read: { status: "ok", policy: { desiredState: "inactive" } } } })).toBeNull();
+    expect(productionObservation(true, { error: "cli failed" })).toBeNull();
+    expect(productionObservation(true, { production: { read: { status: "ok", policy: { desiredState: "inactive" } } } })).toEqual({ active: false });
+    expect(productionObservation(true, { production: { read: { status: "ok", policy: { desiredState: "active" } } } })).toEqual({ active: true });
+  });
+
+  it("never offers a one-shot G7 again once any run succeeded, even when a later refused press is its latest run", () => {
+    const consumed = library({ [G7]: {
+      state: { status: "failed", startedAt: "2026-10-05T15:30:00.000Z", finishedAt: "2026-10-05T15:30:05.000Z" },
+      lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:30:01Z", finishedAt: "2026-10-05T15:30:05Z", succeededAt: "2026-10-05T15:17:17Z" } } });
+    expect(deriveNextOperatorAction(consumed, inactive, passMs + minutes(25))).toEqual({ status: "none", message: "Nothing needs you right now.", note: null });
   });
 });
 
