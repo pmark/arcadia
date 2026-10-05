@@ -3675,7 +3675,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: run-multi-workspace-experiment-trial
+current_action: require-inline-workspace-mode
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
