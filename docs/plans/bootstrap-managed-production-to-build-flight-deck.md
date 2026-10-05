@@ -3866,7 +3866,7 @@ actions:
     references: ["src/production/sessionHandoff.ts", "src/commands/preserve.ts", "src/qa/prReview.ts", "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/2"]
   - id: prepare-run-3-rehearsal-scripts
     title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean third rehearsal, without running any of them.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean third rehearsal, without running any of them.
@@ -3900,7 +3900,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-run-3-rehearsal-scripts
+current_action: verify-operator-qa-plan-with-live-qa
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

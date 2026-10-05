@@ -361,6 +361,67 @@ reconciliation and hash pins are unchanged. Operator order: merge this pull
 request → rerun run 1's G8 → reset → recover only if main moved again → G6 →
 G7 within 30 minutes → G8 variant (START_HERE.md lists the commands).
 
+### Three-Action rehearsal run 3 — 2026-10-05 candidate
+
+`prepare-run-3-rehearsal-scripts` drafts the run-3 pairs. None was run; they
+were exercised only with `--describe` and against fakes. Run 2 ended with
+production Inactive at revision 33 and its G8 terminal Off proven (run
+`20261005T160050Z-46759`). Fixture main is run 2's reset head `0d3d2ced…`. Run 2's
+candidate is preserved on branch `claude/write-start-marker-20261005T155147519Z`
+and PR #2 at `7f139037…`, beside run 1's PR #1 at `58bcd915…`. Every
+2026-10-04 and 2026-10-05 pair is retired from use and left byte-unchanged.
+
+- **Reset.** `reset-three-action-rehearsal-fixture-run3-2026-10-05` rewrites
+  write-start-marker's `next_action` a third time. Its input revision moves
+  from `959a3b12c686…` (original) and `7a8dd4f5960f…` (run 2) to a third. An
+  equal `updated:` date applies in docs sync and only an older one is
+  skipped, a rule a test proves with the real docs sync. So the Plan carries the
+  reset's UTC date, and a host date before 2026-10-05 refuses. Before any
+  commit, the reset also runs a read-only dry-run docs sync against the live
+  workspace, which must report the Action as an update. A test proves the
+  same-day sync reopens the record run 2 left `done`. The new text also names
+  the completion request id `complete-write-start-marker-run3-2026-10-05`,
+  because the packet template's `complete-<action-id>-<date>` would reuse run
+  2's settled id on 2026-10-05 and stall completion. The reset refuses if that
+  id is already used.
+- **Issue #968.** In run 2, run 1's pending complete proposal naming the
+  Action made `resolveProjectTransition` answer `decision` for 33 minutes, and
+  nothing launched. The reset reads the gate through Arcadia's own
+  `resolveOperatorGate`. It refuses on any pending fixture proposal or
+  Decision except run 2's `complete-write-start-marker-2026-10-05`, which must
+  match the descriptor's `agentAsk` declaration. Live, the tick accepted that
+  one on run 2's candidate branch (fixture main untouched), so it no longer
+  gates and the reset leaves it as it is. Only if it were still pending would
+  the reset reject it through `arcadia agent-ask settle --disposition
+  rejected`, preview then apply with that fingerprint, with
+  `ARCADIA_WORKSPACE` inline on that one command, before the commit; the
+  preview must write no document and place no queue entry. In every case the
+  gate must then read clear.
+- **Evidence.** The receipt records the new head, all six candidate tips
+  before and after, and the superseded proposal with its fingerprint.
+  `tests/rehearsal-run-3-amended-action.test.ts` proves the dispatch path with
+  the real transition resolver and tick. With both earlier lineages present,
+  the pending proposal blocks dispatch. After the rejection the run-3 input
+  launches as development ordinal 1.
+- **G6, G7 and G8.** The run-3 G6 and G7 bind the run-3 reset head: one commit
+  on run 2's head, two on genesis. G6 adds the read-only `operator_gate` check.
+  G7 is the run-2 G7 line for line apart from ids, binding and wording, which a
+  test compares, and it carries the `next_after` hint. The run-3 G8 also owns
+  the run-3 request id. Its reconciliation and hash pins are byte-identical to
+  run 2's.
+- **Order.** PR #969 merged and reinstalled → merge this pull request → reset →
+  recover only if main moved on a runtime path → G6 → freeze (no push to main,
+  reinstall, restart or G8) → G7 within 30 minutes → G8 from the Terminal panel
+  or `/runs`.
+- **Run 3 evidence to capture.** Keep the live QA reviewer's verdict on the
+  "Operator QA plan" criterion for the run's pull request
+  (`artifacts/qa/pull-requests/.../qa-report.md`). It proves the remainder
+  Action `verify-operator-qa-plan-with-live-qa`.
+
+Live state reported before the run: run 2's proposal is accepted, run 1's is
+rejected, and `arcadia advance` answers `launch` for the fixture. The reset
+re-reads all of this itself and refuses on any other pending fixture item.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`

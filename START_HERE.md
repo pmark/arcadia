@@ -115,6 +115,62 @@ G1's genesis. Run these in order, each from a terminal unless noted:
    the run-2 (or run-1) G7 policy with the exact fixture scope, and otherwise
    behaves exactly as the merged 2026-10-04 G8.
 
+**Rehearsal run 3** reuses the same fixture from run 2's reset head
+`0d3d2ced…`. Every 2026-10-04 and 2026-10-05 pair is retired from use. Their
+files are unchanged, and their G6 and G7 refuse the run-3 head anyway. Run these
+in order:
+
+1. Prerequisite, done by another session: the Operator QA plan fix (PR #969)
+   is merged and the broker reinstalled from it. Then merge the run-3 pull
+   request. It touches no runtime path, so it needs no reinstall of its own.
+2. Reset the fixture from a terminal, exactly:
+
+   ```sh
+   ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004 /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run3-2026-10-05.sh run
+   ```
+
+   `reset-three-action-rehearsal-fixture-run3-2026-10-05` is one-shot. It
+   requires run 2's G8 terminal Off (run `20261005T160050Z-46759` or a later
+   success). It also requires fixture main at run 2's reset head, and run 1's
+   and run 2's branches and PRs #1 and #2 at `58bcd915…` and `7f139037…`,
+   before and after. It changes only write-start-marker's `next_action` (and
+   the Plan date when run after 2026-10-05). A pending Agent Ask naming that
+   Action silently stops dispatch (#968): run 1's pending one stalled run 2.
+   The reset refuses on any pending proposal or Decision for the fixture except
+   run 2's `complete-write-start-marker-2026-10-05`. The tick accepted that one
+   on run 2's candidate branch, so live it no longer gates, and the reset
+   leaves it as it is. Were it still pending, the reset would reject it
+   through the governed two-phase settle before its commit; a rerun recognizes
+   a landed rejection. Either way the gate must then read clear. The new
+   `next_action` also tells the agent to record completion under the unused
+   request id `complete-write-start-marker-run3-2026-10-05`. The usual
+   `complete-<action-id>-<date>` would reuse run 2's settled id on 2026-10-05,
+   which discovery skips and preview refuses. The reset refuses if that id is
+   already used. A same-day docs sync reopens the record run 2 left `done`,
+   as a test proves.
+3. If Arcadia main moved on a runtime path since the last install, run
+   `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
+4. Run the run-3 G6 `preflight-three-action-rehearsal-run3-2026-10-05`. It is
+   read-only, binds the run-3 reset head and checks that nothing pending gates
+   a fixture Action. **Freeze from here until the G7 press:** nothing may push
+   to Arcadia main, reinstall, restart services or run any G8. G7 needs G6's
+   `arcadiaHead` and `brokerRevision` to still match. Run 2's G6 had to be
+   rerun twice: once after a governed settle commit moved main, once after an
+   accidental G8 press reinstalled the broker.
+5. Within 30 minutes of that G6, press the run-3 G7
+   `grant-production-three-action-rehearsal-run3-2026-10-05` from `/runs`.
+6. After the run, run the run-3 G8
+   `restore-terminal-off-three-action-rehearsal-run3-2026-10-05` from the
+   Terminal panel (or `/runs`). Never use a non-interactive shell: it refuses
+   with "launch this action through /runs or from an interactive host
+   terminal". It turns Off only the run-3, run-2 or run-1 G7 policy with the
+   exact fixture scope.
+
+Run 3 evidence to capture: the live QA reviewer's verdict on the "Operator QA
+plan" criterion for the run's pull request, in
+`artifacts/qa/pull-requests/.../qa-report.md`. It proves the remainder Action
+`verify-operator-qa-plan-with-live-qa`.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every
