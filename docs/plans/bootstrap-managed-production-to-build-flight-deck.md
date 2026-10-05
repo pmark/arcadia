@@ -3849,19 +3849,19 @@ actions:
     references: ["apps/dashboard/app/actions", "apps/dashboard/app/runs", "apps/dashboard/app/api/operator-script/route.ts", "artifacts/generated/operator-scripts/"]
   - id: add-operator-qa-plan-to-preserved-pr-body
     title: Give every host-preserved candidate pull request a concrete, runnable Operator QA plan derived from its Action, so independent QA can judge it instead of failing on a one-line placeholder.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Give every host-preserved candidate pull request a concrete, runnable Operator QA plan derived from its Action, so independent QA can judge it instead of failing on a one-line placeholder.
+    next_action: Render a deterministic Operator QA plan into every host-preserved candidate pull request body, with tests.
     expected_artifact: Evidence satisfying Agent Ask add-operator-qa-plan-to-preserved-pr-body
     clarification: clarified
     confidence: high
-    source: Agent Ask add-operator-qa-plan-to-preserved-pr-body-2026-10-05
+    source: Agent Ask split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05-r2
     acceptance_criteria:
       - "The host preservation path (src/production/sessionHandoff.ts qaPlan and any other place a preserved candidate pull request body is written, such as src/commands/preserve.ts) renders a deterministic 'Operator QA plan' section from the Action's declared acceptance criteria and the candidate's changed files: for each criterion a concrete step (what to open, run or inspect, using exact paths, branch and commit) and its observable expected result, plus the Action id, candidate commit and base; it is built only from governed records and Git facts, never from model output, escapes Markdown safely, stays within GitHub's body limits, and keeps QA's no-not-applicable rule unchanged."
-      - "A read-only smoke runs `arcadia qa pr`'s evidence assembly (or the reviewer it launches, with only GitHub writes stubbed) against rehearsal run 2's PR #2 exact patch at 7f139037 with the newly rendered body substituted, without editing PR #2 or the fixture, and records whether the 'Operator QA plan' criterion now passes, with its output attached to the pull request."
       - "Hermetic tests cover rendering for one and several criteria, inert-document and code patches, Markdown injection in criterion text, long bodies, and an Action with no criteria (which refuses rather than writing a placeholder); focused suites, lint, tsc, pnpm build, the preservation self-check and check:agent-guidance pass."
     depends_on: []
+    split_into: [verify-operator-qa-plan-with-live-qa]
     decisions: []
     references: ["src/production/sessionHandoff.ts", "src/commands/preserve.ts", "src/qa/prReview.ts", "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/2"]
   - id: prepare-run-3-rehearsal-scripts
@@ -3881,6 +3881,21 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-2026-10-05.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-05.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-05.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-05.sh", "tests/three-action-rehearsal-run-2-operator-scripts.test.ts", "tests/rehearsal-run-2-amended-action.test.ts", "src/sessions/roleLineage.ts", "https://github.com/pmark/arcadia/issues/968", "https://github.com/pmark/arcadia/issues/940"]
+  - id: verify-operator-qa-plan-with-live-qa
+    title: Prove with the configured independent QA reviewer that the rendered Operator QA plan passes its criterion on a real preserved pull request.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Prove with the configured independent QA reviewer that the rendered Operator QA plan passes its criterion on a real preserved pull request.
+    expected_artifact: Evidence satisfying Agent Ask verify-operator-qa-plan-with-live-qa
+    clarification: clarified
+    confidence: high
+    source: Agent Ask split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05-r2
+    acceptance_criteria:
+      - "A read-only smoke runs `arcadia qa pr`'s evidence assembly (or the reviewer it launches, with only GitHub writes stubbed) against rehearsal run 2's PR #2 exact patch at 7f139037 with the newly rendered body substituted, without editing PR #2 or the fixture, and records whether the 'Operator QA plan' criterion now passes, with its output attached to the pull request."
+    depends_on: []
+    decisions: []
+    references: []
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
