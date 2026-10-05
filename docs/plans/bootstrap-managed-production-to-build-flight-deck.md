@@ -3640,7 +3640,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: run-multi-workspace-experiment-trial
+current_action: keep-exempt-commands-out-of-activity-log
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
