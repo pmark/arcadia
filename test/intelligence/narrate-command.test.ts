@@ -2,11 +2,15 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runIntelligenceNarrateCommand } from "../../src/commands/narrate.js";
+import { parseIssueCommentary, runIntelligenceNarrateCommand } from "../../src/commands/narrate.js";
+import { createSqliteIntelligenceJobRepository } from "../../src/intelligence/db/sqliteRepository.js";
+import { submitIntelligenceRequest } from "../../src/intelligence/service/jobService.js";
 import {
+  buildIntelligenceRequest,
   closeServer,
   createTempWorkspace,
   makeWavFixture,
+  openWorkspaceDatabase,
   removeWorkspace,
   startFakeOpenAiSpeech,
 } from "./testSupport.js";
@@ -117,5 +121,64 @@ describe("intelligence narrate command", () => {
       runIntelligenceNarrateCommand({ workspace, text: "hello", voiceId: "arcadia.nonexistent", out }),
     ).rejects.toThrow();
     expect(existsSync(out)).toBe(false);
+  });
+
+  it("executes only its own submitted job, leaving an unrelated queued job untouched", async () => {
+    const workspace = newWorkspace();
+    const { server, baseUrl } = await startFakeOpenAiSpeech({ wavBytes: makeWavFixture({ seconds: 0.2 }) });
+    servers.push(server);
+    vi.stubEnv("ARCADIA_LITELLM_BASE_URL", baseUrl);
+
+    // Seed an unrelated queued job, as a live workspace's Intelligence queue
+    // legitimately may hold. The narration must not claim and run it.
+    const seedDb = openWorkspaceDatabase(workspace);
+    const seedRepo = createSqliteIntelligenceJobRepository(seedDb);
+    const unrelated = await submitIntelligenceRequest(
+      seedRepo,
+      buildIntelligenceRequest({ operationId: "other-app.queued" }),
+    );
+    seedDb.close();
+
+    const response = await runIntelligenceNarrateCommand({
+      workspace,
+      text: "hello",
+      out: path.join(workspace, "own.wav"),
+    });
+    expect(response.data.chunkCount).toBe(1);
+    expect(response.data.jobIds).not.toContain(unrelated.job.id);
+
+    const checkDb = openWorkspaceDatabase(workspace);
+    const checkRepo = createSqliteIntelligenceJobRepository(checkDb);
+    const after = await checkRepo.findById(unrelated.job.id);
+    checkDb.close();
+    expect(after?.status).toBe("queued");
+  });
+});
+
+describe("parseIssueCommentary", () => {
+  it("maps the gh JSON payload and falls back for missing fields", () => {
+    const issue = parseIssueCommentary(
+      JSON.stringify({
+        number: 12,
+        title: "Hello",
+        body: null,
+        comments: [
+          { body: "First", author: { login: "alice" } },
+          { body: null, author: null },
+        ],
+      }),
+      999,
+    );
+    expect(issue.number).toBe(12);
+    expect(issue.title).toBe("Hello");
+    expect(issue.body).toBeNull();
+    expect(issue.comments).toEqual([
+      { body: "First", author: { login: "alice" } },
+      { body: "", author: null },
+    ]);
+  });
+
+  it("throws on unreadable JSON", () => {
+    expect(() => parseIssueCommentary("not json", 1)).toThrow();
   });
 });

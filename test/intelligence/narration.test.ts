@@ -87,13 +87,23 @@ describe("stripMarkdownForSpeech", () => {
     );
   });
 
-  it("drops fenced code blocks and quote/list markers", () => {
+  it("unwraps fenced code blocks but keeps their words, and drops quote/list markers", () => {
     const speech = stripMarkdownForSpeech(
       "Intro.\n\n```\nsecret command\n```\n\n> quoted\n\n- item one\n- item two",
     );
-    expect(speech).not.toContain("secret command");
+    expect(speech).toContain("secret command");
+    expect(speech).not.toContain("```");
     expect(speech).toContain("quoted");
     expect(speech).toContain("item one");
+  });
+
+  it("keeps intra-word underscores (snake_case) while stripping emphasis", () => {
+    const speech = stripMarkdownForSpeech("Call snake_case_helper and use _emphasis_ and **bold**.");
+    expect(speech).toContain("snake_case_helper");
+    expect(speech).toContain("emphasis");
+    expect(speech).toContain("bold");
+    expect(speech).not.toContain("_emphasis_");
+    expect(speech).not.toContain("**bold**");
   });
 });
 
@@ -112,6 +122,20 @@ describe("formatIssueCommentary", () => {
     expect(text).toContain("Message 1, from Claudia Mason. First idea.");
     expect(text).not.toContain("claudia.mason@agents.arcadia.local");
     expect(text).toContain("Message 2, from pmark. Second idea.");
+  });
+
+  it("does not mistake a Markdown list item containing angle brackets for a signature", () => {
+    const text = formatIssueCommentary({
+      number: 7,
+      title: "T",
+      body: null,
+      comments: [
+        { author: { login: "pmark" }, body: "Steps:\n- wrap the block in <div>\n- call snake_case_helper\n- done" },
+      ],
+    });
+    expect(text).toContain("Message 1, from pmark.");
+    expect(text).toContain("wrap the block in <div>");
+    expect(text).toContain("snake_case_helper");
   });
 });
 

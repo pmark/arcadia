@@ -175,29 +175,46 @@ export function formatIssueCommentary(issue: NarrationIssueInput): string {
 
   issue.comments.forEach((comment, index) => {
     const speaker = lastSignatureName(comment.body) ?? comment.author?.login ?? "unattributed";
-    const spoken = stripMarkdownForSpeech(stripSignatureLines(comment.body));
+    const spoken = stripMarkdownForSpeech(stripTrailingSignature(comment.body));
     parts.push(`Message ${index + 1}, from ${speaker}. ${spoken}`.trim());
   });
 
   return parts.join("\n\n");
 }
 
+// An agent signature is an em/en dash followed by a name and angle-bracket
+// address, e.g. "— Claudia Mason <claudia.mason@agents.arcadia.local>". The
+// dash must be an em/en dash — a plain "-" is a Markdown list item, and a list
+// item that happens to contain "<...>" must never be mistaken for a signature.
+const SIGNATURE_LINE = /^\s*[—–]\s*(.+?)\s*<[^>]+>\s*$/;
+
+/** The name from a comment's trailing signature block, if it ends with one. */
 function lastSignatureName(body: string): string | undefined {
   const lines = body.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
-    const match = lines[i].match(/^\s*[—–-]{1,2}\s*(.+?)\s*<[^>]+>\s*$/);
-    if (match) {
-      return match[1].trim();
+    if (lines[i].trim() === "") {
+      continue;
     }
+    const match = lines[i].match(SIGNATURE_LINE);
+    return match ? match[1].trim() : undefined;
   }
   return undefined;
 }
 
-function stripSignatureLines(body: string): string {
-  return body
-    .split("\n")
-    .filter((line) => !/^\s*[—–-]{1,2}\s*.+?<[^>]+>\s*$/.test(line))
-    .join("\n");
+/** Removes only a trailing signature block, never a mid-body matching line. */
+function stripTrailingSignature(body: string): string {
+  const lines = body.split("\n");
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].trim() === "") {
+    end--;
+  }
+  if (end > 0 && SIGNATURE_LINE.test(lines[end - 1])) {
+    end--;
+    while (end > 0 && lines[end - 1].trim() === "") {
+      end--;
+    }
+  }
+  return lines.slice(0, end).join("\n");
 }
 
 /**
@@ -208,7 +225,9 @@ function stripSignatureLines(body: string): string {
  */
 export function stripMarkdownForSpeech(text: string): string {
   return text
-    .replaceAll(/```[\s\S]*?```/g, " ")
+    // Unwrap fenced code blocks but keep their words: a podcast should not
+    // silently drop a paragraph just because it was fenced.
+    .replaceAll(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
     .replaceAll(/`([^`]+)`/g, "$1")
     .replaceAll(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replaceAll(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -217,7 +236,11 @@ export function stripMarkdownForSpeech(text: string): string {
     .replaceAll(/^\s{0,3}(?:[-*+]|\d+\.)\s+/gm, "")
     .replaceAll(/^\s*\|?[\s:|-]+\|[\s:|-]*$/gm, " ")
     .replaceAll("|", ", ")
-    .replaceAll(/(\*\*|__|\*|_)/g, "")
+    // Strip emphasis markers only when they wrap content. A lone "*" or "_"
+    // inside a word (snake_case) is not emphasis and must survive.
+    .replaceAll(/\*\*(?=\S)([\s\S]*?)(?<=\S)\*\*/g, "$1")
+    .replaceAll(/__(?=\S)([\s\S]*?)(?<=\S)__/g, "$1")
+    .replaceAll(/(?<![A-Za-z0-9_])[*_](?=\S)([^*_]*?)(?<=\S)[*_](?![A-Za-z0-9_])/g, "$1")
     .replaceAll(/[ \t]+\n/g, "\n")
     .replaceAll(/\n{3,}/g, "\n\n")
     .replaceAll(/[ \t]{2,}/g, " ")

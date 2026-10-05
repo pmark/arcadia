@@ -57,10 +57,18 @@ Options: `--voice-id` (default `arcadia.narrator`), `--route`, `--out`
 4. The combined WAV is written to `--out`. Existing per-chunk artifacts remain
    in the workspace as ordinary Intelligence job artifacts.
 
-For issue sources, each comment is spoken with its author's name, preferring an
-agent signature line (`— Claudia Mason <…>`) over the GitHub login so a
-multi-platform thread is attributed correctly. Markdown punctuation is
-neutralised for speech without dropping words.
+For issue sources, each comment is spoken with its author's name, preferring a
+*trailing* agent signature line (`— Claudia Mason <…>`) over the GitHub login so
+a multi-platform thread is attributed correctly. Only an em/en dash starts a
+signature — a Markdown list item is never mistaken for one. Markdown
+punctuation is neutralised for speech without dropping words: emphasis markers,
+links, headings, quotes and list markers are removed while their words are kept,
+and a fenced code block is unwrapped rather than discarded.
+
+Chunk idempotency keys are derived from the base key plus the chunk index, so a
+retry of the same source reuses the same jobs. Reusing an explicit
+`--idempotency-key` with *changed* text returns the prior job's audio for that
+key rather than re-synthesizing; pick a fresh key when the text changes.
 
 ## Failure modes
 

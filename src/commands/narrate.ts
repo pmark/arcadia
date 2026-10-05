@@ -23,7 +23,6 @@ import {
 import { parseWavMetadata } from "../intelligence/speech/wavMeta.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
 import type {
-  IntelligenceJob,
   IntelligenceRequest,
   IntelligenceSpeechGenerationResult,
 } from "../intelligence/types.js";
@@ -131,12 +130,15 @@ export async function runIntelligenceNarrateCommand(
         idempotencyKey: `${baseKey}-${String(index + 1).padStart(3, "0")}`,
       });
       const { job: submitted } = await submitIntelligenceRequest(repository, request);
-      const finished = await worker.runOnce();
-      const job = finished?.id === submitted.id ? finished : await repository.findById(submitted.id);
+      // Claim exactly this chunk's job. `runOnce` would claim the oldest queued
+      // job in the workspace, which could be another app's or a leftover — wrong
+      // work executed, and this chunk left queued.
+      const job = await worker.runJob(submitted.id);
       if (!job) {
         throw new ArcadiaError(
           "UNEXPECTED_ERROR",
-          `Narration chunk ${index + 1}/${chunks.length} was not found after submission (${submitted.id}).`,
+          `Narration chunk ${index + 1}/${chunks.length} could not be claimed ` +
+            `(job ${submitted.id}); it may be leased by another worker.`,
           1,
           { jobId: submitted.id },
         );
@@ -278,14 +280,8 @@ export function fetchIssueCommentary(issueRef: string, repo?: string): Narration
     );
   }
 
-  let parsed: {
-    number?: number;
-    title?: string;
-    body?: string | null;
-    comments?: Array<{ body?: string | null; author?: { login?: string } | null }>;
-  };
   try {
-    parsed = JSON.parse(result.stdout) as typeof parsed;
+    return parseIssueCommentary(result.stdout, number);
   } catch (error) {
     throw new ArcadiaError(
       "UNEXPECTED_ERROR",
@@ -294,10 +290,23 @@ export function fetchIssueCommentary(issueRef: string, repo?: string): Narration
       { repository, number },
     );
   }
+}
 
+/**
+ * Parses the `gh issue view --json number,title,body,comments` payload into the
+ * narration input shape. Pure and exported so its shape handling is tested
+ * without invoking `gh`.
+ */
+export function parseIssueCommentary(raw: string, fallbackNumber: number): NarrationIssueInput {
+  const parsed = JSON.parse(raw) as {
+    number?: number;
+    title?: string;
+    body?: string | null;
+    comments?: Array<{ body?: string | null; author?: { login?: string } | null }>;
+  };
   return {
-    number: parsed.number ?? number,
-    title: parsed.title ?? `Issue ${number}`,
+    number: parsed.number ?? fallbackNumber,
+    title: parsed.title ?? `Issue ${fallbackNumber}`,
     body: parsed.body ?? null,
     comments: (parsed.comments ?? []).map((comment) => ({
       author: comment.author?.login ? { login: comment.author.login } : null,
@@ -351,7 +360,5 @@ function buildNarrationRequest(input: {
 }
 
 function timestamp(): string {
-  return new Date().toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z");
+  return new Date().toISOString().replaceAll(/[-:.]/g, "");
 }
-
-export type { IntelligenceJob };
