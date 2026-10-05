@@ -2401,6 +2401,27 @@ Together with the cwd-aware launcher above, this is what lets you run many
 projects at once without either losing track of which one you are talking to
 or quietly accumulating a mess you cannot safely see through.
 
+### Ask an agent for something now, without derailing the Plan
+
+You can tell any agent session, in its chat, to do a specific piece of work
+right away, even when no Plan holds it yet. The agent runs it as an
+**operator-directed track**:
+
+- It works in its own fresh worktree and does not touch the active Plan, its
+  current Action, or the queue. `arcadia go` sessions keep going.
+- It records your request as a one-Action inactive Plan,
+  `docs/plans/operator-directed-*.md`, in the same PR. The PR closes that
+  Plan with completion evidence, so the work leaves a trace and nothing
+  dispatches from it.
+- Your request covers the work itself. It does not cover merging, deploying,
+  spending, credentials or messaging. Those still come to you as Decisions,
+  and a PR that changes what agents are allowed to do still waits for your
+  merge.
+- The agent honors the rehearsal freeze window and any hold another session
+  asked for. Its handoff tells you what it held back.
+
+The full procedure is `docs/agent-guidance/operator-directed-work.md`.
+
 ## Answering Decisions
 
 Arcadia separates approval Decisions from clarification Decisions:
