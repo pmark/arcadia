@@ -97,8 +97,9 @@ G1's genesis. Run these in order, each from a terminal unless noted:
    attempt lineage. It validates with Arcadia's own code before its one commit,
    pushes fixture main without force, runs docs sync and records the new
    fixture head. It never touches production, Grants, the other Actions,
-   run 1's branch `claude/write-start-marker-20261004T170245861Z` or PR #1. All
-   three must stay at `58bcd915…` before and after.
+   run 1's branch `claude/write-start-marker-20261004T170245861Z` or PR #1. The
+   local branch, the GitHub branch and the PR #1 head must all stay at
+   `58bcd915…` before and after.
 3. If Arcadia main moved on a runtime path after step 1, run
    `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
 4. Run the run-2 G6 `preflight-three-action-rehearsal-2026-10-05`. It binds the

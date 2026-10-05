@@ -174,7 +174,7 @@ function recoverTerminalHandoff(
     if (action?.status === "done") continue;
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
-      log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
       continue;
     }
     pending.push(session);

@@ -9,8 +9,8 @@ import { discoverDocs } from "../src/docs/discover.js";
 import type { PlanActionDoc } from "../src/docs/types.js";
 import { developmentLineageRemedy } from "../src/production/tick.js";
 import { allocateSessionRoleAttempt, latestRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
-import type { AgentSession } from "../src/sessions/index.js";
-import { beginDevelopmentAttempt, planDevelopmentAttempt, requirementIdentity } from "../src/sessions/roleLineage.js";
+import { getActiveActionClaim, releaseSupersededActionClaim, type AgentSession } from "../src/sessions/index.js";
+import { beginDevelopmentAttempt, planDevelopmentAttempt, requirementIdentity, sessionDevelopedForSupersededInput } from "../src/sessions/roleLineage.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 
@@ -208,6 +208,46 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     expect(git(run1.worktree_path, ["status", "--porcelain"]).trim()).toBe("");
     expect(claimOf(rehearsal, run1.worktree_path)).toEqual({ action_id: null, claim_generation: null });
     expect(withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(run1.id))).toEqual({ status: run1.status });
+  });
+
+  it("releases run 1's claim and skips its handoff only for a finished, clean, preserved candidate of a superseded input", () => {
+    const { rehearsal, run1 } = afterRun1();
+    const held = () => withDatabase(rehearsal.workspace, (db) => getActiveActionClaim(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a", rehearsal.now));
+    const superseded = () => withDatabase(rehearsal.workspace, (db) => sessionDevelopedForSupersededInput(db, run1, rehearsal.repo));
+    const tryRelease = () => withDatabase(rehearsal.workspace, (db) => releaseSupersededActionClaim(db, held()!));
+    expect(held()).not.toBeNull();
+    // The current input: its candidate still claims both.
+    expect(superseded()).toBe(false);
+    expect(tryRelease()).toBe(false);
+    amend(rehearsal);
+    const sql = (statement: string, ...args: unknown[]) => withDatabase(rehearsal.workspace, (db) => db.prepare(statement).run(...args));
+    // A live holder keeps the claim.
+    sql("UPDATE agent_sessions SET status = 'running' WHERE id = ?", run1.id);
+    expect(tryRelease()).toBe(false);
+    sql("UPDATE agent_sessions SET status = ? WHERE id = ?", run1.status, run1.id);
+    // A passed attempt settled by another Session is not this candidate's own.
+    const attempt = rehearsal.attempts("write-marker-a")[0];
+    sql("UPDATE session_role_attempts SET terminal_receipt_json = ? WHERE id = ?", JSON.stringify({ ...JSON.parse(attempt.terminal_receipt_json ?? "{}"), sessionId: "session_other" }), attempt.id);
+    expect(superseded()).toBe(false);
+    expect(tryRelease()).toBe(false);
+    sql("UPDATE session_role_attempts SET terminal_receipt_json = ? WHERE id = ?", attempt.terminal_receipt_json, attempt.id);
+    // An unpreserved candidate gets its preservation first.
+    const preserved = withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT * FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${run1.id}`) as Record<string, unknown>);
+    expect(preserved).toBeTruthy();
+    sql("UPDATE candidate_preservation_receipts SET request_id = ? WHERE request_id = ?", `moved-${run1.id}`, `worker-tick-preserve-${run1.id}`);
+    expect(superseded()).toBe(false);
+    expect(tryRelease()).toBe(false);
+    sql("UPDATE candidate_preservation_receipts SET request_id = ? WHERE request_id = ?", `worker-tick-preserve-${run1.id}`, `moved-${run1.id}`);
+    // A dirty worktree keeps the claim.
+    writeFileSync(path.join(run1.worktree_path, "unsaved.md"), "uncommitted\n");
+    expect(superseded()).toBe(true);
+    expect(tryRelease()).toBe(false);
+    rmSync(path.join(run1.worktree_path, "unsaved.md"));
+    expect(held()).not.toBeNull();
+    // Finished, clean, preserved and superseded: released, fenced on its generation.
+    expect(tryRelease()).toBe(true);
+    expect(held()).toBeNull();
+    expect(git(rehearsal.repo, ["rev-parse", `refs/heads/${run1.branch}`]).trim()).toBeTruthy();
   });
 
   it("keeps run 1's claim, and dispatches nothing, while its worktree holds uncommitted work", () => {

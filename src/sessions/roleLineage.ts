@@ -89,13 +89,21 @@ export function requirementForSession(repoRoot: string, session: Pick<AgentSessi
  * Such a candidate can never integrate: no verdict binds it to the current
  * input. It stays preserved exactly as it is, but it no longer claims the
  * repository's terminal handoff or the Action, so the amended Action can be
- * dispatched under its fresh lineage. A Session with no passed development
- * attempt of its own (a failed one, or one from before attempt lineage
- * existed) keeps the earlier behaviour.
+ * dispatched under its fresh lineage. Only a candidate the worker already
+ * preserved (a canonical `worker-tick-preserve-<session>` receipt) qualifies,
+ * so an unpreserved one still gets its preservation attempt first. A Session
+ * with no passed development attempt of its own (a failed one, or one from
+ * before attempt lineage existed) keeps the earlier behaviour. If the Action
+ * were later amended back to exactly the old input, such a candidate would
+ * read as current again with its claim already released; amendments only
+ * move forward in practice, and integration still needs current verdicts.
  */
 export function developedForSupersededInput(db: Database.Database, session: Pick<AgentSession, "id" | "project_slug" | "plan_slug" | "action_id">, action: PlanActionDoc | undefined): boolean {
   if (!action) return false;
-  if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_role_attempts'").get()) return false;
+  const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_role_attempts', 'candidate_preservation_receipts')")
+    .all() as Array<{ name: string }>).map((row) => row.name));
+  if (!tables.has("session_role_attempts") || !tables.has("candidate_preservation_receipts")) return false;
+  if (!db.prepare("SELECT 1 FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${session.id}`)) return false;
   const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
   const own = (db.prepare(`SELECT input_revision, terminal_receipt_json FROM session_role_attempts
     WHERE requirement_id = ? AND role = 'development' AND status = 'passed'`).all(requirement.requirementId) as Array<{ input_revision: string; terminal_receipt_json: string | null }>)

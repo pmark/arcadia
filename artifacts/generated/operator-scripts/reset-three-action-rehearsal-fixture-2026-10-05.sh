@@ -269,6 +269,12 @@ record_str prStateBefore "$PR_STATE"
 # Arcadia's real discovery, a dry-run docs sync in a throwaway workspace,
 # resolveReadySet and requirementIdentity, before any commit or push.
 STAGE=render_amendment
+# Resuming a reset commit made on an earlier UTC date renders with that
+# commit's own date, so the resumed commit is compared byte for byte.
+if [[ "$LOCAL_MAIN" != "$GENESIS" && "$(fx rev-parse "$LOCAL_MAIN^" 2>/dev/null)" == "$GENESIS" && "$(fx log -1 --format=%s "$LOCAL_MAIN")" == "$RESET_SUBJECT" ]]; then
+  COMMIT_DATE="$(fx show "$LOCAL_MAIN:$PLAN_FILE" 2>/dev/null | grep -- "$DATE_LINE_PATTERN" | head -n 1 || true)"
+  [[ -n "$COMMIT_DATE" ]] && RESET_DATE="${COMMIT_DATE#updated: }"
+fi
 BEFORE_DIR="$RUN_DIR/.fixture-genesis"
 AMEND_DIR="$RUN_DIR/.fixture-amended"
 mkdir -p "$BEFORE_DIR" "$AMEND_DIR"
@@ -418,10 +424,7 @@ is_reset_commit() {
     && [[ "$(fx rev-parse "$commit^" 2>/dev/null)" == "$GENESIS" ]] \
     && [[ "$(fx log -1 --format=%s "$commit")" == "$RESET_SUBJECT" ]] \
     && [[ "$(fx diff --name-only "$GENESIS" "$commit")" == "$PLAN_FILE" ]] \
-    && others <(fx show "$GENESIS:$PLAN_FILE") > "$RUN_DIR/.genesis-others" \
-    && others <(fx show "$commit:$PLAN_FILE") > "$RUN_DIR/.commit-others" \
-    && cmp -s "$RUN_DIR/.genesis-others" "$RUN_DIR/.commit-others" \
-    && [[ "$(fx show "$commit:$PLAN_FILE" | grep -cxF -- "$NEW_NEXT_ACTION")" == 1 ]]
+    && [[ "$(fx rev-parse "$commit:$PLAN_FILE")" == "$AMENDED_BLOB" ]]
 }
 if [[ "$LOCAL_MAIN" == "$GENESIS" && "$REMOTE_MAIN" == "$GENESIS" ]]; then
   RESET_STATE=at_genesis
@@ -450,7 +453,7 @@ if [[ "$RESET_STATE" == at_genesis ]]; then
     -m "Rewrites only write-start-marker's next_action so its requirement input revision changes; acceptance criteria, the other Actions and the run-1 candidate are unchanged."
   LOCAL_COMMITTED=true
   LOCAL_MAIN="$(fx rev-parse refs/heads/main)"
-  is_reset_commit "$LOCAL_MAIN" && [[ "$(fx rev-parse "$LOCAL_MAIN:$PLAN_FILE")" == "$AMENDED_BLOB" ]] || refuse "the new fixture commit is not exactly the validated amendment on genesis"
+  is_reset_commit "$LOCAL_MAIN" || refuse "the new fixture commit is not exactly the validated amendment on genesis"
 fi
 NEW_HEAD="$LOCAL_MAIN"
 record_str newHead "$NEW_HEAD"
@@ -475,9 +478,10 @@ SYNC="$(arcadia docs sync --project "$FIXTURE_PROJECT" --apply --json)" || SYNC=
 printf '%s\n' "$SYNC" > "$RUN_DIR/docs-sync.json"
 jq -e '.ok == true and .data.errorCount == 0' <<<"$SYNC" >/dev/null 2>&1 || refuse "docs sync reported errors although the amended fixture validated before the push; see $RUN_DIR/docs-sync.json"
 # The Actions must actually sync: a skipped change would leave the old text in the workspace.
-jq -e --arg ref "plan/$FIXTURE_PLAN#$ACTION_A" '[.data.projects[].changes[] | select(.entity == "action")] as $actions
+# "unchanged" is accepted only when resuming a pushed reset an earlier run already synced.
+jq -e --arg ref "plan/$FIXTURE_PLAN#$ACTION_A" --arg state "$RESET_STATE" '[.data.projects[].changes[] | select(.entity == "action")] as $actions
   | ($actions | map(select(.action == "skipped")) | length) == 0
-  and ([$actions[] | select(.ref == $ref) | .action] | length == 1 and (.[0] == "update" or .[0] == "unchanged"))' <<<"$SYNC" >/dev/null \
+  and ([$actions[] | select(.ref == $ref) | .action] | length == 1 and (.[0] == "update" or (.[0] == "unchanged" and $state == "pushed")))' <<<"$SYNC" >/dev/null \
   || refuse "docs sync did not apply $ACTION_A's amended text (an Action change was skipped or missing); see $RUN_DIR/docs-sync.json"
 WORK="$(arcadia work list --json)"
 for action in "$ACTION_A" "$ACTION_B" "$ACTION_C"; do

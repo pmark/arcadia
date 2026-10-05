@@ -308,8 +308,10 @@ describe("run-2 operator pairs: contract and static safety", () => {
     expect(descriptor.repeatable).toBe(false);
     expect(descriptor.kind).toBeUndefined();
     const text = source(RESET);
-    const pushes = text.split("\n").filter((line) => /\bgit\b.*\bpush\b/.test(line) && !line.trim().startsWith("#") && !line.includes("echo"));
+    // Through git itself or the script's `fx` (git -C fixture) wrapper.
+    const pushes = text.split("\n").filter((line) => /(\bgit\b|\bfx\b).*\bpush\b/.test(line) && !line.trim().startsWith("#") && !line.includes("echo") && !/refuse "/.test(line));
     expect(pushes).toEqual(['  timeout 120 git -C "$FIXTURE_REPO" push -q origin refs/heads/main:refs/heads/main']);
+    expect(text).not.toMatch(/\bfx\s+push\b/);
     const validation = text.indexOf('< "$RUN_DIR/validate-amendment.mjs"');
     expect(validation).toBeGreaterThan(-1);
     expect(validation).toBeLessThan(text.indexOf("commit -q -m"));
@@ -412,6 +414,21 @@ describe("the reset refuses unsafe input and unsafe state before any commit or p
     expect(box.calls()).not.toMatch(/production","(preview|activate|deactivate)|"pr",|"pulls\/1","-X"/);
   });
 
+  it("refuses a resume whose reset commit differs from the validated render by even one byte", () => {
+    const { box, genesis } = resetBox();
+    expect(box.run(RESET, { ...resetEnv, FAKE_PUSH_FAIL: "1" }).status).not.toBe(0);
+    // Rewrite the unpushed commit with an extra blank line in the Plan (same subject, same parent).
+    const file = path.join(box.fixture, PLAN_FILE);
+    writeFileSync(file, readFileSync(file, "utf8") + "\n");
+    git(box.fixture, ["-c", "user.name=t", "-c", "user.email=t@t.test", "commit", "-q", "--amend", "--no-edit", "-a"]);
+    const tampered = git(box.fixture, ["rev-parse", "HEAD"]);
+    box.patchReplies({ [`gh api repos/${REPO}/commits/main`]: { stdout: `${genesis}\n` } });
+    expect(box.run(RESET, resetEnv).status).not.toBe(0);
+    expect(box.receipt(RESET).json).toMatchObject({ outcome: "refused", stage: "fixture_state" });
+    expect(box.pushes()).toHaveLength(1);
+    expect(git(box.fixture, ["rev-parse", "HEAD"])).toBe(tampered);
+  });
+
   it("refuses when fixture main moved by another path, naming the recovery and never rewriting history", () => {
     const { box } = resetBox();
     writeFileSync(path.join(box.fixture, "MARKER.md"), "three-action rehearsal start\n");
@@ -510,9 +527,13 @@ describe("the reset commits one validated line, pushes it without force, syncs d
     expect(git(box.fixture, ["rev-parse", "HEAD"])).toBe(head);
   });
 
-  it("resumes a reset commit whose push failed by re-validating that exact commit and pushing it", () => {
+  it("resumes a reset commit whose push failed by re-validating that exact commit and pushing it, even on a later UTC date", () => {
     const { box, genesis } = resetBox();
+    // The failed first run happened on another UTC date than the resume.
+    box.rebind(RESET, [['RESET_DATE="$(date -u +%F)"', 'RESET_DATE="2099-01-01"']]);
     expect(box.run(RESET, { ...resetEnv, FAKE_PUSH_FAIL: "1" }).status).not.toBe(0);
+    box.rebind(RESET, [['RESET_DATE="2099-01-01"', 'RESET_DATE="$(date -u +%F)"']]);
+    expect(git(box.fixture, ["show", `HEAD:${PLAN_FILE}`])).toContain("\nupdated: 2099-01-01\n");
     const first = box.receipt(RESET);
     expect(first.json).toMatchObject({ outcome: "refused", stage: "push", fixtureCommitted: true, resetState: "at_genesis" });
     expect(readFileSync(path.join(first.dir, "failure-handoff.md"), "utf8")).toContain("Fixture state found at the start of this run: at_genesis.");
@@ -522,7 +543,7 @@ describe("the reset commits one validated line, pushes it without force, syncs d
     box.patchReplies({ [`gh api repos/${REPO}/commits/main`]: [{ stdout: `${genesis}\n` }, { stdout: `${head}\n` }] });
     const second = box.run(RESET, resetEnv);
     expect(second.status, second.stdout + second.stderr).toBe(0);
-    expect(box.receipt(RESET).json).toMatchObject({ outcome: "succeeded", resetState: "committed_unpushed", newHead: head, previousMain: genesis, fixtureCommitted: false, githubRepositoryChanged: true });
+    expect(box.receipt(RESET).json).toMatchObject({ outcome: "succeeded", resetState: "committed_unpushed", newHead: head, previousMain: genesis, fixtureCommitted: false, githubRepositoryChanged: true, planUpdated: "2099-01-01" });
     expect(git(box.fixture, ["rev-parse", "HEAD"])).toBe(head);
     expect(box.pushes()).toHaveLength(2);
   });
