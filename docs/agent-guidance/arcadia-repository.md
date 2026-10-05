@@ -207,7 +207,16 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   `--workspace <exp>` on that one command. Never `export` it in a shell and never
   make it the default (`config set defaultWorkspace` refuses): the four live
   launchd services follow the user config default, and the restart script
-  follows `ARCADIA_WORKSPACE`.
+  follows `ARCADIA_WORKSPACE`. **A command run with no inline workspace is a
+  command against the live workspace**: it resolves the user config default
+  (`martianrover`) and, like every recorded command, writes an
+  `activity_events` row there. The commands classified `exempt` in
+  `COMMAND_CLASSIFICATION` (they read no workspace state: `init`, `config get
+  defaultWorkspace`, `identity resolve|roster`, `workspace
+  resolve|guard|leak-check`, `audit host-preview`, `agent-ask contract`, `pr
+  code-review`, `tidy list|undo`, `triggers`, `docket`, `plans` and
+  `operator-task *`) record nothing and open no workspace database to do so;
+  `tests/activity-no-record-commands.test.ts` fails when one does.
 - **Register only disposable fixtures** under `<exp>/projects/`, and give them
   no Git remote. Registration (Project metadata, `blog configure-site
   --content-repo-path`, `rebuster configure --repo-path`) refuses any other path,
@@ -242,13 +251,26 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   launchers and managed skills, and the `com.arcadia.*` launch agents. Any change
   exits with `WORKSPACE_LEAK_DETECTED`; attribute it (another agent may have
   settled in the live workspace) before calling it a leak, and stop the trial if
-  it is one. A snapshot that could not read the live database (for example a
+  it is one. It also records two **attributed** fields that never fail the check
+  by themselves: `liveActivity` (the live `activity_events` row count and newest
+  row, read-only) and `liveRefs` (the live repository's heads, remotes, tags and
+  `refs/codex/*` by name and target; the live workspace's registered Arcadia
+  repository, or `--live-repo <path>`). Other agents and the operator move both
+  constantly, so `data.attributed` and the human output list each change for
+  you to attribute: a new row whose command you ran uninlined, or a ref your
+  session created, is your leak. A snapshot that could not read the live database (for example a
   sandboxed read-only open) exits with `LEAK_CHECK_UNVERIFIABLE` and never
   passes: rerun it where the database is readable.
 - **Measure contention** from `activity_events.error_code` (`SQLITE_BUSY*`,
   `QUEUE_REVISION_CONFLICT`, `STALE_PREVIEW_FINGERPRINT`, `DIRTY_CHECKOUT`, or
-  the CLI code): `sqlite3 -readonly <db> "SELECT command, error_code, COUNT(*)
-  FROM activity_events WHERE outcome = 'error' GROUP BY 1, 2 ORDER BY 3 DESC"`.
+  the CLI code): `sqlite3 'file:<exp>/database/arcadia.sqlite3?mode=ro&immutable=1'
+  "SELECT command, error_code, COUNT(*) FROM activity_events WHERE outcome =
+  'error' GROUP BY 1, 2 ORDER BY 3 DESC"`. A plain `mode=ro` (or `-readonly`)
+  open fails with error 14 on a fresh experiment database that has no `-shm`
+  file yet; `immutable=1` reads it without creating one. `immutable=1` skips
+  locking and the WAL, so use it only on a quiescent experiment database, never
+  to read the live one (`workspace leak-check` reads it read-only and records
+  nothing).
 - **Rollback** only when the operator says so: confirm a clean leak check and that
   no launch agent, user config or trust entry names the workspace, then remove
   its directory.

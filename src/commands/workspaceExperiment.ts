@@ -5,10 +5,12 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { isGuardedOperation, refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import {
+  compareAttributedFields,
   compareLeakSnapshots,
   parseLeakSnapshot,
   takeLeakSnapshot,
   unverifiableReason,
+  type AttributedChange,
   type LeakChange,
   type LeakSnapshot
 } from "../workspace/leakCheck.js";
@@ -19,16 +21,25 @@ export interface LeakCheckData {
   recordedTo: string | null;
   baseline: string | null;
   changes: LeakChange[] | null;
+  /**
+   * Changes in the attributed fields (live activity rows, live repository
+   * refs) since the baseline. Never a leak by themselves: attribute each one.
+   */
+  attributed: AttributedChange[] | null;
 }
+
+export const ATTRIBUTION_NOTE =
+  "Attributed fields, not a leak by themselves: other agents and the operator settling, pushing or running commands against the live workspace change them; attribute each change before calling it a leak.";
 
 /**
  * `arcadia workspace leak-check`: take the snapshot, optionally record it,
  * and optionally compare it with an earlier one. Any change against the
  * baseline fails the command, so a script can stop a trial on it.
  */
-export function runLeakCheckCommand(options: { record?: string; baseline?: string; live?: string }): CommandSuccess<LeakCheckData> {
-  const snapshot = takeLeakSnapshot({ liveWorkspace: options.live });
+export function runLeakCheckCommand(options: { record?: string; baseline?: string; live?: string; liveRepo?: string }): CommandSuccess<LeakCheckData> {
+  const snapshot = takeLeakSnapshot({ liveWorkspace: options.live, liveRepo: options.liveRepo });
   let changes: LeakChange[] | null = null;
+  let attributed: AttributedChange[] | null = null;
   let baselineSnapshot: LeakSnapshot | null = null;
   if (options.baseline) {
     const baselinePath = path.resolve(options.baseline);
@@ -43,6 +54,7 @@ export function runLeakCheckCommand(options: { record?: string; baseline?: strin
     }
     baselineSnapshot = parseLeakSnapshot(raw, baselinePath);
     changes = compareLeakSnapshots(baselineSnapshot, snapshot);
+    attributed = compareAttributedFields(baselineSnapshot, snapshot);
   }
   const recordedTo = options.record ? path.resolve(options.record) : null;
   if (recordedTo) {
@@ -62,6 +74,7 @@ export function runLeakCheckCommand(options: { record?: string; baseline?: strin
         reason: unverifiable,
         recordedTo,
         changes,
+        attributed,
         remedy: "Run it where the live workspace database is readable (for example outside the agent sandbox), or name it with --live."
       }
     );
@@ -71,17 +84,17 @@ export function runLeakCheckCommand(options: { record?: string; baseline?: strin
       "WORKSPACE_LEAK_DETECTED",
       `Leak check found ${changes.length} change(s) to shared state since the baseline.`,
       1,
-      { baseline: path.resolve(options.baseline as string), changes, recordedTo }
+      { baseline: path.resolve(options.baseline as string), changes, attributed, attributionNote: ATTRIBUTION_NOTE, recordedTo }
     );
   }
   return createSuccess({
     command: "workspace.leak-check",
-    data: { snapshot, recordedTo, baseline: options.baseline ? path.resolve(options.baseline) : null, changes }
+    data: { snapshot, recordedTo, baseline: options.baseline ? path.resolve(options.baseline) : null, changes, attributed }
   });
 }
 
 export function renderLeakCheckSuccess(response: CommandSuccess<LeakCheckData>): string[] {
-  const { snapshot, recordedTo, baseline, changes } = response.data;
+  const { snapshot, recordedTo, baseline, changes, attributed } = response.data;
   const live = snapshot.liveWorkspace;
   const lines = [
     `Live workspace: ${live.path ?? "not configured"}${live.error ? ` (${live.error})` : ""}`,
@@ -92,6 +105,28 @@ export function renderLeakCheckSuccess(response: CommandSuccess<LeakCheckData>):
   ];
   if (recordedTo) lines.push(`Recorded: ${recordedTo}`);
   if (baseline) lines.push(changes && changes.length === 0 ? `No change since ${baseline}.` : `Compared with ${baseline}.`);
+  lines.push("", ...renderAttributed(snapshot, attributed));
+  return lines;
+}
+
+function renderAttributed(snapshot: LeakSnapshot, attributed: AttributedChange[] | null): string[] {
+  const activity = snapshot.liveActivity;
+  const refs = snapshot.liveRefs;
+  const lines = [
+    activity && !activity.error
+      ? `Live activity rows: ${activity.rowCount}  newest rowid ${activity.newestRowid ?? "none"}${activity.newestCommand ? ` (${activity.newestCommand} at ${activity.newestOccurredAt})` : ""}`
+      : `Live activity rows: unknown${activity?.error ? ` (${activity.error})` : ""}`,
+    refs && !refs.error && refs.counts
+      ? `Live repository refs: ${refs.repo}  heads ${refs.counts.heads}, remotes ${refs.counts.remotes}, tags ${refs.counts.tags}, refs/codex ${refs.counts.codex}  (${short(refs.hash)})`
+      : `Live repository refs: unknown${refs?.error ? ` (${refs.error})` : ""}`,
+    ATTRIBUTION_NOTE
+  ];
+  if (attributed) {
+    lines.push(attributed.length === 0
+      ? "No attributed change since the baseline."
+      : `Attributed changes since the baseline (${attributed.length}):`);
+    for (const change of attributed) lines.push(`  ${change.field}: ${change.before ?? "none"} -> ${change.after ?? "none"}`);
+  }
   return lines;
 }
 

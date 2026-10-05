@@ -3622,7 +3622,7 @@ actions:
     references: []
   - id: keep-exempt-commands-out-of-activity-log
     title: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
@@ -3640,7 +3640,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: keep-exempt-commands-out-of-activity-log
+current_action: run-multi-workspace-experiment-trial
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

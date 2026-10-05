@@ -503,7 +503,7 @@ import {
   writeSuccess
 } from "./cli/response.js";
 import { loadUserConfig, readExperimentWorkspace, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
-import { guardCommandInvocation } from "./workspace/experimentGuard.js";
+import { commandKey, guardCommandInvocation, recordsActivity } from "./workspace/experimentGuard.js";
 import { activityErrorCode } from "./activity/errorCodes.js";
 import {
   renderLeakCheckSuccess,
@@ -536,6 +536,15 @@ interface WorkspaceResolveData {
 function resolveAskFileOption(input: string): string {
   return input.trim() ? resolveInvocationPath(input) : input;
 }
+
+/**
+ * The registry path (`config get defaultWorkspace`) of the command whose action
+ * is about to run, set by the preAction hook so `runCliAction` decides whether
+ * to record from the same classification table as the guard. Declared above
+ * `buildProgram` because the main-module parse runs during module evaluation,
+ * before any later `let` is initialized.
+ */
+let invokedCommandKey: string | null = null;
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -650,12 +659,13 @@ export function buildProgram(): Command {
   addJsonOption(
     workspace
       .command("leak-check")
-      .description("Snapshot what an experiment workspace must never change (live Project count and queue revision, host config hashes, Arcadia launch agents); read-only and unrecorded")
+      .description("Snapshot what an experiment workspace must never change (live Project count and queue revision, host config hashes, Arcadia launch agents), plus attributed live activity rows and repository refs; read-only and unrecorded")
       .option("--record <file>", "Write the snapshot to this file")
       .option("--baseline <file>", "Compare with an earlier snapshot; any change fails the command")
       .option("--live <path>", "Live workspace to read (default: the user config defaultWorkspace, never ARCADIA_WORKSPACE)")
-  ).action((options: { record?: string; baseline?: string; live?: string; json?: boolean }) =>
-    runCliAction("workspace.leak-check", options, () => runLeakCheckCommand(options), renderLeakCheckSuccess, { recordActivity: "never" })
+      .option("--live-repo <path>", "Live repository whose refs to list (default: the live workspace's registered Arcadia Project repository)")
+  ).action((options: { record?: string; baseline?: string; live?: string; liveRepo?: string; json?: boolean }) =>
+    runCliAction("workspace.leak-check", options, () => runLeakCheckCommand(options), renderLeakCheckSuccess)
   );
   addJsonOption(
     workspace
@@ -668,8 +678,7 @@ export function buildProgram(): Command {
       "workspace.guard",
       options,
       () => runWorkspaceGuardCommand({ operation, workspace: options.workspace }),
-      renderWorkspaceGuardSuccess,
-      { recordActivity: "errors" }
+      renderWorkspaceGuardSuccess
     )
   );
 
@@ -4631,6 +4640,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   // runs before every action, and allowed commands pass without resolving
   // anything (src/workspace/experimentGuard.ts).
   program.hook("preAction", (_program, actionCommand) => {
+    invokedCommandKey = commandKey(actionCommand);
     const verdict = guardCommandInvocation(actionCommand);
     if (!verdict) return;
     recordCliActivity({
@@ -4879,14 +4889,16 @@ async function runCliAction<TData>(
   command: string,
   options: { workspace?: string; json?: boolean },
   action: () => CommandSuccess<TData> | Promise<CommandSuccess<TData>>,
-  renderHuman: HumanRenderer<TData>,
-  // "never" is for observers that must not write the workspace they observe
-  // (the leak check reads the live workspace); "errors" skips routine passes.
-  settings: { recordActivity?: "always" | "errors" | "never" } = {}
+  renderHuman: HumanRenderer<TData>
 ): Promise<void> {
   const context = { json: Boolean(options.json) };
   const startedAt = Date.now();
-  const recordActivity = settings.recordActivity ?? "always";
+  // Decided before anything resolves a workspace: an exempt command reads no
+  // workspace state, and recording it would resolve one just for the row,
+  // which with nothing inline is the live default (src/workspace/experimentGuard.ts).
+  const key = invokedCommandKey ?? command.replaceAll(".", " ");
+  invokedCommandKey = null;
+  const recordActivity = recordsActivity(key);
 
   try {
     const response = await action();
@@ -4894,7 +4906,7 @@ async function runCliAction<TData>(
     // Every surface reaches Arcadia through this one function, so recording
     // here is the whole of the interaction log — no per-command wiring, and
     // nothing that can drift out of date as commands are added.
-    if (recordActivity === "always") {
+    if (recordActivity) {
       recordCliActivity({
         command,
         workspace: response.workspace ?? options.workspace,
@@ -4907,7 +4919,7 @@ async function runCliAction<TData>(
     const normalized = normalizeError(error);
     writeFailure(createFailure(command, normalized, options.workspace ? path.resolve(options.workspace) : undefined), context);
     process.exitCode = normalized.exitCode;
-    if (recordActivity !== "never") {
+    if (recordActivity) {
       recordCliActivity({
         command,
         workspace: options.workspace,

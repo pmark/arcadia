@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import os from "node:os";
@@ -16,6 +17,12 @@ import { getWorkspacePaths } from "./paths.js";
  * It is strictly an observer. The live database is opened read-only, the
  * configuration files are reduced to SHA-256 hashes (their content is never
  * stored or printed), and the CLI wrapper records no activity row.
+ *
+ * Two further fields are attributed rather than compared as leaks: the live
+ * workspace's activity rows and the live repository's refs. Other agents and
+ * the operator move both all the time (every command against the live
+ * workspace records a row; every push, fetch or settlement moves a ref), so a
+ * change there is evidence to attribute, never by itself a leak.
  */
 export interface LeakSnapshot {
   schema: "arcadia-leak-check-v1";
@@ -58,7 +65,51 @@ export interface LeakSnapshot {
   goBroker: Record<string, string>;
   /** `~/Library/LaunchAgents/com.arcadia.*.plist` file name → sha256 of its bytes. */
   launchAgents: Record<string, string>;
+  /**
+   * Attributed, never a leak by itself: the live `activity_events` row count
+   * and newest row, read in the same read-only open. Absent in baselines taken
+   * before it existed.
+   */
+  liveActivity?: LiveActivity;
+  /** Attributed, never a leak by itself: the live repository's refs. */
+  liveRefs?: LiveRefs;
 }
+
+export interface LiveActivity {
+  rowCount: number | null;
+  /** SQLite rowid of the newest row, i.e. insertion order. */
+  newestRowid: number | null;
+  newestId: string | null;
+  newestCommand: string | null;
+  newestOccurredAt: string | null;
+  error: string | null;
+}
+
+export const LIVE_REF_NAMESPACES = ["refs/heads", "refs/remotes", "refs/tags", "refs/codex"] as const;
+/** Above this many refs the snapshot keeps only the counts and the hash. */
+export const LIVE_REFS_LIMIT = 5000;
+
+export interface LiveRefs {
+  repo: string | null;
+  /** Where the repository path came from: `--live-repo`, or the live workspace's registered Arcadia Project. */
+  source: "option" | "live workspace" | null;
+  counts: { heads: number; remotes: number; tags: number; codex: number } | null;
+  /** sha256 of the sorted `<refname> <object>` lines. */
+  hash: string | null;
+  /** refname → object id, or null above `LIVE_REFS_LIMIT`. */
+  refs: Record<string, string> | null;
+  error: string | null;
+}
+
+/** A change in an attributed field: reported, never counted as a leak. */
+export interface AttributedChange {
+  field: string;
+  before: string | number | null;
+  after: string | number | null;
+}
+
+/** How many per-ref differences an attributed comparison lists before summarizing the rest. */
+const ATTRIBUTED_REF_LIST_LIMIT = 50;
 
 export interface LeakChange {
   field: string;
@@ -69,6 +120,8 @@ export interface LeakChange {
 export interface LeakCheckInput {
   /** The live workspace; defaults to the user config default, never ARCADIA_WORKSPACE. */
   liveWorkspace?: string;
+  /** The live repository whose refs to list; defaults to the live workspace's registered Arcadia Project. */
+  liveRepo?: string;
   home?: string;
   env?: NodeJS.ProcessEnv;
   now?: Date;
@@ -79,10 +132,13 @@ export function takeLeakSnapshot(input: LeakCheckInput = {}): LeakSnapshot {
   const home = path.resolve(input.home ?? os.homedir());
   const configured = input.liveWorkspace ?? loadUserConfig(env).defaultWorkspace ?? null;
   const livePath = configured ? path.resolve(configured) : null;
+  const live = livePath
+    ? readLiveWorkspace(livePath)
+    : { workspace: { ...UNOBSERVED, path: null, error: "no live workspace configured" }, activity: unobservedActivity("no live workspace configured"), arcadiaRepo: null };
   return {
     schema: "arcadia-leak-check-v1",
     takenAt: (input.now ?? new Date()).toISOString(),
-    liveWorkspace: livePath ? readLiveWorkspace(livePath) : { ...UNOBSERVED, path: null, error: "no live workspace configured" },
+    liveWorkspace: live.workspace,
     hashes: {
       userConfig: hashFile(userConfigPath(env)),
       codexConfig: hashFile(path.join(home, ".codex", "config.toml")),
@@ -91,8 +147,20 @@ export function takeLeakSnapshot(input: LeakCheckInput = {}): LeakSnapshot {
       capacityReceipts: hashFile(env.ARCADIA_CAPACITY_RECEIPTS_PATH?.trim() || path.join(home, ".arcadia", "telemetry", "capacity-receipts.json"))
     },
     goBroker: goBrokerHashes(home),
-    launchAgents: launchAgentHashes(path.join(home, "Library", "LaunchAgents"))
+    launchAgents: launchAgentHashes(path.join(home, "Library", "LaunchAgents")),
+    liveActivity: live.activity,
+    liveRefs: input.liveRepo
+      ? readLiveRefs(path.resolve(input.liveRepo), "option")
+      : live.arcadiaRepo
+        ? readLiveRefs(live.arcadiaRepo, "live workspace")
+        : { ...UNOBSERVED_REFS, error: "no live repository: pass --live-repo, or register the Arcadia Project's repository in the live workspace" }
   };
+}
+
+const UNOBSERVED_REFS = { repo: null, source: null, counts: null, hash: null, refs: null } as const;
+
+function unobservedActivity(error: string): LiveActivity {
+  return { rowCount: null, newestRowid: null, newestId: null, newestCommand: null, newestOccurredAt: null, error };
 }
 
 const UNOBSERVED = {
@@ -141,6 +209,42 @@ export function compareLeakSnapshots(before: LeakSnapshot, after: LeakSnapshot):
   return changes;
 }
 
+/**
+ * Differences in the attributed fields. These are evidence to attribute (an
+ * agent settling in the live workspace, a push, the operator running a
+ * command), never a leak by themselves, so they are kept apart from
+ * `compareLeakSnapshots` and never fail the check.
+ */
+export function compareAttributedFields(before: LeakSnapshot, after: LeakSnapshot): AttributedChange[] {
+  const changes: AttributedChange[] = [];
+  const push = (field: string, a: string | number | null, b: string | number | null) => {
+    if (a !== b) changes.push({ field, before: a, after: b });
+  };
+  const activityBefore = before.liveActivity ?? null;
+  const activityAfter = after.liveActivity ?? null;
+  push("liveActivity.rowCount", activityBefore?.rowCount ?? null, activityAfter?.rowCount ?? null);
+  push("liveActivity.newestRowid", activityBefore?.newestRowid ?? null, activityAfter?.newestRowid ?? null);
+  push("liveActivity.error", activityBefore?.error ?? null, activityAfter?.error ?? null);
+  const refsBefore = before.liveRefs ?? null;
+  const refsAfter = after.liveRefs ?? null;
+  push("liveRefs.repo", refsBefore?.repo ?? null, refsAfter?.repo ?? null);
+  push("liveRefs.error", refsBefore?.error ?? null, refsAfter?.error ?? null);
+  push("liveRefs.hash", refsBefore?.hash ?? null, refsAfter?.hash ?? null);
+  const listBefore = refsBefore?.refs ?? null;
+  const listAfter = refsAfter?.refs ?? null;
+  if (listBefore && listAfter && refsBefore?.hash !== refsAfter?.hash) {
+    const names = [...new Set([...Object.keys(listBefore), ...Object.keys(listAfter)])].sort()
+      .filter((name) => listBefore[name] !== listAfter[name]);
+    for (const name of names.slice(0, ATTRIBUTED_REF_LIST_LIMIT)) {
+      push(`liveRefs.${name}`, listBefore[name] ?? null, listAfter[name] ?? null);
+    }
+    if (names.length > ATTRIBUTED_REF_LIST_LIMIT) {
+      push("liveRefs.moreChangedRefs", 0, names.length - ATTRIBUTED_REF_LIST_LIMIT);
+    }
+  }
+  return changes;
+}
+
 export function parseLeakSnapshot(raw: string, source: string): LeakSnapshot {
   const parsed = JSON.parse(raw) as Partial<LeakSnapshot>;
   if (parsed.schema !== "arcadia-leak-check-v1" || !parsed.liveWorkspace || !parsed.hashes || !parsed.launchAgents) {
@@ -149,10 +253,18 @@ export function parseLeakSnapshot(raw: string, source: string): LeakSnapshot {
   return parsed as LeakSnapshot;
 }
 
-function readLiveWorkspace(livePath: string): LeakSnapshot["liveWorkspace"] {
+interface LiveWorkspaceRead {
+  workspace: LeakSnapshot["liveWorkspace"];
+  activity: LiveActivity;
+  /** The repository the live workspace registered for the Arcadia Project, if any. */
+  arcadiaRepo: string | null;
+}
+
+function readLiveWorkspace(livePath: string): LiveWorkspaceRead {
   const databaseFile = getWorkspacePaths(livePath).databaseFile;
   if (!existsSync(databaseFile)) {
-    return { ...UNOBSERVED, path: livePath, error: "live workspace database not found" };
+    const error = "live workspace database not found";
+    return { workspace: { ...UNOBSERVED, path: livePath, error }, activity: unobservedActivity(error), arcadiaRepo: null };
   }
   let db: Database.Database | null = null;
   try {
@@ -169,19 +281,103 @@ function readLiveWorkspace(livePath: string): LeakSnapshot["liveWorkspace"] {
         { desiredState: string; revision: number; epoch: number } | undefined
       : undefined;
     return {
-      path: livePath,
-      projectCount: projects.count,
-      queueRevision: queue?.revision ?? null,
-      productionPolicy: policy ?? null,
-      productionPolicyReceipts: count("production_policy_receipts"),
-      productionAdmissions: count("production_admissions"),
-      error: null
+      workspace: {
+        path: livePath,
+        projectCount: projects.count,
+        queueRevision: queue?.revision ?? null,
+        productionPolicy: policy ?? null,
+        productionPolicyReceipts: count("production_policy_receipts"),
+        productionAdmissions: count("production_admissions"),
+        error: null
+      },
+      activity: readActivity(live, hasTable),
+      arcadiaRepo: readArcadiaRepo(live, hasTable)
     };
   } catch (error) {
-    return { ...UNOBSERVED, path: livePath, error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    return { workspace: { ...UNOBSERVED, path: livePath, error: message }, activity: unobservedActivity(message), arcadiaRepo: null };
   } finally {
     db?.close();
   }
+}
+
+/** Never throws: an unreadable activity table is reported, not a reason to call the snapshot unverifiable. */
+function readActivity(db: Database.Database, hasTable: (name: string) => boolean): LiveActivity {
+  try {
+    return readActivityRows(db, hasTable);
+  } catch (error) {
+    return unobservedActivity(error instanceof Error ? error.message : String(error));
+  }
+}
+
+function readActivityRows(db: Database.Database, hasTable: (name: string) => boolean): LiveActivity {
+  if (!hasTable("activity_events")) return unobservedActivity("no activity_events table");
+  const total = db.prepare("SELECT COUNT(*) AS count FROM activity_events").get() as { count: number };
+  const newest = db.prepare(
+    "SELECT rowid AS rowid, id, command, occurred_at AS occurredAt FROM activity_events ORDER BY rowid DESC LIMIT 1"
+  ).get() as { rowid: number; id: string; command: string; occurredAt: string } | undefined;
+  return {
+    rowCount: total.count,
+    newestRowid: newest?.rowid ?? null,
+    newestId: newest?.id ?? null,
+    newestCommand: newest?.command ?? null,
+    newestOccurredAt: newest?.occurredAt ?? null,
+    error: null
+  };
+}
+
+function readArcadiaRepo(db: Database.Database, hasTable: (name: string) => boolean): string | null {
+  if (!hasTable("project_metadata") || !hasTable("projects")) return null;
+  let row: { repoPath: string } | undefined;
+  try {
+    row = db.prepare(
+    `SELECT m.repo_path AS repoPath FROM project_metadata m JOIN projects p ON p.id = m.project_id
+     WHERE p.slug = 'arcadia' AND m.repo_path IS NOT NULL AND m.repo_path != '' LIMIT 1`
+    ).get() as { repoPath: string } | undefined;
+  } catch {
+    return null;
+  }
+  return row ? path.resolve(row.repoPath) : null;
+}
+
+/**
+ * The live repository's refs (branches, remote-tracking branches, tags and
+ * `refs/codex/*`) by name and target. `for-each-ref` takes no lock and
+ * writes nothing; GIT_OPTIONAL_LOCKS=0 keeps it that way.
+ */
+function readLiveRefs(repo: string, source: "option" | "live workspace"): LiveRefs {
+  let output: string;
+  try {
+    output = execFileSync(
+      "git",
+      ["-C", repo, "for-each-ref", "--format=%(refname) %(objectname)", ...LIVE_REF_NAMESPACES],
+      { encoding: "utf8", env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }
+    );
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    const message = typeof stderr === "string" && stderr.trim() ? stderr.trim() : error instanceof Error ? error.message : String(error);
+    return { ...UNOBSERVED_REFS, repo, source, error: message };
+  }
+  const lines = output.split("\n").filter(Boolean).sort();
+  const refs: Record<string, string> = {};
+  const counts = { heads: 0, remotes: 0, tags: 0, codex: 0 };
+  for (const line of lines) {
+    const separator = line.lastIndexOf(" ");
+    const name = line.slice(0, separator);
+    refs[name] = line.slice(separator + 1);
+    if (name.startsWith("refs/heads/")) counts.heads += 1;
+    else if (name.startsWith("refs/remotes/")) counts.remotes += 1;
+    else if (name.startsWith("refs/tags/")) counts.tags += 1;
+    else if (name.startsWith("refs/codex/")) counts.codex += 1;
+  }
+  return {
+    repo,
+    source,
+    counts,
+    hash: sha256(lines.join("\n")),
+    refs: lines.length <= LIVE_REFS_LIMIT ? refs : null,
+    error: null
+  };
 }
 
 /**
