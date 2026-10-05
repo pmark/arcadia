@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildProgram } from "../src/cli.js";
 import { ArcadiaError } from "../src/cli/errors.js";
 import type { CommandSuccess } from "../src/cli/response.js";
 import { runInitCommand } from "../src/commands/init.js";
@@ -188,6 +189,31 @@ describe("the freeze-window decision (read-only production status)", () => {
     }
     // And the services.sh entry point through the CLI.
     expect(refusal(() => runProductionFreezeCheckCommand({ operation: "services.restart" })).code).toBe("PRODUCTION_ACTIVE_FREEZE");
+  });
+
+  it("records an overridden `production freeze-check` against the resolved workspace, never the live default it read", async () => {
+    const live = path.join(root, "live");
+    initWorkspace(live);
+    activate(live);
+    useDefault(live);
+    vi.stubEnv(FREEZE_OVERRIDE_ENV, "operator-approved restart");
+    const activityRows = (target: string) => withDatabase(target, (db) =>
+      (db.prepare("SELECT command FROM activity_events WHERE command = 'production.freeze-check'").all() as Array<{ command: string }>).length);
+    const liveBefore = activityRows(live);
+    let stdout = "";
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => { stdout += String(chunk); return true; });
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await buildProgram().parseAsync(["node", "arcadia", "production", "freeze-check", "services.restart", "--json"]);
+    } finally {
+      out.mockRestore();
+      process.exitCode = undefined;
+    }
+    const receipt = JSON.parse(stdout);
+    expect(receipt.workspace).toBe(workspace);
+    expect(receipt.data).toMatchObject({ decision: "overridden", workspace: live, override: { reason: "operator-approved restart" } });
+    expect(activityRows(workspace)).toBe(1);
+    expect(activityRows(live)).toBe(liveBefore);
   });
 
   it("reads the default only once when it is also the resolved workspace, and records both roles", () => {
@@ -429,8 +455,10 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
     expect(result.status, result.stderr).toBe(0);
     expect(result.implCalls).toBe("restart");
     expect(result.pnpmCalls).toBe("arcadia go-broker ensure override=unset");
-    expect(result.stderr).toContain("go-broker ensure failed after restart");
+    expect(result.stderr).not.toContain("go-broker ensure failed after restart");
+    expect(result.stderr).not.toContain("go-broker install' manually");
     expect(result.stderr).toContain("does not extend to go-broker ensure");
+    expect(result.stderr).toContain("batched install (reinstall-go-broker.sh) after the terminal production Off receipt");
     expect(readFileSync(path.join(home, ".local", "share", "arcadia", "go-broker", "ensure.log"), "utf8")).toContain("PRODUCTION_ACTIVE_FREEZE");
   });
 

@@ -149,8 +149,10 @@ ENSURE_LOG="$HOME/.local/share/arcadia/go-broker/ensure.log"
 if ! mkdir -p "$(dirname "$ENSURE_LOG")" 2>&1; then
   echo "warning: could not create $(dirname "$ENSURE_LOG"); skipping go-broker ensure" >&2
 elif ! (cd "$REPO" && env -u ARCADIA_FREEZE_OVERRIDE pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1; then
-  echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
   if [[ -n "${ARCADIA_FREEZE_OVERRIDE:-}" ]]; then
-    echo "note: the restart's ARCADIA_FREEZE_OVERRIDE does not extend to go-broker ensure; while production is Active it refuses. To reinstall too, run it with its own override: ARCADIA_FREEZE_OVERRIDE=<reason> pnpm arcadia go-broker ensure" >&2
+    # A plain manual install would refuse too, so name only the two real routes.
+    echo "note: the restart's ARCADIA_FREEZE_OVERRIDE does not extend to go-broker ensure, which did not reinstall the broker (see $ENSURE_LOG). Either run it with its own override, ARCADIA_FREEZE_OVERRIDE=<reason> pnpm arcadia go-broker ensure, or leave it to the batched install (reinstall-go-broker.sh) after the terminal production Off receipt." >&2
+  else
+    echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
   fi
 fi

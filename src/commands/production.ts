@@ -225,9 +225,12 @@ export function runProductionFreezeCheckCommand(
     throw validationError(`Unknown freeze-window operation: ${options.operation}.`, { allowed: [...FREEZE_OPERATIONS] });
   }
   const decision = assertRehearsalFreezeAllows(options.operation, { workspace: options.workspace });
+  // The receipt (and so the activity row) belongs to the workspace this
+  // command resolved, never to the live default it only read for the check.
+  const resolved = decision.checked.find((entry) => entry.roles.includes("resolved"))?.workspace;
   return createSuccess({
     command: "production.freeze-check",
-    workspace: decision.workspace ?? undefined,
+    workspace: resolved,
     data: decision,
     warnings: freezeReceiptLines(decision)
   });
