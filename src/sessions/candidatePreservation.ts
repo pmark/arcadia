@@ -10,6 +10,12 @@ import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
 import { refusedOperatorQaPlan, renderOperatorQaPlan, type ChangedFile, type OperatorQaPlanSource } from "./operatorQaPlan.js";
+import {
+  COMPLETION_SETTLEMENT_LINE,
+  composePreservedPullRequestBody,
+  readValidationEvidence,
+  unavailableValidationEvidence
+} from "./validationEvidence.js";
 
 /**
  * Preserve a completed candidate worktree without ever handing the coding agent
@@ -37,7 +43,9 @@ export type RemotePreservationAuthorization =
    * `qaPlan` is the pull-request body: literal text, or the governed source of
    * an Operator QA plan rendered after the candidate commit exists (see
    * operatorQaPlan.ts). A refused rendering still preserves; the body says
-   * "QA plan unavailable" and the receipt records `qaPlanRefusal`.
+   * "QA plan unavailable" and the receipt records `qaPlanRefusal`. A governed
+   * source's body also carries the Validation evidence section and the
+   * completion-settlement line (validationEvidence.ts); literal text does not.
    */
   | { authorized: true; qaPlan: string | OperatorQaPlanSource };
 
@@ -696,7 +704,25 @@ function resolvePullRequestBody(
     result = refusedOperatorQaPlan(plan, facts,
       `the Operator QA plan could not be rendered (${error instanceof Error ? error.message : String(error)}).`);
   }
-  return { body: result.body, refusal: result.status === "refused" ? result.reason : null };
+  return { body: withValidationEvidence(result.body, plan, request), refusal: result.status === "refused" ? result.reason : null };
+}
+
+/**
+ * The plan, then the Validation evidence the receipt's host record holds and
+ * the completion-settlement line. Like the plan, a rendering failure becomes
+ * an explicit status and never stops the push.
+ */
+function withValidationEvidence(planBody: string, plan: OperatorQaPlanSource, request: CandidatePreservationRequest): string {
+  try {
+    return composePreservedPullRequestBody(planBody, {
+      evidenceRef: request.validation.evidenceRef,
+      evidence: readValidationEvidence(request.validation.evidenceRef),
+      declaredCommands: plan.validationCommands,
+      candidateFingerprint: request.validation.candidateFingerprint
+    });
+  } catch {
+    return `${planBody}\n\n${unavailableValidationEvidence("the validation evidence could not be rendered (renderer defect).")}\n\n${COMPLETION_SETTLEMENT_LINE}`;
+  }
 }
 
 /** Files the candidate commit changes against its launch base, or null when Git cannot say. */

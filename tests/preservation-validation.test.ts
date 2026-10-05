@@ -100,6 +100,10 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     expect(result.passed).toBe(true);
     const proof = JSON.parse(readFileSync(result.evidenceRef, "utf8"));
     expect(proof.results[0].exitStatus).toBe(0);
+    // The preserved pull request's Validation evidence renders these.
+    expect(proof.results[0]).toMatchObject({ timedOut: false, timeoutMs: 120_000 });
+    expect(proof.results[0].cwd).toMatch(/\/arcadia-preservation-[^/]+\/source$/);
+    expect(Number.isInteger(proof.results[0].durationMs) && proof.results[0].durationMs >= 0).toBe(true);
     expect(result.evidenceRef.startsWith(f.workspace + path.sep)).toBe(true);
     const denied = fixture();
     // Use the generic validator here so a workspace read can be tested without
