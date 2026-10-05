@@ -43,10 +43,14 @@ The CLI enforces the first two items. While the policy is Active,
 `go-broker install|ensure` (and so `reinstall-go-broker.sh`, before it
 installs) and `scripts/services.sh restart|stop` (and so
 `recover-arcadia-host-services.sh`) refuse with `production_active_freeze` and
-name the read-only alternative. The CLI refuses when a workspace resolves
-but its production status cannot be read. With no workspace configured or
-resolvable, as in first-time setup, production cannot be Active, so it
-proceeds and notes that in its receipt.
+name the read-only alternative. Because the broker and services are
+host-wide, the check reads both the workspace the command resolves and the
+user-config default (the live workspace), and refuses if either is Active.
+The CLI refuses when a configured or resolved workspace's production status
+cannot be read. With no workspace configured or resolvable, as in first-time
+setup, production cannot be Active, so it proceeds and notes that in its
+receipt. An experiment workspace never reads the live default; its own guard
+refuses these steps first.
 `services.sh` warns and proceeds instead, because a recovery restart must not
 depend on a runnable CLI. Shell callers can ask first with
 `arcadia production freeze-check <operation>`. The other items are
@@ -67,10 +71,14 @@ procedure: no code stops them, so do not do them.
 ## Override
 
 `ARCADIA_FREEZE_OVERRIDE=<reason>` set inline on one command bypasses the
-refusal. The reason is printed on stderr and kept in the command's JSON
-receipt (`warnings`, `data.freeze`). It is for the operator, or an agent
-holding an explicit operator instruction for that one step. Never export it,
-and never use it to unblock routine work.
+refusal. Where the reason is recorded: `go-broker install|ensure` print it on
+stderr and keep it in the JSON receipt (`warnings`, `data.freeze`);
+`production freeze-check` keeps it in its receipt (`warnings`, `data`);
+`scripts/services.sh` prints it on stderr only. An override covers only its
+own step: the `go-broker ensure` that follows a restart runs without it and
+refuses while production is Active, so reinstalling needs its own override.
+It is for the operator, or an agent holding an explicit operator instruction
+for that one step. Never export it, and never use it to unblock routine work.
 
 ## After the window closes
 

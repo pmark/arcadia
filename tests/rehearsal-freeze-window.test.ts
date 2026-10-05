@@ -83,6 +83,13 @@ function activateThenOff(target = workspace): void {
   withDatabase(target, (db) => deactivateProduction(db, { requestId: "freeze-terminal-off", reason: "rehearsal finished" }));
 }
 
+/** Point the user config's defaultWorkspace (the live one) at `target`. */
+function useDefault(target: string): void {
+  const config = path.join(root, "user-config.json");
+  writeFileSync(config, JSON.stringify({ defaultWorkspace: target }));
+  vi.stubEnv("ARCADIA_CONFIG_PATH", config);
+}
+
 function corruptDatabase(target = workspace): void {
   writeFileSync(getWorkspacePaths(target).databaseFile, "this is not a sqlite database");
 }
@@ -102,6 +109,7 @@ describe("the freeze-window decision (read-only production status)", () => {
     activate();
     const error = refusal(() => assertRehearsalFreezeAllows(operation));
     expect(error.code).toBe("PRODUCTION_ACTIVE_FREEZE");
+    expect(error.message).toContain("Operator override: ARCADIA_FREEZE_OVERRIDE=<reason>; see docs/agent-guidance/rehearsal-freeze-window.md");
     expect(error.details).toMatchObject({ operation, reason: "production_active_freeze", workspace, override: `${FREEZE_OVERRIDE_ENV}=<reason>` });
     expect(String(error.details.alternative)).toMatch(operation.startsWith("go-broker") ? /arcadia go-broker status/ : /scripts\/services\.sh status/);
     expect(String(error.details.alternative)).toMatch(operation.startsWith("go-broker") ? /reinstall-go-broker\.sh/ : /recover-arcadia-host-services\.sh/);
@@ -126,6 +134,7 @@ describe("the freeze-window decision (read-only production status)", () => {
     corruptDatabase();
     const error = refusal(() => assertRehearsalFreezeAllows(operation));
     expect(error.code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+    expect(error.message).toContain("Operator override: ARCADIA_FREEZE_OVERRIDE=<reason>; see docs/agent-guidance/rehearsal-freeze-window.md");
     expect(error.details.reason).toBe("production_status_unreadable");
     const overridden = assertRehearsalFreezeAllows(operation, { env: { ...process.env, [FREEZE_OVERRIDE_ENV]: "db rebuild" } });
     expect(overridden).toMatchObject({ state: "unreadable", decision: "overridden", override: { reason: "db rebuild" } });
@@ -166,12 +175,64 @@ describe("the freeze-window decision (read-only production status)", () => {
     expect(refusal(() => assertRehearsalFreezeAllows("go-broker.ensure")).code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
   });
 
+  it("refuses when the user-config default (live) workspace is Active, even if the resolved one is Inactive", () => {
+    const live = path.join(root, "live");
+    initWorkspace(live);
+    activate(live);
+    useDefault(live);
+    for (const operation of FREEZE_OPERATIONS) {
+      const error = refusal(() => assertRehearsalFreezeAllows(operation));
+      expect(error.code).toBe("PRODUCTION_ACTIVE_FREEZE");
+      expect(error.details.workspace).toBe(live);
+      expect(error.message).toContain(`default workspace ${live}`);
+    }
+    // And the services.sh entry point through the CLI.
+    expect(refusal(() => runProductionFreezeCheckCommand({ operation: "services.restart" })).code).toBe("PRODUCTION_ACTIVE_FREEZE");
+  });
+
+  it("reads the default only once when it is also the resolved workspace, and records both roles", () => {
+    useDefault(workspace);
+    expect(assertRehearsalFreezeAllows("go-broker.install").checked).toEqual([
+      expect.objectContaining({ workspace, roles: ["resolved", "default"], state: "inactive" })
+    ]);
+  });
+
+  it("fails closed when a configured default workspace cannot be read", () => {
+    const live = path.join(root, "live");
+    initWorkspace(live);
+    corruptDatabase(live);
+    useDefault(live);
+    const error = refusal(() => assertRehearsalFreezeAllows("services.stop"));
+    expect(error.code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+    expect(error.details.workspace).toBe(live);
+  });
+
+  it("reports no_workspace only when neither a resolved nor a default workspace exists", () => {
+    vi.stubEnv("ARCADIA_WORKSPACE", "");
+    const isolated = temp("arcadia-freeze-cwd-");
+    // ARCADIA_CONFIG_PATH names a file that does not exist: no default.
+    expect(assertRehearsalFreezeAllows("go-broker.install", { cwd: isolated })).toMatchObject({ state: "no_workspace", decision: "allowed", checked: [] });
+    // A configured default resolves, so the decision is that workspace's state, not no_workspace.
+    useDefault(workspace);
+    expect(assertRehearsalFreezeAllows("go-broker.install", { cwd: isolated })).toMatchObject({ state: "inactive", workspace });
+    activate();
+    expect(refusal(() => assertRehearsalFreezeAllows("go-broker.install", { cwd: isolated })).code).toBe("PRODUCTION_ACTIVE_FREEZE");
+  });
+
   it("leaves an experiment workspace on its existing guard path", () => {
     const experiment = path.join(root, "workspaces", "exp-freeze");
     runInitCommand(experiment, { profile: "experiment" });
     vi.stubEnv("ARCADIA_WORKSPACE", experiment);
     expect(refusal(() => runGoBrokerInstallCommand({ repository: tinyGitRepo(false).repository, home })).code).toBe("EXPERIMENT_WORKSPACE_REFUSED");
-    expect(assertRehearsalFreezeAllows("services.restart")).toMatchObject({ workspace: experiment, state: "inactive", decision: "allowed" });
+    // It never reads the live default (Decision 0082): an Active default is not consulted.
+    const live = path.join(root, "live");
+    initWorkspace(live);
+    activate(live);
+    useDefault(live);
+    expect(assertRehearsalFreezeAllows("services.restart")).toMatchObject({
+      workspace: experiment, state: "inactive", decision: "allowed",
+      checked: [expect.objectContaining({ workspace: experiment, roles: ["resolved"] })]
+    });
   });
 
   it("`production freeze-check` reports the same decision and rejects an unknown operation", () => {
@@ -277,9 +338,11 @@ describe("`go-broker ensure` refuses inside the window before status or install"
 
 /**
  * The real scripts/services.sh against the real CLI freeze check. A `pnpm`
- * shim runs only `arcadia production freeze-check` through this checkout's CLI
- * and records every other call (the post-restart `go-broker ensure`) without
- * running it, and the restart implementation is a stub that records its verb.
+ * shim runs `arcadia production freeze-check` through this checkout's CLI,
+ * records every other call with whether the override reached it, and stands in
+ * for the post-restart `go-broker ensure` with that command's real freeze
+ * decision (never a real install); the restart implementation is a stub that
+ * records its verb.
  */
 describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop inside the window", () => {
   function services(action: "restart" | "stop", env: Record<string, string> = {}, options: { brokenCli?: boolean } = {}) {
@@ -299,7 +362,11 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
       'if [[ "${args[0]}" == arcadia && "${args[1]}" == production && "${args[2]}" == freeze-check ]]; then',
       `  exec ${JSON.stringify(process.execPath)} --import tsx ${JSON.stringify(path.join(repoRoot, "src", "cli.ts"))} "\${args[@]:1}"`,
       "fi",
-      `echo "\${args[*]}" >> ${JSON.stringify(pnpmCalls)}`,
+      `echo "\${args[*]} override=\${ARCADIA_FREEZE_OVERRIDE-unset}" >> ${JSON.stringify(pnpmCalls)}`,
+      // The post-restart ensure: stand in with its real freeze decision, never a real install.
+      'if [[ "${args[0]}" == arcadia && "${args[1]}" == go-broker && "${args[2]}" == ensure ]]; then',
+      `  exec ${JSON.stringify(process.execPath)} --import tsx ${JSON.stringify(path.join(repoRoot, "src", "cli.ts"))} production freeze-check go-broker.ensure --json`,
+      "fi",
       "exit 0",
       ""
     ].join("\n"));
@@ -343,7 +410,8 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
     const result = services("restart");
     expect(result.status, result.stderr).toBe(0);
     expect(result.implCalls).toBe("restart");
-    expect(result.pnpmCalls).toBe("arcadia go-broker ensure");
+    expect(result.pnpmCalls).toBe("arcadia go-broker ensure override=unset");
+    expect(result.stderr).not.toContain("go-broker ensure failed");
   });
 
   it("proceeds under the override and prints the recorded reason", () => {
@@ -353,6 +421,17 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
     expect(result.stderr).toContain("ARCADIA_FREEZE_OVERRIDE=operator-approved restart");
     expect(result.stderr).toContain('"decision": "overridden"');
     expect(result.implCalls).toBe("restart");
+  });
+
+  it("scopes the override to the restart: the post-restart ensure runs without it and refuses, and the restart still completes", () => {
+    activate();
+    const result = services("restart", { ARCADIA_FREEZE_OVERRIDE: "operator-approved restart" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.implCalls).toBe("restart");
+    expect(result.pnpmCalls).toBe("arcadia go-broker ensure override=unset");
+    expect(result.stderr).toContain("go-broker ensure failed after restart");
+    expect(result.stderr).toContain("does not extend to go-broker ensure");
+    expect(readFileSync(path.join(home, ".local", "share", "arcadia", "go-broker", "ensure.log"), "utf8")).toContain("PRODUCTION_ACTIVE_FREEZE");
   });
 
   it("fails open with a warning when production status cannot be read", () => {

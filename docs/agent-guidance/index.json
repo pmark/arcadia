@@ -97,7 +97,7 @@
       "trigger": "rehearsal, freeze, production active, reinstall, restart, install, services, go-broker",
       "path": "docs/agent-guidance/rehearsal-freeze-window.md",
       "read_before": "Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open.",
-      "sha256": "acee82d31782a99760aef83ab6beee8d9594ba1e3e51e9b501eb73ae425d500b"
+      "sha256": "24af1172ef085c4d3e4778889913173ebdf407052051c385d0409d36ab599593"
     }
   ]
 }
