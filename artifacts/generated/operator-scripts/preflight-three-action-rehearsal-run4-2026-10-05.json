@@ -1,0 +1,36 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "preflight-three-action-rehearsal-run4-2026-10-05",
+  "title": "G6 (run 4): Preflight the fourth three-Action rehearsal at the run-4 reset fixture head (observation only; refuses on unknown, stale, paid or unavailable evidence, or a pending item gating dispatch)",
+  "script": "preflight-three-action-rehearsal-run4-2026-10-05.sh",
+  "repeatable": true,
+  "problem": "The G7 Grant must not activate production unless the host can actually run the rehearsal: current production state and installed release, a worker-context Claude Code sign-in, a read-only Codex reviewer with real included capacity, a GitHub fixture repository whose checks report, and nothing pending that silently gates dispatch (Issue #968: in run 2 a pending Agent Ask proposal naming write-start-marker made dispatch answer 'decision' for 33 minutes). Guessing any of these spends tokens or stalls unattended work. For run 4 the fixture main is one reset commit (reset-three-action-rehearsal-fixture-run4-2026-10-05) on run 3's reset head; the 2026-10-04, 2026-10-05 and run-3 preflights, which require genesis, run 2's head or run 3's head, are retired from use.",
+  "desired_effect": "Make only bounded observations and write one timestamped receipt listing every check and its verdict, bound to the main revision, installed release, workspace, policy revision, fixture and the fixture head recorded by the latest succeeded run-4 reset receipt for the manifest's repository (one reset commit on run 3's reset head 4375aafeef38f0ee339a300406c8a865dbb916dc, itself one commit on run 2's reset head 0d3d2cedc5548da41896201688a1dc0210208ea4, one commit on G1's genesis; a stale or mismatched receipt refuses). The receipt succeeds only when every check passes; the run-4 G7 (grant-production-three-action-rehearsal-run4-2026-10-05) accepts it for 30 minutes, and only while Arcadia main and the installed release stay exactly where this preflight observed them: do not push to main, reinstall, restart services or press any G8 between this run and the G7 press.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run4-2026-10-05.sh run",
+  "authority": {
+    "does": [
+      "Reads Git state of the Arcadia checkout and the fixture, observes origin main afresh with a 30-second git ls-remote that must equal local main (unknown or ahead refuses), the configured workspace, production status, go-broker status (the installed release must be ready and runtime-identical to main), worker status and active Session leases (read-only database probe)",
+      "Finds the latest succeeded reset-three-action-rehearsal-fixture-run4-2026-10-05 receipt for the manifest's exact repository and refuses unless its newHead is local fixture main, its previousMain is run 3's reset head 4375aafeef38f0ee339a300406c8a865dbb916dc (the only parent of local main, whose parent is run 2's reset head 0d3d2cedc5548da41896201688a1dc0210208ea4), its genesis is the fixture's single root (the parent of run 2's reset head) and the receipt recorded GitHub main at the same head",
+      "Observes read-only, through Arcadia's own resolveOperatorGate, that no pending Agent Ask proposal or open Decision would gate any of the three fixture Actions, and refuses naming each one that would",
+      "Runs the worker-context claude-code-cli sign-in check and records only its verdict (signed_in, signed_out, unknown or unavailable); refuses when ANTHROPIC_API_KEY is set, without reading its value",
+      "Runs codex --version and codex login status with 20-second bounds and records only whether sign-in is a ChatGPT subscription, an API key (paid, refused) or unknown (refused)",
+      "Observes Codex capacity directly, ignoring the workspace's unmetered standing choice, and refuses unless it is admitted, fresh, observed or attested, included, not simulated and not unavailable; checks a read-only codex reviewer profile exists",
+      "With this explicit operator press as authorization, reads GitHub only through gh auth status, the exact fixture repository, its main branch (which must be the run-4 reset head) and the check runs of that head, waiting at most five minutes for those checks",
+      "Writes the receipt and, on any refusal, a failure handoff under runs/<timestamp-pid>/"
+    ],
+    "never_does": [
+      "Never prints, copies or logs a token value or the raw codex or gh sign-in output",
+      "Never previews or activates production, presses G7, or changes any policy, packet, proposal, Decision or capacity receipt",
+      "Never writes to GitHub, starts or restarts a service, installs anything, or invokes a model",
+      "Never treats unknown, stale, paid, simulated or unavailable evidence as passing"
+    ]
+  },
+  "success": {
+    "effect": "Every check passed; the receipt binds the observed main, installed release, workspace, policy revision, fixture, run-4 reset head and reset receipt, and nothing pending gates a fixture Action.",
+    "next": "Within 30 minutes, press the one-shot run-4 G7 Grant (grant-production-three-action-rehearsal-run4-2026-10-05) after reading its operator acknowledgement. Until then nothing may push to Arcadia main, reinstall the broker, restart services or run any G8: each moves what this receipt bound and G7 then refuses, so this preflight must be rerun."
+  },
+  "failure": {
+    "effect": "Nothing changed. The receipt lists each refused check and why; the failure handoff says not to press G7.",
+    "next": "Fix each refused check through its reviewed path (for example reinstall-go-broker or recover-arcadia-host-services for a stale release, verify-claude-code-token for sign-in, the item's own governed settle for a pending proposal or Decision), then rerun this preflight."
+  }
+}
