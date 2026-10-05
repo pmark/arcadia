@@ -36,7 +36,7 @@ import { observeSessionActivity } from "./stallDetection.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import { createId } from "../utils/id.js";
-import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
+import { developedForSupersededInput, independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
   advanceIndependentReview,
   ensureProductionReviewStepTable,
@@ -170,8 +170,13 @@ function recoverTerminalHandoff(
     const session = getSession(db, exit.session_id);
     if (!session) continue;
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
-    if (plan?.type === "plan" && plan.actions.find((action) => action.id === session.action_id)?.status === "done") continue;
+    const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
+    if (action?.status === "done") continue;
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
+    if (developedForSupersededInput(db, session, action)) {
+      log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      continue;
+    }
     pending.push(session);
   }
   if (pending.length === 0) return null;
