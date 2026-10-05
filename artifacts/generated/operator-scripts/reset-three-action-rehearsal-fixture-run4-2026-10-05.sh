@@ -641,7 +641,8 @@ PROPOSAL_STATE=""
 # A settled run-3 proposal does not gate dispatch, and settling it never touched
 # fixture main, which fixture_state above already proved is run 3's reset head
 # (or this script's own reset commit on it); the gate is re-read below and must
-# be clear. Only a pending one is rejected here.
+# be clear. Only a pending one is rejected here. at_run3_base repeats that
+# fixture_state check as defence in depth; it cannot fail after it.
 at_run3_base() { [[ "$RESET_STATE" == at_run3_head || "$RESET_STATE" == committed_unpushed || "$RESET_STATE" == pushed ]]; }
 if jq -e '.run3 == null' <<<"$GATE" >/dev/null; then
   PROPOSAL_STATE=absent

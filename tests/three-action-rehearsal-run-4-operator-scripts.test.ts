@@ -870,8 +870,10 @@ describe("the run-4 reset keeps run 3's Issue #968 handling, now for exactly run
 });
 
 function runCli(box: Box, args: string[]) {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  // The box's own HOME and no exported workspace: only the throwaway workspace is ever addressed.
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: box.home };
   delete env.VITEST;
+  delete env.ARCADIA_WORKSPACE;
   const run = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "src", "cli.ts"), ...args, "--workspace", box.workspace], { cwd: repoRoot, env, encoding: "utf8", timeout: 60_000 });
   expect(run.status, run.stderr + run.stdout).toBe(0);
   return JSON.parse(run.stdout);
