@@ -3639,7 +3639,7 @@ actions:
     references: ["src/cli.ts", "src/activity/recorder.ts", "src/workspace/experimentGuard.ts", "src/workspace/leakCheck.ts", "src/commands/workspaceExperiment.ts", "https://github.com/pmark/arcadia/issues/947", "https://github.com/pmark/arcadia/issues/940"]
   - id: define-agent-comms-role
     title: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
@@ -3801,7 +3801,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: require-inline-workspace-mode
+current_action: adopt-rehearsal-freeze-window
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
