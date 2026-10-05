@@ -137,6 +137,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     `${FROM_LIVE_TERMINAL} Experiment fixture repositories have no remote to project to.`
   ),
   "production status": ALLOWED,
+  "production freeze-check": ALLOWED,
   "production preview": ALLOWED,
   "production activate": guarded("Grants the standing production authorization and its Grants.", PRODUCTION_ALTERNATIVE),
   "production reactivate-preview": ALLOWED,

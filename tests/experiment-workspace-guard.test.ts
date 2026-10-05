@@ -366,7 +366,8 @@ describe("guarded operations outside the CLI", () => {
       `-s arcadia workspace guard services.stop --workspace ${experiment}`
     ]);
     expect(existsSync(implCalls)).toBe(false);
-    // An ordinary workspace never consults the CLI, so a broken CLI cannot block a recovery restart.
+    // An ordinary workspace never consults the experiment guard; the freeze-window
+    // check it does run fails open, so a broken CLI cannot block a recovery restart.
     run("restart", live);
     expect(readFileSync(calls, "utf8").split("\n").filter((line) => line.includes("workspace guard"))).toHaveLength(2);
     // A relative ARCADIA_WORKSPACE is resolved once, from the caller's directory,

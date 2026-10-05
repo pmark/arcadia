@@ -47,6 +47,13 @@ import {
   type OperatorEscalation
 } from "../production/tick.js";
 import { listOpenRedAlerts, type RedAlert } from "../production/redAlerts.js";
+import {
+  FREEZE_OPERATIONS,
+  assertRehearsalFreezeAllows,
+  freezeReceiptLines,
+  isFreezeOperation,
+  type RehearsalFreezeDecision
+} from "../production/freezeWindow.js";
 import { listRedAlertDiagnoses, type RedAlertDiagnosis } from "../production/redAlertDiagnosis.js";
 
 export interface ProductionStatusOptions {
@@ -198,6 +205,42 @@ export function runProductionStatusCommand(
     : ["Managed production state is unreadable. This is not a confirmed Off; no work may be admitted."];
 
   return createSuccess({ command: "production.status", workspace: workspacePath, data, warnings });
+}
+
+export interface ProductionFreezeCheckOptions {
+  operation: string;
+  workspace?: string;
+}
+
+/**
+ * The rehearsal freeze window for shell callers (`scripts/services.sh`):
+ * succeeds when `operation` may run now, and fails with
+ * PRODUCTION_ACTIVE_FREEZE while managed production is Active or
+ * PRODUCTION_FREEZE_UNVERIFIED when the policy cannot be read. Read-only.
+ */
+export function runProductionFreezeCheckCommand(
+  options: ProductionFreezeCheckOptions
+): CommandSuccess<RehearsalFreezeDecision> {
+  if (!isFreezeOperation(options.operation)) {
+    throw validationError(`Unknown freeze-window operation: ${options.operation}.`, { allowed: [...FREEZE_OPERATIONS] });
+  }
+  const decision = assertRehearsalFreezeAllows(options.operation, { workspace: options.workspace });
+  // The receipt (and so the activity row) belongs to the workspace this
+  // command resolved, never to the live default it only read for the check.
+  const resolved = decision.checked.find((entry) => entry.roles.includes("resolved"))?.workspace;
+  return createSuccess({
+    command: "production.freeze-check",
+    workspace: resolved,
+    data: decision,
+    warnings: freezeReceiptLines(decision)
+  });
+}
+
+export function renderProductionFreezeCheckSuccess(response: CommandSuccess<RehearsalFreezeDecision>): string[] {
+  const decision = response.data;
+  if (decision.decision === "overridden") return [`Freeze window: ${decision.operation} OVERRIDDEN. ${decision.warning ?? ""}`.trim()];
+  if (decision.state === "no_workspace") return [`Freeze window: ${decision.operation} allowed. ${decision.note ?? ""}`.trim()];
+  return [`Freeze window: ${decision.operation} allowed; managed production is Inactive (revision ${decision.policyRevision}, epoch ${decision.policyEpoch}).`];
 }
 
 export function runProductionPreviewCommand(

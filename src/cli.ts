@@ -75,7 +75,9 @@ import {
   runProductionReactivateCommand,
   runProductionReactivatePreviewCommand,
   runProductionResetRepairBudgetCommand,
-  runProductionStatusCommand
+  runProductionStatusCommand,
+  runProductionFreezeCheckCommand,
+  renderProductionFreezeCheckSuccess
 } from "./commands/production.js";
 import {
   renderScheduleClassifySuccess,
@@ -504,6 +506,7 @@ import {
 } from "./cli/response.js";
 import { loadUserConfig, readExperimentWorkspace, setDefaultWorkspace, userConfigPath } from "./workspace/config.js";
 import { commandKey, guardCommandInvocation, recordsActivity } from "./workspace/experimentGuard.js";
+import { FREEZE_OPERATIONS } from "./production/freezeWindow.js";
 import { activityErrorCode } from "./activity/errorCodes.js";
 import {
   renderLeakCheckSuccess,
@@ -1100,6 +1103,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("production.status", options, () => runProductionStatusCommand(options), renderProductionStatusSuccess)
+  );
+  addJsonOption(
+    production
+      .command("freeze-check")
+      .description("Read-only: may a disruptive host step run now? Refuses while managed production is Active (rehearsal freeze window; for shell callers)")
+      .argument("<operation>", `One of ${FREEZE_OPERATIONS.join(", ")}`)
+      .option("--workspace <path>", "Workspace path")
+  ).action((operation: string, options: { workspace?: string; json?: boolean }) =>
+    runCliAction("production.freeze-check", options, () => runProductionFreezeCheckCommand({ operation, workspace: options.workspace }), renderProductionFreezeCheckSuccess)
   );
   addJsonOption(
     production

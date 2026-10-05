@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr952","project":"arcadia","intent":"log","desired_result":"Agents can now work in parallel with a live rehearsal: the freeze window refuses broker reinstalls and service restarts while production is Active, with an operator override; review at https://github.com/pmark/arcadia/pull/952"}
