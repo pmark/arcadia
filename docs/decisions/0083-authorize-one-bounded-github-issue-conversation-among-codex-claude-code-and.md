@@ -4,7 +4,7 @@ type: decision
 id: "0083"
 slug: authorize-one-bounded-github-issue-conversation-among-codex-claude-code-and
 project: arcadia
-status: open
+status: approved
 question: "Authorize one bounded GitHub Issue conversation among Codex, Claude Code, and OpenCode, plus one compact link comment on #940."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-05
+updated: 2026-10-04
+answer: "Authorize the bounded Issue conversation and #940 link comment"
+decided: 2026-10-04
 ---
 
 # Decision 0083: Authorize one bounded GitHub Issue conversation among Codex, Claude Code, and OpenCode, plus one compact link comment on #940.
