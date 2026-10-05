@@ -29,6 +29,7 @@ import {
   type AgentSetupStatus
 } from "../agentSetup/goBrokerAgentSetup.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
+import { assertRehearsalFreezeAllows, type RehearsalFreezeDecision } from "../production/freezeWindow.js";
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
@@ -62,6 +63,8 @@ export interface GoBrokerInstallData {
     status: AgentSetupStatus;
   };
   hostProbe: WorktreeRuntimeProbeResult;
+  /** The rehearsal freeze check this install passed (docs/agent-guidance/rehearsal-freeze-window.md). */
+  freeze?: RehearsalFreezeDecision;
 }
 
 export interface GoBrokerStatusData {
@@ -145,6 +148,10 @@ export function runGoBrokerInstallCommand(
   if (!options.projectRepositories) {
     refuseInExperimentWorkspace("go-broker.trust-write", resolveWorkspace({ cwd: repository }).workspacePath);
   }
+  // Before anything is compiled, staged or relinked: reinstalling the broker
+  // under a live managed-production run swaps the launchers its Sessions use.
+  const freeze = assertRehearsalFreezeAllows("go-broker.install", { cwd: repository });
+  if (freeze.warning) process.stderr.write(`warning: ${freeze.warning}\n`);
   assertReviewedSnapshot(repository);
   const revision = git(repository, ["rev-parse", "HEAD"]).trim();
   const installHome = path.resolve(options.home ?? homedir());
@@ -251,9 +258,11 @@ export function runGoBrokerInstallCommand(
       manifest: path.join(releaseDirectory, "broker-manifest.json"),
       ...permissionSnippets(executables),
       agentSetup,
-      hostProbe
+      hostProbe,
+      freeze
     },
-    artifacts: [releaseDirectory, ...Object.values(executables)]
+    artifacts: [releaseDirectory, ...Object.values(executables)],
+    warnings: freeze.warning ? [freeze.warning] : []
   });
 }
 
@@ -375,6 +384,8 @@ export interface GoBrokerEnsureData {
   revision: string;
   reason: string;
   install?: GoBrokerInstallData;
+  /** The rehearsal freeze check this ensure passed (docs/agent-guidance/rehearsal-freeze-window.md). */
+  freeze?: RehearsalFreezeDecision;
 }
 
 /**
@@ -399,6 +410,11 @@ export function runGoBrokerEnsureCommand(
 ): CommandSuccess<GoBrokerEnsureData> {
   const requestedRepository = options.repository ?? git(process.cwd(), ["rev-parse", "--show-toplevel"]).trim();
   const repository = realpathSync(requestedRepository);
+  // Refused up front, even when the broker is already current: inside the
+  // freeze window the read-only check is `go-broker status`.
+  const freeze = assertRehearsalFreezeAllows("go-broker.ensure", { cwd: repository });
+  if (freeze.warning) process.stderr.write(`warning: ${freeze.warning}\n`);
+  const freezeWarnings = freeze.warning ? [freeze.warning] : [];
   const revision = git(repository, ["rev-parse", "HEAD"]).trim();
   let alreadyReady = false;
   try {
@@ -415,8 +431,10 @@ export function runGoBrokerEnsureCommand(
       data: {
         action: "skipped",
         revision,
-        reason: "Installed broker already matches the current revision and passed its readiness check."
-      }
+        reason: "Installed broker already matches the current revision and passed its readiness check.",
+        freeze
+      },
+      warnings: freezeWarnings
     });
   }
   const install = installRunner(options);
@@ -426,8 +444,10 @@ export function runGoBrokerEnsureCommand(
       action: "installed",
       revision,
       reason: "Installed broker was missing, stale, or failed its readiness check.",
-      install: install.data
-    }
+      install: install.data,
+      freeze
+    },
+    warnings: [...freezeWarnings, ...install.warnings]
   });
 }
 

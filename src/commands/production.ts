@@ -47,6 +47,12 @@ import {
   type OperatorEscalation
 } from "../production/tick.js";
 import { listOpenRedAlerts, type RedAlert } from "../production/redAlerts.js";
+import {
+  FREEZE_OPERATIONS,
+  assertRehearsalFreezeAllows,
+  isFreezeOperation,
+  type RehearsalFreezeDecision
+} from "../production/freezeWindow.js";
 import { listRedAlertDiagnoses, type RedAlertDiagnosis } from "../production/redAlertDiagnosis.js";
 
 export interface ProductionStatusOptions {
@@ -198,6 +204,38 @@ export function runProductionStatusCommand(
     : ["Managed production state is unreadable. This is not a confirmed Off; no work may be admitted."];
 
   return createSuccess({ command: "production.status", workspace: workspacePath, data, warnings });
+}
+
+export interface ProductionFreezeCheckOptions {
+  operation: string;
+  workspace?: string;
+}
+
+/**
+ * The rehearsal freeze window for shell callers (`scripts/services.sh`):
+ * succeeds when `operation` may run now, and fails with
+ * PRODUCTION_ACTIVE_FREEZE while managed production is Active or
+ * PRODUCTION_FREEZE_UNVERIFIED when the policy cannot be read. Read-only.
+ */
+export function runProductionFreezeCheckCommand(
+  options: ProductionFreezeCheckOptions
+): CommandSuccess<RehearsalFreezeDecision> {
+  if (!isFreezeOperation(options.operation)) {
+    throw validationError(`Unknown freeze-window operation: ${options.operation}.`, { allowed: [...FREEZE_OPERATIONS] });
+  }
+  const decision = assertRehearsalFreezeAllows(options.operation, { workspace: options.workspace });
+  return createSuccess({
+    command: "production.freeze-check",
+    workspace: decision.workspace ?? undefined,
+    data: decision,
+    warnings: decision.warning ? [decision.warning] : []
+  });
+}
+
+export function renderProductionFreezeCheckSuccess(response: CommandSuccess<RehearsalFreezeDecision>): string[] {
+  const decision = response.data;
+  if (decision.decision === "overridden") return [`Freeze window: ${decision.operation} OVERRIDDEN. ${decision.warning ?? ""}`.trim()];
+  return [`Freeze window: ${decision.operation} allowed; managed production is ${decision.state === "inactive" ? "Inactive" : decision.state} (revision ${decision.policyRevision}, epoch ${decision.policyEpoch}).`];
 }
 
 export function runProductionPreviewCommand(

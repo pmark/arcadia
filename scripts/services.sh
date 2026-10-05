@@ -70,6 +70,35 @@ if [[ ! -x "$IMPL" ]]; then
   exit 2
 fi
 
+# Rehearsal freeze window (docs/agent-guidance/rehearsal-freeze-window.md):
+# restarting or stopping services under a live managed-production run unloads
+# the worker it depends on, so the CLI's read-only freeze check refuses while
+# production is Active. ARCADIA_FREEZE_OVERRIDE=<reason> bypasses it, and the
+# reason is printed with the check's receipt. The run's own Off-first terminal
+# step turns production Off before it restarts, so it passes. As with the guard
+# above, a recovery restart must not depend on the CLI being runnable: a check
+# that cannot run, or cannot read production status, fails open with a warning.
+if [[ "$ACTION" != "status" ]]; then
+  FREEZE_STATUS=0
+  FREEZE_OUTPUT="$(cd "$REPO" && pnpm -s arcadia production freeze-check "services.$ACTION" --json 2>&1)" || FREEZE_STATUS=$?
+  if [[ "$FREEZE_STATUS" -eq 0 ]]; then
+    if [[ -n "${ARCADIA_FREEZE_OVERRIDE:-}" ]]; then
+      printf '%s\n' "$FREEZE_OUTPUT" >&2
+      echo "warning: rehearsal freeze override recorded for services.$ACTION: ARCADIA_FREEZE_OVERRIDE=$ARCADIA_FREEZE_OVERRIDE" >&2
+    fi
+  elif [[ "$FREEZE_OUTPUT" == *'"PRODUCTION_ACTIVE_FREEZE"'* ]]; then
+    printf '%s\n' "$FREEZE_OUTPUT" >&2
+    echo "Refused (production_active_freeze): managed production is Active, so services.$ACTION would disrupt the live run." >&2
+    echo "Read-only instead: scripts/services.sh status. After the terminal production Off receipt the release-manager or orchestrator session runs recover-arcadia-host-services.sh. Override only with ARCADIA_FREEZE_OVERRIDE=<reason>." >&2
+    exit 3
+  else
+    echo "warning: could not read managed production status (freeze check exit $FREEZE_STATUS); proceeding with services.$ACTION (fail open). Check with: pnpm arcadia production status" >&2
+    if [[ -n "${ARCADIA_FREEZE_OVERRIDE:-}" ]]; then
+      echo "warning: rehearsal freeze override recorded for services.$ACTION: ARCADIA_FREEZE_OVERRIDE=$ARCADIA_FREEZE_OVERRIDE" >&2
+    fi
+  fi
+fi
+
 # That script takes <action> <repo>; Rebuster's takes them the other way round.
 # Normalizing the argument order is the whole point of this adapter existing.
 if [[ "$ACTION" != "restart" ]]; then
