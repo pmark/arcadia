@@ -3883,7 +3883,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-2026-10-05.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-05.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-05.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-05.sh", "tests/three-action-rehearsal-run-2-operator-scripts.test.ts", "tests/rehearsal-run-2-amended-action.test.ts", "src/sessions/roleLineage.ts", "https://github.com/pmark/arcadia/issues/968", "https://github.com/pmark/arcadia/issues/940"]
   - id: verify-operator-qa-plan-with-live-qa
     title: Prove with the configured independent QA reviewer that the rendered Operator QA plan passes its criterion on a real preserved pull request.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prove with the configured independent QA reviewer that the rendered Operator QA plan passes its criterion on a real preserved pull request.
@@ -3900,7 +3900,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: verify-operator-qa-plan-with-live-qa
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
