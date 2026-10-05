@@ -3781,7 +3781,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/949"]
   - id: adopt-rehearsal-freeze-window
     title: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
@@ -3800,7 +3800,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: adopt-rehearsal-freeze-window
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

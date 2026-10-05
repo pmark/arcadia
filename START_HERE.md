@@ -1418,6 +1418,14 @@ reviewed Arcadia commit as an explicit operator action:
 pnpm arcadia go-broker install
 ```
 
+While managed production is Active (a live rehearsal's freeze window),
+`go-broker install` and `go-broker ensure` refuse with
+`production_active_freeze`, and they refuse when production status cannot be
+read. The release-manager or orchestrator session reinstalls once after the
+terminal Off receipt; `ARCADIA_FREEZE_OVERRIDE=<reason>` inline bypasses the
+refusal and records the reason. See
+`docs/agent-guidance/rehearsal-freeze-window.md`.
+
 The installer copies that exact commit and its resolved local dependency tree,
 required `database/schema.sql` baseline into the compiled runtime under a
 revision-addressed directory at `~/.local/share/arcadia/go-broker/`, then
@@ -2370,6 +2378,13 @@ If Arcadia is unavailable, ask Codex to **check or restart all Arcadia services*
 ```sh
 scripts/services.sh restart
 ```
+
+`restart` and `stop` refuse while managed production is Active, because they
+would unload the worker a live rehearsal depends on; the rehearsal's own
+Off-first step restarts after turning production Off. If production status
+cannot be read they warn and proceed. `ARCADIA_FREEZE_OVERRIDE=<reason>`
+inline bypasses the refusal (see
+`docs/agent-guidance/rehearsal-freeze-window.md`).
 
 To watch what the services are doing, follow their logs in one terminal. Every
 line is prefixed with its source (`worker.out`, `dashboard.err`, …):

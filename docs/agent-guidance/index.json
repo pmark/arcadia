@@ -91,6 +91,13 @@
       "path": "docs/agent-guidance/agent-comms.md",
       "read_before": "Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority.",
       "sha256": "4ff1955bb6af94d31c860b6f793bacbb996d26d95984736716096f283165f87d"
+    },
+    {
+      "id": "rehearsal-freeze-window",
+      "trigger": "rehearsal, freeze, production active, reinstall, restart, install, services, go-broker",
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "read_before": "Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open.",
+      "sha256": "614fd20a4649bcc812a3233bbb021bee573c31f398624c2c5d3874acc81c6845"
     }
   ]
 }

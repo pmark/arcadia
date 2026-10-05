@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommandSuccess } from "../src/cli/response.js";
 import { validationError } from "../src/cli/errors.js";
 import {
@@ -10,10 +10,23 @@ import {
   type GoBrokerInstallData,
   type GoBrokerStatusData
 } from "../src/commands/goBrokerInstall.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 
+// Ensure reads the rehearsal freeze window from the resolved workspace; keep
+// that read on a hermetic Inactive workspace, never the operator's live one.
+beforeEach(() => {
+  const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-ensure-workspace-"));
+  roots.push(workspace);
+  initWorkspace(workspace);
+  vi.stubEnv("ARCADIA_CONFIG_PATH", path.join(workspace, "no-user-config.json"));
+  vi.stubEnv("ARCADIA_WORKSPACE", workspace);
+  vi.stubEnv("ARCADIA_FREEZE_OVERRIDE", "");
+});
+
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
