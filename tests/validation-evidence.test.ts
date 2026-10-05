@@ -271,11 +271,11 @@ describe("adversarial output stays bounded in time and visible", () => {
   });
 
   it("replaces invisible format, separator, private-use and tag characters so nothing is hidden", () => {
-    const hidden = "a​b﻿c­d e f\u{e0041}\u{e0042}gh‍i";
+    const hidden = "a\u200bb\ufeffc\u00add\u2028e\u2029f\u{e0041}\u{e0042}g\ue000h\u200di\ufe0fj\u3164k";
     const [block] = fencedBlocks(renderValidationEvidence(input([check({ stdout: hidden })])));
-    expect(block).toBe("a?b?c?d?e?f??g?h?i");
+    expect(block).toBe("a?b?c?d?e?f??g?h?i?j?k");
     // A zero-width character inside a token is made visible rather than silently splitting it.
-    const split = fencedBlocks(renderValidationEvidence(input([check({ stdout: "ghp_abcdefghij​klmnopqrstuvwxyz0123" })])))[0];
+    const split = fencedBlocks(renderValidationEvidence(input([check({ stdout: "ghp_abcdefghij\u200bklmnopqrstuvwxyz0123" })])))[0];
     expect(split).toContain("?");
   });
 
@@ -286,6 +286,27 @@ describe("adversarial output stays bounded in time and visible", () => {
     expect(block.endsWith("row 19999")).toBe(true);
     expect(block.split("\n")[0]).toMatch(/^row \d+$/);
     expect(body).toMatch(/- \*\*stdout\*\* \(last \d+ bytes after sanitising, of \d+ recorded; earlier lines omitted\):/);
+  });
+
+  it("redacts a secret even when escape padding after it would shrink the end window", () => {
+    const key = ["-----BEGIN OPENSSH PRIVATE KEY-----", ...Array.from({ length: 8 }, () => "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ"), "-----END OPENSSH PRIVATE KEY-----"].join("\n");
+    const padding = "\u001b[0m".repeat(20_000);
+    const body = renderValidationEvidence(input([check({ stdout: `start\n${key}\n${padding}done`, stderr: `ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789${padding}end` })]));
+    expect(body).not.toContain("b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ");
+    expect(body).not.toContain("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+    expect(body).toContain("[redacted private key]");
+  });
+
+  it("does not call a long stream empty when only its end is whitespace", () => {
+    const body = renderValidationEvidence(input([check({ stdout: `FAIL: assertion x != y\n${" ".repeat(1 << 20)}` })]));
+    expect(body).not.toContain("- **stdout:** empty");
+    expect(body).toContain("- **stdout:** the last 65536 characters after sanitising are whitespace; earlier output (of 1048599 bytes recorded) is omitted.");
+  });
+
+  it("marks a single cut line with an ellipsis", () => {
+    const [block] = fencedBlocks(renderValidationEvidence(input([check({ stdout: `${"y".repeat(70_000)}end` })])));
+    expect(block.startsWith("…y")).toBe(true);
+    expect(block.endsWith("yend")).toBe(true);
   });
 
   it("never publishes a working directory outside the producer's own temporary copy name", () => {

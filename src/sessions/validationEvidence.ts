@@ -16,10 +16,12 @@
  * No model writes any of it, and the same inputs always render the same bytes.
  *
  * Command output is untrusted text written by the candidate's own checks. It
- * is never interpreted: only the end of each stream is read (a fixed window, so
- * no pattern ever sees more than that), ANSI escapes are removed, control,
- * format (bidi, zero-width, tag), separator, private-use and unassigned
- * characters are replaced, secret-shaped tokens are redacted, binary output is
+ * is never interpreted: ANSI escapes are removed and control, format (bidi,
+ * zero-width, tag), separator, private-use, unassigned (per the runtime's
+ * Unicode version), variation-selector and filler characters are replaced over
+ * the whole stream (linear passes); only then is a fixed end window kept, so
+ * the slower redaction never sees more than it and a secret cut by the window
+ * start lies far before the shown tail; secret-shaped tokens are redacted, binary output is
  * withheld, and only the last lines within a fixed byte cap per stream are
  * kept, inside a code fence its content cannot close.
  *
@@ -28,7 +30,9 @@
  * and repository, exactly as the coding agent that wrote the candidate could.
  * Redaction is pattern-based defence in depth, not a guarantee; the published
  * tail is no new capability for a candidate, whose own tree is pushed anyway.
- * The host's temporary paths are not published, only their Arcadia-named end. The whole body stays under GitHub's pull-request body limit: tails
+ * The host's temporary paths are not published, only their Arcadia-named end.
+ *
+ * The whole body stays under GitHub's pull-request body limit: tails
  * shrink deterministically, then the section collapses to its status line.
  *
  * Absence is explicit, never a failure of preservation: a missing, unreadable,
@@ -262,17 +266,19 @@ function commandStatus(result: ValidationCheckRecord): CommandStatus {
 function prepareStream(raw: string | null): PreparedStream {
   if (raw === null) return { kind: "absent", recordedBytes: 0, text: "", windowed: false };
   const recordedBytes = Buffer.byteLength(raw, "utf8");
-  // Bound all later work: only the end of the stream is ever shown, and the
-  // window is far larger than the shown tail so redaction keeps its context.
-  const windowed = raw.length > OUTPUT_WINDOW_CHARS;
-  let window = windowed ? raw.slice(raw.length - OUTPUT_WINDOW_CHARS) : raw;
+  if (isBinary(raw)) return { kind: "binary", recordedBytes, text: "", windowed: false };
+  // Sanitising is linear, so it sees the whole stream. Redaction then sees only
+  // the sanitised end window: far larger than the shown tail, so a secret the
+  // window start cuts lies at least ~60 Ki characters before anything shown.
+  let text = sanitizeOutput(raw);
+  const windowed = text.length > OUTPUT_WINDOW_CHARS;
   if (windowed) {
-    const newline = window.indexOf("\n");
-    window = newline >= 0 && newline < window.length - 1 ? window.slice(newline + 1) : window.replace(/^[\udc00-\udfff]/, "");
+    text = text.slice(text.length - OUTPUT_WINDOW_CHARS);
+    const newline = text.indexOf("\n");
+    text = newline >= 0 && newline < text.length - 1 ? text.slice(newline + 1) : `…${text.replace(/^[\udc00-\udfff]/, "")}`;
   }
-  if (isBinary(window)) return { kind: "binary", recordedBytes, text: "", windowed };
-  const text = redactSecrets(sanitizeOutput(window)).trimEnd();
-  if (!text.trim()) return { kind: "empty", recordedBytes, text: "", windowed };
+  text = redactSecrets(text).trimEnd();
+  if (!text.replace(/^…/, "").trim()) return { kind: "empty", recordedBytes, text: "", windowed };
   return { kind: "text", recordedBytes, text, windowed };
 }
 
@@ -298,7 +304,7 @@ export function sanitizeOutput(raw: string): string {
     .replace(/\u001b[ -/]*[0-~]?/g, "")
     .replace(/\r\n?/g, "\n")
     .replace(/[^\P{Cc}\t\n]/gu, "?")
-    .replace(/[\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Cn}]/gu, "?");
+    .replace(/[\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Cn}\u180b-\u180f\ufe00-\ufe0f\u{e0100}-\u{e01ef}\u115f\u1160\u3164\uffa0]/gu, "?");
 }
 /* eslint-enable no-control-regex */
 
@@ -444,7 +450,9 @@ function formatStream(name: "stdout" | "stderr", stream: PreparedStream, tailByt
     case "absent":
       return [`- **${name}:** not captured.`];
     case "empty":
-      return [`- **${name}:** empty${stream.recordedBytes > 0 ? ` (${stream.recordedBytes} bytes of whitespace or control characters)` : ""}.`];
+      return [stream.windowed
+        ? `- **${name}:** the last ${OUTPUT_WINDOW_CHARS} characters after sanitising are whitespace; earlier output (of ${stream.recordedBytes} bytes recorded) is omitted.`
+        : `- **${name}:** empty${stream.recordedBytes > 0 ? ` (${stream.recordedBytes} bytes of whitespace or control characters)` : ""}.`];
     case "binary":
       return [`- **${name}:** binary output (${stream.recordedBytes} bytes) withheld.`];
     case "text": {
