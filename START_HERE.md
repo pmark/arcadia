@@ -141,7 +141,13 @@ in order:
    on run 2's candidate branch, so live it no longer gates, and the reset
    leaves it as it is. Were it still pending, the reset would reject it
    through the governed two-phase settle before its commit; a rerun recognizes
-   a landed rejection. Either way the gate must then read clear.
+   a landed rejection. Either way the gate must then read clear. The new
+   `next_action` also tells the agent to record completion under the unused
+   request id `complete-write-start-marker-run3-2026-10-05`. The usual
+   `complete-<action-id>-<date>` would reuse run 2's settled id on 2026-10-05,
+   which discovery skips and preview refuses. The reset refuses if that id is
+   already used. A same-day docs sync reopens the record run 2 left `done`,
+   as a test proves.
 3. If Arcadia main moved on a runtime path since the last install, run
    `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
 4. Run the run-3 G6 `preflight-three-action-rehearsal-run3-2026-10-05`. It is

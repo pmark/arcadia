@@ -14,7 +14,8 @@
       "restore-terminal-off-three-action-rehearsal-2026-10-04",
       "recover-arcadia-host-services",
       "reinstall-go-broker",
-      "reset-three-action-rehearsal-fixture-run3-2026-10-05"
+      "reset-three-action-rehearsal-fixture-run3-2026-10-05",
+      "reset-three-action-rehearsal-fixture-2026-10-05"
     ],
     "when_production": "inactive"
   },

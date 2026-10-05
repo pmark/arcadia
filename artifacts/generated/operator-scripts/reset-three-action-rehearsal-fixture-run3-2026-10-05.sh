@@ -66,7 +66,11 @@ SUPERSEDE_REQUEST_ID="reset-three-action-rehearsal-fixture-run3-2026-10-05-rejec
 # fields; the acceptance criteria, responsibility, execution and title stay
 # byte-identical, so the marker contract and its verdict criteria are unchanged.
 OLD_NEXT_ACTION='    next_action: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline (rehearsal run 2, from the reset fixture main; the run 1 attempts and candidate stay as evidence).'
-NEW_NEXT_ACTION='    next_action: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline (rehearsal run 3, from the run-2 reset fixture main; the run 1 and run 2 attempts and candidates stay as evidence).'
+NEW_NEXT_ACTION='    next_action: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline (rehearsal run 3, from the run-2 reset fixture main; the run 1 and run 2 attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-write-start-marker-run3-2026-10-05, because complete-write-start-marker-2026-10-05 is already settled).'
+# The completion request id that text names. The packet template's
+# complete-<action-id>-<yyyy-mm-dd> would give run 2's already-settled id on
+# 2026-10-05, which discovery skips and preview refuses for new content.
+RUN3_COMPLETION_ID="complete-write-start-marker-run3-2026-10-05"
 RESET_SUBJECT="Reset write-start-marker for three-Action rehearsal run 3"
 # docs sync applies a Plan only when its `updated:` date is not older than the
 # synced record's (day granularity: an equal date applies), so the Plan carries
@@ -577,7 +581,7 @@ cat > "$RUN_DIR/probe-proposal-gate.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
 import { resolveOperatorGate } from "./src/ask/operatorGate.ts";
 import { listUnsettledAgentAskProposals } from "./src/ask/settlement.ts";
-const [workspace, fixtureRoot, slug, actionsJson, run2Request] = process.argv.slice(2);
+const [workspace, fixtureRoot, slug, actionsJson, run2Request, run3Completion] = process.argv.slice(2);
 console.log(JSON.stringify(withReadOnlyDatabase(workspace, (db) => {
   const unsettled = listUnsettledAgentAskProposals(db);
   const requestOf = new Map(unsettled.map((row) => [row.id, row.requestId]));
@@ -596,11 +600,12 @@ console.log(JSON.stringify(withReadOnlyDatabase(workspace, (db) => {
     run2 = { id: row.id, requestId: row.request_id, project: normalized.project, intent: normalized.intent, targetRef: normalized.targetRef ?? null,
       settlement: settlement ? { id: settlement.id, requestId: settlement.request_id, disposition: settlement.disposition } : null };
   }
-  return { blocking, fixturePending, run2 };
+  const run3CompletionUsed = Boolean(db.prepare("SELECT 1 FROM agent_ask_proposals WHERE request_id = ?").get(run3Completion));
+  return { blocking, fixturePending, run2, run3CompletionUsed };
 })));
 NODE
 read_gate() {
-  probe "$WORKSPACE" "$FIXTURE_REPO" "$FIXTURE_PROJECT" "$ACTIONS_JSON" "$RUN2_PROPOSAL" < "$RUN_DIR/probe-proposal-gate.mjs"
+  probe "$WORKSPACE" "$FIXTURE_REPO" "$FIXTURE_PROJECT" "$ACTIONS_JSON" "$RUN2_PROPOSAL" "$RUN3_COMPLETION_ID" < "$RUN_DIR/probe-proposal-gate.mjs"
 }
 GATE="$(read_gate)" || refuse "the pending Agent Ask proposals and Decisions gating the fixture could not be read"
 printf '%s\n' "$GATE" > "$RUN_DIR/proposal-gate-before.json"
@@ -610,6 +615,10 @@ if [[ "$FOREIGN" != "[]" ]]; then
   RECOVERY="Pending operator items other than run 2's $RUN2_PROPOSAL gate or sit on the fixture Project: $FOREIGN. Each needs its own governed disposition (arcadia agent-ask pending lists proposals; a Decision is approved through its own path). This script settles none of them. Rerun once they are settled."
   refuse "pending operator items other than run 2's $RUN2_PROPOSAL would gate the fixture: $FOREIGN"
 fi
+# The run-3 agent records its completion under the id the amended next_action names; it must still be unused.
+jq -e '.run3CompletionUsed == false' <<<"$GATE" >/dev/null \
+  || refuse "the Agent Ask request id $RUN3_COMPLETION_ID that the run-3 next_action tells the agent to use is already used in the workspace, so run 3's completion would be skipped or refused; ask for a new reviewed reset with another id"
+record_str run3CompletionRequestId "$RUN3_COMPLETION_ID"
 RUN2_PROPOSAL_ID=""
 PROPOSAL_STATE=""
 if jq -e '.run2 == null' <<<"$GATE" >/dev/null; then

@@ -378,7 +378,12 @@ and PR #2 at `7f139037…`, beside run 1's PR #1 at `58bcd915…`. Every
   skipped, a rule a test proves with the real docs sync. So the Plan carries the
   reset's UTC date, and a host date before 2026-10-05 refuses. Before any
   commit, the reset also runs a read-only dry-run docs sync against the live
-  workspace, which must report the Action as an update.
+  workspace, which must report the Action as an update. A test proves the
+  same-day sync reopens the record run 2 left `done`. The new text also names
+  the completion request id `complete-write-start-marker-run3-2026-10-05`,
+  because the packet template's `complete-<action-id>-<date>` would reuse run
+  2's settled id on 2026-10-05 and stall completion. The reset refuses if that
+  id is already used.
 - **Issue #968.** In run 2, run 1's pending complete proposal naming the
   Action made `resolveProjectTransition` answer `decision` for 33 minutes, and
   nothing launched. The reset reads the gate through Arcadia's own

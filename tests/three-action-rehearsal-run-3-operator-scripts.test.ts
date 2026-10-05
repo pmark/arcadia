@@ -436,7 +436,10 @@ describe("run-3 operator pairs: contract and static safety", () => {
     expect(NEW_LINE).not.toBe(ORIGINAL_LINE);
     expect(NEW_LINE).not.toBe(RUN2_LINE);
     expect(NEW_LINE.startsWith(ORIGINAL_LINE.slice(0, -1))).toBe(true);
-    expect(NEW_LINE.slice(ORIGINAL_LINE.length - 1)).toBe(" (rehearsal run 3, from the run-2 reset fixture main; the run 1 and run 2 attempts and candidates stay as evidence).");
+    expect(NEW_LINE.slice(ORIGINAL_LINE.length - 1)).toBe(" (rehearsal run 3, from the run-2 reset fixture main; the run 1 and run 2 attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-write-start-marker-run3-2026-10-05, because complete-write-start-marker-2026-10-05 is already settled).");
+    // The packet template's complete-<action-id>-<yyyy-mm-dd> would reuse run 2's settled id on 2026-10-05.
+    expect(NEW_LINE).toContain(constantOf(RESET, "RUN3_COMPLETION_ID"));
+    expect(constantOf(RESET, "RUN3_COMPLETION_ID")).not.toBe(RUN2_PROPOSAL);
   });
 
   it("the run-3 G7 is the run-2 G7 line for line except its ids, binding, run-3 wording and the fuller #925 citation", () => {
@@ -494,7 +497,7 @@ describe("run-3 operator pairs: contract and static safety", () => {
     expect(descriptor.next_after).toEqual({
       id: G6,
       within_minutes: 30,
-      voided_by: [G8, RUN2_G8, RUN1_G8, "recover-arcadia-host-services", "reinstall-go-broker", RESET],
+      voided_by: [G8, RUN2_G8, RUN1_G8, "recover-arcadia-host-services", "reinstall-go-broker", RESET, RUN2_RESET],
       when_production: "inactive"
     });
   });
@@ -720,7 +723,7 @@ describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending
     expect(settleCalls(box)).toHaveLength(0);
   });
 
-  const acceptedRun2 = (blocking: unknown[] = []) => ({ "probe proposal-gate": { stdout: JSON.stringify({ blocking, fixturePending: [], run2: {
+  const acceptedRun2 = (blocking: unknown[] = []) => ({ "probe proposal-gate": { stdout: JSON.stringify({ blocking, fixturePending: [], run3CompletionUsed: false, run2: {
     id: "agentask_80a99372", requestId: RUN2_PROPOSAL, project: "three-action-rehearsal", intent: "complete", targetRef: "action/write-start-marker",
     settlement: { id: "asksettle_e5f216c9d11441e2bb", requestId: RUN2_PROPOSAL, disposition: "accepted" } } }) } });
 
@@ -744,6 +747,21 @@ describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending
     expect(json).toMatchObject({ outcome: "refused", stage: "proposal_gate", proposalSettledByThisRun: false });
     expect(json.reason).toContain("still gate the fixture");
     expect(settleCalls(box)).toHaveLength(0);
+    noMutation(box, run2Head);
+  });
+
+  it("refuses, settling nothing, when the completion request id the run-3 text names is already used", () => {
+    const { box, run2Head, run2Marker } = resetBox();
+    const used = constantOf(RESET, "RUN3_COMPLETION_ID");
+    seedProposal(box, completeAsk(used, run2Marker));
+    const fp = runCli(box, ["agent-ask", "settle", "--proposal", used, "--request-id", "reject-early-run3-id", "--disposition", "rejected", "--json"]).data.receipt.previewFingerprint as string;
+    runCli(box, ["agent-ask", "settle", "--proposal", used, "--request-id", "reject-early-run3-id", "--disposition", "rejected", "--apply", "--preview", fp, "--json"]);
+    expect(box.run(RESET, resetEnv).status).not.toBe(0);
+    const { json } = box.receipt(RESET);
+    expect(json).toMatchObject({ outcome: "refused", stage: "proposal_gate", proposalSettledByThisRun: false });
+    expect(json.reason).toContain(`${used} that the run-3 next_action tells the agent to use is already used`);
+    expect(settleCalls(box)).toHaveLength(0);
+    expect(unsettled(box)).toEqual([RUN2_PROPOSAL]);
     noMutation(box, run2Head);
   });
 
@@ -867,6 +885,26 @@ describe("docs sync applies a same-day Plan amendment and skips an older one", (
     writeFileSync(file, base.replace(OLD_LINE, NEW_LINE));
     expect(sync()).toMatchObject({ action: "update" });
     expect(state.run2Head).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("reopens and updates a write-start-marker record marked done earlier the same day (the live state after run 2)", () => {
+    const box = sandboxFor([]);
+    afterRun2(box, { pendingRun2Proposal: false });
+    const file = path.join(box.fixture, PLAN_FILE);
+    const today = new Date().toISOString().slice(0, 10);
+    const ref = "plan/autonomous-three-action-rehearsal#write-start-marker";
+    const row = () => withReadOnlyDatabase(box.workspace, (db) => db.prepare("SELECT status, next_action, updated_at FROM work_items WHERE doc_ref = ?").get(ref) as { status: string; next_action: string; updated_at: string });
+    // As run 2's accepted completion left the record: done, earlier on the same UTC day.
+    withDatabase(box.workspace, (db) => db.prepare("UPDATE work_items SET status = 'done', updated_at = ? WHERE doc_ref = ?").run(`${today}T00:00:01.000Z`, ref));
+    expect(row()).toMatchObject({ status: "done" });
+    // The run-3 reset's Plan on the same UTC day, through the real docs sync.
+    writeFileSync(file, readFileSync(file, "utf8").replace(OLD_LINE, NEW_LINE).replace(/^updated: .*$/m, `updated: ${today}`));
+    const sync = runDocsSyncCommand({ workspace: box.workspace, project: "three-action-rehearsal", apply: true }).data as unknown as { errorCount: number; projects: Array<{ changes: Array<{ entity: string; ref: string; action: string; reason?: string }> }> };
+    expect(sync.errorCount).toBe(0);
+    const change = sync.projects[0].changes.find((c) => c.entity === "action" && c.ref === ref)!;
+    expect(change).toMatchObject({ action: "update" });
+    expect(change.reason).toContain("status: done -> open");
+    expect(row()).toMatchObject({ status: "open", next_action: NEW_LINE.replace(/^ {4}next_action: /, "") });
   });
 });
 
