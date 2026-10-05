@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-04
+updated: 2026-10-05
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -3508,11 +3508,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask implement-agent-peer-watch-reader
     clarification: clarified
     confidence: high
-    source: Agent Ask agent-peer-watch-2026-10-04
+    source: Agent Ask agent-comms-role-v2-2026-10-04
     acceptance_criteria:
       - A read-only command (for example arcadia agents watch) gathers the contract's evidence for every agent with an active claim, candidate or lease (candidate branch commits and their trailers, issue comments on a named coordination issue via the GitHub CLI with bounded polling and rate-limit awareness, session and lease rows, capacity telemetry), classifies each agent per the contract, and prints a typed status with the evidence and its age; it never mutates the workspace, repositories or GitHub, and unknown or unreadable evidence is reported as unknown, not healthy.
       - "The production tick and the operator surfaces that already show escalations consume the classification: a stalled or exhausted owner of the current Action raises a deduplicated operator escalation with an accurate remedy, and nothing is dispatched to or taken from the owner."
       - "Hermetic tests with fake Git history, fake issue comments and capacity fixtures cover healthy, idle, stalled, exhausted and unknown agents, forged or stale heartbeats, GitHub rate limiting, and the 2026-10-03 collision; focused suites, lint, tsc, build, check:agent-guidance and the preservation self-check pass."
+      - The command offers a blocking event mode (for example `arcadia agents watch --until-event --since <watermark>`) that exits with one typed JSON event when a comment from another signature newer than the watermark arrives on the named coordination Issue, a watched agent's classification changes or an escalation is raised, so a Comms session waits in a shell rather than in a model turn; hermetic tests cover each event kind, watermark replay and the self-signature filter.
     depends_on: [define-agent-peer-watch-contract]
     decisions: []
     references: ["src/production/tick.ts", "src/commands/workMonitor.ts", "src/codingAgents/capacity.ts"]
@@ -3587,7 +3588,7 @@ actions:
     references: ["src/codingAgents/agentIdentity.ts", "src/commands/identity.ts", "src/sessions/index.ts", "src/agentWatch/contract.ts", "docs/agent-guidance/git-identity.md"]
   - id: guard-experiment-workspaces
     title: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add an experiment workspace profile and a guard that refuses the host-global and production-affecting commands inside it.
@@ -3604,27 +3605,202 @@ actions:
     references: ["src/workspace/config.ts", "src/workspace/initWorkspace.ts", "src/commands/init.ts", "src/commands/goBrokerInstall.ts", "src/commands/worker.ts", "src/commands/ingressService.ts", "src/activity/recorder.ts", "docs/decisions/0082-decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional.md"]
   - id: run-multi-workspace-experiment-trial
     title: Run the first bounded trial of one experiment workspace per agent platform and report whether contention fell and nothing leaked.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Falsify or support the hypothesis that three agents, each in its own experiment workspace on a disposable no-remote fixture, can concurrently create, advance and settle a distinct governed Action with no cross-workspace interference and no change to the live workspace or host-global state.
+    next_action: Run the Claude step of the multi-workspace experiment against the agreed contract, record the stop-condition event and its fixes, and end the trial by operator direction with workspaces preserved.
     expected_artifact: Evidence satisfying Agent Ask run-multi-workspace-experiment-trial
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-experiment-trial-acceptance-2026-10-04
+    source: Agent Ask end-multi-workspace-trial-amend-2026-10-05
     acceptance_criteria:
-      - "Only after Decision 0082 is approved (it is), guard-experiment-workspaces is merged and installed and the identity blocks are installed: each of Claude Code, Codex and OpenCode creates its own experiment workspace with `arcadia init --profile experiment` at /Users/pmark/Dev/MR/Arcadia/workspaces/exp-<agent>-<yyyymmdd>, addressed only inline (ARCADIA_WORKSPACE=... on the command, never exported), with a fresh disposable no-remote fixture repository inside <workspace>/projects/<fixture> registered as a Project with a Plan of exactly one Action; the three workspace paths differ and each agent's `arcadia workspace resolve` and status name its own."
-      - Each agent independently advances its one Action (pointer moves) and settles it to done in its own workspace with a settlement receipt and a Log entry in that workspace; the three settle steps overlap in wall-clock time with timing and receipts attached and produce no SQLITE_BUSY, lost update or pointer collision; no command run in one workspace reads another's database, and no experiment workspace shares Git refs or worktrees with the live workspace or another experiment workspace.
-      - The leak check (live project count, queue revision, user config and Codex/Claude configuration hashes, launchd plists, `git -C <live> status` clean, no new refs or branches in the live repository; activity-event rows written by read-only commands against the live workspace are excluded and counted separately) is recorded before and after every session and is identical; inner-workspace work (Asks, queue, pointer, settle, docs sync, local git, tests, gh reads) succeeds, and every named refusal (production activation and Grants, broker, services and ingress install, GitHub and Discord posting, default-workspace switch) is attempted once from an experiment workspace and refuses with its named reason, the exact messages recorded.
-      - "A report in issue #940 and a checked-in evidence file catalogs the per-agent receipts, leak-check output and refusal messages, compares settle, preview and make-next error rates and contention error codes against the live workspace's seven-day baseline (settle 16.7%, preview 30%, make-next 12.7% errors), names which Arcadia flows still require the live workspace and what would have to change for agents to do real work in more than one workspace as proposed Actions, retains the experiment workspaces until the operator says to delete them with the exact rollback command, and ends with one line: extend, narrow or abandon; any live-workspace mutation, bypassed guard refusal or cross-workspace read stops the trial, preserves evidence and is reported with no retry by silence."
-    depends_on: [guard-experiment-workspaces]
+      - "The Claude Code step ran against the contract agreed in issue #940: workspace exp-claude-20261004 created with arcadia init --profile experiment and addressed inline, a no-remote one-Action fixture inside it advanced and settled with receipts, the leak check run before and after, guarded refusals shown with exact messages, and the evidence and friction posted to issue #940 (comment 5986088702) and kept under the workspace's evidence directory."
+      - "The Decision 0082 stop condition event (an uninlined config get defaultWorkspace wrote one activity row into the live workspace) is recorded with its cause and its fixes merged and installed (#948 keeps workspace-independent commands out of the activity log and makes the leak check report live activity and refs; #950 adds the opt-in ARCADIA_REQUIRE_INLINE_WORKSPACE mode), the Codex step stopped without advancing (issue #940 comments 5986077838 and 5986555763) and the OpenCode step never started."
+      - "The operator ended the trial on 2026-10-05: no further experiment commands run, the preserved workspaces exp-claude-20261004 and exp-codex-20261004 are kept until the operator says to delete them (exp-owen-20261004 was never created), the unrun scope (concurrent three-agent settle overlap and the error-rate comparison against the live baseline) is recorded as not run, the friction is catalogued in issues #947 and #949, and the recommendation is recorded: narrow."
+    depends_on: []
     decisions: []
     references: []
+  - id: keep-exempt-commands-out-of-activity-log
+    title: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
+    expected_artifact: Evidence satisfying Agent Ask keep-exempt-commands-out-of-activity-log
+    clarification: clarified
+    confidence: high
+    source: Agent Ask keep-exempt-commands-out-of-activity-log-2026-10-04
+    acceptance_criteria:
+      - Every command classified exempt in src/workspace/experimentGuard.ts COMMAND_CLASSIFICATION, and any other command that reads no workspace state (init including --profile experiment, config get defaultWorkspace, identity resolve and roster, workspace resolve, workspace guard, workspace leak-check, audit host-preview), is run with activity recording off (the runCliAction recordActivity 'never' setting or a classification-driven equivalent) and never resolves, opens or writes a workspace database to record it; a test runs each of them with an uninlined environment whose user-config default points at a temporary live-like workspace and asserts zero activity rows and no database open there, and a test enumerates the command registry so a newly exempt command that still records activity fails the build.
+      - "`arcadia workspace leak-check` additionally records and compares, as separate attributed fields that do not by themselves count as a leak, the live workspace's activity_events row count and newest row id (read-only) and the live repository's ref list (heads, remotes, tags and refs/codex/* by name and target), prints them in its human output with a note on attributing them, and the guidance in docs/agent-guidance/arcadia-repository.md ('Experiment workspaces') states that a command run with no inline workspace is a command against the live workspace, that exempt commands record nothing, and fixes the sqlite read-only recipe for a fresh database (use immutable=1); focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/cli.ts", "src/activity/recorder.ts", "src/workspace/experimentGuard.ts", "src/workspace/leakCheck.ts", "src/commands/workspaceExperiment.ts", "https://github.com/pmark/arcadia/issues/947", "https://github.com/pmark/arcadia/issues/940"]
+  - id: define-agent-comms-role
+    title: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
+    expected_artifact: Evidence satisfying Agent Ask define-agent-comms-role
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-comms-role-v2-2026-10-04
+    acceptance_criteria:
+      - "docs/agent-guidance/agent-comms.md, registered in docs/agent-guidance/index.json with its triggers (comms, coordination issue, sub-issue, relay, peer sessions), defines the Comms role on top of docs/agent-guidance/agent-peer-watch.md: exactly one Comms session per platform (Claude Code, Codex, OpenCode); Comms may observe, relay, ask, offer help, escalate and launch read-only information-gathering subagents, and never dispatches, assigns, claims, releases or takes over work, which stays with the queue, claims and `arcadia go`; an Issue comment is a signal and never authority; awareness of other sessions reads Arcadia session and claim rows first, and each platform's native session listing (stated as verified or unknown for each of the three platforms) only as a fallback reported as unknown when unreadable."
+      - "The procedure fixes the channel: one coordination Issue per round, named by an approved posting Decision (initially pmark/arcadia#944, once an approved Decision such as 0083 covers it); each Comms comment is signed with the exact resolved identity signature line and carries a short human summary plus at most one arcadia-peer-watch-v1 block; a sub-issue is opened only when one Action needs multi-agent discussion or the operator asks, and a round ends with a summary comment and a successor Issue named by a new Decision; Comms posts only through the main checkout (never from an experiment workspace) and only while a posting Decision is approved and unexpired, and otherwise writes the same text as a local draft."
+      - "The procedure makes waiting cost no model tokens: a shell watcher polls with a comment-id watermark, an exact-signature self filter and rate-limit back-off below 500 remaining core requests, and is re-armed before the two-hour background limit; the Comms model wakes only on a comment from another signature, a peer classification change or an escalation; a checked-in launch brief for each of Claude Code, Codex and OpenCode starts a Comms session under these rules with its resolved identity; check:agent-guidance and the guidance index fingerprint checks pass."
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
+  - id: require-inline-workspace-mode
+    title: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
+    expected_artifact: Evidence satisfying Agent Ask require-inline-workspace-mode
+    clarification: clarified
+    confidence: high
+    source: Agent Ask require-inline-workspace-mode-2026-10-05
+    acceptance_criteria:
+      - With ARCADIA_REQUIRE_INLINE_WORKSPACE set to a truthy value, workspace resolution (src/workspace/resolve.ts and every caller path, including the activity recorder) refuses to use the user-config defaultWorkspace or the .arcadia-workspace marker and fails with a named error code (for example INLINE_WORKSPACE_REQUIRED) whose message states the exact fix (pass --workspace <path> or set ARCADIA_WORKSPACE inline on that command); --workspace, an ARCADIA_WORKSPACE value and the cwd config/arcadia.json walk-up keep resolving as before; commands that resolve no workspace (the no-record set, help, version) are unaffected; with the variable unset or falsy behaviour is byte-for-byte unchanged, so the live launchd services and operator scripts keep working; `arcadia workspace resolve` reports whether the mode is on.
+      - Arcadia-launched agent sessions (the launch environment built in src/sessions/ for Claude Code, Codex and OpenCode) set the variable when the launch environment already pins the workspace explicitly, so launched sessions' own arcadia commands keep working and cannot fall back silently; where a launch path does not pin the workspace the Action does not set it there and records exactly why in the pull request; the Identity block and docs/agent-guidance/arcadia-repository.md ('Experiment workspaces') state the mode, who sets it and how a native session turns it on for its own shell.
+      - "Tests (temporary directories and a temporary user config only) cover each resolution source with the mode on and off, the error code and remedy text, the recorder not falling back, the no-record commands and help staying usable, a launched-session environment containing the variable only when the workspace is pinned, and a regression that a command run inside the mode against a temp default workspace writes nothing there; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/workspace/resolve.ts", "src/workspace/config.ts", "src/activity/recorder.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/codingAgents/agentIdentity.ts", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/947"]
+  - id: fix-reviewer-verdict-name-echo
+    title: "The code reviewer's verdict parser accepts the prompt's 'Name: description' criterion line when a model echoes it into the check `name`, instead of rejecting the verdict shape."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "The code reviewer's verdict parser accepts the prompt's 'Name: description' criterion line when a model echoes it into the check `name`, instead of rejecting the verdict shape."
+    expected_artifact: Evidence satisfying Agent Ask fix-reviewer-verdict-name-echo
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "When the reviewer's `name` field contains the criterion's full 'Name: description' line, Arcadia matches it to the declared criterion (by name prefix) rather than recording `reviewerUnavailable`."
+      - A malformed verdict that matches no criterion still fails closed as before; the model's own statuses are preserved.
+      - A deterministic test feeds a verdict whose `name` echoes the criteria line and asserts it is accepted and mapped.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "https://github.com/pmark/arcadia/issues/937"]
+  - id: harden-peer-watch-ownership-join
+    title: "Close the peer-watch contract follow-ups: claim-after-session ownership join, `hasOwn`, and `releaseRef` from the reader."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the peer-watch contract follow-ups: claim-after-session ownership join, `hasOwn`, and `releaseRef` from the reader."
+    expected_artifact: Evidence satisfying Agent Ask harden-peer-watch-ownership-join
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "`deriveOwnership` does not yield `principal_terminal` when a claim was created after the Session it is joined to; the join is by claim/session identity, not worktree+branch only (src/agentWatch/classify.ts ~543-549)."
+      - "`hasOwn` uses the correct prototype-safe check, and the reader can return `releaseRef`."
+      - Regression tests cover the claim-after-session case and the ownership gate.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/agentWatch/classify.ts", "docs/agent-guidance/agent-peer-watch.md", "https://github.com/pmark/arcadia/issues/939"]
+  - id: fix-identity-block-fail-soft
+    title: "The Identity block fails soft and is printed everywhere it should be: reviewer prompt, `go`, packets, and advance."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "The Identity block fails soft and is printed everywhere it should be: reviewer prompt, `go`, packets, and advance."
+    expected_artifact: Evidence satisfying Agent Ask fix-identity-block-fail-soft
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "An invalid `config/coding-agent-models.json` does not make the independent QA/code review refuse for a cosmetic reason; `loadModelTierRegistry` in the reviewer prompt (src/qa/prReview.ts:421-427) is wrapped to fall back to the default display name."
+      - An empty packet directory no longer suppresses the Identity block, and `arcadia advance` prints it.
+      - Deterministic tests cover the fail-soft registry, empty packet dir, and advance output.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "https://github.com/pmark/arcadia/issues/942"]
+  - id: harden-experiment-guard-leak-check-attribution
+    title: "Close the experiment-guard review follow-ups: leak-check attribution guidance and `--record` clobber."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the experiment-guard review follow-ups: leak-check attribution guidance and `--record` clobber."
+    expected_artifact: Evidence satisfying Agent Ask harden-experiment-guard-leak-check-attribution
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - Leak-check output distinguishes ordinary live operation (broker manifest rewrite on a services restart, operator production transitions, admissions growth) from a real leak, in guidance and in attributed fields.
+      - "`leak-check --record` does not clobber a prior baseline unexpectedly; overwrite is explicit or preserved."
+      - Focused tests or fixtures cover the attribution cases and the record behavior.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/", "https://github.com/pmark/arcadia/issues/945"]
+  - id: fix-experiment-workspace-friction
+    title: "Fix the experiment-workspace friction: uninlined commands reaching live activity, unpositioned fresh Actions, and the Ask `--dir` default."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Fix the experiment-workspace friction: uninlined commands reaching live activity, unpositioned fresh Actions, and the Ask `--dir` default."
+    expected_artifact: Evidence satisfying Agent Ask fix-experiment-workspace-friction
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - A command run without an inline workspace cannot write an `activity_events` row into the live workspace from an experiment context (or the guard/require-inline mode makes that refusal explicit).
+      - A freshly imported/created fixture Action is positioned so `advance`/`make-next` works without a manual `queue arrange`, or the setup path does it.
+      - "`agent-ask draft/preview` does not default `--dir` to the Arcadia checkout when run inside a fixture; cost is documented."
+      - Deterministic tests cover the activity isolation and fresh-Action positioning.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/scheduling/github.ts", "https://github.com/pmark/arcadia/issues/947"]
+  - id: harden-activity-leak-fix-followups
+    title: "Close the activity-leak review follow-ups: operator-task ledger audit and leak-check snapshot size."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the activity-leak review follow-ups: operator-task ledger audit and leak-check snapshot size."
+    expected_artifact: Evidence satisfying Agent Ask harden-activity-leak-fix-followups
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "`operator-task raise|evidence|close|decline` writes to the repository ledger by design and is either recorded there only or documented as intentionally outside `activity_events`."
+      - "`leak-check --json` does not embed an unbounded `liveRefs` map; the snapshot is bounded or summarized."
+      - Focused tests cover the operator-task ledger and the bounded snapshot.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/949"]
+  - id: adopt-rehearsal-freeze-window
+    title: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    expected_artifact: Evidence satisfying Agent Ask adopt-rehearsal-freeze-window
+    clarification: clarified
+    confidence: high
+    source: Agent Ask adopt-rehearsal-freeze-window-2026-10-05
+    acceptance_criteria:
+      - "Agent guidance (a 'Rehearsal freeze window' procedure registered in docs/agent-guidance/index.json with triggers such as rehearsal, freeze, production active, reinstall, restart, install) defines the window as running from a successful production activation until the terminal production Off receipt, observed with read-only `arcadia production status`; lists what is forbidden inside it (reinstall-go-broker.sh and `go-broker install|ensure`; recover-arcadia-host-services.sh and `scripts/services.sh restart|stop` except through the run's own Off-first G8 step; `production activate|deactivate|reactivate` outside the run's own G-steps; workspace config and provider-registry edits; editing, pausing, docs-syncing or tidying the in-scope fixture Project; whole-queue arrange or moving in-scope queue keys; fast-forwarding or dirtying the main checkout across commits that touch runtime paths: src, scripts, apps, package.json, pnpm-lock.yaml, tsconfig.json) and what continues (worktree commits, PRs and reviews; merges on origin, with the main checkout not fast-forwarded past runtime-path commits until the window ends; Arcadia-only Ask settles from the main checkout when the fast-forward range is docs-only; read-only commands; `arcadia go` sessions in their own worktrees; modest gh reads); and names who runs the batched install after the window ends (the release-manager or orchestrator session: reinstall-go-broker.sh, then recover-arcadia-host-services.sh when services need it) and how agents learn the window opened or closed (the coordination Issue and production status), without changing any authority."
+      - "`arcadia go-broker install` and `arcadia go-broker ensure` (src/commands/goBrokerInstall.ts), reinstall-go-broker.sh before it installs, and `scripts/services.sh restart|stop` refuse with a named reason (for example production_active_freeze) and the exact supported alternative when read-only production status reports the managed-production policy Active, and proceed when it is Inactive or Off; a documented inline operator override (for example ARCADIA_FREEZE_OVERRIDE=<reason>) bypasses the refusal and records the reason; G8's Off-first restart path is unaffected; the CLI checks fail closed when status cannot be read while services.sh fails open with a warning as its existing comment requires; recover-arcadia-host-services.sh and its descriptor stay byte-identical, or G8's RECOVER_* sha256 pins and their tests are re-pinned in the same change."
+      - "Hermetic tests cover Active refusal, Inactive and Off success, the override with its recorded reason and unreadable status for each guarded entry point, and the G8 Off-then-restart path still passing; focused suites, lint, tsc, pnpm build, check:agent-guidance, check:operator-scripts and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/goBrokerInstall.ts", "scripts/services.sh", "artifacts/generated/operator-scripts/reinstall-go-broker.sh", "artifacts/generated/operator-scripts/recover-arcadia-host-services.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "src/production/tick.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: guard-experiment-workspaces
+current_action: adopt-rehearsal-freeze-window
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

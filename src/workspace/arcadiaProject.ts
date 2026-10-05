@@ -13,6 +13,7 @@ import {
 } from "../db/repositories.js";
 import type { Milestone, MissionLog, Project, WorkItem } from "../domain/types.js";
 import { buildMissionLogRelativePath, writeMissionLogMarkdown } from "../markdown/missionLog.js";
+import { refuseInExperimentWorkspace } from "./experimentGuard.js";
 
 export const ARCADIA_PROJECT_NAME = "Arcadia";
 export const ARCADIA_PROJECT_MISSION =
@@ -33,6 +34,7 @@ export interface ArcadiaProjectSeedResult {
 }
 
 export function seedArcadiaProject(db: Database.Database, workspace: string): ArcadiaProjectSeedResult {
+  refuseInExperimentWorkspace("arcadia-project.seed", workspace);
   const project = upsertProject(db, {
     name: ARCADIA_PROJECT_NAME,
     mission: ARCADIA_PROJECT_MISSION,

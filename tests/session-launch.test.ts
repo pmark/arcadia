@@ -131,6 +131,7 @@ describe("launchGuardedHostSession", () => {
     expect(tmux.launches[0].command).toBe("env");
     expect(tmux.launches[0].args.slice(0, -1)).toEqual([
       "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR",
+      "-u", "ARCADIA_REQUIRE_INLINE_WORKSPACE",
       "GIT_AUTHOR_NAME=Owen Mason",
       "GIT_AUTHOR_EMAIL=owen.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Owen Mason",
@@ -166,6 +167,49 @@ describe("launchGuardedHostSession", () => {
       expect(tmux.launches[0].args).not.toContain("e3_deep");
       // No standing-policy admission, so an operator is at the terminal: Claude stays interactive.
       expect(tmux.launches[0].args).not.toContain("--print");
+    }
+  });
+
+  it("pins no workspace in any provider's launch environment, sets no ARCADIA_REQUIRE_INLINE_WORKSPACE and unsets an inherited one", () => {
+    // ARCADIA_REQUIRE_INLINE_WORKSPACE belongs only in a launch environment
+    // that also pins ARCADIA_WORKSPACE (src/workspace/resolve.ts). None does:
+    // a launched Session's own arcadia commands resolve the user config
+    // default, which the mode would refuse. A launcher running with both
+    // variables set passes neither on the `env` command line, and `env -u`
+    // strips the mode the tmux server or launcher shell would hand down.
+    const previousWorkspace = process.env.ARCADIA_WORKSPACE;
+    const previousMode = process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE;
+    try {
+      for (const [provider, model, profileName, command] of [
+        ["codex-cli", "gpt-5.6-terra", "codex_build", "codex"],
+        ["claude-code-cli", "sonnet", "claude_build", "claude"],
+        ["opencode-cli", "opencode-go/deepseek-v4.1-flash", "opencode_build", "opencode"]
+      ] as const) {
+        const fixture = preparedFixture({ provider, model, profileName, command });
+        const tmux = new FakeTmux();
+        const preview = preview1(fixture);
+        process.env.ARCADIA_WORKSPACE = fixture.workspace;
+        process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE = "1";
+        try {
+          doLaunch(fixture, tmux, preview.previewFingerprint);
+        } finally {
+          delete process.env.ARCADIA_WORKSPACE;
+          delete process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE;
+        }
+        expect(tmux.launches, provider).toHaveLength(1);
+        const settings = tmux.launches[0].args.slice(0, -1);
+        expect(settings, provider).toEqual(expect.arrayContaining([expect.stringMatching(/^GIT_AUTHOR_NAME=/)]));
+        expect(settings.filter((arg) => /^ARCADIA_(WORKSPACE|REQUIRE_INLINE_WORKSPACE)=/.test(arg)), provider).toEqual([]);
+        const unset = settings.indexOf("ARCADIA_REQUIRE_INLINE_WORKSPACE");
+        expect(unset, provider).toBeGreaterThan(0);
+        expect(settings[unset - 1], provider).toBe("-u");
+        expect(settings, provider).not.toContain("ARCADIA_WORKSPACE");
+        // The brief's Identity block tells the agent how to turn the mode on itself.
+        expect(tmux.launches[0].args.at(-1), provider).toContain("ARCADIA_REQUIRE_INLINE_WORKSPACE=1");
+      }
+    } finally {
+      if (previousWorkspace === undefined) delete process.env.ARCADIA_WORKSPACE; else process.env.ARCADIA_WORKSPACE = previousWorkspace;
+      if (previousMode === undefined) delete process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE; else process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE = previousMode;
     }
   });
 
@@ -669,9 +713,9 @@ describe("launchGuardedHostSession", () => {
     // in a shell that reads the token file itself rather than a literal
     // "claude" argv, so the token value is never a process argument anywhere.
     expect(launch.command).toBe("env");
-    expect(launch.args[8]).toBe("sh");
-    expect(launch.args[9]).toBe("-c");
-    const script = launch.args[10];
+    expect(launch.args[10]).toBe("sh");
+    expect(launch.args[11]).toBe("-c");
+    const script = launch.args[12];
     expect(script).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
     expect(script).toContain("cat");
     expect(script).toContain(getWorkspacePaths(fixture.workspace).claudeCodeTokenFile);
@@ -709,7 +753,7 @@ describe("launchGuardedHostSession", () => {
     doLaunch(fixture, tmux, preview.previewFingerprint);
     expect(tmux.launches[0].command).toBe("env");
     expect(tmux.launches[0].args).not.toContain("sh");
-    expect(tmux.launches[0].args[8]).toBe("claude");
+    expect(tmux.launches[0].args[10]).toBe("claude");
     expect(tmux.launches[0].args).toContain("--session-id");
   });
 

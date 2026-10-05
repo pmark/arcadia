@@ -84,7 +84,10 @@ sqlite3 -readonly "<workspacePath>/database/arcadia.sqlite3"
 
 Resolved from `~/.config/arcadia/config.json` (`defaultWorkspace`). Do not
 `find` for `arcadia.sqlite3`: stale ones exist (e.g. `~/Arcadia/workspace`, old
-schema) and throwaway test ones under `/tmp`.
+schema) and throwaway test ones under `/tmp`. With
+`ARCADIA_REQUIRE_INLINE_WORKSPACE=1` on, that fallback is refused:
+`data.workspacePath` is null and `data.refused` names the default it would
+have used; any other uninlined command fails `INLINE_WORKSPACE_REQUIRED`.
 
 ## What happened to an Ask? (capture id → outcome)
 

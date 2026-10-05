@@ -1228,8 +1228,16 @@ export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasS
   };
 }
 
+/**
+ * Variables a launched Session must never inherit from the tmux server or the
+ * launcher's shell. The operator-script markers fence operator authority; the
+ * inline-workspace mode belongs to the shell that turned it on, and the
+ * launcher sets it for no Session (its commands resolve the user config
+ * default, which the mode would refuse; src/workspace/resolve.ts).
+ */
 const SESSION_OPERATOR_CONTEXT_RESET = [
-  "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR"
+  "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR",
+  "-u", "ARCADIA_REQUIRE_INLINE_WORKSPACE"
 ];
 
 /**

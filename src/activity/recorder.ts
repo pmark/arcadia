@@ -21,8 +21,13 @@ export function recordCliActivity(input: {
   durationMs: number;
   /** The command's response payload, inspected only for an obvious subject. */
   data?: unknown;
+  /** For a failed command, the code `activityErrorCode` derived. */
+  errorCode?: string | null;
 }): void {
   try {
+    // With ARCADIA_REQUIRE_INLINE_WORKSPACE on, a row with no inline target
+    // would otherwise land in the user config default: resolveWorkspace
+    // throws INLINE_WORKSPACE_REQUIRED instead, and the row is skipped below.
     const resolved = resolveWorkspace({ workspace: input.workspace });
     if (!resolved.workspacePath) {
       return;
@@ -43,13 +48,15 @@ export function recordCliActivity(input: {
         entryId: subject.entryId,
         projectId: subject.projectId,
         outcome: input.outcome,
-        durationMs: Math.round(input.durationMs)
+        durationMs: Math.round(input.durationMs),
+        errorCode: input.errorCode ?? null
       });
     } finally {
       db.close();
     }
   } catch {
-    // Deliberately silent: see the note above.
+    // Deliberately silent: see the note above. This includes the inline
+    // mode's refusal, so the recorder never resolves a fallback of its own.
   }
 }
 

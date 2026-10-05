@@ -206,6 +206,13 @@ describe("Plan-amendment operator action: real workspace and canonical preview/a
     const f = fixture(); writeFileSync(path.join(f.repo, "unrelated.txt"), "Unsaved work"); f.noMutation("DIRTY_CHECKOUT");
   });
   it("refuses unavailable workspace", () => { const f = fixture(); f.noMutation("WORKSPACE_UNAVAILABLE", { ARCADIA_WORKSPACE: path.join(f.root, "missing") }); });
+  it("refuses an experiment workspace (Decision 0082)", () => {
+    const f = fixture();
+    const configFile = path.join(f.workspace, "config", "arcadia.json");
+    const config = JSON.parse(readFileSync(configFile, "utf8")) as Record<string, unknown>;
+    writeFileSync(configFile, JSON.stringify({ ...config, experiment: { enabled: true, allowedRepoRoot: "projects" } }));
+    f.noMutation("EXPERIMENT_WORKSPACE");
+  });
   it("refuses wrong branch", () => { const f = fixture(); f.git("switch", "-qc", "other"); f.noMutation("WRONG_CHECKOUT"); });
   it("refuses another proposal without settling either", () => {
     const f = fixture(); f.input.ask.proposal = "another-proposal"; f.saveDescriptor(); f.commit(); f.noMutation("INVALID_CONTRACT");

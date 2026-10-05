@@ -40,8 +40,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   }
 
+  const arcadiaWorkspace = resolveConfiguredWorkspace(env);
+  refuseExperimentWorkspace(arcadiaWorkspace);
+
   return {
-    arcadiaWorkspace: resolveConfiguredWorkspace(env),
+    arcadiaWorkspace,
     discordBotToken: requireEnv(env, "DISCORD_BOT_TOKEN"),
     discordClientId: requireEnv(env, "DISCORD_CLIENT_ID"),
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
@@ -113,9 +116,42 @@ function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]):
   return env[name]?.trim() ?? "";
 }
 
+/**
+ * Decision 0082: the bot posts to the operator's real channel, so it never
+ * runs against an experiment workspace. This mirrors the `discord-bot.start`
+ * entry of Arcadia's guard (src/workspace/experimentGuard.ts); the bot is a
+ * separate package and reads the same `experiment` flag directly.
+ */
+export function refuseExperimentWorkspace(workspace: string): void {
+  const configPath = path.join(workspace, "config", "arcadia.json");
+  if (!existsSync(configPath)) return;
+  const text = readFileSync(configPath, "utf8");
+  let experiment: unknown;
+  try {
+    experiment = (JSON.parse(text) as { experiment?: unknown }).experiment;
+  } catch {
+    // Fail closed: an unparseable config that mentions an experiment is
+    // treated as one rather than waved through.
+    experiment = /"experiment"/.test(text) ? true : undefined;
+  }
+  if (experiment === undefined) return;
+  throw new Error(
+    `Refused in experiment workspace ${workspace}: discord-bot.start. The Discord bot posts to the operator's real channel. ` +
+      "Read the outbox with `arcadia agent-ask notifications` instead; only the live workspace has a Discord sender."
+  );
+}
+
 function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string {
   if (env.ARCADIA_WORKSPACE?.trim()) {
     return path.resolve(env.ARCADIA_WORKSPACE);
+  }
+
+  // Its launchd service never sets ARCADIA_REQUIRE_INLINE_WORKSPACE.
+  if (inlineWorkspaceRequired(env)) {
+    throw new Error(
+      "INLINE_WORKSPACE_REQUIRED: ARCADIA_REQUIRE_INLINE_WORKSPACE is on, so the Discord bot will not fall back to the user config defaultWorkspace. " +
+        "Set ARCADIA_WORKSPACE=<path> inline on the command that starts it."
+    );
   }
 
   const defaultWorkspace = loadUserConfig(env).defaultWorkspace;
@@ -124,6 +160,18 @@ function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string {
   }
 
   throw new Error("Set ARCADIA_WORKSPACE or configure an Arcadia default workspace.");
+}
+
+/**
+ * An identical copy of `inlineWorkspaceRequired` in Arcadia's resolver
+ * (src/workspace/resolve.ts): the bot is a separate package with no
+ * dependency on Arcadia's sources. It fails closed the same way: any
+ * non-empty value other than 0, false, no or off is on.
+ * tests/require-inline-workspace.test.ts checks the two agree.
+ */
+export function inlineWorkspaceRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.ARCADIA_REQUIRE_INLINE_WORKSPACE?.trim().toLowerCase() ?? "";
+  return value !== "" && !["0", "false", "no", "off"].includes(value);
 }
 
 function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {

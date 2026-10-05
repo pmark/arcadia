@@ -1,3 +1,4 @@
+import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -1380,6 +1381,7 @@ export function waitForWorkerRoutes(workspacePath: string, timeoutMs: number, no
 export function runWorkerInstallCommand(options: WorkerOptions, dependencies: WorkerInstallDependencies = {}): void {
   refuseIfManagedSession("install", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  refuseInExperimentWorkspace("launchd.plist-write", workspacePath);
   const repositoryRoot = path.resolve(import.meta.dirname, "../..");
   const home = process.env["HOME"] ?? "/tmp";
   const plistPath = path.join(home, "Library", "LaunchAgents", `${WORKER_PLIST_LABEL}.plist`);

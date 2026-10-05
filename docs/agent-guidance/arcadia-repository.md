@@ -184,6 +184,130 @@ never authorizes merging the PR, bypassing branch protection, weakening tests,
 falsifying checks, or crossing any approval gate; automatic recovery ends with
 a clean, reviewed, mergeable PR ready for the operator's normal merge decision.
 
+## Experiment workspaces
+
+Decision 0082 permits disposable experiment workspaces beside the exclusive live
+`martianrover` workspace, so agents can exercise Asks, queue and pointer moves,
+settlement, docs sync and Project import without contending on the live queue.
+They are the one bounded exception to "resolve the configured workspace", and
+the bound is Decision 0082's: the trial window runs 14 days from 2026-10-04,
+**until 2026-10-18**, and stops earlier at the stop condition — any leak-check
+change, or any write to `martianrover` attributable to the experiment. After
+either, create no experiment workspace and use none until a new Decision
+extends it.
+`martianrover` stays the sole authority for every real Project; findings return
+through ordinary Agent Asks there, and no experiment result changes governed state.
+
+- **Create** fresh: `arcadia init --profile experiment
+  /Users/pmark/Dev/MR/Arcadia/workspaces/exp-<agent>-<yyyymmdd>`. It refuses the
+  name `martianrover` and any existing workspace or database, never seeds the
+  Arcadia Project, and writes `experiment: { enabled: true, allowedRepoRoot:
+  "projects" }` into its `config/arcadia.json`.
+- **Address it only inline**: `ARCADIA_WORKSPACE=<exp> arcadia <command>` or
+  `--workspace <exp>` on that one command. Never `export` it in a shell and never
+  make it the default (`config set defaultWorkspace` refuses): the four live
+  launchd services follow the user config default, and the restart script
+  follows `ARCADIA_WORKSPACE`. **A command run with no inline workspace is a
+  command against the live workspace**: it resolves the user config default
+  (`martianrover`) and, like every recorded command, writes an
+  `activity_events` row there. The commands classified `exempt` in
+  `COMMAND_CLASSIFICATION` (they read no workspace state: `init`, `config get
+  defaultWorkspace`, `identity resolve|roster`, `workspace
+  resolve|guard|leak-check`, `audit host-preview`, `agent-ask contract`, `pr
+  code-review`, `tidy list|undo`, `triggers`, `docket`, `plans` and
+  `operator-task *`) record nothing and open no workspace database to do so;
+  `tests/activity-no-record-commands.test.ts` fails when one does.
+- **Make a forgotten inline fail: `ARCADIA_REQUIRE_INLINE_WORKSPACE=1`.** It
+  fails closed: any non-empty value other than `0`, `false`, `no` or `off` (any
+  case) turns it on, a typo included; unset or empty is off. With it on, workspace resolution
+  (`src/workspace/resolve.ts`, which the CLI, the activity recorder, the guard,
+  the broker and the transports all use) accepts only `--workspace`, an
+  `ARCADIA_WORKSPACE` value or an initialized workspace at or above the working
+  directory. A command that would fall back to the user config default or the
+  `.arcadia-workspace` marker fails with `INLINE_WORKSPACE_REQUIRED` and its
+  `remedy`, and the recorder skips that row instead of writing it there
+  (`dogfood *` is the exception: it targets `.arcadia-workspace` by command
+  name, not by fallback).
+  `arcadia workspace resolve` reports `inlineWorkspaceRequired` and any refused
+  fallback; `workspace guard` fails closed. Commands that resolve nothing
+  (help, version, `identity resolve`, `init`, `config get defaultWorkspace`)
+  are unaffected, and so is `workspace leak-check`, which reads the user config
+  default read-only on purpose. **Who sets it:** you, for your own shell.
+  Arcadia's launcher sets it for no Session, because no launch environment pins
+  `ARCADIA_WORKSPACE` and a Session's commands (`work monitor`, settlement)
+  rely on the user config default; its `env -u` boundary also strips a value
+  the tmux server or the launcher's shell would hand down, so a launched
+  Session never inherits yours. The launchd services and operator scripts
+  never set it, so their behaviour is unchanged. **How a native session turns
+  it on:** `export ARCADIA_REQUIRE_INLINE_WORKSPACE=1` in a persistent shell,
+  or start the agent CLI with it (`ARCADIA_REQUIRE_INLINE_WORKSPACE=1 claude`,
+  `… codex`, `… opencode`) when its tool shells keep no exports between calls;
+  then name every workspace inline, the live one included. Exporting the mode
+  is fine; exporting `ARCADIA_WORKSPACE` is not. The mode cannot tell an inline
+  `ARCADIA_WORKSPACE` from an exported one, so an exported value still
+  resolves, and the G1/G6/G7/G8 rehearsal scripts still refuse it themselves.
+  Do not run those operator scripts with the mode on: they resolve the live
+  workspace from the user config on purpose, so the G6 preflight's workspace
+  check fails closed with a misleading "did not resolve from user config"
+  message. The test suite starts with the mode off (`vitest.config.ts`).
+- **Register only disposable fixtures** under `<exp>/projects/`, and give them
+  no Git remote. Registration (Project metadata, `blog configure-site
+  --content-repo-path`, `rebuster configure --repo-path`) refuses any other path,
+  a symlink that resolves outside, and any repository the live workspace has
+  registered. Nothing enforces "no remote": that is the agent's obligation.
+- **The guard prevents accidents, not malice.** Anyone who can write
+  `<exp>/config/arcadia.json` can delete its `experiment` key and the workspace
+  becomes ordinary; the leak check, not the guard, is what shows the boundary
+  held.
+- **The guard is allow-by-default** (`src/workspace/experimentGuard.ts`). While
+  an experiment workspace is resolved it refuses only: production activate and
+  reactivate (Grants), `production capacity attest`, `go-broker install|ensure`
+  and their Codex/Claude trust writes, `worker start|stop|install|uninstall`,
+  `ingress service install|uninstall|run`, ingress writes to the shared iCloud
+  folder, `qa restart|refresh`, `scripts/services.sh restart|stop`, `schedule
+  github link`, `pr decline-finding`, `way propagate`, `push-unpushed --apply`,
+  delivery receipts (`agent-ask notification-sent`, `digest mark-posted`,
+  `orientation packet mark-sent`), the Discord bot, `config set
+  defaultWorkspace` and the `/runs` operator runner. Each refusal
+  (`EXPERIMENT_WORKSPACE_REFUSED`) names the reason and the supported
+  alternative. Read-only commands, `gh` reads, local Git, tests and everything
+  else inside the experiment are never refused. A new CLI command fails
+  `tests/experiment-workspace-guard.test.ts` until it is classified allowed,
+  guarded or exempt in `COMMAND_CLASSIFICATION`.
+- **Leak check every session**: `arcadia workspace leak-check --record
+  <before.json>` before, `arcadia workspace leak-check --baseline <before.json>`
+  after. It compares the live Project count and queue revision (read-only, no
+  activity row), hashes of the user config, `~/.codex/config.toml`,
+  `~/.claude/settings.json`, the trusted-folder list in `~/.claude.json` and
+  `~/.arcadia/telemetry/capacity-receipts.json`, the live `production_policy`
+  row with its receipt and admission counts, the go-broker release manifests,
+  launchers and managed skills, and the `com.arcadia.*` launch agents. Any change
+  exits with `WORKSPACE_LEAK_DETECTED`; attribute it (another agent may have
+  settled in the live workspace) before calling it a leak, and stop the trial if
+  it is one. It also records two **attributed** fields that never fail the check
+  by themselves: `liveActivity` (the live `activity_events` row count and newest
+  row, read-only) and `liveRefs` (the live repository's heads, remotes, tags and
+  `refs/codex/*` by name and target; the live workspace's registered Arcadia
+  repository, or `--live-repo <path>`). Other agents and the operator move both
+  constantly, so `data.attributed` and the human output list each change for
+  you to attribute: a new row whose command you ran uninlined, or a ref your
+  session created, is your leak. A snapshot that could not read the live database (for example a
+  sandboxed read-only open) exits with `LEAK_CHECK_UNVERIFIABLE` and never
+  passes: rerun it where the database is readable.
+- **Measure contention** from `activity_events.error_code` (`SQLITE_BUSY*`,
+  `QUEUE_REVISION_CONFLICT`, `STALE_PREVIEW_FINGERPRINT`, `DIRTY_CHECKOUT`, or
+  the CLI code): `sqlite3 'file:<exp>/database/arcadia.sqlite3?mode=ro&immutable=1'
+  "SELECT command, error_code, COUNT(*) FROM activity_events WHERE outcome =
+  'error' GROUP BY 1, 2 ORDER BY 3 DESC"`. A plain `mode=ro` (or `-readonly`)
+  open fails with error 14 on a fresh experiment database that has no `-shm`
+  file yet; `immutable=1` reads it without creating one. `immutable=1` skips
+  locking and the WAL, so use it only on a quiescent experiment database, never
+  to read the live one (`workspace leak-check` reads it read-only and records
+  nothing).
+- **Rollback** only when the operator says so: confirm a clean leak check and that
+  no launch agent, user config or trust entry names the workspace, then remove
+  its directory.
+
 ## Claude Code specifics
 
 - `@AGENTS.md` above is a Claude Code import. Codex ignores it and reads

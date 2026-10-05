@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { usageError } from "../cli/errors.js";
+import { ArcadiaError, usageError } from "../cli/errors.js";
 import { loadUserConfig } from "./config.js";
 import { getWorkspacePaths, resolveWorkspacePath } from "./paths.js";
 
@@ -25,23 +25,96 @@ export interface WorkspaceResolutionInput {
   env?: NodeJS.ProcessEnv;
 }
 
+/**
+ * The opt-in "inline workspace required" mode. With it on, resolution accepts
+ * only a workspace the command itself names -- `--workspace`, an
+ * `ARCADIA_WORKSPACE` value, or an initialized workspace at or above the
+ * working directory -- and refuses the two silent fallbacks: the user config
+ * `defaultWorkspace` and the repo-local `.arcadia-workspace` marker. A coding
+ * agent working beside the live workspace turns it on for its own shell, so a
+ * command it forgot to inline fails by name instead of resolving the live
+ * default and writing there (pmark/arcadia#947).
+ *
+ * It cannot tell an inline `ARCADIA_WORKSPACE=<path> arcadia …` from an
+ * exported one: both are an environment variable by the time Node reads it.
+ * Exporting stays discouraged, and the operator scripts that resolve from the
+ * user config still refuse an exported value themselves.
+ */
+export const REQUIRE_INLINE_WORKSPACE_VARIABLE = "ARCADIA_REQUIRE_INLINE_WORKSPACE";
+
+const OFF_VALUES = new Set(["0", "false", "no", "off"]);
+
+/**
+ * Whether the mode is on. It is a safety control, so it fails closed: any
+ * non-empty value other than `0`, `false`, `no` or `off` (any case, trimmed)
+ * turns it on, including a typo such as `ture` or `y`. Unset or empty is off.
+ * apps/discord-bot/src/config.ts keeps an identical copy (separate package).
+ */
+export function inlineWorkspaceRequired(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env[REQUIRE_INLINE_WORKSPACE_VARIABLE]?.trim().toLowerCase() ?? "";
+  return value !== "" && !OFF_VALUES.has(value);
+}
+
+export const INLINE_WORKSPACE_REMEDY =
+  "Name the workspace on this command: pass --workspace <path>, or set it inline as ARCADIA_WORKSPACE=<path> arcadia <command> " +
+  "(never exported), or run from inside an initialized workspace.";
+
+/** The refusal the mode raises in place of a fallback; `details` carries `code` and `remedy` like other refusals. */
+export function inlineWorkspaceRequiredError(fallback: WorkspaceResolution): ArcadiaError {
+  const what = fallback.source === "user config" ? "the user config defaultWorkspace" : "the repo-local .arcadia-workspace marker";
+  return new ArcadiaError(
+    "INLINE_WORKSPACE_REQUIRED",
+    `${REQUIRE_INLINE_WORKSPACE_VARIABLE} is on, so Arcadia will not fall back to ${what} (${fallback.workspacePath}). ` +
+      "Pass --workspace <path> or set ARCADIA_WORKSPACE=<path> inline on this command.",
+    2,
+    {
+      code: "INLINE_WORKSPACE_REQUIRED",
+      variable: REQUIRE_INLINE_WORKSPACE_VARIABLE,
+      refusedSource: fallback.source,
+      refusedWorkspace: fallback.workspacePath,
+      refusedDetail: fallback.detail,
+      remedy: INLINE_WORKSPACE_REMEDY
+    }
+  );
+}
+
+/**
+ * Resolves the workspace a command targets. This is the one resolver every
+ * caller uses (the CLI, the activity recorder, the experiment guard, the
+ * broker and session transports), so the inline mode is enforced here and
+ * nowhere else: with it on, a resolution that would come from the user config
+ * default or the dogfood marker throws `INLINE_WORKSPACE_REQUIRED` instead.
+ * With it off this returns exactly what it always has.
+ */
 export function resolveWorkspace(input: WorkspaceResolutionInput = {}): WorkspaceResolution {
   const env = input.env ?? process.env;
+  const { resolution, fallback } = resolveWorkspaceSource(input, env);
+  if (fallback && inlineWorkspaceRequired(env)) {
+    throw inlineWorkspaceRequiredError(resolution);
+  }
+  return resolution;
+}
+
+function resolveWorkspaceSource(
+  input: WorkspaceResolutionInput,
+  env: NodeJS.ProcessEnv
+): { resolution: WorkspaceResolution; fallback: boolean } {
+  const explicit = (resolution: WorkspaceResolution) => ({ resolution, fallback: false });
   const cwd = path.resolve(input.cwd ?? invocationCwd(env));
 
   if (input.workspace?.trim()) {
-    return {
+    return explicit({
       source: "flag",
       workspacePath: resolveWorkspacePath(input.workspace)
-    };
+    });
   }
 
   if (env.ARCADIA_WORKSPACE?.trim()) {
-    return {
+    return explicit({
       source: "environment variable",
       workspacePath: resolveWorkspacePath(env.ARCADIA_WORKSPACE),
       detail: "ARCADIA_WORKSPACE"
-    };
+    });
   }
 
   // An explicit workspace at or above `cwd` -- the operator is standing
@@ -51,19 +124,22 @@ export function resolveWorkspace(input: WorkspaceResolutionInput = {}): Workspac
   // nobody ends up inside a workspace directory by accident.
   const directWorkspace = findDirectWorkspace(cwd);
   if (directWorkspace) {
-    return {
+    return explicit({
       source: "local marker",
       workspacePath: directWorkspace.workspacePath,
       detail: directWorkspace.marker
-    };
+    });
   }
 
   const defaultWorkspace = loadUserConfig(env).defaultWorkspace;
   if (defaultWorkspace?.trim()) {
     return {
-      source: "user config",
-      workspacePath: resolveWorkspacePath(defaultWorkspace),
-      detail: "defaultWorkspace"
+      fallback: true,
+      resolution: {
+        source: "user config",
+        workspacePath: resolveWorkspacePath(defaultWorkspace),
+        detail: "defaultWorkspace"
+      }
     };
   }
 
@@ -76,21 +152,56 @@ export function resolveWorkspace(input: WorkspaceResolutionInput = {}): Workspac
   const dogfoodWorkspace = findDogfoodWorkspace(cwd);
   if (dogfoodWorkspace) {
     return {
-      source: "local marker",
-      workspacePath: dogfoodWorkspace.workspacePath,
-      detail: dogfoodWorkspace.marker,
-      warning:
-        `Using repo-local dogfood workspace at ${dogfoodWorkspace.workspacePath} because no ` +
-        "--workspace flag, ARCADIA_WORKSPACE, or defaultWorkspace is configured. This workspace " +
-        "is separate from any shared or long-running workspace and may hold stub data -- run " +
-        "`arcadia config set defaultWorkspace <path>` if that was not intended."
+      fallback: true,
+      resolution: {
+        source: "local marker",
+        workspacePath: dogfoodWorkspace.workspacePath,
+        detail: dogfoodWorkspace.marker,
+        warning:
+          `Using repo-local dogfood workspace at ${dogfoodWorkspace.workspacePath} because no ` +
+          "--workspace flag, ARCADIA_WORKSPACE, or defaultWorkspace is configured. This workspace " +
+          "is separate from any shared or long-running workspace and may hold stub data -- run " +
+          "`arcadia config set defaultWorkspace <path>` if that was not intended."
+      }
     };
   }
 
-  return {
+  return explicit({
     source: "missing",
     workspacePath: null,
     detail: "No --workspace flag, ARCADIA_WORKSPACE, local workspace marker, or user default configured."
+  });
+}
+
+/**
+ * What `arcadia workspace resolve` reports: the resolution, whether the
+ * inline mode is on, and -- when the mode refused a fallback -- the refusal
+ * in place of a workspace. It never throws for the mode, so the diagnostic
+ * stays usable while the mode is on.
+ */
+export interface WorkspaceResolutionReport extends WorkspaceResolution {
+  inlineWorkspaceRequired: boolean;
+  refused?: { code: "INLINE_WORKSPACE_REQUIRED"; message: string; source: WorkspaceResolutionSource; workspacePath: string | null; remedy: string };
+}
+
+export function reportWorkspaceResolution(input: WorkspaceResolutionInput = {}): WorkspaceResolutionReport {
+  const env = input.env ?? process.env;
+  const required = inlineWorkspaceRequired(env);
+  const { resolution, fallback } = resolveWorkspaceSource(input, env);
+  if (!(fallback && required)) return { ...resolution, inlineWorkspaceRequired: required };
+  const error = inlineWorkspaceRequiredError(resolution);
+  return {
+    source: "missing",
+    workspacePath: null,
+    detail: error.message,
+    inlineWorkspaceRequired: true,
+    refused: {
+      code: "INLINE_WORKSPACE_REQUIRED",
+      message: error.message,
+      source: resolution.source,
+      workspacePath: resolution.workspacePath,
+      remedy: INLINE_WORKSPACE_REMEDY
+    }
   };
 }
 

@@ -14,6 +14,7 @@ interface ActivityEventRow {
   project_id: string | null;
   outcome: string;
   duration_ms: number | null;
+  error_code: string | null;
 }
 
 interface TimeEntryRow {
@@ -43,7 +44,8 @@ function toActivityEvent(row: ActivityEventRow): ActivityEvent {
     entryId: row.entry_id,
     projectId: row.project_id,
     outcome: row.outcome as ActivityEvent["outcome"],
-    durationMs: row.duration_ms
+    durationMs: row.duration_ms,
+    errorCode: row.error_code ?? null
   };
 }
 
@@ -78,9 +80,9 @@ export function recordActivityEvent(db: Database.Database, input: RecordActivity
   const id = createId("activityEvent");
   db.prepare(
     `INSERT INTO activity_events (
-       id, occurred_at, local_date, surface, command, focus, entry_id, project_id, outcome, duration_ms
+       id, occurred_at, local_date, surface, command, focus, entry_id, project_id, outcome, duration_ms, error_code
      ) VALUES (
-       @id, @occurred_at, @local_date, @surface, @command, @focus, @entry_id, @project_id, @outcome, @duration_ms
+       @id, @occurred_at, @local_date, @surface, @command, @focus, @entry_id, @project_id, @outcome, @duration_ms, @error_code
      )`
   ).run({
     id,
@@ -92,7 +94,8 @@ export function recordActivityEvent(db: Database.Database, input: RecordActivity
     entry_id: input.entryId ?? null,
     project_id: input.projectId ?? null,
     outcome: input.outcome,
-    duration_ms: input.durationMs ?? null
+    duration_ms: input.durationMs ?? null,
+    error_code: input.outcome === "error" ? input.errorCode ?? null : null
   });
   const row = db.prepare("SELECT * FROM activity_events WHERE id = ?").get(id) as ActivityEventRow;
   return toActivityEvent(row);
