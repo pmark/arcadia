@@ -81,10 +81,11 @@ backups) and never discards a candidate.
 The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
 G1's genesis. Run these in order, each from a terminal unless noted:
 
-1. Merge the run-2 pull request. The G8 reconciliation repair is already
-   merged (#955). Then rerun the existing G8
-   `restore-terminal-off-three-action-rehearsal-2026-10-04` for run 1. Its
-   restart reinstalls from clean main, so the new runtime is installed.
+1. Merge the run-2 pull request. The G8 reconciliation repair (#955) is
+   merged and the existing G8 `restore-terminal-off-three-action-rehearsal-2026-10-04`
+   already succeeded for run 1 (run `20261005T043958Z-2548`); the reset
+   requires that receipt. This pull request changes runtime paths, so install
+   it with step 3 before G6.
 2. Reset the fixture, exactly:
 
    ```sh
@@ -100,7 +101,8 @@ G1's genesis. Run these in order, each from a terminal unless noted:
    run 1's branch `claude/write-start-marker-20261004T170245861Z` or PR #1. The
    local branch, the GitHub branch and the PR #1 head must all stay at
    `58bcd915…` before and after.
-3. If Arcadia main moved on a runtime path after step 1, run
+3. If Arcadia main moved on a runtime path since the last install (the
+   run-2 pull request itself is such a change), run
    `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
 4. Run the run-2 G6 `preflight-three-action-rehearsal-2026-10-05`. It binds the
    reset head recorded in the latest succeeded reset receipt.
