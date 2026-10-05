@@ -1,9 +1,19 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, Play, Search, TerminalSquare } from "lucide-react";
+import { AlertTriangle, ArrowDown, CheckCircle2, Clock3, Loader2, Play, Search, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DashboardChrome } from "../../components/chrome";
+import {
+  deriveNextOperatorAction,
+  formatCountdown,
+  formatLocalTime,
+  offPathConfirmation,
+  shortName,
+  type NextAfterRule,
+  type NextOperatorAction,
+  type ProductionObservation
+} from "../../lib/nextOperatorAction";
 
 type ScriptStatus = "available" | "running" | "succeeded" | "failed";
 
@@ -17,8 +27,13 @@ interface OperatorScript {
   repeatable: boolean;
   receipt?: { reason: string; message: string; next: string; runDirectory: string; settlement?: unknown } | null;
   state: { status: ScriptStatus; startedAt?: string; finishedAt?: string; exitCode?: number | null; message?: string; runId?: string };
+  failure?: { effect: string; next: string };
+  nextAfter?: NextAfterRule | null;
+  lastRunReceipt?: { outcome: string; startedAt: string | null; finishedAt: string | null } | null;
   modifiedAt: string;
 }
+
+const PRODUCTION_POLL_MS = 20_000;
 
 export default function OperatorActionsPage() {
   const [scripts, setScripts] = useState<OperatorScript[]>([]);
@@ -28,6 +43,8 @@ export default function OperatorActionsPage() {
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [launching, setLaunching] = useState<string | null>(null);
+  const [production, setProduction] = useState<ProductionObservation | undefined>(undefined);
+  const [now, setNow] = useState(() => Date.now());
   const refreshSequence = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -57,12 +74,45 @@ export default function OperatorActionsPage() {
     return () => clearInterval(interval);
   }, [refresh]);
 
+  // Live production status feeds the derivation only when a published next_after needs it; an
+  // unreadable status is shown as such, never treated as Off.
+  const needsProduction = scripts.some((script) => script.nextAfter?.when_production === "inactive");
+  useEffect(() => {
+    if (!needsProduction) return undefined;
+    let disposed = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/production-control?part=core", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+        const body = await response.json() as { production?: { read?: { policy?: { desiredState?: string } | null } } };
+        if (!response.ok || !body.production?.read) throw new Error("Production status unavailable.");
+        if (!disposed) setProduction({ active: body.production.read.policy?.desiredState === "active" });
+      } catch {
+        if (!disposed) setProduction(null);
+      }
+    };
+    void load();
+    const interval = setInterval(() => void load(), PRODUCTION_POLL_MS);
+    return () => { disposed = true; clearInterval(interval); };
+  }, [needsProduction]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const nextAction = useMemo<NextOperatorAction | null>(
+    () => loading || (needsProduction && production === undefined) ? null : deriveNextOperatorAction(scripts, needsProduction ? production ?? null : null, now),
+    [loading, needsProduction, production, scripts, now]
+  );
+  const nextScript = nextAction?.status === "next" ? scripts.find((script) => script.id === nextAction.scriptId) ?? null : null;
+
   const visibleScripts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return scripts
+      .filter((script) => script.id !== nextScript?.id)
       .filter((script) => !normalized || [script.id, script.title, script.problem, script.desiredEffect].some((value) => value.toLowerCase().includes(normalized)))
       .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
-  }, [query, scripts]);
+  }, [query, scripts, nextScript?.id]);
 
   async function launch(script: OperatorScript) {
     setLaunching(script.id);
@@ -90,7 +140,9 @@ export default function OperatorActionsPage() {
       lastLoadedAt={loadedAt}
       onRefresh={() => void refresh()}
     >
-      <section aria-label="Operator script library">
+      <NextActionPanel unavailable={!loading && loadedAt === null} next={nextAction} script={nextScript} now={now} launching={launching === nextScript?.id} onLaunch={() => nextScript && void launch(nextScript)} />
+      <section aria-label="Other operator actions" className={nextAction?.status === "next" ? "border-t-2 border-dashed border-line pt-5" : ""}>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">{nextAction?.status === "next" ? "Other actions (not next)" : "All actions"}</h2>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-muted">Sorted by script modification time.</p>
@@ -109,10 +161,19 @@ export default function OperatorActionsPage() {
         </div>
 
         {error ? <p className="mb-4 rounded-md border border-clay/30 bg-clay/5 p-3 text-sm text-clay" role="alert">{error}</p> : null}
-        {loading ? <ActionSkeletons /> : visibleScripts.length === 0 ? <EmptyActions query={query} /> : (
+        {/* No press before the next action is known, so an off-path press always meets its confirmation. */}
+        {loading || nextAction === null ? <ActionSkeletons /> : visibleScripts.length === 0 ? <EmptyActions query={query} /> : (
           <div className="grid min-w-0 gap-3 lg:grid-cols-2">
             {visibleScripts.map((script) => (
-              <OperatorActionCard key={script.id} script={script} launching={launching === script.id} onLaunch={() => void launch(script)} />
+              <OperatorActionCard
+                key={script.id}
+                script={script}
+                muted={nextAction?.status === "next"}
+                confirmation={nextAction ? offPathConfirmation(nextAction, script, scripts) : null}
+                nextTitle={nextAction?.status === "next" ? nextAction.title : null}
+                launching={launching === script.id}
+                onLaunch={() => void launch(script)}
+              />
             ))}
           </div>
         )}
@@ -121,15 +182,32 @@ export default function OperatorActionsPage() {
   );
 }
 
-function OperatorActionCard({ script, launching, onLaunch }: { script: OperatorScript; launching: boolean; onLaunch: () => void }) {
+interface CardProps {
+  script: OperatorScript;
+  launching: boolean;
+  onLaunch: () => void;
+  /** De-emphasize: another action is the operator's next action. */
+  muted?: boolean;
+  /** Shown before launch when this press is off the next-action path. */
+  confirmation?: string | null;
+  nextTitle?: string | null;
+  /** Rendered inside the "Do this next" panel. */
+  primary?: boolean;
+}
+
+function OperatorActionCard({ script, launching, onLaunch, muted = false, confirmation = null, nextTitle = null, primary = false }: CardProps) {
+  const [confirming, setConfirming] = useState(false);
   const terminal = script.state.status === "succeeded" || script.state.status === "failed";
   const canRun = script.state.status !== "running" && !(script.state.status === "succeeded" && !script.repeatable);
+  const press = () => { if (confirmation) setConfirming(true); else onLaunch(); };
+  const frame = primary ? "rounded-md border border-line bg-panel p-4" : muted ? "rounded-md border border-line/70 bg-panel/60 p-4 text-ink/80" : "rounded-md border border-line bg-panel p-4 shadow-soft";
+  const runStyle = muted ? "border border-line bg-panel text-ink hover:border-steel hover:text-steel" : "bg-steel text-white hover:brightness-110";
   return (
-    <article className="rounded-md border border-line bg-panel p-4 shadow-soft">
+    <article className={frame} data-testid={primary ? "next-action-card" : `operator-action-${script.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-semibold">{script.title}</h2>
+            <h3 className={primary ? "text-lg font-semibold" : "font-semibold"}>{script.title}</h3>
             {script.kind === "grant" ? <span className="rounded-full bg-gold/10 px-2 py-1 text-xs font-semibold text-gold">Grant</span> : null}
           </div>
           <p className="mt-1 break-all text-xs text-muted">{script.id}</p>
@@ -149,9 +227,20 @@ function OperatorActionCard({ script, launching, onLaunch }: { script: OperatorS
 
       {script.state.message ? <p className={`mt-3 text-sm ${script.state.status === "failed" ? "text-clay" : "text-muted"}`}>{script.state.message}</p> : null}
       {script.receipt ? <div className="mt-3 text-sm"><p>{script.receipt.message}</p><p className="mt-1 text-muted">Next: {script.receipt.next}</p><details className="mt-2"><summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre></details></div> : null}
+      {confirming && confirmation ? (
+        <div role="alertdialog" aria-label="Not your next action" className="mt-4 rounded-md border-2 border-clay/60 bg-clay/5 p-3 text-sm">
+          <p className="font-semibold text-clay">This is not your next action.</p>
+          <p className="mt-1">{confirmation}</p>
+          {nextTitle ? <p className="mt-2 text-xs text-muted">Next action card: {nextTitle}</p> : null}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={() => setConfirming(false)} className="min-h-12 rounded-md bg-steel px-4 font-semibold text-white">Keep my place</button>
+            <button type="button" onClick={() => { setConfirming(false); onLaunch(); }} className="min-h-12 rounded-md border border-clay/60 px-4 font-semibold text-clay">Run {shortName(script.title)} anyway</button>
+          </div>
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {canRun ? (
-          <button type="button" onClick={onLaunch} disabled={launching} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-steel px-4 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
+        {canRun && !confirming ? (
+          <button type="button" onClick={press} disabled={launching} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${primary ? "min-h-12 w-full bg-steel text-base text-white hover:brightness-110 sm:w-auto" : runStyle}`}>
             {launching ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
             {launching ? "Starting…" : script.state.status === "failed" ? "Retry" : "Run"}
           </button>
@@ -168,6 +257,43 @@ function OperatorActionCard({ script, launching, onLaunch }: { script: OperatorS
         </span>
       </div>
     </article>
+  );
+}
+
+function NextActionPanel({ unavailable, next, script, now, launching, onLaunch }: { unavailable: boolean; next: NextOperatorAction | null; script: OperatorScript | null; now: number; launching: boolean; onLaunch: () => void }) {
+  if (unavailable) {
+    return (
+      <section aria-label="Do this next" className="mb-6 rounded-md border-2 border-clay/40 bg-clay/5 p-4">
+        <p className="text-lg font-semibold text-clay">Your next action is unknown: the operator actions could not be read.</p>
+      </section>
+    );
+  }
+  if (!next) return <div className="mb-6 h-28 animate-pulse rounded-md border-2 border-line bg-panel" aria-hidden="true" />;
+  if (next.status === "none" || !script) {
+    return (
+      <section aria-label="Do this next" className="mb-6 rounded-md border-2 border-moss/40 bg-moss/5 p-4">
+        <p className="flex items-center gap-2 text-lg font-semibold text-moss"><CheckCircle2 className="h-5 w-5" aria-hidden="true" />Nothing needs you right now.</p>
+        {next.status === "none" && next.note ? <p className="mt-1 text-sm text-muted">{next.note}</p> : null}
+      </section>
+    );
+  }
+  const countdown = next.deadline ? formatCountdown(next.deadline, now) : null;
+  return (
+    <section aria-label="Do this next" className="mb-6 rounded-md border-2 border-steel bg-steel/5 p-4 shadow-soft">
+      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-steel"><ArrowDown className="h-4 w-4" aria-hidden="true" />Do this next</p>
+      <p className="mt-2 text-lg font-semibold leading-snug" data-testid="next-action-instruction">{next.instruction}</p>
+      {next.deadline ? (
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm" data-testid="next-action-deadline">
+          <span>Deadline <strong>{formatLocalTime(next.deadline)}</strong></span>
+          <span className="font-mono text-2xl font-bold tabular-nums text-steel" aria-live="polite" aria-atomic="true">{countdown ?? "0:00"}</span>
+          <span className="text-muted">left</span>
+        </p>
+      ) : null}
+      {next.note ? <p className="mt-2 text-sm text-muted">{next.note}</p> : null}
+      <div className="mt-3">
+        <OperatorActionCard script={script} primary launching={launching} onLaunch={onLaunch} />
+      </div>
+    </section>
   );
 }
 
