@@ -82,7 +82,11 @@ const INSIDE_ALLOWED_ROOT = (option: string, flag: string): CommandClassificatio
  * `allowed`: runs unchanged in an experiment workspace. `guarded`: refused
  * while an experiment workspace is resolved. `exempt`: does not act through
  * the resolved workspace at all (it names its own target, or is host- or
- * repository-level and read-only), so the guard has nothing to decide.
+ * repository-level), so the guard has nothing to decide, and the CLI records
+ * no activity row for it (`recordsActivity`). Mark a command exempt only when
+ * neither it nor anything it calls resolves or opens a workspace database:
+ * `tests/activity-no-record-commands.test.ts` runs every exempt command and
+ * fails when one opens the default workspace or records activity.
  */
 export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassification>> = {
   "audit host-preview": exempt("Serves a named static directory on loopback; reads no workspace."),
@@ -114,7 +118,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "agent-ask preview": ALLOWED,
   "agent-ask draft": ALLOWED,
   "agent-ask settle": ALLOWED,
-  "agent-ask contract": ALLOWED,
+  "agent-ask contract": exempt("Prints the static Agent Ask schema; reads no workspace."),
   "agent-ask pending": ALLOWED,
   "agent-ask notifications": ALLOWED,
   "agent-ask notification-sent": DELIVERY_RECEIPT,
@@ -178,7 +182,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "session launch": ALLOWED,
   "session reconcile": ALLOWED,
   "pr assess-blast-radius": ALLOWED,
-  "pr code-review": ALLOWED,
+  "pr code-review": exempt("Reads a pull request's advisory review from GitHub for the named repository; reads no workspace."),
   "pr decline-finding": guarded(
     "Posts a reply on a GitHub review thread and resolves it.",
     `Read the review with \`arcadia pr code-review\`. ${FROM_LIVE_TERMINAL}`
@@ -294,22 +298,22 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "proof-target check": ALLOWED,
   clarify: ALLOWED,
   tidy: ALLOWED,
-  "tidy list": ALLOWED,
-  "tidy undo": ALLOWED,
+  "tidy list": exempt("Lists the named repository's quarantined tidy runs; reads no workspace."),
+  "tidy undo": exempt("Restores one quarantined tidy run in the named repository; reads no workspace."),
   "push-unpushed": guarded(
     "Applying pushes branches to a Git remote.",
     "Omit --apply to see what would be pushed; experiment fixture repositories have no remote.",
     ({ options }) => options.apply !== true
   ),
-  triggers: ALLOWED,
-  docket: ALLOWED,
-  plans: ALLOWED,
-  "operator-task list": ALLOWED,
-  "operator-task show": ALLOWED,
-  "operator-task raise": ALLOWED,
-  "operator-task evidence": ALLOWED,
-  "operator-task close": ALLOWED,
-  "operator-task decline": ALLOWED,
+  triggers: exempt("Reads the named repository's managed documents only."),
+  docket: exempt("Reads the named repository's managed documents only; no workspace, no portfolio."),
+  plans: exempt("Reads the named repository's managed documents only."),
+  "operator-task list": exempt("Reads the named repository's operator-task records only; reads no workspace."),
+  "operator-task show": exempt("Reads the named repository's operator-task records only; reads no workspace."),
+  "operator-task raise": exempt("Writes the named repository's operator-task records only; reads no workspace."),
+  "operator-task evidence": exempt("Writes the named repository's operator-task records only; reads no workspace."),
+  "operator-task close": exempt("Writes the named repository's operator-task records only; reads no workspace."),
+  "operator-task decline": exempt("Writes the named repository's operator-task records only; reads no workspace."),
   next: ALLOWED,
   "next history": ALLOWED,
   go: ALLOWED,
@@ -407,6 +411,17 @@ export const GUARDED_OPERATIONS: Readonly<Record<string, { reason: string; alter
     alternative: "Register a disposable fixture repository under the workspace's allowed repository root instead."
   }
 };
+
+/**
+ * Whether the CLI records an activity row for this command. An exempt command
+ * reads no workspace state, so recording it would mean resolving a workspace
+ * just for the row: with nothing inline that is the user config default, the
+ * live workspace. Exempt commands therefore record nothing, and the decision is
+ * made before any workspace is resolved or opened.
+ */
+export function recordsActivity(key: string): boolean {
+  return COMMAND_CLASSIFICATION[key]?.kind !== "exempt";
+}
 
 /** The space-separated path of a command below the program, e.g. `production capacity attest`. */
 export function commandKey(command: Command): string {

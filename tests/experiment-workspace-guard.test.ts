@@ -23,7 +23,7 @@ import {
   listActionCommands
 } from "../src/workspace/experimentGuard.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { compareLeakSnapshots, takeLeakSnapshot } from "../src/workspace/leakCheck.js";
+import { compareAttributedFields, compareLeakSnapshots, takeLeakSnapshot } from "../src/workspace/leakCheck.js";
 
 const roots: string[] = [];
 let root: string;
@@ -508,6 +508,64 @@ describe("leak check", () => {
       "hashes.capacityReceipts",
       `goBroker.${path.join(".local", "share", "arcadia", "go-broker", "releases", "def456", "broker-manifest.json")}`
     ]);
+  });
+
+  it("records live activity rows and live repository refs as attributed fields that never count as a leak", async () => {
+    seedHome();
+    const liveRepo = path.join(root, "live-repo");
+    mkdirSync(liveRepo);
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: liveRepo, encoding: "utf8" }).trim();
+    git("init", "-q", "-b", "main");
+    git("commit", "-q", "--allow-empty", "-m", "base");
+    git("tag", "v1");
+    git("update-ref", "refs/codex/turn-diffs/one", "HEAD");
+    // The registered Arcadia Project's repository is the default live repository.
+    registerProject(live, "Arcadia", liveRepo);
+    withDatabase(live, (db) => recordActivityEvent(db, { occurredAt: "2026-10-04T00:00:00Z", surface: "cli", command: "status", outcome: "ok" }));
+
+    const before = takeLeakSnapshot({ home });
+    expect(before.liveActivity).toMatchObject({ rowCount: 1, newestCommand: "status", error: null });
+    expect(before.liveRefs).toMatchObject({ repo: liveRepo, source: "live workspace", counts: { heads: 1, remotes: 0, tags: 1, codex: 1 }, error: null });
+    expect(Object.keys(before.liveRefs!.refs!)).toEqual(["refs/codex/turn-diffs/one", "refs/heads/main", "refs/tags/v1"]);
+    expect(takeLeakSnapshot({ home, liveRepo: path.join(root, "not-a-repo") }).liveRefs).toMatchObject({ source: "option", hash: null });
+
+    const baseline = path.join(root, "attributed.json");
+    writeFileSync(baseline, JSON.stringify(before));
+    withDatabase(live, (db) => recordActivityEvent(db, { occurredAt: "2026-10-04T00:01:00Z", surface: "claude", command: "config.get.defaultWorkspace", outcome: "ok" }));
+    git("branch", "codex/new-work");
+    git("commit", "-q", "--allow-empty", "-m", "moved");
+
+    const after = takeLeakSnapshot({ home });
+    expect(compareLeakSnapshots(before, after)).toEqual([]);
+    const attributed = compareAttributedFields(before, after);
+    expect(attributed.map((change) => change.field)).toEqual([
+      "liveActivity.rowCount",
+      "liveActivity.newestRowid",
+      "liveRefs.hash",
+      "liveRefs.refs/heads/codex/new-work",
+      "liveRefs.refs/heads/main"
+    ]);
+    expect(attributed.find((change) => change.field === "liveRefs.refs/heads/codex/new-work")?.before).toBeNull();
+
+    // Attributed changes alone pass the check, and the human output says how to read them.
+    const compared = await runCli(["workspace", "leak-check", "--baseline", baseline]);
+    expect("output" in compared && compared.output.ok).toBe(true);
+    expect("output" in compared && compared.output.data.changes).toEqual([]);
+    expect("output" in compared && compared.output.data.attributed.map((change: { field: string }) => change.field)).toContain("liveActivity.rowCount");
+    let human = "";
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => { human += String(chunk); return true; });
+    try {
+      await buildProgram().parseAsync(["node", "arcadia", "workspace", "leak-check", "--baseline", baseline]);
+    } finally {
+      out.mockRestore();
+    }
+    expect(human).toContain("Live activity rows: 2");
+    expect(human).toContain(`Live repository refs: ${liveRepo}  heads 2, remotes 0, tags 1, refs/codex 1`);
+    expect(human).toContain("attribute each change before calling it a leak");
+    expect(human).toContain("liveActivity.rowCount: 1 -> 2");
+    // An unreadable live repository is reported, never a reason to fail the check.
+    const unreadable = await runCli(["workspace", "leak-check", "--live-repo", path.join(root, "not-a-repo")]);
+    expect("output" in unreadable && unreadable.output.ok).toBe(true);
   });
 
   it("never passes when the live workspace cannot be observed", async () => {
