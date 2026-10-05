@@ -3671,6 +3671,132 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/workspace/resolve.ts", "src/workspace/config.ts", "src/activity/recorder.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/codingAgents/agentIdentity.ts", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/947"]
+  - id: fix-reviewer-verdict-name-echo
+    title: "The code reviewer's verdict parser accepts the prompt's 'Name: description' criterion line when a model echoes it into the check `name`, instead of rejecting the verdict shape."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "The code reviewer's verdict parser accepts the prompt's 'Name: description' criterion line when a model echoes it into the check `name`, instead of rejecting the verdict shape."
+    expected_artifact: Evidence satisfying Agent Ask fix-reviewer-verdict-name-echo
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "When the reviewer's `name` field contains the criterion's full 'Name: description' line, Arcadia matches it to the declared criterion (by name prefix) rather than recording `reviewerUnavailable`."
+      - A malformed verdict that matches no criterion still fails closed as before; the model's own statuses are preserved.
+      - A deterministic test feeds a verdict whose `name` echoes the criteria line and asserts it is accepted and mapped.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "https://github.com/pmark/arcadia/issues/937"]
+  - id: harden-peer-watch-ownership-join
+    title: "Close the peer-watch contract follow-ups: claim-after-session ownership join, `hasOwn`, and `releaseRef` from the reader."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the peer-watch contract follow-ups: claim-after-session ownership join, `hasOwn`, and `releaseRef` from the reader."
+    expected_artifact: Evidence satisfying Agent Ask harden-peer-watch-ownership-join
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "`deriveOwnership` does not yield `principal_terminal` when a claim was created after the Session it is joined to; the join is by claim/session identity, not worktree+branch only (src/agentWatch/classify.ts ~543-549)."
+      - "`hasOwn` uses the correct prototype-safe check, and the reader can return `releaseRef`."
+      - Regression tests cover the claim-after-session case and the ownership gate.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/agentWatch/classify.ts", "docs/agent-guidance/agent-peer-watch.md", "https://github.com/pmark/arcadia/issues/939"]
+  - id: fix-identity-block-fail-soft
+    title: "The Identity block fails soft and is printed everywhere it should be: reviewer prompt, `go`, packets, and advance."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "The Identity block fails soft and is printed everywhere it should be: reviewer prompt, `go`, packets, and advance."
+    expected_artifact: Evidence satisfying Agent Ask fix-identity-block-fail-soft
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "An invalid `config/coding-agent-models.json` does not make the independent QA/code review refuse for a cosmetic reason; `loadModelTierRegistry` in the reviewer prompt (src/qa/prReview.ts:421-427) is wrapped to fall back to the default display name."
+      - An empty packet directory no longer suppresses the Identity block, and `arcadia advance` prints it.
+      - Deterministic tests cover the fail-soft registry, empty packet dir, and advance output.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/qa/prReview.ts", "https://github.com/pmark/arcadia/issues/942"]
+  - id: harden-experiment-guard-leak-check-attribution
+    title: "Close the experiment-guard review follow-ups: leak-check attribution guidance and `--record` clobber."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the experiment-guard review follow-ups: leak-check attribution guidance and `--record` clobber."
+    expected_artifact: Evidence satisfying Agent Ask harden-experiment-guard-leak-check-attribution
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - Leak-check output distinguishes ordinary live operation (broker manifest rewrite on a services restart, operator production transitions, admissions growth) from a real leak, in guidance and in attributed fields.
+      - "`leak-check --record` does not clobber a prior baseline unexpectedly; overwrite is explicit or preserved."
+      - Focused tests or fixtures cover the attribution cases and the record behavior.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/", "https://github.com/pmark/arcadia/issues/945"]
+  - id: fix-experiment-workspace-friction
+    title: "Fix the experiment-workspace friction: uninlined commands reaching live activity, unpositioned fresh Actions, and the Ask `--dir` default."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Fix the experiment-workspace friction: uninlined commands reaching live activity, unpositioned fresh Actions, and the Ask `--dir` default."
+    expected_artifact: Evidence satisfying Agent Ask fix-experiment-workspace-friction
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - A command run without an inline workspace cannot write an `activity_events` row into the live workspace from an experiment context (or the guard/require-inline mode makes that refusal explicit).
+      - A freshly imported/created fixture Action is positioned so `advance`/`make-next` works without a manual `queue arrange`, or the setup path does it.
+      - "`agent-ask draft/preview` does not default `--dir` to the Arcadia checkout when run inside a fixture; cost is documented."
+      - Deterministic tests cover the activity isolation and fresh-Action positioning.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["src/scheduling/github.ts", "https://github.com/pmark/arcadia/issues/947"]
+  - id: harden-activity-leak-fix-followups
+    title: "Close the activity-leak review follow-ups: operator-task ledger audit and leak-check snapshot size."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Close the activity-leak review follow-ups: operator-task ledger audit and leak-check snapshot size."
+    expected_artifact: Evidence satisfying Agent Ask harden-activity-leak-fix-followups
+    clarification: clarified
+    confidence: high
+    source: Agent Ask govern-oct5-review-followups-2026-10-05
+    acceptance_criteria:
+      - "`operator-task raise|evidence|close|decline` writes to the repository ledger by design and is either recorded there only or documented as intentionally outside `activity_events`."
+      - "`leak-check --json` does not embed an unbounded `liveRefs` map; the snapshot is bounded or summarized."
+      - Focused tests cover the operator-task ledger and the bounded snapshot.
+      - "`pnpm test` passes."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/949"]
+  - id: adopt-rehearsal-freeze-window
+    title: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    expected_artifact: Evidence satisfying Agent Ask adopt-rehearsal-freeze-window
+    clarification: clarified
+    confidence: high
+    source: Agent Ask adopt-rehearsal-freeze-window-2026-10-05
+    acceptance_criteria:
+      - "Agent guidance (a 'Rehearsal freeze window' procedure registered in docs/agent-guidance/index.json with triggers such as rehearsal, freeze, production active, reinstall, restart, install) defines the window as running from a successful production activation until the terminal production Off receipt, observed with read-only `arcadia production status`; lists what is forbidden inside it (reinstall-go-broker.sh and `go-broker install|ensure`; recover-arcadia-host-services.sh and `scripts/services.sh restart|stop` except through the run's own Off-first G8 step; `production activate|deactivate|reactivate` outside the run's own G-steps; workspace config and provider-registry edits; editing, pausing, docs-syncing or tidying the in-scope fixture Project; whole-queue arrange or moving in-scope queue keys; fast-forwarding or dirtying the main checkout across commits that touch runtime paths: src, scripts, apps, package.json, pnpm-lock.yaml, tsconfig.json) and what continues (worktree commits, PRs and reviews; merges on origin, with the main checkout not fast-forwarded past runtime-path commits until the window ends; Arcadia-only Ask settles from the main checkout when the fast-forward range is docs-only; read-only commands; `arcadia go` sessions in their own worktrees; modest gh reads); and names who runs the batched install after the window ends (the release-manager or orchestrator session: reinstall-go-broker.sh, then recover-arcadia-host-services.sh when services need it) and how agents learn the window opened or closed (the coordination Issue and production status), without changing any authority."
+      - "`arcadia go-broker install` and `arcadia go-broker ensure` (src/commands/goBrokerInstall.ts), reinstall-go-broker.sh before it installs, and `scripts/services.sh restart|stop` refuse with a named reason (for example production_active_freeze) and the exact supported alternative when read-only production status reports the managed-production policy Active, and proceed when it is Inactive or Off; a documented inline operator override (for example ARCADIA_FREEZE_OVERRIDE=<reason>) bypasses the refusal and records the reason; G8's Off-first restart path is unaffected; the CLI checks fail closed when status cannot be read while services.sh fails open with a warning as its existing comment requires; recover-arcadia-host-services.sh and its descriptor stay byte-identical, or G8's RECOVER_* sha256 pins and their tests are re-pinned in the same change."
+      - "Hermetic tests cover Active refusal, Inactive and Off success, the override with its recorded reason and unreadable status for each guarded entry point, and the G8 Off-then-restart path still passing; focused suites, lint, tsc, pnpm build, check:agent-guidance, check:operator-scripts and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/goBrokerInstall.ts", "scripts/services.sh", "artifacts/generated/operator-scripts/reinstall-go-broker.sh", "artifacts/generated/operator-scripts/recover-arcadia-host-services.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "src/production/tick.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
