@@ -3890,9 +3890,9 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask verify-operator-qa-plan-with-live-qa
     clarification: clarified
     confidence: high
-    source: Agent Ask split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05-r2
+    source: Agent Ask amend-verify-operator-qa-plan-criterion-2026-10-05
     acceptance_criteria:
-      - "A read-only smoke runs `arcadia qa pr`'s evidence assembly (or the reviewer it launches, with only GitHub writes stubbed) against rehearsal run 2's PR #2 exact patch at 7f139037 with the newly rendered body substituted, without editing PR #2 or the fixture, and records whether the 'Operator QA plan' criterion now passes, with its output attached to the pull request."
+      - "The configured independent QA reviewer (arcadia qa pr) has judged a real pull request that Arcadia's own host preservation created with the rendered Operator QA plan in its body, and its report records the 'Operator QA plan' criterion as pass; the evidence names the pull request, its exact head, the verdict artifact paths and the reviewer provenance. Rehearsal run 3's pmark/arcadia-three-action-rehearsal-20261004#3 at 50d1eab84e385a5566119831c82f5a6d32e752fd (two live verdicts, 2026-10-05T18:51Z and 19:38Z) satisfies this."
     depends_on: []
     decisions: []
     references: []
