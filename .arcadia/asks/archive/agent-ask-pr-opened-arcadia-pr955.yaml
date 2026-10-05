@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr955","project":"arcadia","intent":"log","desired_result":"G8 can now reconcile a preserved candidate whose tip is exactly one verified completion settlement past its preservation commit, unblocking terminal proof for rehearsal run 1; review at https://github.com/pmark/arcadia/pull/955"}
