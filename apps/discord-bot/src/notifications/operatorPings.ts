@@ -9,6 +9,15 @@ const KIND_HEADLINE: Record<OperatorPingItem["kind"], string> = {
   attention: "🔔 Needs your attention"
 };
 
+/**
+ * Agent-supplied text goes into the message verbatim, so no mention in it may
+ * ever notify anyone: not @everyone, not a role, not a user. The ping is
+ * delivered to a channel the operator already watches; it is not a way to
+ * page other people.
+ */
+export const PING_ALLOWED_MENTIONS = { parse: [] as never[] };
+export type PingAllowedMentions = typeof PING_ALLOWED_MENTIONS;
+
 export interface ResolvedPingChannel {
   channelId: string;
   /** Set when the ping asked for a channel the operator has not configured. */
@@ -55,7 +64,7 @@ type Log = (level: LogLevel, obj: Record<string, unknown>) => void;
 export async function drainOperatorPings(
   cli: Pick<ArcadiaCli, "operatorPings" | "operatorPingSent">,
   config: Pick<BotConfig, "discordChannelId" | "pingChannels">,
-  send: (channelId: string, content: string) => Promise<{ id: string }>,
+  send: (channelId: string, content: string, allowedMentions: PingAllowedMentions) => Promise<{ id: string }>,
   logJson: Log
 ): Promise<number> {
   const { pings } = (await cli.operatorPings()).data;
@@ -64,7 +73,7 @@ export async function drainOperatorPings(
     const target = resolvePingChannel(ping.channel, config);
     let sent: { id: string };
     try {
-      sent = await send(target.channelId, operatorPingMessage(ping, target.unconfigured));
+      sent = await send(target.channelId, operatorPingMessage(ping, target.unconfigured), PING_ALLOWED_MENTIONS);
     } catch (error) {
       if (target.channelId === config.discordChannelId) {
         logJson("error", { msg: "operator ping send failed", pingId: ping.id, error: errorText(error) });
@@ -72,15 +81,23 @@ export async function drainOperatorPings(
       }
       logJson("warn", { msg: "operator ping channel unsendable; using default", pingId: ping.id, channel: ping.channel, error: errorText(error) });
       try {
-        sent = await send(config.discordChannelId, operatorPingMessage(ping, ping.channel));
+        sent = await send(config.discordChannelId, operatorPingMessage(ping, ping.channel), PING_ALLOWED_MENTIONS);
       } catch (fallbackError) {
         logJson("error", { msg: "operator ping send failed", pingId: ping.id, error: errorText(fallbackError) });
         return delivered;
       }
     }
-    await cli.operatorPingSent(ping.id, sent.id);
     delivered += 1;
-    logJson("info", { msg: "discord operator ping sent", pingId: ping.id });
+    try {
+      await cli.operatorPingSent(ping.id, sent.id);
+      logJson("info", { msg: "discord operator ping sent", pingId: ping.id });
+    } catch (error) {
+      // Discord already has it. Keep draining the batch rather than skipping
+      // the rest. The ping stays pending, so the next poll re-sends it (one
+      // duplicate until the receipt lands, the same trade-off settlement
+      // pings make) instead of risking a ping the operator never sees.
+      logJson("error", { msg: "operator ping receipt failed after delivery", pingId: ping.id, messageId: sent.id, error: errorText(error) });
+    }
   }
   return delivered;
 }

@@ -963,7 +963,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
-    .description("Queue one read-only ping. It approves nothing and answers nothing; use an Agent Ask for anything durable")
+    .description("Queue one read-only ping. It approves nothing and answers nothing; use an Agent Ask for anything durable. A message starting with - or with the word pending/sent needs `--` before it")
     .argument("<message...>", "What the operator should know or look at (500 characters at most)")
     .option("--channel <alias>", "Configured Discord channel alias (DISCORD_PING_CHANNELS); default channel when omitted")
     .option("--kind <kind>", "look | fyi | attention", "fyi")

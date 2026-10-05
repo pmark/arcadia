@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parsePingChannels } from "../apps/discord-bot/src/config.js";
-import { drainOperatorPings, operatorPingMessage, resolvePingChannel } from "../apps/discord-bot/src/notifications/operatorPings.js";
+import { PING_ALLOWED_MENTIONS, drainOperatorPings, operatorPingMessage, resolvePingChannel } from "../apps/discord-bot/src/notifications/operatorPings.js";
 import {
   runPingPendingCommand,
   runPingSendCommand,
@@ -170,5 +170,26 @@ describe("operator ping delivery", () => {
     const delivered = await drainOperatorPings(cli, config, async () => { throw new Error("rate limited"); }, () => {});
     expect(delivered).toBe(0);
     expect(recorded).toEqual([]);
+  });
+
+  it("never lets agent text mention anyone: every send carries empty allowedMentions", async () => {
+    const { cli } = fakeCli([{ id: "a", channel: "actions" }, { id: "b", channel: null }]);
+    const seen: unknown[] = [];
+    await drainOperatorPings(cli, config, async (_channel, _content, allowedMentions) => { seen.push(allowedMentions); return { id: "m" }; }, () => {});
+    expect(seen).toEqual([{ parse: [] }, { parse: [] }]);
+    expect(PING_ALLOWED_MENTIONS).toEqual({ parse: [] });
+  });
+
+  it("keeps draining when a delivery receipt fails after Discord accepted the ping", async () => {
+    const recorded: string[] = [];
+    const cli = {
+      operatorPings: async () => ({ data: { pings: ["a", "b"].map((id) => ({
+        id, message: `msg ${id}`, kind: "fyi" as const, channel: null, link: null, agent: null, createdAt: "2026-10-05T12:00:00Z"
+      })) } }),
+      operatorPingSent: async (id: string) => { if (id === "a") throw new Error("database is locked"); recorded.push(id); return { data: {} }; }
+    } as never;
+    const delivered = await drainOperatorPings(cli, config, async () => ({ id: "m" }), () => {});
+    expect(delivered).toBe(2);
+    expect(recorded).toEqual(["b"]);
   });
 });

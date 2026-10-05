@@ -322,7 +322,7 @@ export function startNotificationPoller(
     // state file, so a ping problem must not block settlement pings or the
     // reverse.
     try {
-      await drainOperatorPings(cli, config, (channelId, content) => sendToConfiguredChannel(client, channelId, content), logJson);
+      await drainOperatorPings(cli, config, (channelId, content, allowedMentions) => sendToConfiguredChannel(client, channelId, content, allowedMentions), logJson);
     } catch (error) {
       logJson("error", {
         msg: "discord operator ping poll failed",
@@ -340,13 +340,18 @@ export function startNotificationPoller(
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 const TRUNCATION_SUFFIX = "\n… (truncated)";
 
-async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<{ id: string }> {
+async function sendToConfiguredChannel(
+  client: Client,
+  channelId: string,
+  content: string,
+  allowedMentions?: { parse: never[] }
+): Promise<{ id: string }> {
   const channel = await client.channels.fetch(channelId);
   if (!channel || !("send" in channel)) {
     throw new Error("Configured Discord channel is not sendable.");
   }
 
-  return channel.send({ content: truncateForDiscord(content) });
+  return channel.send({ content: truncateForDiscord(content), ...(allowedMentions ? { allowedMentions } : {}) });
 }
 
 // Oversized content (e.g. a task title that's actually a full prompt) must not
