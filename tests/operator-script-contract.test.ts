@@ -55,6 +55,34 @@ describe("Every applicable generated action must use the shared runner", () => {
   });
 });
 
+describe("next_after declares the /actions next-action sequence, presentation only", () => {
+  const plain = () => { const d = descriptor(); delete d.planAmendment; return d; };
+  const script = "#!/bin/sh\nexit 0\n";
+  it("accepts a prerequisite window with voiding actions and an inactive-production condition", () => {
+    const d = plain(); d.next_after = { id: "run-prerequisite", within_minutes: 30, voided_by: ["restart-host"], when_production: "inactive" };
+    expect(validateOperatorScriptContract(d, d.id, script).next_after).toEqual(d.next_after);
+  });
+  it.each([
+    ["itself as prerequisite", { id: "future-amendment", within_minutes: 30 }],
+    ["a fractional window", { id: "run-prerequisite", within_minutes: 0.5 }],
+    ["a window over a day", { id: "run-prerequisite", within_minutes: 1441 }],
+    ["the prerequisite as a voider", { id: "run-prerequisite", within_minutes: 30, voided_by: ["run-prerequisite"] }],
+    ["a duplicate voider", { id: "run-prerequisite", within_minutes: 30, voided_by: ["restart-host", "restart-host"] }],
+    ["an unknown production condition", { id: "run-prerequisite", within_minutes: 30, when_production: "active" }],
+    ["an unknown field", { id: "run-prerequisite", within_minutes: 30, grants: true }]
+  ])("refuses %s", (_label, nextAfter) => {
+    const d = plain(); (d as unknown as Record<string, unknown>).next_after = nextAfter;
+    expect(() => validateOperatorScriptContract(d, d.id, script)).toThrow("next_after needs");
+  });
+  it("fails the library check when the prerequisite is not published beside it", () => {
+    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), "arcadia-next-after-"))); roots.push(dir);
+    const d = plain(); d.next_after = { id: "missing-prerequisite", within_minutes: 30 };
+    writeFileSync(path.join(dir, `${d.id}.json`), JSON.stringify(d)); writeFileSync(path.join(dir, d.script), script, { mode: 0o755 });
+    const result = spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/check-operator-scripts.ts"), dir], { encoding: "utf8" });
+    expect(result.status).toBe(1); expect(JSON.parse(result.stderr)).toMatchObject({ id: d.id, reason: "UNKNOWN_NEXT_AFTER_PREREQUISITE" });
+  });
+});
+
 describe("Legacy library entries retire only through the exact-hash manifest", () => {
   const checker = path.join(root, "scripts/check-operator-scripts.ts");
   const legacyScript = "#!/bin/sh\narcadia agent-ask settle --apply\n";

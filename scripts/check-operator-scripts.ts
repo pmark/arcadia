@@ -1,4 +1,4 @@
-import { accessSync, constants, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { OperatorScriptContractError, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { matchRetirement, parseRetirementManifest } from "../src/operatorActions/libraryRetirements.js";
@@ -29,7 +29,11 @@ for (const entry of readdirSync(library).filter(file => file.endsWith(".json")).
     const scriptBytes = readFileSync(script);
     // Exact-hash pin only: any changed, renamed or new file falls through to full validation.
     if (matchRetirement(retirements, id, descriptorBytes, scriptBytes)) { retired.push(id); continue; }
-    validateOperatorScriptContract(JSON.parse(descriptorBytes.toString("utf8")), id, scriptBytes.toString("utf8"));
+    const descriptor = validateOperatorScriptContract(JSON.parse(descriptorBytes.toString("utf8")), id, scriptBytes.toString("utf8"));
+    // A "Do this next" hint must name a published prerequisite; voided_by may name host-local entries.
+    if (descriptor.next_after && !existsSync(path.join(library, `${descriptor.next_after.id}.json`))) {
+      throw new OperatorScriptContractError("UNKNOWN_NEXT_AFTER_PREREQUISITE", `next_after names ${descriptor.next_after.id}, which is not in this library.`);
+    }
     count++;
   } catch (error) {
     failures++;
