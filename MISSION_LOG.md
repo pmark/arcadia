@@ -1801,3 +1801,10 @@ updated: 2026-10-05
 - **Result:** Every declared acceptance criterion was accepted as met: "The configured independent QA reviewer (arcadia qa pr) has judged a real pull request that Arcadia's own host preservation created with the rendered Operator QA plan in its body, and its report records the 'Operator QA plan' criterion as pass; the evidence names the pull request, its exact head, the verdict artifact paths and the reviewer provenance. Rehearsal run 3's pmark/arcadia-three-action-rehearsal-20261004#3 at 50d1eab84e385a5566119831c82f5a6d32e752fd (two live verdicts, 2026-10-05T18:51Z and 19:38Z) satisfies this.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-verify-operator-qa-plan-with-live-qa-2026-10-05).
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr975
+
+- **Did:** New: `arcadia ping` lets any agent send you a quick read-only Discord nudge, with optional channel routing; Decision 0084 asks whether agents may use it unprompted. https://github.com/pmark/arcadia/pull/975
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
