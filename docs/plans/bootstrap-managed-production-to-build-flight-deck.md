@@ -3654,6 +3654,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
+  - id: require-inline-workspace-mode
+    title: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
+    expected_artifact: Evidence satisfying Agent Ask require-inline-workspace-mode
+    clarification: clarified
+    confidence: high
+    source: Agent Ask require-inline-workspace-mode-2026-10-05
+    acceptance_criteria:
+      - With ARCADIA_REQUIRE_INLINE_WORKSPACE set to a truthy value, workspace resolution (src/workspace/resolve.ts and every caller path, including the activity recorder) refuses to use the user-config defaultWorkspace or the .arcadia-workspace marker and fails with a named error code (for example INLINE_WORKSPACE_REQUIRED) whose message states the exact fix (pass --workspace <path> or set ARCADIA_WORKSPACE inline on that command); --workspace, an ARCADIA_WORKSPACE value and the cwd config/arcadia.json walk-up keep resolving as before; commands that resolve no workspace (the no-record set, help, version) are unaffected; with the variable unset or falsy behaviour is byte-for-byte unchanged, so the live launchd services and operator scripts keep working; `arcadia workspace resolve` reports whether the mode is on.
+      - Arcadia-launched agent sessions (the launch environment built in src/sessions/ for Claude Code, Codex and OpenCode) set the variable when the launch environment already pins the workspace explicitly, so launched sessions' own arcadia commands keep working and cannot fall back silently; where a launch path does not pin the workspace the Action does not set it there and records exactly why in the pull request; the Identity block and docs/agent-guidance/arcadia-repository.md ('Experiment workspaces') state the mode, who sets it and how a native session turns it on for its own shell.
+      - "Tests (temporary directories and a temporary user config only) cover each resolution source with the mode on and off, the error code and remedy text, the recorder not falling back, the no-record commands and help staying usable, a launched-session environment containing the variable only when the workspace is pinned, and a regression that a command run inside the mode against a temp default workspace writes nothing there; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/workspace/resolve.ts", "src/workspace/config.ts", "src/activity/recorder.ts", "src/sessions/launch.ts", "src/sessions/index.ts", "src/codingAgents/agentIdentity.ts", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/947"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
