@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Mission Log: Arcadia
@@ -1657,3 +1657,10 @@ updated: 2026-10-04
 - **Result:** Every declared acceptance criterion was accepted as met: "src/codingAgents/agentIdentity.ts exposes a pure roster (every platform's given name, tier surnames, critic title and local address) and a teammates function that, for a resolved identity, lists the other platforms' identities and roles, the operator as a non-agent principal who never signs as an agent, and the rule that the resolved identity for the session's own model tier is authoritative; `arcadia identity resolve` prints the agent's own signature string and its teammates, and a new `arcadia identity roster` prints the whole roster; both agree with resolveAgentIdentity and refuse to fall back to the operator's identity."; "Every session prompt and brief Arcadia generates for Claude Code, Codex and OpenCode (go, brief, enroll, the managed worker packet and reviewer/critic launches) includes one Identity block built from that function: 'You are <name> <<email>> (platform, tier, role); sign every comment and commit exactly so, never as another tier or name; your teammates are ...; your current partners on this Project, from live claims and Sessions, are ...', where partners come from existing session and claim rows when they can be read and are omitted (not guessed) when they cannot; tests cover each provider, the critic role, an unknown tier refusing, no live partners, and a partner with a different platform."; "The operator and agent guidance (docs/agent-guidance/git-identity.md and the instructions the brief links) state the signature rule and the roster once, agent-agnostically; a deterministic test fails if a generated prompt for any platform lacks the Identity block or names a self identity that differs from resolveAgentIdentity for that session's tier and role; focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-agents-know-names-and-teammates-2026-10-04).
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr946
+
+- **Did:** Decision 0083 is open for review on bounded GitHub messaging for one three-agent Issue conversation: https://github.com/pmark/arcadia/pull/946
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
