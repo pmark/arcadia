@@ -3815,7 +3815,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "tests/three-action-rehearsal-operator-scripts.test.ts", "src/sessions/roleLineage.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/940"]
   - id: accept-settled-descendant-in-g8-reconciliation
     title: Let G8 reconcile a preserved candidate whose tip is the exact accepted-completion settlement on top of the preservation commit, so rehearsal run 1 can reach terminal proof.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Let G8 reconcile a preserved candidate whose tip is the exact accepted-completion settlement on top of the preservation commit, so rehearsal run 1 can reach terminal proof.
