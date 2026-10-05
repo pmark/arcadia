@@ -4,7 +4,7 @@ type: decision
 id: "0084"
 slug: decide-whether-agents-may-send-the-operator-read-only-discord-pings-arcadia
 project: arcadia
-status: open
+status: approved
 question: Decide whether agents may send the operator read-only Discord pings (arcadia ping) on their own judgment, to the default channel or an operator-configured channel alias, for look-at-this and FYI items.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-05
+answer: Authorize standing read-only pings (Recommended)
+decided: 2026-10-05
 ---
 
 # Decision 0084: Decide whether agents may send the operator read-only Discord pings (arcadia ping) on their own judgment, to the default channel or an operator-configured channel alias, for look-at-this and FYI items.
