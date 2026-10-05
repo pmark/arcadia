@@ -84,6 +84,10 @@ function activateThenOff(target = workspace): void {
   withDatabase(target, (db) => deactivateProduction(db, { requestId: "freeze-terminal-off", reason: "rehearsal finished" }));
 }
 
+function liveActivity(target: string): number {
+  return withDatabase(target, (db) => (db.prepare("SELECT COUNT(*) AS count FROM activity_events").get() as { count: number }).count);
+}
+
 /** Point the user config's defaultWorkspace (the live one) at `target`. */
 function useDefault(target: string): void {
   const config = path.join(root, "user-config.json");
@@ -362,6 +366,77 @@ describe("`go-broker ensure` refuses inside the window before status or install"
   });
 });
 
+describe("ARCADIA_REQUIRE_INLINE_WORKSPACE with no inline workspace still reads the live default for the freeze", () => {
+  let live: string;
+  let isolated: string;
+
+  beforeEach(() => {
+    live = path.join(root, "live");
+    initWorkspace(live);
+    useDefault(live);
+    isolated = temp("arcadia-freeze-inline-cwd-");
+    vi.stubEnv("ARCADIA_WORKSPACE", "");
+    vi.stubEnv("ARCADIA_REQUIRE_INLINE_WORKSPACE", "1");
+    vi.stubEnv("ARCADIA_INVOKED_FROM", isolated);
+  });
+
+  async function freezeCheckCli(): Promise<{ stdout: string; stderr: string; exitCode: unknown }> {
+    let stdout = "";
+    let stderr = "";
+    const out = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => { stdout += String(chunk); return true; });
+    const err = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => { stderr += String(chunk); return true; });
+    let exitCode: unknown;
+    try {
+      await buildProgram().parseAsync(["node", "arcadia", "production", "freeze-check", "services.restart", "--json"]);
+    } finally {
+      exitCode = process.exitCode;
+      out.mockRestore();
+      err.mockRestore();
+      process.exitCode = undefined;
+    }
+    return { stdout, stderr, exitCode };
+  }
+
+  it("refuses every operation while the default is Active, from the decision, the CLI and go-broker install/ensure, and records nothing in the default", async () => {
+    activate(live);
+    const before = liveActivity(live);
+    for (const operation of FREEZE_OPERATIONS) {
+      const error = refusal(() => assertRehearsalFreezeAllows(operation));
+      expect(error.code).toBe("PRODUCTION_ACTIVE_FREEZE");
+      expect(error.details.checked).toEqual([expect.objectContaining({ workspace: live, roles: ["default"], state: "active" })]);
+    }
+    const cli = await freezeCheckCli();
+    expect(cli.exitCode).toBe(3);
+    expect(JSON.parse(cli.stderr.slice(cli.stderr.indexOf("{"))).error.code).toBe("PRODUCTION_ACTIVE_FREEZE");
+    const { repository } = tinyGitRepo(false);
+    const installRunner = vi.fn();
+    expect(refusal(() => runGoBrokerEnsureCommand({ repository }, vi.fn(), installRunner)).code).toBe("PRODUCTION_ACTIVE_FREEZE");
+    expect(installRunner).not.toHaveBeenCalled();
+    // install resolves for its experiment guard first, which this mode already refuses by name; it refuses either way.
+    expect(refusal(() => runGoBrokerInstallCommand({ repository, home })).code).toMatch(/^(INLINE_WORKSPACE_REQUIRED|PRODUCTION_ACTIVE_FREEZE)$/);
+    expect(existsSync(path.join(home, ".local"))).toBe(false);
+    expect(liveActivity(live)).toBe(before);
+  });
+
+  it("proceeds while the default is Inactive, and records nothing in the default", async () => {
+    const before = liveActivity(live);
+    expect(assertRehearsalFreezeAllows("services.restart")).toMatchObject({ state: "inactive", decision: "allowed", checked: [expect.objectContaining({ workspace: live, roles: ["default"] })] });
+    const cli = await freezeCheckCli();
+    expect(cli.exitCode).toBeUndefined();
+    const receipt = JSON.parse(cli.stdout);
+    expect(receipt).toMatchObject({ ok: true, data: { decision: "allowed", state: "inactive" } });
+    expect(receipt.workspace).toBeUndefined();
+    const { repository, revision } = tinyGitRepo(false);
+    const ensured = runGoBrokerEnsureCommand(
+      { repository },
+      vi.fn().mockReturnValue({ ok: true, command: "go-broker.status", artifacts: [], warnings: [], data: { ready: true, revision } }),
+      vi.fn()
+    );
+    expect(ensured.data).toMatchObject({ action: "skipped", freeze: { decision: "allowed", state: "inactive" } });
+    expect(liveActivity(live)).toBe(before);
+  });
+});
+
 /**
  * The real scripts/services.sh against the real CLI freeze check. A `pnpm`
  * shim runs `arcadia production freeze-check` through this checkout's CLI,
@@ -371,7 +446,11 @@ describe("`go-broker ensure` refuses inside the window before status or install"
  * records its verb.
  */
 describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop inside the window", () => {
-  function services(action: "restart" | "stop", env: Record<string, string> = {}, options: { brokenCli?: boolean } = {}) {
+  function services(
+    action: "restart" | "stop",
+    env: Record<string, string> = {},
+    options: { brokenCli?: boolean; freezeReply?: { output: string; status: number } } = {}
+  ) {
     const bin = path.join(root, "bin");
     mkdirSync(bin, { recursive: true });
     const calls = path.join(root, "impl-calls");
@@ -385,6 +464,9 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
       "#!/usr/bin/env bash",
       'args=("$@"); [[ "${args[0]}" == -s ]] && args=("${args[@]:1}")',
       options.brokenCli ? "exit 127" : "",
+      options.freezeReply
+        ? `if [[ "\${args[2]}" == freeze-check ]]; then printf '%s\\n' ${JSON.stringify(options.freezeReply.output)} >&2; exit ${options.freezeReply.status}; fi`
+        : "",
       'if [[ "${args[0]}" == arcadia && "${args[1]}" == production && "${args[2]}" == freeze-check ]]; then',
       `  exec ${JSON.stringify(process.execPath)} --import tsx ${JSON.stringify(path.join(repoRoot, "src", "cli.ts"))} "\${args[@]:1}"`,
       "fi",
@@ -460,6 +542,40 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
     expect(result.stderr).toContain("does not extend to go-broker ensure");
     expect(result.stderr).toContain("batched install (reinstall-go-broker.sh) after the terminal production Off receipt");
     expect(readFileSync(path.join(home, ".local", "share", "arcadia", "go-broker", "ensure.log"), "utf8")).toContain("PRODUCTION_ACTIVE_FREEZE");
+  });
+
+  it("refuses under ARCADIA_REQUIRE_INLINE_WORKSPACE with no inline workspace when the live default is Active, and proceeds when it is Inactive", () => {
+    const live = path.join(root, "live");
+    initWorkspace(live);
+    const config = path.join(root, "user-config.json");
+    writeFileSync(config, JSON.stringify({ defaultWorkspace: live }));
+    const inline = { ARCADIA_REQUIRE_INLINE_WORKSPACE: "1", ARCADIA_WORKSPACE: "", ARCADIA_CONFIG_PATH: config };
+    const liveRowsBefore = liveActivity(live);
+    const inactive = services("restart", inline);
+    expect(inactive.status, inactive.stderr).toBe(0);
+    expect(inactive.implCalls).toBe("restart");
+    activate(live);
+    for (const action of ["restart", "stop"] as const) {
+      const refused = services(action, inline);
+      expect(refused.status, refused.stderr).toBe(3);
+      expect(refused.stderr).toContain("PRODUCTION_ACTIVE_FREEZE");
+      expect(refused.implCalls).toBe("");
+    }
+    expect(liveActivity(live)).toBe(liveRowsBefore);
+  });
+
+  it("refuses on any other structured CLI refusal, such as INLINE_WORKSPACE_REQUIRED", () => {
+    const output = JSON.stringify({ ok: false, command: "production.freeze-check", error: { code: "INLINE_WORKSPACE_REQUIRED", message: "inline required" } }, null, 2);
+    const result = services("stop", {}, { freezeReply: { output, status: 2 } });
+    expect(result.status, result.stderr).toBe(3);
+    expect(result.stderr).toContain("Refused (INLINE_WORKSPACE_REQUIRED)");
+    expect(result.implCalls).toBe("");
+    // A broken CLI (an unexpected error) still fails open.
+    const broken = JSON.stringify({ ok: false, error: { code: "UNEXPECTED_ERROR", message: "boom" } }, null, 2);
+    const open = services("stop", {}, { freezeReply: { output: broken, status: 1 } });
+    expect(open.status, open.stderr).toBe(0);
+    expect(open.stderr).toContain("fail open");
+    expect(open.implCalls).toBe("stop");
   });
 
   it("fails open with a warning when production status cannot be read", () => {

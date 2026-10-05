@@ -46,13 +46,16 @@ installs) and `scripts/services.sh restart|stop` (and so
 name the read-only alternative. Because the broker and services are
 host-wide, the check reads both the workspace the command resolves and the
 user-config default (the live workspace), and refuses if either is Active.
-The CLI refuses when a configured or resolved workspace's production status
-cannot be read. With no workspace configured or resolvable, as in first-time
-setup, production cannot be Active, so it proceeds and notes that in its
-receipt. An experiment workspace never reads the live default; its own guard
-refuses these steps first.
-`services.sh` warns and proceeds instead, because a recovery restart must not
-depend on a runnable CLI. Shell callers can ask first with
+It reads the default read-only even under `ARCADIA_REQUIRE_INLINE_WORKSPACE`,
+and records nothing there. The CLI refuses when a configured or resolved
+workspace's production status cannot be read. With no workspace configured
+or resolvable, as in first-time setup, production cannot be Active, so it
+proceeds and notes that in its receipt. An experiment workspace never reads
+the live default; its own guard refuses these steps first.
+`services.sh` refuses on any structured CLI refusal. It warns and proceeds
+only when the CLI is missing or broken, or reports that production status
+cannot be read, because a recovery restart must not depend on a runnable CLI.
+Shell callers can ask first with
 `arcadia production freeze-check <operation>`. The other items are
 procedure: no code stops them, so do not do them.
 

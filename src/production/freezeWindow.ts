@@ -211,7 +211,19 @@ export function assertRehearsalFreezeAllows(
 /** The resolved workspace and, outside an experiment, the user-config default, each read once. */
 function observeWorkspaces(input: RehearsalFreezeInput, env: NodeJS.ProcessEnv): FreezeObservation[] {
   const targets: Array<{ workspace: string; role: "resolved" | "default" }> = [];
-  const resolvedPath = resolveWorkspace({ workspace: input.workspace, cwd: input.cwd, env }).workspacePath;
+  let resolvedPath: string | null = null;
+  try {
+    resolvedPath = resolveWorkspace({ workspace: input.workspace, cwd: input.cwd, env }).workspacePath;
+  } catch (error) {
+    // ARCADIA_REQUIRE_INLINE_WORKSPACE refused a fallback: nothing resolved for
+    // this command, so its receipt and activity never land in the live
+    // default. The freeze check is a host-wide safety read, so it still reads
+    // the refused fallback and the user-config default below, read-only; a
+    // refusal must never turn into a silent pass.
+    if (!(error instanceof ArcadiaError) || error.code !== "INLINE_WORKSPACE_REQUIRED") throw error;
+    const refused = error.details.refusedWorkspace;
+    if (typeof refused === "string" && refused) targets.push({ workspace: refused, role: "default" });
+  }
   if (resolvedPath) targets.push({ workspace: resolvedPath, role: "resolved" });
   const experiment = resolvedPath ? readExperimentWorkspace(resolvedPath) : null;
   if (!experiment) {
@@ -229,7 +241,9 @@ function observeWorkspaces(input: RehearsalFreezeInput, env: NodeJS.ProcessEnv):
   const merged = new Map<string, Array<"resolved" | "default">>();
   for (const target of targets) {
     const key = canonicalPath(target.workspace);
-    merged.set(key, [...(merged.get(key) ?? []), target.role]);
+    const roles = merged.get(key) ?? [];
+    if (!roles.includes(target.role)) roles.push(target.role);
+    merged.set(key, roles);
   }
   return [...merged.entries()].map(([workspace, roles]) => observe(workspace, roles));
 }
