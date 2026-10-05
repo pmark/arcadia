@@ -84,6 +84,13 @@
       "path": "docs/agent-guidance/agent-peer-watch.md",
       "read_before": "Before judging, offering help to or continuing another agent's work; silence never proves release.",
       "sha256": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed"
+    },
+    {
+      "id": "agent-comms",
+      "trigger": "comms, coordination issue, sub-issue, relay, peer sessions",
+      "path": "docs/agent-guidance/agent-comms.md",
+      "read_before": "Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority.",
+      "sha256": "c21f9d050036a550e81b0d746ca46ebf37530d32a7b5b7c4a60712bd90d6a019"
     }
   ]
 }
