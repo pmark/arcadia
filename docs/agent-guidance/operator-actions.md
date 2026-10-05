@@ -114,3 +114,30 @@ handoff until the script and descriptor match the final reviewed state.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
+### Pinging the operator (read-only)
+
+`arcadia ping "<message>"` queues one short Discord nudge. It is not an Agent
+Ask: no `request_id`, no governed record, no Decision. Use it when you want the
+operator's eyes on something that is not a durable event — you added a button
+to the Actions page, a page is ready to look at, something odd turned up and
+nobody is blocked. One ping per thing; never for routine progress.
+
+```sh
+arcadia ping "Added a Retry button to the Actions page" --kind look --link http://localhost:3020/actions
+```
+
+- `--kind look|fyi|attention` (default `fyi`) sets the headline; `--link` takes
+  an http(s) URL; `--channel <alias>` aims it at a channel the operator listed
+  in `DISCORD_PING_CHANNELS` (an unlisted name lands in the default channel
+  with a note); `--agent` names you in the message.
+- At most 500 characters. The same message to the same channel inside ten
+  minutes is one ping, and at most 30 queue per hour; the command refuses past
+  that. Put detail in the PR and link it.
+- **It is read-only and grants nothing.** Never use it to ask for a Decision,
+  approval, credential, spend or merge, and never as a substitute for the Agent
+  Ask or PR notifications above; those keep their own paths. If you need an
+  answer, stop at a Decision or picker instead.
+- Success means *queued*; the Discord bot delivers on its next poll. A non-zero
+  exit means it was not queued: say so in the handoff rather than assuming the
+  operator was told. Report a ping you could not send under the notification
+  truthfulness rule in the PR procedure.

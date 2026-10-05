@@ -6,6 +6,7 @@ import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
+import { drainOperatorPings } from "./operatorPings.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
@@ -313,6 +314,18 @@ export function startNotificationPoller(
     } catch (error) {
       logJson("error", {
         msg: "discord notification poll failed",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    // Its own try: the outbox lives in the database, not the notification
+    // state file, so a ping problem must not block settlement pings or the
+    // reverse.
+    try {
+      await drainOperatorPings(cli, config, (channelId, content) => sendToConfiguredChannel(client, channelId, content), logJson);
+    } catch (error) {
+      logJson("error", {
+        msg: "discord operator ping poll failed",
         error: error instanceof Error ? error.message : String(error)
       });
     }

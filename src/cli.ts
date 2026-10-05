@@ -40,6 +40,14 @@ import {
 } from "./commands/agentAsk.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
+  renderPingPendingSuccess,
+  renderPingSendSuccess,
+  renderPingSentSuccess,
+  runPingPendingCommand,
+  runPingSendCommand,
+  runPingSentCommand
+} from "./commands/ping.js";
+import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
   renderBackBurnerPromoteSuccess,
@@ -951,6 +959,33 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; settlement: string; messageId: string; json?: boolean }) =>
     runCliAction("agent-ask.notification-sent", options, () => runAgentAskNotificationSentCommand(options), renderAgentAskNotificationSentSuccess)
+  );
+
+  const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
+  addJsonOption(ping.command("send", { isDefault: true })
+    .description("Queue one read-only ping. It approves nothing and answers nothing; use an Agent Ask for anything durable")
+    .argument("<message...>", "What the operator should know or look at (500 characters at most)")
+    .option("--channel <alias>", "Configured Discord channel alias (DISCORD_PING_CHANNELS); default channel when omitted")
+    .option("--kind <kind>", "look | fyi | attention", "fyi")
+    .option("--link <url>", "An http(s) URL to open, such as a dashboard page or a PR")
+    .option("--agent <name>", "Who is pinging, shown in the message")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; agent?: string; json?: boolean }) =>
+    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" ") }), renderPingSendSuccess)
+  );
+  addJsonOption(ping.command("pending")
+    .description("List operator pings pending Discord delivery")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("ping.pending", options, () => runPingPendingCommand(options), renderPingPendingSuccess)
+  );
+  addJsonOption(ping.command("sent")
+    .description("Record successful Discord delivery for one operator ping")
+    .requiredOption("--id <id>", "Ping id")
+    .requiredOption("--message-id <id>", "Discord message id")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; id: string; messageId: string; json?: boolean }) =>
+    runCliAction("ping.sent", options, () => runPingSentCommand(options), renderPingSentSuccess)
   );
 
   const action = program.command("action").description("Operate on governed Actions");

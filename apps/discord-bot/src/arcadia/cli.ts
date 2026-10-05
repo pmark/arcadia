@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type {
   AskData,
   AgentAskNotificationsData,
+  OperatorPingsData,
   ArcadiaJsonFailure,
   ArcadiaJsonSuccess,
   ClarifyData,
@@ -78,6 +79,14 @@ export class ArcadiaCli {
       "--message-id", messageId,
       "--json"
     ]));
+  }
+
+  operatorPings(): Promise<ArcadiaJsonSuccess<OperatorPingsData>> {
+    return this.runJson<OperatorPingsData>(this.withWorkspace(["ping", "pending", "--json"]));
+  }
+
+  operatorPingSent(pingId: string, messageId: string): Promise<ArcadiaJsonSuccess<{ pingId: string; messageId: string }>> {
+    return this.runJson(this.withWorkspace(["ping", "sent", "--id", pingId, "--message-id", messageId, "--json"]));
   }
 
   review(): Promise<ArcadiaJsonSuccess<ReviewData>> {
