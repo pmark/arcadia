@@ -354,9 +354,12 @@ criteria, the responsibility and the execution; the title is not part of it.
   `tests/rehearsal-run-2-amended-action.test.ts` proves it through
   `requirementIdentity`, the launch gate and the real tick.
 
-The run-2 G8 variant is pending the merged G8 reconciliation repair. Operator
-order: merge both → rerun run 1's G8 → reset → recover only if main moved again
-→ G6 → G7 within 30 minutes → G8 variant (START_HERE.md lists the commands).
+The run-2 G8 variant is `restore-terminal-off-three-action-rehearsal-2026-10-05`.
+It is the merged G8 (#955, settled-descendant reconciliation) with one change:
+it also owns the run-2 request id, still only with the exact fixture scope. Its
+reconciliation and hash pins are unchanged. Operator order: merge this pull
+request → rerun run 1's G8 → reset → recover only if main moved again → G6 →
+G7 within 30 minutes → G8 variant (START_HERE.md lists the commands).
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

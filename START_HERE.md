@@ -81,8 +81,8 @@ backups) and never discards a candidate.
 The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
 G1's genesis. Run these in order, each from a terminal unless noted:
 
-1. Merge the G8 reconciliation repair (`accept-settled-descendant-in-g8-reconciliation`)
-   and the run-2 pull request. Then rerun the existing G8
+1. Merge the run-2 pull request. The G8 reconciliation repair is already
+   merged (#955). Then rerun the existing G8
    `restore-terminal-off-three-action-rehearsal-2026-10-04` for run 1. Its
    restart reinstalls from clean main, so the new runtime is installed.
 2. Reset the fixture, exactly:
@@ -109,7 +109,8 @@ G1's genesis. Run these in order, each from a terminal unless noted:
    `operator-answers-rehearsal-run2-2026-10-05`).
 6. End with the run-2 G8 variant
    `restore-terminal-off-three-action-rehearsal-2026-10-05`. It turns Off only
-   the run-2 (or run-1) G7 policy with the exact fixture scope.
+   the run-2 (or run-1) G7 policy with the exact fixture scope, and otherwise
+   behaves exactly as the merged 2026-10-04 G8.
 
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the

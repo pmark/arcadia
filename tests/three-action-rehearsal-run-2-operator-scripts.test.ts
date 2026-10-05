@@ -14,7 +14,8 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 /**
  * The run-2 operator pairs for the disposable three-Action rehearsal: the
- * fixture reset, the run-2 G6 preflight and the run-2 G7 Grant. Copied from
+ * fixture reset, the run-2 G6 preflight, the run-2 G7 Grant and the run-2 G8
+ * terminal Off. Copied from
  * and shaped like tests/three-action-rehearsal-operator-scripts.test.ts: every
  * behavioral case runs a pair copied into a throwaway library with fake
  * `mise`, `gh`, `codex`, `timeout`, `sleep` and a `git` whose `push` is only
@@ -27,10 +28,11 @@ const library = path.join(repoRoot, "artifacts", "generated", "operator-scripts"
 const RESET = "reset-three-action-rehearsal-fixture-2026-10-05";
 const G6 = "preflight-three-action-rehearsal-2026-10-05";
 const G7 = "grant-production-three-action-rehearsal-2026-10-05";
+const G8 = "restore-terminal-off-three-action-rehearsal-2026-10-05";
 const G1 = "prepare-three-action-rehearsal-fixture-2026-10-04";
 const RUN1_G8 = "restore-terminal-off-three-action-rehearsal-2026-10-04";
 const RUN1_PAIRS = [G1, "preflight-three-action-rehearsal-2026-10-04", "grant-production-three-action-rehearsal-2026-10-04", RUN1_G8];
-const PAIRS = [RESET, G6, G7];
+const PAIRS = [RESET, G6, G7, G8];
 const source = (id: string) => readFileSync(path.join(library, `${id}.sh`), "utf8");
 const descriptorOf = (id: string) => JSON.parse(readFileSync(path.join(library, `${id}.json`), "utf8"));
 const REPO = "pmark/arcadia-three-action-rehearsal-t1";
@@ -67,7 +69,8 @@ if (name === "mise") {
   if (rest[0] === "pnpm") key = "arcadia " + rest.slice(3).filter((a) => !a.startsWith("--")).slice(0, 2).join(" ");
   else if (rest.includes("tsx")) {
     program = fs.readFileSync(0, "utf8");
-    key = program.includes("requirementIdentity") ? "probe amendment" : program.includes("getProjectMetadata") ? "probe registration"
+    key = program.includes("fixtureSessions") ? "probe sessions" : program.includes("classifyPreservedCandidate") ? "probe classify"
+      : program.includes("requirementIdentity") ? "probe amendment" : program.includes("getProjectMetadata") ? "probe registration"
       : program.includes("session_role_attempts") ? "probe lineage" : program.includes("checkProviderSignIn") ? "probe claude"
       : program.includes("observeProviderCapacity") ? "probe capacity" : "probe leases";
   } else key = "node preflight";
@@ -297,6 +300,7 @@ describe("run-2 operator pairs: contract and static safety", () => {
 
   it("only the run-2 G7 previews or activates production; the reset and G6 never turn anything Off", () => {
     for (const id of [RESET, G6]) expect(source(id)).not.toMatch(/production (preview|activate|deactivate)/);
+    expect(source(G8)).not.toMatch(/production (preview|activate)/);
   });
 
   it("the reset is one-shot, pushes only fixture main without force, and validates before its only commit and push", () => {
@@ -816,5 +820,107 @@ describe("run 2 end to end against fakes: the reset's receipt is the head G6 and
     const g7 = box.run(G7, { ARCADIA_OPERATOR_SCRIPT_ID: G7, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(box.scripts, `${G7}.json`) });
     expect(g7.status, g7.stdout + g7.stderr).toBe(0);
     expect(box.receipt(G7).json).toMatchObject({ outcome: "succeeded", activated: true, fixtureHead, resetReceipt: realpathSync(path.join(resetDir, "receipt.json")) });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The run-2 G8 variant: the merged 2026-10-04 G8 with only its ownership widened
+// to the run-2 G7 request id (run 1's still accepted), exact fixture scope only.
+
+const realRecover = {
+  "recover-arcadia-host-services.sh": readFileSync(path.join(library, "recover-arcadia-host-services.sh"), "utf8"),
+  "recover-arcadia-host-services.json": readFileSync(path.join(library, "recover-arcadia-host-services.json"), "utf8")
+};
+const REHEARSAL_ACTIONS = ACTIONS.map((a) => `three-action-rehearsal/${a}`);
+const rehearsalActive = (requestId: string, actions = REHEARSAL_ACTIONS, plans = ["three-action-rehearsal/autonomous-three-action-rehearsal"]) => ok({
+  read: { status: "ok", policy: { desiredState: "active", revision: 6, epoch: 4, authority: { requestId },
+    scope: { projects: ["three-action-rehearsal"], plans, actions, providers: ["claude-code-cli"] } } },
+  liveAdmissions: 0
+});
+const g8Env = (box: Box) => ({ ARCADIA_OPERATOR_SCRIPT_ID: G8, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(box.scripts, `${G8}.json`) });
+const quiet = { stdout: JSON.stringify({ active: [], fixtureSessions: [] }) };
+function g8Box(withRecover = false) {
+  const box = sandboxFor([G8]);
+  if (withRecover) for (const [name, content] of Object.entries(realRecover)) writeFileSync(path.join(box.scripts, name), content, { mode: 0o755 });
+  return box;
+}
+
+describe("the run-2 G8 owns only a rehearsal G7 policy with the exact fixture scope", () => {
+  it("differs from the merged 2026-10-04 G8 only in its id and the request ids it owns, keeping its reconciliation and hash pins", () => {
+    const run1 = source(RUN1_G8);
+    const run2 = source(G8);
+    const normalize = (text: string) => text
+      .replace(/^# G8 for rehearsal run 2:.*\n(#.*\n){3}/m, "")
+      .replace(/restore-terminal-off-three-action-rehearsal-2026-10-0[45]/g, "<G8>")
+      .replace(/^# G8 owns only .*\n/m, "").replace(/^GRANT_ID=.*\n(RUN1_GRANT_ID=.*\n)?/m, "")
+      .replace(/ or \$RUN1_GRANT_ID/g, "").replace(/ --arg run1 "\$RUN1_GRANT_ID"/, "")
+      .replace("(.data.read.policy.authority.requestId == $id or .data.read.policy.authority.requestId == $run1)", ".data.read.policy.authority.requestId == $id")
+      .replace("== G8 (run 2): restore", "== G8: restore");
+    expect(normalize(run2)).toBe(normalize(run1));
+    for (const pin of ["RECOVER_SCRIPT_SHA256", "RECOVER_DESCRIPTOR_SHA256", "RESTART_IMPL_SHA256"]) {
+      const line = new RegExp(`^${pin}="[0-9a-f]{64}"$`, "m");
+      expect(run2.match(line)?.[0]).toBe(run1.match(line)?.[0]);
+    }
+    expect(run2).toContain('GRANT_ID="grant-production-three-action-rehearsal-2026-10-05"');
+    expect(run2).toContain('RUN1_GRANT_ID="grant-production-three-action-rehearsal-2026-10-04"');
+    expect(run2).toContain("classifyPreservedCandidate");
+    expect(run2).not.toMatch(/services\.sh restart|launchctl|worker (stop|start)/);
+  });
+
+  it("refuses outside the /runs launcher or a terminal without any call", () => {
+    const box = g8Box();
+    expect(box.run(G8).status).not.toBe(0);
+    expect(box.receipt(G8).json).toMatchObject({ id: G8, outcome: "refused", stage: "launch_context", restarted: false });
+    expect(box.calls()).toBe("");
+  });
+
+  it.each([
+    ["an unrelated request id", rehearsalActive("some-other-grant")],
+    ["the run-2 G7 request id with a narrower Action scope", rehearsalActive(G7, REHEARSAL_ACTIONS.slice(0, 2))],
+    ["the run-2 G7 request id with another Plan", rehearsalActive(G7, REHEARSAL_ACTIONS, ["three-action-rehearsal/other-plan"])],
+    ["the run-1 G7 request id with a narrower Action scope", rehearsalActive("grant-production-three-action-rehearsal-2026-10-04", REHEARSAL_ACTIONS.slice(1))],
+    ["a policy with no scope", status("active")]
+  ])("refuses an Active policy under %s without deactivating it", (_label, active) => {
+    const box = g8Box(true);
+    box.setReplies({ "arcadia production status": active, "probe sessions": quiet });
+    expect(box.run(G8, g8Env(box)).status).not.toBe(0);
+    const { dir, json } = box.receipt(G8);
+    expect(json).toMatchObject({ outcome: "refused", stage: "production_off", offState: "not_owned", restarted: false });
+    expect(json.reason).toContain("G8 does not own it");
+    expect(readFileSync(path.join(dir, "failure-handoff.md"), "utf8")).toContain("G8 did NOT turn it Off");
+    expect(box.calls()).not.toMatch(/deactivate/);
+  });
+
+  it.each([
+    ["run 2's", G7],
+    ["run 1's", "grant-production-three-action-rehearsal-2026-10-04"]
+  ])("turns %s exact G7 policy Off through deactivate first, before resolving the workspace", (_label, requestId) => {
+    const box = g8Box();
+    box.setReplies({
+      "arcadia workspace resolve": ok({ source: "user config", workspacePath: box.workspace }),
+      "arcadia production status": [rehearsalActive(requestId), status("inactive")],
+      "arcadia production deactivate": ok({ result: { policy: { desiredState: "inactive" } } }),
+      "probe sessions": quiet
+    });
+    expect(box.run(G8, g8Env(box)).status).not.toBe(0);
+    const { dir, json } = box.receipt(G8);
+    // The library here has no recover pair, so it stops at the pinned restart path after a confirmed Off.
+    expect(json).toMatchObject({ outcome: "refused", stage: "restart_preconditions", offState: "confirmed", restarted: false });
+    expect(readFileSync(path.join(dir, "intervention-ledger.jsonl"), "utf8")).toContain(`revoked active policy ${requestId}`);
+    const verbs = parsedCalls(box).filter((c) => c.tool === "mise" && c.args[3] === "-s").map((c) => c.args.slice(5, 7).join(" "));
+    expect(verbs.filter((v) => v === "production deactivate")).toHaveLength(1);
+    expect(verbs.indexOf("production deactivate")).toBeLessThan(verbs.indexOf("workspace resolve"));
+    const [off] = arcadiaCalls(box, "production", "deactivate");
+    expect(off.args[off.args.indexOf("--request-id") + 1]).toMatch(new RegExp(`^${G8}-`));
+  });
+
+  it("refuses changed restart bytes after a quiet Inactive observation, without running them", () => {
+    const box = g8Box();
+    writeFileSync(path.join(box.scripts, "recover-arcadia-host-services.json"), realRecover["recover-arcadia-host-services.json"]);
+    writeFileSync(path.join(box.scripts, "recover-arcadia-host-services.sh"), realRecover["recover-arcadia-host-services.sh"] + "# changed\n", { mode: 0o755 });
+    box.setReplies({ "arcadia workspace resolve": ok({ source: "user config", workspacePath: box.workspace }), "arcadia production status": status("inactive"), "probe sessions": quiet });
+    expect(box.run(G8, g8Env(box)).status).not.toBe(0);
+    expect(box.receipt(G8).json).toMatchObject({ outcome: "refused", stage: "restart_preconditions", offState: "confirmed", restarted: false });
+    expect(box.receipt(G8).json.reason).toContain("differs from its reviewed bytes");
   });
 });
