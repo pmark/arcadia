@@ -103,8 +103,8 @@
       "id": "operator-directed-work",
       "trigger": "operator-directed, operator asks, ad hoc, side track, parallel track, outside the plan, no Action, unplanned, urgent",
       "path": "docs/agent-guidance/operator-directed-work.md",
-      "read_before": "Before starting work the operator asked for in chat that no queued Action holds; it moves no pointer or queue and grants no approval boundary.",
-      "sha256": "a653d1e268fdd91907aa96844e28d279582c11f9d7cb42ff4209dcac2fc0cf2c"
+      "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
+      "sha256": "19848575ea67d00796f5b67364ff4541e34f11f09d97ecd102073906f2579785"
     }
   ]
 }
