@@ -86,6 +86,13 @@
       "sha256": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed"
     },
     {
+      "id": "agent-comms",
+      "trigger": "comms, coordination issue, sub-issue, relay, peer sessions",
+      "path": "docs/agent-guidance/agent-comms.md",
+      "read_before": "Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority.",
+      "sha256": "4ff1955bb6af94d31c860b6f793bacbb996d26d95984736716096f283165f87d"
+    },
+    {
       "id": "rehearsal-freeze-window",
       "trigger": "rehearsal, freeze, production active, reinstall, restart, install, services, go-broker",
       "path": "docs/agent-guidance/rehearsal-freeze-window.md",
