@@ -3780,6 +3780,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/949"]
+  - id: adopt-rehearsal-freeze-window
+    title: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let agents keep working in parallel with a live managed-production rehearsal by defining and enforcing a freeze window over the shared host state that can disrupt it.
+    expected_artifact: Evidence satisfying Agent Ask adopt-rehearsal-freeze-window
+    clarification: clarified
+    confidence: high
+    source: Agent Ask adopt-rehearsal-freeze-window-2026-10-05
+    acceptance_criteria:
+      - "Agent guidance (a 'Rehearsal freeze window' procedure registered in docs/agent-guidance/index.json with triggers such as rehearsal, freeze, production active, reinstall, restart, install) defines the window as running from a successful production activation until the terminal production Off receipt, observed with read-only `arcadia production status`; lists what is forbidden inside it (reinstall-go-broker.sh and `go-broker install|ensure`; recover-arcadia-host-services.sh and `scripts/services.sh restart|stop` except through the run's own Off-first G8 step; `production activate|deactivate|reactivate` outside the run's own G-steps; workspace config and provider-registry edits; editing, pausing, docs-syncing or tidying the in-scope fixture Project; whole-queue arrange or moving in-scope queue keys; fast-forwarding or dirtying the main checkout across commits that touch runtime paths: src, scripts, apps, package.json, pnpm-lock.yaml, tsconfig.json) and what continues (worktree commits, PRs and reviews; merges on origin, with the main checkout not fast-forwarded past runtime-path commits until the window ends; Arcadia-only Ask settles from the main checkout when the fast-forward range is docs-only; read-only commands; `arcadia go` sessions in their own worktrees; modest gh reads); and names who runs the batched install after the window ends (the release-manager or orchestrator session: reinstall-go-broker.sh, then recover-arcadia-host-services.sh when services need it) and how agents learn the window opened or closed (the coordination Issue and production status), without changing any authority."
+      - "`arcadia go-broker install` and `arcadia go-broker ensure` (src/commands/goBrokerInstall.ts), reinstall-go-broker.sh before it installs, and `scripts/services.sh restart|stop` refuse with a named reason (for example production_active_freeze) and the exact supported alternative when read-only production status reports the managed-production policy Active, and proceed when it is Inactive or Off; a documented inline operator override (for example ARCADIA_FREEZE_OVERRIDE=<reason>) bypasses the refusal and records the reason; G8's Off-first restart path is unaffected; the CLI checks fail closed when status cannot be read while services.sh fails open with a warning as its existing comment requires; recover-arcadia-host-services.sh and its descriptor stay byte-identical, or G8's RECOVER_* sha256 pins and their tests are re-pinned in the same change."
+      - "Hermetic tests cover Active refusal, Inactive and Off success, the override with its recorded reason and unreadable status for each guarded entry point, and the G8 Off-then-restart path still passing; focused suites, lint, tsc, pnpm build, check:agent-guidance, check:operator-scripts and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/commands/goBrokerInstall.ts", "scripts/services.sh", "artifacts/generated/operator-scripts/reinstall-go-broker.sh", "artifacts/generated/operator-scripts/recover-arcadia-host-services.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "src/production/tick.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
