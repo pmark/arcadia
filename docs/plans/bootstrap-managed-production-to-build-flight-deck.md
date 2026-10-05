@@ -3508,11 +3508,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask implement-agent-peer-watch-reader
     clarification: clarified
     confidence: high
-    source: Agent Ask agent-peer-watch-2026-10-04
+    source: Agent Ask agent-comms-role-v2-2026-10-04
     acceptance_criteria:
       - A read-only command (for example arcadia agents watch) gathers the contract's evidence for every agent with an active claim, candidate or lease (candidate branch commits and their trailers, issue comments on a named coordination issue via the GitHub CLI with bounded polling and rate-limit awareness, session and lease rows, capacity telemetry), classifies each agent per the contract, and prints a typed status with the evidence and its age; it never mutates the workspace, repositories or GitHub, and unknown or unreadable evidence is reported as unknown, not healthy.
       - "The production tick and the operator surfaces that already show escalations consume the classification: a stalled or exhausted owner of the current Action raises a deduplicated operator escalation with an accurate remedy, and nothing is dispatched to or taken from the owner."
       - "Hermetic tests with fake Git history, fake issue comments and capacity fixtures cover healthy, idle, stalled, exhausted and unknown agents, forged or stale heartbeats, GitHub rate limiting, and the 2026-10-03 collision; focused suites, lint, tsc, build, check:agent-guidance and the preservation self-check pass."
+      - The command offers a blocking event mode (for example `arcadia agents watch --until-event --since <watermark>`) that exits with one typed JSON event when a comment from another signature newer than the watermark arrives on the named coordination Issue, a watched agent's classification changes or an escalation is raised, so a Comms session waits in a shell rather than in a model turn; hermetic tests cover each event kind, watermark replay and the self-signature filter.
     depends_on: [define-agent-peer-watch-contract]
     decisions: []
     references: ["src/production/tick.ts", "src/commands/workMonitor.ts", "src/codingAgents/capacity.ts"]
@@ -3636,6 +3637,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/cli.ts", "src/activity/recorder.ts", "src/workspace/experimentGuard.ts", "src/workspace/leakCheck.ts", "src/commands/workspaceExperiment.ts", "https://github.com/pmark/arcadia/issues/947", "https://github.com/pmark/arcadia/issues/940"]
+  - id: define-agent-comms-role
+    title: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
+    expected_artifact: Evidence satisfying Agent Ask define-agent-comms-role
+    clarification: clarified
+    confidence: high
+    source: Agent Ask agent-comms-role-v2-2026-10-04
+    acceptance_criteria:
+      - "docs/agent-guidance/agent-comms.md, registered in docs/agent-guidance/index.json with its triggers (comms, coordination issue, sub-issue, relay, peer sessions), defines the Comms role on top of docs/agent-guidance/agent-peer-watch.md: exactly one Comms session per platform (Claude Code, Codex, OpenCode); Comms may observe, relay, ask, offer help, escalate and launch read-only information-gathering subagents, and never dispatches, assigns, claims, releases or takes over work, which stays with the queue, claims and `arcadia go`; an Issue comment is a signal and never authority; awareness of other sessions reads Arcadia session and claim rows first, and each platform's native session listing (stated as verified or unknown for each of the three platforms) only as a fallback reported as unknown when unreadable."
+      - "The procedure fixes the channel: one coordination Issue per round, named by an approved posting Decision (initially pmark/arcadia#944, once an approved Decision such as 0083 covers it); each Comms comment is signed with the exact resolved identity signature line and carries a short human summary plus at most one arcadia-peer-watch-v1 block; a sub-issue is opened only when one Action needs multi-agent discussion or the operator asks, and a round ends with a summary comment and a successor Issue named by a new Decision; Comms posts only through the main checkout (never from an experiment workspace) and only while a posting Decision is approved and unexpired, and otherwise writes the same text as a local draft."
+      - "The procedure makes waiting cost no model tokens: a shell watcher polls with a comment-id watermark, an exact-signature self filter and rate-limit back-off below 500 remaining core requests, and is re-armed before the two-hour background limit; the Comms model wakes only on a comment from another signature, a peer classification change or an escalation; a checked-in launch brief for each of Claude Code, Codex and OpenCode starts a Comms session under these rules with its resolved identity; check:agent-guidance and the guidance index fingerprint checks pass."
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
