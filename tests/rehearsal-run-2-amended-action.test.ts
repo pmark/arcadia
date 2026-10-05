@@ -250,6 +250,25 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     expect(git(rehearsal.repo, ["rev-parse", `refs/heads/${run1.branch}`]).trim()).toBeTruthy();
   });
 
+  it("the reset's read-only lineage probe names run 1's finished, worker-preserved Session against a real workspace", () => {
+    const { rehearsal, run1 } = afterRun1();
+    const program = source(RESET).split(`cat > "$RUN_DIR/probe-lineage.mjs" <<'NODE'\n`)[1].split("\nNODE")[0];
+    const attempt = rehearsal.attempts("write-marker-a")[0];
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    delete env.VITEST;
+    const probe = () => {
+      const run = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-", rehearsal.workspace, attempt.requirement_id, attempt.input_revision, "f".repeat(64)], { cwd: repoRoot, input: program, env, encoding: "utf8", timeout: 60_000 });
+      expect(run.status, run.stderr).toBe(0);
+      return JSON.parse(run.stdout);
+    };
+    expect(probe()).toEqual({
+      attempts: [{ input: "previous", role: "development", ordinal: 1, status: "passed" }],
+      holders: [{ sessionId: run1.id, status: run1.status, worktree: run1.worktree_path, preserved: true }]
+    });
+    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE candidate_preservation_receipts SET request_id = ? WHERE request_id = ?").run(`moved-${run1.id}`, `worker-tick-preserve-${run1.id}`));
+    expect(probe().holders[0].preserved).toBe(false);
+  });
+
   it("keeps run 1's claim, and dispatches nothing, while its worktree holds uncommitted work", () => {
     const { rehearsal, run1 } = afterRun1();
     mkdirSync(path.join(run1.worktree_path, "notes"), { recursive: true });

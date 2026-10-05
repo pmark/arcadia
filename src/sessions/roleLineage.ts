@@ -90,7 +90,8 @@ export function requirementForSession(repoRoot: string, session: Pick<AgentSessi
  * input. It stays preserved exactly as it is, but it no longer claims the
  * repository's terminal handoff or the Action, so the amended Action can be
  * dispatched under its fresh lineage. Only a candidate the worker already
- * preserved (a canonical `worker-tick-preserve-<session>` receipt) qualifies,
+ * preserved, locally or remotely (a canonical `worker-tick-preserve-<session>`
+ * receipt), qualifies,
  * so an unpreserved one still gets its preservation attempt first. A Session
  * with no passed development attempt of its own (a failed one, or one from
  * before attempt lineage existed) keeps the earlier behaviour. If the Action

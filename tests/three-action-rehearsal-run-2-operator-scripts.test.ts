@@ -398,7 +398,16 @@ describe("the reset refuses unsafe input and unsafe state before any commit or p
       writeFileSync(path.join(amended, PLAN_FILE), readFileSync(path.join(amended, PLAN_FILE), "utf8").replace(OLD_LINE, NEW_LINE));
       withDatabase(box.workspace, (db) => beginDevelopmentAttempt(db, { requirement: identityOf(amended), requestId: "worker-tick-early-run-2", retryAuthorized: true, now: new Date() }));
       expect(state.original.inputRevision).not.toBe(identityOf(amended).inputRevision);
-    }, "lineage", "attempts already exist for the amended requirement input"]
+    }, "lineage", "attempts already exist for the amended requirement input"],
+    ["run 1's passing Session is still running", (box) => box.patchReplies({ "probe lineage": { stdout: JSON.stringify({ attempts: [], holders: [{ sessionId: "s1", status: "running", worktree: null, preserved: true }] }) } }), "lineage", "could not dispatch past it"],
+    ["run 1's passing Session was never preserved by the worker", (box) => box.patchReplies({ "probe lineage": { stdout: JSON.stringify({ attempts: [], holders: [{ sessionId: "s1", status: "completed", worktree: null, preserved: false }] }) } }), "lineage", "unpreserved by the worker"],
+    ["run 1's worktree holds uncommitted work", (box) => {
+      const worktree = path.join(box.root, "run1-worktree");
+      mkdirSync(worktree);
+      git(worktree, ["init", "-q", "-b", "main"]);
+      writeFileSync(path.join(worktree, "unsaved.md"), "x\n");
+      box.patchReplies({ "probe lineage": { stdout: JSON.stringify({ attempts: [], holders: [{ sessionId: "s1", status: "completed", worktree, preserved: true }] }) } });
+    }, "lineage", "holds uncommitted work"]
   ];
   it.each(cases)("refuses when %s, with no commit, push or docs sync", (_label, arrange, stage, reason) => {
     const { box, ...state } = resetBox();
@@ -490,6 +499,8 @@ describe("the reset commits one validated line, pushes it without force, syncs d
     });
     expect(amended.inputRevision).not.toBe(original.inputRevision);
     expect(json.run1Attempts).toEqual([{ input: "previous", role: "development", ordinal: 1, status: "passed" }]);
+    // The seeded attempt names a Session with no row here, which holds no claim or handoff.
+    expect(json.run1Holders).toEqual([{ sessionId: "session_run_1", status: "absent", worktree: null, preserved: false }]);
     // One commit on genesis touching only the Plan: write-start-marker's next_action and the Plan's updated: date.
     const today = new Date().toISOString().slice(0, 10);
     expect(git(box.fixture, ["rev-parse", "HEAD^"])).toBe(genesis);

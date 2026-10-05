@@ -400,21 +400,47 @@ record "actionTextRevision" "$(jq -c --arg a "$ACTION_A" '{field: "next_action",
 echo "Amended fixture validated by Arcadia's discovery and docs sync; $ACTION_A's requirement input revision changes from ${OLD_REVISION:0:12} to ${NEW_REVISION:0:12}."
 
 # Read-only against the live workspace: the amended input has no attempt yet,
-# so the launch gate allocates a fresh development ordinal for it.
+# so the launch gate allocates a fresh development ordinal for it. Each Session
+# that settled a passed attempt for the previous input must also be one the
+# tick and the Action claim will step past once the input changes: finished,
+# preserved by the worker (worker-tick-preserve-<session>) and clean, or the
+# run-2 Grant would be consumed by a run that can never dispatch.
 STAGE=lineage
 cat > "$RUN_DIR/probe-lineage.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
 const [workspace, requirementId, previous, amended] = process.argv.slice(2);
 console.log(JSON.stringify(withReadOnlyDatabase(workspace, (db) => {
-  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_role_attempts'").get();
-  const rows = table ? db.prepare("SELECT input_revision, role, ordinal, status FROM session_role_attempts WHERE requirement_id = ? ORDER BY created_at, rowid").all(requirementId) : [];
-  return { attempts: rows.map((row) => ({ input: row.input_revision === previous ? "previous" : row.input_revision === amended ? "amended" : "other", role: row.role, ordinal: row.ordinal, status: row.status })) };
+  const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
+  const rows = tables.has("session_role_attempts") ? db.prepare("SELECT input_revision, role, ordinal, status, terminal_receipt_json FROM session_role_attempts WHERE requirement_id = ? ORDER BY created_at, rowid").all(requirementId) : [];
+  const sessionOf = (row) => { try { return JSON.parse(row.terminal_receipt_json ?? "null")?.sessionId ?? null; } catch { return null; } };
+  const holders = rows.filter((row) => row.role === "development" && row.status === "passed" && row.input_revision === previous).map((row) => {
+    const id = sessionOf(row);
+    const session = id && tables.has("agent_sessions") ? db.prepare("SELECT id, status, worktree_path FROM agent_sessions WHERE id = ?").get(id) : null;
+    const preserved = id && tables.has("candidate_preservation_receipts") ? Boolean(db.prepare("SELECT 1 FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${id}`)) : false;
+    return { sessionId: id, status: session ? session.status : "absent", worktree: session ? session.worktree_path : null, preserved };
+  });
+  return {
+    attempts: rows.map((row) => ({ input: row.input_revision === previous ? "previous" : row.input_revision === amended ? "amended" : "other", role: row.role, ordinal: row.ordinal, status: row.status })),
+    holders
+  };
 })));
 NODE
 LINEAGE="$(probe "$WORKSPACE" "$REQUIREMENT_ID" "$OLD_REVISION" "$NEW_REVISION" < "$RUN_DIR/probe-lineage.mjs")" || refuse "the attempt lineage could not be read"
 printf '%s\n' "$LINEAGE" > "$RUN_DIR/lineage.json"
 jq -e 'all(.attempts[]; .input != "amended")' <<<"$LINEAGE" >/dev/null || refuse "attempts already exist for the amended requirement input; the reset is not fresh"
 record "run1Attempts" "$(jq -c '.attempts' <<<"$LINEAGE")"
+record "run1Holders" "$(jq -c '.holders' <<<"$LINEAGE")"
+# A passed attempt naming no Session row holds no claim or handoff; every named one must qualify.
+jq -e 'all(.holders[]; .sessionId != null and (.status == "absent" or (.status != "prepared" and .status != "running" and .preserved == true)))' <<<"$LINEAGE" >/dev/null \
+  || refuse "a run-1 Session that passed $ACTION_A is live, unpreserved by the worker or unnamed, so run 2 could not dispatch past it: $(jq -c '.holders' <<<"$LINEAGE")"
+HOLDER_COUNT="$(jq '.holders | length' <<<"$LINEAGE")"
+for ((h = 0; h < HOLDER_COUNT; h++)); do
+  HOLDER_WT="$(jq -r ".holders[$h].worktree // empty" <<<"$LINEAGE")"
+  if [[ -n "$HOLDER_WT" && -d "$HOLDER_WT" ]]; then
+    HOLDER_STATUS="$(git -C "$HOLDER_WT" status --porcelain --untracked-files=all 2>/dev/null)" || refuse "run 1's worktree $HOLDER_WT could not be read"
+    [[ -z "$HOLDER_STATUS" ]] || refuse "run 1's worktree $HOLDER_WT holds uncommitted work, so its Action claim stays and run 2 could not dispatch; it was not touched"
+  fi
+done
 
 # Where the fixture is: at genesis, or a reset commit this script made earlier.
 STAGE=fixture_state
