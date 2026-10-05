@@ -3796,6 +3796,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/commands/goBrokerInstall.ts", "scripts/services.sh", "artifacts/generated/operator-scripts/reinstall-go-broker.sh", "artifacts/generated/operator-scripts/recover-arcadia-host-services.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "src/production/tick.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", "https://github.com/pmark/arcadia/issues/940"]
+  - id: prepare-run-2-rehearsal-scripts
+    title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean second rehearsal, without running any of them.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean second rehearsal, without running any of them.
+    expected_artifact: Evidence satisfying Agent Ask prepare-run-2-rehearsal-scripts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask prepare-run-2-rehearsal-scripts-2026-10-05
+    acceptance_criteria:
+      - "A fixture-reset operator pair (descriptor and script, repeatable only in its refusing form) takes the exact operator-supplied fixture repository (validated as G1 does: owner is the gh user, safe name, private, not archived, not a fork, the registered Project's repository), requires production Inactive with zero live admissions and leases, rewrites only the Action text of write-start-marker in the fixture Plan so its requirement input revision changes (the implementer proves in a test through src/sessions/roleLineage.ts requirementIdentity and the tick's launch gate that the amended Action gets a fresh lineage and is dispatchable even though the old attempts exist), commits and pushes it to fixture main without force after validating the amended fixture with Arcadia's real discovery before any push, runs docs sync, and writes a receipt carrying the new fixture head sha; it never touches production, Grants, other Actions, the old candidate branch or PR #1."
+      - "The G7 Grant has a NEW pair with a new request id and descriptor (the existing pair is left unchanged and retired from use by its documentation), reads the reset receipt and binds the new fixture head instead of genesis, keeps every existing G7 safety property (G6 receipt freshness and matching, hermetic replay, double preview with identical fingerprint, scope exactly the three fixture Actions, remote preservation, Decision 0058 integration grant naming each Action with the same 12-hour expiries, cleanup that turns only its own Grant Off on any failure, the #925 acknowledgement visible on the /runs card); G8 gains a variant (or accepts both ids) that deactivates only a policy whose request id is the new G7's (or the old one's) with the exact fixture scope and keeps its other behaviour and hash pins; G6 (a new pair or a parameterised successor) pins the reset head and the current installed revision and keeps every existing check."
+      - "Tests with fake gh, git and arcadia shims as in tests/three-action-rehearsal-operator-scripts.test.ts (no live system) cover the refusals and the happy path of each pair, the reset's no-push-before-validation guarantee, the new fixture head binding in G6 and G7, G8's ownership check for the new id and still refusing an unrelated policy; the operator-script checker passes with the new pairs (retirement manifest entries only if the guidance requires them); START_HERE.md and docs/managed-production-readiness.md give the exact operator order for run 2; every script is run only with --describe or against fakes; independent authority review rounds are recorded on the pull request; lint, tsc, check:agent-guidance, preservation self-check and the focused suites pass."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "tests/three-action-rehearsal-operator-scripts.test.ts", "src/sessions/roleLineage.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
