@@ -3656,7 +3656,7 @@ actions:
     references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
   - id: require-inline-workspace-mode
     title: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
