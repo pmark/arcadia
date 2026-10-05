@@ -3915,7 +3915,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/972", "https://github.com/pmark/arcadia/issues/940"]
   - id: prepare-run-4-rehearsal-scripts
     title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fourth rehearsal, without running any of them.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fourth rehearsal, without running any of them.
@@ -3934,7 +3934,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-run-4-rehearsal-scripts
+current_action: embed-validation-evidence-in-preserved-pr-body
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
