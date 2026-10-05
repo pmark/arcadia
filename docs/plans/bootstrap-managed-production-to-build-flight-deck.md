@@ -3813,6 +3813,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/prepare-three-action-rehearsal-fixture-2026-10-04.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "tests/three-action-rehearsal-operator-scripts.test.ts", "src/sessions/roleLineage.ts", "https://github.com/pmark/arcadia/issues/899", "https://github.com/pmark/arcadia/issues/940"]
+  - id: accept-settled-descendant-in-g8-reconciliation
+    title: Let G8 reconcile a preserved candidate whose tip is the exact accepted-completion settlement on top of the preservation commit, so rehearsal run 1 can reach terminal proof.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Let G8 reconcile a preserved candidate whose tip is the exact accepted-completion settlement on top of the preservation commit, so rehearsal run 1 can reach terminal proof.
+    expected_artifact: Evidence satisfying Agent Ask accept-settled-descendant-in-g8-reconciliation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask accept-settled-descendant-in-g8-reconciliation-2026-10-05
+    acceptance_criteria:
+      - "G8's work reconciliation (restore-terminal-off-three-action-rehearsal-2026-10-04 and any code it calls) classifies a preserved candidate as reconciled when its tip equals the preservation receipt's commit, or when all of these hold: the tip is clean; the receipt commit is an ancestor of the tip; every commit between them is a genuine accepted-completion settlement for that candidate's Action (a `Written by arcadia agent-ask settle --apply (asksettle_...)` receipt line, touching only .arcadia/asks/, MISSION_LOG.md, PROJECT.md, docs/plans/ and docs/decisions/, completing the claimed Action); and the same branch and pull request are remotely preserved at that exact tip. It keeps refusing a dirty tip, an arbitrary or code-changing descendant, a local-only tip, a missing or invalid settlement, and a remote or pull-request mismatch, each with a named reason."
+      - "The change keeps every operator-script pin coherent: recover-arcadia-host-services.{sh,json} stay byte-identical; any changed G8 script or descriptor bytes are re-pinned with their tests in the same change; `pnpm check:operator-scripts` passes; and a read-only classification of rehearsal run 1's real evidence (receipt commit 9ed639d, PR #1 tip 58bcd915 on pmark/arcadia-three-action-rehearsal-20261004) reports reconciled without mutating anything."
+      - "Hermetic tests cover the exact-tip case, the settled-descendant case, and each refusal (dirty, code-changing descendant, two settlements or a non-completion settlement, forged receipt line, local-only, remote or PR mismatch); the G8 operator-scripts suite, focused suites, lint, tsc, pnpm build, check:operator-scripts and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.json", "tests/three-action-rehearsal-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
