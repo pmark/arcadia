@@ -133,9 +133,10 @@ arcadia ping "Added a Retry button to the Actions page" --kind look --link http:
 - At most 500 characters. The same message to the same channel inside ten
   minutes is one ping, and at most 30 queue per hour; the command refuses past
   that. Put detail in the PR and link it.
-- **Authority: Decision 0084.** The command exists, but until the operator
-  answers that Decision to authorize standing pings, send one only when the
-  operator asks for it in chat. Read the Decision's answer before relying on it.
+- **Authority: Decision 0084 (approved).** The operator authorized standing
+  read-only pings: send one on your own judgment for a look-at-this or FYI item,
+  to the default channel or a configured alias. That authority covers nothing
+  else; a later Decision can revoke it, so re-read the Decision if in doubt.
 - **It is read-only and grants nothing.** Never use it to ask for a Decision,
   approval, credential, spend or merge, and never as a substitute for the Agent
   Ask or PR notifications above; those keep their own paths. If you need an
