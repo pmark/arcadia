@@ -1717,3 +1717,10 @@ updated: 2026-10-05
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask operator-answers-rehearsal-run2-2026-10-05
+
+- **Did:** Operator answers for rehearsal run 2, given directly to Claudia Atlas in chat on 2026-10-05: #925 — yes, Decision 0058 covers `gh pr ready`, the settled-head push and the reviewer model's spend during a managed rehearsal; agents may run the reset and read-only G6 tonight (the fixture-reset script pushing one reviewed commit to pmark/arcadia-three-action-rehearsal-20261004, no force push, and the read-only G6 preflight) so only the G7 press remains for the operator; reuse that fixture repository and reset it by amending Action write-start-marker's text; G7 press window mid-morning, about 9–10am local; Decision 0083 approved (recorded in 9e1ee2f0b).
+- **Result:** The release-manager session correctly declined to act on these answers relayed through a peer session; this Log entry is the governed record they cite. The operator gave the answers in the orchestration session (Claudia Atlas, claude heavy) in response to numbered pickers with stated consequences. This entry records answers only and grants nothing beyond them: G7 activation, Grant creation, spend beyond Decision 0058, credentials and deletion remain operator-only.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
