@@ -42,11 +42,17 @@ export interface WorkspaceResolutionInput {
  */
 export const REQUIRE_INLINE_WORKSPACE_VARIABLE = "ARCADIA_REQUIRE_INLINE_WORKSPACE";
 
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
+const OFF_VALUES = new Set(["0", "false", "no", "off"]);
 
-/** Whether the mode is on: `1`, `true`, `yes` or `on`, in any case. Anything else, including unset or empty, is off. */
+/**
+ * Whether the mode is on. It is a safety control, so it fails closed: any
+ * non-empty value other than `0`, `false`, `no` or `off` (any case, trimmed)
+ * turns it on, including a typo such as `ture` or `y`. Unset or empty is off.
+ * apps/discord-bot/src/config.ts keeps an identical copy (separate package).
+ */
 export function inlineWorkspaceRequired(env: NodeJS.ProcessEnv = process.env): boolean {
-  return TRUTHY.has(env[REQUIRE_INLINE_WORKSPACE_VARIABLE]?.trim().toLowerCase() ?? "");
+  const value = env[REQUIRE_INLINE_WORKSPACE_VARIABLE]?.trim().toLowerCase() ?? "";
+  return value !== "" && !OFF_VALUES.has(value);
 }
 
 export const INLINE_WORKSPACE_REMEDY =

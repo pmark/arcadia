@@ -146,7 +146,8 @@ describe("the Identity block's workspace rule", () => {
     expect(WORKSPACE_MODE_RULE).toContain("ARCADIA_REQUIRE_INLINE_WORKSPACE=1");
     expect(WORKSPACE_MODE_RULE).toContain("INLINE_WORKSPACE_REQUIRED");
     expect(WORKSPACE_MODE_RULE).toContain("Arcadia's launcher does not change that");
-    expect(WORKSPACE_MODE_RULE).toContain("export it in a persistent shell, or start the agent CLI with it");
+    expect(WORKSPACE_MODE_RULE).toContain("export it in a persistent shell, or start the agent CLI with it; a launched Session never inherits it");
+    expect(WORKSPACE_MODE_RULE).toContain("name any workspace, including the live one, inline");
     expect(WORKSPACE_MODE_RULE).toContain("never exported");
     expect(renderIdentityBlock(resolveAgentIdentity("claude", "heavy"))).toContain(WORKSPACE_MODE_RULE);
     expect(renderSessionIdentityBlock({ agent: "codex", tier: "standard" })).toContain(WORKSPACE_MODE_RULE);

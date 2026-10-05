@@ -227,8 +227,8 @@ export const IDENTITY_AUTHORITY_RULE =
  */
 export const WORKSPACE_MODE_RULE =
   "Workspace: an arcadia command with no inline workspace resolves the user config default, the live workspace, and Arcadia's launcher does not change that. " +
-  "With ARCADIA_REQUIRE_INLINE_WORKSPACE=1 in your environment (export it in a persistent shell, or start the agent CLI with it) such a command fails with INLINE_WORKSPACE_REQUIRED instead; " +
-  "name any other workspace inline (ARCADIA_WORKSPACE=<path> arcadia ... or --workspace <path>), never exported.";
+  "With ARCADIA_REQUIRE_INLINE_WORKSPACE=1 in your own environment (export it in a persistent shell, or start the agent CLI with it; a launched Session never inherits it) such a command fails with INLINE_WORKSPACE_REQUIRED instead; " +
+  "then name any workspace, including the live one, inline (ARCADIA_WORKSPACE=<path> arcadia ... or --workspace <path>), never exported.";
 
 export interface RosterIdentity {
   tier: ModelTier;

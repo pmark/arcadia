@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync }
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadConfig as loadDiscordBotConfig } from "../apps/discord-bot/src/config.js";
+import { inlineWorkspaceRequired as botInlineWorkspaceRequired, loadConfig as loadDiscordBotConfig } from "../apps/discord-bot/src/config.js";
+import { buildProgram } from "../src/cli.js";
 import { recordCliActivity } from "../src/activity/recorder.js";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -58,13 +59,26 @@ function refusal(run: () => unknown): ArcadiaError {
   throw new Error("expected INLINE_WORKSPACE_REQUIRED");
 }
 
-describe("ARCADIA_REQUIRE_INLINE_WORKSPACE truthiness", () => {
-  it.each(["1", "true", "TRUE", "yes", "Yes", "on", " on "])("treats %j as on", (value) => {
-    expect(inlineWorkspaceRequired({ ARCADIA_REQUIRE_INLINE_WORKSPACE: value })).toBe(true);
+const ON_VALUES = ["1", "true", "TRUE", "yes", "Yes", "on", " on ", "y", "t", "ture", "enabled", "2", "01"];
+const OFF_VALUES = [undefined, "", "   ", "0", "false", "FALSE", "no", "No", "off", " OFF "];
+
+function modeEnv(value: string | undefined): NodeJS.ProcessEnv {
+  return value === undefined ? {} : { ARCADIA_REQUIRE_INLINE_WORKSPACE: value };
+}
+
+describe("ARCADIA_REQUIRE_INLINE_WORKSPACE parsing fails closed", () => {
+  it.each(ON_VALUES)("treats %j as on, including a typo or an ambiguous value", (value) => {
+    expect(inlineWorkspaceRequired(modeEnv(value))).toBe(true);
   });
 
-  it.each([undefined, "", "0", "false", "no", "off", "2", "enabled"])("treats %j as off", (value) => {
-    expect(inlineWorkspaceRequired(value === undefined ? {} : { ARCADIA_REQUIRE_INLINE_WORKSPACE: value })).toBe(false);
+  it.each(OFF_VALUES)("treats %j as off: only unset, empty, 0, false, no and off", (value) => {
+    expect(inlineWorkspaceRequired(modeEnv(value))).toBe(false);
+  });
+
+  it("agrees with the Discord bot's identical copy on every value", () => {
+    for (const value of [...ON_VALUES, ...OFF_VALUES]) {
+      expect(botInlineWorkspaceRequired(modeEnv(value)), JSON.stringify(value)).toBe(inlineWorkspaceRequired(modeEnv(value)));
+    }
   });
 });
 
@@ -221,6 +235,8 @@ describe("the Discord bot's own resolver in the mode", () => {
   it("refuses the user config default with the mode on and keeps ARCADIA_WORKSPACE", () => {
     expect(loadDiscordBotConfig(env(botEnv)).arcadiaWorkspace).toBe(defaultWorkspace);
     expect(() => loadDiscordBotConfig(env({ ...botEnv, ...ON }))).toThrow(/INLINE_WORKSPACE_REQUIRED/);
+    expect(() => loadDiscordBotConfig(env({ ...botEnv, ARCADIA_REQUIRE_INLINE_WORKSPACE: "ture" }))).toThrow(/INLINE_WORKSPACE_REQUIRED/);
+    expect(loadDiscordBotConfig(env({ ...botEnv, ARCADIA_REQUIRE_INLINE_WORKSPACE: "off" })).arcadiaWorkspace).toBe(defaultWorkspace);
     expect(loadDiscordBotConfig(env({ ...botEnv, ...ON, ARCADIA_WORKSPACE: defaultWorkspace })).arcadiaWorkspace).toBe(defaultWorkspace);
   });
 });
@@ -272,7 +288,7 @@ describe("the CLI in the mode (subprocess, temporary user config)", () => {
     expect(help.stdout).toContain("Usage: arcadia");
     const version = cli(["--version"]);
     expect(version.status).toBe(0);
-    expect(version.stdout.trim()).toBe("0.1.0");
+    expect(version.stdout.trim()).toBe(buildProgram().version());
     for (const args of [
       ["identity", "resolve", "--agent", "claude", "--tier", "heavy"],
       ["identity", "roster"],
