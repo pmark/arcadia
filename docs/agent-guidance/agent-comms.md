@@ -136,7 +136,7 @@ plus `repo` and `issue`) and exits:
 
 | Exit | Event | Other fields | Do |
 |---|---|---|---|
-| 0 | `comment` | `comment_id`, `created_at`, `url`, `signature` (closing agent signature, or `null` for an operator or unsigned comment), `comms` (`{platform, session}` from a role line, or `null`), `first_line`, `unread` (comments not your own), `watermark` | Read every comment up to `watermark`, act within the role, re-arm with `--since <watermark>`. |
+| 0 | `comment` | `comment_id`, `created_at`, `url`, `signature` (closing agent signature, or `null` for an operator or unsigned comment), `comms` (every distinct `{platform, session}` role-line tag among the unread comments; `[]` when none), `first_line`, `unread` (comments not your own), `watermark` | Check every `comms` tag: your platform with another tag means another live Comms session of yours. Read every comment up to `watermark`, act within the role, re-arm with `--since <watermark>`. |
 | 0 | `rearm` | `reason` (`deadline` or `rate_limited`), `watermark` | Re-read peer rows, re-arm with `--since <watermark>`. |
 | 1 | `error` | `message`, `watermark` (`"latest"` when no read ever succeeded) | Escalate; do not loop. |
 | 2 | none (stderr) | | Fix the arguments; the role line must carry a session tag. |

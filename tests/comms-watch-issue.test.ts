@@ -84,7 +84,7 @@ describe("scripts/comms-watch-issue.mjs", () => {
     expect(out).toHaveLength(1);
     expect(event).toMatchObject({
       schema: "arcadia-comms-watch-event-v1", event: "comment", comment_id: 102, signature: PEER,
-      comms: { platform: "codex", session: "k9" }, unread: 1, watermark: 102, first_line: "Comms (codex, k9): question"
+      comms: [{ platform: "codex", session: "k9" }], unread: 1, watermark: 102, first_line: "Comms (codex, k9): question"
     });
     // After the bootstrap read the watcher asks GitHub only for comments since its watermark.
     expect(callsOf(calls).filter((args) => args.some((arg) => arg.includes("since=")))).not.toHaveLength(0);
@@ -94,9 +94,16 @@ describe("scripts/comms-watch-issue.mjs", () => {
     const builder = comment(201, `Builder update on an Action\n\n— ${SELF}`);
     const secondComms = comment(202, `Comms (claude, s2): also here\n\n— ${SELF}`);
     const { root } = stubGh({ polls: [[mine(200), builder, secondComms]] });
-    expect(watch(root, ["--since", "199"]).event).toMatchObject({ event: "comment", comment_id: 201, signature: SELF, comms: null, unread: 2, watermark: 202 });
+    expect(watch(root, ["--since", "199"]).event).toMatchObject({ event: "comment", comment_id: 201, signature: SELF, comms: [{ platform: "claude", session: "s2" }], unread: 2, watermark: 202 });
     const { root: second } = stubGh({ polls: [[mine(210), { ...secondComms, id: 211 }]] });
-    expect(watch(second, ["--since", "209"]).event).toMatchObject({ comment_id: 211, comms: { platform: "claude", session: "s2" } });
+    expect(watch(second, ["--since", "209"]).event).toMatchObject({ comment_id: 211, comms: [{ platform: "claude", session: "s2" }] });
+  });
+
+  it("surfaces every distinct role-line tag, so a duplicate session cannot hide behind another peer", () => {
+    const duplicate = comment(6, `Comms (claude, s2): me too\n\n— ${SELF}`);
+    const { event } = watch(stubGh({ polls: [[peer(5), duplicate, peer(7, "again")]] }).root, ["--since", "4"]);
+    expect(event).toMatchObject({ comment_id: 5, unread: 3, watermark: 7 });
+    expect(event?.comms).toEqual([{ platform: "codex", session: "k9" }, { platform: "claude", session: "s2" }]);
   });
 
   it("does not treat a mid-body copy of the signature as self when another signature closes the comment", () => {
@@ -116,7 +123,7 @@ describe("scripts/comms-watch-issue.mjs", () => {
 
   it("reports an operator comment with no agent signature", () => {
     const { root } = stubGh({ polls: [[comment(300, "@agents please pause the round")]] });
-    expect(watch(root, ["--since", "299"]).event).toMatchObject({ event: "comment", comment_id: 300, signature: null, comms: null });
+    expect(watch(root, ["--since", "299"]).event).toMatchObject({ event: "comment", comment_id: 300, signature: null, comms: [] });
   });
 
   it("re-arms at the deadline with the advanced watermark when only its own comments arrive", () => {
@@ -154,9 +161,9 @@ describe("scripts/comms-watch-issue.mjs", () => {
     for (const args of callsOf(calls)) expect(args.slice(0, 3)).toEqual(["api", "--method", "GET"]);
   });
 
-  it("exits 2 on invalid arguments, including a role line without a session discriminator", () => {
+  it.each(["Comms (claude):", "Comms (claude,  ):"])("exits 2 on a role line without a session tag: %s", (role) => {
     const { root } = stubGh({ polls: [[]] });
-    const result = spawnSync(process.execPath, [script, "--repo", "pmark/arcadia", "--issue", "944", "--self-signature", SELF, "--self-first-line", "Comms (claude):"], {
+    const result = spawnSync(process.execPath, [script, "--repo", "pmark/arcadia", "--issue", "944", "--self-signature", SELF, "--self-first-line", role], {
       encoding: "utf8", env: { ...process.env, PATH: `${root}:${process.env.PATH ?? ""}` }
     });
     expect(result.status).toBe(2);

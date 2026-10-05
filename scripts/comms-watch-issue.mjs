@@ -32,7 +32,7 @@ import { parseArgs } from "node:util";
 
 const SCHEMA = "arcadia-comms-watch-event-v1";
 const AGENT_SIGNATURE_LINE = /^— (.+ <[^<>\s]+@agents\.arcadia\.local>)$/;
-const COMMS_ROLE_LINE = /^Comms \((claude|codex|opencode), ([^()]+)\):/;
+const COMMS_ROLE_LINE = /^Comms \((claude|codex|opencode), ([^()\s][^()]*)\):/;
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 const { values } = parseArgs({
@@ -97,6 +97,15 @@ function commsOf(body) {
   return match ? { platform: match[1], session: match[2].trim() } : null;
 }
 
+function distinctComms(comments) {
+  const seen = new Map();
+  for (const comment of comments) {
+    const comms = commsOf(comment.body ?? "");
+    if (comms) seen.set(`${comms.platform}\0${comms.session}`, comms);
+  }
+  return [...seen.values()];
+}
+
 /** Wait out a low core budget; false when the deadline arrives first. */
 async function respectRateLimit() {
   for (;;) {
@@ -150,7 +159,9 @@ for (;;) {
           created_at: first.created_at,
           url: first.html_url,
           signature: signatureOf(first.body ?? ""),
-          comms: commsOf(first.body ?? ""),
+          // Every distinct role-line tag among the unread comments, so a second
+          // same-platform Comms session cannot hide behind another peer's comment.
+          comms: distinctComms(others),
           first_line: firstLine(first.body ?? "").slice(0, 200),
           unread: others.length,
           watermark

@@ -34,9 +34,9 @@ take over work, and never edit a candidate.
    (the 2-hour background limit); you are re-invoked when it exits. Do not
    poll it.
    On `comment`: read every comment up to `watermark`, act within the role,
-   re-arm with `--since <watermark>`. If its `comms` names your platform
-   with another tag, another Comms session of yours is live: stop and
-   escalate. On `rearm`: re-read peer rows, re-arm. On `error`: escalate.
+   re-arm with `--since <watermark>`. If any `comms` entry has your
+   platform with another session tag, another Comms session of yours is
+   live: stop and escalate. On `rearm`: re-read peer rows, re-arm. On `error`: escalate.
 6. Every comment starts with your role line, gives a short summary with
    evidence, carries at most one arcadia-peer-watch-v1 block and ends with
    the line `— <signature>`.
