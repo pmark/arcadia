@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-04
+updated: 2026-10-05
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -3620,6 +3620,22 @@ actions:
     depends_on: [guard-experiment-workspaces]
     decisions: []
     references: []
+  - id: keep-exempt-commands-out-of-activity-log
+    title: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make workspace-independent commands record no activity and make activity-row and ref changes in the live workspace visible to the leak check.
+    expected_artifact: Evidence satisfying Agent Ask keep-exempt-commands-out-of-activity-log
+    clarification: clarified
+    confidence: high
+    source: Agent Ask keep-exempt-commands-out-of-activity-log-2026-10-04
+    acceptance_criteria:
+      - Every command classified exempt in src/workspace/experimentGuard.ts COMMAND_CLASSIFICATION, and any other command that reads no workspace state (init including --profile experiment, config get defaultWorkspace, identity resolve and roster, workspace resolve, workspace guard, workspace leak-check, audit host-preview), is run with activity recording off (the runCliAction recordActivity 'never' setting or a classification-driven equivalent) and never resolves, opens or writes a workspace database to record it; a test runs each of them with an uninlined environment whose user-config default points at a temporary live-like workspace and asserts zero activity rows and no database open there, and a test enumerates the command registry so a newly exempt command that still records activity fails the build.
+      - "`arcadia workspace leak-check` additionally records and compares, as separate attributed fields that do not by themselves count as a leak, the live workspace's activity_events row count and newest row id (read-only) and the live repository's ref list (heads, remotes, tags and refs/codex/* by name and target), prints them in its human output with a note on attributing them, and the guidance in docs/agent-guidance/arcadia-repository.md ('Experiment workspaces') states that a command run with no inline workspace is a command against the live workspace, that exempt commands record nothing, and fixes the sqlite read-only recipe for a fresh database (use immutable=1); focused suites, lint, tsc, pnpm build, pnpm dashboard:build, check:agent-guidance and the preservation self-check pass."
+    depends_on: []
+    decisions: []
+    references: ["src/cli.ts", "src/activity/recorder.ts", "src/workspace/experimentGuard.ts", "src/workspace/leakCheck.ts", "src/commands/workspaceExperiment.ts", "https://github.com/pmark/arcadia/issues/947", "https://github.com/pmark/arcadia/issues/940"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
