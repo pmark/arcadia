@@ -473,8 +473,23 @@ describe("candidate preservation (remote)", () => {
     expect(body).toContain(`branch \`${fixture.branch}\` at commit \`${receipt.commitSha}\``);
     expect(body).toContain(`\`main\` at \`${fixture.baseRevision}\``);
     expect(body).toContain("exactly 2 changed files:\n  - `M` `README.md`\n  - `A` `feature.txt`");
-    expect(body).toContain(`print the exact bytes of \`feature.txt\` with \`git show ${receipt.commitSha}:feature.txt | od -c\``);
+    expect(body).toContain(`- **Do:** inspect \`feature.txt\` with \`git show ${receipt.commitSha}:feature.txt\`.`);
     expect(body).toContain("- **Do:** run `node scripts/check.mjs`.");
+  });
+
+  it("turns a rendering failure into a refusal body and still pushes and opens the PR", () => {
+    const fixture = makeFixture();
+    const remote = new FakeRemote();
+    const receipt = withDatabase(fixture.workspace, (db) =>
+      preserveCandidate(db, request(fixture, { remotePreservation: { authorized: true, qaPlan: {
+        kind: "action-acceptance", actionKey: "demo/some-action", actionTitle: null,
+        acceptanceCriteria: { map: () => { throw new Error("renderer defect"); } } as unknown as string[], validationCommands: []
+      } } }), { remote })
+    );
+    expect(receipt.preservationState).toBe("IN PR");
+    expect(remote.pushes).toEqual([{ branch: fixture.branch }]);
+    expect(receipt.qaPlanRefusal).toBe("the Operator QA plan could not be rendered (renderer defect).");
+    expect(remote.created[0].body).toContain("QA plan unavailable: the Operator QA plan could not be rendered (renderer defect).");
   });
 
   it("still preserves, but states the refusal and records it, when the Action has no criteria", () => {

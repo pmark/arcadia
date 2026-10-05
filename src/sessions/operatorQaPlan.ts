@@ -8,8 +8,15 @@
  * renders a concrete, runnable plan instead, built only from governed records
  * (the Action's declared acceptance criteria and title, the Project's declared
  * validation commands) and Git facts (branch, candidate commit, base revision,
- * changed files). No model writes any of it, and the same inputs always render
- * the same bytes.
+ * changed files, which named paths exist at the commit). No model writes any of
+ * it, and the same inputs always render the same bytes.
+ *
+ * Nothing runnable is ever derived from criterion text: a criterion may say
+ * "never run `git push --force`", and lifting that span into a "run" step would
+ * invert it. The only commands the plan tells the operator to run are Git's own
+ * read-only checkout and inspection commands and the Project's declared
+ * validation commands. Each criterion gets read-only inspection steps, and its
+ * expected result is the criterion text itself, quoted.
  *
  * Refusal, not a placeholder: when the Action declares no acceptance criteria
  * (or the source is missing, or the plan cannot fit a pull-request body), the
@@ -45,6 +52,11 @@ export interface OperatorQaPlanFacts {
   commitSha: string;
   /** Null when the changed files could not be read; the plan then refuses. */
   changedFiles: readonly ChangedFile[] | null;
+  /**
+   * Whether a path a criterion names exists at the candidate commit. Defaults
+   * to "changed and not deleted"; the host passes a `git cat-file -e` probe.
+   */
+  pathExists?: (path: string) => boolean;
 }
 
 export type OperatorQaPlanResult =
@@ -55,7 +67,8 @@ export type OperatorQaPlanResult =
 export const OPERATOR_QA_PLAN_MAX_CHARS = 60_000;
 const MAX_CRITERION_CHARS = 1_000;
 const MAX_LISTED_FILES = 200;
-const MAX_COMMANDS_PER_CRITERION = 5;
+const MAX_PATHS_PER_CRITERION = 5;
+const MAX_LITERAL_CHARS = 200;
 const MAX_COMMAND_CHARS = 200;
 
 const HEADING = "## Operator QA plan";
@@ -84,20 +97,25 @@ export function operatorQaPlanSource(input: {
 export function renderOperatorQaPlan(source: OperatorQaPlanSource, facts: OperatorQaPlanFacts): OperatorQaPlanResult {
   const criteria = source.acceptanceCriteria.map((criterion) => criterion.trim()).filter(Boolean);
   if (criteria.length === 0) {
-    return refuse(source, facts, `Action ${source.actionKey} declares no acceptance criteria, so there is nothing concrete to check.`);
+    return refusedOperatorQaPlan(source, facts, `Action ${source.actionKey} declares no acceptance criteria, so there is nothing concrete to check.`);
   }
   if (facts.changedFiles === null) {
-    return refuse(source, facts, "the candidate's changed files could not be read from Git.");
+    return refusedOperatorQaPlan(source, facts, "the candidate's changed files could not be read from Git.");
   }
   const body = renderPlan(source, criteria, { ...facts, changedFiles: facts.changedFiles });
   if (body.length > OPERATOR_QA_PLAN_MAX_CHARS) {
-    return refuse(source, facts,
+    return refusedOperatorQaPlan(source, facts,
       `the rendered plan is ${body.length} characters, over the ${OPERATOR_QA_PLAN_MAX_CHARS}-character pull-request body limit.`);
   }
   return { status: "rendered", body };
 }
 
-function refuse(source: OperatorQaPlanSource, facts: OperatorQaPlanFacts, reason: string): OperatorQaPlanResult {
+/** The explicit "QA plan unavailable" body; never a placeholder procedure. */
+export function refusedOperatorQaPlan(
+  source: Pick<OperatorQaPlanSource, "actionKey">,
+  facts: Pick<OperatorQaPlanFacts, "branch" | "baseBranch" | "baseRevision" | "commitSha">,
+  reason: string
+): OperatorQaPlanResult & { status: "refused" } {
   const body = [
     HEADING,
     "",
@@ -121,17 +139,19 @@ function renderPlan(
   const checkout = `../qa-${short}`;
   const documentsOnly = facts.changedFiles.length > 0 && facts.changedFiles.every((file) => isDocumentPath(file.path));
   const validation = source.validationCommands.map((command) => command.trim()).filter(Boolean);
+  const pathExists = facts.pathExists
+    ?? ((candidate: string) => facts.changedFiles.some((file) => file.path === candidate && !file.status.startsWith("D")));
   const lines: string[] = [
     HEADING,
     "",
-    "Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it.",
+    "Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Every step except the declared validation is a read-only Git inspection.",
     "",
     `- **Action:** ${code(source.actionKey)}${source.actionTitle ? ` — ${inlineText(source.actionTitle)}` : ""}`,
     `- **Candidate:** branch ${code(facts.branch)} at commit ${code(facts.commitSha)}`,
     `- **Base:** ${code(facts.baseBranch)} at ${code(facts.baseRevision)}`,
     documentsOnly
-      ? "- **Surface:** no service, URL or build. Every changed file is a document or an Arcadia governed record; the strongest proof is the file content at the candidate commit and the Project's declared checks, both run below."
-      : "- **Surface:** this repository's code at the candidate commit, exercised by the commands below from a local checkout.",
+      ? "- **Surface:** no service, URL or build. Every changed file is a document or an Arcadia governed record; the strongest proof is the file content at the candidate commit and the Project's declared checks, both below."
+      : "- **Surface:** this repository's code at the candidate commit, exercised by the Project's declared validation commands from a local checkout.",
     "- **Reachability:** local checkout only. Preservation starts no service, opens no URL and deploys nothing; no demo is implied.",
     `- **Expected change:** ${criteria.length === 1 ? "the acceptance criterion holds" : `each of the ${criteria.length} acceptance criteria holds`} at the candidate commit, and only the files listed in step 2 differ from the base.`,
     "- **End users:** the operator procedure below is also the end-user procedure.",
@@ -143,62 +163,47 @@ function renderPlan(
     "",
     "### Step 2 — Confirm what changed",
     "",
-    `- **Do:** run ${code(`git diff --name-status ${facts.baseRevision} ${facts.commitSha}`)}.`,
+    `- **Do:** run ${code(`git -c core.quotePath=false diff --name-status --no-renames ${facts.baseRevision} ${facts.commitSha}`)}.`,
     `- **Expected:** exactly ${facts.changedFiles.length} changed ${facts.changedFiles.length === 1 ? "file" : "files"}${facts.changedFiles.length > MAX_LISTED_FILES ? ` (the first ${MAX_LISTED_FILES} are listed)` : ""}:`,
     ...(facts.changedFiles.length === 0
       ? ["  - none: the candidate commit's tree equals the base."]
       : facts.changedFiles.slice(0, MAX_LISTED_FILES).map((file) => `  - ${code(file.status)} ${code(file.path)}`))
   ];
 
-  const ranAt = new Map<string, number>();
   criteria.forEach((criterion, index) => {
-    const step = index + 3;
-    lines.push("", `### Step ${step} — Acceptance criterion ${index + 1} of ${criteria.length}`, "");
-    lines.push(`- **Criterion:** ${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}`);
-    const commands = criterionCommands(criterion);
-    const paths = criterionPaths(criterion, facts.changedFiles, commands);
-    const present = paths.filter((target) => !target.deleted).map((target) => shellWord(target.path));
-    const literals = present.length > 0 ? criterionLiterals(criterion, commands) : [];
+    lines.push("", `### Step ${index + 3} — Acceptance criterion ${index + 1} of ${criteria.length}`, "");
+    const named = criterionPaths(criterion, facts.changedFiles);
+    const present = named.filter((candidate) => pathExists(candidate));
+    const absent = named.filter((candidate) => !present.includes(candidate));
+    const literals = present.length > 0 ? criterionLiterals(criterion) : [];
+    const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
     const actions: string[] = [];
-    for (const target of paths) {
-      actions.push(target.deleted
-        ? `confirm ${code(target.path)} no longer exists with ${code(`test ! -e ${shellWord(target.path)}`)}`
-        : `print the exact bytes of ${code(target.path)} with ${code(`git show ${facts.commitSha}:${shellWord(target.path)} | od -c`)}`);
+    for (const target of present) {
+      const show = `git show ${facts.commitSha}:${shellWord(target)}`;
+      actions.push(`inspect ${code(target)} with ${code(bytes ? `${show} | od -c` : show)}`);
+      for (const literal of literals) actions.push(`run ${code(`${show} | grep -Fxn -- ${shellQuote(literal)}`)}`);
     }
-    for (const literal of literals) actions.push(`run ${code(`grep -Fxn -- ${shellQuote(literal)} ${present.join(" ")}`)}`);
-    for (const command of commands) {
-      actions.push(`run ${code(command)}`);
-      if (!ranAt.has(command)) ranAt.set(command, step);
-    }
-    if (actions.length === 0) {
-      actions.push(`read the change with ${code(`git diff ${facts.baseRevision} ${facts.commitSha}`)} for exactly what this criterion names`);
+    if (present.length === 0) {
+      const scope = absent.length > 0 ? ` -- ${absent.map(shellWord).join(" ")}` : "";
+      actions.push(`read the change with ${code(`git diff ${facts.baseRevision} ${facts.commitSha}${scope}`)}`);
     }
     lines.push(`- **Do:** ${actions.join("; then ")}.`);
-    const expectations: string[] = [];
-    if (paths.some((target) => !target.deleted)) {
-      expectations.push(`${code("od -c")} shows every byte, a newline as ${code("\\n")}${literals.length > 0 ? `, and ${code("grep -Fxn")} prints each quoted text that is a whole line, with its line number (no output when no line matches)` : ""}; that output is exactly what the criterion as worded above requires`);
-    }
-    if (paths.some((target) => target.deleted)) expectations.push("each removed file is absent, so the test exits with status 0");
-    if (commands.length > 0) expectations.push(`${code("echo $?")} immediately after ${commands.length === 1 ? "the command" : "each command"} prints ${code("0")}`);
-    if (actions.length === 1 && paths.length === 0 && commands.length === 0) {
-      expectations.push("the diff shows the criterion holds as worded above, with no change it does not call for");
-    }
-    lines.push(`- **Expected:** ${expectations.join("; and ")}.`);
+    const outputs = [
+      ...(present.length > 0 ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
+      ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
+      ...(present.length === 0 ? ["the diff shows what changed"] : [])
+    ];
+    lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: “${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`);
   });
 
   const finalStep = criteria.length + 3;
-  const remaining = validation.filter((command) => !ranAt.has(command));
-  lines.push("", `### Step ${finalStep} — Re-run the declared validation`, "");
+  lines.push("", `### Step ${finalStep} — Run the Project's declared validation`, "");
   if (validation.length === 0) {
     lines.push("- **Do:** nothing further: the Project declares no validation commands.",
-      "- **Expected:** no further output; the acceptance steps above are the whole check.");
-  } else if (remaining.length === 0) {
-    const where = validation.map((command) => `${code(truncate(command, MAX_COMMAND_CHARS))} (step ${ranAt.get(command)})`).join(", ");
-    lines.push(`- **Do:** nothing further: every declared validation command already ran: ${where}.`,
-      `- **Expected:** those steps already showed ${code("echo $?")} printing ${code("0")}.`);
+      "- **Expected:** no further output; the inspection steps above are the whole check.");
   } else {
-    lines.push(`- **Do:** run ${remaining.map((command) => code(truncate(command, MAX_COMMAND_CHARS))).join("; then ")}.`,
-      `- **Expected:** ${code("echo $?")} immediately after ${remaining.length === 1 ? "it" : "each"} prints ${code("0")}, as host validation recorded before preservation.`);
+    lines.push(`- **Do:** run ${validation.map((command) => code(truncate(command, MAX_COMMAND_CHARS))).join("; then ")}.`,
+      `- **Expected:** ${code("echo $?")} immediately after ${validation.length === 1 ? "it" : "each"} prints ${code("0")}, as host validation recorded before preservation.`);
   }
   lines.push("", "Merge, deployment and publication remain separate operator gates.");
   return lines.join("\n");
@@ -211,68 +216,27 @@ function isDocumentPath(filePath: string): boolean {
   return /\.(?:md|markdown|rst|adoc|asciidoc|txt)$/.test(lowered) && !/(^|\/)(src|scripts|tests?|templates|fixtures)\//.test(lowered);
 }
 
-const RUNNERS = "node|deno|bun|tsx|python3?|bash|sh|pnpm|npm|npx|yarn|make|cargo|go|pytest|vitest|uv|mise|git";
-const RUNNER_START = new RegExp(`^(?:${RUNNERS})(?:\\s|$)`);
-/** An unquoted script run (`node scripts/check.mjs`), `node --test`, or a package-manager script. */
-const UNQUOTED_COMMAND = new RegExp(
-  "\\b(?:" +
-    "(?:node|deno|bun|tsx|python3?|bash|sh)(?:\\s+--?[\\w-]+)*\\s+[\\w./-]+\\.(?:mjs|cjs|js|ts|mts|cts|py|sh)" +
-    "|node\\s+--test" +
-    "|(?:pnpm|npm|yarn)\\s+(?:run\\s+[\\w:.-]+|exec\\s+[\\w:.-]+|test|build|lint|typecheck|check(?::[\\w-]+)?)" +
-  ")(?![\\w./-])",
-  "g"
-);
-
-/** Runnable commands the criterion names: code spans and quotes first, then unquoted runs. */
-function criterionCommands(criterion: string): string[] {
-  const found: string[] = [];
-  const add = (raw: string) => {
-    const command = raw.replace(/\s+/g, " ").trim();
-    if (!command || command.length > MAX_COMMAND_CHARS || /[`\p{Cc}]/u.test(command)) return;
-    if (!RUNNER_START.test(command)) return;
-    if (found.some((existing) => existing === command || existing.includes(command))) return;
-    for (let i = found.length - 1; i >= 0; i -= 1) if (command.includes(found[i])) found.splice(i, 1);
-    found.push(command);
-  };
-  for (const match of criterion.matchAll(/`([^`]+)`/g)) add(match[1]);
-  for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) add(match[1]);
-  const unquoted = criterion.replace(/`[^`]*`/g, " ").replace(/["“][^"“”]*["”]/g, " ");
-  for (const match of unquoted.matchAll(UNQUOTED_COMMAND)) add(match[0]);
-  return found.slice(0, MAX_COMMANDS_PER_CRITERION);
-}
-
-/** Quoted text in the criterion that is not a command: candidate whole lines to look for. */
-function criterionLiterals(criterion: string, commands: string[]): string[] {
+/** Quoted text in the criterion: candidate whole lines to look for, read-only. */
+function criterionLiterals(criterion: string): string[] {
   const found: string[] = [];
   for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) {
     const literal = match[1];
-    if (literal.trim() !== literal || !literal || literal.length > MAX_COMMAND_CHARS || /\p{Cc}/u.test(literal)) continue;
-    if (commands.includes(literal.replace(/\s+/g, " ")) || found.includes(literal)) continue;
-    found.push(literal);
+    if (!literal || literal.trim() !== literal || literal.length > MAX_LITERAL_CHARS || /\p{Cc}/u.test(literal)) continue;
+    if (!found.includes(literal)) found.push(literal);
   }
-  return found.slice(0, MAX_COMMANDS_PER_CRITERION);
+  return found.slice(0, MAX_PATHS_PER_CRITERION);
 }
 
-/** Files the criterion names: changed files by exact path, plus slash paths not already run as commands. */
-function criterionPaths(
-  criterion: string,
-  changedFiles: readonly ChangedFile[],
-  commands: string[]
-): Array<{ path: string; deleted: boolean }> {
-  const found: Array<{ path: string; deleted: boolean }> = [];
-  const add = (filePath: string, deleted: boolean) => {
-    if (found.some((entry) => entry.path === filePath)) return;
-    if (commands.some((command) => command.split(" ").includes(filePath))) return;
-    found.push({ path: filePath, deleted });
-  };
+/** Paths the criterion names: changed files by exact path, plus any slash path. */
+function criterionPaths(criterion: string, changedFiles: readonly ChangedFile[]): string[] {
+  const found: string[] = [];
   for (const file of changedFiles) {
-    if (mentions(criterion, file.path)) add(file.path, file.status.startsWith("D"));
+    if (mentions(criterion, file.path) && !found.includes(file.path)) found.push(file.path);
   }
-  for (const match of criterion.matchAll(/(?<![\w./-])((?:[\w.-]+\/)+[\w-][\w.-]*\.[A-Za-z][\w]{0,9})(?![\w/-])/g)) {
-    const changed = changedFiles.find((file) => file.path === match[1]);
-    add(match[1], changed ? changed.status.startsWith("D") : false);
+  for (const match of criterion.matchAll(/(?<![\w./-])((?:[\w.-]+\/)+[\w-][\w.-]*\.[A-Za-z]\w{0,9})(?![\w/-])/g)) {
+    if (!found.includes(match[1])) found.push(match[1]);
   }
-  return found.slice(0, MAX_COMMANDS_PER_CRITERION);
+  return found.slice(0, MAX_PATHS_PER_CRITERION);
 }
 
 function mentions(text: string, filePath: string): boolean {
@@ -282,7 +246,7 @@ function mentions(text: string, filePath: string): boolean {
     if (at < 0) return false;
     const before = at === 0 ? "" : text[at - 1];
     const after = text[at + filePath.length] ?? "";
-    if (!/[\w/-]/.test(before) && !/[\w/-]/.test(after) && !(after === "." && /[\w]/.test(text[at + filePath.length + 1] ?? ""))) {
+    if (!/[\w/-]/.test(before) && !/[\w/-]/.test(after) && !(after === "." && /\w/.test(text[at + filePath.length + 1] ?? ""))) {
       return true;
     }
     from = at + 1;
@@ -305,7 +269,7 @@ export function inlineText(value: string): string {
     .trim()
     .replace(/[\\`*_[\]<>|~]/g, (char) => `\\${char}`)
     .replace(/&(?=#?\w+;)/g, "\\&")
-    .replace(/@/g, "@​");
+    .replace(/@/g, "@\u200b");
 }
 
 /** A Markdown code span that cannot be closed early by backticks in its content. */

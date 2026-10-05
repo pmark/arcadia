@@ -9,7 +9,7 @@ import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
-import { renderOperatorQaPlan, type ChangedFile, type OperatorQaPlanSource } from "./operatorQaPlan.js";
+import { refusedOperatorQaPlan, renderOperatorQaPlan, type ChangedFile, type OperatorQaPlanSource } from "./operatorQaPlan.js";
 
 /**
  * Preserve a completed candidate worktree without ever handing the coding agent
@@ -682,13 +682,20 @@ function resolvePullRequestBody(
   commitSha: string
 ): { body: string; refusal: string | null } {
   if (typeof plan === "string") return { body: plan, refusal: null };
-  const result = renderOperatorQaPlan(plan, {
-    branch: request.branch,
-    baseBranch: request.baseBranch,
-    baseRevision: request.baseRevision,
-    commitSha,
-    changedFiles: readChangedFiles(repositoryPath, request.baseRevision, commitSha)
-  });
+  const facts = { branch: request.branch, baseBranch: request.baseBranch, baseRevision: request.baseRevision, commitSha };
+  // A rendering failure of any kind (a Git read, a timeout, a renderer defect)
+  // becomes an explicit refusal body: it must never stop the push.
+  let result: ReturnType<typeof renderOperatorQaPlan>;
+  try {
+    result = renderOperatorQaPlan(plan, {
+      ...facts,
+      changedFiles: readChangedFiles(repositoryPath, request.baseRevision, commitSha),
+      pathExists: (candidate) => !candidate.startsWith("-") && tryGit(repositoryPath, ["cat-file", "-e", `${commitSha}:${candidate}`]) !== null
+    });
+  } catch (error) {
+    result = refusedOperatorQaPlan(plan, facts,
+      `the Operator QA plan could not be rendered (${error instanceof Error ? error.message : String(error)}).`);
+  }
   return { body: result.body, refusal: result.status === "refused" ? result.reason : null };
 }
 

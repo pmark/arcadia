@@ -39,19 +39,19 @@ function rendered(input: OperatorQaPlanSource = source(), at: OperatorQaPlanFact
 }
 
 describe("Operator QA plan rendering", () => {
-  it("renders one criterion as a concrete step bound to the exact Action, commit, base and files", () => {
+  it("renders one criterion as a read-only inspection bound to the exact Action, commit, base and files", () => {
     const body = rendered();
     expect(body.startsWith("## Operator QA plan\n")).toBe(true);
     expect(body).toContain("- **Action:** `three-action-rehearsal/write-start-marker` — Implement MARKER.md");
     expect(body).toContain(`- **Candidate:** branch \`claude/write-start-marker-20261005T155147519Z\` at commit \`${COMMIT}\``);
     expect(body).toContain(`- **Base:** \`main\` at \`${BASE}\``);
     expect(body).toContain(`git worktree add --detach ../qa-7f1390376f4d ${COMMIT}`);
-    expect(body).toContain(`\`git diff --name-status ${BASE} ${COMMIT}\``);
+    expect(body).toContain(`\`git -c core.quotePath=false diff --name-status --no-renames ${BASE} ${COMMIT}\``);
     expect(body).toContain("exactly 1 changed file:\n  - `A` `MARKER.md`");
     expect(body).toContain("### Step 3 — Acceptance criterion 1 of 1");
-    expect(body).toContain(`- **Do:** print the exact bytes of \`MARKER.md\` with \`git show ${COMMIT}:MARKER.md | od -c\`; then run \`grep -Fxn -- 'three-action rehearsal start' MARKER.md\`.`);
-    expect(body).toContain("- **Expected:** `od -c` shows every byte, a newline as `\\n`, and `grep -Fxn` prints each quoted text that is a whole line");
-    expect(body).toContain("### Step 4 — Re-run the declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`");
+    expect(body).toContain(`- **Do:** inspect \`MARKER.md\` with \`git show ${COMMIT}:MARKER.md | od -c\`; then run \`git show ${COMMIT}:MARKER.md | grep -Fxn -- 'three-action rehearsal start'\`.`);
+    expect(body).toContain("- **Expected:** `od -c` shows every byte (a newline as `\\n`); `grep -Fxn` prints each quoted text that is a whole line with its line number, and nothing when no line matches; and that output shows this criterion holds, exactly as worded: “MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline.”");
+    expect(body).toContain("### Step 4 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`");
     expect(body).toContain("the operator procedure below is also the end-user procedure");
   });
 
@@ -59,7 +59,7 @@ describe("Operator QA plan rendering", () => {
     expect(rendered()).toBe(rendered());
   });
 
-  it("renders several criteria in order, with each named command and file", () => {
+  it("renders several criteria in order, each with inspection steps only", () => {
     const body = rendered(source({
       acceptanceCriteria: [
         "MARKER.md contains exactly the start line followed by \"THREE-ACTION REHEARSAL START\".",
@@ -69,11 +69,41 @@ describe("Operator QA plan rendering", () => {
     }), facts({ changedFiles: [{ status: "M", path: "MARKER.md" }, { status: "A", path: "tests/marker.test.mjs" }] }));
     const steps = [...body.matchAll(/### Step (\d+) — Acceptance criterion (\d) of 3/g)].map((match) => [match[1], match[2]]);
     expect(steps).toEqual([["3", "1"], ["4", "2"], ["5", "3"]]);
-    expect(body).toContain(`print the exact bytes of \`tests/marker.test.mjs\` with \`git show ${COMMIT}:tests/marker.test.mjs | od -c\`; then run \`node scripts/check-rehearsal.mjs\`; then run \`node --test\`.`);
-    expect(body).toContain("that output is exactly what the criterion as worded above requires; and `echo $?` immediately after each command prints `0`.");
-    expect(body).toContain("- **Do:** run `pnpm test`.\n- **Expected:** `echo $?` immediately after the command prints `0`.");
-    // The declared validation command already ran in step 4, so it is not repeated.
-    expect(body).toContain("### Step 6 — Re-run the declared validation\n\n- **Do:** nothing further: every declared validation command already ran: `node scripts/check-rehearsal.mjs` (step 4).");
+    expect(body).toContain(`- **Do:** inspect \`tests/marker.test.mjs\` with \`git show ${COMMIT}:tests/marker.test.mjs\`; then run \`git show ${COMMIT}:tests/marker.test.mjs | grep -Fxn -- 'node scripts/check-rehearsal.mjs'\`.`);
+    // A backticked command in a criterion is never lifted into a run step.
+    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.\n- **Expected:** the diff shows what changed; and that output shows this criterion holds, exactly as worded: “\\\`pnpm test\\\` passes.”`);
+    expect(body).not.toContain("run `pnpm test`");
+    expect(body).not.toContain("run `node --test`");
+    expect(body).toContain("### Step 6 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.");
+  });
+
+  it("never turns a negated or mutating criterion into a run step", () => {
+    const body = rendered(source({
+      acceptanceCriteria: [
+        "Never run `git push --force origin main`; the base branch is not rewritten.",
+        "Do not \"make next\" or `go` from here; `git check-ignore` stays unused, and `rm -rf dist` is not run.",
+        "CHANGELOG.md mentions \"git push --force origin main\" only as forbidden."
+      ],
+      validationCommands: []
+    }), facts({ changedFiles: [{ status: "M", path: "CHANGELOG.md" }] }));
+    const runSteps = body.split("\n").filter((line) => line.includes("run `") || line.includes("run ``"));
+    expect(runSteps.every((line) => line.includes("git fetch origin") || line.includes("git -c core.quotePath=false diff") || line.includes("| grep -Fxn -- "))).toBe(true);
+    for (const forbidden of ["run `git push", "run `make", "run `go", "run `git check-ignore", "run `rm "]) expect(body).not.toContain(forbidden);
+    expect(body).toContain(`run \`git show ${COMMIT}:CHANGELOG.md | grep -Fxn -- 'git push --force origin main'\``);
+    expect(body).toContain("exactly as worded: “Never run \\`git push --force origin main\\`; the base branch is not rewritten.”");
+    expect(body).toContain("- **Do:** nothing further: the Project declares no validation commands.");
+  });
+
+  it("inspects only named paths that exist at the commit, and reads the diff for the rest", () => {
+    const changedFiles = [{ status: "D", path: "docs/old.md" }, { status: "M", path: "src/kept.ts" }];
+    const exists = new Set(["src/kept.ts", "src/untouched.ts"]);
+    const body = rendered(source({
+      acceptanceCriteria: ["docs/old.md is removed.", "src/kept.ts still imports src/untouched.ts.", "src/missing.ts is not created."]
+    }), facts({ changedFiles, pathExists: (candidate) => exists.has(candidate) }));
+    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- docs/old.md\`.`);
+    expect(body).toContain(`inspect \`src/kept.ts\` with \`git show ${COMMIT}:src/kept.ts\`; then inspect \`src/untouched.ts\` with \`git show ${COMMIT}:src/untouched.ts\`.`);
+    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- src/missing.ts\`.`);
+    expect(body).not.toContain("git show " + COMMIT + ":docs/old.md");
   });
 
   it("says a documents-only patch has no runnable surface and names the proof", () => {
@@ -88,7 +118,7 @@ describe("Operator QA plan rendering", () => {
 
   it("names the code surface for a patch that changes code", () => {
     const body = rendered(source(), facts({ changedFiles: [{ status: "M", path: "src/index.ts" }, { status: "A", path: "MARKER.md" }] }));
-    expect(body).toContain("- **Surface:** this repository's code at the candidate commit, exercised by the commands below from a local checkout.");
+    expect(body).toContain("- **Surface:** this repository's code at the candidate commit, exercised by the Project's declared validation commands from a local checkout.");
     expect(body).not.toContain("no service, URL or build");
   });
 
@@ -97,9 +127,9 @@ describe("Operator QA plan rendering", () => {
       actionTitle: "Title with **bold** and <img src=x>",
       acceptanceCriteria: ["Line one\n## Injected heading\n- [x] fake <script>alert(1)</script> `cmd` ping @operator &amp; | table |"]
     }));
-    const criterionLine = body.split("\n").find((line) => line.startsWith("- **Criterion:**"))!;
-    expect(criterionLine).toBe(
-      "- **Criterion:** Line one ## Injected heading - \\[x\\] fake \\<script\\>alert(1)\\</script\\> \\`cmd\\` ping @​operator \\&amp; \\| table \\|"
+    const expectedLine = body.split("\n").find((line) => line.startsWith("- **Expected:** the diff shows"))!;
+    expect(expectedLine).toBe(
+      "- **Expected:** the diff shows what changed; and that output shows this criterion holds, exactly as worded: “Line one ## Injected heading - \\[x\\] fake \\<script\\>alert(1)\\</script\\> \\`cmd\\` ping @\u200boperator \\&amp; \\| table \\|”"
     );
     expect(body).toContain("— Title with \\*\\*bold\\*\\* and \\<img src=x\\>");
     expect(body).not.toMatch(/^## Injected/m);
