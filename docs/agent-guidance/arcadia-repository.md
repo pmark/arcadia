@@ -217,6 +217,39 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   code-review`, `tidy list|undo`, `triggers`, `docket`, `plans` and
   `operator-task *`) record nothing and open no workspace database to do so;
   `tests/activity-no-record-commands.test.ts` fails when one does.
+- **Make a forgotten inline fail: `ARCADIA_REQUIRE_INLINE_WORKSPACE=1`.** It
+  fails closed: any non-empty value other than `0`, `false`, `no` or `off` (any
+  case) turns it on, a typo included; unset or empty is off. With it on, workspace resolution
+  (`src/workspace/resolve.ts`, which the CLI, the activity recorder, the guard,
+  the broker and the transports all use) accepts only `--workspace`, an
+  `ARCADIA_WORKSPACE` value or an initialized workspace at or above the working
+  directory. A command that would fall back to the user config default or the
+  `.arcadia-workspace` marker fails with `INLINE_WORKSPACE_REQUIRED` and its
+  `remedy`, and the recorder skips that row instead of writing it there
+  (`dogfood *` is the exception: it targets `.arcadia-workspace` by command
+  name, not by fallback).
+  `arcadia workspace resolve` reports `inlineWorkspaceRequired` and any refused
+  fallback; `workspace guard` fails closed. Commands that resolve nothing
+  (help, version, `identity resolve`, `init`, `config get defaultWorkspace`)
+  are unaffected, and so is `workspace leak-check`, which reads the user config
+  default read-only on purpose. **Who sets it:** you, for your own shell.
+  Arcadia's launcher sets it for no Session, because no launch environment pins
+  `ARCADIA_WORKSPACE` and a Session's commands (`work monitor`, settlement)
+  rely on the user config default; its `env -u` boundary also strips a value
+  the tmux server or the launcher's shell would hand down, so a launched
+  Session never inherits yours. The launchd services and operator scripts
+  never set it, so their behaviour is unchanged. **How a native session turns
+  it on:** `export ARCADIA_REQUIRE_INLINE_WORKSPACE=1` in a persistent shell,
+  or start the agent CLI with it (`ARCADIA_REQUIRE_INLINE_WORKSPACE=1 claude`,
+  `… codex`, `… opencode`) when its tool shells keep no exports between calls;
+  then name every workspace inline, the live one included. Exporting the mode
+  is fine; exporting `ARCADIA_WORKSPACE` is not. The mode cannot tell an inline
+  `ARCADIA_WORKSPACE` from an exported one, so an exported value still
+  resolves, and the G1/G6/G7/G8 rehearsal scripts still refuse it themselves.
+  Do not run those operator scripts with the mode on: they resolve the live
+  workspace from the user config on purpose, so the G6 preflight's workspace
+  check fails closed with a misleading "did not resolve from user config"
+  message. The test suite starts with the mode off (`vitest.config.ts`).
 - **Register only disposable fixtures** under `<exp>/projects/`, and give them
   no Git remote. Registration (Project metadata, `blog configure-site
   --content-repo-path`, `rebuster configure --repo-path`) refuses any other path,

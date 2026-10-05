@@ -3605,20 +3605,19 @@ actions:
     references: ["src/workspace/config.ts", "src/workspace/initWorkspace.ts", "src/commands/init.ts", "src/commands/goBrokerInstall.ts", "src/commands/worker.ts", "src/commands/ingressService.ts", "src/activity/recorder.ts", "docs/decisions/0082-decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional.md"]
   - id: run-multi-workspace-experiment-trial
     title: Run the first bounded trial of one experiment workspace per agent platform and report whether contention fell and nothing leaked.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Falsify or support the hypothesis that three agents, each in its own experiment workspace on a disposable no-remote fixture, can concurrently create, advance and settle a distinct governed Action with no cross-workspace interference and no change to the live workspace or host-global state.
+    next_action: Run the Claude step of the multi-workspace experiment against the agreed contract, record the stop-condition event and its fixes, and end the trial by operator direction with workspaces preserved.
     expected_artifact: Evidence satisfying Agent Ask run-multi-workspace-experiment-trial
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-experiment-trial-acceptance-2026-10-04
+    source: Agent Ask end-multi-workspace-trial-amend-2026-10-05
     acceptance_criteria:
-      - "Only after Decision 0082 is approved (it is), guard-experiment-workspaces is merged and installed and the identity blocks are installed: each of Claude Code, Codex and OpenCode creates its own experiment workspace with `arcadia init --profile experiment` at /Users/pmark/Dev/MR/Arcadia/workspaces/exp-<agent>-<yyyymmdd>, addressed only inline (ARCADIA_WORKSPACE=... on the command, never exported), with a fresh disposable no-remote fixture repository inside <workspace>/projects/<fixture> registered as a Project with a Plan of exactly one Action; the three workspace paths differ and each agent's `arcadia workspace resolve` and status name its own."
-      - Each agent independently advances its one Action (pointer moves) and settles it to done in its own workspace with a settlement receipt and a Log entry in that workspace; the three settle steps overlap in wall-clock time with timing and receipts attached and produce no SQLITE_BUSY, lost update or pointer collision; no command run in one workspace reads another's database, and no experiment workspace shares Git refs or worktrees with the live workspace or another experiment workspace.
-      - The leak check (live project count, queue revision, user config and Codex/Claude configuration hashes, launchd plists, `git -C <live> status` clean, no new refs or branches in the live repository; activity-event rows written by read-only commands against the live workspace are excluded and counted separately) is recorded before and after every session and is identical; inner-workspace work (Asks, queue, pointer, settle, docs sync, local git, tests, gh reads) succeeds, and every named refusal (production activation and Grants, broker, services and ingress install, GitHub and Discord posting, default-workspace switch) is attempted once from an experiment workspace and refuses with its named reason, the exact messages recorded.
-      - "A report in issue #940 and a checked-in evidence file catalogs the per-agent receipts, leak-check output and refusal messages, compares settle, preview and make-next error rates and contention error codes against the live workspace's seven-day baseline (settle 16.7%, preview 30%, make-next 12.7% errors), names which Arcadia flows still require the live workspace and what would have to change for agents to do real work in more than one workspace as proposed Actions, retains the experiment workspaces until the operator says to delete them with the exact rollback command, and ends with one line: extend, narrow or abandon; any live-workspace mutation, bypassed guard refusal or cross-workspace read stops the trial, preserves evidence and is reported with no retry by silence."
-    depends_on: [guard-experiment-workspaces]
+      - "The Claude Code step ran against the contract agreed in issue #940: workspace exp-claude-20261004 created with arcadia init --profile experiment and addressed inline, a no-remote one-Action fixture inside it advanced and settled with receipts, the leak check run before and after, guarded refusals shown with exact messages, and the evidence and friction posted to issue #940 (comment 5986088702) and kept under the workspace's evidence directory."
+      - "The Decision 0082 stop condition event (an uninlined config get defaultWorkspace wrote one activity row into the live workspace) is recorded with its cause and its fixes merged and installed (#948 keeps workspace-independent commands out of the activity log and makes the leak check report live activity and refs; #950 adds the opt-in ARCADIA_REQUIRE_INLINE_WORKSPACE mode), the Codex step stopped without advancing (issue #940 comments 5986077838 and 5986555763) and the OpenCode step never started."
+      - "The operator ended the trial on 2026-10-05: no further experiment commands run, the preserved workspaces exp-claude-20261004 and exp-codex-20261004 are kept until the operator says to delete them (exp-owen-20261004 was never created), the unrun scope (concurrent three-agent settle overlap and the error-rate comparison against the live baseline) is recorded as not run, the friction is catalogued in issues #947 and #949, and the recommendation is recorded: narrow."
+    depends_on: []
     decisions: []
     references: []
   - id: keep-exempt-commands-out-of-activity-log
@@ -3656,7 +3655,7 @@ actions:
     references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
   - id: require-inline-workspace-mode
     title: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
