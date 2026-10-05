@@ -84,6 +84,13 @@
       "path": "docs/agent-guidance/agent-peer-watch.md",
       "read_before": "Before judging, offering help to or continuing another agent's work; silence never proves release.",
       "sha256": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed"
+    },
+    {
+      "id": "rehearsal-freeze-window",
+      "trigger": "rehearsal, freeze, production active, reinstall, restart, install, services, go-broker",
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "read_before": "Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open.",
+      "sha256": "eccdb780cdefe6f2899e5de8f1884503ac1265cf3c6a14e09a7a53eb9d90d9c5"
     }
   ]
 }
