@@ -19,6 +19,7 @@ function event(overrides: Partial<ActivityEvent> & { occurredAt: string }): Acti
     projectId: null,
     outcome: "ok",
     durationMs: 10,
+    errorCode: null,
     ...overrides
   };
 }

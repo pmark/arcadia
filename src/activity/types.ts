@@ -47,6 +47,8 @@ export interface ActivityEvent {
   projectId: string | null;
   outcome: "ok" | "error";
   durationMs: number | null;
+  /** For a failed command, its error code (see `src/activity/errorCodes.ts`); null otherwise. */
+  errorCode: string | null;
 }
 
 export interface RecordActivityInput {
@@ -58,6 +60,7 @@ export interface RecordActivityInput {
   projectId?: string | null;
   outcome: "ok" | "error";
   durationMs?: number | null;
+  errorCode?: string | null;
 }
 
 export interface TimeEntry {

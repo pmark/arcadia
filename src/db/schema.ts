@@ -1351,7 +1351,8 @@ function ensureActivityTables(db: Database.Database): void {
       entry_id TEXT,
       project_id TEXT,
       outcome TEXT NOT NULL CHECK (outcome IN ('ok', 'error')),
-      duration_ms INTEGER
+      duration_ms INTEGER,
+      error_code TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_activity_events_local_date ON activity_events(local_date);
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurred_at);
@@ -1373,6 +1374,15 @@ function ensureActivityTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_time_entries_local_date ON time_entries(local_date);
   `);
+  // A failed command's error code, so contention (SQLITE_BUSY, queue-revision
+  // conflicts, dirty checkouts, stale preview fingerprints) can be counted
+  // apart instead of reading as one undifferentiated "error".
+  const activityColumns = new Set(
+    (db.prepare("PRAGMA table_info(activity_events)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!activityColumns.has("error_code")) {
+    db.prepare("ALTER TABLE activity_events ADD COLUMN error_code TEXT").run();
+  }
 }
 
 /**

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { assertRepoPathAllowed, workspaceOfDatabase } from "../workspace/experimentGuard.js";
 import {
   ARTIFACT_STATUSES,
   APPROVAL_GATE_STATUSES,
@@ -599,6 +600,12 @@ export function upsertProjectMetadata(
   if (!getProject(db, input.projectId)) {
     return null;
   }
+
+  // The one place a repository path is ever registered, so the experiment
+  // containment rule (Decision 0082) cannot be bypassed by any caller.
+  const repoPath = nullable(input.repoPath);
+  const workspacePath = repoPath ? workspaceOfDatabase(db) : null;
+  if (repoPath && workspacePath) assertRepoPathAllowed(workspacePath, repoPath);
 
   const timestamp = nowIso();
   const existing = getProjectMetadata(db, input.projectId);

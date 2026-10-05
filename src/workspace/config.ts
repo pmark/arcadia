@@ -61,6 +61,19 @@ export interface WorkspaceRedAlertDiagnosisConfig {
   tokenBudget?: number;
 }
 
+/**
+ * Marks a disposable experiment workspace (Decision 0082). `allowedRepoRoot`
+ * is relative to the workspace root and must stay inside it: every Project
+ * repository registered here must live under it. The guard in
+ * `src/workspace/experimentGuard.ts` refuses the host-global and production
+ * commands while such a workspace is the resolved one.
+ */
+export interface WorkspaceExperimentConfig {
+  enabled: true;
+  allowedRepoRoot: string;
+  decision?: string;
+}
+
 export interface WorkspaceArcadiaConfig {
   name?: string;
   version?: number;
@@ -69,6 +82,45 @@ export interface WorkspaceArcadiaConfig {
   memory?: WorkspaceMemoryConfig;
   codingAgent?: WorkspaceCodingAgentConfig;
   redAlertDiagnosis?: WorkspaceRedAlertDiagnosisConfig;
+  experiment?: WorkspaceExperimentConfig;
+}
+
+/** The resolved facts about an experiment workspace, with absolute paths. */
+export interface ExperimentWorkspace {
+  workspacePath: string;
+  allowedRepoRoot: string;
+}
+
+/** The workspace-relative directory `init --profile experiment` allows fixture repositories under. */
+export const EXPERIMENT_ALLOWED_REPO_ROOT = "projects";
+
+/**
+ * The experiment facts of a workspace, or null when it is an ordinary one.
+ * A missing config file is an ordinary (or uninitialized) workspace; a
+ * malformed `experiment` block fails loudly rather than silently reading as
+ * "not an experiment", because the guard must fail closed.
+ */
+export function readExperimentWorkspace(workspacePath: string): ExperimentWorkspace | null {
+  const root = path.resolve(workspacePath);
+  const configPath = path.join(root, "config", "arcadia.json");
+  if (!existsSync(configPath)) return null;
+  // Only the experiment block is validated here, so an unrelated config
+  // problem cannot turn every guard check into a refusal.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw validationError("Workspace configuration is not valid JSON.", {
+      configPath,
+      cause: error instanceof Error ? error.message : String(error)
+    });
+  }
+  const block = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>).experiment
+    : undefined;
+  const experiment = parseExperimentConfig(block, configPath);
+  if (!experiment) return null;
+  return { workspacePath: root, allowedRepoRoot: path.resolve(root, experiment.allowedRepoRoot) };
 }
 
 export function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
@@ -108,6 +160,15 @@ export function setDefaultWorkspace(workspace: string, env: NodeJS.ProcessEnv = 
   if (!existsSync(workspacePath)) {
     throw validationError("Default workspace path does not exist.", { workspace: workspacePath });
   }
+  // Every live launchd service follows this file, so an experiment workspace
+  // as the default would repoint production at its next restart (Decision 0082).
+  if (readExperimentWorkspace(workspacePath)) {
+    throw validationError("An experiment workspace can never be the default workspace.", {
+      workspace: workspacePath,
+      reason: "All live launchd services follow the user config default, so this would repoint production at the next restart.",
+      alternative: `Address the experiment workspace inline on each command: ARCADIA_WORKSPACE=${workspacePath} arcadia <command> (or --workspace ${workspacePath}); never export it.`
+    });
+  }
 
   const configPath = userConfigPath(env);
   mkdirSync(path.dirname(configPath), { recursive: true });
@@ -132,9 +193,10 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
   const config = parsed as Record<string, unknown>;
   const codingAgent = parseCodingAgentConfig(config.codingAgent, configPath);
   const redAlertDiagnosis = parseRedAlertDiagnosisConfig(config.redAlertDiagnosis, configPath);
+  const experiment = parseExperimentConfig(config.experiment, configPath);
   const memoryValue = config.memory;
   if (memoryValue === undefined) {
-    return { ...config, codingAgent, redAlertDiagnosis };
+    return { ...config, codingAgent, redAlertDiagnosis, experiment };
   }
   if (!memoryValue || typeof memoryValue !== "object" || Array.isArray(memoryValue)) {
     throw validationError("Workspace memory configuration must be a JSON object.", { configPath });
@@ -153,7 +215,34 @@ export function loadWorkspaceConfig(configPath: string): WorkspaceArcadiaConfig 
       obsidianVaultPath: typeof memory.obsidianVaultPath === "string" ? memory.obsidianVaultPath : undefined
     },
     codingAgent,
-    redAlertDiagnosis
+    redAlertDiagnosis,
+    experiment
+  };
+}
+
+function parseExperimentConfig(value: unknown, configPath: string): WorkspaceExperimentConfig | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw validationError("Workspace experiment configuration must be a JSON object.", { configPath });
+  }
+  const raw = value as Record<string, unknown>;
+  // Only `enabled: true` is meaningful; anything else is a hand edit that
+  // tried to switch the guard off, which is refused rather than honoured.
+  if (raw.enabled !== true) {
+    throw validationError("Workspace experiment.enabled must be true; delete the experiment workspace instead of disabling it.", { configPath });
+  }
+  const root = raw.allowedRepoRoot;
+  if (typeof root !== "string" || !root.trim() || path.isAbsolute(root)
+    || path.normalize(root).split(path.sep).includes("..")) {
+    throw validationError("Workspace experiment.allowedRepoRoot must be a relative path inside the workspace.", { configPath });
+  }
+  if (raw.decision !== undefined && typeof raw.decision !== "string") {
+    throw validationError("Workspace experiment.decision must be a string.", { configPath });
+  }
+  return {
+    enabled: true,
+    allowedRepoRoot: root.trim(),
+    ...(typeof raw.decision === "string" ? { decision: raw.decision } : {})
   };
 }
 

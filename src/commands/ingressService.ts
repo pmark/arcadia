@@ -1,3 +1,4 @@
+import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import {
   accessSync,
   chmodSync,
@@ -98,6 +99,7 @@ export function runIngressServiceInstallCommand(
 ): CommandSuccess<IngressServiceStatusData> {
   assertMacOS();
   const service = resolveIngressService(options);
+  refuseInExperimentWorkspace("launchd.plist-write", service.workspacePath);
   mkdirSync(path.dirname(service.plistPath), { recursive: true });
   mkdirSync(service.logsDirectory, { recursive: true });
   writeFileSync(service.plistPath, buildIngressServicePlist(service), "utf8");

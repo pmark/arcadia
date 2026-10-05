@@ -7,7 +7,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSy
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { buildAgentQueue } from "../dispatch/queue.js";
-import { normalizeError } from "../cli/errors.js";
+import { ArcadiaError, normalizeError } from "../cli/errors.js";
+import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import { normalizeAgentAsk, type AgentAskProposal } from "../ask/agentAsk.js";
 import type { AgentAskSettlementReceipt } from "../ask/settlement.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
@@ -151,6 +152,11 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     let workspace: string;
     try { workspace = resolveReadyWorkspace(process.env.ARCADIA_WORKSPACE).workspacePath; }
     catch { refuse("WORKSPACE_UNAVAILABLE", "The configured workspace cannot be opened.", "Restore the configured workspace and retry; no alternative workspace or proposal will be selected."); }
+    try { refuseInExperimentWorkspace("operator-script.run", workspace); }
+    catch (error) {
+      const details = error instanceof ArcadiaError ? error.details : {};
+      refuse("EXPERIMENT_WORKSPACE", error instanceof Error ? error.message : String(error), String(details.alternative ?? "Run operator scripts only against the live workspace."));
+    }
     // Do not invoke broad Ask discovery: only this exact input may be recorded.
     withDatabase(workspace, (db) => {
       const project = getProjectBySlug(db, input.envelope.project);
