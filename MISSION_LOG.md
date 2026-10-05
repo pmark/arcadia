@@ -1780,3 +1780,10 @@ updated: 2026-10-05
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Completed arcadia/add-operator-qa-plan-to-preserved-pr-body
+
+- **Did:** Completed Action arcadia/add-operator-qa-plan-to-preserved-pr-body from accepted evidence (Candidate 1822e790e680abf44c408a4ab72a62d7e459a50b).
+- **Result:** Every declared acceptance criterion was accepted as met: "The host preservation path (src/production/sessionHandoff.ts qaPlan and any other place a preserved candidate pull request body is written, such as src/commands/preserve.ts) renders a deterministic 'Operator QA plan' section from the Action's declared acceptance criteria and the candidate's changed files: for each criterion a concrete step (what to open, run or inspect, using exact paths, branch and commit) and its observable expected result, plus the Action id, candidate commit and base; it is built only from governed records and Git facts, never from model output, escapes Markdown safely, stays within GitHub's body limits, and keeps QA's no-not-applicable rule unchanged."; "Hermetic tests cover rendering for one and several criteria, inert-document and code patches, Markdown injection in criterion text, long bodies, and an Action with no criteria (which refuses rather than writing a placeholder); focused suites, lint, tsc, pnpm build, the preservation self-check and check:agent-guidance pass.".
+- **Next:** Split: narrowed to the finished slice and queued arcadia/verify-operator-qa-plan-with-live-qa immediately after. Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05-r2).
