@@ -16,6 +16,7 @@ import { preservationAuthority, validateBoundCandidate, validatePreservationCand
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { policyAuthorizesRemotePreservation, readProductionPolicy } from "../production/policy.js";
 import { getRepositoryLease } from "../sessions/index.js";
+import { operatorQaPlanSource } from "../sessions/operatorQaPlan.js";
 import {
   preserveCandidate,
   systemPreservationRemote,
@@ -100,12 +101,9 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
     preservationStage("binding.session");
     const policy = readProductionPolicy(db);
     const actionKey = `${lease.project_slug}/${lease.action_id}`;
-    const remotePreservation: RemotePreservationAuthorization =
+    const remoteRefusal: RemotePreservationAuthorization | null =
       policyAuthorizesRemotePreservation(policy, actionKey)
-        ? {
-            authorized: true,
-            qaPlan: buildQaPlan({ actionId: lease.action_id, branch, baseBranch })
-          }
+        ? null
         : {
             authorized: false,
             reason:
@@ -133,6 +131,12 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
     if (JSON.stringify(current) !== JSON.stringify(validation.binding) || JSON.stringify(policy) !== JSON.stringify(current.policy)) {
       throw validationError("Preservation authority changed after validation.");
     }
+    // The Operator QA plan comes from the Action definition the validation
+    // binding just re-read from its governed Plan, never from the agent.
+    const remotePreservation: RemotePreservationAuthorization = remoteRefusal ?? {
+      authorized: true,
+      qaPlan: operatorQaPlanSource({ actionKey, action: validation.binding.actionDefinition, validationCommands: validation.binding.commands })
+    };
 
     return guardPreservationTimeouts(db, lease.id, options.now ?? new Date(), () => preserveCandidate(
       db,
@@ -167,23 +171,6 @@ export function runPreserveCommand(options: PreserveCommandOptions): CommandSucc
   return createSuccess({ command: "preserve", data: { receipt } });
 }
 
-function buildQaPlan(input: { actionId: string; branch: string; baseBranch: string }): string {
-  return [
-    `## QA plan for candidate ${input.actionId}`,
-    "",
-    `This draft PR preserves branch \`${input.branch}\` against \`${input.baseBranch}\`.`,
-    "",
-    "- Surface: this repository's test and build commands run from the candidate worktree.",
-    "- Reachability: local/host only until reviewed; no service is implied as running.",
-    "- Expected change: the acceptance criteria of the named Action.",
-    "",
-    "1. Check out the branch. Expected: the candidate content is present.",
-    "2. Run the repository's tests. Expected: they pass at the preserved revision.",
-    "",
-    "Merge, deployment, and publication remain separate operator gates."
-  ].join("\n");
-}
-
 export function renderPreserveSuccess(response: CommandSuccess<PreserveCommandData>): string[] {
   const r = response.data.receipt;
   const lines = [
@@ -196,5 +183,6 @@ export function renderPreserveSuccess(response: CommandSuccess<PreserveCommandDa
   } else if (r.retryAction) {
     lines.push(`Next: ${r.retryAction}`);
   }
+  if (r.qaPlanRefusal) lines.push(`QA plan unavailable: ${r.qaPlanRefusal}`);
   return lines;
 }

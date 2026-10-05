@@ -9,6 +9,7 @@ import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
+import { renderOperatorQaPlan, type ChangedFile, type OperatorQaPlanSource } from "./operatorQaPlan.js";
 
 /**
  * Preserve a completed candidate worktree without ever handing the coding agent
@@ -32,7 +33,13 @@ import { fileIsHeldOpen } from "./worktreeLiveness.js";
 
 export type RemotePreservationAuthorization =
   | { authorized: false; reason: string }
-  | { authorized: true; qaPlan: string };
+  /**
+   * `qaPlan` is the pull-request body: literal text, or the governed source of
+   * an Operator QA plan rendered after the candidate commit exists (see
+   * operatorQaPlan.ts). A refused rendering still preserves; the body says
+   * "QA plan unavailable" and the receipt records `qaPlanRefusal`.
+   */
+  | { authorized: true; qaPlan: string | OperatorQaPlanSource };
 
 export interface CandidatePreservationRequest {
   requestId: string;
@@ -125,6 +132,8 @@ export interface CandidatePreservationReceipt {
   pullRequestUrl: string | null;
   /** Set only for LOCAL ONLY: the exact next step that makes the work remote-recoverable. */
   retryAction: string | null;
+  /** Set only when the Operator QA plan refused; the pull-request body then states why. */
+  qaPlanRefusal?: string;
   createdAt: string;
   replayed: boolean;
 }
@@ -633,6 +642,9 @@ export function preserveCandidate(
   }
 
   // --- Remote preservation (AC4) -------------------------------------------
+  // Rendered before the push so a refusal or a Git read never lands between
+  // the push and the pull request.
+  const pullRequestBody = resolvePullRequestBody(request.remotePreservation.qaPlan, request, repositoryPath, commitSha);
   preservationStage("preserve.push");
   hooks.beforePush?.();
   const { remote: remoteName } = remote.push({ repositoryPath, branch: request.branch });
@@ -646,7 +658,7 @@ export function preserveCandidate(
     branch: request.branch,
     baseBranch: request.baseBranch,
     title: `Candidate: ${request.actionId}`,
-    body: request.remotePreservation.qaPlan,
+    body: pullRequestBody.body,
     existing
   });
   hooks.afterPullRequestReceipt?.();
@@ -657,8 +669,38 @@ export function preserveCandidate(
     pushedRemote: remoteName,
     pullRequestNumber: pullRequest.number,
     pullRequestUrl: pullRequest.url,
-    retryAction: null
+    retryAction: null,
+    ...(pullRequestBody.refusal ? { qaPlanRefusal: pullRequestBody.refusal } : {})
   });
+}
+
+/** The pull-request body: literal text, or the Operator QA plan rendered from its governed source. */
+function resolvePullRequestBody(
+  plan: string | OperatorQaPlanSource,
+  request: CandidatePreservationRequest,
+  repositoryPath: string,
+  commitSha: string
+): { body: string; refusal: string | null } {
+  if (typeof plan === "string") return { body: plan, refusal: null };
+  const result = renderOperatorQaPlan(plan, {
+    branch: request.branch,
+    baseBranch: request.baseBranch,
+    baseRevision: request.baseRevision,
+    commitSha,
+    changedFiles: readChangedFiles(repositoryPath, request.baseRevision, commitSha)
+  });
+  return { body: result.body, refusal: result.status === "refused" ? result.reason : null };
+}
+
+/** Files the candidate commit changes against its launch base, or null when Git cannot say. */
+function readChangedFiles(repositoryPath: string, baseRevision: string, commitSha: string): ChangedFile[] | null {
+  const output = tryGit(repositoryPath, ["-c", "core.quotePath=false", "diff", "--name-status", "--no-renames", "-z", baseRevision, commitSha]);
+  if (output === null) return null;
+  const fields = output.split("\0").filter((field) => field.length > 0);
+  if (fields.length % 2 !== 0) return null;
+  const files: ChangedFile[] = [];
+  for (let index = 0; index < fields.length; index += 2) files.push({ status: fields[index], path: fields[index + 1] });
+  return files;
 }
 
 /** A killed `gh pr create`/`edit` may already have taken effect remotely. */

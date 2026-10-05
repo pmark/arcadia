@@ -4,6 +4,7 @@ import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
 import { preserveCandidate, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
+import { operatorQaPlanSource } from "../sessions/operatorQaPlan.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { policyAuthorizesRemotePreservation, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
@@ -25,7 +26,7 @@ import type { VerdictGate } from "../sessions/roleLineage.js";
  */
 
 export type PreservationStep =
-  | { kind: "preserved"; receiptId: string; commitSha: string; state: PreservationState; replayed: boolean; baseBranch: string }
+  | { kind: "preserved"; receiptId: string; commitSha: string; state: PreservationState; replayed: boolean; baseBranch: string; qaPlanRefusal?: string }
   | { kind: "not_applicable"; reason: string }
   | { kind: "refused"; reason: string; detail?: unknown; identicalRefusalLimitReached?: boolean };
 
@@ -161,7 +162,11 @@ export function preserveSessionCandidate(
 
   const remotePreservation: RemotePreservationAuthorization =
     policyAuthorizesRemotePreservation(policy, actionKey(session))
-      ? { authorized: true, qaPlan: `Preserved candidate for ${actionKey(session)} on ${baseBranch}.` }
+      ? { authorized: true, qaPlan: operatorQaPlanSource({
+          actionKey: actionKey(session),
+          action: validation.binding?.actionDefinition,
+          validationCommands: validation.binding?.commands
+        }) }
       : { authorized: false, reason: "The Active policy does not authorize remote preservation." };
 
   const preserve = deps.preserve ?? preserveCandidate;
@@ -195,7 +200,8 @@ export function preserveSessionCandidate(
       commitSha: receipt.commitSha,
       state: receipt.preservationState,
       replayed: receipt.replayed,
-      baseBranch
+      baseBranch,
+      ...(receipt.qaPlanRefusal ? { qaPlanRefusal: receipt.qaPlanRefusal } : {})
     };
   } catch (error) {
     return refusedPreservation(error);
