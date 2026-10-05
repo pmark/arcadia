@@ -1724,3 +1724,10 @@ updated: 2026-10-05
 - **Result:** The release-manager session correctly declined to act on these answers relayed through a peer session; this Log entry is the governed record they cite. The operator gave the answers in the orchestration session (Claudia Atlas, claude heavy) in response to numbered pickers with stated consequences. This entry records answers only and grants nothing beyond them: G7 activation, Grant creation, spend beyond Decision 0058, credentials and deletion remain operator-only.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask operator-authorizes-g8-rerun-2026-10-05
+
+- **Did:** Operator authorization, given directly to Claudia Atlas in chat on 2026-10-05: once the G8 reconciliation repair (accept-settled-descendant-in-g8-reconciliation) is reviewed, merged and installed, agents may rerun the existing G8 (restore-terminal-off-three-action-rehearsal-2026-10-04: terminal Off confirmation, pinned recover restart and reconciliation of rehearsal run 1's preserved PR #1) tonight, before the fixture reset; production is already Inactive.
+- **Result:** Complements Log entry operator-answers-rehearsal-run2-2026-10-05 (reset and read-only G6). Ordering agreed on #940 by the release-manager session and Cody: G8 repair, install, G8 rerun for run 1, fixture reset, G6, operator G7 press 9–10am. Records an answer only; production activation, Grants, spend beyond Decision 0058, credentials and deletion remain operator-only.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
