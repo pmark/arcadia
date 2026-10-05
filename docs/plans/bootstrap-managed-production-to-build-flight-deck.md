@@ -3898,7 +3898,7 @@ actions:
     references: []
   - id: embed-validation-evidence-in-preserved-pr-body
     title: Render each declared validation command, cwd, exit code, duration and a bounded escaped output tail, plus one settlement-commit line, into the host-rendered Operator QA plan of preserved PR bodies, and prove it live against the QA reviewer.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Render each declared validation command, cwd, exit code, duration and a bounded escaped output tail, plus one settlement-commit line, into the host-rendered Operator QA plan of preserved PR bodies, and prove it live against the QA reviewer.
@@ -3934,7 +3934,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: embed-validation-evidence-in-preserved-pr-body
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

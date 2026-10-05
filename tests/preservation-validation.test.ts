@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
-import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
+import { checkTimedOut, preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/sessions/preservationCheckBinding.js";
 import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
@@ -88,6 +88,15 @@ describe("preservation authority and content", () => {
   });
 });
 
+describe("recorded check timeout", () => {
+  it("marks only spawnSync's ETIMEDOUT as a timeout", () => {
+    expect(checkTimedOut(Object.assign(new Error("spawnSync /usr/bin/sandbox-exec ETIMEDOUT"), { code: "ETIMEDOUT" }))).toBe(true);
+    expect(checkTimedOut(Object.assign(new Error("spawnSync /usr/bin/sandbox-exec ENOBUFS"), { code: "ENOBUFS" }))).toBe(false);
+    expect(checkTimedOut(new Error("ETIMEDOUT in a message only"))).toBe(false);
+    expect(checkTimedOut(undefined)).toBe(false);
+  });
+});
+
 // Native sandboxing cannot be nested in an agent sandbox. Run explicitly on
 // the host; never substitute a mock producer for this evidence.
 describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host validation sandbox", () => {
@@ -100,6 +109,10 @@ describe.skipIf(process.env.ARCADIA_PRESERVATION_HOST_TEST !== "1")("real host v
     expect(result.passed).toBe(true);
     const proof = JSON.parse(readFileSync(result.evidenceRef, "utf8"));
     expect(proof.results[0].exitStatus).toBe(0);
+    // The preserved pull request's Validation evidence renders these.
+    expect(proof.results[0]).toMatchObject({ timedOut: false, timeoutMs: 120_000 });
+    expect(proof.results[0].cwd).toMatch(/\/arcadia-preservation-[^/]+\/source$/);
+    expect(Number.isInteger(proof.results[0].durationMs) && proof.results[0].durationMs >= 0).toBe(true);
     expect(result.evidenceRef.startsWith(f.workspace + path.sep)).toBe(true);
     const denied = fixture();
     // Use the generic validator here so a workspace read can be tested without
