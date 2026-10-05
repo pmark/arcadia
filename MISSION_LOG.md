@@ -1710,6 +1710,45 @@ updated: 2026-10-05
 ## 2026-10-05 — Agent Ask pr-opened-arcadia-pr952
 
 - **Did:** Agents can now work in parallel with a live rehearsal: the freeze window refuses broker reinstalls and service restarts while production is Active, with an operator override; review at https://github.com/pmark/arcadia/pull/952
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr946
+
+- **Did:** Decision 0083 is open for review on bounded GitHub messaging for one three-agent Issue conversation: https://github.com/pmark/arcadia/pull/946
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask operator-answers-rehearsal-run2-2026-10-05
+
+- **Did:** Operator answers for rehearsal run 2, given directly to Claudia Atlas in chat on 2026-10-05: #925 — yes, Decision 0058 covers `gh pr ready`, the settled-head push and the reviewer model's spend during a managed rehearsal; agents may run the reset and read-only G6 tonight (the fixture-reset script pushing one reviewed commit to pmark/arcadia-three-action-rehearsal-20261004, no force push, and the read-only G6 preflight) so only the G7 press remains for the operator; reuse that fixture repository and reset it by amending Action write-start-marker's text; G7 press window mid-morning, about 9–10am local; Decision 0083 approved (recorded in 9e1ee2f0b).
+- **Result:** The release-manager session correctly declined to act on these answers relayed through a peer session; this Log entry is the governed record they cite. The operator gave the answers in the orchestration session (Claudia Atlas, claude heavy) in response to numbered pickers with stated consequences. This entry records answers only and grants nothing beyond them: G7 activation, Grant creation, spend beyond Decision 0058, credentials and deletion remain operator-only.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask operator-authorizes-g8-rerun-2026-10-05
+
+- **Did:** Operator authorization, given directly to Claudia Atlas in chat on 2026-10-05: once the G8 reconciliation repair (accept-settled-descendant-in-g8-reconciliation) is reviewed, merged and installed, agents may rerun the existing G8 (restore-terminal-off-three-action-rehearsal-2026-10-04: terminal Off confirmation, pinned recover restart and reconciliation of rehearsal run 1's preserved PR #1) tonight, before the fixture reset; production is already Inactive.
+- **Result:** Complements Log entry operator-answers-rehearsal-run2-2026-10-05 (reset and read-only G6). Ordering agreed on #940 by the release-manager session and Cody: G8 repair, install, G8 rerun for run 1, fixture reset, G6, operator G7 press 9–10am. Records an answer only; production activation, Grants, spend beyond Decision 0058, credentials and deletion remain operator-only.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask clarify-operator-answer-source-2026-10-05
+
+- **Did:** Clarification of Log entries operator-answers-rehearsal-run2-2026-10-05 and operator-authorizes-g8-rerun-2026-10-05: the operator gave those answers in the Claude Code session titled "Arcadia orchestrator prompt refinement" (Claudia Atlas, orchestration role), not in the release-manager session "Arcadia autonomous-production release", which also signs as Claudia Atlas; that session received them only as a peer relay and correctly will not act on them until the operator confirms directly in its own chat.
+- **Result:** Two sessions of the same platform and tier share one signature, so "given directly to Claudia Atlas" was ambiguous; recorded so the evidence names its exact source session.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Completed arcadia/accept-settled-descendant-in-g8-reconciliation
+
+- **Did:** Completed Action arcadia/accept-settled-descendant-in-g8-reconciliation from accepted evidence (Candidate acc8b9a06c567b3899859ff9e16b20fb3d78b5d8).
+- **Result:** Every declared acceptance criterion was accepted as met: "G8's work reconciliation (restore-terminal-off-three-action-rehearsal-2026-10-04 and any code it calls) classifies a preserved candidate as reconciled when its tip equals the preservation receipt's commit, or when all of these hold: the tip is clean; the receipt commit is an ancestor of the tip; every commit between them is a genuine accepted-completion settlement for that candidate's Action (a `Written by arcadia agent-ask settle --apply (asksettle_...)` receipt line, touching only .arcadia/asks/, MISSION_LOG.md, PROJECT.md, docs/plans/ and docs/decisions/, completing the claimed Action); and the same branch and pull request are remotely preserved at that exact tip. It keeps refusing a dirty tip, an arbitrary or code-changing descendant, a local-only tip, a missing or invalid settlement, and a remote or pull-request mismatch, each with a named reason."; "The change keeps every operator-script pin coherent: recover-arcadia-host-services.{sh,json} stay byte-identical; any changed G8 script or descriptor bytes are re-pinned with their tests in the same change; `pnpm check:operator-scripts` passes; and a read-only classification of rehearsal run 1's real evidence (receipt commit 9ed639d, PR #1 tip 58bcd915 on pmark/arcadia-three-action-rehearsal-20261004) reports reconciled without mutating anything."; "Hermetic tests cover the exact-tip case, the settled-descendant case, and each refusal (dirty, code-changing descendant, two settlements or a non-completion settlement, forged receipt line, local-only, remote or PR mismatch); the G8 operator-scripts suite, focused suites, lint, tsc, pnpm build, check:operator-scripts and the preservation self-check pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-accept-settled-descendant-in-g8-reconciliation-2026-10-05).
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr955
+
+- **Did:** G8 can now reconcile a preserved candidate whose tip is exactly one verified completion settlement past its preservation commit, unblocking terminal proof for rehearsal run 1; review at https://github.com/pmark/arcadia/pull/955
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

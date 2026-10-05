@@ -11,6 +11,7 @@ import { resolveReadySet } from "../src/docs/dispatch.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { buildPreservedCandidate, seedSettlement, settle } from "./helpers/settledCandidate.js";
 
 /**
  * The G1, G6, G7 and G8 operator pairs for the disposable three-Action
@@ -54,6 +55,7 @@ if (name === "mise") {
   else if (rest.includes("tsx")) {
     program = fs.readFileSync(0, "utf8");
     key = program.includes("syncProjectDocs") ? "probe fixture" : program.includes("fixtureSessions") ? "probe sessions" : program.includes("checkProviderSignIn") ? "probe claude"
+      : program.includes("classifyPreservedCandidate") ? "probe classify"
       : program.includes("observeProviderCapacity") ? "probe capacity" : "probe leases";
   } else key = "node preflight";
 }
@@ -914,6 +916,81 @@ describe("G8 proves terminal Off through the reviewed restart and reconciles com
     expect(json.reason).toContain("retained untouched");
     expect(git(candidate, ["rev-parse", "HEAD"])).toBe(candidateTip);
     expect(git(candidate, ["status", "--porcelain"])).toBe("");
+  });
+});
+
+describe("G8 reconciles a preserved candidate settled once on top of its receipt, through the real read-only helper", () => {
+  const RECEIPT_ID = "asksettle_bb9ebe9310814f3ab1";
+  const PR_URL = `https://github.com/${FIXTURE_REPO_ID}/pull/1`;
+  function settledBox(remoteBranchAt: "tip" | "receipt", extra?: (repo: string) => void) {
+    const box = sandboxFor(G8, {}, realRecover);
+    const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+    const impl = path.join(box.home, ".codex", "skills", "restart-arcadia-services", "scripts", "restart-services.sh");
+    mkdirSync(path.dirname(impl), { recursive: true });
+    writeFileSync(impl, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    rebind(box, G8, [[/RESTART_IMPL_SHA256="[0-9a-f]{64}"/, `RESTART_IMPL_SHA256="${digest(impl)}"`]]);
+    const { root } = createFixture(box.home);
+    // The candidate preserved, then settled once by agent-ask settle --apply, as the tick does.
+    const candidate = path.join(box.root, "candidate-a");
+    mkdirSync(candidate);
+    const { receipt } = buildPreservedCandidate(candidate);
+    const tip = settle(candidate, receipt, { receiptId: RECEIPT_ID, extra });
+    const branch = git(candidate, ["branch", "--show-current"]);
+    // The real helper reads the settlement record from the resolved workspace, read-only.
+    const workspace = path.join(box.root, "martianrover");
+    initWorkspace(workspace);
+    seedSettlement(workspace, { receiptId: RECEIPT_ID, receiptCommit: receipt, documentsCommit: tip });
+    const sessions = [{ id: "s1", action_id: "write-start-marker", status: "completed", branch, worktree_path: candidate, base_revision: root,
+      preservation: { commit_sha: receipt, preservation_state: "IN PR", pull_request_url: PR_URL } }];
+    writeFileSync(path.join(box.root, "replies.json"), JSON.stringify({
+      "arcadia workspace resolve": workspaceReply(box.root),
+      "arcadia production status": status("inactive"),
+      "arcadia worker status": { stdout: "Worker: running (PID 42)\n" },
+      "probe sessions": { stdout: JSON.stringify({ active: [], fixtureSessions: sessions }) },
+      "probe classify": { passthrough: "probe" },
+      "gh api": { stdout: `${remoteBranchAt === "tip" ? tip : receipt}\n` },
+      "gh pr view": { stdout: JSON.stringify({ url: PR_URL, state: "OPEN", headRefName: branch, headRefOid: tip, isCrossRepository: false }) },
+      "pnpm arcadia go-broker install": { stdout: "installed\n" },
+      "pnpm arcadia worker status": { stdout: "Worker: running (PID 42)\n" },
+      "cli go-broker status": ok({ preservationTransport: { ready: true }, agentGoTransport: { ready: true } })
+    }));
+    return { box, candidate, receipt, tip, branch };
+  }
+  const rows = (dir: string) => readFileSync(path.join(dir, "work-reconciliation.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  const ghReads = (box: ReturnType<typeof sandboxFor>) => parsedCalls(box).filter((c) => c.tool === "gh").map((c) => c.args.slice(0, 2).join(" "));
+
+  it("proves terminal Off with the settled candidate preserved, reading GitHub only", () => {
+    const { box, candidate, receipt, tip, branch } = settledBox("tip");
+    const result = box.run(g8Env(box));
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const { dir, json } = box.receipt();
+    expect(json).toMatchObject({ id: G8, outcome: "succeeded", stage: "complete", offState: "confirmed", restarted: true });
+    expect(rows(dir)).toEqual([expect.objectContaining({
+      session: "s1", state: "preserved", basis: "settled_descendant", tip, preservedCommit: receipt, branch,
+      settlement: expect.objectContaining({ commit: tip, receiptId: RECEIPT_ID })
+    })]);
+    expect(ghReads(box)).toEqual([`api repos/${FIXTURE_REPO_ID}/git/ref/heads/${branch}`, "pr view"]);
+    expect(git(candidate, ["rev-parse", "HEAD"])).toBe(tip);
+    expect(git(candidate, ["status", "--porcelain"])).toBe("");
+  });
+
+  it("refuses a settlement that exists only locally, naming the reason and leaving the candidate untouched", () => {
+    const { box, candidate, tip } = settledBox("receipt");
+    expect(box.run(g8Env(box)).status).not.toBe(0);
+    const { dir, json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "reconcile_work", offState: "confirmed", restarted: true });
+    expect(json.reason).toContain("retained untouched");
+    expect(rows(dir)).toEqual([expect.objectContaining({ state: "committed_unreconciled", refusal: "local_only_tip" })]);
+    expect(git(candidate, ["rev-parse", "HEAD"])).toBe(tip);
+  });
+
+  it("refuses a code-changing descendant before reading GitHub", () => {
+    const { box } = settledBox("tip", (repo) => writeFileSync(path.join(repo, "MARKER.md"), "changed\n"));
+    expect(box.run(g8Env(box)).status).not.toBe(0);
+    const { dir, json } = box.receipt();
+    expect(json).toMatchObject({ outcome: "refused", stage: "reconcile_work" });
+    expect(rows(dir)).toEqual([expect.objectContaining({ state: "committed_unreconciled", refusal: "code_changing_descendant" })]);
+    expect(ghReads(box)).toEqual([]);
   });
 });
 

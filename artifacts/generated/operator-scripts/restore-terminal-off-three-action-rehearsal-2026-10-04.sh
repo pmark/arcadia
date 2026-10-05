@@ -143,6 +143,15 @@ const result = withReadOnlyDatabase(workspace, (db) => {
 console.log(JSON.stringify(result));
 NODE
 
+# A preserved candidate whose tip moved past its receipt commit is reconciled only
+# by the tested read-only helper: exactly one genuine accepted-completion
+# settlement of its Action on top of the receipt commit, clean, and remotely
+# preserved at that exact tip on the same branch and pull request.
+cat > "$RUN_DIR/classify-candidate.mjs" <<'NODE'
+import { classifyPreservedCandidate } from "./src/operatorActions/preservedCandidateReconciliation.ts";
+console.log(JSON.stringify(classifyPreservedCandidate(JSON.parse(process.argv[2]))));
+NODE
+
 read_status() { arcadia production status --json; }
 
 # 1. Governed Off is the first Arcadia command (the CLI resolves its own default
@@ -258,6 +267,7 @@ STAGE=reconcile_work
 SESSIONS="$(probe "$WORKSPACE" "$FIXTURE_PROJECT" < "$RUN_DIR/probe-sessions.mjs")"
 printf '%s\n' "$SESSIONS" > "$RUN_DIR/fixture-sessions.json"
 FIXTURE_MAIN="$(git -C "$FIXTURE_REPO" rev-parse refs/heads/main)"
+FIXTURE_GITHUB="$(jq -r '.githubRepository // empty' "$MANIFEST")"
 : > "$RUN_DIR/work-reconciliation.jsonl"
 UNRECONCILED=0
 COUNT="$(jq '.fixtureSessions | length' <<<"$SESSIONS")"
@@ -265,7 +275,7 @@ for ((i = 0; i < COUNT; i++)); do
   ROW="$(jq -c ".fixtureSessions[$i]" <<<"$SESSIONS")"
   SID="$(jq -r '.id' <<<"$ROW")"; WT="$(jq -r '.worktree_path' <<<"$ROW")"; BRANCH="$(jq -r '.branch' <<<"$ROW")"
   BASE="$(jq -r '.base_revision' <<<"$ROW")"; PRESERVED="$(jq -r '.preservation.commit_sha // empty' <<<"$ROW")"
-  TIP=""; DIRTY=false
+  TIP=""; DIRTY=false; BASIS=""; REFUSAL=""; CLASSIFIED='{}'
   if [[ -d "$WT" ]]; then
     TIP="$(git -C "$WT" rev-parse HEAD 2>/dev/null || true)"
     [[ -z "$(git -C "$WT" status --porcelain 2>/dev/null)" ]] || DIRTY=true
@@ -281,16 +291,32 @@ for ((i = 0; i < COUNT; i++)); do
   elif [[ -n "$PRESERVED" ]] && git -C "$FIXTURE_REPO" merge-base --is-ancestor "$PRESERVED" "$FIXTURE_MAIN" 2>/dev/null && [[ -z "$TIP" || "$TIP" == "$PRESERVED" ]]; then
     STATE=integrated
   elif [[ -n "$PRESERVED" && ( -z "$TIP" || "$TIP" == "$PRESERVED" ) ]]; then
-    STATE=preserved
+    STATE=preserved; BASIS=exact_tip
   elif [[ -z "$PRESERVED" && ( -z "$TIP" || "$TIP" == "$BASE" ) ]]; then
     STATE=no_committed_work
+  elif [[ -n "$PRESERVED" && -n "$TIP" ]]; then
+    if [[ -d "$WT" ]]; then CANDIDATE_GIT="$WT"; CANDIDATE_WT="$WT"; else CANDIDATE_GIT="$FIXTURE_REPO"; CANDIDATE_WT=""; fi
+    INPUT="$(jq -nc --arg workspace "$WORKSPACE" --arg project "$FIXTURE_PROJECT" --arg action "$(jq -r '.action_id' <<<"$ROW")" \
+      --arg repository "$CANDIDATE_GIT" --arg worktree "$CANDIDATE_WT" --arg receipt "$PRESERVED" --arg tip "$TIP" --arg branch "$BRANCH" \
+      --arg pr "$(jq -r '.preservation.pull_request_url // ""' <<<"$ROW")" --arg github "$FIXTURE_GITHUB" \
+      '{workspace: $workspace, project: $project, actionId: $action, repository: $repository, worktree: (if $worktree == "" then null else $worktree end), receiptCommit: $receipt, tip: $tip, branch: $branch, pullRequestUrl: $pr, githubRepository: $github}')"
+    CLASSIFIED="$(probe "$INPUT" < "$RUN_DIR/classify-candidate.mjs")" || CLASSIFIED='{"reconciled":false,"reason":"classifier_failed","detail":"the settled-descendant classifier did not run"}'
+    jq -e 'type == "object"' <<<"$CLASSIFIED" >/dev/null 2>&1 || CLASSIFIED='{"reconciled":false,"reason":"classifier_failed","detail":"the settled-descendant classifier returned unreadable output"}'
+    if jq -e '.reconciled == true and .basis == "settled_descendant"' <<<"$CLASSIFIED" >/dev/null; then
+      STATE=preserved; BASIS=settled_descendant
+    else
+      STATE=committed_unreconciled; REFUSAL="$(jq -r '.reason // "classifier_failed"' <<<"$CLASSIFIED")"
+    fi
   else
     STATE=committed_unreconciled
   fi
   case "$STATE" in integrated | preserved | no_committed_work) ;; *) UNRECONCILED=$((UNRECONCILED + 1)) ;; esac
   jq -nc --arg session "$SID" --arg action "$(jq -r '.action_id' <<<"$ROW")" --arg state "$STATE" --arg tip "$TIP" --arg worktree "$WT" --arg branch "$BRANCH" --arg pr "$(jq -r '.preservation.pull_request_url // ""' <<<"$ROW")" \
-    '{session: $session, action: $action, state: $state, tip: $tip, worktree: $worktree, branch: $branch, pullRequest: $pr}' >> "$RUN_DIR/work-reconciliation.jsonl"
-  echo "work: $SID $STATE"
+    --arg preserved "$PRESERVED" --arg basis "$BASIS" --arg refusal "$REFUSAL" --argjson classified "$CLASSIFIED" \
+    '{session: $session, action: $action, state: $state, tip: $tip, worktree: $worktree, branch: $branch, pullRequest: $pr, preservedCommit: $preserved}
+      + (if $basis == "" then {} else {basis: $basis} end) + (if $refusal == "" then {} else {refusal: $refusal, refusalDetail: ($classified.detail // "")} end)
+      + (if $classified.settlement then {settlement: $classified.settlement, remote: $classified.remote} else {} end)' >> "$RUN_DIR/work-reconciliation.jsonl"
+  echo "work: $SID $STATE${BASIS:+ ($BASIS)}${REFUSAL:+ (refused: $REFUSAL)}"
 done
 record_str workReconciliation "$RUN_DIR/work-reconciliation.jsonl"
 record_str fixtureMain "$FIXTURE_MAIN"
