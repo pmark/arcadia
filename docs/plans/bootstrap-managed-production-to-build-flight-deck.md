@@ -3798,7 +3798,7 @@ actions:
     references: ["src/commands/goBrokerInstall.ts", "scripts/services.sh", "artifacts/generated/operator-scripts/reinstall-go-broker.sh", "artifacts/generated/operator-scripts/recover-arcadia-host-services.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "src/production/tick.ts", "src/production/policy.ts", "docs/managed-production-readiness.md", "https://github.com/pmark/arcadia/issues/940"]
   - id: prepare-run-2-rehearsal-scripts
     title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean second rehearsal, without running any of them.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean second rehearsal, without running any of them.
@@ -3834,7 +3834,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-run-2-rehearsal-scripts
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
