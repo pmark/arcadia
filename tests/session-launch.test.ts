@@ -169,6 +169,44 @@ describe("launchGuardedHostSession", () => {
     }
   });
 
+  it("pins no workspace in any provider's launch environment, so it sets no ARCADIA_REQUIRE_INLINE_WORKSPACE either", () => {
+    // ARCADIA_REQUIRE_INLINE_WORKSPACE belongs only in a launch environment
+    // that also pins ARCADIA_WORKSPACE (src/workspace/resolve.ts). None does:
+    // a launched Session's own arcadia commands resolve the user config
+    // default, which the mode would refuse. Even a launcher running with both
+    // variables set passes neither on the `env` command line.
+    const previousWorkspace = process.env.ARCADIA_WORKSPACE;
+    const previousMode = process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE;
+    try {
+      for (const [provider, model, profileName, command] of [
+        ["codex-cli", "gpt-5.6-terra", "codex_build", "codex"],
+        ["claude-code-cli", "sonnet", "claude_build", "claude"],
+        ["opencode-cli", "opencode-go/deepseek-v4.1-flash", "opencode_build", "opencode"]
+      ] as const) {
+        const fixture = preparedFixture({ provider, model, profileName, command });
+        const tmux = new FakeTmux();
+        const preview = preview1(fixture);
+        process.env.ARCADIA_WORKSPACE = fixture.workspace;
+        process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE = "1";
+        try {
+          doLaunch(fixture, tmux, preview.previewFingerprint);
+        } finally {
+          delete process.env.ARCADIA_WORKSPACE;
+          delete process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE;
+        }
+        expect(tmux.launches, provider).toHaveLength(1);
+        const settings = tmux.launches[0].args.slice(0, -1);
+        expect(settings, provider).toEqual(expect.arrayContaining([expect.stringMatching(/^GIT_AUTHOR_NAME=/)]));
+        expect(settings.filter((arg) => /^ARCADIA_(WORKSPACE|REQUIRE_INLINE_WORKSPACE)=/.test(arg)), provider).toEqual([]);
+        // The brief's Identity block tells the agent how to turn the mode on itself.
+        expect(tmux.launches[0].args.at(-1), provider).toContain("ARCADIA_REQUIRE_INLINE_WORKSPACE=1");
+      }
+    } finally {
+      if (previousWorkspace === undefined) delete process.env.ARCADIA_WORKSPACE; else process.env.ARCADIA_WORKSPACE = previousWorkspace;
+      if (previousMode === undefined) delete process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE; else process.env.ARCADIA_REQUIRE_INLINE_WORKSPACE = previousMode;
+    }
+  });
+
   it("applies the sign-in preflight before resuming a prepared Session whose process never started, not only a fresh launch", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

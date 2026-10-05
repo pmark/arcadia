@@ -217,6 +217,30 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   code-review`, `tidy list|undo`, `triggers`, `docket`, `plans` and
   `operator-task *`) record nothing and open no workspace database to do so;
   `tests/activity-no-record-commands.test.ts` fails when one does.
+- **Make a forgotten inline fail: `ARCADIA_REQUIRE_INLINE_WORKSPACE=1`.** With
+  it on (`1`, `true`, `yes`, `on`; anything else is off), workspace resolution
+  (`src/workspace/resolve.ts`, which the CLI, the activity recorder, the guard,
+  the broker and the transports all use) accepts only `--workspace`, an
+  `ARCADIA_WORKSPACE` value or an initialized workspace at or above the working
+  directory. A command that would fall back to the user config default or the
+  `.arcadia-workspace` marker fails with `INLINE_WORKSPACE_REQUIRED` and its
+  `remedy`, and the recorder skips that row instead of writing it there.
+  `arcadia workspace resolve` reports `inlineWorkspaceRequired` and any refused
+  fallback; `workspace guard` fails closed. Commands that resolve nothing
+  (help, version, `identity resolve`, `init`, `config get defaultWorkspace`)
+  are unaffected, and so is `workspace leak-check`, which reads the user config
+  default read-only on purpose. **Who sets it:** you, for your own shell.
+  Arcadia's launcher sets it for no Session, because no launch environment pins
+  `ARCADIA_WORKSPACE` and a Session's commands rely on the user config default;
+  the launchd services and operator scripts never set it, so their behaviour is
+  unchanged. **How a native session turns it on:** `export
+  ARCADIA_REQUIRE_INLINE_WORKSPACE=1` in a persistent shell, or start the agent
+  CLI with it (`ARCADIA_REQUIRE_INLINE_WORKSPACE=1 claude`, `… codex`, `…
+  opencode`) when its tool shells keep no exports between calls. Exporting the
+  mode is fine; exporting `ARCADIA_WORKSPACE` is not. The mode cannot tell an
+  inline `ARCADIA_WORKSPACE` from an exported one, so an exported value still
+  resolves, and the G1/G6/G7/G8 rehearsal scripts still refuse it themselves.
+  The test suite starts with the mode off (`vitest.config.ts`).
 - **Register only disposable fixtures** under `<exp>/projects/`, and give them
   no Git remote. Registration (Project metadata, `blog configure-site
   --content-repo-path`, `rebuster configure --repo-path`) refuses any other path,

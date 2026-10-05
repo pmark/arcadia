@@ -39,7 +39,12 @@ export default defineConfig({
       // has no ~/.codex at all. Pointing every test run at a directory that
       // does not exist makes local goals deterministically empty and keeps the
       // suite independent of whatever the developer's own tools are doing.
-      ARCADIA_CODEX_HOME: path.join(import.meta.dirname, "tests", ".no-codex-home")
+      ARCADIA_CODEX_HOME: path.join(import.meta.dirname, "tests", ".no-codex-home"),
+      // An agent may run the suite from a shell with the inline-workspace mode
+      // on (src/workspace/resolve.ts). Fixtures resolve temporary defaults on
+      // purpose, so the suite starts with the mode off; tests of the mode
+      // turn it on themselves.
+      ARCADIA_REQUIRE_INLINE_WORKSPACE: ""
     },
     exclude: [
       "**/node_modules/**",

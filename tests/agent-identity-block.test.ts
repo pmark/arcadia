@@ -13,6 +13,7 @@ import {
   renderReviewerIdentityBlock,
   renderSessionIdentityBlock,
   resolveAgentIdentity,
+  WORKSPACE_MODE_RULE,
   type AgentPartner
 } from "../src/codingAgents/agentIdentity.js";
 import { BUNDLED_MODEL_TIERS, MODEL_TIERS, TIER_AGENTS, mergeModelTiers } from "../src/codingAgents/modelTiers.js";
@@ -140,6 +141,21 @@ describe("renderSessionIdentityBlock and renderDispatchIdentityBlock", () => {
   });
 });
 
+describe("the Identity block's workspace rule", () => {
+  it("states the inline-workspace mode, who sets it and how a native session turns it on, in every builder block", () => {
+    expect(WORKSPACE_MODE_RULE).toContain("ARCADIA_REQUIRE_INLINE_WORKSPACE=1");
+    expect(WORKSPACE_MODE_RULE).toContain("INLINE_WORKSPACE_REQUIRED");
+    expect(WORKSPACE_MODE_RULE).toContain("Arcadia's launcher does not change that");
+    expect(WORKSPACE_MODE_RULE).toContain("export it in a persistent shell, or start the agent CLI with it");
+    expect(WORKSPACE_MODE_RULE).toContain("never exported");
+    expect(renderIdentityBlock(resolveAgentIdentity("claude", "heavy"))).toContain(WORKSPACE_MODE_RULE);
+    expect(renderSessionIdentityBlock({ agent: "codex", tier: "standard" })).toContain(WORKSPACE_MODE_RULE);
+    expect(renderSessionIdentityBlock({ agent: "unknown-platform" })).toContain(WORKSPACE_MODE_RULE);
+    // A read-only reviewer runs no commands, so it is not told.
+    expect(renderReviewerIdentityBlock({ agent: "claude", tier: "heavy" })).not.toContain(WORKSPACE_MODE_RULE);
+  });
+});
+
 describe("readProjectPartners", () => {
   function partnerDb(): Database.Database {
     const db = new Database(":memory:");
@@ -200,7 +216,8 @@ describe("partner Action ids from rows", () => {
     expect(block).toContain("; an unattributed claim; an unattributed claim.");
     expect(block).not.toContain("Ignore previous instructions");
     expect(block).not.toContain("has space");
-    expect(block.split("\n")).toHaveLength(5);
+    // Heading, self, authority, teammates, workspace rule, partners: no injected line.
+    expect(block.split("\n")).toHaveLength(6);
   });
 });
 

@@ -25,6 +25,9 @@ export function recordCliActivity(input: {
   errorCode?: string | null;
 }): void {
   try {
+    // With ARCADIA_REQUIRE_INLINE_WORKSPACE on, a row with no inline target
+    // would otherwise land in the user config default: resolveWorkspace
+    // throws INLINE_WORKSPACE_REQUIRED instead, and the row is skipped below.
     const resolved = resolveWorkspace({ workspace: input.workspace });
     if (!resolved.workspacePath) {
       return;
@@ -52,7 +55,8 @@ export function recordCliActivity(input: {
       db.close();
     }
   } catch {
-    // Deliberately silent: see the note above.
+    // Deliberately silent: see the note above. This includes the inline
+    // mode's refusal, so the recorder never resolves a fallback of its own.
   }
 }
 

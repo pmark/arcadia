@@ -219,6 +219,17 @@ export const OPERATOR_PRINCIPAL = {
 export const IDENTITY_AUTHORITY_RULE =
   "The identity resolved for this session's own model tier and role is authoritative; if the model actually doing the work differs, run `arcadia identity resolve` for that model instead of inventing or reusing a name.";
 
+/**
+ * How a session's own `arcadia` commands resolve a workspace, and the opt-in
+ * mode that makes a forgotten inline workspace fail instead of reaching the
+ * live default (src/workspace/resolve.ts). Arcadia's launcher pins no
+ * workspace in a Session's environment, so it does not set the mode either.
+ */
+export const WORKSPACE_MODE_RULE =
+  "Workspace: an arcadia command with no inline workspace resolves the user config default, the live workspace, and Arcadia's launcher does not change that. " +
+  "With ARCADIA_REQUIRE_INLINE_WORKSPACE=1 in your environment (export it in a persistent shell, or start the agent CLI with it) such a command fails with INLINE_WORKSPACE_REQUIRED instead; " +
+  "name any other workspace inline (ARCADIA_WORKSPACE=<path> arcadia ... or --workspace <path>), never exported.";
+
 export interface RosterIdentity {
   tier: ModelTier;
   role: AgentRole;
@@ -335,7 +346,8 @@ export function renderIdentityBlock(identity: AgentGitIdentity, partners: AgentP
     `You are ${describeIdentity(self)}; sign every comment and commit exactly so, never as another tier or name.`,
     IDENTITY_AUTHORITY_RULE,
     `Your teammates are ${teammates.map(describeTeammate).join(" and ")}, by tier ${MODEL_TIERS.join("/")}, ` +
-      `titled "${ROLE_TITLES.critic}" when critiquing, at <name.in.dots>@${AGENT_GIT_EMAIL_DOMAIN}. ${OPERATOR_PRINCIPAL.rule}`
+      `titled "${ROLE_TITLES.critic}" when critiquing, at <name.in.dots>@${AGENT_GIT_EMAIL_DOMAIN}. ${OPERATOR_PRINCIPAL.rule}`,
+    WORKSPACE_MODE_RULE
   ];
   if (partners) {
     lines.push(
@@ -387,7 +399,8 @@ export function renderSessionIdentityBlock(input: SessionIdentityBlockInput): st
     `Your identity is unresolved for platform "${input.agent}"${input.model ? ` and model "${input.model}"` : ""}: ` +
       `before any commit or comment run \`arcadia identity resolve --agent <platform> --tier <light|standard|heavy> --role ${role}\` ` +
       "for the model actually doing the work " +
-      `and sign exactly as it prints; ${OPERATOR_PRINCIPAL.rule.charAt(0).toLowerCase()}${OPERATOR_PRINCIPAL.rule.slice(1)}`
+      `and sign exactly as it prints; ${OPERATOR_PRINCIPAL.rule.charAt(0).toLowerCase()}${OPERATOR_PRINCIPAL.rule.slice(1)}`,
+    WORKSPACE_MODE_RULE
   ];
 }
 

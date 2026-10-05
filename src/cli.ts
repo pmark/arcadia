@@ -512,7 +512,7 @@ import {
   runWorkspaceGuardCommand
 } from "./commands/workspaceExperiment.js";
 import { getWorkspacePaths } from "./workspace/paths.js";
-import { resolveWorkspace, type WorkspaceResolution } from "./workspace/resolve.js";
+import { REQUIRE_INLINE_WORKSPACE_VARIABLE, reportWorkspaceResolution, type WorkspaceResolution, type WorkspaceResolutionReport } from "./workspace/resolve.js";
 
 interface ConfigDefaultWorkspaceData {
   defaultWorkspace: string | null;
@@ -526,6 +526,10 @@ interface WorkspaceResolveData {
   warning?: string;
   /** True when the resolved workspace is a Decision 0082 experiment workspace. */
   experiment: boolean;
+  /** Whether ARCADIA_REQUIRE_INLINE_WORKSPACE is on for this invocation. */
+  inlineWorkspaceRequired: boolean;
+  /** Set when the mode refused the user config default or the dogfood marker. */
+  refused?: WorkspaceResolutionReport["refused"];
 }
 
 /**
@@ -640,7 +644,7 @@ export function buildProgram(): Command {
       "workspace.resolve",
       options,
       () => {
-        const resolution = resolveWorkspace({ workspace: options.workspace });
+        const resolution = reportWorkspaceResolution({ workspace: options.workspace });
         return createSuccess({
           command: "workspace.resolve",
           workspace: resolution.workspacePath ?? undefined,
@@ -649,7 +653,9 @@ export function buildProgram(): Command {
             workspacePath: resolution.workspacePath,
             detail: resolution.detail,
             warning: resolution.warning,
-            experiment: resolution.workspacePath ? readExperimentWorkspace(resolution.workspacePath) !== null : false
+            experiment: resolution.workspacePath ? readExperimentWorkspace(resolution.workspacePath) !== null : false,
+            inlineWorkspaceRequired: resolution.inlineWorkspaceRequired,
+            ...(resolution.refused ? { refused: resolution.refused } : {})
           }
         });
       },
@@ -5122,6 +5128,11 @@ function renderWorkspaceResolveSuccess(response: CommandSuccess<WorkspaceResolve
     `Workspace: ${response.data.workspacePath ?? "Not resolved"}`,
     ...(response.data.detail ? [`Detail: ${response.data.detail}`] : []),
     ...(response.data.warning ? [`Warning: ${response.data.warning}`] : []),
-    ...(response.data.experiment ? ["Experiment workspace: yes (address it inline only; never export or make it the default)"] : [])
+    ...(response.data.experiment ? ["Experiment workspace: yes (address it inline only; never export or make it the default)"] : []),
+    // Printed only while the mode is on, so the default output is unchanged.
+    ...(response.data.inlineWorkspaceRequired ? [`Inline workspace required: on (${REQUIRE_INLINE_WORKSPACE_VARIABLE})`] : []),
+    ...(response.data.refused
+      ? [`Refused fallback: ${response.data.refused.source} ${response.data.refused.workspacePath ?? ""}`.trimEnd(), `Fix: ${response.data.refused.remedy}`]
+      : [])
   ];
 }

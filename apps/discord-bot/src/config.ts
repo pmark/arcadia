@@ -146,6 +146,16 @@ function resolveConfiguredWorkspace(env: NodeJS.ProcessEnv): string {
     return path.resolve(env.ARCADIA_WORKSPACE);
   }
 
+  // Mirrors ARCADIA_REQUIRE_INLINE_WORKSPACE in Arcadia's resolver
+  // (src/workspace/resolve.ts); the bot is a separate package and reads the
+  // same variable directly. Its launchd service never sets it.
+  if (["1", "true", "yes", "on"].includes(env.ARCADIA_REQUIRE_INLINE_WORKSPACE?.trim().toLowerCase() ?? "")) {
+    throw new Error(
+      "INLINE_WORKSPACE_REQUIRED: ARCADIA_REQUIRE_INLINE_WORKSPACE is on, so the Discord bot will not fall back to the user config defaultWorkspace. " +
+        "Set ARCADIA_WORKSPACE=<path> inline on the command that starts it."
+    );
+  }
+
   const defaultWorkspace = loadUserConfig(env).defaultWorkspace;
   if (defaultWorkspace) {
     return path.resolve(defaultWorkspace);
