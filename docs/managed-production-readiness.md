@@ -317,6 +317,47 @@ never exported; G8's pin of its descriptor moved with the new text. G6 now
 reports an unreadable check-runs read once and judges Codex availability by its
 real enum. Still unrun live: no repository was created and no Grant exists.
 
+### Three-Action rehearsal run 2 — 2026-10-05 candidate
+
+`prepare-run-2-rehearsal-scripts` drafts the run-2 pairs. None was run. They
+were tested only with `--describe` and against fakes. Run 1 left a passed
+development attempt and a failed code review for `write-start-marker`, plus
+its preserved candidate (branch `claude/write-start-marker-20261004T170245861Z`,
+PR #1, tip `58bcd915…`). A passed attempt for an unchanged requirement input is
+never relaunched. `requirementIdentity` hashes `next_action`, the acceptance
+criteria, the responsibility and the execution; the title is not part of it.
+
+- **Reset.** `reset-three-action-rehearsal-fixture-2026-10-05` is one-shot.
+  It rewrites only that Action's `next_action` and adds a run-2 note. It also
+  bumps the Plan's `updated:` date, because otherwise docs sync skips the
+  change as older than the record.
+- **Validation and evidence.** Before its single commit, the reset validates
+  with G1's rules plus a requirementIdentity diff. It also reads the live
+  lineage read-only. It refuses unless run 1's G8 succeeded and the branch and
+  PR are still at their tip. It pushes fixture main without force, runs docs
+  sync and records `previousMain`, `newHead`, `candidateTip` and `prTip`.
+- **G6 and G7.** `preflight-three-action-rehearsal-2026-10-05` and
+  `grant-production-three-action-rehearsal-2026-10-05` bind that head instead
+  of genesis. Each takes it from the latest succeeded reset receipt for the
+  exact repository. G7 has a new request id and keeps every 2026-10-04 G7
+  property. Its card cites the operator's #925 answer (Log
+  `operator-answers-rehearsal-run2-2026-10-05`). The 2026-10-04 G6 and G7 are
+  retired from use; their files are unchanged.
+- **Dispatch fix.** The pairs alone were not enough. Two runtime guards
+  would have stopped the amended Action behind run 1's unmerged candidate:
+  - The tick's terminal handoff deferred every admission.
+  - The Action claim refused the dispatch.
+
+  Both now skip a finished candidate only when its own passed development
+  attempts were all for a superseded input. The candidate is never touched,
+  and its claim stays while its worktree is dirty.
+  `tests/rehearsal-run-2-amended-action.test.ts` proves it through
+  `requirementIdentity`, the launch gate and the real tick.
+
+The run-2 G8 variant is pending the merged G8 reconciliation repair. Operator
+order: merge both → rerun run 1's G8 → reset → recover only if main moved again
+→ G6 → G7 within 30 minutes → G8 variant (START_HERE.md lists the commands).
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`
