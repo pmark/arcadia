@@ -3605,7 +3605,7 @@ actions:
     references: ["src/workspace/config.ts", "src/workspace/initWorkspace.ts", "src/commands/init.ts", "src/commands/goBrokerInstall.ts", "src/commands/worker.ts", "src/commands/ingressService.ts", "src/activity/recorder.ts", "docs/decisions/0082-decide-whether-coding-agents-may-run-a-bounded-experiment-using-additional.md"]
   - id: run-multi-workspace-experiment-trial
     title: Run the first bounded trial of one experiment workspace per agent platform and report whether contention fell and nothing leaked.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Run the Claude step of the multi-workspace experiment against the agreed contract, record the stop-condition event and its fixes, and end the trial by operator direction with workspaces preserved.
