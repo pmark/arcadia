@@ -56,6 +56,13 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
     commands: commands as string[], actionDefinition: readiness.action, policy };
 }
 
+const CHECK_TIMEOUT_MS = 120_000;
+
+/** Whether spawnSync stopped a check at its timeout (Node reports ETIMEDOUT and kills it). */
+export function checkTimedOut(error: Error | undefined): boolean {
+  return error !== undefined && "code" in error && error.code === "ETIMEDOUT";
+}
+
 /** Host-owned producer. Candidate checks execute under Seatbelt with an immutable
  * source tree, private scratch, no network and no writes to Git/workspace/source.
  * Unsupported hosts fail closed; this is not a general command execution API. */
@@ -97,7 +104,11 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
     // Default read visibility matches the coding sandbox; write/process/network
     // capabilities are restricted separately. Secrets are not passed in env.
     const profile = `(version 1) (deny default) (allow file-read-metadata) (allow file-read* (subpath ${quote(source)}) (subpath ${quote(scratch)}) (require-all (require-not (subpath ${quote(realpathSync(workspace))})) (require-not (subpath ${quote(realpathSync(candidate.repository))})) (require-not (subpath ${quote(realpathSync(candidate.worktree))})))) (allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target self)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
-    type CheckResult = { command: string; exitStatus: number | null; signal: NodeJS.Signals | null; error: string | null; stdout: string | null; stderr: string | null };
+    // cwd, durationMs, timedOut and timeoutMs are rendered into the preserved
+    // pull request's Validation evidence (validationEvidence.ts); readers of
+    // earlier records treat them as optional.
+    type CheckResult = { command: string; exitStatus: number | null; signal: NodeJS.Signals | null; error: string | null; stdout: string | null; stderr: string | null;
+      cwd: string; durationMs: number; timedOut: boolean; timeoutMs: number };
     const results: CheckResult[] = [];
     const writeEvidence = (runningCommand?: string) => writeFileSync(evidenceRef, JSON.stringify({
       producer: "arcadia-host-seatbelt-v1", binding, tree, checkDefinition, results, sandboxProfile: profile,
@@ -107,12 +118,15 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
     for (const command of candidate.commands) {
       writeEvidence(command);
       preservationStage("validation.check", { command, evidenceRef });
+      const startedAt = performance.now();
       const run = spawnSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", command], {
         cwd: source, env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: process.env.NODE_ENV ?? "" },
-        encoding: "utf8", timeout: 120_000, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
+        encoding: "utf8", timeout: CHECK_TIMEOUT_MS, killSignal: "SIGKILL", maxBuffer: 1024 * 1024
       });
+      const durationMs = Math.round(performance.now() - startedAt);
       results.push({ command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
-        stdout: run.stdout, stderr: run.stderr });
+        stdout: run.stdout, stderr: run.stderr, cwd: source, durationMs,
+        timedOut: checkTimedOut(run.error), timeoutMs: CHECK_TIMEOUT_MS });
       writeEvidence(command);
     }
     preservationStage("validation.evidence", { evidenceRef });
