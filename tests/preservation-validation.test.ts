@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fixtureGit, preservationFixture } from "../scripts/preservation-fixture.js";
 import { withDatabase } from "../src/db/connection.js";
-import { preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
+import { checkTimedOut, preservationAuthority, validateBoundCandidate, validatePreservationCandidate } from "../src/sessions/preservationValidation.js";
 import { materializeCandidateTree, snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/sessions/preservationCheckBinding.js";
 import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
@@ -85,6 +85,15 @@ describe("preservation authority and content", () => {
     expect(bound.baseRevision).toBe(f.base);
     const checkFile = bound.files.find(file => file.path === "check.mjs");
     expect(checkFile?.blob).toBe(fixtureGit(f.repo, ["rev-parse", `${f.base}:check.mjs`]));
+  });
+});
+
+describe("recorded check timeout", () => {
+  it("marks only spawnSync's ETIMEDOUT as a timeout", () => {
+    expect(checkTimedOut(Object.assign(new Error("spawnSync /usr/bin/sandbox-exec ETIMEDOUT"), { code: "ETIMEDOUT" }))).toBe(true);
+    expect(checkTimedOut(Object.assign(new Error("spawnSync /usr/bin/sandbox-exec ENOBUFS"), { code: "ENOBUFS" }))).toBe(false);
+    expect(checkTimedOut(new Error("ETIMEDOUT in a message only"))).toBe(false);
+    expect(checkTimedOut(undefined)).toBe(false);
   });
 });
 

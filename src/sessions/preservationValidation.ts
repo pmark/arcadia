@@ -58,6 +58,11 @@ export function preservationAuthority(db: Database.Database, workspace: string, 
 
 const CHECK_TIMEOUT_MS = 120_000;
 
+/** Whether spawnSync stopped a check at its timeout (Node reports ETIMEDOUT and kills it). */
+export function checkTimedOut(error: Error | undefined): boolean {
+  return error !== undefined && "code" in error && error.code === "ETIMEDOUT";
+}
+
 /** Host-owned producer. Candidate checks execute under Seatbelt with an immutable
  * source tree, private scratch, no network and no writes to Git/workspace/source.
  * Unsupported hosts fail closed; this is not a general command execution API. */
@@ -121,7 +126,7 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
       const durationMs = Math.round(performance.now() - startedAt);
       results.push({ command, exitStatus: run.status, signal: run.signal, error: run.error?.message ?? null,
         stdout: run.stdout, stderr: run.stderr, cwd: source, durationMs,
-        timedOut: run.error !== undefined && "code" in run.error && run.error.code === "ETIMEDOUT", timeoutMs: CHECK_TIMEOUT_MS });
+        timedOut: checkTimedOut(run.error), timeoutMs: CHECK_TIMEOUT_MS });
       writeEvidence(command);
     }
     preservationStage("validation.evidence", { evidenceRef });

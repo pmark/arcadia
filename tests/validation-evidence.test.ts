@@ -78,7 +78,8 @@ describe("Validation evidence rendering", () => {
     expect(body).toContain("- **Record:** `artifacts/preservation/session-1/check-AbC123/validation.json` (producer `arcadia-host-seatbelt-v1`), bound to candidate tree `4b825dc642cb6eb9a060e54bf8d69288fbee4904`");
     expect(body).toContain("- **Status:** passed — all 2 declared validation commands ran to completion and exited 0.");
     expect(body).toContain("#### Command 1 of 2 — passed\n\n- **Command:** `node scripts/preservation-self-check.mjs`");
-    expect(body).toContain(`- **Working directory:** \`${CWD}\` — the root of candidate tree \`4b825dc642cb\``);
+    expect(body).toContain("- **Working directory:** `arcadia-preservation-Q1w2E3/source` in the host's temporary directory — the root of candidate tree `4b825dc642cb`");
+    expect(body).not.toContain("/private/var");
     expect(body).toContain("- **Exit code:** `0`\n- **Duration:** 1.2 s");
     expect(body).toContain("- **stdout** (53 bytes recorded):\n\n```text\npreservation self-check passed (812 files inspected)\n```");
     expect(body).toContain("- **stderr:** empty.");
@@ -150,10 +151,10 @@ describe("Validation evidence rendering", () => {
     expect(stdout.endsWith(lines[399])).toBe(true);
     expect(stdout.split("\n")[0]).toMatch(/^line \d{3} z{40}$/);
     expect(stdout).not.toContain(lines[0]);
-    expect(body).toMatch(/- \*\*stdout\*\* \(last \d+ bytes of 19999 after sanitising \(20000 recorded\); earlier lines omitted\):/);
+    expect(body).toMatch(/- \*\*stdout\*\* \(last \d+ bytes after sanitising, of 20000 recorded; earlier lines omitted\):/);
     // One very long line keeps its end, marked.
     expect(stderr).toBe(`…${"x".repeat(VALIDATION_OUTPUT_TAIL_BYTES)}`);
-    expect(body).toContain("- **stderr** (last 2048 bytes of 1000000 after sanitising (1000000 recorded); earlier lines omitted):");
+    expect(body).toContain("- **stderr** (last 2048 bytes after sanitising, of 1000000 recorded; earlier lines omitted):");
     // Never splits a multi-byte character.
     const wide = renderValidationEvidence(input([check({ stdout: `${"é".repeat(5_000)}a` })]));
     expect(fencedBlocks(wide)[0]).not.toContain("\ufffd");
@@ -245,6 +246,59 @@ describe("preserved pull-request body", () => {
 
     const tooLarge = `${PLAN}\n${"p".repeat(64_900)}`;
     expect(composePreservedPullRequestBody(tooLarge, input(big))).toBe(tooLarge);
+  });
+});
+
+describe("adversarial output stays bounded in time and visible", () => {
+  it("renders 1 MiB pathological streams quickly (no quadratic regex work)", () => {
+    const mib = 1 << 20;
+    const streams = [
+      "TOKEN".repeat(mib / 5),
+      "SECRET_".repeat(Math.floor(mib / 7)),
+      `${" ".repeat(mib)}x`,
+      `${"\n".repeat(mib)}x`,
+      "\u001b]".repeat(mib / 2),
+      "-----BEGIN RSA PRIVATE KEY-----".repeat(Math.floor(mib / 31)),
+      `Bearer${" ".repeat(mib)}`,
+      "sk-".repeat(Math.floor(mib / 3))
+    ];
+    for (const stdout of streams) {
+      const started = performance.now();
+      const body = composePreservedPullRequestBody(PLAN, input([check({ stdout, stderr: stdout })]));
+      expect(performance.now() - started).toBeLessThan(1_500);
+      expect(body.length).toBeLessThanOrEqual(PRESERVED_PULL_REQUEST_BODY_MAX_CHARS);
+    }
+  });
+
+  it("replaces invisible format, separator, private-use and tag characters so nothing is hidden", () => {
+    const hidden = "a​b﻿c­d e f\u{e0041}\u{e0042}gh‍i";
+    const [block] = fencedBlocks(renderValidationEvidence(input([check({ stdout: hidden })])));
+    expect(block).toBe("a?b?c?d?e?f??g?h?i");
+    // A zero-width character inside a token is made visible rather than silently splitting it.
+    const split = fencedBlocks(renderValidationEvidence(input([check({ stdout: "ghp_abcdefghij​klmnopqrstuvwxyz0123" })])))[0];
+    expect(split).toContain("?");
+  });
+
+  it("states truncation when only the end window of a huge stream is read", () => {
+    const lines = Array.from({ length: 20_000 }, (_, index) => `row ${index}`).join("\n");
+    const body = renderValidationEvidence(input([check({ stdout: lines })]));
+    const [block] = fencedBlocks(body);
+    expect(block.endsWith("row 19999")).toBe(true);
+    expect(block.split("\n")[0]).toMatch(/^row \d+$/);
+    expect(body).toMatch(/- \*\*stdout\*\* \(last \d+ bytes after sanitising, of \d+ recorded; earlier lines omitted\):/);
+  });
+
+  it("never publishes a working directory outside the producer's own temporary copy name", () => {
+    const body = renderValidationEvidence(input([check({ cwd: "/Users/someone/private/source" })]));
+    expect(body).toContain("- **Working directory:** a host directory (path not published) — the root of candidate tree");
+    expect(body).not.toContain("/Users/someone");
+  });
+
+  it("keeps the settlement line when only it, not the evidence status, still fits", () => {
+    const tight = `${PLAN}\n${"p".repeat(64_400)}`;
+    const body = composePreservedPullRequestBody(tight, input([check()]));
+    expect(body).toBe(`${tight}\n\n${COMPLETION_SETTLEMENT_LINE}`);
+    expect(body.length).toBeLessThanOrEqual(PRESERVED_PULL_REQUEST_BODY_MAX_CHARS);
   });
 });
 

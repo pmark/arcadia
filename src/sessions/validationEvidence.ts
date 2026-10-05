@@ -16,12 +16,19 @@
  * No model writes any of it, and the same inputs always render the same bytes.
  *
  * Command output is untrusted text written by the candidate's own checks. It
- * is never interpreted: ANSI and other control characters are replaced,
- * bidirectional overrides are removed, secret-shaped tokens are redacted
- * (defence in depth: the checks run without network or secrets in their
- * environment), binary output is withheld, and only the last lines within a
- * fixed byte cap per stream are kept, inside a code fence its content cannot
- * close. The whole body stays under GitHub's pull-request body limit: tails
+ * is never interpreted: only the end of each stream is read (a fixed window, so
+ * no pattern ever sees more than that), ANSI escapes are removed, control,
+ * format (bidi, zero-width, tag), separator, private-use and unassigned
+ * characters are replaced, secret-shaped tokens are redacted, binary output is
+ * withheld, and only the last lines within a fixed byte cap per stream are
+ * kept, inside a code fence its content cannot close.
+ *
+ * Disclosure: the checks run under Seatbelt with no network and no secrets in
+ * their environment, but they can read most host files outside the workspace
+ * and repository, exactly as the coding agent that wrote the candidate could.
+ * Redaction is pattern-based defence in depth, not a guarantee; the published
+ * tail is no new capability for a candidate, whose own tree is pushed anyway.
+ * The host's temporary paths are not published, only their Arcadia-named end. The whole body stays under GitHub's pull-request body limit: tails
  * shrink deterministically, then the section collapses to its status line.
  *
  * Absence is explicit, never a failure of preservation: a missing, unreadable,
@@ -40,6 +47,8 @@ export const VALIDATION_OUTPUT_TAIL_BYTES = 2_048;
 const TAIL_BYTE_STEPS = [VALIDATION_OUTPUT_TAIL_BYTES, 1_024, 512, 256, 0] as const;
 /** The host record holds at most 10 commands x 2 streams x 1 MiB, JSON-escaped. */
 const MAX_EVIDENCE_FILE_BYTES = 128 * 1024 * 1024;
+/** Only this many trailing characters of a stream are ever sanitised or matched. */
+const OUTPUT_WINDOW_CHARS = 64 * 1024;
 const MAX_COMMAND_CHARS = 500;
 const MAX_ERROR_CHARS = 300;
 const KNOWN_PRODUCER = "arcadia-host-seatbelt-v1";
@@ -161,7 +170,8 @@ export function parseValidationEvidence(value: unknown): ValidationEvidenceRead 
  * The preserved pull-request body: the Operator QA plan, unchanged, then the
  * Validation evidence section and the completion-settlement line, bounded by
  * `maxChars`. Pure and deterministic. If even the status-only section cannot
- * fit, the plan is returned exactly as before.
+ * fit, the plan keeps only the settlement line, and failing that is returned
+ * exactly as before.
  */
 export function composePreservedPullRequestBody(
   planBody: string,
@@ -175,7 +185,9 @@ export function composePreservedPullRequestBody(
     if (body.length <= maxChars) return body;
   }
   const minimal = join(formatSummary(prepared, maxChars));
-  return minimal.length <= maxChars ? minimal : planBody;
+  if (minimal.length <= maxChars) return minimal;
+  const settlementOnly = `${planBody}\n\n${COMPLETION_SETTLEMENT_LINE}`;
+  return settlementOnly.length <= maxChars ? settlementOnly : planBody;
 }
 
 /** The section alone at a given tail cap (the default is the fixed per-stream cap). */
@@ -195,8 +207,10 @@ type CommandStatus = "passed" | "failed" | "timed out" | "did not complete" | "m
 interface PreparedStream {
   kind: "absent" | "empty" | "binary" | "text";
   recordedBytes: number;
-  /** Sanitised full text (kind "text" only). */
+  /** Sanitised text of the stream's end window (kind "text" only). */
   text: string;
+  /** True when the window dropped earlier output. */
+  windowed: boolean;
 }
 
 interface PreparedCommand {
@@ -246,12 +260,20 @@ function commandStatus(result: ValidationCheckRecord): CommandStatus {
 }
 
 function prepareStream(raw: string | null): PreparedStream {
-  if (raw === null) return { kind: "absent", recordedBytes: 0, text: "" };
+  if (raw === null) return { kind: "absent", recordedBytes: 0, text: "", windowed: false };
   const recordedBytes = Buffer.byteLength(raw, "utf8");
-  if (isBinary(raw)) return { kind: "binary", recordedBytes, text: "" };
-  const text = redactSecrets(sanitizeOutput(raw)).replace(/\s+$/, "");
-  if (!text.trim()) return { kind: "empty", recordedBytes, text: "" };
-  return { kind: "text", recordedBytes, text };
+  // Bound all later work: only the end of the stream is ever shown, and the
+  // window is far larger than the shown tail so redaction keeps its context.
+  const windowed = raw.length > OUTPUT_WINDOW_CHARS;
+  let window = windowed ? raw.slice(raw.length - OUTPUT_WINDOW_CHARS) : raw;
+  if (windowed) {
+    const newline = window.indexOf("\n");
+    window = newline >= 0 && newline < window.length - 1 ? window.slice(newline + 1) : window.replace(/^[\udc00-\udfff]/, "");
+  }
+  if (isBinary(window)) return { kind: "binary", recordedBytes, text: "", windowed };
+  const text = redactSecrets(sanitizeOutput(window)).trimEnd();
+  if (!text.trim()) return { kind: "empty", recordedBytes, text: "", windowed };
+  return { kind: "text", recordedBytes, text, windowed };
 }
 
 /** NUL bytes, or more than 1 in 20 characters undecodable or non-text control: withhold as binary. */
@@ -263,8 +285,10 @@ function isBinary(raw: string): boolean {
 }
 
 /**
- * Terminal escapes removed, line endings normalised, every remaining control
- * and bidirectional-formatting character replaced with "?". Tabs and newlines stay.
+ * Terminal escapes removed, line endings normalised, and every remaining
+ * control, format (bidi, zero-width, soft hyphen, tag), line/paragraph
+ * separator, private-use, surrogate or unassigned character replaced with "?".
+ * Tabs and newlines stay.
  */
 /* eslint-disable no-control-regex -- stripping terminal escapes and control characters is the point */
 export function sanitizeOutput(raw: string): string {
@@ -274,7 +298,7 @@ export function sanitizeOutput(raw: string): string {
     .replace(/\u001b[ -/]*[0-~]?/g, "")
     .replace(/\r\n?/g, "\n")
     .replace(/[^\P{Cc}\t\n]/gu, "?")
-    .replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "?");
+    .replace(/[\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Cn}]/gu, "?");
 }
 /* eslint-enable no-control-regex */
 
@@ -287,7 +311,8 @@ const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, "[redacted token]"],
   [/\bAIza[0-9A-Za-z_-]{35}/g, "[redacted token]"],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]{16,}=*/gi, "$1 [redacted]"],
-  [/\b([A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY)[A-Za-z0-9_]*\s*[=:]\s*)["']?[^\s"']{8,}["']?/gi, "$1[redacted]"]
+  // Bounded quantifiers keep this linear on long runs of key-like words.
+  [/\b([A-Za-z0-9_]{0,64}(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY)[A-Za-z0-9_]{0,64}[ \t]{0,8}[=:][ \t]{0,8})["']?[^\s"']{8,}["']?/gi, "$1[redacted]"]
 ];
 
 export function redactSecrets(text: string): string {
@@ -295,9 +320,9 @@ export function redactSecrets(text: string): string {
 }
 
 /** The last whole lines within `capBytes` UTF-8 bytes (a single longer line keeps its end). */
-function tail(text: string, capBytes: number): { text: string; keptBytes: number; truncated: boolean } {
+function tail(text: string, capBytes: number, windowed: boolean): { text: string; keptBytes: number; truncated: boolean } {
   const bytes = Buffer.from(text, "utf8");
-  if (bytes.length <= capBytes) return { text, keptBytes: bytes.length, truncated: false };
+  if (bytes.length <= capBytes) return { text, keptBytes: bytes.length, truncated: windowed };
   let start = bytes.length - capBytes;
   while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start += 1;
   let kept = bytes.subarray(start).toString("utf8");
@@ -399,9 +424,10 @@ function overallStatus(prepared: Prepared): string {
 
 function workingDirectory(result: ValidationCheckRecord, tree: string): string {
   const meaning = `the root of candidate tree ${code(tree.slice(0, 12))}, a disposable host copy checked under the macOS Seatbelt sandbox with no network`;
-  return result.cwd === undefined
-    ? `not recorded in this record; producer ${code(KNOWN_PRODUCER)} runs every check from ${meaning}`
-    : `${code(clip(result.cwd, 300))} — ${meaning}`;
+  if (result.cwd === undefined) return `not recorded in this record; producer ${code(KNOWN_PRODUCER)} runs every check from ${meaning}`;
+  // The host's temporary-directory prefix is not published; the producer's own name for the copy is.
+  const own = /(?:^|\/)(arcadia-preservation-[A-Za-z0-9]{1,32}\/source)$/.exec(result.cwd);
+  return own ? `${code(own[1])} in the host's temporary directory — ${meaning}` : `a host directory (path not published) — ${meaning}`;
 }
 
 function exitLine(result: ValidationCheckRecord, status: CommandStatus): string {
@@ -422,9 +448,9 @@ function formatStream(name: "stdout" | "stderr", stream: PreparedStream, tailByt
     case "binary":
       return [`- **${name}:** binary output (${stream.recordedBytes} bytes) withheld.`];
     case "text": {
-      const kept = tail(stream.text, tailBytes);
+      const kept = tail(stream.text, tailBytes, stream.windowed);
       const label = kept.truncated
-        ? `last ${kept.keptBytes} bytes of ${Buffer.byteLength(stream.text, "utf8")} after sanitising (${stream.recordedBytes} recorded); earlier lines omitted`
+        ? `last ${kept.keptBytes} bytes after sanitising, of ${stream.recordedBytes} recorded; earlier lines omitted`
         : `${stream.recordedBytes} bytes recorded`;
       return [`- **${name}** (${label}):`, "", ...fenced(kept.text), ""];
     }
