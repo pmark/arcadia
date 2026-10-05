@@ -116,8 +116,6 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
     const chain: NextActionChain = { dependentId: dependent.id, prerequisiteId: prerequisite.id, voidedBy: rule.voided_by ?? [] };
     const d = shortName(dependent.title);
     const p = shortName(prerequisite.title);
-    // Unreadable production status is never treated as Off: nothing in a production-bound chain is offered.
-    if (rule.when_production === "inactive" && production === null) { productionUnknown = true; continue; }
     const note: string | null = null;
 
     if (own?.status === "failed" && own.startedAt >= passAt) {
@@ -127,6 +125,8 @@ export function deriveNextOperatorAction(scripts: SequencedScript[], production:
     }
     // A failed dependent outranks production status: its handoff may say to turn production Off.
     if (rule.when_production === "inactive" && production?.active) { productionActive = true; continue; }
+    // Unreadable production status is never treated as Off: no step that needs production Off is offered.
+    if (rule.when_production === "inactive" && production === null) { productionUnknown = true; continue; }
     if (pass.outcome !== "succeeded") {
       candidates.push({ at: passAt, action: { status: "next", reason: "prerequisite_failed", scriptId: prerequisite.id, title: prerequisite.title, deadline: null, chain,
         instruction: `${p} did not pass: open its result, fix what it names, then run ${p} again.`, note: prerequisite.failure?.next ?? note } });

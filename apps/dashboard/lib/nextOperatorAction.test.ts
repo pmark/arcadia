@@ -85,12 +85,22 @@ describe("deriveNextOperatorAction", () => {
       [library(), passMs + minutes(3)],
       [library(), passMs + minutes(31)],
       [library({ [G8]: { state: { status: "succeeded", startedAt: "2026-10-05T15:10:00Z" }, lastRunReceipt: null } }), passMs + minutes(5)],
-      [library({ [G6]: { lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:07:13Z", finishedAt: PASS_AT } } }), passMs + minutes(1)],
-      [library({ [G7]: { state: { status: "failed", startedAt: "2026-10-05T15:20:00.000Z" }, lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:20:01Z", finishedAt: "2026-10-05T15:21:00Z" } } }), passMs + minutes(14)]
+      [library({ [G6]: { lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:07:13Z", finishedAt: PASS_AT } } }), passMs + minutes(1)]
     ];
     for (const [scripts, now] of cases) {
       const next = deriveNextOperatorAction(scripts, null, now);
       expect(next).toMatchObject({ status: "none", unknown: true, message: "Your next action is unknown right now.", note: expect.stringContaining("could not be read") });
+    }
+  });
+
+  it("still shows a failed G7's handoff when production status is unreadable, as it does when production is Active", () => {
+    const failedGrant = library({ [G7]: { state: { status: "failed", startedAt: "2026-10-05T15:20:00.000Z" },
+      lastRunReceipt: { outcome: "refused", startedAt: "2026-10-05T15:20:01Z", finishedAt: "2026-10-05T15:21:00Z" } } });
+    for (const production of [null, { active: true }]) {
+      expect(deriveNextOperatorAction(failedGrant, production, passMs + minutes(14))).toMatchObject({
+        status: "next", reason: "dependent_failed", scriptId: G7, deadline: null, note: "Do not press again blindly. Read the handoff.",
+        instruction: "Open G7 (run 2)'s failed result and follow its handoff before pressing anything else."
+      });
     }
   });
 
