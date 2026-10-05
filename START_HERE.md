@@ -135,11 +135,13 @@ in order:
    and run 2's branches and PRs #1 and #2 at `58bcd915…` and `7f139037…`,
    before and after. It changes only write-start-marker's `next_action` (and
    the Plan date when run after 2026-10-05). A pending Agent Ask naming that
-   Action silently stops dispatch (#968), so the reset handles them first. It
-   refuses on any pending proposal or Decision for the fixture except run 2's
-   `complete-write-start-marker-2026-10-05`. That one it rejects through the
-   governed two-phase settle before its commit. A rerun recognizes a landed
-   rejection.
+   Action silently stops dispatch (#968): run 1's pending one stalled run 2.
+   The reset refuses on any pending proposal or Decision for the fixture except
+   run 2's `complete-write-start-marker-2026-10-05`. The tick accepted that one
+   on run 2's candidate branch, so live it no longer gates, and the reset
+   leaves it as it is. Were it still pending, the reset would reject it
+   through the governed two-phase settle before its commit; a rerun recognizes
+   a landed rejection. Either way the gate must then read clear.
 3. If Arcadia main moved on a runtime path since the last install, run
    `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
 4. Run the run-3 G6 `preflight-three-action-rehearsal-run3-2026-10-05`. It is

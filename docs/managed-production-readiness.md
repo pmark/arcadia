@@ -379,16 +379,19 @@ and PR #2 at `7f139037…`, beside run 1's PR #1 at `58bcd915…`. Every
   reset's UTC date, and a host date before 2026-10-05 refuses. Before any
   commit, the reset also runs a read-only dry-run docs sync against the live
   workspace, which must report the Action as an update.
-- **Issue #968.** In run 2 a pending Agent Ask proposal naming the Action made
-  `resolveProjectTransition` answer `decision` for 33 minutes, and nothing
-  launched. The reset reads the gate through Arcadia's own
+- **Issue #968.** In run 2, run 1's pending complete proposal naming the
+  Action made `resolveProjectTransition` answer `decision` for 33 minutes, and
+  nothing launched. The reset reads the gate through Arcadia's own
   `resolveOperatorGate`. It refuses on any pending fixture proposal or
-  Decision except run 2's `complete-write-start-marker-2026-10-05`. That one
-  must match the descriptor's `agentAsk` declaration. The reset rejects it
-  through `arcadia agent-ask settle --disposition rejected`, preview then apply
-  with that fingerprint, with `ARCADIA_WORKSPACE` inline on that one command.
-  It does this before the commit and then requires the gate clear. The preview
-  must write no document and place no queue entry.
+  Decision except run 2's `complete-write-start-marker-2026-10-05`, which must
+  match the descriptor's `agentAsk` declaration. Live, the tick accepted that
+  one on run 2's candidate branch (fixture main untouched), so it no longer
+  gates and the reset leaves it as it is. Only if it were still pending would
+  the reset reject it through `arcadia agent-ask settle --disposition
+  rejected`, preview then apply with that fingerprint, with
+  `ARCADIA_WORKSPACE` inline on that one command, before the commit; the
+  preview must write no document and place no queue entry. In every case the
+  gate must then read clear.
 - **Evidence.** The receipt records the new head, all six candidate tips
   before and after, and the superseded proposal with its fingerprint.
   `tests/rehearsal-run-3-amended-action.test.ts` proves the dispatch path with
@@ -410,10 +413,9 @@ and PR #2 at `7f139037…`, beside run 1's PR #1 at `58bcd915…`. Every
   (`artifacts/qa/pull-requests/.../qa-report.md`). It proves the remainder
   Action `verify-operator-qa-plan-with-live-qa`.
 
-Unverified until the live run: the live `agent_ask_proposals` row for run 2's
-proposal must still be unsettled and match the declared scope. It must be the
-only pending fixture item. The reset reads all of this itself and refuses
-otherwise.
+Live state reported before the run: run 2's proposal is accepted, run 1's is
+rejected, and `arcadia advance` answers `launch` for the fixture. The reset
+re-reads all of this itself and refuses on any other pending fixture item.
 
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not

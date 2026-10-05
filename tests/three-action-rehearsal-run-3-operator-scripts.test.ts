@@ -716,20 +716,33 @@ describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending
     runCli(box, ["agent-ask", "settle", "--proposal", RUN2_PROPOSAL, "--request-id", "operator-rejected-by-hand", "--disposition", "rejected", "--apply", "--preview", fp, "--json"]);
     const result = box.run(RESET, resetEnv);
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(box.receipt(RESET).json).toMatchObject({ outcome: "succeeded", proposalSettledByThisRun: false, supersededProposal: { state: "settled_elsewhere", settlement: { requestId: "operator-rejected-by-hand", disposition: "rejected" } } });
+    expect(box.receipt(RESET).json).toMatchObject({ outcome: "succeeded", proposalSettledByThisRun: false, supersededProposal: { state: "rejected_elsewhere", settlement: { requestId: "operator-rejected-by-hand", disposition: "rejected" } } });
     expect(settleCalls(box)).toHaveLength(0);
   });
 
-  it("refuses, settling and committing nothing, when run 2's proposal is recorded as accepted elsewhere", () => {
+  const acceptedRun2 = (blocking: unknown[] = []) => ({ "probe proposal-gate": { stdout: JSON.stringify({ blocking, fixturePending: [], run2: {
+    id: "agentask_80a99372", requestId: RUN2_PROPOSAL, project: "three-action-rehearsal", intent: "complete", targetRef: "action/write-start-marker",
+    settlement: { id: "asksettle_e5f216c9d11441e2bb", requestId: RUN2_PROPOSAL, disposition: "accepted" } } }) } });
+
+  it("proceeds, leaving it as it is, when run 2's proposal was accepted on its candidate branch (the live state) and the gate is clear", () => {
     const { box, run2Head } = resetBox();
-    box.patchReplies({ "probe proposal-gate": { stdout: JSON.stringify({ blocking: [], fixturePending: [], run2: {
-      id: "agentask_accepted", requestId: RUN2_PROPOSAL, project: "three-action-rehearsal", intent: "complete", targetRef: "action/write-start-marker",
-      settlement: { id: "asksettle_x", requestId: "someone-accepted", disposition: "accepted" } } }) } });
+    box.patchReplies(acceptedRun2());
+    const result = box.run(RESET, resetEnv);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const { json } = box.receipt(RESET);
+    expect(json).toMatchObject({ outcome: "succeeded", proposalSettledByThisRun: false, previousMain: run2Head,
+      supersededProposal: { requestId: RUN2_PROPOSAL, proposalId: "agentask_80a99372", state: "accepted_elsewhere", previewFingerprint: null, settlement: { disposition: "accepted" } } });
+    expect(git(box.fixture, ["rev-parse", "HEAD^"])).toBe(run2Head);
+    expect(settleCalls(box)).toHaveLength(0);
+  });
+
+  it("refuses, settling and committing nothing, when run 2's proposal is accepted but the gate still blocks", () => {
+    const { box, run2Head } = resetBox();
+    box.patchReplies(acceptedRun2([{ action: "write-start-marker", kind: "agent_ask", id: "agentask_80a99372", requestId: RUN2_PROPOSAL, title: "Mark write-start-marker complete." }]));
     expect(box.run(RESET, resetEnv).status).not.toBe(0);
     const { json } = box.receipt(RESET);
     expect(json).toMatchObject({ outcome: "refused", stage: "proposal_gate", proposalSettledByThisRun: false });
-    expect(json.reason).toContain("already settled other than rejected");
-    expect(json.recovery).toContain("accepted");
+    expect(json.reason).toContain("still gate the fixture");
     expect(settleCalls(box)).toHaveLength(0);
     noMutation(box, run2Head);
   });

@@ -12,7 +12,9 @@
 # proposal naming the Action makes the dispatch gate answer "decision" and
 # dispatch nothing) by refusing every pending fixture proposal except exactly
 # run 2's complete proposal, which it rejects through the governed two-phase
-# settle, and only then commits once on fixture main, pushes without force,
+# settle only while it is still pending (live, the tick already accepted it on
+# run 2's candidate branch, which leaves it as is), requires the gate clear,
+# and only then commits once on fixture main, pushes without force,
 # runs docs sync and writes a receipt carrying the new fixture head. It never
 # previews, activates or deactivates production, creates or presses a Grant,
 # touches another Action, run 1's or run 2's branch or pull request, settles
@@ -566,9 +568,10 @@ jq -e --arg ref "plan/$FIXTURE_PLAN#$ACTION_A" --arg state "$RESET_STATE" '.live
 # dispatch gate (resolveProjectTransition, through resolveOperatorGate) answer
 # "decision", and the tick then launches nothing without saying why. Every
 # pending item gating a fixture Action, and every pending fixture proposal,
-# refuses here untouched, except exactly run 2's complete proposal, which this
-# script rejects through the governed settle: preview, then apply with that
-# exact fingerprint, ARCADIA_WORKSPACE inline on that one command only.
+# refuses here untouched, except exactly run 2's complete proposal: if it is
+# still pending, this script rejects it through the governed settle (preview,
+# then apply with that exact fingerprint, ARCADIA_WORKSPACE inline on that one
+# command only); if it is already rejected or accepted, it is left as it is.
 STAGE=proposal_gate
 cat > "$RUN_DIR/probe-proposal-gate.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
@@ -615,10 +618,18 @@ elif jq -e --arg sreq "$SUPERSEDE_REQUEST_ID" '.run2.settlement != null and .run
   PROPOSAL_STATE=already_superseded
 elif jq -e '.run2.settlement != null and .run2.settlement.disposition == "rejected"' <<<"$GATE" >/dev/null; then
   # Rejected elsewhere: it no longer gates dispatch, and this script leaves it exactly as it is.
-  PROPOSAL_STATE=settled_elsewhere
+  PROPOSAL_STATE=rejected_elsewhere
+elif jq -e '.run2.settlement != null and .run2.settlement.disposition == "accepted"' <<<"$GATE" >/dev/null; then
+  # Accepted on run 2's candidate branch (the live case: the tick settled it
+  # there). A settled proposal does not gate dispatch, and that settlement
+  # never touched fixture main, which fixture_state above already proved is run
+  # 2's reset head (or this script's own reset commit on it). The gate is
+  # re-read below and must be clear; the proposal is left exactly as it is.
+  [[ "$RESET_STATE" == at_run2_head || "$RESET_STATE" == committed_unpushed || "$RESET_STATE" == pushed ]] \
+    || refuse "run 2's proposal is accepted but fixture main is not run 2's reset head $RUN2_HEAD or this script's reset commit on it"
+  PROPOSAL_STATE=accepted_elsewhere
 elif jq -e '.run2.settlement != null' <<<"$GATE" >/dev/null; then
-  RECOVERY="Run 2's $RUN2_PROPOSAL is recorded as $(jq -r '.run2.settlement.disposition' <<<"$GATE") under settlement request id $(jq -r '.run2.settlement.requestId' <<<"$GATE"). Reopening write-start-marker over an accepted completion is a separate operator choice; this script changed nothing."
-  refuse "run 2's proposal $RUN2_PROPOSAL is already settled other than rejected ($(jq -c '.run2.settlement' <<<"$GATE")); refusing to reset over it"
+  refuse "run 2's proposal $RUN2_PROPOSAL has an unrecognized settlement: $(jq -c '.run2.settlement' <<<"$GATE")"
 else
   PROPOSAL_STATE=pending
 fi
