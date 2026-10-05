@@ -130,10 +130,11 @@ export async function runIntelligenceNarrateCommand(
         idempotencyKey: `${baseKey}-${String(index + 1).padStart(3, "0")}`,
       });
       const { job: submitted } = await submitIntelligenceRequest(repository, request);
-      // Claim exactly this chunk's job. `runOnce` would claim the oldest queued
-      // job in the workspace, which could be another app's or a leftover — wrong
-      // work executed, and this chunk left queued.
-      const job = await worker.runJob(submitted.id);
+      // A reused idempotency key returns the prior job unchanged. If it already
+      // reached a terminal state, reuse it; only a queued job needs claiming,
+      // and `runOnce` would claim the oldest queued job in the workspace rather
+      // than this chunk's.
+      const job = submitted.status === "queued" ? await worker.runJob(submitted.id) : submitted;
       if (!job) {
         throw new ArcadiaError(
           "UNEXPECTED_ERROR",
