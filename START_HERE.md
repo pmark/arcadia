@@ -158,6 +158,11 @@ in order:
    terminal". It turns Off only the run-3, run-2 or run-1 G7 policy with the
    exact fixture scope.
 
+Run 3 evidence to capture: the live QA reviewer's verdict on the "Operator QA
+plan" criterion for the run's pull request, in
+`artifacts/qa/pull-requests/.../qa-report.md`. It proves the remainder Action
+`verify-operator-qa-plan-with-live-qa`.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every

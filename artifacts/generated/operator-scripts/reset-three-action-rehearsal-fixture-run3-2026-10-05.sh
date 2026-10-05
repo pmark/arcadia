@@ -613,9 +613,12 @@ if jq -e '.run2 == null' <<<"$GATE" >/dev/null; then
   PROPOSAL_STATE=absent
 elif jq -e --arg sreq "$SUPERSEDE_REQUEST_ID" '.run2.settlement != null and .run2.settlement.requestId == $sreq and .run2.settlement.disposition == "rejected"' <<<"$GATE" >/dev/null; then
   PROPOSAL_STATE=already_superseded
-elif jq -e '.run2.settlement != null' <<<"$GATE" >/dev/null; then
-  # Settled elsewhere: it no longer gates dispatch, and this script leaves it exactly as it is.
+elif jq -e '.run2.settlement != null and .run2.settlement.disposition == "rejected"' <<<"$GATE" >/dev/null; then
+  # Rejected elsewhere: it no longer gates dispatch, and this script leaves it exactly as it is.
   PROPOSAL_STATE=settled_elsewhere
+elif jq -e '.run2.settlement != null' <<<"$GATE" >/dev/null; then
+  RECOVERY="Run 2's $RUN2_PROPOSAL is recorded as $(jq -r '.run2.settlement.disposition' <<<"$GATE") under settlement request id $(jq -r '.run2.settlement.requestId' <<<"$GATE"). Reopening write-start-marker over an accepted completion is a separate operator choice; this script changed nothing."
+  refuse "run 2's proposal $RUN2_PROPOSAL is already settled other than rejected ($(jq -c '.run2.settlement' <<<"$GATE")); refusing to reset over it"
 else
   PROPOSAL_STATE=pending
 fi

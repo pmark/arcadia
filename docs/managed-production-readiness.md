@@ -405,6 +405,10 @@ and PR #2 at `7f139037…`, beside run 1's PR #1 at `58bcd915…`. Every
   recover only if main moved on a runtime path → G6 → freeze (no push to main,
   reinstall, restart or G8) → G7 within 30 minutes → G8 from the Terminal panel
   or `/runs`.
+- **Run 3 evidence to capture.** Keep the live QA reviewer's verdict on the
+  "Operator QA plan" criterion for the run's pull request
+  (`artifacts/qa/pull-requests/.../qa-report.md`). It proves the remainder
+  Action `verify-operator-qa-plan-with-live-qa`.
 
 Unverified until the live run: the live `agent_ask_proposals` row for run 2's
 proposal must still be unsettled and match the declared scope. It must be the

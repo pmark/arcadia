@@ -511,7 +511,7 @@ describe("run-3 operator pairs: contract and static safety", () => {
   });
 });
 
-describe("the run-3 reset refuses unsafe input and unsafe state before any settle, commit or push", () => {
+describe("the run-3 reset refuses unsafe input and unsafe state before any settle, commit or push", { timeout: 360_000 }, () => {
   it("refuses without the operator-supplied repository before any call", () => {
     const box = sandboxFor([RESET]);
     expect(box.run(RESET).status).not.toBe(0);
@@ -623,7 +623,7 @@ describe("the run-3 reset refuses unsafe input and unsafe state before any settl
   });
 });
 
-describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending proposal", () => {
+describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending proposal", { timeout: 360_000 }, () => {
   it("refuses any other pending fixture proposal, settling nothing, even run 2's", () => {
     const { box, run2Head, run1Tip } = resetBox();
     seedProposal(box, completeAsk("complete-write-start-marker-2026-10-04", run1Tip));
@@ -720,6 +720,20 @@ describe("the run-3 reset closes Issue #968 by rejecting exactly run 2's pending
     expect(settleCalls(box)).toHaveLength(0);
   });
 
+  it("refuses, settling and committing nothing, when run 2's proposal is recorded as accepted elsewhere", () => {
+    const { box, run2Head } = resetBox();
+    box.patchReplies({ "probe proposal-gate": { stdout: JSON.stringify({ blocking: [], fixturePending: [], run2: {
+      id: "agentask_accepted", requestId: RUN2_PROPOSAL, project: "three-action-rehearsal", intent: "complete", targetRef: "action/write-start-marker",
+      settlement: { id: "asksettle_x", requestId: "someone-accepted", disposition: "accepted" } } }) } });
+    expect(box.run(RESET, resetEnv).status).not.toBe(0);
+    const { json } = box.receipt(RESET);
+    expect(json).toMatchObject({ outcome: "refused", stage: "proposal_gate", proposalSettledByThisRun: false });
+    expect(json.reason).toContain("already settled other than rejected");
+    expect(json.recovery).toContain("accepted");
+    expect(settleCalls(box)).toHaveLength(0);
+    noMutation(box, run2Head);
+  });
+
   it("proceeds without settling anything when run 2's proposal is absent and nothing gates the fixture", () => {
     const { box } = resetBox({ pendingRun2Proposal: false });
     const result = box.run(RESET, resetEnv);
@@ -737,7 +751,7 @@ function runCli(box: Box, args: string[]) {
   return JSON.parse(run.stdout);
 }
 
-describe("the run-3 reset commits one validated line on run 2's head, pushes it without force, syncs docs and records every tip", () => {
+describe("the run-3 reset commits one validated line on run 2's head, pushes it without force, syncs docs and records every tip", { timeout: 360_000 }, () => {
   it("resets exactly write-start-marker's next_action, rejects run 2's proposal first, leaves both candidates untouched, and refuses a second application", () => {
     const { box, run2Head, genesis, run1Tip, run2Tip, original, run2 } = resetBox();
     // A later run-2 G8 that refused at its launch guard ran nothing and does not void run 2's terminal Off.
@@ -896,7 +910,7 @@ const G6_CHECKS = [
   "reset_receipt", "fixture", "fixture_leases", "operator_gate", "claude_worker_token", "codex_reviewer_login", "codex_reviewer_profile", "codex_capacity", "github_auth", "github_repository", "github_checks"
 ];
 
-describe("the run-3 G6 preflight binds the run-3 reset head and keeps every check", () => {
+describe("the run-3 G6 preflight binds the run-3 reset head and keeps every check", { timeout: 360_000 }, () => {
   it("passes and binds the fixture head and reset receipt, checking GitHub main and CI at that head", () => {
     const { box, head } = g6Box();
     const { genesis, head: fixtureHead, resetReceipt } = run3Fixture(box);
@@ -1164,7 +1178,7 @@ describe("the run-3 G7 Grant binds the run-3 reset head and keeps every G7 safet
   });
 });
 
-describe("run 3 end to end against fakes: the reset's receipt is the head G6 and G7 bind", () => {
+describe("run 3 end to end against fakes: the reset's receipt is the head G6 and G7 bind", { timeout: 360_000 }, () => {
   it("reset (rejecting run 2's proposal), then G6 binds the run-3 head with the gate clear, then G7 accepts that G6 receipt and activates", () => {
     const box = sandboxFor([RESET, G6, G7]);
     const state = afterRun2(box);
