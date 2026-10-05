@@ -125,12 +125,14 @@ function requireEnv(env: NodeJS.ProcessEnv, name: (typeof requiredEnv)[number]):
 export function refuseExperimentWorkspace(workspace: string): void {
   const configPath = path.join(workspace, "config", "arcadia.json");
   if (!existsSync(configPath)) return;
+  const text = readFileSync(configPath, "utf8");
   let experiment: unknown;
   try {
-    experiment = (JSON.parse(readFileSync(configPath, "utf8")) as { experiment?: unknown }).experiment;
+    experiment = (JSON.parse(text) as { experiment?: unknown }).experiment;
   } catch {
-    // Unreadable config: the CLI the bot shells out to refuses it on first use.
-    return;
+    // Fail closed: an unparseable config that mentions an experiment is
+    // treated as one rather than waved through.
+    experiment = /"experiment"/.test(text) ? true : undefined;
   }
   if (experiment === undefined) return;
   throw new Error(

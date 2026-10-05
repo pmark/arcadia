@@ -53,6 +53,8 @@ stop the affected operation, preserve work and report the exact remedy.
   bounded exception is an experiment workspace (`init --profile experiment`)
   holding only disposable fixtures: address it inline on each command
   (`--workspace` or `ARCADIA_WORKSPACE=`), never export it or make it default.
+  Decision 0082 allows it until 2026-10-18 and stops it at any leak-check
+  change or experiment-caused write to the live workspace.
 - **Preservation:** run `arcadia work monitor --no-pull-requests` before code
   edits. Work in a clean isolated candidate, never on main or in another live
   Session's checkout. Use the host's prepared/resumed worktree and preservation

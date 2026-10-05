@@ -34,12 +34,20 @@ esac
 # workspace whose config carries an experiment block is sent to the guard, so
 # an ordinary restart never depends on the CLI being runnable (a recovery
 # restart is often exactly when it is not).
-EXPERIMENT_CONFIG="${ARCADIA_WORKSPACE:-}/config/arcadia.json"
-if [[ "$ACTION" != "status" && -n "${ARCADIA_WORKSPACE:-}" && -f "$EXPERIMENT_CONFIG" ]] &&
-  grep -q '"experiment"' "$EXPERIMENT_CONFIG"; then
-  if ! (cd "$REPO" && pnpm -s arcadia workspace guard "services.$ACTION" --workspace "$ARCADIA_WORKSPACE") >&2; then
-    echo "Refused: the experiment guard did not allow services.$ACTION for ARCADIA_WORKSPACE=$ARCADIA_WORKSPACE (see above)." >&2
+# The path is resolved once, here, so the file test and the guard see the same
+# directory: a relative ARCADIA_WORKSPACE would otherwise be tested against the
+# caller's directory and handed to the CLI relative to $REPO.
+if [[ "$ACTION" != "status" && -n "${ARCADIA_WORKSPACE:-}" ]]; then
+  if ! WS_ABS="$(cd -- "$ARCADIA_WORKSPACE" 2>/dev/null && pwd -P)"; then
+    echo "Refused: ARCADIA_WORKSPACE=$ARCADIA_WORKSPACE is not a directory; services.$ACTION will not guess which workspace it meant." >&2
     exit 3
+  fi
+  EXPERIMENT_CONFIG="$WS_ABS/config/arcadia.json"
+  if [[ -f "$EXPERIMENT_CONFIG" ]] && grep -q '"experiment"' "$EXPERIMENT_CONFIG"; then
+    if ! (cd "$REPO" && pnpm -s arcadia workspace guard "services.$ACTION" --workspace "$WS_ABS") >&2; then
+      echo "Refused: the experiment guard did not allow services.$ACTION for ARCADIA_WORKSPACE=$WS_ABS (see above)." >&2
+      exit 3
+    fi
   fi
 fi
 

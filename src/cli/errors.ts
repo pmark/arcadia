@@ -34,6 +34,7 @@ export type ArcadiaErrorCode =
   | "BRIEF_DEADLINE_EXCEEDED"
   | "EXPERIMENT_WORKSPACE_REFUSED"
   | "WORKSPACE_LEAK_DETECTED"
+  | "LEAK_CHECK_UNVERIFIABLE"
   | "UNEXPECTED_ERROR";
 
 export type ArcadiaExitCode = 1 | 2 | 3;

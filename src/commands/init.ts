@@ -99,6 +99,20 @@ function assertExperimentTargetAvailable(workspace: string): void {
       alternative: "Choose a disposable name such as exp-<agent>-<yyyymmdd>."
     });
   }
+  // Nested inside another workspace, the experiment would be shadowed by (or
+  // shadow) that workspace in cwd-based resolution, and could sit inside the
+  // live one.
+  for (let ancestor = path.dirname(paths.root); ; ancestor = path.dirname(ancestor)) {
+    const ancestorConfig = getWorkspacePaths(ancestor).configFile;
+    if (existsSync(ancestorConfig)) {
+      throw validationError("An experiment workspace cannot be created inside another workspace.", {
+        workspace: paths.root,
+        enclosingWorkspace: ancestor,
+        alternative: "Choose a directory outside every existing workspace, such as /Users/pmark/Dev/MR/Arcadia/workspaces/exp-<agent>-<yyyymmdd>."
+      });
+    }
+    if (path.dirname(ancestor) === ancestor) break;
+  }
   for (const existing of [paths.databaseFile, paths.configFile]) {
     if (existsSync(existing)) {
       throw validationError("An experiment workspace must be created fresh; this path already holds a workspace.", {

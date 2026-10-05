@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -24,6 +24,15 @@ export interface LeakSnapshot {
     path: string | null;
     projectCount: number | null;
     queueRevision: number | null;
+    /** The live production authorization: a Grant or activation moves it. */
+    productionPolicy: { desiredState: string; revision: number; epoch: number } | null;
+    /** Durable receipt counters that only production transitions write (never activity rows). */
+    productionPolicyReceipts: number | null;
+    productionAdmissions: number | null;
+    /**
+     * Non-null when the live workspace could not be observed. Such a snapshot
+     * proves nothing, so the leak check refuses to pass on it.
+     */
     error: string | null;
   };
   /** sha256 hex of each file, or null when it does not exist. */
@@ -38,7 +47,15 @@ export interface LeakSnapshot {
      * dialog.
      */
     claudeTrust: string | null;
+    /** `~/.arcadia/telemetry/capacity-receipts.json`, written by `production capacity attest`. */
+    capacityReceipts: string | null;
   };
+  /**
+   * The one host-wide go-broker: each release manifest, each `~/.local/bin`
+   * launcher (symlink target or bytes) and each managed skill or rule file,
+   * keyed by its home-relative path.
+   */
+  goBroker: Record<string, string>;
   /** `~/Library/LaunchAgents/com.arcadia.*.plist` file name → sha256 of its bytes. */
   launchAgents: Record<string, string>;
 }
@@ -65,15 +82,33 @@ export function takeLeakSnapshot(input: LeakCheckInput = {}): LeakSnapshot {
   return {
     schema: "arcadia-leak-check-v1",
     takenAt: (input.now ?? new Date()).toISOString(),
-    liveWorkspace: livePath ? readLiveWorkspace(livePath) : { path: null, projectCount: null, queueRevision: null, error: "no live workspace configured" },
+    liveWorkspace: livePath ? readLiveWorkspace(livePath) : { ...UNOBSERVED, path: null, error: "no live workspace configured" },
     hashes: {
       userConfig: hashFile(userConfigPath(env)),
       codexConfig: hashFile(path.join(home, ".codex", "config.toml")),
       claudeSettings: hashFile(path.join(home, ".claude", "settings.json")),
-      claudeTrust: claudeTrustHash(path.join(home, ".claude.json"))
+      claudeTrust: claudeTrustHash(path.join(home, ".claude.json")),
+      capacityReceipts: hashFile(env.ARCADIA_CAPACITY_RECEIPTS_PATH?.trim() || path.join(home, ".arcadia", "telemetry", "capacity-receipts.json"))
     },
+    goBroker: goBrokerHashes(home),
     launchAgents: launchAgentHashes(path.join(home, "Library", "LaunchAgents"))
   };
+}
+
+const UNOBSERVED = {
+  projectCount: null,
+  queueRevision: null,
+  productionPolicy: null,
+  productionPolicyReceipts: null,
+  productionAdmissions: null
+} as const;
+
+/** Why a snapshot (or a pair) cannot prove the live workspace unchanged, or null when it can. */
+export function unverifiableReason(...snapshots: LeakSnapshot[]): string | null {
+  for (const snapshot of snapshots) {
+    if (snapshot.liveWorkspace.error) return `live workspace ${snapshot.liveWorkspace.path ?? "(none)"} was not observed: ${snapshot.liveWorkspace.error}`;
+  }
+  return null;
 }
 
 export function compareLeakSnapshots(before: LeakSnapshot, after: LeakSnapshot): LeakChange[] {
@@ -85,8 +120,19 @@ export function compareLeakSnapshots(before: LeakSnapshot, after: LeakSnapshot):
   push("liveWorkspace.projectCount", before.liveWorkspace.projectCount, after.liveWorkspace.projectCount);
   push("liveWorkspace.queueRevision", before.liveWorkspace.queueRevision, after.liveWorkspace.queueRevision);
   push("liveWorkspace.error", before.liveWorkspace.error, after.liveWorkspace.error);
-  for (const key of Object.keys(before.hashes) as Array<keyof LeakSnapshot["hashes"]>) {
-    push(`hashes.${key}`, before.hashes[key], after.hashes[key]);
+  const policy = (snapshot: LeakSnapshot) => snapshot.liveWorkspace.productionPolicy
+    ? JSON.stringify(snapshot.liveWorkspace.productionPolicy)
+    : null;
+  push("liveWorkspace.productionPolicy", policy(before), policy(after));
+  push("liveWorkspace.productionPolicyReceipts", before.liveWorkspace.productionPolicyReceipts ?? null, after.liveWorkspace.productionPolicyReceipts ?? null);
+  push("liveWorkspace.productionAdmissions", before.liveWorkspace.productionAdmissions ?? null, after.liveWorkspace.productionAdmissions ?? null);
+  const hashKeys = [...new Set([...Object.keys(before.hashes), ...Object.keys(after.hashes)])] as Array<keyof LeakSnapshot["hashes"]>;
+  for (const key of hashKeys) {
+    push(`hashes.${key}`, before.hashes[key] ?? null, after.hashes[key] ?? null);
+  }
+  const brokerItems = [...new Set([...Object.keys(before.goBroker ?? {}), ...Object.keys(after.goBroker ?? {})])].sort();
+  for (const item of brokerItems) {
+    push(`goBroker.${item}`, before.goBroker?.[item] ?? null, after.goBroker?.[item] ?? null);
   }
   const plists = [...new Set([...Object.keys(before.launchAgents), ...Object.keys(after.launchAgents)])].sort();
   for (const name of plists) {
@@ -106,19 +152,70 @@ export function parseLeakSnapshot(raw: string, source: string): LeakSnapshot {
 function readLiveWorkspace(livePath: string): LeakSnapshot["liveWorkspace"] {
   const databaseFile = getWorkspacePaths(livePath).databaseFile;
   if (!existsSync(databaseFile)) {
-    return { path: livePath, projectCount: null, queueRevision: null, error: "live workspace database not found" };
+    return { ...UNOBSERVED, path: livePath, error: "live workspace database not found" };
   }
   let db: Database.Database | null = null;
   try {
     db = new Database(databaseFile, { readonly: true, fileMustExist: true });
+    const live = db;
+    const hasTable = (name: string) => Boolean(live.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+    const count = (table: string) => hasTable(table)
+      ? (live.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count
+      : null;
     const projects = db.prepare("SELECT COUNT(*) AS count FROM projects").get() as { count: number };
     const queue = db.prepare("SELECT revision FROM action_queue_state WHERE id = 'portfolio'").get() as { revision: number } | undefined;
-    return { path: livePath, projectCount: projects.count, queueRevision: queue?.revision ?? null, error: null };
+    const policy = hasTable("production_policy")
+      ? db.prepare("SELECT desired_state AS desiredState, revision, epoch FROM production_policy WHERE id = 'workspace'").get() as
+        { desiredState: string; revision: number; epoch: number } | undefined
+      : undefined;
+    return {
+      path: livePath,
+      projectCount: projects.count,
+      queueRevision: queue?.revision ?? null,
+      productionPolicy: policy ?? null,
+      productionPolicyReceipts: count("production_policy_receipts"),
+      productionAdmissions: count("production_admissions"),
+      error: null
+    };
   } catch (error) {
-    return { path: livePath, projectCount: null, queueRevision: null, error: error instanceof Error ? error.message : String(error) };
+    return { ...UNOBSERVED, path: livePath, error: error instanceof Error ? error.message : String(error) };
   } finally {
     db?.close();
   }
+}
+
+/**
+ * Cheap, content-free fingerprints of the go-broker install: release
+ * manifests, launchers and the managed skill and rule files. Missing
+ * directories contribute nothing.
+ */
+function goBrokerHashes(home: string): Record<string, string> {
+  const hashes: Record<string, string> = {};
+  const record = (file: string) => {
+    const key = path.relative(home, file);
+    let stat;
+    try { stat = lstatSync(file); } catch { return; }
+    if (stat.isSymbolicLink()) hashes[key] = `link:${readlinkSync(file)}`;
+    else if (stat.isFile()) hashes[key] = sha256(readFileSync(file));
+  };
+  const releases = path.join(home, ".local", "share", "arcadia", "go-broker", "releases");
+  if (existsSync(releases)) {
+    for (const release of readdirSync(releases).filter((entry) => !entry.startsWith(".")).sort()) {
+      record(path.join(releases, release, "broker-manifest.json"));
+    }
+  }
+  const bin = path.join(home, ".local", "bin");
+  if (existsSync(bin)) {
+    for (const entry of readdirSync(bin).filter((name) => /^arcadia-.*-broker/.test(name)).sort()) record(path.join(bin, entry));
+  }
+  for (const file of [
+    path.join(home, ".codex", "skills", "arcadia-go", "SKILL.md"),
+    path.join(home, ".codex", "skills", "arcadia-agent-ask", "SKILL.md"),
+    path.join(home, ".codex", "rules", "arcadia.rules"),
+    path.join(home, ".claude", "skills", "arcadia-go"),
+    path.join(home, ".claude", "skills", "arcadia-agent-ask")
+  ]) record(file);
+  return hashes;
 }
 
 function sha256(bytes: Buffer | string): string {

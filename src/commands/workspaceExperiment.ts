@@ -8,6 +8,7 @@ import {
   compareLeakSnapshots,
   parseLeakSnapshot,
   takeLeakSnapshot,
+  unverifiableReason,
   type LeakChange,
   type LeakSnapshot
 } from "../workspace/leakCheck.js";
@@ -28,6 +29,7 @@ export interface LeakCheckData {
 export function runLeakCheckCommand(options: { record?: string; baseline?: string; live?: string }): CommandSuccess<LeakCheckData> {
   const snapshot = takeLeakSnapshot({ liveWorkspace: options.live });
   let changes: LeakChange[] | null = null;
+  let baselineSnapshot: LeakSnapshot | null = null;
   if (options.baseline) {
     const baselinePath = path.resolve(options.baseline);
     let raw: string;
@@ -39,12 +41,30 @@ export function runLeakCheckCommand(options: { record?: string; baseline?: strin
         cause: error instanceof Error ? error.message : String(error)
       });
     }
-    changes = compareLeakSnapshots(parseLeakSnapshot(raw, baselinePath), snapshot);
+    baselineSnapshot = parseLeakSnapshot(raw, baselinePath);
+    changes = compareLeakSnapshots(baselineSnapshot, snapshot);
   }
   const recordedTo = options.record ? path.resolve(options.record) : null;
   if (recordedTo) {
     mkdirSync(path.dirname(recordedTo), { recursive: true });
     writeFileSync(recordedTo, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+  }
+  // A snapshot that could not read the live workspace proves nothing, and two
+  // identical failures would otherwise compare as "no change".
+  const unverifiable = unverifiableReason(snapshot, ...(baselineSnapshot ? [baselineSnapshot] : []));
+  if (unverifiable) {
+    throw new ArcadiaError(
+      "LEAK_CHECK_UNVERIFIABLE",
+      `Leak check could not verify the live workspace: ${unverifiable}.`,
+      1,
+      {
+        unverifiable: true,
+        reason: unverifiable,
+        recordedTo,
+        changes,
+        remedy: "Run it where the live workspace database is readable (for example outside the agent sandbox), or name it with --live."
+      }
+    );
   }
   if (changes && changes.length > 0) {
     throw new ArcadiaError(

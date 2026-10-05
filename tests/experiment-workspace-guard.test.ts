@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -143,6 +143,12 @@ describe("init --profile experiment", () => {
     expect(readExperimentWorkspace(live)).toBeNull();
   });
 
+  it("refuses a target nested inside any existing workspace", () => {
+    const nested = path.join(live, "nested", "exp-x");
+    expect(() => runInitCommand(nested, { profile: "experiment" })).toThrow(/inside another workspace/);
+    expect(existsSync(nested)).toBe(false);
+  });
+
   it("never seeds the real Arcadia Project, even when asked later", () => {
     expect(() => runInitCommand(experiment, { profile: "arcadia" })).toThrow(/arcadia-project.seed/);
     expect(projectCount(experiment)).toBe(0);
@@ -199,6 +205,21 @@ describe("Project repository containment", () => {
     }
   });
 
+  it("follows a dangling symlink instead of reading it as a new path inside the root", () => {
+    const link = path.join(experiment, "projects", "escape");
+    symlinkSync(path.join(root, "outside-not-yet-created"), link);
+    expect(() => registerProject(experiment, "Escape", link)).toThrow(/only repositories inside/);
+    expect(() => registerProject(experiment, "Escape child", path.join(link, "repo"))).toThrow(/only repositories inside/);
+  });
+
+  it("applies the same containment to capability repository paths", () => {
+    for (const [key, option] of [["rebuster configure", "repoPath"], ["blog configure-site", "contentRepoPath"]] as const) {
+      expect(evaluateCommandGuard(key, { workspace: experiment, [option]: path.join(root, "outside") }), key).not.toBeNull();
+      expect(evaluateCommandGuard(key, { workspace: experiment, [option]: path.join(experiment, "projects", "fixture") }), key).toBeNull();
+      expect(evaluateCommandGuard(key, { workspace: experiment }), key).toBeNull();
+    }
+  });
+
   it("refuses a repository the live workspace already registered", () => {
     const shared = path.join(experiment, "projects", "shared");
     mkdirSync(shared, { recursive: true });
@@ -239,11 +260,12 @@ describe("command classification", () => {
       "config set defaultWorkspace"
     ]));
     for (const key of guarded) {
-      const refused = evaluateCommandGuard(key, { workspace: experiment, apply: true });
+      const outside = path.join(root, "outside");
+      const refused = evaluateCommandGuard(key, { workspace: experiment, apply: true, repoPath: outside, contentRepoPath: outside });
       expect(refused, key).not.toBeNull();
       expect(refused!.refused.code).toBe("EXPERIMENT_WORKSPACE_REFUSED");
       expect(refused!.refused.message).toContain(key);
-      expect(evaluateCommandGuard(key, { workspace: live, apply: true }), key).toBeNull();
+      expect(evaluateCommandGuard(key, { workspace: live, apply: true, repoPath: outside, contentRepoPath: outside }), key).toBeNull();
     }
     for (const operation of Object.keys(GUARDED_OPERATIONS)) {
       expect(GUARDED_OPERATIONS[operation].reason).not.toBe("");
@@ -329,8 +351,9 @@ describe("guarded operations outside the CLI", () => {
     writeFileSync(impl, `#!/usr/bin/env bash\necho "$1" >> "${implCalls}"\n`);
     chmodSync(impl, 0o755);
     const script = path.resolve(import.meta.dirname, "..", "scripts", "services.sh");
-    const run = (action: string, workspace = experiment) => spawnSync("bash", [script, action], {
+    const run = (action: string, workspace = experiment, cwd = root) => spawnSync("bash", [script, action], {
       encoding: "utf8",
+      cwd,
       env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, ARCADIA_WORKSPACE: workspace, ARCADIA_RESTART_SCRIPT: impl }
     });
     for (const action of ["restart", "stop"]) {
@@ -346,12 +369,26 @@ describe("guarded operations outside the CLI", () => {
     // An ordinary workspace never consults the CLI, so a broken CLI cannot block a recovery restart.
     run("restart", live);
     expect(readFileSync(calls, "utf8").split("\n").filter((line) => line.includes("workspace guard"))).toHaveLength(2);
+    // A relative ARCADIA_WORKSPACE is resolved once, from the caller's directory,
+    // and that absolute path is what the guard is asked about.
+    const relative = run("stop", path.basename(experiment), path.dirname(experiment));
+    expect(relative.status, relative.stderr).toBe(3);
+    expect(readFileSync(calls, "utf8").trim().split("\n").at(-1)).toBe(`-s arcadia workspace guard services.stop --workspace ${experiment}`);
+    // A workspace that does not resolve to a directory is refused rather than guessed.
+    const missing = run("restart", "no-such-workspace");
+    expect(missing.status).toBe(3);
+    expect(missing.stderr).toContain("is not a directory");
+    expect(existsSync(implCalls) ? readFileSync(implCalls, "utf8").trim().split("\n") : []).not.toContain("stop");
   });
 
   it("the Discord bot refuses to start against an experiment workspace", () => {
     const env = { DISCORD_BOT_TOKEN: "t", DISCORD_CLIENT_ID: "c", DISCORD_GUILD_ID: "g", DISCORD_CHANNEL_ID: "ch" };
     expect(() => loadDiscordBotConfig({ ...env, ARCADIA_WORKSPACE: experiment })).toThrow(/discord-bot.start/);
     expect(loadDiscordBotConfig({ ...env, ARCADIA_WORKSPACE: live }).arcadiaWorkspace).toBe(live);
+    // A config that no longer parses but still mentions an experiment fails closed.
+    const configFile = path.join(experiment, "config", "arcadia.json");
+    writeFileSync(configFile, readFileSync(configFile, "utf8").replace(/}\s*$/, ""));
+    expect(() => loadDiscordBotConfig({ ...env, ARCADIA_WORKSPACE: experiment })).toThrow(/discord-bot.start/);
   });
 });
 
@@ -442,6 +479,53 @@ describe("leak check", () => {
       "hashes.claudeTrust",
       "launchAgents.com.arcadia.local.1.experiment.plist"
     ]);
+  });
+
+  it("detects capacity receipts, go-broker artifacts and a live production-policy write", () => {
+    seedHome();
+    vi.stubEnv("ARCADIA_CAPACITY_RECEIPTS_PATH", "");
+    const release = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", "abc123");
+    mkdirSync(release, { recursive: true });
+    writeFileSync(path.join(release, "broker-manifest.json"), "{\"revision\":\"abc123\"}");
+    mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+    symlinkSync(path.join(release, "arcadia-go-broker-claude"), path.join(home, ".local", "bin", "arcadia-go-broker-claude"));
+    const before = takeLeakSnapshot({ home });
+    expect(before.liveWorkspace.productionPolicy).toMatchObject({ desiredState: "inactive", revision: 0 });
+    expect(Object.keys(before.goBroker).sort()).toEqual([
+      path.join(".local", "bin", "arcadia-go-broker-claude"),
+      path.join(".local", "share", "arcadia", "go-broker", "releases", "abc123", "broker-manifest.json")
+    ]);
+    mkdirSync(path.join(home, ".arcadia", "telemetry"), { recursive: true });
+    writeFileSync(path.join(home, ".arcadia", "telemetry", "capacity-receipts.json"), "{}");
+    const other = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", "def456");
+    mkdirSync(other, { recursive: true });
+    writeFileSync(path.join(other, "broker-manifest.json"), "{}");
+    const db = new Database(path.join(live, "database", "arcadia.sqlite3"));
+    try { db.prepare("UPDATE production_policy SET revision = revision + 1, epoch = epoch + 1").run(); } finally { db.close(); }
+    const fields = compareLeakSnapshots(before, takeLeakSnapshot({ home })).map((change) => change.field);
+    expect(fields).toEqual([
+      "liveWorkspace.productionPolicy",
+      "hashes.capacityReceipts",
+      `goBroker.${path.join(".local", "share", "arcadia", "go-broker", "releases", "def456", "broker-manifest.json")}`
+    ]);
+  });
+
+  it("never passes when the live workspace cannot be observed", async () => {
+    seedHome();
+    const unreadable = path.join(root, "unreadable");
+    mkdirSync(path.join(unreadable, "database"), { recursive: true });
+    writeFileSync(path.join(unreadable, "database", "arcadia.sqlite3"), "not a database");
+    const snapshot = takeLeakSnapshot({ home, liveWorkspace: unreadable });
+    expect(snapshot.liveWorkspace.error).not.toBeNull();
+    expect(snapshot.liveWorkspace.projectCount).toBeNull();
+    const baseline = path.join(root, "leak", "unreadable.json");
+    const recorded = await runCli(["workspace", "leak-check", "--live", unreadable, "--record", baseline]);
+    expect("output" in recorded && recorded.output.error?.code).toBe("LEAK_CHECK_UNVERIFIABLE");
+    expect("output" in recorded && recorded.output.error?.details?.unverifiable).toBe(true);
+    expect(existsSync(baseline)).toBe(true);
+    // Two identical failures must not compare as "no change".
+    const compared = await runCli(["workspace", "leak-check", "--live", unreadable, "--baseline", baseline]);
+    expect("output" in compared && compared.output.error?.code).toBe("LEAK_CHECK_UNVERIFIABLE");
   });
 
   it("runs from the CLI without writing the live workspace, and fails on a change", async () => {

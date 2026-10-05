@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import type { Command } from "commander";
@@ -68,6 +68,13 @@ const SHARED_INGRESS = (alternativeVerb: string): CommandClassification => guard
   "The default ingress root is the shared iCloud Drive folder the live ingress service drains.",
   `Pass --ingress-root <a directory inside the experiment workspace> to ${alternativeVerb} a private ingress folder.`,
   ({ options, experiment }) => typeof options.ingressRoot === "string" && isInside(experiment.workspacePath, options.ingressRoot)
+);
+
+/** A repository path a capability registers must obey the same containment as Project repositories. */
+const INSIDE_ALLOWED_ROOT = (option: string, flag: string): CommandClassification => guarded(
+  "Registers a repository path outside the experiment's allowed repository root.",
+  `Omit ${flag}, or point it at a disposable fixture under the experiment's allowed repository root.`,
+  ({ options, experiment }) => typeof options[option] !== "string" || isInside(experiment.allowedRepoRoot, options[option])
 );
 
 /**
@@ -182,12 +189,12 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "decision validate": ALLOWED,
   "decision list": ALLOWED,
   "blog sites": ALLOWED,
-  "blog configure-site": ALLOWED,
+  "blog configure-site": INSIDE_ALLOWED_ROOT("contentRepoPath", "--content-repo-path"),
   "blog create-idea": ALLOWED,
   "blog prepare-schedule": ALLOWED,
   "blog draft-post": ALLOWED,
   "blog review": ALLOWED,
-  "rebuster configure": ALLOWED,
+  "rebuster configure": INSIDE_ALLOWED_ROOT("repoPath", "--repo-path"),
   "rebuster status": ALLOWED,
   "rebuster create-rebus": ALLOWED,
   "rebuster ingest-event": ALLOWED,
@@ -488,18 +495,32 @@ export function evaluateCommandGuard(
 // Repository containment
 // ---------------------------------------------------------------------------
 
-/** realpath of the nearest existing ancestor, plus the not-yet-existing rest. */
-export function canonicalPath(candidate: string): string {
+/**
+ * realpath of the nearest existing ancestor, plus the not-yet-existing rest.
+ * A dangling symlink counts as existing and is followed to its target, so
+ * `<exp>/projects/x -> /outside/new` canonicalizes outside the experiment
+ * instead of reading as a not-yet-created path inside it.
+ */
+export function canonicalPath(candidate: string, depth = 0): string {
   const absolute = path.resolve(candidate);
   const rest: string[] = [];
   let current = absolute;
-  while (!existsSync(current)) {
+  for (;;) {
+    let stat: ReturnType<typeof lstatSync> | null;
+    try { stat = lstatSync(current); } catch { stat = null; }
+    if (stat) {
+      if (stat.isSymbolicLink() && !existsSync(current)) {
+        if (depth >= 32) throw new Error(`Too many symbolic links resolving ${candidate}`);
+        const target = path.resolve(path.dirname(current), readlinkSync(current));
+        return canonicalPath(path.join(target, ...rest), depth + 1);
+      }
+      return path.join(realpathSync(current), ...rest);
+    }
     const parent = path.dirname(current);
     if (parent === current) return absolute;
     rest.unshift(path.basename(current));
     current = parent;
   }
-  return path.join(realpathSync(current), ...rest);
 }
 
 /** Strictly inside: the root itself is not inside itself. */
