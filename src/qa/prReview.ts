@@ -200,7 +200,7 @@ export interface QaPrReviewDependencies {
   now?: () => Date;
 }
 
-interface RawPullRequest {
+export interface RawPullRequest {
   number: number;
   title: string;
   url: string;
@@ -252,7 +252,7 @@ export interface PersistedQaContext {
   reviewerUnavailable?: string | null;
 }
 
-interface QaSandboxProof {
+export interface QaSandboxProof {
   passed: boolean;
   status: number | null;
   output: string;
@@ -1030,6 +1030,23 @@ function buildReviewPrompt(
     "",
     "Return only the structured verdict required by the supplied schema."
   ].join("\n");
+}
+
+/**
+ * The exact reviewer prompt `arcadia qa pr` assembles from evidence already
+ * read, without reading GitHub, writing the workspace or invoking a model.
+ * Read-only smokes use it to substitute one piece of evidence (such as a
+ * re-rendered pull-request body) and inspect what the reviewer would judge.
+ */
+export function assemblePrReviewPrompt(input: {
+  role?: PrReviewRole;
+  candidate: QaPrCandidate;
+  pullRequest: RawPullRequest;
+  patch: string;
+  sandboxProof: QaSandboxProof;
+  identity: string[];
+}): string {
+  return buildReviewPrompt(PR_REVIEW_ROLES[input.role ?? "qa"], input.candidate, input.pullRequest, input.patch, input.sandboxProof, input.identity);
 }
 
 function parseModelVerdict(
