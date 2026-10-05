@@ -89,6 +89,19 @@ describe("Validation evidence rendering", () => {
     expect(body).not.toContain("never rendered");
   });
 
+  it("relates the record's tree to the named candidate commit only from Git's answer", () => {
+    const sha = "50d1eab84e385a5566119831c82f5a6d32e752fd";
+    const same = renderValidationEvidence(input([check()], { candidateCommit: { sha, tree: TREE } }));
+    expect(same).toContain(`bound to candidate tree \`${TREE}\`, which is the tree of candidate commit \`${sha}\``);
+    const other = renderValidationEvidence(input([check()], { candidateCommit: { sha, tree: "e".repeat(40) } }));
+    expect(other).toContain(`; candidate commit \`${sha}\` has a different tree, \`${"e".repeat(40)}\`, so this record does not cover that commit`);
+    expect(other).not.toContain("which is the tree of");
+    const unread = renderValidationEvidence(input([check()], { candidateCommit: { sha, tree: null } }));
+    expect(unread).toContain(`; the tree of candidate commit \`${sha}\` could not be read, so their relation is not stated`);
+    const absent = renderValidationEvidence(input([check()]));
+    expect(absent).toContain(`bound to candidate tree \`${TREE}\`\n`);
+  });
+
   it("states that cwd and duration were not recorded by an earlier record, rather than inventing them", () => {
     const legacy = { ...check() } as Partial<ValidationCheckRecord>;
     delete legacy.cwd; delete legacy.durationMs; delete legacy.timedOut; delete legacy.timeoutMs;

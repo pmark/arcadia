@@ -505,7 +505,7 @@ describe("candidate preservation (remote)", () => {
     const plan = body.slice(0, body.indexOf("\n\n### Validation evidence\n"));
     expect(plan.startsWith("## Operator QA plan\n")).toBe(true);
     expect(plan.endsWith("Merge, deployment and publication remain separate operator gates.")).toBe(true);
-    expect(body).toContain(`bound to candidate tree \`${candidateFingerprint}\``);
+    expect(body).toContain(`bound to candidate tree \`${candidateFingerprint}\`, which is the tree of candidate commit \`${receipt.commitSha}\``);
     expect(body).toContain("- **Status:** passed — the declared validation command ran to completion and exited 0.");
     expect(body).toContain("- **Command:** `node scripts/check.mjs`\n- **Working directory:** `arcadia-preservation-x/source` in the host's temporary directory");
     expect(body).toContain("- **Exit code:** `0`\n- **Duration:** 42 ms");

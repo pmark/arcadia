@@ -704,7 +704,7 @@ function resolvePullRequestBody(
     result = refusedOperatorQaPlan(plan, facts,
       `the Operator QA plan could not be rendered (${error instanceof Error ? error.message : String(error)}).`);
   }
-  return { body: withValidationEvidence(result.body, plan, request), refusal: result.status === "refused" ? result.reason : null };
+  return { body: withValidationEvidence(result.body, plan, request, repositoryPath, commitSha), refusal: result.status === "refused" ? result.reason : null };
 }
 
 /**
@@ -712,13 +712,27 @@ function resolvePullRequestBody(
  * the completion-settlement line. Like the plan, a rendering failure becomes
  * an explicit status and never stops the push.
  */
-function withValidationEvidence(planBody: string, plan: OperatorQaPlanSource, request: CandidatePreservationRequest): string {
+function withValidationEvidence(
+  planBody: string,
+  plan: OperatorQaPlanSource,
+  request: CandidatePreservationRequest,
+  repositoryPath: string,
+  commitSha: string
+): string {
+  // A failed or timed-out Git read only drops the commit relation, never the evidence.
+  let commitTree: string | null;
+  try {
+    commitTree = tryGit(repositoryPath, ["rev-parse", "--verify", `${commitSha}^{tree}`]) || null;
+  } catch {
+    commitTree = null;
+  }
   try {
     return composePreservedPullRequestBody(planBody, {
       evidenceRef: request.validation.evidenceRef,
       evidence: readValidationEvidence(request.validation.evidenceRef),
       declaredCommands: plan.validationCommands,
-      candidateFingerprint: request.validation.candidateFingerprint
+      candidateFingerprint: request.validation.candidateFingerprint,
+      candidateCommit: { sha: commitSha, tree: commitTree }
     });
   } catch {
     return `${planBody}\n\n${unavailableValidationEvidence("the validation evidence could not be rendered (renderer defect).")}\n\n${COMPLETION_SETTLEMENT_LINE}`;

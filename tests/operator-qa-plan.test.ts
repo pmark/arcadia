@@ -42,6 +42,8 @@ describe("Operator QA plan rendering", () => {
   it("renders one criterion as a read-only inspection bound to the exact Action, commit, base and files", () => {
     const body = rendered();
     expect(body.startsWith("## Operator QA plan\n")).toBe(true);
+    expect(body).toContain("Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with `git worktree remove ../qa-7f1390376f4d`. Every later step except the declared validation only reads Git data, and only the declared validation runs candidate code.");
+    expect(body).not.toContain("read-only Git inspection");
     expect(body).toContain("- **Action:** `three-action-rehearsal/write-start-marker` — Implement MARKER.md");
     expect(body).toContain(`- **Candidate:** branch \`claude/write-start-marker-20261005T155147519Z\` at commit \`${COMMIT}\``);
     expect(body).toContain(`- **Base:** \`main\` at \`${BASE}\``);

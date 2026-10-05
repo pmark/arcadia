@@ -103,6 +103,12 @@ export interface ValidationEvidenceInput {
   declaredCommands: readonly string[];
   /** The receipt's `candidateFingerprint`: the tree preservation committed. */
   candidateFingerprint: string;
+  /**
+   * The candidate commit the plan names (the receipt's `commitSha`) and its
+   * tree as Git reports it. The Record line relates the two only from these
+   * facts; omitted, it states no relation.
+   */
+  candidateCommit?: { sha: string; tree: string | null };
 }
 
 /**
@@ -230,7 +236,7 @@ type Prepared =
   | { kind: "unreadable"; ref: string; reason: string }
   | { kind: "unbound"; ref: string; producer: string; tree: string; expected: string }
   | { kind: "none-declared"; ref: string }
-  | { kind: "results"; ref: string; record: ValidationEvidenceRecord; tree: string; commands: PreparedCommand[]; undeclared: number };
+  | { kind: "results"; ref: string; record: ValidationEvidenceRecord; tree: string; commit: { sha: string; tree: string | null } | null; commands: PreparedCommand[]; undeclared: number };
 
 function prepareValidationEvidence(input: ValidationEvidenceInput): Prepared {
   const ref = displayRef(input.evidenceRef);
@@ -254,7 +260,7 @@ function prepareValidationEvidence(input: ValidationEvidenceInput): Prepared {
     };
   });
   const undeclared = record.results.filter((result) => !declared.includes(result.command.trim())).length;
-  return { kind: "results", ref, record, tree: record.tree, commands, undeclared };
+  return { kind: "results", ref, record, tree: record.tree, commit: input.candidateCommit ?? null, commands, undeclared };
 }
 
 function commandStatus(result: ValidationCheckRecord): CommandStatus {
@@ -394,8 +400,17 @@ function recordLine(prepared: Prepared): string {
     case "unbound":
       return `${ref} (producer ${code(clip(prepared.producer, 100))})`;
     case "results":
-      return `${ref} (producer ${code(clip(prepared.record.producer, 100))}), bound to candidate tree ${code(prepared.tree)}`;
+      return `${ref} (producer ${code(clip(prepared.record.producer, 100))}), bound to candidate tree ${code(prepared.tree)}${commitRelation(prepared.tree, prepared.commit)}`;
   }
+}
+
+/** How the record's tree relates to the named candidate commit, stated only from Git's answer. */
+function commitRelation(tree: string, commit: { sha: string; tree: string | null } | null): string {
+  if (!commit || !commit.sha) return "";
+  const sha = code(clip(commit.sha, 80));
+  if (commit.tree === tree) return `, which is the tree of candidate commit ${sha}`;
+  if (commit.tree === null) return `; the tree of candidate commit ${sha} could not be read, so their relation is not stated`;
+  return `; candidate commit ${sha} has a different tree, ${code(clip(commit.tree, 80))}, so this record does not cover that commit`;
 }
 
 function overallStatus(prepared: Prepared): string {
