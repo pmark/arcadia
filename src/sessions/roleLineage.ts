@@ -81,6 +81,46 @@ export function requirementForSession(repoRoot: string, session: Pick<AgentSessi
   return action ? requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action }) : null;
 }
 
+/**
+ * True when every passed development attempt this Session settled was for an
+ * earlier input revision of its Action than the checked-in Plan now carries,
+ * that is, the Action was amended (a governed change of its next_action,
+ * acceptance criteria, responsibility or execution) after the work was done.
+ * Such a candidate can never integrate: no verdict binds it to the current
+ * input. It stays preserved exactly as it is, but it no longer claims the
+ * repository's terminal handoff or the Action, so the amended Action can be
+ * dispatched under its fresh lineage. Only a candidate the worker already
+ * preserved, locally or remotely (a canonical `worker-tick-preserve-<session>`
+ * receipt), qualifies,
+ * so an unpreserved one still gets its preservation attempt first. A Session
+ * with no passed development attempt of its own (a failed one, or one from
+ * before attempt lineage existed) keeps the earlier behaviour. If the Action
+ * were later amended back to exactly the old input, such a candidate would
+ * read as current again with its claim already released; amendments only
+ * move forward in practice, and integration still needs current verdicts.
+ */
+export function developedForSupersededInput(db: Database.Database, session: Pick<AgentSession, "id" | "project_slug" | "plan_slug" | "action_id">, action: PlanActionDoc | undefined): boolean {
+  if (!action) return false;
+  const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_role_attempts', 'candidate_preservation_receipts')")
+    .all() as Array<{ name: string }>).map((row) => row.name));
+  if (!tables.has("session_role_attempts") || !tables.has("candidate_preservation_receipts")) return false;
+  if (!db.prepare("SELECT 1 FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${session.id}`)) return false;
+  const requirement = requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action });
+  const own = (db.prepare(`SELECT input_revision, terminal_receipt_json FROM session_role_attempts
+    WHERE requirement_id = ? AND role = 'development' AND status = 'passed'`).all(requirement.requirementId) as Array<{ input_revision: string; terminal_receipt_json: string | null }>)
+    .filter((row) => {
+      try { return (JSON.parse(row.terminal_receipt_json ?? "null") as { sessionId?: string } | null)?.sessionId === session.id; } catch { return false; }
+    });
+  return own.length > 0 && own.every((row) => row.input_revision !== requirement.inputRevision);
+}
+
+/** {@link developedForSupersededInput} against the Action in the checked-in Plan at `repoRoot`; false when the Action is no longer there. */
+export function sessionDevelopedForSupersededInput(db: Database.Database, session: Pick<AgentSession, "id" | "project_slug" | "plan_slug" | "action_id">, repoRoot: string): boolean {
+  const plan = discoverDocs(repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
+  const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
+  return developedForSupersededInput(db, session, action);
+}
+
 // ---------------------------------------------------------------- development
 
 function liveSessionFor(db: Database.Database, requirement: RequirementIdentity, exceptSessionId: string | null): string | null {

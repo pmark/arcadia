@@ -26,6 +26,7 @@ import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
 import { renderActionBrief } from "./actionBrief.js";
+import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
 import { opencodeVariant } from "./worktreePreparation.js";
@@ -832,7 +833,10 @@ export function reserveAgentWorktree(db: Database.Database, input: {
     let held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
     // A claim whose candidate already landed through a merged PR is released
     // rather than refused over (Issue #733).
-    if (held && held.worktree_path !== worktreePath && releaseLandedActionClaim(db, held)) {
+    // So is a finished Session's claim whose work was done for a superseded
+    // input of the Action: it can never integrate, and the amended Action
+    // needs a fresh dispatch.
+    if (held && held.worktree_path !== worktreePath && (releaseLandedActionClaim(db, held) || releaseSupersededActionClaim(db, held))) {
       held = getActiveActionClaim(db, repositoryPath, input.project, input.actionId, input.now);
     }
     if (held && held.worktree_path !== worktreePath) throw actionAlreadyClaimed(held, input.actionId, input.now);
@@ -989,6 +993,37 @@ export function claimCandidateLanded(claim: Pick<AgentWorktreeReservation, "repo
 export function releaseLandedActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
   if (!claim.project || !claim.action_id || !claim.claim_generation) return false;
   if (!claimCandidateLanded(claim)) return false;
+  return releaseActionClaim(db, {
+    repositoryPath: claim.repository_path,
+    project: claim.project,
+    actionId: claim.action_id,
+    generation: claim.claim_generation
+  });
+}
+
+/**
+ * Release `claim` when it is held by a finished Session (neither prepared nor
+ * running) whose worktree holds no uncommitted work and whose every passed
+ * development attempt was for an earlier input revision of the Action than
+ * the checked-in Plan now carries (see {@link developedForSupersededInput}).
+ * Only the claim columns are cleared, fenced on the exact generation: the
+ * worktree reservation row, the worktree, its branch and any pull request
+ * stay exactly as they are. Anything short of that proof keeps the claim.
+ */
+export function releaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+  if (!claim.project || !claim.action_id || !claim.claim_generation) return false;
+  const holders = (db.prepare("SELECT * FROM agent_sessions WHERE project_slug = ? AND action_id = ? ORDER BY created_at DESC, rowid DESC")
+    .all(claim.project, claim.action_id) as AgentSession[])
+    .filter((session) => canonicalPath(session.worktree_path) === claim.worktree_path);
+  const holder = holders[0];
+  if (!holder || holder.status === "prepared" || holder.status === "running") return false;
+  try {
+    if (candidateWorktreeIsGone(claim.repository_path)) return false;
+    if (!candidateWorktreeIsGone(claim.worktree_path) && uncommittedChanges(claim.worktree_path).length > 0) return false;
+    if (!sessionDevelopedForSupersededInput(db, holder, claim.repository_path)) return false;
+  } catch {
+    return false;
+  }
   return releaseActionClaim(db, {
     repositoryPath: claim.repository_path,
     project: claim.project,

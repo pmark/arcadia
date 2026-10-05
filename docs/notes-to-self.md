@@ -297,3 +297,10 @@ keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitut
 The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
 Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
 A generated managed document is judged by real Arcadia code, never a canned `errorCount`: the fake's `{ passthrough: "probe" | "cli" }` reply runs the checkout's code (G1's fixture once hid invalid YAML behind a faked docs sync).
+
+## Re-run a passed Action on a reused fixture
+
+keys: rehearsal run 2, reset, amend Action, requirement input revision, attempt_retry_not_authorized, docs sync skipped, older than the record, superseded candidate, Action claim
+
+A passed development attempt is never relaunched for the same input. `requirementIdentity` hashes `next_action`, the acceptance criteria, the responsibility and the execution; editing the title changes nothing. Docs sync skips a Plan whose `updated:` date is older than the synced record, and its JSON still reports `errorCount: 0`, so also bump `updated:` and require the Action's change to be `update` (`unchanged` only when resuming an already-synced reset).
+A finished, unmerged candidate from the earlier input used to stop dispatch twice: the tick's terminal handoff deferred every admission, and the Action claim refused the new worktree. Both now skip it only when the worker preserved it and its own passed attempts are all for a superseded input (`developedForSupersededInput`). See `tests/rehearsal-run-2-amended-action.test.ts`.

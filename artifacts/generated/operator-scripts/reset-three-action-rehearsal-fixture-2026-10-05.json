@@ -1,0 +1,42 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "reset-three-action-rehearsal-fixture-2026-10-05",
+  "title": "Reset the three-Action rehearsal fixture for run 2 (two Plan lines on fixture main: one Action's text and the Plan's updated date; no production change)",
+  "script": "reset-three-action-rehearsal-fixture-2026-10-05.sh",
+  "repeatable": false,
+  "problem": "Run 1 of the three-Action rehearsal left a passed development attempt and a failed code review for write-start-marker in the live workspace, with its candidate preserved on branch claude/write-start-marker-20261004T170245861Z and pull request #1. Arcadia never relaunches a passed development attempt for an unchanged requirement input (the tick escalates attempt_retry_not_authorized), so a second run on the same fixture needs write-start-marker's requirement input revision to change, without changing what the Action must produce, any other Action, or run 1's evidence.",
+  "desired_effect": "Rewrite only two lines of the fixture Plan: write-start-marker's next_action (appending that this is rehearsal run 2 from the reset fixture main) and the Plan's own updated: date (docs sync skips a Plan whose date is older than its record), which changes its requirement input revision while its acceptance criteria, responsibility, execution, title and the other two Actions stay byte-identical; validate the amended fixture with Arcadia's own discovery, a dry-run docs sync, resolveReadySet and requirementIdentity before any commit or push; commit it once on fixture main, push it without force, run docs sync, and write a receipt carrying the new fixture head that G6 and G7 for run 2 bind. Run it from a terminal: ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004 /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-2026-10-05.sh run",
+  "operator_command": "ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004 /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-2026-10-05.sh run",
+  "parameters": {
+    "ARCADIA_REHEARSAL_GITHUB_REPO": "Required environment variable: the exact owner/name of the fixture repository G1 prepared. The owner must be the authenticated gh user and the name must match ^arcadia-three-action-rehearsal(-[a-z0-9]{1,24})?$. Launched from /runs without it, the script refuses with a receipt and changes nothing."
+  },
+  "authority": {
+    "does": [
+      "Refuses before any other step unless ARCADIA_REHEARSAL_GITHUB_REPO is exactly owner/name with a safe disposable-fixture name; requires the Arcadia checkout clean on main, ARCADIA_WORKSPACE not exported, the CLI default workspace martianrover from user config, and production readable, Inactive and with zero live admissions (rechecked immediately before the push)",
+      "Requires run 1's records: a succeeded G1 receipt for this exact repository (its genesis commit is the expected previous main) and a succeeded, Off-confirmed latest receipt of run 1's G8 (restore-terminal-off-three-action-rehearsal-2026-10-04)",
+      "Requires the local fixture clean on main with the exact manifest, origin and single G1 genesis root; the Project three-action-rehearsal registered from this fixture under G1's registration marker (read-only probe) with no prepared or running fixture Session; the GitHub repository owned by the gh user, private, not archived, not a fork and carrying G1's disposable-fixture description",
+      "Requires run 1's candidate exactly as reconciled: local and GitHub branch claude/write-start-marker-20261004T170245861Z and pull request #1's head all at 58bcd9155cf64836994045ca63a7707d8b9ebe75, checked before the change and again after the push, and records previousMain, candidateTip and prTip in the receipt",
+      "Renders the amendment from the genesis tree into dot-directories of its run directory that Arcadia's discovery skips, and refuses unless exactly two lines of the fixture Plan changed (write-start-marker's next_action and the Plan's updated: date), the amended fixture passes G1's own validation rules (zero docs-sync errors, pointer at write-start-marker, serial depends_on, only write-start-marker ready), only write-start-marker's next_action differs, its requirementIdentity input revision changes with an unchanged criteria fingerprint, and the other Actions' identities are unchanged; reads the live attempt lineage read-only and refuses if the amended input already has an attempt, or if a run-1 Session that passed write-start-marker is still prepared or running, was not preserved by the worker, or has uncommitted work in its worktree (the cases in which run 2 could not dispatch past it)",
+      "Only after that validation, commits exactly the validated Plan file on fixture main (one commit on genesis) and pushes refs/heads/main without force; then confirms GitHub main is the new head, runs arcadia docs sync --project three-action-rehearsal --apply and confirms each of the three Actions synced exactly once",
+      "Resumes safely: a reset commit already made by this script but not pushed is re-validated byte for byte and pushed; one already pushed proceeds to docs sync; after a succeeded run a rerun refuses as already reset",
+      "Writes a timestamped receipt under runs/<timestamp-pid>/ (githubRepository, previousMain, newHead, candidateBranch, candidateTip, prTip, actionTextRevision with both next_action texts and input revisions) on success and refusal, plus a failure handoff on refusal"
+    ],
+    "never_does": [
+      "Never previews, activates or deactivates production, and never creates, presses or changes a Grant or a Decision",
+      "Never changes any Action other than write-start-marker, its acceptance criteria, status or responsibility, PROJECT.md, the genesis check or the CI workflow",
+      "Never touches run 1's branch claude/write-start-marker-20261004T170245861Z, its worktree or pull request #1, and never comments on, merges, closes or edits a pull request",
+      "Never force-pushes, rewrites, resets or rebases fixture history, and never deletes, renames, archives or changes the visibility of a repository",
+      "Never commits or pushes before the amended fixture validates, and never edits the workspace database",
+      "Never restarts a service or worker, reinstalls the broker, or launches a Session",
+      "Never guesses or defaults the repository identifier, and never exports or sets ARCADIA_WORKSPACE"
+    ]
+  },
+  "success": {
+    "effect": "Fixture main on GitHub and locally is one reset commit on genesis that changes only write-start-marker's next_action and the Plan's updated: date; docs sync applied it with zero errors; the receipt carries the new fixture head, the previous main and run 1's untouched candidate and pull request tips. Production is unchanged.",
+    "next": "If Arcadia main moved since the last install, run recover-arcadia-host-services from a terminal with ARCADIA_WORKSPACE set inline on that one command (never exported). Then run the G6 preflight preflight-three-action-rehearsal-2026-10-05, which binds this receipt; press G7 grant-production-three-action-rehearsal-2026-10-05 within 30 minutes of its passing receipt."
+  },
+  "failure": {
+    "effect": "The receipt and failure handoff name the failed precondition, the fixture state found and whether this run committed or pushed. Nothing was forced, rewritten or deleted, and production, Grants and run 1's candidate were not touched.",
+    "next": "Correct the named precondition and rerun with the same identifier; a commit or push this script already made is resumed, not repeated. If the handoff says the fixture moved by another path, do not edit it by hand: ask for a new reviewed reset."
+  }
+}

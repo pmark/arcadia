@@ -77,6 +77,44 @@ sends no signal itself beyond bounded timeouts (that restart path may SIGTERM Ar
 service processes and rewrites `~/.codex`/`~/.claude` configuration with
 backups) and never discards a candidate.
 
+**Rehearsal run 2** reuses fixture `pmark/arcadia-three-action-rehearsal-20261004`.
+The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
+G1's genesis. Run these in order, each from a terminal unless noted:
+
+1. Merge the run-2 pull request. The G8 reconciliation repair (#955) is
+   merged and the existing G8 `restore-terminal-off-three-action-rehearsal-2026-10-04`
+   already succeeded for run 1 (run `20261005T043958Z-2548`); the reset
+   requires that receipt. This pull request changes runtime paths, so install
+   it with step 3 before G6.
+2. Reset the fixture, exactly:
+
+   ```sh
+   ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004 /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-2026-10-05.sh run
+   ```
+
+   `reset-three-action-rehearsal-fixture-2026-10-05` is one-shot and refuses
+   unless run 1's G8 succeeded. It changes only write-start-marker's
+   `next_action` and the Plan's `updated:` date, which gives that Action a fresh
+   attempt lineage. It validates with Arcadia's own code before its one commit,
+   pushes fixture main without force, runs docs sync and records the new
+   fixture head. It never touches production, Grants, the other Actions,
+   run 1's branch `claude/write-start-marker-20261004T170245861Z` or PR #1. The
+   local branch, the GitHub branch and the PR #1 head must all stay at
+   `58bcd915…` before and after.
+3. If Arcadia main moved on a runtime path since the last install (the
+   run-2 pull request itself is such a change), run
+   `recover-arcadia-host-services` with `ARCADIA_WORKSPACE` inline (above).
+4. Run the run-2 G6 `preflight-three-action-rehearsal-2026-10-05`. It binds the
+   reset head recorded in the latest succeeded reset receipt.
+5. Within 30 minutes, press the run-2 G7
+   `grant-production-three-action-rehearsal-2026-10-05` from `/runs`. It has
+   its own request id and cites the operator's #925 answer (Log
+   `operator-answers-rehearsal-run2-2026-10-05`).
+6. End with the run-2 G8 variant
+   `restore-terminal-off-three-action-rehearsal-2026-10-05`. It turns Off only
+   the run-2 (or run-1) G7 policy with the exact fixture scope, and otherwise
+   behaves exactly as the merged 2026-10-04 G8.
+
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
 complete approved Action order. The selected next Action is prominent; every
