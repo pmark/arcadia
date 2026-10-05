@@ -325,6 +325,10 @@ import {
   runIntelligenceUsageCommand
 } from "./commands/intelligence.js";
 import {
+  renderIntelligenceNarrateSuccess,
+  runIntelligenceNarrateCommand
+} from "./commands/narrate.js";
+import {
   renderOrientationEntryListSuccess,
   renderOrientationEntrySuccess,
   renderOrientationPacketComposeSuccess,
@@ -4115,6 +4119,41 @@ the fingerprint hashes them, so any change between preview and apply is refused.
 
   addJsonOption(
     intelligence
+      .command("narrate")
+      .description("Narrate text, a file, or a GitHub issue's commentary into one WAV via the local speech route (requires ARCADIA_SPEECH_LOCAL_ROUTE, a LiteLLM model alias)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--text <text>", "Text to narrate")
+      .option("--file <path>", "Read narration text from a local file")
+      .option("--issue <ref>", "GitHub issue URL, owner/repo#number, or number (with --repo)")
+      .option("--repo <owner/name>", "Repository for a bare --issue number")
+      .option("--voice-id <id>", "Semantic Arcadia voice id (e.g. arcadia.narrator)")
+      .option("--route <name>", "Local speech route/model alias")
+      .option("--out <path>", "Output WAV path (default: <workspace>/artifacts/narration/)")
+      .option("--max-chunk-chars <n>", "Maximum characters per synthesized chunk", (value) => Number.parseInt(value, 10))
+      .option("--idempotency-key <key>", "Optional base idempotency key")
+  ).action((options: {
+    workspace: string;
+    text?: string;
+    file?: string;
+    issue?: string;
+    repo?: string;
+    voiceId?: string;
+    route?: string;
+    out?: string;
+    maxChunkChars?: number;
+    idempotencyKey?: string;
+    json?: boolean;
+  }) =>
+    runCliAction(
+      "intelligence.narrate",
+      options,
+      () => runIntelligenceNarrateCommand(options),
+      renderIntelligenceNarrateSuccess
+    )
+  );
+
+  addJsonOption(
+    intelligence
       .command("list-jobs")
       .description("List recent Arcadia Intelligence jobs for a given clientApp (read-only history)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -5056,6 +5095,10 @@ function commandNameFromArgv(argv: string[]): string {
 
   if (first === "intelligence" && second === "smoke-speech") {
     return "intelligence.smoke-speech";
+  }
+
+  if (first === "intelligence" && second === "narrate") {
+    return "intelligence.narrate";
   }
 
   if (first === "intelligence" && second === "list-jobs") {

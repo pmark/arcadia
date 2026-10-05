@@ -189,6 +189,23 @@ pnpm arcadia intelligence smoke-image \
 The smoke command returns the terminal job, artifact URIs, and the isolated
 job workspace path under `.arcadia/intelligence/jobs/`.
 
+Narrate text, a local file, or a GitHub issue's full commentary into a single
+WAV using the configured local speech route:
+
+```sh
+pnpm arcadia intelligence narrate \
+  --workspace "$WORKSPACE" \
+  --issue "https://github.com/pmark/arcadia/issues/944" \
+  --voice-id arcadia.narrator \
+  --out "$WORKSPACE/artifacts/narration/issue-944.wav" \
+  --json
+```
+
+Long sources are split deterministically, synthesized one chunk at a time
+through the ordinary `audio.speech.generate` lifecycle, and concatenated into
+one PCM WAV. It needs the same `ARCADIA_SPEECH_LOCAL_ROUTE` / LiteLLM setup as
+`smoke-speech`; see `docs/intelligence/NARRATION.md`.
+
 Show read-only current-day Intelligence usage and coding-agent availability:
 
 ```sh
