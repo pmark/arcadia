@@ -422,6 +422,57 @@ Live state reported before the run: run 2's proposal is accepted, run 1's is
 rejected, and `arcadia advance` answers `launch` for the fixture. The reset
 re-reads all of this itself and refuses on any other pending fixture item.
 
+### Three-Action rehearsal run 4 — 2026-10-05 candidate
+
+`prepare-run-4-rehearsal-scripts` drafts the run-4 pairs. None was run; they
+were exercised only with `--describe` and against fakes. Run 3 ended with its
+G8 terminal Off proven (run `20261005T194025Z-26232`). Fixture main is run 3's
+reset head `4375aafe…`, one commit on run 2's `0d3d2ced…` and two on genesis
+`5e0e183f…`. Run 3's candidate is preserved on branch
+`claude/write-start-marker-20261005T184707757Z` and PR #3 at `50d1eab8…`,
+beside PR #2 at `7f139037…` and PR #1 at `58bcd915…`. Every 2026-10-04,
+2026-10-05 and run-3 pair is retired from use and left byte-unchanged (a test
+pins their sha256).
+
+- **Reset.** `reset-three-action-rehearsal-fixture-run4-2026-10-05` clones the
+  run-3 reset. It requires run 3's reset receipt (`newHead` `4375aafe…` on run
+  2's head) and run 3's G8 terminal Off. It rewrites write-start-marker's
+  `next_action` a fourth time: its input revision moves off `959a3b12c686…`,
+  `7a8dd4f5960f…` and `e22c8cfadd0b…` with an unchanged criteria fingerprint.
+  The text keeps the original sentence and names the unused completion id
+  `complete-write-start-marker-run4-2026-10-05`. The reset refuses at
+  `proposal_gate`, before any settle or commit, if that id already exists. It
+  checks all three earlier candidates (local branch, GitHub branch and PR head
+  each) before the push and after it. Run 3's date rule and the read-only
+  live dry-run docs sync are kept, and a test proves the same-day sync reopens
+  the record run 3 left `done`.
+- **Issue #968.** Unchanged from run 3, with run 3's
+  `complete-write-start-marker-run3-2026-10-05` as the one proposal the reset
+  may reject (declared in its descriptor's `agentAsk`): pending → governed
+  rejected settle before the commit; rejected or accepted elsewhere → left as
+  it is, only with fixture main at run 3's reset head and the gate clear; any
+  other pending fixture item (run 1's or run 2's included) → refuse. Live, run
+  3's proposal is accepted.
+- **Evidence.** The receipt records the new head, the three candidates' tips
+  before and after, every fixture proposal's state before and after, and the
+  superseded proposal. `tests/rehearsal-run-4-amended-action.test.ts` runs the
+  real transition resolver and tick through three earlier runs and shows the
+  run-4 input launching as development ordinal 1.
+- **G6, G7 and G8.** The run-4 G6 and G7 bind the run-4 reset head: one commit
+  on run 3's head, three on genesis. G6 keeps every run-3 check. G7 is the
+  run-3 G7 line for line apart from ids, binding and wording, which a test
+  compares, and its `next_after` voids on every rehearsal G8, reset, recover
+  and reinstall. The run-4 G8 also owns the run-4 request id. Its
+  reconciliation and hash pins are byte-identical to run 3's.
+- **Order.** Validation-evidence repair PR merged and reinstalled by the
+  release manager → merge this pull request → reset → G6 → freeze (no push to
+  main, reinstall, restart or G8) → operator presses G7 within 30 minutes → G8
+  from the Terminal panel or `/runs`.
+- **Run 4 evidence to capture.** Keep the live QA reviewer's verdicts on the
+  run's pull request (PR #4), in `artifacts/qa/pull-requests/.../qa-report.md`,
+  especially the "Operator QA plan", "Tests and evidence" and "Approval
+  boundaries" criteria.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`
