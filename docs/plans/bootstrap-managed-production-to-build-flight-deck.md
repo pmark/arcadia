@@ -3832,7 +3832,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-2026-10-04.json", "tests/three-action-rehearsal-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/940"]
   - id: isolate-next-operator-action
     title: Make the operator's single next action on the /actions page impossible to miss and hard to confuse with any other action.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make the operator's single next action on the /actions page impossible to miss and hard to confuse with any other action.
