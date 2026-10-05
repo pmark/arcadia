@@ -1710,6 +1710,10 @@ updated: 2026-10-05
 ## 2026-10-05 — Agent Ask pr-opened-arcadia-pr952
 
 - **Did:** Agents can now work in parallel with a live rehearsal: the freeze window refuses broker reinstalls and service restarts while production is Active, with an operator override; review at https://github.com/pmark/arcadia/pull/952
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr946
+
+- **Did:** Decision 0083 is open for review on bounded GitHub messaging for one three-agent Issue conversation: https://github.com/pmark/arcadia/pull/946
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
