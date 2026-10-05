@@ -3639,7 +3639,7 @@ actions:
     references: ["src/cli.ts", "src/activity/recorder.ts", "src/workspace/experimentGuard.ts", "src/workspace/leakCheck.ts", "src/commands/workspaceExperiment.ts", "https://github.com/pmark/arcadia/issues/947", "https://github.com/pmark/arcadia/issues/940"]
   - id: define-agent-comms-role
     title: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "Define the Comms role: one event-driven communication session per coding-agent platform that observes, relays and escalates across agents through one GitHub coordination Issue, without dispatching or claiming work."
@@ -3656,7 +3656,7 @@ actions:
     references: ["docs/agent-guidance/agent-peer-watch.md", "docs/agent-guidance/git-identity.md", "docs/agent-guidance/index.json", "https://github.com/pmark/arcadia/issues/944", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
   - id: require-inline-workspace-mode
     title: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
-    status: done
+    status: open
     responsibility: agent
     effort: session
     next_action: Make ARCADIA_REQUIRE_INLINE_WORKSPACE refuse default-workspace fallback and set it for Arcadia-launched agent sessions where that is safe.
@@ -3801,7 +3801,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: define-agent-comms-role
+current_action: adopt-rehearsal-freeze-window
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
