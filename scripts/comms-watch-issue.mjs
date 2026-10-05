@@ -3,12 +3,21 @@
 // a model turn (docs/agent-guidance/agent-comms.md, "Waiting costs no model
 // tokens"). It polls the Issue's comments read-only through `gh api`, keeps a
 // comment-id watermark, skips the Comms session's own comments, backs off when
-// the core rate limit runs low, and exits with exactly one JSON line:
+// the core rate limit runs low, and exits with exactly one JSON line. The
+// event shapes and exit codes are documented in agent-comms.md:
 //
-//   {"event":"comment",...}  a comment newer than the watermark from anyone else
-//   {"event":"rearm",...}    the deadline (default 110 min, under the 2-hour
-//                            background limit) passed; re-arm with `watermark`
-//   {"event":"error",...}    gh failed repeatedly; exit status 1
+//   exit 0 {"event":"comment",...}  a comment newer than the watermark that is
+//                                   not this session's own
+//   exit 0 {"event":"rearm",...}    the deadline (default 110 min, under the
+//                                   2-hour background limit) or a rate-limit
+//                                   reset beyond it; re-arm with `watermark`
+//   exit 1 {"event":"error",...}    gh failed repeatedly
+//   exit 2 (stderr only)            invalid arguments
+//
+// A comment is this session's own only when its last non-empty line is exactly
+// `— <signature>` and its first line starts with this session's role line,
+// `Comms (<platform>, <session>):`. The session discriminator keeps a second
+// Comms session of the same platform and tier visible.
 //
 // It never posts, edits or reacts. `arcadia agents watch --until-event`
 // (Action implement-agent-peer-watch-reader) replaces it once that ships.
@@ -16,13 +25,14 @@
 // Usage:
 //   node scripts/comms-watch-issue.mjs --repo pmark/arcadia --issue 944 \
 //     --self-signature "Claudia Swift <claudia.swift@agents.arcadia.local>" \
-//     --self-first-line "Comms (claude):" [--since <comment-id>|latest] \
+//     --self-first-line "Comms (claude, <session>):" [--since <comment-id>|latest] \
 //     [--interval 60] [--max-minutes 110] [--min-remaining 500]
 import { execFileSync } from "node:child_process";
 import { parseArgs } from "node:util";
 
 const SCHEMA = "arcadia-comms-watch-event-v1";
 const AGENT_SIGNATURE_LINE = /^— (.+ <[^<>\s]+@agents\.arcadia\.local>)$/;
+const COMMS_ROLE_LINE = /^Comms \((claude|codex|opencode), ([^()]+)\):/;
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 const { values } = parseArgs({
@@ -58,25 +68,33 @@ const minRemaining = Number(values["min-remaining"]);
 if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) usage("--repo owner/name is required");
 if (!/^\d+$/.test(issue)) usage("--issue <number> is required");
 if (!selfSignature) usage("--self-signature (the `signature` from `arcadia identity resolve --json`) is required");
-if (!selfFirstLine) usage("--self-first-line (this session's role line prefix, e.g. \"Comms (claude):\") is required");
+if (!COMMS_ROLE_LINE.test(selfFirstLine) || !selfFirstLine.endsWith("):")) {
+  usage("--self-first-line must be this session's role line, \"Comms (<claude|codex|opencode>, <session>):\"");
+}
 if (values.since !== "latest" && !/^\d+$/.test(values.since)) usage("--since must be a comment id or latest");
 if (!(intervalMs >= 0) || !(deadline > Date.now()) || !(minRemaining >= 0)) usage("--interval, --max-minutes and --min-remaining must be numbers");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 const ghRead = (args) => execFileSync("gh", ["api", "--method", "GET", ...args], { encoding: "utf8", timeout: 60_000 });
 
-const lines = (body) => body.replace(/\r/g, "").split("\n").map((line) => line.trim());
+/** Non-empty lines, CRLF normalized and trimmed. */
+const lines = (body) => body.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean);
+const firstLine = (body) => lines(body)[0] ?? "";
+const lastLine = (body) => lines(body).at(-1) ?? "";
 
-/** Self means: the exact signature line `— <signature>` AND this session's role line first. */
+/** Self means: last line exactly `— <signature>` AND this session's own role line first. */
 function isSelf(body) {
-  const all = lines(body);
-  const first = all.find((line) => line.length > 0) ?? "";
-  return all.includes(`— ${selfSignature}`) && first.startsWith(selfFirstLine);
+  return lastLine(body) === `— ${selfSignature}` && firstLine(body).startsWith(selfFirstLine);
 }
 
+/** The signature a comment closes with, or null (an operator comment, or an unsigned one). */
 function signatureOf(body) {
-  const matches = lines(body).map((line) => AGENT_SIGNATURE_LINE.exec(line)?.[1]).filter(Boolean);
-  return matches.at(-1) ?? null;
+  return AGENT_SIGNATURE_LINE.exec(lastLine(body))?.[1] ?? null;
+}
+
+function commsOf(body) {
+  const match = COMMS_ROLE_LINE.exec(firstLine(body));
+  return match ? { platform: match[1], session: match[2].trim() } : null;
 }
 
 /** Wait out a low core budget; false when the deadline arrives first. */
@@ -103,10 +121,17 @@ function readComments(sinceTime) {
 let watermark = values.since === "latest" ? null : Number(values.since);
 let sinceTime = null;
 let failures = 0;
+// Never emit a null watermark: before the first successful read under
+// `--since latest` the only honest re-arm value is "latest".
+const currentWatermark = () => watermark ?? "latest";
 
 for (;;) {
   try {
-    if (!(await respectRateLimit())) emit({ event: "rearm", reason: "rate_limited", repo, issue: Number(issue), watermark });
+    // The bootstrap read under `--since latest` comes before any rate-limit
+    // wait, so a re-arm always carries a concrete comment id.
+    if (watermark !== null && !(await respectRateLimit())) {
+      emit({ event: "rearm", reason: "rate_limited", repo, issue: Number(issue), watermark });
+    }
     const comments = readComments(sinceTime);
     failures = 0;
     if (watermark === null) {
@@ -125,7 +150,8 @@ for (;;) {
           created_at: first.created_at,
           url: first.html_url,
           signature: signatureOf(first.body ?? ""),
-          first_line: lines(first.body ?? "").find((line) => line.length > 0)?.slice(0, 200) ?? "",
+          comms: commsOf(first.body ?? ""),
+          first_line: firstLine(first.body ?? "").slice(0, 200),
           unread: others.length,
           watermark
         });
@@ -136,9 +162,9 @@ for (;;) {
   } catch (error) {
     failures += 1;
     if (failures >= MAX_CONSECUTIVE_FAILURES) {
-      emit({ event: "error", repo, issue: Number(issue), watermark, message: String(error?.message ?? error).slice(0, 500) }, 1);
+      emit({ event: "error", repo, issue: Number(issue), watermark: currentWatermark(), message: String(error?.message ?? error).slice(0, 500) }, 1);
     }
   }
-  if (Date.now() + intervalMs >= deadline) emit({ event: "rearm", reason: "deadline", repo, issue: Number(issue), watermark });
+  if (Date.now() + intervalMs >= deadline) emit({ event: "rearm", reason: "deadline", repo, issue: Number(issue), watermark: currentWatermark() });
   await sleep(intervalMs);
 }

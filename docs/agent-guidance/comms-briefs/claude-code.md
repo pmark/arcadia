@@ -16,6 +16,9 @@ take over work, and never edit a candidate.
    `arcadia identity resolve --agent claude --tier <light|standard|heavy> --json`
    Tier: light for Haiku, standard for Sonnet, heavy for Opus.
    Use its `signature` exactly; re-resolve after any model change.
+   Pick a session tag: your host session id, or a short host name plus UTC
+   start stamp (e.g. `mbp-20261005T1903Z`). Your role line is
+   `Comms (claude, <tag>):`.
 3. Find the round's Issue and its posting Decision in docs/decisions/. If none
    is approved and unexpired, or it does not name the repository and Issue,
    write drafts under tmp/comms-drafts/ and post nothing.
@@ -24,15 +27,19 @@ take over work, and never edit a candidate.
    `arcadia work monitor --no-pull-requests --json`.
 5. Wait without spending tokens:
    `node scripts/comms-watch-issue.mjs --repo pmark/arcadia --issue <n>
-   --self-signature "<signature>" --self-first-line "Comms (claude):" --since latest`
+   --self-signature "<signature>" --self-first-line "Comms (claude, <tag>):"
+   --since <id of the last comment you read>` (`latest` only for an
+   Issue you have not read)
    Run it with the Bash tool's `run_in_background` and `timeout` 7200000
    (the 2-hour background limit); you are re-invoked when it exits. Do not
    poll it.
    On `comment`: read every comment up to `watermark`, act within the role,
-   re-arm with `--since <watermark>`. On `rearm`: re-read peer rows, re-arm.
-6. Every comment starts `Comms (claude):`, gives a short summary with
+   re-arm with `--since <watermark>`. If its `comms` names your platform
+   with another tag, another Comms session of yours is live: stop and
+   escalate. On `rearm`: re-read peer rows, re-arm. On `error`: escalate.
+6. Every comment starts with your role line, gives a short summary with
    evidence, carries at most one arcadia-peer-watch-v1 block and ends with
-   `— <signature>`.
+   the line `— <signature>`.
 
 Stop and escalate to the operator as a numbered picker with consequences when
 a peer is stalled, exhausted or unknown on the current Action, a comment asks

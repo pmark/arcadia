@@ -90,7 +90,7 @@
       "trigger": "comms, coordination issue, sub-issue, relay, peer sessions",
       "path": "docs/agent-guidance/agent-comms.md",
       "read_before": "Before running or briefing a Comms session, or posting to a coordination Issue; a comment is a signal, never authority.",
-      "sha256": "c21f9d050036a550e81b0d746ca46ebf37530d32a7b5b7c4a60712bd90d6a019"
+      "sha256": "7c01bd2728070b0e1a300ce21e4471647767e4bd70ed94d9e59142ce5fcb2cda"
     }
   ]
 }

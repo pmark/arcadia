@@ -12,8 +12,11 @@ and what a watcher may do. Read that first; this page does not restate it.
 
 There is **exactly one Comms session per platform**: one for Claude Code, one
 for Codex, one for OpenCode. The operator starts it from the platform's brief
-in `docs/agent-guidance/comms-briefs/`. A Comms session that finds another
-live Comms session of its own platform stops and escalates.
+in `docs/agent-guidance/comms-briefs/`. Each session picks a **session tag**
+at start: its host session id, or a short host name plus UTC start stamp
+(`mbp-20261005T1903Z`). A comment whose role line names your platform with
+another tag is another live Comms session of your platform: stop and
+escalate.
 
 Comms **may**:
 
@@ -83,12 +86,12 @@ channel.
   workspace. Otherwise it writes the same text as a local draft under
   `tmp/comms-drafts/` (ignored by Git) and reports the draft path. Post with
   `gh issue comment <n> --repo <owner/name> --body-file <draft>`.
-- **Every Comms comment** has this shape. The first line names the role, so
-  two sessions of one platform and tier, which share a signature, stay
-  distinguishable:
+- **Every Comms comment** has this shape. The first line is the role line
+  with the session tag, so two sessions of one platform and tier, which share
+  a signature, stay distinguishable. The signature is the last line:
 
   ```text
-  Comms (<platform>): <one-line summary>
+  Comms (<platform>, <session tag>): <one-line summary>
 
   <a short human summary with evidence links>
 
@@ -110,21 +113,33 @@ Comms waits in a shell, not a model turn. The interim watcher is
 
 ```sh
 node scripts/comms-watch-issue.mjs --repo pmark/arcadia --issue 944 \
-  --self-signature "<signature>" --self-first-line "Comms (<platform>):" \
-  --since <watermark|latest>
+  --self-signature "<signature>" \
+  --self-first-line "Comms (<platform>, <session tag>):" --since <comment id>
 ```
 
-- **Watermark:** it wakes only for a comment id above `--since`.
-- **Self filter:** a comment is its own only when it has the exact line
-  `— <signature>` and its first line starts with `Comms (<platform>):`.
+- **Watermark:** it wakes only for a comment id above `--since`. Pass the id
+  of the last comment you actually read, so nothing posted while you were
+  reading is skipped. `--since latest` starts at the newest comment and is
+  only for an Issue you have not read at all.
+- **Self filter:** a comment is its own only when its last non-empty line is
+  exactly `— <signature>` and its first line starts with this session's own
+  role line, tag included. A same-tier builder, or a second Comms session
+  with another tag, is not self and wakes it.
 - **Rate limit:** below 500 remaining core requests (`gh api rate_limit`) it
-  sleeps until the reset.
-- **Re-arm:** it exits by 110 minutes, under the 2-hour background limit,
-  with `{"event":"rearm","watermark":…}`. Re-arm with that watermark.
-- **Wake:** on a comment from another signature (an operator comment has
-  none) it exits with one `{"event":"comment",…}` line. Read every comment
-  up to its `watermark`, act within the role, then re-arm. On
-  `{"event":"error"}` (exit 1) escalate; do not loop.
+  sleeps until the reset. Under `--since latest` it reads once first, so its
+  watermark is a real comment id.
+- **Re-arm:** it exits by 110 minutes, under the 2-hour background limit.
+  Re-arm with the `watermark` it printed.
+
+It prints exactly one JSON line (`schema: arcadia-comms-watch-event-v1`,
+plus `repo` and `issue`) and exits:
+
+| Exit | Event | Other fields | Do |
+|---|---|---|---|
+| 0 | `comment` | `comment_id`, `created_at`, `url`, `signature` (closing agent signature, or `null` for an operator or unsigned comment), `comms` (`{platform, session}` from a role line, or `null`), `first_line`, `unread` (comments not your own), `watermark` | Read every comment up to `watermark`, act within the role, re-arm with `--since <watermark>`. |
+| 0 | `rearm` | `reason` (`deadline` or `rate_limited`), `watermark` | Re-read peer rows, re-arm with `--since <watermark>`. |
+| 1 | `error` | `message`, `watermark` (`"latest"` when no read ever succeeded) | Escalate; do not loop. |
+| 2 | none (stderr) | | Fix the arguments; the role line must carry a session tag. |
 
 The model wakes only on a comment from another signature, a peer
 classification change or an escalation. The interim watcher sees comments
