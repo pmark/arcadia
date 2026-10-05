@@ -140,9 +140,17 @@ done
 # a cheap no-op when the installed broker already matches HEAD, so this costs
 # nothing on the common restart that has nothing to do with the broker.
 # Failure here must never fail the restart the operator actually asked for.
+# A rehearsal freeze override covers only the step it was given for: the
+# ensure runs without ARCADIA_FREEZE_OVERRIDE, so an override that let this
+# restart through under an Active policy never also reinstalls the broker the
+# live run's Sessions use. That ensure then refuses, which leaves the broker
+# at its installed revision and only warns here; the restart stays complete.
 ENSURE_LOG="$HOME/.local/share/arcadia/go-broker/ensure.log"
 if ! mkdir -p "$(dirname "$ENSURE_LOG")" 2>&1; then
   echo "warning: could not create $(dirname "$ENSURE_LOG"); skipping go-broker ensure" >&2
-elif ! (cd "$REPO" && pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1; then
+elif ! (cd "$REPO" && env -u ARCADIA_FREEZE_OVERRIDE pnpm arcadia go-broker ensure) >>"$ENSURE_LOG" 2>&1; then
   echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
+  if [[ -n "${ARCADIA_FREEZE_OVERRIDE:-}" ]]; then
+    echo "note: the restart's ARCADIA_FREEZE_OVERRIDE does not extend to go-broker ensure; while production is Active it refuses. To reinstall too, run it with its own override: ARCADIA_FREEZE_OVERRIDE=<reason> pnpm arcadia go-broker ensure" >&2
+  fi
 fi
