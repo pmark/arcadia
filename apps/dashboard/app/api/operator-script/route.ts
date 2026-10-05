@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { isSameOriginRequest } from "../../../lib/originGuard";
 import { loadOperatorScriptReceipt } from "../../../lib/operatorScriptReceipt";
+import { loadLatestRunReceipts } from "../../../lib/operatorRunReceipts";
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 
 export const dynamic = "force-dynamic";
@@ -116,6 +117,7 @@ export async function GET() {
   try {
     const entries = await readdir(LIBRARY_PATH);
     const ids = entries.filter((entry) => entry.endsWith(".json")).map((entry) => entry.slice(0, -5)).filter((id) => SAFE_ID.test(id));
+    const runReceipts = await loadLatestRunReceipts(LIBRARY_PATH);
     const scripts = await Promise.all(ids.map(async (id) => {
       try {
         const { descriptor } = await loadDescriptor(id);
@@ -136,6 +138,8 @@ export async function GET() {
           success: descriptor.success,
           failure: descriptor.failure,
           repeatable: descriptor.repeatable === true,
+          nextAfter: descriptor.next_after ?? null,
+          lastRunReceipt: runReceipts.get(descriptor.id) ?? null,
           state: state?.status === "running" ? state : receipt
             ? { ...state, status: receipt.status === "running" && !processIsRunning(receipt.pid) ? "failed" : receipt.status,
                 message: receipt.status === "running" && !processIsRunning(receipt.pid) ? "The bounded runner stopped; retry this exact action to recover its canonical receipt." : receipt.message }

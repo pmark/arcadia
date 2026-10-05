@@ -1766,3 +1766,17 @@ updated: 2026-10-05
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Completed arcadia/isolate-next-operator-action
+
+- **Did:** Completed Action arcadia/isolate-next-operator-action from accepted evidence (Candidate 2e5e4da7f8087e0eee207d0f446476e5cb35d15d).
+- **Result:** Every declared acceptance criterion was accepted as met: "The /actions page (and the operator-actions view on /runs if it lists the same cards) shows at most one 'Do this next' action, isolated at the top in a visually distinct panel above everything else, with a one-sentence plain-language instruction, the exact card name, and, when a time window applies (for example G7 within 30 minutes of a passing G6 receipt), the local deadline and a live countdown; it is derived deterministically from published descriptors, live production status and run receipts (never from an agent's message), and when nothing needs the operator the panel says so plainly."; "Every other action is visually separated below the panel and de-emphasized; pressing an action that is not the current next action, or one whose effect would invalidate the next action (for example a G8 or a host restart while a fresh G6 receipt awaits its G7), first shows a confirmation that names the current next action and what the press would undo, without removing or weakening any action's existing gates or refusals."; "Works one-handed at phone width; component and route tests cover the next-action derivation (G6 then G7 with its window, an expired window falling back to G6, nothing pending, a failed run) and the confirm-on-off-path behaviour; pnpm dashboard:build, lint, tsc and focused suites pass, and a live read-only smoke of the page is captured as a screenshot in the pull request.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-isolate-next-operator-action-2026-10-05).
+
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr966
+
+- **Did:** Your next button on /actions now stands alone: a Do this next panel with a countdown, and a Keep my place check before any other press; review at https://github.com/pmark/arcadia/pull/966 (merge held until run 2 G8)
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

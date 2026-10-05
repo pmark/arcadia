@@ -13,8 +13,22 @@ export interface OperatorScriptDescriptor {
   success: { effect: string; next: string };
   failure: { effect: string; next: string };
   repeatable?: boolean;
+  /**
+   * Optional sequencing hint for the /actions "Do this next" panel. Declares that
+   * this action follows a succeeded run of `id` within `within_minutes`, that a
+   * run of any `voided_by` action after that success voids it, and (optionally)
+   * that it is only offered while production is inactive. Presentation only: it
+   * never relaxes or adds an execution gate; the script still checks everything.
+   */
+  next_after?: NextAfter;
   planAmendment?: PlanAmendmentInput;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
+}
+export interface NextAfter {
+  id: string;
+  within_minutes: number;
+  voided_by?: string[];
+  when_production?: "inactive";
 }
 export class OperatorScriptContractError extends Error {
   readonly next = "Use the shared Plan-amendment descriptor and canonical launcher, then run pnpm check:operator-scripts before publishing.";
@@ -32,6 +46,18 @@ export function planAmendmentLauncher(id: string): string {
   return '#!/usr/bin/env bash\nset -euo pipefail\nlibrary_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nrepo="$(cd "$library_dir/../../.." && pwd)"\nexec mise exec -- node "$repo/scripts/run-plan-amendment.mjs" "$library_dir/' + id + '.json" "${1:-}"\n';
 }
 
+const nextAfterKeys = new Set(["id", "within_minutes", "voided_by", "when_production"]);
+function validateNextAfter(value: unknown, id: string): void {
+  const n = value as NextAfter;
+  if (!n || typeof n !== "object" || Array.isArray(n) || Object.keys(n).some((key) => !nextAfterKeys.has(key)) ||
+      !slug.test(n.id) || n.id === id || !Number.isInteger(n.within_minutes) || n.within_minutes < 1 || n.within_minutes > 1440 ||
+      (n.voided_by !== undefined && (!Array.isArray(n.voided_by) || !n.voided_by.every((entry) => slug.test(entry) && entry !== id && entry !== n.id) ||
+        new Set(n.voided_by).size !== n.voided_by.length)) ||
+      (n.when_production !== undefined && n.when_production !== "inactive")) {
+    fail("INVALID_OPERATOR_CONTRACT", "next_after needs a different prerequisite id, whole within_minutes from 1 to 1440, distinct voided_by ids other than this action and its prerequisite, and when_production \"inactive\" if set.");
+  }
+}
+
 /** Read-only contract shared by /runs and the library-wide CI gate. */
 export function validateOperatorScriptContract(value: unknown, id: string, script: string): OperatorScriptDescriptor {
   if (!value || typeof value !== "object") fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor must be an object.");
@@ -42,6 +68,7 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
       (d.kind !== undefined && d.kind !== "grant") || (d.kind === "grant" && d.repeatable === true)) {
     fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor is incomplete or does not match its library entry.");
   }
+  if (d.next_after !== undefined) validateNextAfter(d.next_after, id);
   if (d.planAmendment !== undefined) {
     if (d.agentAsk !== undefined) fail("INVALID_OPERATOR_CONTRACT", "Plan amendments use planAmendment, not a second Agent Ask declaration.");
     try { validatePlanAmendmentInput(d.planAmendment); }
