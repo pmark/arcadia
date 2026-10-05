@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
 import { ArcadiaError } from "../cli/errors.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { getWorkspacePaths } from "../workspace/paths.js";
+import { loadUserConfig, readExperimentWorkspace, userConfigPath } from "../workspace/config.js";
+import { canonicalPath } from "../workspace/experimentGuard.js";
+import { getWorkspacePaths, resolveWorkspacePath } from "../workspace/paths.js";
 import { resolveWorkspace } from "../workspace/resolve.js";
 import { readProductionPolicySafely } from "./policy.js";
 
@@ -37,18 +39,35 @@ const ALTERNATIVES: Record<FreezeOperation, string> = {
     "Check services with `scripts/services.sh status` (read-only). Inside the run only its own Off-first terminal step touches services; after the terminal production Off receipt, the release-manager or orchestrator session runs recover-arcadia-host-services.sh."
 };
 
+/** One workspace the freeze check read. */
+export interface FreezeObservation {
+  workspace: string;
+  /** `resolved`: the workspace this command resolves. `default`: the user-config default (the live one). */
+  roles: Array<"resolved" | "default">;
+  state: "active" | "inactive" | "unreadable";
+  policyRevision: number | null;
+  policyEpoch: number | null;
+  observedAt: string;
+  unreadableReason?: string;
+}
+
 export interface RehearsalFreezeDecision {
   operation: FreezeOperation;
+  /** The workspace that decided: the Active or unreadable one, else the resolved one. */
   workspace: string | null;
   /**
-   * What read-only `production status` reports for this workspace, `unreadable`
-   * when a resolved workspace's policy cannot be read, or `no_workspace` when
-   * none is configured or resolvable (production cannot be Active without one).
+   * The combined state: `active` when any checked workspace reports Active,
+   * `unreadable` when none is Active but one cannot be read, `inactive` when
+   * every checked workspace reads Inactive, and `no_workspace` when neither a
+   * resolved nor a default workspace exists (production cannot be Active
+   * without one).
    */
   state: "active" | "inactive" | "unreadable" | "no_workspace";
   policyRevision: number | null;
   policyEpoch: number | null;
   observedAt: string;
+  /** Every workspace read, resolved and default (deduplicated). */
+  checked: FreezeObservation[];
   /** `allowed`: not Active. `overridden`: refused, then bypassed by the inline override. */
   decision: "allowed" | "overridden";
   /** Present only when the override bypassed a refusal. */
@@ -72,12 +91,19 @@ export function isFreezeOperation(value: string): value is FreezeOperation {
   return (FREEZE_OPERATIONS as readonly string[]).includes(value);
 }
 
+const OVERRIDE_HINT = `Operator override: ${FREEZE_OVERRIDE_ENV}=<reason>; see ${FREEZE_PROCEDURE}`;
+
 /**
  * Refuses `operation` while managed production is Active, and fails closed
- * when the policy cannot be read. `ARCADIA_FREEZE_OVERRIDE=<reason>` bypasses
- * either refusal; the returned decision carries the reason, and the caller
- * puts its `warning` in the command's receipt. Returns the decision when the
- * operation may proceed.
+ * when a policy cannot be read. The go-broker and launchd services are
+ * host-wide, so the check reads both the workspace this command resolves and
+ * the user-config default (the live workspace, read-only, recording nothing
+ * there), and refuses when either is Active. An experiment workspace keeps
+ * its existing path: it never reads the live default (Decision 0082), and its
+ * own guard already refuses these host-wide steps first.
+ * `ARCADIA_FREEZE_OVERRIDE=<reason>` bypasses either refusal; the returned
+ * decision carries the reason, and the caller puts its `warning` in the
+ * command's receipt. Returns the decision when the operation may proceed.
  */
 export function assertRehearsalFreezeAllows(
   operation: FreezeOperation,
@@ -87,54 +113,91 @@ export function assertRehearsalFreezeAllows(
   const overrideReason = env[FREEZE_OVERRIDE_ENV]?.trim() ?? "";
   const override = overrideReason ? { env: FREEZE_OVERRIDE_ENV, reason: overrideReason } as const : undefined;
   const alternative = ALTERNATIVES[operation];
+  const now = () => new Date().toISOString();
 
-  const resolution = resolveWorkspace({ workspace: input.workspace, cwd: input.cwd, env });
-  const workspace = resolution.workspacePath;
-  if (!workspace) {
+  const checked = observeWorkspaces(input, env);
+  if (checked.length === 0) {
     // First-time setup (`go-broker install` before any workspace exists):
-    // managed production needs a workspace and its policy, so with none
-    // configured or resolvable nothing can be Active. A workspace that
-    // resolves but cannot be read still fails closed below.
+    // managed production needs a workspace and its policy, so with neither a
+    // resolved nor a default workspace nothing can be Active.
     return {
       operation,
       workspace: null,
       state: "no_workspace",
       policyRevision: null,
       policyEpoch: null,
-      observedAt: new Date().toISOString(),
+      observedAt: now(),
+      checked,
       decision: "allowed",
       note: `Rehearsal freeze check for ${operation}: no Arcadia workspace is configured or resolvable, so managed production cannot be Active; proceeding.`
     };
   }
-  const databaseFile = getWorkspacePaths(workspace).databaseFile;
-  const read = existsSync(databaseFile)
-    ? readPolicy(workspace)
-    : { status: "unavailable" as const, reason: `No workspace database at ${databaseFile}.`, observedAt: new Date().toISOString() };
 
-  if (read.status !== "ok") {
+  const resolved = checked.find((entry) => entry.roles.includes("resolved")) ?? checked[0];
+  const active = checked.find((entry) => entry.state === "active");
+  const unreadable = checked.find((entry) => entry.state === "unreadable");
+  const decider = active ?? unreadable ?? resolved;
+  const observed = {
+    operation,
+    workspace: decider.workspace,
+    policyRevision: decider.policyRevision,
+    policyEpoch: decider.policyEpoch,
+    observedAt: decider.observedAt,
+    checked
+  };
+  const which = (entry: FreezeObservation) =>
+    entry.roles.includes("resolved") ? `workspace ${entry.workspace}` : `default workspace ${entry.workspace}`;
+
+  if (active) {
     if (override) {
       return {
-        operation,
-        workspace,
-        state: "unreadable",
-        policyRevision: null,
-        policyEpoch: null,
-        observedAt: read.observedAt,
+        ...observed,
+        state: "active",
         decision: "overridden",
         override,
-        unreadableReason: read.reason,
-        warning: `Rehearsal freeze check for ${operation} could not read production status (${read.reason}); proceeding under ${FREEZE_OVERRIDE_ENV}=${override.reason}`
+        warning: `Rehearsal freeze overridden for ${operation} while managed production is Active in ${which(active)} (revision ${active.policyRevision}, epoch ${active.policyEpoch}): ${FREEZE_OVERRIDE_ENV}=${override.reason}`
+      };
+    }
+    throw new ArcadiaError(
+      FREEZE_REFUSAL_CODE,
+      `Refused ${operation}: managed production is Active in ${which(active)} (revision ${active.policyRevision}, epoch ${active.policyEpoch}), so the rehearsal freeze window is open. ${alternative} ${OVERRIDE_HINT}`,
+      3,
+      {
+        operation,
+        reason: FREEZE_REASON,
+        workspace: active.workspace,
+        policyRevision: active.policyRevision,
+        policyEpoch: active.policyEpoch,
+        observedAt: active.observedAt,
+        checked,
+        alternative,
+        override: `${FREEZE_OVERRIDE_ENV}=<reason>`,
+        procedure: FREEZE_PROCEDURE
+      }
+    );
+  }
+
+  if (unreadable) {
+    if (override) {
+      return {
+        ...observed,
+        state: "unreadable",
+        decision: "overridden",
+        override,
+        unreadableReason: unreadable.unreadableReason,
+        warning: `Rehearsal freeze check for ${operation} could not read production status in ${which(unreadable)} (${unreadable.unreadableReason}); proceeding under ${FREEZE_OVERRIDE_ENV}=${override.reason}`
       };
     }
     throw new ArcadiaError(
       FREEZE_UNVERIFIED_CODE,
-      `Refused ${operation}: managed production status could not be read, so a live rehearsal cannot be ruled out. ${read.reason}`,
+      `Refused ${operation}: managed production status could not be read in ${which(unreadable)}, so a live rehearsal cannot be ruled out. ${unreadable.unreadableReason} ${OVERRIDE_HINT}`,
       1,
       {
         operation,
         reason: "production_status_unreadable",
-        workspace,
-        cause: read.reason,
+        workspace: unreadable.workspace,
+        cause: unreadable.unreadableReason,
+        checked,
         alternative: `Repair the workspace so \`arcadia production status\` reads, or, when no run can be affected, rerun with ${FREEZE_OVERRIDE_ENV}=<reason>.`,
         override: `${FREEZE_OVERRIDE_ENV}=<reason>`,
         procedure: FREEZE_PROCEDURE
@@ -142,40 +205,57 @@ export function assertRehearsalFreezeAllows(
     );
   }
 
-  const policy = read.policy;
-  const observed = {
-    operation,
+  return { ...observed, state: "inactive", decision: "allowed" };
+}
+
+/** The resolved workspace and, outside an experiment, the user-config default, each read once. */
+function observeWorkspaces(input: RehearsalFreezeInput, env: NodeJS.ProcessEnv): FreezeObservation[] {
+  const targets: Array<{ workspace: string; role: "resolved" | "default" }> = [];
+  const resolvedPath = resolveWorkspace({ workspace: input.workspace, cwd: input.cwd, env }).workspacePath;
+  if (resolvedPath) targets.push({ workspace: resolvedPath, role: "resolved" });
+  const experiment = resolvedPath ? readExperimentWorkspace(resolvedPath) : null;
+  if (!experiment) {
+    let configured: string | undefined;
+    try {
+      configured = loadUserConfig(env).defaultWorkspace?.trim() || undefined;
+    } catch (error) {
+      return [
+        ...targets.map((target) => observe(target.workspace, [target.role])),
+        unreadableObservation(userConfigPath(env), ["default"], `The user config cannot be read: ${error instanceof Error ? error.message : String(error)}`)
+      ];
+    }
+    if (configured) targets.push({ workspace: resolveWorkspacePath(configured), role: "default" });
+  }
+  const merged = new Map<string, Array<"resolved" | "default">>();
+  for (const target of targets) {
+    const key = canonicalPath(target.workspace);
+    merged.set(key, [...(merged.get(key) ?? []), target.role]);
+  }
+  return [...merged.entries()].map(([workspace, roles]) => observe(workspace, roles));
+}
+
+function observe(workspace: string, roles: Array<"resolved" | "default">): FreezeObservation {
+  const databaseFile = getWorkspacePaths(workspace).databaseFile;
+  if (!existsSync(databaseFile)) return unreadableObservation(workspace, roles, `No workspace database at ${databaseFile}.`);
+  const read = readPolicy(workspace);
+  if (read.status !== "ok") return unreadableObservation(workspace, roles, read.reason, read.observedAt);
+  return {
     workspace,
-    policyRevision: policy.revision,
-    policyEpoch: policy.epoch,
+    roles,
+    state: read.policy.desiredState === "active" ? "active" : "inactive",
+    policyRevision: read.policy.revision,
+    policyEpoch: read.policy.epoch,
     observedAt: read.observedAt
   };
-  if (policy.desiredState !== "active") return { ...observed, state: "inactive", decision: "allowed" };
-  if (override) {
-    return {
-      ...observed,
-      state: "active",
-      decision: "overridden",
-      override,
-      warning: `Rehearsal freeze overridden for ${operation} while managed production is Active (revision ${policy.revision}, epoch ${policy.epoch}): ${FREEZE_OVERRIDE_ENV}=${override.reason}`
-    };
-  }
-  throw new ArcadiaError(
-    FREEZE_REFUSAL_CODE,
-    `Refused ${operation}: managed production is Active (revision ${policy.revision}, epoch ${policy.epoch}), so the rehearsal freeze window is open. ${alternative}`,
-    3,
-    {
-      operation,
-      reason: FREEZE_REASON,
-      workspace,
-      policyRevision: policy.revision,
-      policyEpoch: policy.epoch,
-      observedAt: read.observedAt,
-      alternative,
-      override: `${FREEZE_OVERRIDE_ENV}=<reason>`,
-      procedure: FREEZE_PROCEDURE
-    }
-  );
+}
+
+function unreadableObservation(
+  workspace: string,
+  roles: Array<"resolved" | "default">,
+  reason: string,
+  observedAt = new Date().toISOString()
+): FreezeObservation {
+  return { workspace, roles, state: "unreadable", policyRevision: null, policyEpoch: null, observedAt, unreadableReason: reason };
 }
 
 /** The receipt lines a decision adds to its command's `warnings`. */
