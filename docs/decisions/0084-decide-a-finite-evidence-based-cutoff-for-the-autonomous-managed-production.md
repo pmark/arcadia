@@ -4,7 +4,7 @@ type: decision
 id: "0084"
 slug: decide-a-finite-evidence-based-cutoff-for-the-autonomous-managed-production
 project: arcadia
-status: open
+status: approved
 question: Decide a finite evidence-based cutoff for the autonomous managed-production milestone and the condition that shifts Arcadia's primary engineering priority to same-repository parallel production, without treating an unfinished proof as complete or granting concurrent live execution.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-05
+answer: Use a two-stage finite cutoff
+decided: 2026-10-05
 ---
 
 # Decision 0084: Decide a finite evidence-based cutoff for the autonomous managed-production milestone and the condition that shifts Arcadia's primary engineering priority to same-repository parallel production, without treating an unfinished proof as complete or granting concurrent live execution.
