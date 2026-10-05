@@ -43,7 +43,10 @@ The CLI enforces the first two items. While the policy is Active,
 `go-broker install|ensure` (and so `reinstall-go-broker.sh`, before it
 installs) and `scripts/services.sh restart|stop` (and so
 `recover-arcadia-host-services.sh`) refuse with `production_active_freeze` and
-name the read-only alternative. The CLI refuses when status cannot be read.
+name the read-only alternative. The CLI refuses when a workspace resolves
+but its production status cannot be read. With no workspace configured or
+resolvable, as in first-time setup, production cannot be Active, so it
+proceeds and notes that in its receipt.
 `services.sh` warns and proceeds instead, because a recovery restart must not
 depend on a runnable CLI. Shell callers can ask first with
 `arcadia production freeze-check <operation>`. The other items are

@@ -40,8 +40,12 @@ const ALTERNATIVES: Record<FreezeOperation, string> = {
 export interface RehearsalFreezeDecision {
   operation: FreezeOperation;
   workspace: string | null;
-  /** What read-only `production status` reports for this workspace, or `unreadable`. */
-  state: "active" | "inactive" | "unreadable";
+  /**
+   * What read-only `production status` reports for this workspace, `unreadable`
+   * when a resolved workspace's policy cannot be read, or `no_workspace` when
+   * none is configured or resolvable (production cannot be Active without one).
+   */
+  state: "active" | "inactive" | "unreadable" | "no_workspace";
   policyRevision: number | null;
   policyEpoch: number | null;
   observedAt: string;
@@ -53,6 +57,8 @@ export interface RehearsalFreezeDecision {
   unreadableReason?: string;
   /** One line for the command's warnings and stderr, when overridden. */
   warning?: string;
+  /** One line for the command's receipt when no workspace resolved. */
+  note?: string;
 }
 
 export interface RehearsalFreezeInput {
@@ -84,14 +90,26 @@ export function assertRehearsalFreezeAllows(
 
   const resolution = resolveWorkspace({ workspace: input.workspace, cwd: input.cwd, env });
   const workspace = resolution.workspacePath;
-  const databaseFile = workspace ? getWorkspacePaths(workspace).databaseFile : null;
-  const read = databaseFile && existsSync(databaseFile)
-    ? readPolicy(workspace!)
-    : {
-        status: "unavailable" as const,
-        reason: databaseFile ? `No workspace database at ${databaseFile}.` : resolution.detail ?? "No workspace resolved.",
-        observedAt: new Date().toISOString()
-      };
+  if (!workspace) {
+    // First-time setup (`go-broker install` before any workspace exists):
+    // managed production needs a workspace and its policy, so with none
+    // configured or resolvable nothing can be Active. A workspace that
+    // resolves but cannot be read still fails closed below.
+    return {
+      operation,
+      workspace: null,
+      state: "no_workspace",
+      policyRevision: null,
+      policyEpoch: null,
+      observedAt: new Date().toISOString(),
+      decision: "allowed",
+      note: `Rehearsal freeze check for ${operation}: no Arcadia workspace is configured or resolvable, so managed production cannot be Active; proceeding.`
+    };
+  }
+  const databaseFile = getWorkspacePaths(workspace).databaseFile;
+  const read = existsSync(databaseFile)
+    ? readPolicy(workspace)
+    : { status: "unavailable" as const, reason: `No workspace database at ${databaseFile}.`, observedAt: new Date().toISOString() };
 
   if (read.status !== "ok") {
     if (override) {
@@ -158,6 +176,11 @@ export function assertRehearsalFreezeAllows(
       procedure: FREEZE_PROCEDURE
     }
   );
+}
+
+/** The receipt lines a decision adds to its command's `warnings`. */
+export function freezeReceiptLines(decision: RehearsalFreezeDecision): string[] {
+  return [decision.warning, decision.note].filter((line): line is string => Boolean(line));
 }
 
 function readPolicy(workspace: string): ReturnType<typeof readProductionPolicySafely> {

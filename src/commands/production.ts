@@ -50,6 +50,7 @@ import { listOpenRedAlerts, type RedAlert } from "../production/redAlerts.js";
 import {
   FREEZE_OPERATIONS,
   assertRehearsalFreezeAllows,
+  freezeReceiptLines,
   isFreezeOperation,
   type RehearsalFreezeDecision
 } from "../production/freezeWindow.js";
@@ -228,14 +229,15 @@ export function runProductionFreezeCheckCommand(
     command: "production.freeze-check",
     workspace: decision.workspace ?? undefined,
     data: decision,
-    warnings: decision.warning ? [decision.warning] : []
+    warnings: freezeReceiptLines(decision)
   });
 }
 
 export function renderProductionFreezeCheckSuccess(response: CommandSuccess<RehearsalFreezeDecision>): string[] {
   const decision = response.data;
   if (decision.decision === "overridden") return [`Freeze window: ${decision.operation} OVERRIDDEN. ${decision.warning ?? ""}`.trim()];
-  return [`Freeze window: ${decision.operation} allowed; managed production is ${decision.state === "inactive" ? "Inactive" : decision.state} (revision ${decision.policyRevision}, epoch ${decision.policyEpoch}).`];
+  if (decision.state === "no_workspace") return [`Freeze window: ${decision.operation} allowed. ${decision.note ?? ""}`.trim()];
+  return [`Freeze window: ${decision.operation} allowed; managed production is Inactive (revision ${decision.policyRevision}, epoch ${decision.policyEpoch}).`];
 }
 
 export function runProductionPreviewCommand(

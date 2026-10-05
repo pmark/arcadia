@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import type { CommandSuccess } from "../src/cli/response.js";
+import { runInitCommand } from "../src/commands/init.js";
 import { runProductionFreezeCheckCommand } from "../src/commands/production.js";
 import {
   runGoBrokerEnsureCommand,
@@ -131,12 +132,46 @@ describe("the freeze-window decision (read-only production status)", () => {
     expect(overridden.unreadableReason).toBeTruthy();
   });
 
-  it("fails closed when no workspace resolves or its database is missing", () => {
+  it("treats no configured or resolvable workspace as not Active, with a one-line receipt note (first-time setup)", () => {
     vi.stubEnv("ARCADIA_WORKSPACE", "");
     const isolated = temp("arcadia-freeze-cwd-");
-    expect(refusal(() => assertRehearsalFreezeAllows("go-broker.install", { cwd: isolated })).code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+    for (const operation of FREEZE_OPERATIONS) {
+      const decision = assertRehearsalFreezeAllows(operation, { cwd: isolated });
+      expect(decision).toMatchObject({ operation, workspace: null, state: "no_workspace", decision: "allowed" });
+      expect(decision.note).toMatch(/no Arcadia workspace is configured or resolvable/);
+      expect(decision.warning).toBeUndefined();
+    }
+    // First-time `go-broker ensure` proceeds and carries the note in its receipt.
+    const { repository, revision } = tinyGitRepo(false);
+    const ensured = runGoBrokerEnsureCommand(
+      { repository },
+      vi.fn().mockReturnValue({ ok: true, command: "go-broker.status", artifacts: [], warnings: [], data: { ready: true, revision } }),
+      vi.fn()
+    );
+    expect(ensured.data.freeze).toMatchObject({ state: "no_workspace", decision: "allowed" });
+    expect(ensured.warnings).toEqual([expect.stringContaining("no Arcadia workspace is configured or resolvable")]);
+    // First-time `go-broker install` passes the freeze check and reaches its next step.
+    expect(refusal(() => runGoBrokerInstallCommand({ repository: tinyGitRepo(true).repository, home })).message).toContain("clean, committed snapshot");
+  });
+
+  it("keeps failing closed when a workspace resolves but its database or policy cannot be read", () => {
     rmSync(getWorkspacePaths(workspace).databaseFile);
-    expect(refusal(() => assertRehearsalFreezeAllows("go-broker.install", { workspace })).code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+    for (const operation of FREEZE_OPERATIONS) {
+      const error = refusal(() => assertRehearsalFreezeAllows(operation));
+      expect(error.code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+      expect(error.details.workspace).toBe(workspace);
+    }
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => db.exec("DROP TABLE production_policy"));
+    expect(refusal(() => assertRehearsalFreezeAllows("go-broker.ensure")).code).toBe("PRODUCTION_FREEZE_UNVERIFIED");
+  });
+
+  it("leaves an experiment workspace on its existing guard path", () => {
+    const experiment = path.join(root, "workspaces", "exp-freeze");
+    runInitCommand(experiment, { profile: "experiment" });
+    vi.stubEnv("ARCADIA_WORKSPACE", experiment);
+    expect(refusal(() => runGoBrokerInstallCommand({ repository: tinyGitRepo(false).repository, home })).code).toBe("EXPERIMENT_WORKSPACE_REFUSED");
+    expect(assertRehearsalFreezeAllows("services.restart")).toMatchObject({ workspace: experiment, state: "inactive", decision: "allowed" });
   });
 
   it("`production freeze-check` reports the same decision and rejects an unknown operation", () => {

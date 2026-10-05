@@ -29,7 +29,7 @@ import {
   type AgentSetupStatus
 } from "../agentSetup/goBrokerAgentSetup.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
-import { assertRehearsalFreezeAllows, type RehearsalFreezeDecision } from "../production/freezeWindow.js";
+import { assertRehearsalFreezeAllows, freezeReceiptLines, type RehearsalFreezeDecision } from "../production/freezeWindow.js";
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
 import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
@@ -262,7 +262,7 @@ export function runGoBrokerInstallCommand(
       freeze
     },
     artifacts: [releaseDirectory, ...Object.values(executables)],
-    warnings: freeze.warning ? [freeze.warning] : []
+    warnings: freezeReceiptLines(freeze)
   });
 }
 
@@ -414,7 +414,7 @@ export function runGoBrokerEnsureCommand(
   // freeze window the read-only check is `go-broker status`.
   const freeze = assertRehearsalFreezeAllows("go-broker.ensure", { cwd: repository });
   if (freeze.warning) process.stderr.write(`warning: ${freeze.warning}\n`);
-  const freezeWarnings = freeze.warning ? [freeze.warning] : [];
+  const freezeWarnings = freezeReceiptLines(freeze);
   const revision = git(repository, ["rev-parse", "HEAD"]).trim();
   let alreadyReady = false;
   try {
