@@ -1731,3 +1731,10 @@ updated: 2026-10-05
 - **Result:** Complements Log entry operator-answers-rehearsal-run2-2026-10-05 (reset and read-only G6). Ordering agreed on #940 by the release-manager session and Cody: G8 repair, install, G8 rerun for run 1, fixture reset, G6, operator G7 press 9–10am. Records an answer only; production activation, Grants, spend beyond Decision 0058, credentials and deletion remain operator-only.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-05 — Agent Ask clarify-operator-answer-source-2026-10-05
+
+- **Did:** Clarification of Log entries operator-answers-rehearsal-run2-2026-10-05 and operator-authorizes-g8-rerun-2026-10-05: the operator gave those answers in the Claude Code session titled "Arcadia orchestrator prompt refinement" (Claudia Atlas, orchestration role), not in the release-manager session "Arcadia autonomous-production release", which also signs as Claudia Atlas; that session received them only as a peer relay and correctly will not act on them until the operator confirms directly in its own chat.
+- **Result:** Two sessions of the same platform and tier share one signature, so "given directly to Claudia Atlas" was ambiguous; recorded so the evidence names its exact source session.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
