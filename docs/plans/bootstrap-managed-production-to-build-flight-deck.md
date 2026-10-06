@@ -4185,6 +4185,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1015", "https://github.com/pmark/arcadia/issues/1016", "artifacts/generated/operator-scripts/rehearsal-chain/params/run7-2026-10-06.json", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "artifacts/generated/operator-scripts/rehearsal-chain/preflight.sh"]
+  - id: prepare-run8-coherent-chain-fixture
+    title: Render consistent N-Action Project and Plan wording in the chain reset, refuse any stated Action-count contradiction offline, and add run 8's parameters bound to run 7.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Render consistent N-Action Project and Plan wording in the chain reset, refuse any stated Action-count contradiction offline, and add run 8's parameters bound to run 7.
+    expected_artifact: Evidence satisfying Agent Ask prepare-run8-coherent-chain-fixture
+    clarification: clarified
+    confidence: high
+    source: Agent Ask prepare-run8-coherent-chain-fixture-2026-10-06
+    acceptance_criteria:
+      - The chain reset renders every fixture managed-document statement of the chain's size and purpose for the run's N (at least the fixture PROJECT.md outcome or mission text and the Plan title, goal, milestone and token_budget lines; a rendered Plan title such as 'Autonomous nine-Action rehearsal chain'), validated by Arcadia's own discovery and the dry-run docs sync exactly as today, changing no Action criteria, statuses, responsibilities or the genesis check, and committing it in the reset's single commit; if fixture PROJECT.md must change, its governed pointer and status fields are left untouched.
+      - A deterministic coherence guard, run in both the reset (real and dry run) and G6, refuses when any fixture managed document (PROJECT.md, the Plan, the Actions' text) states a number of Actions or a rehearsal size other than the run's N (for example 'three-Action' or 'three dependent Actions' with N=9), naming the file, line and text; unit tests pin it for N=3 and N=9 and against run 7's actual fixture state at f478438 (which must refuse for N=9).
+      - "`params/run8-2026-10-06.json` (N=9) binds run 7's receipts exactly: reset `20261006T173810Z-40687` (newHead f478438a), terminal Off `20261006T175308Z-12860` and one candidate per integrated or preserved line of its work-reconciliation (including run 7's PR #9), with required commits including #1019 (c26f3a9e) and #1020 (98b532a1); descriptors render with no drift; the rehearsal-chain tests, `check:operator-scripts`, render `--check`, lint and tsc pass; the runbook names run 8 and the coherence guard; an independent review round is recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/runs/20261006T175308Z-12860", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "src/operatorActions/rehearsalChain.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
