@@ -4187,7 +4187,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1015", "https://github.com/pmark/arcadia/issues/1016", "artifacts/generated/operator-scripts/rehearsal-chain/params/run7-2026-10-06.json", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "artifacts/generated/operator-scripts/rehearsal-chain/preflight.sh"]
   - id: prepare-run8-coherent-chain-fixture
     title: Render consistent N-Action Project and Plan wording in the chain reset, refuse any stated Action-count contradiction offline, and add run 8's parameters bound to run 7.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Render consistent N-Action Project and Plan wording in the chain reset, refuse any stated Action-count contradiction offline, and add run 8's parameters bound to run 7.
@@ -4206,7 +4206,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-run8-coherent-chain-fixture
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
