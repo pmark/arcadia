@@ -4103,7 +4103,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/986", "https://github.com/pmark/arcadia/issues/974", "src/sessions/operatorQaPlan.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: add-long-chain-fast-rehearsal
     title: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
