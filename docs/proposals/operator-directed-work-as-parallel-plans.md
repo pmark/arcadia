@@ -44,8 +44,11 @@ end-to-end test against a generic governed Project (not Arcadia) showed:
 - A duplicate Action id across two draft Plans is not caught when the second
   opens; `complete` refuses it as ambiguous. Ids need a subject and date.
 - Several Actions in a draft Plan are a hazard: a partly completed draft Plan
-  can look like a competing `current_action` and block dispatch when the active
-  Plan finishes. So the workaround only holds for one Action per request.
+  carries its own `current_action`, and dispatch reports another Plan's
+  `current_action` as a blocker whenever PROJECT.md's `current_action` is empty
+  (`src/docs/dispatch.ts`, "designates a competing current_action"), which
+  happens when the active Plan finishes. So the workaround only holds for one
+  Action per request.
 - It adds a Plan document and a Log entry but does not put the request on the
   GitHub board or the queue, so it buys little visibility for its ceremony.
 
@@ -59,9 +62,13 @@ the short guidance in `docs/agent-guidance/operator-directed-work.md`.
 
 ## What Arcadia would provide
 
-1. **Intake.** A direct request from the operator (this session's chat, or an
-   allowlisted operator ID over Discord or Ingress via the existing `arcadia ask`
-   capture, which already records its source) opens a small Plan, not a loose PR.
+1. **Intake.** A direct request from the operator opens a small Plan, not a
+   loose PR. Today only this session's chat can carry one. Discord and Ingress
+   reach `arcadia ask` (recording `--source-ingress`), but the bot authorizes by
+   guild and channel only (`docs/AGENT_ORIENTATION.md`); its per-user allowlist
+   (`DISCORD_ALLOWED_USER_IDS`) gates only the reply router. **A verified
+   per-operator identity on the `ask` path is a prerequisite** before a remote
+   request can be treated as an instruction; until then it is a signal.
 2. **Triage by size, ambiguity and blast radius:** small and clear starts
    immediately; clear but multi-step lands a short written plan in the PR then
    builds; complex or ambiguous runs the two-phase planning process
@@ -72,7 +79,8 @@ the short guidance in `docs/agent-guidance/operator-directed-work.md`.
    GitHub board like any planned Action, linked to its PR.
 4. **Parallel by construction.** It never reorders another Plan's queue, takes
    another session's claim, or bypasses a freeze window or a peer's hold.
-5. **Remote asks stop at a pull request.** Review and CI still gate everything;
+5. **Remote asks stop at a pull request** once identity is verified (item 1),
+   and are acknowledged with `arcadia ping`, never an improvised reply. Review and CI still gate everything;
    merging and restarting services from a remote ask is a later, separate
    decision once the path has proven itself.
 6. **Same gates as planned work.** Isolated worktree, `work monitor`, agent
