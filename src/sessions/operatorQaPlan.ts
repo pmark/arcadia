@@ -202,7 +202,10 @@ function renderPlan(
       // Inspection cannot show that a command passes (Issue #986): bound the
       // Expected line to what inspection shows and point the proof of passing
       // at the declared-validation step and its exit-zero result.
-      lines.push(`- **Expected:** ${outputs.join("; ")}. ${inspectionScope(present)} ${passProof(criterion, validation, criteria.length + 3)} The criterion, exactly as worded: ${quoted}`);
+      const contentParts = literals.length > 0 || (present.length > 0 && bytes)
+        ? "; and that output shows whether the parts of this criterion about file content hold"
+        : "";
+      lines.push(`- **Expected:** ${outputs.join("; ")}${contentParts}. ${inspectionScope(present)} ${passProof(criterion, validation, criteria.length + 3)} The criterion, exactly as worded: ${quoted}`);
       return;
     }
     lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: ${quoted}`);
@@ -221,24 +224,55 @@ function renderPlan(
   return lines.join("\n");
 }
 
-const PASS_WORDS = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|exits?\s+(?:with\s+)?(?:(?:code|status)\s+)?(?:0|zero)|exit[- ](?:code[- ])?(?:0|zero))\b/i;
+const PASS_WORD = /\b(?:pass(?:es|ed)?|succeed(?:s|ed)?|exits?\s+(?:with\s+)?(?:(?:code|status)\s+)?(?:0|zero)|exit[- ](?:code[- ])?(?:0|zero))\b/i;
+const NEGATION = /\b(?:not|never|no|fails?|failing|non-?zero|cannot|unless)\b|n't\b/i;
 const SCRIPT_PATH = /\.(?:m?js|cjs|m?ts|cts|sh|bash|zsh|py|rb|pl)$/i;
+/** How far after the named command its pass word may sit, within one clause. */
+const PASS_WINDOW_CHARS = 60;
 
 /**
- * A criterion satisfied by running a command: it says something must pass
- * (succeed, exit zero) and names a declared validation command, a script path
- * or an inline code span. Detection only changes the step's wording; it never
- * makes anything runnable.
+ * A criterion satisfied by running a command: a declared validation command,
+ * a script path or an inline code span, followed in the same clause by a pass
+ * word ("passes", "succeeds", "exits 0") with no negation between them.
+ * Detection only changes the step's wording; it never makes anything runnable.
  */
 function requiresPassingCommand(criterion: string, named: readonly string[], validation: readonly string[]): boolean {
-  if (!PASS_WORDS.test(criterion)) return false;
-  return declaredCommandsIn(criterion, validation).length > 0
-    || named.some((candidate) => SCRIPT_PATH.test(candidate))
-    || /`[^`\n]+`/.test(criterion);
+  const ends: number[] = [];
+  for (const command of validation) ends.push(...commandOccurrences(criterion, command));
+  for (const target of named.filter((candidate) => SCRIPT_PATH.test(candidate))) {
+    for (let at = criterion.indexOf(target); at >= 0; at = criterion.indexOf(target, at + 1)) ends.push(at + target.length);
+  }
+  for (const span of criterion.matchAll(/`[^`\n]+`/g)) ends.push((span.index ?? 0) + span[0].length);
+  return ends.some((end) => {
+    const clause = /^[^.;:!?]*/.exec(criterion.slice(end, end + PASS_WINDOW_CHARS).replace(/^`/, ""))?.[0] ?? "";
+    const pass = PASS_WORD.exec(clause);
+    return pass !== null && !NEGATION.test(clause.slice(0, pass.index));
+  });
+}
+
+/**
+ * Where a declared command appears as itself, returning each occurrence's end.
+ * In a code span the span must be exactly the command; in prose it must stand
+ * between the text's edges, whitespace, quotes or sentence punctuation, and
+ * not be followed by a flag: "pnpm test:unit" and "pnpm test -- x" are not
+ * "pnpm test".
+ */
+function commandOccurrences(criterion: string, command: string): number[] {
+  const ends: number[] = [];
+  for (let at = criterion.indexOf(command); at >= 0; at = criterion.indexOf(command, at + 1)) {
+    const end = at + command.length;
+    const before = at === 0 ? "" : criterion[at - 1];
+    const rest = criterion.slice(end);
+    const bounded = before === "`"
+      ? rest.startsWith("`")
+      : (before === "" || /[\s"'“(]/.test(before)) && /^(?:["'”)]*(?:[.,;:!?](?=\s|$))?(?:$|\s+(?![\s-])))/.test(rest);
+    if (bounded) ends.push(end);
+  }
+  return ends;
 }
 
 function declaredCommandsIn(criterion: string, validation: readonly string[]): string[] {
-  return validation.filter((command) => mentions(criterion, command));
+  return validation.filter((command) => commandOccurrences(criterion, command).length > 0);
 }
 
 /** What an inspection step can show, and no more. */
@@ -254,11 +288,12 @@ function inspectionScope(present: readonly string[]): string {
 function passProof(criterion: string, validation: readonly string[], validationStep: number): string {
   const matched = declaredCommandsIn(criterion, validation);
   if (matched.length > 0) {
-    const commands = matched.map((command) => code(truncate(command, MAX_COMMAND_CHARS))).join(" and ");
-    return `Whether it passes is proven only by Step ${validationStep}, the Project's declared validation: ${code("echo $?")} immediately after ${commands} prints ${code("0")}.`;
+    const commands = matched.map((command) => code(truncate(command, MAX_COMMAND_CHARS)));
+    const after = commands.length === 1 ? commands[0] : `each of ${commands.join(" and ")}`;
+    return `Whether it passes is proven only by Step ${validationStep}, the Project's declared validation: ${code("echo $?")} immediately after ${after} prints ${code("0")}.`;
   }
   if (validation.length > 0) {
-    return `This plan runs no command taken from criterion text; the only proof of passing it offers is Step ${validationStep}, the Project's declared validation, where ${code("echo $?")} prints ${code("0")} after each declared command.`;
+    return `This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step ${validationStep} is the command this criterion names: Step ${validationStep}'s exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes.`;
   }
   return "This plan runs no command taken from criterion text and the Project declares no validation commands, so this plan offers no proof that it passes.";
 }
