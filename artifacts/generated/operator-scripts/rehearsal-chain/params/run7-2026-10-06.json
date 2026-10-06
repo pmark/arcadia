@@ -8,7 +8,8 @@
     { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
     { "commit": "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4", "why": "settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983)" },
     { "commit": "26172c74ae9dcf795cc69cabd8a62616f7ed42c8", "why": "each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a))" },
-    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
+    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" },
+    { "commit": "3c67b0a8996893210a8694960584dc9732f83d09", "why": "G7 and G8 compare the Grant's Action set order-independently (run 6's live G7 refusal; #1017)" }
   ],
   "previousRun": {
     "label": "run 6",
@@ -16,10 +17,10 @@
     "terminalOffId": "restore-terminal-off-rehearsal-chain-run6-2026-10-06",
     "grantId": "grant-production-rehearsal-chain-run6-2026-10-06",
     "bindings": {
-      "resetRunId": "UNFILLED: the runs/<runId> directory name of run 6's succeeded reset receipt",
-      "resetHead": "UNFILLED: newHead of run 6's succeeded reset receipt",
-      "terminalOffRunId": "UNFILLED: the runs/<runId> directory name of run 6's succeeded G8 receipt",
-      "localMain": "UNFILLED: fixtureMain of run 6's succeeded G8 receipt",
+      "resetRunId": "20261006T141854Z-41044",
+      "resetHead": "162f5b19dce5eac700c5edae0a0d640bad07daa0",
+      "terminalOffRunId": "20261006T160825Z-24828",
+      "localMain": "6fbae8d6c04f3014038ff51745ae27572a3524dc",
       "candidates": [
         { "branch": "claude/write-start-marker-20261004T170245861Z", "tip": "58bcd9155cf64836994045ca63a7707d8b9ebe75", "pullRequest": 1 },
         { "branch": "claude/write-start-marker-20261005T155147519Z", "tip": "7f1390376f4d49215cd29fd98145d40198475613", "pullRequest": 2 },
@@ -27,13 +28,15 @@
         { "branch": "claude/write-start-marker-20261005T220000438Z", "tip": "79c6bae937255964cf0453c163ece0c36bb1985a", "pullRequest": 4 },
         { "branch": "claude/write-start-marker-20261006T032202909Z", "tip": "f68ec48ed4ff95772fee108258d401158c26a54d", "pullRequest": 5 },
         { "branch": "claude/transform-start-marker-20261006T032821535Z", "tip": "69eb7d6283447270a9a16e540f7d4f5f2e3427fc", "pullRequest": 6 },
-        { "branch": "UNFILLED: replace this entry with one entry per run-6 candidate (branch, tip, pullRequest) from run 6's G8 work-reconciliation.jsonl", "tip": "UNFILLED", "pullRequest": "UNFILLED" }
+        { "branch": "claude/write-start-marker-20261006T155142019Z", "tip": "6fbae8d6c04f3014038ff51745ae27572a3524dc", "pullRequest": 7 },
+        { "branch": "claude/transform-start-marker-20261006T155537486Z", "tip": "2aa3e2489d151289eb47a8b3e52629f434897d07", "pullRequest": 8 }
       ]
     }
   },
   "notes": [
     "Run 7 (N=9): a clean repeat of run 6's nine-Action chain (the three G1 Actions, then chain-step-04 to chain-step-09, each reading its predecessor's output) under ONE G7 press, inside the Grant's 12-hour expiry.",
-    "Fill every UNFILLED binding from run 6's receipts only after run 6's G8 succeeded: resetRunId and resetHead from run 6's reset receipt (id reset-rehearsal-chain-fixture-run6-2026-10-06, field newHead); terminalOffRunId and localMain from run 6's G8 receipt (id restore-terminal-off-rehearsal-chain-run6-2026-10-06, field fixtureMain); one candidates entry per line of that G8 run's work-reconciliation.jsonl whose state is integrated or preserved (branch, tip, and the number at the end of pullRequest). The reset cross-checks every value against those receipts and refuses on any mismatch or any value still starting with UNFILLED.",
-    "The required commits match run 6's (#987 26172c74ae9d, #997 a4a7c18450c6); G6 and G7 require every entry."
+    "Bindings are run 6's receipts: reset runs/20261006T141854Z-41044 (newHead 162f5b19) and terminal Off runs/20261006T160825Z-24828 (fixtureMain 6fbae8d6; eight candidates PR #1 to #8 reconciled). Action 1 of run 6 was integrated by local fast-forward of the clone's main and is preserved on PR #7; Action 2 is preserved on PR #8, stacked on PR #7's branch (claude/write-start-marker-20261006T155142019Z). The new line starts from GitHub main 162f5b19; the reset moves only the clone's local main back from 6fbae8d6 after proving both stacked candidates are preserved on GitHub, then pushes one reset commit on 162f5b19 without force.",
+    "From run 7 the reset positions every reopened or created fixture Action in the operational queue in chain order through the governed advance queue arrange (Issue #1015), and G6 refuses unless the queue is orderValid with no unpositioned Action and reads Codex capacity live with a bounded retry (Issue #1016).",
+    "Required commits are all filled: the #987 stacking fix 26172c74ae9d (#1006), the #997 pending-completion gate fix a4a7c18450c6 (#1010) and the #1017 order-independent Grant Action-set comparison 3c67b0a8996893 are on Arcadia main; G6 and G7 require every entry."
   ]
 }

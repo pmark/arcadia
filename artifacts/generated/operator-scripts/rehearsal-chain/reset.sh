@@ -16,7 +16,11 @@
 # discovery, docs sync, ready set, requirementIdentity and a read-only live
 # dry-run docs sync, refuses any pending fixture proposal or open Decision that
 # gates a chain Action (it settles none), then commits once, pushes without
-# force, runs docs sync and writes a receipt. `--dry-run` performs every read
+# force, runs docs sync, positions every reopened or created fixture Action in
+# the operational queue in chain order through the governed `advance queue
+# arrange` (Issue #1015; preview, then apply at the exact queue revision, and
+# refuses unless the queue is then orderValid with nothing unpositioned) and
+# writes a receipt. `--dry-run` performs every read
 # and validation and prints the exact planned change and every refusal, writing
 # nothing outside a temporary evidence directory. It never previews, activates
 # or deactivates production, touches a Grant, an earlier candidate, branch or
@@ -376,7 +380,7 @@ record_str remoteMainBefore "$REMOTE_MAIN"
 # Every earlier candidate exactly as the parameter file pins it: local branch, GitHub
 # branch and pull request head, before and after; with whether it contains the pinned local main.
 check_candidates() {
-  local label="$1" count index branch tip number local_tip remote_tip pr contains entries=""
+  local label="$1" count index branch tip number local_tip remote_tip pr contains entries="" base_ref stacked_on base_tip
   count="$(jq 'length' <<<"$CANDIDATES_JSON")"
   for ((index = 0; index < count; index++)); do
     branch="$(jq -r ".[$index].branch" <<<"$CANDIDATES_JSON")"
@@ -389,10 +393,25 @@ check_candidates() {
     pr="$(ghx api "repos/$REPO/pulls/$number")" || { pr='{}'; would_refuse "could not read pull request #$number of $REPO"; }
     jq -e --arg tip "$tip" --arg branch "$branch" '.head.sha == $tip and .head.ref == $branch' <<<"$pr" >/dev/null 2>&1 \
       || would_refuse "pull request #$number is not the pinned candidate $tip on $branch: $(jq -c '{head: .head.ref, sha: .head.sha}' <<<"$pr" 2>/dev/null)"
+    # A serial Action's pull request is stacked on the previous candidate's branch (Issue #987): its base is then
+    # that branch, which must itself be a pinned candidate (so the stack stays preserved) and an ancestor of this tip.
+    base_ref="$(jq -r '.base.ref // ""' <<<"$pr" 2>/dev/null || true)"
+    stacked_on=""
+    if [[ -z "$base_ref" ]]; then
+      would_refuse "could not read the base branch of pull request #$number of $REPO"
+    elif [[ "$base_ref" != main ]]; then
+      stacked_on="$base_ref"
+      base_tip="$(jq -r --arg b "$base_ref" '[.[] | select(.branch == $b) | .tip][0] // ""' <<<"$CANDIDATES_JSON")"
+      if [[ -z "$base_tip" ]]; then
+        would_refuse "pull request #$number is stacked on $base_ref, which is not a candidate the parameter file pins, so its base is not provably preserved"
+      elif ! fx merge-base --is-ancestor "$base_tip" "$tip" 2>/dev/null; then
+        would_refuse "pull request #$number is stacked on the pinned candidate $base_ref ($base_tip) but its tip $tip does not descend from it"
+      fi
+    fi
     contains=false
     fx merge-base --is-ancestor "$PINNED_LOCAL_MAIN" "$tip" 2>/dev/null && contains=true
-    entries="${entries:+$entries,}$(jq -nc --arg branch "$branch" --arg tip "$tip" --arg localTip "$local_tip" --arg remoteTip "$remote_tip" --argjson pr "$pr" --argjson number "$number" --argjson contains "$contains" \
-      '{branch: $branch, tip: $tip, pullRequest: $number, localTip: $localTip, remoteTip: $remoteTip, prTip: ($pr.head.sha // null), prState: ($pr.state // null), containsExpectedLocalMain: $contains}')"
+    entries="${entries:+$entries,}$(jq -nc --arg branch "$branch" --arg tip "$tip" --arg localTip "$local_tip" --arg remoteTip "$remote_tip" --argjson pr "$pr" --argjson number "$number" --argjson contains "$contains" --arg stackedOn "$stacked_on" \
+      '{branch: $branch, tip: $tip, pullRequest: $number, localTip: $localTip, remoteTip: $remoteTip, prTip: ($pr.head.sha // null), prState: ($pr.state // null), prBase: ($pr.base.ref // null), stackedOn: (if $stackedOn == "" then null else $stackedOn end), containsExpectedLocalMain: $contains}')"
   done
   printf '%s\n' "[$entries]" > "$RUN_DIR/candidates-$label.json"
 }
@@ -632,6 +651,32 @@ ASK_FILES="$( (cd "$AMEND_DIR" && find .arcadia -name '*.yaml' 2>/dev/null) || t
 COMPLETION_PROBLEMS="$(probe "$COMPLETION_IDS_JSON" "$(jq -c '.usedRequestIds' <<<"$GATE")" "$ASK_FILES" < "$RUN_DIR/completion-ids.mjs")" || refuse "completion-id freshness could not be checked"
 [[ "$COMPLETION_PROBLEMS" == "[]" ]] || would_refuse "the fresh completion ids are not unused: $COMPLETION_PROBLEMS; ask for a reviewed parameter change with a new run id"
 
+# Issue #1015: the queue the docs sync will leave behind. Read-only (a read-only database handle, so no
+# CLI activity row): the current queue and the order the reset would arrange once the chain's Actions exist.
+STAGE=queue_plan
+CHAIN_KEYS_JSON="$(jq -c --arg p "$FIXTURE_PROJECT" 'map("\($p)/\(.)")' <<<"$ACTION_IDS_JSON")"
+cat > "$RUN_DIR/probe-queue.mjs" <<'NODE'
+import { withReadOnlyDatabase } from "./src/db/connection.ts";
+import { buildAgentQueue } from "./src/dispatch/queue.ts";
+const [workspace] = process.argv.slice(2);
+console.log(JSON.stringify(withReadOnlyDatabase(workspace, (db) => {
+  const queue = buildAgentQueue(db);
+  return { revision: queue.revision, orderValid: queue.orderValid, unpositionedCount: queue.unpositionedCount,
+    entries: queue.ordered.filter((entry) => entry.orderKey != null).map((entry) => ({ key: entry.orderKey, status: entry.orderStatus })) };
+})));
+NODE
+cat > "$RUN_DIR/queue-plan.mjs" <<'NODE'
+import { planChainQueueOrder, chainQueueRequestId } from "./src/operatorActions/rehearsalChain.ts";
+const [facts, chainKeys, runId] = process.argv.slice(2);
+const parsed = JSON.parse(facts);
+console.log(JSON.stringify({ ...planChainQueueOrder(parsed, JSON.parse(chainKeys)), requestId: chainQueueRequestId(runId, parsed.revision) }));
+NODE
+QUEUE_NOW="$(probe "$WORKSPACE" < "$RUN_DIR/probe-queue.mjs")" || refuse "the Action queue could not be read"
+printf '%s\n' "$QUEUE_NOW" > "$RUN_DIR/queue-before-reset.json"
+QUEUE_PLANNED="$(probe "$QUEUE_NOW" "$CHAIN_KEYS_JSON" "$RUN_PARAM_ID" < "$RUN_DIR/queue-plan.mjs")" || refuse "the chain's queue order could not be planned"
+printf '%s\n' "$QUEUE_PLANNED" > "$RUN_DIR/queue-plan.json"
+record "queueObservedBeforeSync" "$(jq -c '{revision, orderValid, unpositionedCount}' <<<"$QUEUE_NOW")"
+
 # --- A dry run stops here: it prints the exact planned change and every refusal. ---
 if [[ "$DRY_RUN" == true ]]; then
   STAGE=dry_run_report
@@ -648,10 +693,11 @@ if [[ "$DRY_RUN" == true ]]; then
   esac
   echo "Step 2: one commit '$RESET_SUBJECT' on $RESET_HEAD changing only $PLAN_FILE (blob $AMENDED_BLOB), pushed to fixture main without force; the new line starts from $RESET_HEAD."
   echo "Step 3: arcadia docs sync --project $FIXTURE_PROJECT --apply."
+  echo "Step 4: position the chain's Actions in the queue (arcadia advance queue arrange, previewed then applied at the exact revision, refused unless orderValid with 0 unpositioned afterwards): all $(jq '.order | length - ('"$N"')' <<<"$QUEUE_PLANNED") other key(s) keep their relative order, then $(jq -r 'join(", ")' <<<"$CHAIN_KEYS_JSON"). Queue now: $(jq -c '{revision, orderValid, unpositionedCount}' <<<"$QUEUE_NOW"); non-chain Actions the arrange would also position: $(jq -c '.othersUnpositioned' <<<"$QUEUE_PLANNED")."
   echo "Actions and fresh completion ids:"
   jq -r '.[] | "  \(.id): completion \(.completionId); input \((.inputRevisionBefore // "new")[0:12]) -> \(.inputRevisionAfter[0:12])"' <<<"$ACTIONS_RECORD"
   echo "Live dry-run docs sync: $(jq -c '[.liveDryRun.actions[]? | "\(.ref | sub("^plan/[^#]+#"; ""))=\(.action)"]' <<<"$LIVE_SYNC")"
-  echo "Earlier candidates (left untouched): $(jq -r '[.[] | "#\(.pullRequest) \(.branch)@\(.tip[0:8])"] | join(", ")' "$RUN_DIR/candidates-before.json")"
+  echo "Earlier candidates (left untouched): $(jq -r '[.[] | "#\(.pullRequest) \(.branch)@\(.tip[0:8])\(if .stackedOn then " (stacked on \(.stackedOn))" else "" end)"] | join(", ")' "$RUN_DIR/candidates-before.json")"
   echo "Plan diff: $RUN_DIR/plan.diff"
   cat "$RUN_DIR/plan.diff"
   echo
@@ -745,6 +791,56 @@ for action in $(jq -r '.[]' <<<"$ACTION_IDS_JSON"); do
   jq -e --arg ref "plan/$FIXTURE_PLAN#$action" '[.data.workItems[]? | select(.doc_ref == $ref)] | length == 1' <<<"$WORK" >/dev/null || refuse "Action $action is not synced exactly once after the reset"
 done
 
+# Issue #1015: docs sync reopens and creates Actions without positioning them, and an unpositioned
+# Action makes `advance queue make-next` refuse every Project. Position the chain's Actions after
+# every other key (their relative order kept) through the governed arrange: preview, then apply at the
+# same revision and request id, then require the queue orderValid with nothing unpositioned.
+STAGE=queue_order
+queue_facts() {
+  local queue
+  queue="$(arcadia advance queue --json)" || return 1
+  jq -ce 'select(.ok == true and (.data.revision | type) == "number" and (.data.orderValid | type) == "boolean" and (.data.unpositionedCount | type) == "number")
+    | {revision: .data.revision, orderValid: .data.orderValid, unpositionedCount: .data.unpositionedCount, entries: [.data.ordered[]? | select(.orderKey != null) | {key: .orderKey, status: .orderStatus}]}' <<<"$queue"
+}
+QUEUE_BEFORE="$(queue_facts)" || refuse "the Action queue could not be read after the docs sync"
+QUEUE_PLAN="$(probe "$QUEUE_BEFORE" "$CHAIN_KEYS_JSON" "$RUN_PARAM_ID" < "$RUN_DIR/queue-plan.mjs")" || refuse "the chain's queue order could not be planned"
+printf '%s\n%s\n' "$QUEUE_BEFORE" "$QUEUE_PLAN" > "$RUN_DIR/queue-before.json"
+jq -e '.missing == []' <<<"$QUEUE_PLAN" >/dev/null || refuse "the Action queue does not list the chain's Actions $(jq -c '.missing' <<<"$QUEUE_PLAN"), so docs sync did not make them approved Actions; nothing was arranged"
+QUEUE_REVISION="$(jq -r '.revision' <<<"$QUEUE_BEFORE")"
+if jq -e '.satisfied == true' <<<"$QUEUE_PLAN" >/dev/null; then
+  QUEUE_AFTER="$QUEUE_BEFORE"
+  record "queue" "$(jq -nc --argjson before "$QUEUE_BEFORE" '{state: "already_valid", revision: $before.revision, orderValid: $before.orderValid, unpositionedCount: $before.unpositionedCount}')"
+  echo "Queue: already valid at revision $QUEUE_REVISION with the chain's Actions in chain order; nothing to arrange."
+else
+  QUEUE_REQUEST_ID="$(jq -r '.requestId' <<<"$QUEUE_PLAN")"
+  QUEUE_ORDER_JSON="$(jq -c '.order' <<<"$QUEUE_PLAN")"
+  ORDER_ARGS=()
+  while IFS= read -r order_key; do ORDER_ARGS+=("$order_key"); done < <(jq -r '.[]' <<<"$QUEUE_ORDER_JSON")
+  # Every key is its own argv element (the option is variadic), the workspace is the one verified above, and
+  # ARCADIA_WORKSPACE is never set or exported.
+  QUEUE_PREVIEW="$(arcadia advance queue arrange --order "${ORDER_ARGS[@]}" --request-id "$QUEUE_REQUEST_ID" --revision "$QUEUE_REVISION" --workspace "$WORKSPACE" --json)" || refuse "the queue arrange preview failed at revision $QUEUE_REVISION"
+  printf '%s\n' "$QUEUE_PREVIEW" > "$RUN_DIR/queue-arrange-preview.json"
+  jq -e --argjson order "$QUEUE_ORDER_JSON" --argjson revision "$QUEUE_REVISION" '.ok == true and .data.receipt.applied == false and .data.receipt.revisionBefore == $revision and .data.receipt.after == $order' <<<"$QUEUE_PREVIEW" >/dev/null \
+    || refuse "the queue arrange preview is not the planned order at revision $QUEUE_REVISION; nothing was arranged: $(jq -c '.data.receipt | {applied, revisionBefore, after}' <<<"$QUEUE_PREVIEW" 2>/dev/null)"
+  QUEUE_APPLIED="$(arcadia advance queue arrange --order "${ORDER_ARGS[@]}" --request-id "$QUEUE_REQUEST_ID" --revision "$QUEUE_REVISION" --workspace "$WORKSPACE" --apply --json)" || refuse "the queue arrange apply failed at revision $QUEUE_REVISION"
+  printf '%s\n' "$QUEUE_APPLIED" > "$RUN_DIR/queue-arrange-applied.json"
+  jq -e --argjson order "$QUEUE_ORDER_JSON" --argjson revision "$QUEUE_REVISION" '.ok == true and .data.receipt.applied == true and .data.receipt.revisionBefore == $revision and .data.receipt.revisionAfter == ($revision + 1) and .data.receipt.after == $order' <<<"$QUEUE_APPLIED" >/dev/null \
+    || refuse "the applied queue arrangement is not the planned order: $(jq -c '.data.receipt | {applied, revisionBefore, revisionAfter, after}' <<<"$QUEUE_APPLIED" 2>/dev/null)"
+  QUEUE_AFTER="$(queue_facts)" || refuse "the Action queue could not be read after the arrangement"
+  cat > "$RUN_DIR/queue-verify.mjs" <<'NODE'
+import { chainQueueProblems } from "./src/operatorActions/rehearsalChain.ts";
+const [before, after, chainKeys, plan] = process.argv.slice(2);
+console.log(JSON.stringify(chainQueueProblems(JSON.parse(before), JSON.parse(after), JSON.parse(chainKeys), JSON.parse(plan))));
+NODE
+  QUEUE_PROBLEMS="$(probe "$QUEUE_BEFORE" "$QUEUE_AFTER" "$CHAIN_KEYS_JSON" "$QUEUE_PLAN" < "$RUN_DIR/queue-verify.mjs")" || refuse "the arranged queue could not be verified"
+  record "queue" "$(jq -nc --argjson receipt "$(jq -c '.data.receipt | {id, requestId, revisionBefore, revisionAfter, applied}' <<<"$QUEUE_APPLIED")" --argjson plan "$QUEUE_PLAN" --argjson after "$QUEUE_AFTER" \
+    '{state: "arranged", receipt: $receipt, order: $plan.order, othersUnpositioned: $plan.othersUnpositioned, after: {revision: $after.revision, orderValid: $after.orderValid, unpositionedCount: $after.unpositionedCount}}')"
+  [[ "$QUEUE_PROBLEMS" == "[]" ]] || refuse "the arranged queue is not what the reset must leave: $QUEUE_PROBLEMS"
+  echo "Queue: arranged at revision $QUEUE_REVISION (receipt $(jq -r '.data.receipt.id' <<<"$QUEUE_APPLIED")): the chain's Actions follow every other key, in chain order."
+fi
+# The governed answer, read back: never inferred from an exit code.
+jq -e '.orderValid == true and .unpositionedCount == 0' <<<"$QUEUE_AFTER" >/dev/null || refuse "the Action queue is not orderValid with zero unpositioned Actions after the reset: $(jq -c '{revision, orderValid, unpositionedCount}' <<<"$QUEUE_AFTER")"
+
 STAGE=complete
 REASON=""
 record "fixtureCommitted" "$LOCAL_COMMITTED"
@@ -752,6 +848,6 @@ record "localMainMoved" "$LOCAL_MAIN_MOVED"
 record "githubRepositoryChanged" "$REMOTE_CHANGED"
 write_receipt succeeded
 echo "RESET: fixture $REPO main is now $NEW_HEAD, one commit on $PREV_LABEL's reset head $RESET_HEAD: a $N-Action serial chain for $RUN_LABEL."
-echo "Earlier candidates unchanged: $(jq -r '[.[] | "#\(.pullRequest)"] | join(", ")' "$RUN_DIR/candidates-after.json"). No proposal settled. Production untouched."
+echo "Earlier candidates unchanged: $(jq -r '[.[] | "#\(.pullRequest)"] | join(", ")' "$RUN_DIR/candidates-after.json"). No proposal settled. Production untouched. Action queue valid."
 echo "Next: run this run's G6 preflight (preflight-rehearsal-chain-$RUN_PARAM_ID); it binds this receipt."
 echo "Receipt: $RECEIPT"
