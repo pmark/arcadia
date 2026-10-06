@@ -2,7 +2,7 @@
   "schema": "arcadia-rehearsal-chain-run-v1",
   "runId": "run6-2026-10-06",
   "runLabel": "run 6",
-  "actionCount": 3,
+  "actionCount": 9,
   "requiredCommits": [
     { "commit": "9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1", "why": "remote preservation (#922)" },
     { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
@@ -31,7 +31,7 @@
     }
   },
   "notes": [
-    "Run 6 (N=3): the three G1 Actions, each amended with a fresh run note. The new line starts from GitHub main 7214de28 (run 5's reset head); the reset moves only the fixture clone's local main back from f68ec48 (run 5's integrated Action 1, preserved on PR #5 and contained in PR #6) and pushes one reset commit on 7214de28 without force.",
+    "Run 6 (N=9, tonight while the operator sleeps, ONE G7 press): three batches of three tiny dependent Actions: the three G1 Actions, each amended with a fresh run note, then chain-step-04 to chain-step-09, each reading its predecessor's output, all inside the Grant's 12-hour expiry. The new line starts from GitHub main 7214de28 (run 5's reset head); the reset moves only the fixture clone's local main back from f68ec48 (run 5's integrated Action 1, preserved on PR #5 and contained in PR #6) and pushes one reset commit on 7214de28 without force.",
     "Bindings are run 5's receipts: reset runs/20261006T031820Z-74070 (newHead 7214de28) and terminal Off runs/20261006T033451Z-43195 (fixtureMain f68ec48, PRs #1 to #6 reconciled).",
     "Required commits are all filled: the #987 stacking fix 26172c74ae9d (#1006) and the #997 pending-completion gate fix a4a7c18450c6 (#1010) are on Arcadia main; G6 and G7 require every entry."
   ]

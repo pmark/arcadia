@@ -32,7 +32,7 @@
     }
   },
   "notes": [
-    "Run 7, the overnight run (N=9): three batches of three tiny dependent Actions (the three G1 Actions, then chain-step-04 to chain-step-09, each reading its predecessor's output) under ONE G7 press, inside the Grant's 12-hour expiry.",
+    "Run 7 (N=9): a clean repeat of run 6's nine-Action chain (the three G1 Actions, then chain-step-04 to chain-step-09, each reading its predecessor's output) under ONE G7 press, inside the Grant's 12-hour expiry.",
     "Fill every UNFILLED binding from run 6's receipts only after run 6's G8 succeeded: resetRunId and resetHead from run 6's reset receipt (id reset-rehearsal-chain-fixture-run6-2026-10-06, field newHead); terminalOffRunId and localMain from run 6's G8 receipt (id restore-terminal-off-rehearsal-chain-run6-2026-10-06, field fixtureMain); one candidates entry per line of that G8 run's work-reconciliation.jsonl whose state is integrated or preserved (branch, tip, and the number at the end of pullRequest). The reset cross-checks every value against those receipts and refuses on any mismatch or any value still starting with UNFILLED.",
     "The required commits match run 6's (#987 26172c74ae9d, #997 a4a7c18450c6); G6 and G7 require every entry."
   ]
