@@ -3963,6 +3963,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run4-2026-10-05.sh", "tests/three-action-rehearsal-run-4-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/981"]
+  - id: document-rehearsal-runbook
+    title: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
+    expected_artifact: Evidence satisfying Agent Ask document-rehearsal-runbook
+    clarification: clarified
+    confidence: high
+    source: Agent Ask document-rehearsal-runbook-2026-10-06
+    acceptance_criteria:
+      - "docs/autonomous-production-rehearsal-runbook.md exists and gives, in one checked-in document written for the next release manager and any coding agent: (1) the minimum-viable-production standard stated as observable exit criteria (the proof ladder: current exact source installed and inactive, a fresh one-shot Grant pressed by the operator, one serial three-Action run with zero operator steps between the G7 press and G8, every Action preserved with the host-rendered QA plan and validation evidence, code-review and QA both passing on the exact head, local fast-forward integration, terminal Off and reconciliation proven, then a clean repeat, then one escalated dimension); (2) roles and authority (what the operator alone does: G7 press, Decisions, activation, spend; what the release manager, implementers and reviewers may do; standing permissions Mark has granted and their limits); (3) the exact optimal step-by-step procedure for a rehearsal run from orientation through WINDOW OPEN, with the real commands, the order, the timing observed, who does each step and the observable check after each (governed Action creation, broker candidate, implementer and independent review, merge on green, merge-window announcement, single reinstall, reset, immediately G6, operator ping, G7 deadline, watchdog, verdict handling, G8 from the Terminal panel, evidence capture); (4) the failure catalog: every symptom seen in runs 1-5 with its cause, the fix that shipped or the Issue that tracks it, and what to do if it recurs; (5) the operational gotchas (REST over GraphQL for gh, unsandboxed gh/git/arcadia, inline workspace, runner-capacity CI cancellations and the one-rerun rule, untracked Ask files blocking installs and settlements, G8 refusing non-interactive shells, macOS sed, the freeze window rule from G6 to the G7 press, no-progress watchdog); (6) the open gaps that still stand between the rehearsals and a minimum viable production standard (Issue #987 serial-Action base, #986, #984, #976, #972 follow-ups, the one-hour cost of cloning run-N script pairs and the proposal to parameterise them) with the exact next step for each."
+      - START_HERE.md and docs/managed-production-readiness.md each gain a short pointer to the runbook (where an agent starts before critical-path production work); every command, path, Issue number, receipt id and timing quoted in the runbook was checked against the repository or the recorded evidence (the release manager's retro lists the sources) and nothing in it claims capability that has not been proven live; docs/agent-guidance remains unchanged (no new hash pin) unless the guidance index requires otherwise.
+      - "lint, tsc, check:agent-guidance and the preservation self-check pass; the focused documentation tests pass; an independent read-only reviewer reads the runbook against the repository and the recorded evidence, reports unsupported claims and gaps, and its rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["docs/managed-production-readiness.md", "START_HERE.md", "docs/notes-to-self.md", "https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
