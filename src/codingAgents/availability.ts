@@ -101,7 +101,8 @@ interface ClaudeUsageWindow {
   resets_at?: string | null;
 }
 
-interface ProviderTelemetry {
+/** One provider's last-read account telemetry, as cached and as injected by a caller that read it live. */
+export interface ProviderTelemetry {
   availability: CodingAgentAvailability;
   context: CodingAgentContextUsage | null;
   rateLimits: CodingAgentRateLimit[];
@@ -125,6 +126,14 @@ interface CodingAgentTelemetryCache {
 export function observeCodingAgentAvailability(
   profiles: CodingAgentProfile[],
   now = new Date(),
+  options: {
+    /**
+     * Telemetry a caller already read live (for example with a retry and a
+     * named failure), used in place of this function's own single live read
+     * for that provider and written to the cache like one.
+     */
+    providerTelemetry?: Readonly<Record<string, ProviderTelemetry>>;
+  } = {},
 ): CodingAgentAvailabilitySnapshot {
   const localCodexTasks = observeCodexTasks({ includeCloud: false });
   const cachedTelemetry = readTelemetryCache();
@@ -145,7 +154,7 @@ export function observeCodingAgentAvailability(
         : [];
       const usageLimitedTasks = statuses.filter((status) => status === "usage_limited").length;
       const budgetLimitedTasks = statuses.filter((status) => status === "budget_limited").length;
-      const liveTelemetry = readProviderTelemetry(representative.provider, now);
+      const liveTelemetry = options.providerTelemetry?.[representative.provider] ?? readProviderTelemetry(representative.provider, now);
       if (liveTelemetry) {
         cachedTelemetry.providers[representative.provider] = liveTelemetry;
         cacheChanged = true;
@@ -493,28 +502,75 @@ function readClaudeStatusLineTelemetry(now: Date): ProviderTelemetry | null {
 function readCodexRateLimitTelemetry(now: Date): ProviderTelemetry | null {
   const fixture = process.env.ARCADIA_CODEX_RATE_LIMIT_FIXTURE;
   if (process.env.VITEST && !fixture) return null;
+  const read = readCodexRateLimitsLive(now, { run: fixture === undefined ? undefined : () => fixture });
+  return read.ok ? read.telemetry : null;
+}
 
+/** Why one live `account/rateLimits/read` produced no usable telemetry; named so a caller never judges a stale cache silently. */
+export interface CodexRateLimitReadFailure {
+  kind: "timeout" | "exit" | "no_response" | "unparseable" | "no_rate_limits";
+  /** The query's exit status; null when it was killed (a timeout) or never started. */
+  exitStatus: number | null;
+  signal: string | null;
+  detail: string;
+}
+export type CodexRateLimitRead =
+  | { ok: true; telemetry: ProviderTelemetry }
+  | { ok: false; failure: CodexRateLimitReadFailure };
+
+/**
+ * One live read of the Codex app server's `account/rateLimits/read`, bounded
+ * by `deadlineMs` (default 8 s), that reports a failure instead of collapsing
+ * it into "no telemetry". `run` replaces the query for tests.
+ */
+export function readCodexRateLimitsLive(
+  now: Date,
+  options: { deadlineMs?: number; run?: (deadlineMs: number) => string } = {},
+): CodexRateLimitRead {
+  const deadlineMs = options.deadlineMs ?? CODEX_RATE_LIMIT_DEADLINE_MS;
+  let output: string;
   try {
-    const output = fixture ?? execFileSync("sh", ["-c", CODEX_RATE_LIMIT_QUERY], {
-      encoding: "utf8",
-      timeout: CODEX_RATE_LIMIT_DEADLINE_MS,
-      maxBuffer: 1024 * 1024,
-    });
-    const response = output.split(/\r?\n/)
+    output = (options.run ?? runCodexRateLimitQuery)(deadlineMs);
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { status?: number | null; signal?: string | null };
+    const timedOut = failure.code === "ETIMEDOUT";
+    const exitStatus = typeof failure.status === "number" ? failure.status : null;
+    return {
+      ok: false,
+      failure: {
+        kind: timedOut ? "timeout" : "exit",
+        exitStatus,
+        signal: failure.signal ?? null,
+        detail: timedOut
+          ? `the Codex app-server query did not answer within ${deadlineMs} ms`
+          : `the Codex app-server query failed${exitStatus === null ? "" : ` with exit status ${exitStatus}`}: ${failure.message}`
+      }
+    };
+  }
+  const fail = (kind: CodexRateLimitReadFailure["kind"], detail: string): CodexRateLimitRead =>
+    ({ ok: false, failure: { kind, exitStatus: 0, signal: null, detail } });
+  let response: Record<string, unknown> | undefined;
+  try {
+    response = output.split(/\r?\n/)
       .filter(Boolean)
       .map((line) => JSON.parse(line) as Record<string, unknown>)
       .find((line) => line.id === 2);
-    const result = objectValue(response?.result);
-    const snapshot = objectValue(result?.rateLimits);
-    if (!snapshot) return null;
+  } catch {
+    return fail("unparseable", "the Codex app-server query printed output that is not JSON lines");
+  }
+  if (!response) return fail("no_response", "the Codex app-server query exited without answering account/rateLimits/read (no response with id 2)");
+  const result = objectValue(response.result);
+  const snapshot = objectValue(result?.rateLimits);
+  if (!snapshot) return fail("no_rate_limits", "the Codex app server answered account/rateLimits/read without a rateLimits snapshot");
 
-    const rateLimits = [
-      codexRateLimit(objectValue(snapshot.primary)),
-      codexRateLimit(objectValue(snapshot.secondary)),
-    ].filter((value): value is CodingAgentRateLimit => Boolean(value));
-    const reached = typeof snapshot.rateLimitReachedType === "string";
-
-    return {
+  const rateLimits = [
+    codexRateLimit(objectValue(snapshot.primary)),
+    codexRateLimit(objectValue(snapshot.secondary)),
+  ].filter((value): value is CodingAgentRateLimit => Boolean(value));
+  const reached = typeof snapshot.rateLimitReachedType === "string";
+  return {
+    ok: true,
+    telemetry: {
       availability: reached ? "usage_limited" : availabilityFromRateLimits(rateLimits),
       context: null,
       rateLimits,
@@ -523,10 +579,16 @@ function readCodexRateLimitTelemetry(now: Date): ProviderTelemetry | null {
       planScope: stringValue(snapshot.planType),
       capturedAt: now.toISOString(),
       telemetry: "Codex account rate limits reported by the local app server.",
-    };
-  } catch {
-    return null;
-  }
+    },
+  };
+}
+
+function runCodexRateLimitQuery(deadlineMs: number): string {
+  return execFileSync("sh", ["-c", CODEX_RATE_LIMIT_QUERY], {
+    encoding: "utf8",
+    timeout: deadlineMs,
+    maxBuffer: 1024 * 1024,
+  });
 }
 
 /**

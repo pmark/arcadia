@@ -8,9 +8,9 @@ import { resolveReadySet } from "../src/docs/dispatch.js";
 import { requirementIdentity } from "../src/sessions/roleLineage.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import {
-  CHAIN_KINDS, ChainPlanError, amendmentProblems, chainActionIds, chainLauncher, chainLibraryIds, chainNextAction, completionIdProblems,
-  completionRequestId, decideFixtureStart, reconciliationProblems, renderChainPlan, validateChainParams,
-  type ChainAmendmentObservation, type ChainRunParams, type FixtureStartFacts
+  CHAIN_KINDS, ChainPlanError, amendmentProblems, chainActionIds, chainLauncher, chainLibraryIds, chainNextAction, chainQueueKeys, chainQueueProblems, chainQueueRequestId,
+  completionIdProblems, completionRequestId, decideFixtureStart, planChainQueueOrder, reconciliationProblems, renderChainPlan, validateChainParams,
+  type ChainAmendmentObservation, type ChainQueueFacts, type ChainRunParams, type FixtureStartFacts
 } from "../src/operatorActions/rehearsalChain.js";
 import { chainDescriptor, chainDescriptorText } from "../src/operatorActions/rehearsalChainDescriptors.js";
 
@@ -109,13 +109,8 @@ function observe(genesis: string, before: string, after: string): ChainAmendment
     genesisIdentity: identities(genesis), beforeIdentity: identities(before), afterIdentity: identities(after)
   };
 }
-const filled7 = (): ChainRunParams => {
-  const params = structuredClone(RUN7);
-  params.previousRun.bindings = { ...params.previousRun.bindings, resetRunId: "20261006T200000Z-1", resetHead: "a".repeat(40), terminalOffRunId: "20261006T210000Z-2", localMain: "b".repeat(40),
-    candidates: [...params.previousRun.bindings.candidates.slice(0, 6), { branch: "claude/write-start-marker-20261006T201000000Z", tip: "b".repeat(40), pullRequest: 7 }] };
-  params.requiredCommits = params.requiredCommits.map((entry, index) => ({ ...entry, commit: entry.commit.startsWith("UNFILLED") ? String(index).repeat(40) : entry.commit }));
-  return params;
-};
+/** Run 7's reviewed parameter file (fully filled from run 6's receipts), as a throwaway copy. */
+const filled7 = (): ChainRunParams => structuredClone(RUN7);
 
 describe("rehearsal-chain parameter files", () => {
   it("run 6 (N=9, tonight's one press) is valid and fully filled: binds run 5's receipts and heads and requires the merged #987 and #997 fixes", () => {
@@ -138,18 +133,40 @@ describe("rehearsal-chain parameter files", () => {
     expect(RUN6.requiredCommits.slice(0, 3).map((c) => c.commit)).toEqual(["9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1", "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4"]);
   });
 
-  it("run 7 (N=9, overnight) is valid in shape and fail-closed: every previous-run binding from run 6 is UNFILLED", () => {
-    const { problems, unfilled } = validateChainParams(RUN7);
+  it("run 7 (N=9) is valid and fully filled from run 6's receipts: reset runs/20261006T141854Z-41044, terminal Off runs/20261006T160825Z-24828, all eight candidates including stacked PR #8, and #1017 required", () => {
+    const { params, problems, unfilled } = validateChainParams(RUN7);
     expect(problems).toEqual([]);
-    expect(RUN7.actionCount).toBe(9);
-    expect(RUN7.previousRun).toMatchObject({ label: "run 6", resetId: "reset-rehearsal-chain-fixture-run6-2026-10-06", terminalOffId: "restore-terminal-off-rehearsal-chain-run6-2026-10-06", grantId: "grant-production-rehearsal-chain-run6-2026-10-06" });
-    for (const binding of ["resetRunId", "resetHead", "terminalOffRunId", "localMain"]) expect(unfilled).toContain(`params.previousRun.bindings.${binding}`);
-    expect(unfilled).toContain("params.previousRun.bindings.candidates[6].branch");
-    expect(unfilled.filter((entry) => entry.startsWith("params.requiredCommits"))).toEqual([]);
-    expect(RUN7.requiredCommits).toEqual(RUN6.requiredCommits);
+    expect(unfilled).toEqual([]);
+    expect(params?.actionCount).toBe(9);
+    expect(JSON.stringify(RUN7)).not.toContain("UNFILLED");
+    expect(RUN7.previousRun).toMatchObject({
+      label: "run 6", resetId: "reset-rehearsal-chain-fixture-run6-2026-10-06", terminalOffId: "restore-terminal-off-rehearsal-chain-run6-2026-10-06", grantId: "grant-production-rehearsal-chain-run6-2026-10-06",
+      bindings: { resetRunId: "20261006T141854Z-41044", resetHead: "162f5b19dce5eac700c5edae0a0d640bad07daa0", terminalOffRunId: "20261006T160825Z-24828", localMain: "6fbae8d6c04f3014038ff51745ae27572a3524dc" }
+    });
+    // Run 5's six candidates stay pinned; run 6 adds PR #7 (Action 1, integrated locally) and PR #8 (Action 2, stacked on #7's branch).
+    expect(RUN7.previousRun.bindings.candidates.slice(0, 6)).toEqual(RUN6.previousRun.bindings.candidates);
+    expect(RUN7.previousRun.bindings.candidates.slice(6)).toEqual([
+      { branch: "claude/write-start-marker-20261006T155142019Z", tip: "6fbae8d6c04f3014038ff51745ae27572a3524dc", pullRequest: 7 },
+      { branch: "claude/transform-start-marker-20261006T155537486Z", tip: "2aa3e2489d151289eb47a8b3e52629f434897d07", pullRequest: 8 }
+    ]);
+    // Run 6's integrated local main is exactly PR #7's tip.
+    expect(RUN7.previousRun.bindings.localMain).toBe(RUN7.previousRun.bindings.candidates[6].tip);
+    // The required commits are run 6's plus #1017's merge commit.
+    expect(RUN7.requiredCommits.slice(0, RUN6.requiredCommits.length)).toEqual(RUN6.requiredCommits);
+    expect(RUN7.requiredCommits.slice(RUN6.requiredCommits.length)).toEqual([expect.objectContaining({ commit: "3c67b0a8996893210a8694960584dc9732f83d09", why: expect.stringContaining("#1017") })]);
     expect(RUN7.actionCount).toBe(RUN6.actionCount);
-    // Filled with well-formed values it validates with nothing unfilled.
-    expect(validateChainParams(filled7())).toMatchObject({ problems: [], unfilled: [] });
+  });
+
+  it("a run-7 file with any binding left UNFILLED is still valid in shape and fail-closed: every script refuses it", () => {
+    const params = structuredClone(RUN7);
+    Object.assign(params.previousRun.bindings, { resetRunId: "UNFILLED: x", resetHead: "UNFILLED: x", terminalOffRunId: "UNFILLED: x", localMain: "UNFILLED: x" });
+    params.previousRun.bindings.candidates[7] = { branch: "UNFILLED: x", tip: "UNFILLED", pullRequest: "UNFILLED" as unknown as number };
+    params.requiredCommits[5].commit = "UNFILLED: the commit";
+    const { problems, unfilled } = validateChainParams(params);
+    expect(problems).toEqual([]);
+    for (const binding of ["resetRunId", "resetHead", "terminalOffRunId", "localMain"]) expect(unfilled).toContain(`params.previousRun.bindings.${binding}`);
+    expect(unfilled).toContain("params.previousRun.bindings.candidates[7].branch");
+    expect(unfilled).toContain("params.requiredCommits[5].commit");
   });
 
   it.each([
@@ -381,6 +398,84 @@ describe("previous terminal-Off reconciliation cross-check", () => {
   });
 });
 
+describe("run 7's previous-head decision over run 6's stacked candidates", () => {
+  const RESET = "162f5b19dce5eac700c5edae0a0d640bad07daa0";
+  const LOCAL = "6fbae8d6c04f3014038ff51745ae27572a3524dc";
+  // Run 6's integrated Action 1 is PR #7's tip; PR #8 is stacked on it, so both contain it and nothing earlier does.
+  const candidates = RUN7.previousRun.bindings.candidates.map((c) => ({ ...c, containsExpectedLocalMain: c.pullRequest >= 7 }));
+  const live: FixtureStartFacts = { remoteMain: RESET, localMain: LOCAL, resetHead: RESET, expectedLocalMain: LOCAL, resetHeadIsAncestorOfExpectedLocalMain: true, candidates, localMainIsResetCommit: false, remoteMainIsResetCommit: false };
+  it("moves only local main from 6fbae8d6 back to GitHub main 162f5b19, preserved on PR #7 and its stacked PR #8", () => {
+    expect(decideFixtureStart(live)).toMatchObject({ state: "move_local_main", refusals: [], preservedOn: [{ pullRequest: 7, tip: LOCAL }, { pullRequest: 8, tip: "2aa3e2489d151289eb47a8b3e52629f434897d07" }] });
+  });
+  it("still preserved by the stacked PR #8 alone if PR #7's own branch no longer contains it", () => {
+    const only8 = candidates.map((c) => ({ ...c, containsExpectedLocalMain: c.pullRequest === 8 }));
+    expect(decideFixtureStart({ ...live, candidates: only8 }).state).toBe("move_local_main");
+  });
+});
+
+describe("previous terminal-Off reconciliation of run 6 (a locally integrated Action 1 and a stacked Action 2)", () => {
+  // Run 6's G8 work reconciliation (runs/20261006T160825Z-24828), abridged to the fields read.
+  const line = (branch: string, tip: string, pr: number, state: string) => ({ session: `s${pr}`, state, branch, tip, pullRequest: `https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/${pr}` });
+  const run6 = RUN7.previousRun.bindings.candidates.map((c) => line(c.branch, c.tip, c.pullRequest, c.pullRequest === 7 ? "integrated" : "preserved"));
+  it("run 7's pinned candidates cover run 6's reconciliation exactly, and nothing is accepted that drops, moves or leaves live one of its lines", () => {
+    expect(run6).toHaveLength(8);
+    expect(reconciliationProblems(run6, RUN7.previousRun.bindings.candidates)).toEqual([]);
+    expect(reconciliationProblems(run6, RUN7.previousRun.bindings.candidates.slice(0, 7)).join("; ")).toContain("does not pin it");
+    expect(reconciliationProblems(run6, RUN7.previousRun.bindings.candidates.map((c) => c.pullRequest === 8 ? { ...c, pullRequest: 9 } : c)).join("; ")).toContain("pull request #9");
+    expect(reconciliationProblems([...run6, { session: "x", state: "committed_unreconciled", branch: "b", tip: "t" }], RUN7.previousRun.bindings.candidates).join("; ")).toContain("committed_unreconciled");
+  });
+});
+
+describe("the operational queue after the chain reset (Issue #1015)", () => {
+  const chain = chainQueueKeys(chainActionIds(9));
+  const entry = (key: string, status = "explicit") => ({ key, status });
+  const facts = (entries: Array<{ key: string; status: string }>, extra: Partial<ChainQueueFacts> = {}): ChainQueueFacts => {
+    const unpositioned = entries.filter((e) => e.status === "unpositioned").length;
+    return { revision: 234, orderValid: unpositioned === 0, unpositionedCount: unpositioned, entries, ...extra };
+  };
+  it("names the nine chain keys project/action in chain order", () => {
+    expect(chain).toEqual(["three-action-rehearsal/write-start-marker", "three-action-rehearsal/transform-start-marker", "three-action-rehearsal/verify-final-rehearsal",
+      ...["04", "05", "06", "07", "08", "09"].map((n) => `three-action-rehearsal/chain-step-${n}`)]);
+    expect(chainQueueRequestId("run7-2026-10-06", 234)).toBe("arrange-rehearsal-chain-queue-run7-2026-10-06-r234");
+  });
+  it("run 6's live state: seven unpositioned chain Actions are placed after every other key, each other key keeping its relative order", () => {
+    const others = ["arcadia/a1", "ppn/b2", "arcadia/a3"];
+    const before = facts([...others.map((k) => entry(k)), entry(chain[1]), entry(chain[2]), entry(chain[0], "unpositioned"), ...chain.slice(3).map((k) => entry(k, "unpositioned"))]);
+    expect(before).toMatchObject({ orderValid: false, unpositionedCount: 7 });
+    const plan = planChainQueueOrder(before, chain);
+    expect(plan).toEqual({ missing: [], order: [...others, ...chain], othersUnpositioned: [], satisfied: false });
+    const after = facts(plan.order.map((k) => entry(k)));
+    expect(chainQueueProblems(before, after, chain, plan)).toEqual([]);
+  });
+  it("a non-chain Action that is also unpositioned keeps its projected place and is reported", () => {
+    const before = facts([entry("arcadia/a1"), entry("ppn/new", "unpositioned"), ...chain.map((k) => entry(k, "unpositioned"))]);
+    const plan = planChainQueueOrder(before, chain);
+    expect(plan.order).toEqual(["arcadia/a1", "ppn/new", ...chain]);
+    expect(plan.othersUnpositioned).toEqual(["ppn/new"]);
+  });
+  it("an already valid queue with the chain in chain order needs no arrangement; a valid one with the chain out of order does", () => {
+    const valid = facts([entry("arcadia/a1"), ...chain.map((k) => entry(k))]);
+    expect(planChainQueueOrder(valid, chain).satisfied).toBe(true);
+    const swapped = facts([entry("arcadia/a1"), ...[chain[1], chain[0], ...chain.slice(2)].map((k) => entry(k))]);
+    expect(planChainQueueOrder(swapped, chain)).toMatchObject({ satisfied: false, order: ["arcadia/a1", ...chain] });
+  });
+  it("a chain Action the queue does not list is reported missing (the reset refuses)", () => {
+    const plan = planChainQueueOrder(facts([entry("arcadia/a1"), ...chain.slice(0, 8).map((k) => entry(k))]), chain);
+    expect(plan.missing).toEqual([chain[8]]);
+    expect(plan.satisfied).toBe(false);
+  });
+  it("chainQueueProblems names an invalid or unpositioned queue, another order and a reordered non-chain Action", () => {
+    const before = facts([entry("arcadia/a1"), entry("ppn/b2"), ...chain.map((k) => entry(k, "unpositioned"))]);
+    const plan = planChainQueueOrder(before, chain);
+    const good = facts(plan.order.map((k) => entry(k)));
+    expect(chainQueueProblems(before, good, chain, plan)).toEqual([]);
+    expect(chainQueueProblems(before, { ...good, orderValid: false, unpositionedCount: 2 }, chain, plan).join("; ")).toContain("not orderValid");
+    expect(chainQueueProblems(before, { ...good, orderValid: false, unpositionedCount: 2 }, chain, plan).join("; ")).toContain("2 Action(s) are still unpositioned");
+    expect(chainQueueProblems(before, facts(["ppn/b2", "arcadia/a1", ...chain].map((k) => entry(k))), chain, plan).join("; ")).toContain("relative order of a non-chain Action");
+    expect(chainQueueProblems(before, facts([...plan.order.slice(0, 2), ...[...chain].reverse()].map((k) => entry(k))), chain, plan).join("; ")).toContain("not in chain order");
+  });
+});
+
 describe("rendered library entries", () => {
   it.each([RUN6, RUN7].flatMap((params) => CHAIN_KINDS.map((kind) => [params.runId, kind] as const)))("%s %s: launcher and descriptor match the renderer and the library contract", (runId, kind) => {
     const params = readParams(runId);
@@ -405,7 +500,8 @@ describe("rendered library entries", () => {
     }
     expect(chainDescriptor("reset", RUN6).desired_effect).toContain("The new line starts from run 5's reset head 7214de28da2745c66f89d81e124e2ab2de05b2ca on GitHub main.");
     expect(chainDescriptor("reset", RUN6).problem).toContain("moves ONLY the clone's local main back to 7214de28da2745c66f89d81e124e2ab2de05b2ca");
-    expect(chainDescriptor("reset", RUN7).desired_effect).toContain("still to be filled in the parameter file");
+    expect(chainDescriptor("reset", RUN7).desired_effect).toContain("The new line starts from run 6's reset head 162f5b19dce5eac700c5edae0a0d640bad07daa0 on GitHub main.");
+    expect(chainDescriptor("reset", RUN7).problem).toContain("moves ONLY the clone's local main back to 162f5b19dce5eac700c5edae0a0d640bad07daa0");
     expect(chainNextAction(0, RUN6)).toContain("Action 1 of 9");
     expect(chainNextAction(0, RUN6_N3)).toContain("Action 1 of 3");
     // Tonight's run-6 press authorises exactly nine named Actions.

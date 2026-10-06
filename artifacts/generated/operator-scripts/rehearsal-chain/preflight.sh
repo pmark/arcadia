@@ -6,8 +6,9 @@
 # the run's N Actions and completion ids), the Arcadia main head, the installed
 # broker revision and the parameter file's required commits (all must be
 # filled and on main). It observes, read-only, that no pending proposal or open
-# Decision gates any chain Action, the worker-context Claude Code sign-in
-# verdict (never the token), Codex reviewer readiness and capacity, and GitHub
+# Decision gates any chain Action, that the operational queue is valid (orderValid,
+# nothing unpositioned), the worker-context Claude Code sign-in
+# verdict (never the token), Codex reviewer readiness and a live-read capacity, and GitHub
 # readiness for exactly the fixture repository. Every unknown, stale, paid,
 # unfilled or unavailable observation refuses. It never previews or activates
 # production, writes a token, restarts anything, or calls a model.
@@ -323,6 +324,23 @@ else
   check operator_gate refuse "the dispatch gate's pending proposals and Decisions could not be observed for the fixture"
 fi
 
+# Issue #1015: the operational queue must be valid: every approved Action positioned. An
+# unpositioned Action makes `advance queue make-next` refuse every Project ("position every
+# approved Action before choosing next"). The chain reset arranges the fixture's Actions;
+# this observes, read-only, that nothing is left unpositioned.
+QUEUE_SUMMARY=""
+if QUEUE="$(arcadia advance queue --json 2>/dev/null)" && QUEUE_SUMMARY="$(jq -ce 'select(.ok == true and (.data.orderValid | type) == "boolean" and (.data.unpositionedCount | type) == "number")
+    | {revision: .data.revision, orderValid: .data.orderValid, unpositionedCount: .data.unpositionedCount, nextActionKey: .data.nextActionKey, unpositioned: [.data.ordered[]? | select(.orderStatus == "unpositioned") | .orderKey]}' <<<"$QUEUE" 2>/dev/null)" && [[ -n "$QUEUE_SUMMARY" ]]; then
+  if jq -e '.orderValid == true and .unpositionedCount == 0' <<<"$QUEUE_SUMMARY" >/dev/null; then
+    check action_queue pass "the Action queue is valid at revision $(jq -r '.revision' <<<"$QUEUE_SUMMARY"): orderValid true, 0 unpositioned"
+  else
+    check action_queue refuse "the Action queue order is invalid, so the tick cannot choose next: $(jq -c '{revision, orderValid, unpositionedCount, unpositioned}' <<<"$QUEUE_SUMMARY"); position them through a governed advance queue arrange (the chain reset does this for the fixture's Actions), then rerun this preflight"
+  fi
+  record "actionQueue" "$QUEUE_SUMMARY"
+else
+  check action_queue refuse "the Action queue could not be read (arcadia advance queue --json), so its order is not known to be valid"
+fi
+
 # Worker-context Claude Code sign-in: the same check a managed launch runs. Only
 # the verdict leaves the probe; the token file is never printed or copied.
 cat > "$RUN_DIR/probe-claude-sign-in.mjs" <<'NODE'
@@ -363,27 +381,19 @@ else
 fi
 unset LOGIN_STATE
 
-# Codex capacity is observed directly, ignoring the workspace's unmetered
-# standing choice: evidence must be fresh, observed or attested, and included.
+# Codex capacity is read live, ignoring the workspace's unmetered standing
+# choice: the probe makes a fresh account/rateLimits/read of the codex app
+# server (the path src/codingAgents/availability.ts uses) with a bounded retry
+# and judges only that reading (Issue #1016). When no attempt answers, it names
+# each failure (a timeout or an exit status) and the check refuses; it never
+# judges whatever telemetry an earlier run left in the cache. The reading must
+# be fresh, observed or attested, and included.
 cat > "$RUN_DIR/probe-codex-capacity.mjs" <<'NODE'
-import path from "node:path";
 import { loadPhase3Registries } from "./src/intent/registries.ts";
-import { observeProviderCapacity } from "./src/codingAgents/capacity.ts";
+import { observeCodexCapacityLive } from "./src/operatorActions/rehearsalChainProbe.ts";
 const [workspace] = process.argv.slice(2);
 const profiles = loadPhase3Registries(workspace).codingAgents.profiles;
-const observation = observeProviderCapacity(profiles, { now: new Date(), unmeteredProvider: null });
-const decision = observation.providers.find((entry) => entry.providerId === "codex-cli");
-const readOnlyReviewers = profiles.filter((p) => p.provider === "codex-cli" && p.sandbox === "read-only" && path.basename(p.command) === "codex").map((p) => p.name);
-console.log(JSON.stringify({
-  generatedAt: observation.generatedAt,
-  readOnlyReviewers,
-  codex: decision ? {
-    admitted: decision.admitted, code: decision.code, reason: decision.reason, unattendedProof: decision.unattendedProof,
-    source: decision.receipt.source, evidence: decision.receipt.evidence, confidence: decision.receipt.confidence,
-    freshness: decision.receipt.freshness, usagePolicy: decision.receipt.usagePolicy, observedAt: decision.receipt.observedAt,
-    expiresAt: decision.receipt.expiresAt, availability: decision.receipt.availability, windows: decision.receipt.windows
-  } : null
-}));
+console.log(JSON.stringify(observeCodexCapacityLive(profiles)));
 NODE
 if [[ -n "$WORKSPACE" ]] && CAPACITY="$(probe "$WORKSPACE" < "$RUN_DIR/probe-codex-capacity.mjs")"; then
   printf '%s\n' "$CAPACITY" > "$RUN_DIR/codex-capacity.json"
@@ -392,12 +402,14 @@ if [[ -n "$WORKSPACE" ]] && CAPACITY="$(probe "$WORKSPACE" < "$RUN_DIR/probe-cod
   else
     check codex_reviewer_profile refuse "no codex-cli profile with a read-only sandbox exists; arcadia qa pr would refuse"
   fi
+  if ! jq -e '.liveRead.ok == true' <<<"$CAPACITY" >/dev/null 2>&1; then
+    check codex_capacity refuse "the live Codex capacity read (codex app-server account/rateLimits/read) failed on every attempt, so no capacity was judged and no cached observation was used: $(jq -r '[.liveRead.attempts[]? | select(.ok == false) | "attempt \(.attempt): \(.failure.kind)\(if .failure.exitStatus != null then " (exit status \(.failure.exitStatus))" else "" end): \(.failure.detail)"] | join("; ")' <<<"$CAPACITY" 2>/dev/null)"
   # Enumerated values from src/codingAgents/capacity.ts and availability.ts:
   # evidence real|simulated; availability available|unknown|usage_limited|budget_limited.
   # An observation must report the provider available; only an operator
   # attestation, which carries no provider telemetry, may leave it unknown.
-  if jq -e '.codex != null and .codex.admitted == true and .codex.freshness == "fresh" and (.codex.confidence == "observed" or .codex.confidence == "attested") and .codex.usagePolicy == "included" and .codex.evidence == "real" and (.codex.availability == "available" or (.codex.confidence == "attested" and .codex.availability == "unknown"))' <<<"$CAPACITY" >/dev/null; then
-    check codex_capacity pass "fresh $(jq -r '.codex.confidence' <<<"$CAPACITY") included capacity (unattended proof: $(jq -r '.codex.unattendedProof' <<<"$CAPACITY"))"
+  elif jq -e '.codex != null and .codex.admitted == true and .codex.freshness == "fresh" and (.codex.confidence == "observed" or .codex.confidence == "attested") and .codex.usagePolicy == "included" and .codex.evidence == "real" and (.codex.availability == "available" or (.codex.confidence == "attested" and .codex.availability == "unknown"))' <<<"$CAPACITY" >/dev/null; then
+    check codex_capacity pass "fresh $(jq -r '.codex.confidence' <<<"$CAPACITY") included capacity read live on attempt $(jq -r '[.liveRead.attempts[] | select(.ok == true) | .attempt] | first' <<<"$CAPACITY") of $(jq -r '.liveRead.maxAttempts' <<<"$CAPACITY") (unattended proof: $(jq -r '.codex.unattendedProof' <<<"$CAPACITY"))"
   else
     check codex_capacity refuse "codex capacity evidence is not fresh, included and available: $(jq -c '.codex | if . == null then "no observation" else {admitted, freshness, confidence, usagePolicy, evidence, availability, reason} end' <<<"$CAPACITY")"
   fi

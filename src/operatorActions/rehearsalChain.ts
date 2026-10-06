@@ -517,6 +517,76 @@ export function reconciliationProblems(lines: Array<Record<string, unknown>>, ca
 }
 
 // ---------------------------------------------------------------------------
+// The operational queue after the reset's docs sync (Issue #1015)
+// ---------------------------------------------------------------------------
+
+/** The queue order keys of the chain's Actions, in chain order. */
+export const chainQueueKeys = (actionIds: string[]): string[] => actionIds.map((id) => `${CHAIN_FIXTURE.project}/${id}`);
+
+export interface ChainQueueEntry { key: string; status: string }
+/** What `arcadia advance queue --json` reports that the chain's queue step needs. */
+export interface ChainQueueFacts {
+  revision: number;
+  orderValid: boolean;
+  unpositionedCount: number;
+  /** Every entry that carries an order key, in the queue's current order. */
+  entries: ChainQueueEntry[];
+}
+export interface ChainQueuePlan {
+  /** Chain keys the queue does not list at all (docs sync did not make them approved Actions): the queue step refuses. */
+  missing: string[];
+  /** The complete order to arrange: every other key in its current relative order, then the chain keys in chain order. */
+  order: string[];
+  /** Other (non-chain) keys that hold no position yet; arranging freezes them in their current projected order. */
+  othersUnpositioned: string[];
+  /** True when nothing needs arranging: orderValid, no unpositioned Action and the chain keys already in chain order. */
+  satisfied: boolean;
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+const inChainOrder = (keys: string[], chainKeys: string[]) => sameList(keys.filter((key) => chainKeys.includes(key)), chainKeys);
+
+/**
+ * Where the chain's Actions go in the operational queue: after every other
+ * key, in chain order, keeping every other key's relative order. The governed
+ * arrange command needs every active approved key exactly once, so the plan is
+ * the complete order; an already valid queue whose chain keys are in chain
+ * order needs no change (a resumed reset).
+ */
+export function planChainQueueOrder(facts: ChainQueueFacts, chainKeys: string[]): ChainQueuePlan {
+  const keys = facts.entries.map((entry) => entry.key);
+  const missing = chainKeys.filter((key) => !keys.includes(key));
+  const others = facts.entries.filter((entry) => !chainKeys.includes(entry.key));
+  return {
+    missing,
+    order: [...others.map((entry) => entry.key), ...chainKeys],
+    othersUnpositioned: others.filter((entry) => entry.status === "unpositioned").map((entry) => entry.key),
+    satisfied: missing.length === 0 && facts.orderValid && facts.unpositionedCount === 0 && inChainOrder(keys, chainKeys)
+  };
+}
+
+/**
+ * Every way the queue after the chain's arrangement is not what the reset must
+ * leave: orderValid with zero unpositioned (the governed answer, never inferred
+ * from an exit code), the planned order exactly, and every non-chain key in the
+ * relative order it had before.
+ */
+export function chainQueueProblems(before: ChainQueueFacts, after: ChainQueueFacts, chainKeys: string[], plan: Pick<ChainQueuePlan, "order">): string[] {
+  const problems: string[] = [];
+  if (after.orderValid !== true) problems.push("the queue is not orderValid after the arrangement");
+  if (after.unpositionedCount !== 0) problems.push(`${after.unpositionedCount} Action(s) are still unpositioned after the arrangement`);
+  const afterKeys = after.entries.map((entry) => entry.key);
+  if (!sameList(afterKeys, plan.order)) problems.push(`the queue order after the arrangement is not the planned order: [${afterKeys.join(", ")}] instead of [${plan.order.join(", ")}]`);
+  const others = (entries: ChainQueueEntry[]) => entries.map((entry) => entry.key).filter((key) => !chainKeys.includes(key));
+  if (!sameList(others(before.entries), others(after.entries))) problems.push("the arrangement changed the relative order of a non-chain Action");
+  if (!inChainOrder(afterKeys, chainKeys)) problems.push("the chain's Actions are not in chain order after the arrangement");
+  return problems;
+}
+
+/** The deterministic request id of one arrangement: fixed per run and queue revision, so a replay is recognised and a changed queue gets its own. */
+export const chainQueueRequestId = (runId: string, revision: number): string => `arrange-rehearsal-chain-queue-${runId}-r${revision}`;
+
+// ---------------------------------------------------------------------------
 // The amended fixture, judged by Arcadia's own discovery and docs sync
 // ---------------------------------------------------------------------------
 

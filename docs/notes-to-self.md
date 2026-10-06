@@ -288,6 +288,7 @@ keys: operator script, bash, ERR trap, BASH_SUBSHELL, /dev/fd, process substitut
 
 The library's `exec > >(tee -a "$LOG")` needs `/dev/fd`, which the agent sandbox denies (`/dev/fd/62: Operation not permitted`): the script exits before writing any receipt. Run `tests/three-action-rehearsal-operator-scripts.test.ts` unsandboxed.
 Under `set -E` an ERR trap also runs inside `$(...)` and wrapper subshells, even when the parent handles the failure with `||` or `if`; return early when `BASH_SUBSHELL > 0` so only the top-level shell writes the receipt and handoff. Host bash is 3.2: no associative arrays, and avoid heredocs inside `$(...)`.
+A fake CLI that `process.exit`s right after `process.stdout.write` truncates a pipe answer over 64 KB (the real `advance queue --json`: `jq: parse error: Unfinished string`); set `process.exitCode` and return instead.
 A generated managed document is judged by real Arcadia code, never a canned `errorCount`: the fake's `{ passthrough: "probe" | "cli" }` reply runs the checkout's code (G1's fixture once hid invalid YAML behind a faked docs sync).
 
 ## Re-run a passed Action on a reused fixture
