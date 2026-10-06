@@ -72,8 +72,9 @@ Observed timings (a trivial one-line Action, installed host, from the receipts
 and logs; they will be larger for real work): G7 script run 79 to 126 seconds
 (runs 2 to 5), after which production reads `Active`; admission to draft PR 40
 to 180 seconds; draft to readied with the settled head about 1.3 minutes; both
-verdicts within about 3 minutes of readiness; run 5's Action 1 took 6.3 minutes
-from admission to integration **including** one QA rerun. CI on a PR: 5 to 15
+verdicts within about 3 minutes of readiness; run 5's Action 1 took about 6.3
+minutes from its admission to Action 2's admission (an upper bound for
+integration), **including** one QA rerun. CI on a PR: 5 to 15
 minutes (runner capacity varies). A run-N script pair built by cloning the
 previous pair has taken roughly 40 to 70 minutes of implementer plus review time
 (estimate, not recorded in a receipt).
@@ -187,7 +188,11 @@ For each change (one Action per session; one mutation owner per candidate):
 ### Phase 2: merge window, freeze and the single reinstall
 
 The freeze window is defined in `docs/agent-guidance/rehearsal-freeze-window.md`:
-it covers the time production is Active (through G8). This runbook adds a
+it covers the time production is Active (through G8) and permits merges on
+origin while the main checkout is not fast-forwarded across runtime commits.
+This runbook is **deliberately stricter**: it also stops merges from the install
+through G8 (a merge moves `origin/main` away from the installed revision, so
+criterion 1 would fail, and between G6 and the press it voids G6), and it adds a
 stricter stretch from G6 to the G7 press.
 
 1. Announce on #940 and #899 (and message live sessions): production Off, merge
@@ -202,7 +207,9 @@ stricter stretch from G6 to the G7 press.
    reset and G6, does not void anything.)
 3. From the install until G8: no merges, no queue moves, no fixture docs-sync
    or settlement, no main pushes across runtime commits, no service restarts
-   other than G8's. From G6 until the G7 press, additionally **no pushes to main
+   other than G8's. **Exception: the run's own scripts** (the reset, which runs
+   docs sync and may settle-reject a pending fixture proposal; G6; the operator's
+   G7 press; G8). From G6 until the G7 press, additionally **no pushes to main
    at all (not even governed docs-only settles)**: G6's receipt binds the exact
    main head and the installed broker revision, so a main push, a reinstall, a
    reset, a recover or any G8 voids it (G7's `next_after.voided_by` lists them).
@@ -212,7 +219,8 @@ stricter stretch from G6 to the G7 press.
 1. Reset the fixture (this session needs the operator's yes in its own chat for
    it, section 3): `ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
    artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run<N>-<date>.sh run`.
-   It amends only `write-start-marker`'s `next_action` (a new requirement input
+   It amends only `write-start-marker`'s `next_action` (runs 2 to 5; run 6 must
+   also amend Action 2 and 3, section 8 item 1) (a new requirement input
    revision; a passed development attempt for an unchanged input is never
    relaunched), names a fresh unused completion request id (the packet template's
    `complete-<action>-<date>` collides on a same-day rerun), asks the agent to
@@ -232,8 +240,8 @@ stricter stretch from G6 to the G7 press.
 
 ### Phase 4: the operator presses G7
 
-The Grant's hermetic replay takes about 80 to 125 seconds; production then
-reads `Active`. If G7 refuses because main or the broker moved, rerun G6 (with
+The G7 script (hermetic replay plus activation) takes about 80 to 125 seconds;
+production then reads `Active`. If G7 refuses because main or the broker moved, rerun G6 (with
 the operator's yes for this session) and ask again. The `/actions` page isolates the single next action
 and shows what voids a G6.
 
@@ -345,8 +353,11 @@ broker): rerun G6.
    5 left the fixture's local `main` at `f68ec48` (Action 1 integrated). The
    reset must treat that without resetting away work and without a base push:
    either a fresh fixture (G1 parameterised for slug, path and repository) or a
-   reviewed reset that starts a new line from the genesis tree. Whichever is
-   chosen must also amend Action 2's (and 3's) `next_action` (Action 2 has a
+   reviewed reset that moves the fixture clone's **local** `main` back to GitHub's
+   `main` (the run-5 reset head `7214de28`) and starts the new run from there.
+   That loses nothing: `f68ec48` stays on the run-5 candidate branch and PR #5,
+   and it pushes no base. Say in the descriptor which head the new line starts
+   from. Either way the reset must also amend Action 2's (and 3's) `next_action` (Action 2 has a
    passed development attempt at input `6bf8f08dbb3e`) and name fresh completion
    ids for every Action (`complete-transform-start-marker-2026-10-05` is already
    settled). (b) **#987, serial Actions (blocking criterion 5 for Action 2 and 3).** After
@@ -368,7 +379,7 @@ broker): rerun G6.
    previous heads) instead of copies, so a new run is a reviewed one-line
    change.
 5. **Visibility:** `production status` now names a terminal integration refusal
-   (#983); a stuck candidate in other states and the dashboard rendering of
+   (#983; tested, not yet seen live); a stuck candidate in other states and the dashboard rendering of
    escalations are still generic.
 6. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
