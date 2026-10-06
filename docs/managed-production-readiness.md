@@ -473,6 +473,65 @@ pins their sha256).
   especially the "Operator QA plan", "Tests and evidence" and "Approval
   boundaries" criteria.
 
+### Three-Action rehearsal run 5 — 2026-10-06 candidate
+
+`prepare-run-5-rehearsal-scripts` drafts the run-5 pairs. None was run; they
+were exercised only with `--describe` and against fakes. Run 4 admitted
+write-start-marker and rendered the Validation evidence section into PR #4,
+then stalled about three hours at integration (#981): the agent's drafted
+complete Ask was never archived, the worker's terminal-recovery preservation
+committed it on top of the settlement, and the integration guard refused in a
+silent loop. Its G8 proved terminal Off (run `20261006T011557Z-3871`, policy
+revision 37). Fixture main is run 4's reset head `9642005f…`, one commit on run
+3's `4375aafe…`, on run 2's `0d3d2ced…`, on genesis `5e0e183f…`. Run 4's
+candidate is preserved on branch `claude/write-start-marker-20261005T220000438Z`
+and PR #4 at `79c6bae9…`, beside PRs #3, #2 and #1. Every 2026-10-04,
+2026-10-05, run-3 and run-4 pair is retired from use and left byte-unchanged
+(a test pins the sha256 of all 30 files).
+
+- **Reset.** `reset-three-action-rehearsal-fixture-run5-2026-10-06` clones the
+  run-4 reset. It requires run 4's reset receipt (`newHead` `9642005f…` on run
+  3's head) and run 4's G8 terminal Off. It rewrites write-start-marker's
+  `next_action` a fifth time: its input revision moves off `959a3b12c686…`,
+  `7a8dd4f5960f…`, `e22c8cfadd0b…` and `7843e2eb12f9…` with an unchanged
+  criteria fingerprint. The text keeps the original sentence, names the
+  unused completion id `complete-write-start-marker-run5-2026-10-06` (refused
+  at `proposal_gate`, before any settle or commit, if it already exists) and
+  tells the agent to leave `git status` clean after settling. It checks all
+  four earlier candidates (local branch, GitHub branch and PR head each) before
+  the push and after it. The date rule is run 4's: the reset writes its own
+  UTC date and docs sync applies an equal or later one. Run 4's Plan says
+  2026-10-05, so a reset on 2026-10-06 bumps the date; tests prove that bump
+  with the real docs sync, including reopening a record run 4 left `done`.
+- **Issue #968.** Unchanged, with run 4's
+  `complete-write-start-marker-run4-2026-10-05` as the one proposal the reset
+  may reject (declared in its descriptor's `agentAsk`): pending → governed
+  rejected settle before the commit; rejected or accepted elsewhere → left as
+  it is, only with fixture main at run 4's reset head and the gate clear; any
+  other pending fixture item (runs 1 to 3 included) → refuse. Live, run 4's
+  proposal is accepted.
+- **Evidence.** The receipt records the new head, the four candidates' tips
+  before and after, every fixture proposal's state before and after, the
+  superseded proposal and the completion id.
+  `tests/rehearsal-run-5-amended-action.test.ts` runs the real transition
+  resolver and tick through four earlier runs and shows the run-5 input
+  launching as development ordinal 1.
+- **G6, G7 and G8.** The run-5 G6 and G7 bind the run-5 reset head: one commit
+  on run 4's head, four on genesis. G6 keeps every run-4 check. G7 is the
+  run-4 G7 line for line apart from ids, binding and wording, which a test
+  compares, and its `next_after` voids on every rehearsal G8 (runs 1 to 5),
+  reset (runs 2 to 5), recover and reinstall. The run-5 G8 also owns the run-5
+  request id. Its reconciliation and hash pins are byte-identical to run 4's.
+- **Order.** Stray-Ask archive fix (#981) merged and reinstalled by the
+  release manager → merge this pull request → reset → G6 → main quiet (no push
+  to main, reinstall, restart or G8) → operator presses G7 within 30 minutes
+  → G8 from the Terminal panel or `/runs`.
+- **Run 5 evidence to capture.** Keep the live QA reviewer's verdicts on the
+  run's pull request (PR #5), in `artifacts/qa/pull-requests/.../qa-report.md`:
+  "Operator QA plan", "Tests and evidence" and "Approval boundaries". If
+  integration is refused, keep the new escalation text `arcadia production
+  status` shows for it, with its blocker and remedy.
+
 Fresh v2 amendment and rehearsal-creation Asks preserve the earlier drafts and
 all twelve accepted prerequisite criteria. They are validated inputs, not
 accepted scope. Optional preview is blocked by configured `martianrover`
