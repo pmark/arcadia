@@ -17,7 +17,10 @@
  * fetch and detached-worktree checkout (local Git bookkeeping and a throwaway
  * directory), Git's read-only inspection commands and the Project's declared
  * validation commands. Each criterion gets read-only inspection steps, and its
- * expected result is the criterion text itself, quoted.
+ * expected result is the criterion text itself, quoted. A criterion that a
+ * command must pass is the exception: inspection cannot show a pass, so its
+ * expected result is limited to what inspection shows and points the proof of
+ * passing at the declared-validation step's exit-zero result.
  *
  * Refusal, not a placeholder: when the Action declares no acceptance criteria
  * (or the source is missing, or the plan cannot fit a pull-request body), the
@@ -194,7 +197,15 @@ function renderPlan(
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
       ...(present.length === 0 ? ["the diff shows what changed"] : [])
     ];
-    lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: “${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`);
+    const quoted = `“${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`;
+    if (requiresPassingCommand(criterion, named, validation)) {
+      // Inspection cannot show that a command passes (Issue #986): bound the
+      // Expected line to what inspection shows and point the proof of passing
+      // at the declared-validation step and its exit-zero result.
+      lines.push(`- **Expected:** ${outputs.join("; ")}. ${inspectionScope(present)} ${passProof(criterion, validation, criteria.length + 3)} The criterion, exactly as worded: ${quoted}`);
+      return;
+    }
+    lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: ${quoted}`);
   });
 
   const finalStep = criteria.length + 3;
@@ -208,6 +219,48 @@ function renderPlan(
   }
   lines.push("", "Merge, deployment and publication remain separate operator gates.");
   return lines.join("\n");
+}
+
+const PASS_WORDS = /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|exits?\s+(?:with\s+)?(?:(?:code|status)\s+)?(?:0|zero)|exit[- ](?:code[- ])?(?:0|zero))\b/i;
+const SCRIPT_PATH = /\.(?:m?js|cjs|m?ts|cts|sh|bash|zsh|py|rb|pl)$/i;
+
+/**
+ * A criterion satisfied by running a command: it says something must pass
+ * (succeed, exit zero) and names a declared validation command, a script path
+ * or an inline code span. Detection only changes the step's wording; it never
+ * makes anything runnable.
+ */
+function requiresPassingCommand(criterion: string, named: readonly string[], validation: readonly string[]): boolean {
+  if (!PASS_WORDS.test(criterion)) return false;
+  return declaredCommandsIn(criterion, validation).length > 0
+    || named.some((candidate) => SCRIPT_PATH.test(candidate))
+    || /`[^`\n]+`/.test(criterion);
+}
+
+function declaredCommandsIn(criterion: string, validation: readonly string[]): string[] {
+  return validation.filter((command) => mentions(criterion, command));
+}
+
+/** What an inspection step can show, and no more. */
+function inspectionScope(present: readonly string[]): string {
+  if (present.length === 0) return "That is all this inspection shows: a diff never shows that a command passes.";
+  const files = present.map((target) => code(target)).join(", ");
+  return present.length === 1
+    ? `That is all this inspection shows: that ${files} exists at the candidate commit and what it contains. Showing a file's source never shows that a command passes.`
+    : `That is all this inspection shows: that ${files} exist at the candidate commit and what they contain. Showing a file's source never shows that a command passes.`;
+}
+
+/** Where the proof of passing is: the declared-validation step's exit-zero result, never inspection. */
+function passProof(criterion: string, validation: readonly string[], validationStep: number): string {
+  const matched = declaredCommandsIn(criterion, validation);
+  if (matched.length > 0) {
+    const commands = matched.map((command) => code(truncate(command, MAX_COMMAND_CHARS))).join(" and ");
+    return `Whether it passes is proven only by Step ${validationStep}, the Project's declared validation: ${code("echo $?")} immediately after ${commands} prints ${code("0")}.`;
+  }
+  if (validation.length > 0) {
+    return `This plan runs no command taken from criterion text; the only proof of passing it offers is Step ${validationStep}, the Project's declared validation, where ${code("echo $?")} prints ${code("0")} after each declared command.`;
+  }
+  return "This plan runs no command taken from criterion text and the Project declares no validation commands, so this plan offers no proof that it passes.";
 }
 
 /** Plain documents and Arcadia's governed data files: nothing to run. */
