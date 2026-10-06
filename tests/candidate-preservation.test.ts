@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import {
   type CandidatePreservationRequest
 } from "../src/sessions/candidatePreservation.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
+import { COMPLETION_SETTLEMENT_LINE } from "../src/sessions/validationEvidence.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -475,6 +476,66 @@ describe("candidate preservation (remote)", () => {
     expect(body).toContain("exactly 2 changed files:\n  - `M` `README.md`\n  - `A` `feature.txt`");
     expect(body).toContain(`- **Do:** inspect \`feature.txt\` with \`git show ${receipt.commitSha}:feature.txt\`.`);
     expect(body).toContain("- **Do:** run `node scripts/check.mjs`.");
+  });
+
+  it("appends the receipt's host validation evidence and the settlement line after the unchanged plan", () => {
+    const fixture = makeFixture();
+    const remote = new FakeRemote();
+    const evidenceDirectory = path.join(fixture.workspace, "artifacts", "preservation", "session-1", "check-a1");
+    mkdirSync(evidenceDirectory, { recursive: true });
+    const evidenceRef = path.join(evidenceDirectory, "validation.json");
+    const candidateFingerprint = snapshotCandidate(fixture.candidate);
+    writeFileSync(evidenceRef, JSON.stringify({
+      producer: "arcadia-host-seatbelt-v1", tree: candidateFingerprint, complete: true,
+      results: [{ command: "node scripts/check.mjs", exitStatus: 0, signal: null, error: null, stdout: "check passed\n", stderr: "",
+        cwd: "/tmp/arcadia-preservation-x/source", durationMs: 42, timedOut: false, timeoutMs: 120_000 }]
+    }));
+    const receipt = withDatabase(fixture.workspace, (db) =>
+      preserveCandidate(db, request(fixture, {
+        validation: { passed: true, evidenceRef, candidateFingerprint },
+        remotePreservation: { authorized: true, qaPlan: {
+          kind: "action-acceptance", actionKey: "demo/some-action", actionTitle: "Write the feature",
+          acceptanceCriteria: ["feature.txt contains the candidate work."], validationCommands: ["node scripts/check.mjs"]
+        } }
+      }), { remote })
+    );
+    const body = remote.created[0].body;
+    expect(receipt.preservationState).toBe("IN PR");
+    expect(receipt.validationEvidenceRef).toBe(evidenceRef);
+    const plan = body.slice(0, body.indexOf("\n\n### Validation evidence\n"));
+    expect(plan.startsWith("## Operator QA plan\n")).toBe(true);
+    expect(plan.endsWith("Merge, deployment and publication remain separate operator gates.")).toBe(true);
+    expect(body).toContain(`bound to candidate tree \`${candidateFingerprint}\`, which is the tree of candidate commit \`${receipt.commitSha}\``);
+    expect(body).toContain("- **Status:** passed — the declared validation command ran to completion and exited 0.");
+    expect(body).toContain("- **Command:** `node scripts/check.mjs`\n- **Working directory:** `arcadia-preservation-x/source` in the host's temporary directory");
+    expect(body).toContain("- **Exit code:** `0`\n- **Duration:** 42 ms");
+    expect(body).toContain("```text\ncheck passed\n```");
+    expect(body.endsWith(`\n\n${COMPLETION_SETTLEMENT_LINE}`)).toBe(true);
+  });
+
+  it("states missing validation evidence explicitly and still preserves exactly as before", () => {
+    const fixture = makeFixture();
+    const remote = new FakeRemote();
+    const receipt = withDatabase(fixture.workspace, (db) =>
+      preserveCandidate(db, request(fixture, { remotePreservation: { authorized: true, qaPlan: {
+        kind: "action-acceptance", actionKey: "demo/some-action", actionTitle: null,
+        acceptanceCriteria: ["feature.txt exists."], validationCommands: ["node scripts/check.mjs"]
+      } } }), { remote })
+    );
+    expect(receipt.preservationState).toBe("IN PR");
+    expect(receipt.qaPlanRefusal).toBeUndefined();
+    expect(remote.pushes).toEqual([{ branch: fixture.branch }]);
+    expect(remote.created[0].body).toContain("- **Status:** missing — the receipt does not cite a host validation record under artifacts/preservation/. Arcadia preserved the candidate as usual; this body does not prove validation.");
+    expect(remote.created[0].body.endsWith(COMPLETION_SETTLEMENT_LINE)).toBe(true);
+  });
+
+  it("leaves a literal pull-request body exactly as given", () => {
+    const fixture = makeFixture();
+    const remote = new FakeRemote();
+    withDatabase(fixture.workspace, (db) =>
+      preserveCandidate(db, request(fixture, { remotePreservation: { authorized: true, qaPlan: "## QA\n1. run tests" } }), { remote })
+    );
+    expect(remote.created[0].body).toBe("## QA\n1. run tests");
   });
 
   it("turns a rendering failure into a refusal body and still pushes and opens the PR", () => {

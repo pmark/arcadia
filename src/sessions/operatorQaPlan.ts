@@ -14,7 +14,8 @@
  * Nothing runnable is ever derived from criterion text: a criterion may say
  * "never run `git push --force`", and lifting that span into a "run" step would
  * invert it. The only commands the plan tells the operator to run are Git's own
- * read-only checkout and inspection commands and the Project's declared
+ * fetch and detached-worktree checkout (local Git bookkeeping and a throwaway
+ * directory), Git's read-only inspection commands and the Project's declared
  * validation commands. Each criterion gets read-only inspection steps, and its
  * expected result is the criterion text itself, quoted.
  *
@@ -144,7 +145,7 @@ function renderPlan(
   const lines: string[] = [
     HEADING,
     "",
-    "Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Every step except the declared validation is a read-only Git inspection.",
+    `Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with ${code(`git worktree remove ${checkout}`)}. Every later step except the declared validation only reads Git data, and only the declared validation runs candidate code.`,
     "",
     `- **Action:** ${code(source.actionKey)}${source.actionTitle ? ` — ${inlineText(source.actionTitle)}` : ""}`,
     `- **Candidate:** branch ${code(facts.branch)} at commit ${code(facts.commitSha)}`,
