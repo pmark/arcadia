@@ -25,6 +25,7 @@ ARCADIA_CLI_PATH=/absolute/path/to/arcadia
 ARCADIA_DASHBOARD_URL=http://192.168.1.10:3020
 ARCADIA_DISCORD_POLL_INTERVAL_SECONDS=60
 DISCORD_PING_CHANNELS=actions=123456789012345678,review=234567890123456789
+DISCORD_CATEGORY_CHANNELS=alerts=345678901234567890,briefings=456789012345678901,log=567890123456789012
 ```
 
 `DISCORD_PING_CHANNELS` lists the channels an agent's `arcadia ping --channel <alias>`
@@ -33,6 +34,25 @@ ping naming a channel that is not listed, or that the bot cannot send to, is
 delivered to `DISCORD_CHANNEL_ID` with a note, so a typo never drops it. The bot
 drains the queue (`arcadia ping pending`) on its normal poll and records each
 delivery with `arcadia ping sent`.
+
+`DISCORD_CATEGORY_CHANNELS` routes the bot's own proactive messages by category,
+as comma-separated `<category>=<channel id>` pairs. A category with no entry, or
+whose channel the bot cannot send to, posts to `DISCORD_CHANNEL_ID` as before, so
+nothing is ever dropped. An unknown category or a malformed id refuses startup.
+
+| Category | What lands there |
+| --- | --- |
+| `alerts` | Production red alerts, CI-blocked pings, failed runs, blocked work items, failed Codex tasks, and settlements with an incomplete recovery |
+| `briefings` | The daily orientation packet and the narrative digests |
+| `log` | Routine settlement summaries, PR-opened pings, completed Actions, produced artifacts, completed milestones, completed runs, Codex task start and completion |
+
+Keep `alerts` unmuted: it holds CI-blocked pings and blocked work that can need you. Delivery is at-least-once: if Discord accepts a post but the bot sees an error, the same message can also appear in the default channel.
+
+Everything that needs the operator stays in `DISCORD_CHANNEL_ID`: review items,
+opened Decisions, PR-ready pings, runs and Codex tasks that need review, replies,
+and the ask ingress (the only channel that accepts requests). Replies to the
+orientation packet still work from the briefings channel, because the reply
+router matches the replied-to message, not the channel.
 
 `ARCADIA_DASHBOARD_URL` defaults to `http://localhost:3020`. Set it to the
 Mac's LAN or Tailscale Mission Control URL when Discord is read on a phone, so

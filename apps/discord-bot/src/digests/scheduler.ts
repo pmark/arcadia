@@ -3,6 +3,7 @@ import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { DigestRunEntry } from "../arcadia/types.js";
 import type { BotConfig } from "../config.js";
 import type { LogLevel } from "../logging.js";
+import { fetchCategoryChannel } from "../notifications/categories.js";
 
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 
@@ -95,9 +96,8 @@ async function runDueDigests(
 
   if (run.data.pending.length === 0) return;
 
-  const channel = await client.channels.fetch(config.discordChannelId);
-  if (!channel || !("send" in channel)) {
-    logJson("error", { msg: "digest channel is not sendable", channelId: config.discordChannelId });
+  const channel = await fetchCategoryChannel(client, config, "briefings", logJson);
+  if (!channel) {
     return;
   }
 
