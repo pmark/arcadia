@@ -30,7 +30,8 @@ the installed host, shows all of the following with evidence:
    reruns of pure reviewer variance. A **variance verdict** is a non-pass
    code-review or QA verdict with no finding other than the deterministic gate's
    refused not-applicable claims and no criterion judged `fail` (every non-pass
-   criterion is a refused not-applicable or `not-checked`). By the operator's
+   criterion is a refused not-applicable or `not-checked`, and none of those is
+   Correctness or Security and authority: a `not-checked` there stops at once). By the operator's
    2026-10-06 choice (Issue #1018; runs 1, 3, 5 and 6 each stopped on one) the
    tick reruns such a verdict automatically, at most 2 more times (3 attempts in
    total) per verdict kind per exact head, each rerun named once in the worker
@@ -389,7 +390,8 @@ in `production status`, both verdicts, then integration (the fixture's **local**
   says "Refused not-applicable claim" or lists `not-checked` criteria with
   "Ordered findings: None") is rerun by the tick itself, up to 3 attempts per
   verdict kind per head: do nothing, and read the worker log lines "Automatic
-  rerun of the independent ..." and the `Now:` text of the
+  rerun of the independent ..." (it names the criteria and the reviewer summary
+  sentence dismissed, and is logged only once the new attempt exists) and the `Now:` text of the
   `awaiting_independent_verdicts` entry. Only when the entry becomes
   `independent_verdict_failed` ("the automatic reruns are spent", or a real
   finding) is the verdict final. With the operator's yes for this session, one

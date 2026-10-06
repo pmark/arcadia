@@ -158,7 +158,9 @@ export interface QaPrReviewCommandData {
    * Non-null only when a `needs-follow-up` verdict is pure reviewer variance:
    * no finding other than the deterministic gate's refused not-applicable
    * claim, and no criterion judged `fail` (every non-pass criterion is a
-   * refused not-applicable or `not-checked`). Decided by `classifyReviewerVariance`
+   * refused not-applicable or `not-checked`, and none is Correctness or Security
+   * and authority). The text names what was dismissed: the non-pass criteria, the
+   * residual-risk count and the reviewer summary's first sentence. Decided by `classifyReviewerVariance`
    * from the structured verdict and the deterministic gate alone, never from
    * model-written text, and never together with `reviewerUnavailable`.
    */
@@ -1403,6 +1405,9 @@ export function classifyReviewerVariance(input: {
   if (verdict !== "needs-follow-up" || model.verdict === "fail") return null;
   if (model.findings.length > 0) return null;
   if (model.checks.length === 0 || model.checks.some((check) => check.status === "fail")) return null;
+  // Correctness and security are never dismissed as variance: a reviewer that
+  // could not establish either has not shown the change is safe, so it stops.
+  if (model.checks.some((check) => VARIANCE_EXCLUDED_CRITERIA.has(check.criterion) && check.status !== "pass")) return null;
   const allowedReasons = new Set([REFUSED_NOT_APPLICABLE_REASON, NOT_EVERY_CRITERION_PASSED_REASON]);
   if (!deterministic.reasons.every((reason) => allowedReasons.has(reason))) return null;
   if (!deterministic.findings.every((finding) => finding.title.startsWith(`${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: `))) return null;
@@ -1412,7 +1417,21 @@ export function classifyReviewerVariance(input: {
     refused.length > 0 ? `refused not-applicable claim: ${refused.join("; ")}` : null,
     notChecked.length > 0 ? `not-checked: ${notChecked.join(", ")}` : null
   ].filter((part): part is string => part !== null);
-  return `reviewer variance only (no finding, no criterion judged fail${parts.length > 0 ? `; ${parts.join("; ")}` : `; the reviewer labelled it ${model.verdict} with every criterion passing`}).`;
+  const risks = model.residualRisks.length;
+  return `reviewer variance only (no finding, no criterion judged fail${parts.length > 0 ? `; ${parts.join("; ")}` : `; the reviewer labelled it ${model.verdict} with every criterion passing`}; `
+    + `${risks} residual risk${risks === 1 ? "" : "s"} dismissed; reviewer summary: "${firstSentence(model.summary, VARIANCE_SUMMARY_MAX_CHARS)}").`;
+}
+
+/** The criteria whose non-pass is never variance: Correctness (both roles) and Security and authority (code review). */
+const VARIANCE_EXCLUDED_CRITERIA: ReadonlySet<string> = new Set(["correctness", "security-and-authority"]);
+const VARIANCE_SUMMARY_MAX_CHARS = 160;
+
+/** The summary's first sentence on one line, cut to `max` characters (an ellipsis marks a cut). */
+function firstSentence(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim().replace(/"/g, "'");
+  const end = flat.search(/[.!?](\s|$)/);
+  const sentence = end === -1 ? flat : flat.slice(0, end + 1);
+  return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}\u2026` : sentence;
 }
 
 function verdictSummary(verdict: QaPrVerdict, modelSummary: string, reasons: string[]): string {

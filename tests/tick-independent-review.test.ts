@@ -565,6 +565,41 @@ describe("tick-driven independent review", () => {
       expect(escalation(rehearsal)).toBeUndefined();
     });
 
+    it("names a rerun only once its lineage attempt was allocated: a failure before allocation repeats nothing", () => {
+      const { rehearsal } = finishedA();
+      let calls = 0;
+      rehearsal.github.verdict = (role) => (role === "code-review" && calls++ === 0 ? "variance" : "pass");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      rehearsal.tick(); // code review: variance
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
+      // The tick's own PR poll succeeds; the review command's own `gh pr view` (the second in the tick) fails before any attempt exists.
+      const github = rehearsal.github as unknown as { runCommand: typeof rehearsal.github.runCommand };
+      const original = github.runCommand;
+      let views = 0;
+      github.runCommand = (input) => {
+        if (input.command === "gh" && input.args[0] === "pr" && input.args[1] === "view" && !input.args.includes("commits")) {
+          views += 1;
+          if (views % 2 === 0) return { status: 1, stdout: "", stderr: "HTTP 502 bad gateway (simulated)", error: null };
+        }
+        return original(input);
+      };
+      try {
+        rehearsal.tick();
+        rehearsal.tick();
+      } finally {
+        github.runCommand = original;
+      }
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
+      expect(rehearsal.github.reviewerCalls).toHaveLength(1);
+      expect(rehearsal.log.filter((line) => line.includes("Review step code-review") && line.includes("evidence could not be read"))).toHaveLength(2);
+      expect(rerunLines(rehearsal)).toEqual([]);
+      const { integrated } = rehearsal.tickThroughReview();
+      expect(integrated.handoff?.integration.kind).toBe("integrated");
+      expect(rerunLines(rehearsal)).toHaveLength(1);
+      expect(rerunLines(rehearsal)[0]).toMatch(/attempt 2 of 3; the previous verdict was reviewer variance only .*reviewer summary: "/);
+    });
+
     it("reruns a QA variance verdict too, as its own kind with its own count", () => {
       const { rehearsal } = finishedA();
       let calls = 0;

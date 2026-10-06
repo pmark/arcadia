@@ -768,7 +768,10 @@ describe("reviewer variance classification", () => {
     // The one finding is the deterministic gate's own refusal, not anything the reviewer wrote.
     expect(RUN6_REFUSED_VERDICT.findings).toEqual([]);
     expect(result.data.findings.map((finding) => [finding.severity, finding.title])).toEqual([["high", "Refused not-applicable claim: Failure handling, State and concurrency"]]);
-    expect(result.data.varianceReason).toMatch(/^reviewer variance only \(no finding, no criterion judged fail; refused not-applicable claim: Failure handling, State and concurrency\)\.$/);
+    expect(result.data.varianceReason).toBe(
+      "reviewer variance only (no finding, no criterion judged fail; refused not-applicable claim: Failure handling, State and concurrency; "
+      + '0 residual risks dismissed; reviewer summary: "The marker content and its focused Node test implement the stated action; supplied validation ran the changed test successfully.").'
+    );
     expect(result.data.decision.status).toBe("deferred");
   });
 
@@ -778,7 +781,10 @@ describe("reviewer variance classification", () => {
     const result = reviewRun6(RUN6_NOT_CHECKED_VERDICT);
     expect(result.data.verdict).toBe("needs-follow-up");
     expect(result.data.findings).toEqual([]);
-    expect(result.data.varianceReason).toMatch(/not-checked: Compatibility\)\.$/);
+    expect(result.data.varianceReason).toBe(
+      "reviewer variance only (no finding, no criterion judged fail; not-checked: Compatibility; "
+      + '1 residual risk dismissed; reviewer summary: "The requested marker content and its test are present and the supplied deterministic validation passed, but compatibility across the project\u2019s supported Node v\u2026").'
+    );
   });
 
   it("records variance durably with the persisted verdict and reads it back when the receipt is reused, never for a pass", () => {
@@ -801,7 +807,7 @@ describe("reviewer variance classification", () => {
     })) };
     const result = reviewRun6(verdict, "qa");
     expect(result.data.verdict).toBe("needs-follow-up");
-    expect(result.data.varianceReason).toMatch(/not-checked: Managed documents\)\.$/);
+    expect(result.data.varianceReason).toMatch(/not-checked: Managed documents; \d+ residual risks? dismissed; reviewer summary: ".+"\)\.$/);
   });
 
   it("never classifies a real finding, a criterion judged fail, or a model fail as variance", () => {
@@ -821,6 +827,44 @@ describe("reviewer variance classification", () => {
     const modelFailed = reviewRun6(modelFail);
     expect(modelFailed.data.verdict).toBe("needs-follow-up");
     expect(modelFailed.data.varianceReason).toBeNull();
+  });
+
+  it.each([
+    ["Correctness", "correctness", "not-checked"],
+    ["Security and authority", "security-and-authority", "not-checked"],
+    ["Correctness", "correctness", "not-applicable"],
+    ["Security and authority", "security-and-authority", "not-applicable"]
+  ])("never classifies a zero-finding verdict with %s %s as variance: it stops at once", (_name, criterion, status) => {
+    const verdict = { ...RUN6_NOT_CHECKED_VERDICT, checks: RUN6_NOT_CHECKED_VERDICT.checks.map((check) => check.criterion === criterion
+      ? { ...check, status: status as "not-checked" | "not-applicable", evidence: "MARKER.md and tests/marker.test.mjs: the supplied evidence cannot show this." } : check) };
+    const result = reviewRun6(verdict);
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.findings.filter((finding) => !finding.title.startsWith("Refused not-applicable claim"))).toEqual([]);
+    expect(result.data.varianceReason).toBeNull();
+  });
+
+  it("classifies QA's own zero-finding verdicts by the same rule: not-checked Correctness is real, any other criterion is variance", () => {
+    const qa = (notChecked: string) => ({ ...RUN6_NOT_CHECKED_VERDICT, checks: QA_PR_REVIEW_CRITERIA.map((criterion) => ({
+      criterion: criterion.id, name: criterion.name,
+      status: criterion.id === notChecked ? "not-checked" as const : "pass" as const, evidence: `${criterion.name} judged against the patch.`
+    })) });
+    expect(reviewRun6(qa("correctness"), "qa").data.varianceReason).toBeNull();
+    for (const id of ["scope-fidelity", "approval-boundaries", "managed-documents", "hidden-consequences", "operator-qa-plan", "tests-and-evidence"]) {
+      expect(reviewRun6(qa(id), "qa").data.varianceReason).toMatch(/^reviewer variance only/);
+    }
+  });
+
+  it("bounds the dismissed summary to its first sentence on one line and counts residual risks", () => {
+    const model = { ...RUN6_NOT_CHECKED_VERDICT, summary: `${"A".repeat(300)}. Second sentence.\nThird.`, residualRisks: ["one", "two"] };
+    const clean = { reasons: [] as string[], findings: [] as QaPrModelVerdict["findings"] };
+    const reason = classifyReviewerVariance({ verdict: "needs-follow-up", model, deterministic: clean })!;
+    expect(reason).toContain("2 residual risks dismissed");
+    expect(reason).not.toContain("Second sentence");
+    expect(reason).toMatch(/reviewer summary: "A{100,}\u2026"\)\.$/);
+    expect(reason.match(/"(A+\u2026)"/)![1].length).toBe(160);
+    const multi = classifyReviewerVariance({ verdict: "needs-follow-up", model: { ...model, summary: "Short first.\nSecond line.", residualRisks: [] }, deterministic: clean })!;
+    expect(multi).toContain('reviewer summary: "Short first."');
+    expect(multi).toContain("0 residual risks dismissed");
   });
 
   it("classifies from the gate's own reasons: pending or failed checks, stale evidence, an unavailable reviewer and a conflicted PR are never variance", () => {

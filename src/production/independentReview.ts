@@ -625,9 +625,6 @@ export function advanceIndependentReview(db: Database.Database, input: {
       }
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld the ${role} reviewer: ${fenced}.` };
-      if (automaticRerun) {
-        input.log?.(`Automatic rerun of the independent ${role} of ${actionKey} at ${head.slice(0, 12)}: attempt ${automaticRerun.attempt} of ${MAX_VARIANCE_REVIEW_ATTEMPTS}; the previous verdict was ${automaticRerun.reason}`);
-      }
       // A progress point right before the bounded reviewer run: the worker
       // re-stamps its heartbeat and tick-ceiling marker here, and the reviewer
       // timeout is well under that ceiling.
@@ -652,6 +649,15 @@ export function advanceIndependentReview(db: Database.Database, input: {
         return fail(role, `${role} review of ${url} failed: ${errorMessage(error)}`);
       } finally {
         input.heartbeat?.();
+        // Named once, and only when the rerun's lineage attempt was really
+        // allocated (a different attempt row than the variance verdict's): a
+        // failure before allocation (GitHub, the policy fence) repeats nothing.
+        if (automaticRerun) {
+          const allocated = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+          if (allocated && allocated.request_id !== latest?.request_id) {
+            input.log?.(`Automatic rerun of the independent ${role} of ${actionKey} at ${head.slice(0, 12)}: attempt ${automaticRerun.attempt} of ${MAX_VARIANCE_REVIEW_ATTEMPTS}; the previous verdict was ${automaticRerun.reason}`);
+          }
+        }
       }
       const unavailable = result.data.reviewerUnavailable;
       if (unavailable) return fail(role, `${role} reviewer unavailable for ${url}: ${unavailable}`);
