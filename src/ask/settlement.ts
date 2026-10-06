@@ -1726,11 +1726,13 @@ export function settleAgentAsk(db: Database.Database, input: {
  * pointer resolution) in a temporary detached checkout of the proposal's
  * `candidate_revision`, and HEAD must be one commit on top of that revision
  * whose files are exactly the preview's documents (dates aside: the preview
- * runs on a later day than the commit may have) plus `.arcadia/asks/` intake
- * files, which the settlement archives. The evidence must also verbatim-cover
+ * runs on a later day than the commit may have, so only the replay's own
+ * day may differ, by one consistent day) plus `.arcadia/asks/` intake files,
+ * which the settlement archives and which are not compared. The evidence must also verbatim-cover
  * `acceptanceCriteria` (the Action as the caller admitted it), every entry
  * `met`. Then Phase 3 (the projection and the receipt) runs as the
- * interrupted call would have. `dryRun` stops before writing anything.
+ * interrupted call would have. `dryRun` stops before writing anything durable
+ * (the replay checkout is registered and removed again).
  * Authority (production scope) is the caller's to check.
  */
 export function recordCommittedCompletionSettlement(db: Database.Database, input: {
@@ -1780,8 +1782,14 @@ export function recordCommittedCompletionSettlement(db: Database.Database, input
   const checkout = path.join(scratch, "checkout");
   let expected: Map<string, string | null>;
   let preview: AgentAskSettlementReceipt;
+  // The day the replay writes into `updated:` and the Log heading; the commit
+  // may carry an earlier day there, and only there.
+  const replayDay = today();
   try {
     git(repoRoot, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", "--quiet", checkout, bound]);
+    // No worktree reservation covers this checkout, so the claim fence does
+    // not apply here; both callers only pass proposals for the Session's own
+    // Action, which the dead Session's claim already named.
     preview = settleAgentAsk(db, { proposalRef: proposal.id, settlementRequestId: input.settlementRequestId, disposition: "accepted", cwd: checkout });
     expected = new Map((preview.review?.documents ?? []).map((document) => [document.path, document.after]));
   } finally {
@@ -1789,16 +1797,31 @@ export function recordCommittedCompletionSettlement(db: Database.Database, input
     rmSync(scratch, { recursive: true, force: true });
   }
   const intake = (file: string) => file.startsWith(".arcadia/asks/");
-  // `tryGit` trims its output, so both sides compare trimmed.
-  const dateless = (content: string | null) => content === null ? null : content.trim().replace(/\d{4}-\d{2}-\d{2}/g, "<date>");
+  // Line by line; a line may differ only where the replay wrote its own day,
+  // and then by one settlement day used consistently across every file.
+  // (`tryGit` trims its output, so both sides compare trimmed.)
+  let settledDay: string | null = null;
+  const sameSettlement = (committed: string | null, derived: string | null): boolean => {
+    if (committed === null || derived === null) return committed === derived;
+    const lines = committed.trim().split("\n");
+    const derivedLines = derived.trim().split("\n");
+    return lines.length === derivedLines.length && lines.every((line, index) => {
+      const want = derivedLines[index];
+      if (line === want) return true;
+      if (!want.includes(replayDay)) return false;
+      const pattern = new RegExp(`^${want.split(replayDay).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(\\d{4}-\\d{2}-\\d{2})")}$`);
+      const days = new Set(pattern.exec(line)?.slice(1) ?? []);
+      if (days.size !== 1) return false;
+      const [day] = [...days];
+      settledDay ??= day;
+      return day === settledDay;
+    });
+  };
   const changed = git(repoRoot, ["diff", "--name-only", bound, head]).split("\n").map((line) => line.trim()).filter(Boolean);
   const governed = changed.filter((file) => !intake(file));
   const expectedPaths = [...expected.keys()].filter((file) => !intake(file));
-  const differing = [...new Set([...governed, ...expectedPaths])].filter((file) => {
-    if (!expected.has(file)) return true;
-    const committed = tryGit(repoRoot, ["show", `${head}:${file}`]);
-    return dateless(committed) !== dateless(expected.get(file) ?? null);
-  });
+  const differing = [...new Set([...governed, ...expectedPaths])].filter((file) =>
+    !expected.has(file) || !sameSettlement(tryGit(repoRoot, ["show", `${head}:${file}`]), expected.get(file) ?? null));
   if (expectedPaths.length === 0 || differing.length > 0) {
     throw validationError("HEAD is not this Ask's own canonical completion settlement: its files differ from the settlement derived at the Candidate revision.", { differing });
   }

@@ -999,12 +999,24 @@ function operatorGateRemedy(
         acceptanceCriteria: input.acceptanceCriteria, dryRun: true
       }).documentsCommit ?? null;
     } catch { /* not its committed settlement */ }
+    const retire = `\`git -C ${input.repoRoot} worktree remove ${checkout}\``;
     if (committed) {
       let baseBranch = "the governed base branch";
       try { baseBranch = resolveBaseBranch(input.repoRoot); } catch { /* keep the generic name */ }
       return `${blocked} It cannot settle again (${reason}): ${checkout} at ${committed} is already its own canonical completion settlement, `
-        + "never recorded because the settling process ended first and the worker did not reconcile that exit. Do not reject it: a continuation could only refuse again. "
-        + `After an independent review of exactly ${committed}, an operator may land it with \`git -C ${input.repoRoot} merge --ff-only ${committed}\` (then push ${baseBranch}). ${clears}`;
+        + "never recorded because the settling process ended first and the worker did not reconcile that exit. Do not reject it alone: a continuation could only refuse again. "
+        + `After an independent review of exactly ${committed}, an operator may land it with \`git -C ${input.repoRoot} merge --ff-only ${committed}\` (then push ${baseBranch}), `
+        + `then retire that candidate's worktree with ${retire} (nothing is lost: its head is then on the base) so the next Action can launch, `
+        + `and reject the now-moot proposal: \`${command("rejected", `reject-${requestId}`)}\`, ${twoPhase}. ${clears}`;
+    }
+    const candidatePlan = discoverDocs(checkout).docs.find((doc) => doc.type === "plan" && doc.actions.some((action) => input.actionKey.endsWith(`/${action.id}`)));
+    const doneOnCandidate = candidatePlan?.type === "plan"
+      && candidatePlan.actions.some((action) => input.actionKey.endsWith(`/${action.id}`) && action.status === "done");
+    if (doneOnCandidate) {
+      return `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). That candidate already records the Action done, but its head is not this Ask's `
+        + "canonical settlement, so nothing records it and a continuation could only refuse again: do not reject it alone. "
+        + `Inspect it with \`git -C ${checkout} log --oneline -5\`. To redo the Action instead, retire that candidate's worktree with ${retire} `
+        + `(its commits stay on its branch), then reject the proposal: \`${command("rejected", `reject-${requestId}`)}\`, ${twoPhase}. ${clears}`;
     }
   }
   return `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). ${reject} ${clears}`;

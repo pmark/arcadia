@@ -133,12 +133,13 @@ describe("the agent dies after its settlement commit, before the settlement is r
  * shows it as exactly one `operator_gate_pending` entry naming the proposal,
  * why it cannot settle again ("Action is already done") and that the
  * candidate already holds its canonical settlement commit, with the operator
- * merge of exactly that commit; logged once however many ticks it holds, and
- * cleared by the first tick after the gate is gone (here: a rejection)
- * (Issue #997).
+ * merge of exactly that commit and the worktree retirement that lets the next
+ * Action launch; logged once however many ticks it holds, and gone once the
+ * gate is (Issue #997; clearing on rejection is pinned in
+ * tests/rehearsal-run-3-amended-action.test.ts).
  */
 describe("the agent dies after its settlement commit and an operator reconciles the Session before the worker does", () => {
-  it("shows one deduplicated operator_gate_pending entry with the reason it cannot settle, cleared once the proposal is rejected", () => {
+  it("shows one deduplicated operator_gate_pending entry naming the committed settlement, and its remedy's route admits the next Action once", () => {
     const rehearsal = world("fault-interrupted-after-settlement-commit-operator-reconciled");
     const first = rehearsal.untilLaunched(ACTION_1, 3);
     const result = rehearsal.execute(first.launch, ACTION_1, "interrupted-after-settlement-commit");
@@ -157,24 +158,31 @@ describe("the agent dies after its settlement commit and an operator reconciles 
     expect(entry.message).toBe(`Launch of ${rehearsal.actionKey(ACTION_1)} is held by pending Agent Ask proposal ${proposal}: Record ${ACTION_1} complete.`);
     // The remedy names the candidate's committed settlement (derived again, as the exit tick would have) and advises against rejecting.
     expect(entry.remedy).toContain(`It cannot settle again (Action is already done.): ${result.brief.worktree} at ${result.settlementCommit} is already its own canonical completion settlement`);
-    expect(entry.remedy).toContain("Do not reject it");
-    expect(entry.remedy).toContain(`merge --ff-only ${result.settlementCommit}`);
+    expect(entry.remedy).toContain("Do not reject it alone");
+    expect(entry.remedy).toContain(`git -C ${rehearsal.repo} merge --ff-only ${result.settlementCommit}`);
+    expect(entry.remedy).toContain(`git -C ${rehearsal.repo} worktree remove ${result.brief.worktree}`);
     expect(text).toContain(`${rehearsal.actionKey(ACTION_1)} [operator_gate_pending]`);
     expect(rehearsal.log.filter((line) => line.includes("(operator_gate_pending)"))).toHaveLength(1);
     expect(rehearsal.redAlerts()).toEqual([]);
-    // Computing that remedy wrote nothing: no settlement row, the candidate unchanged and clean.
+    // Computing that remedy wrote nothing durable: no settlement row, the candidate unchanged and clean.
     expect(runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending.map((item) => item.requestId)).toEqual([result.requestId]);
     expect(git(result.brief.worktree, ["rev-parse", "HEAD"]).trim()).toBe(result.settlementCommit);
     expect(git(result.brief.worktree, ["status", "--porcelain", "--untracked-files=all"])).toBe("");
     expect(git(rehearsal.repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-settlement-replay-");
 
-    // Clearing, proven with a rejection (the remedy advises landing the settlement instead).
+    // The remedy's route, end to end: land exactly the settlement commit, retire the candidate's
+    // worktree (its head is now on the base), and the next Action launches once; then reject the moot proposal.
+    git(rehearsal.repo, ["merge", "--ff-only", "--quiet", result.settlementCommit!]);
+    git(rehearsal.repo, ["worktree", "remove", result.brief.worktree]);
+    rehearsal.untilLaunched(ACTION_2, 3);
+    expect(rehearsal.escalations()).toEqual([]);
+    expect(rehearsal.sessions().filter((s) => s.action_id === ACTION_2)).toHaveLength(1);
+    expect(rehearsal.planAction(rehearsal.repo, ACTION_1)).toBe("done");
+    git(rehearsal.repo, ["merge-base", "--is-ancestor", result.workCommit, "refs/heads/main"]);
     const preview = runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo });
     runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo,
       preview: preview.data.receipt.previewFingerprint, apply: true });
-    const after = rehearsal.tick();
-    expect(after.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionKey(ACTION_1) });
-    expect(rehearsal.escalations()).toEqual([]);
+    expect(runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending).toEqual([]);
     expect(isolation.guardCalls()).toEqual([]);
     expect(rehearsal.finish().errors.filter((error) => !error.expected)).toEqual([]);
   }, SCENARIO_TIMEOUT_MS);
@@ -224,7 +232,8 @@ describe.each([
     expect(others).toEqual([]);
     expect(entry.kind).toBe("operator_gate_pending");
     expect(entry.remedy).toContain("It cannot settle: Action is already done.");
-    expect(entry.remedy).not.toContain("Do not reject");
+    expect(entry.remedy).toContain("That candidate already records the Action done, but its head is not this Ask's canonical settlement");
+    expect(entry.remedy).not.toContain("is already its own canonical completion settlement");
     expect(git(worktree, ["rev-parse", "HEAD"]).trim()).toBe(forged);
     expect(git(rehearsal.repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-settlement-replay-");
     expect(rehearsal.planAction(rehearsal.repo, ACTION_1)).toBe("open");
