@@ -184,7 +184,7 @@ export interface PlanDoc extends DocLocation {
   tokenBudget: string;
   /**
    * The model `arcadia go --apply --agent <x>` should launch the next session
-   * with, e.g. `claude-sonnet-5` or `gpt-5.6-sol`. Free-form: validated by the
+   * with, e.g. `claude-sonnet-5` or `gpt-6.1-sol`. Free-form: validated by the
    * downstream agent CLI, not by Arcadia.
    *
    * Required for an active plan, so every dispatchable Action carries a

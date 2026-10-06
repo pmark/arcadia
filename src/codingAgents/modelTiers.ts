@@ -53,7 +53,7 @@ export const BUNDLED_MODEL_TIERS: ModelTierRegistry = {
       opencode: { model: "opencode-go/deepseek-v4.1-flash", effort: "e2_standard" }
     },
     heavy: {
-      codex: { model: "gpt-5.6-sol", effort: "e3_deep" },
+      codex: { model: "gpt-6.1-sol", effort: "e3_deep" },
       claude: { model: "opus", effort: "e3_deep" },
       opencode: { model: "opencode-go/gpt-5.6-luna", effort: "e3_deep" }
     }
