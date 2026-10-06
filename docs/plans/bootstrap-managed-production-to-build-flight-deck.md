@@ -4151,6 +4151,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/runs/20261006T151603Z-70938/preview.json", "artifacts/generated/operator-scripts/rehearsal-chain/grant.sh", "artifacts/generated/operator-scripts/rehearsal-chain/restore-terminal-off.sh"]
+  - id: bound-variance-verdict-reruns
+    title: Classify zero-defect non-PASS independent verdicts as variance and let the tick rerun them within a bound of two, with every rerun recorded and visible.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Classify zero-defect non-PASS independent verdicts as variance and let the tick rerun them within a bound of two, with every rerun recorded and visible.
+    expected_artifact: Evidence satisfying Agent Ask bound-variance-verdict-reruns
+    clarification: clarified
+    confidence: high
+    source: Agent Ask bound-variance-verdict-reruns-2026-10-06
+    acceptance_criteria:
+      - The independent-review step classifies a non-PASS code-review or QA verdict as variance only when it has no finding other than refused not-applicable claims and no criterion judged fail (every non-pass criterion is not-applicable-refused or not-checked); for a variance verdict on the exact head the tick runs a fresh review of that same verdict kind at most 2 more times (3 attempts in total per verdict kind per head), recording each attempt and its classification; a verdict with any real finding or any criterion judged fail stops immediately with the existing `independent_verdict_failed` entry; a new head restarts the count; nothing else in review, readiness, integration, the Grant or Decision 0058 changes.
+      - "`production status` and the worker log name each automatic rerun once (verdict kind, attempt n of 3, reason) and, when the bound is exhausted, one `independent_verdict_failed` entry that says the reruns are spent; the fast harness covers: a variance verdict then PASS integrates with no operator step; three variance verdicts stop on one visible entry; a real finding stops on the first attempt with no rerun; the stubbed reviewer counts prove no extra reviewer call beyond the bound."
+      - "`pnpm fast-rehearsal`, lint, tsc, check:agent-guidance and the focused review suites pass; the runbook (sections 1 criterion 4, 3, 6 and the failure catalog) records the operator's 2026-10-06 choice and the new bound; Issue #1018 is updated; independent review rounds are recorded on the pull request, and the merge waits for the operator because it changes the repair budget."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1018", "src/production/independentReview.ts", "tests/fast-rehearsal/long-chain-verdict-failure.test.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
