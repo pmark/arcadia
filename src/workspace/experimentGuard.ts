@@ -355,6 +355,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "intelligence serve": ALLOWED,
   "intelligence smoke-image": ALLOWED,
   "intelligence smoke-speech": ALLOWED,
+  "intelligence narrate": ALLOWED,
   "intelligence list-jobs": ALLOWED,
   "intelligence usage": ALLOWED,
   "orientation entry add": ALLOWED,

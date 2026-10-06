@@ -1,0 +1,7 @@
+{
+  "agent_ask": "v1",
+  "request_id": "pr-opened-arcadia-pr977",
+  "project": "arcadia",
+  "intent": "log",
+  "desired_result": "New `arcadia intelligence narrate` command ships in PR #977 — it turns text, a file, or a GitHub issue's full commentary into one podcast WAV through the local speech route. https://github.com/pmark/arcadia/pull/977"
+}

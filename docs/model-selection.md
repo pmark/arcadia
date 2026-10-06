@@ -24,7 +24,7 @@ vendor model string is written anywhere else on the handoff path.
 
 | Tier | codex | claude | opencode | Default effort | When |
 | --- | --- | --- | --- | --- | --- |
-| heavy | `gpt-5.6-sol` | `opus` | `opencode-go/gpt-5.6-luna` | `e3_deep` | A genuine redesign, a new cross-cutting mechanism, or resolving a named ambiguity/Decision the Action itself must work through. Not "this is a new feature" — most new features are standard. |
+| heavy | `gpt-6.1-sol` | `opus` | `opencode-go/gpt-5.6-luna` | `e3_deep` | A genuine redesign, a new cross-cutting mechanism, or resolving a named ambiguity/Decision the Action itself must work through. Not "this is a new feature" — most new features are standard. |
 | standard | `gpt-5.6-terra` | `sonnet` | `opencode-go/deepseek-v4.1-flash` | `e2_standard` | The default for every Action unless it qualifies for heavy. Ordinary feature work, refactors, bug fixes, and the tests that ship with them stay here — Arcadia dispatches one session per Action, so there is no cheaper tier to fall back to mid-session. |
 | light | `gpt-5.6-luna` | `haiku` | `opencode-go/glm-5.3-flash` | `e1_brief` | Mechanical, well-specified work whose acceptance criteria leave little judgment: a rename, a bounded test addition, a doc-and-config sync. |
 

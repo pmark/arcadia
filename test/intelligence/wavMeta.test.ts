@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   audioMimeTypeToExtension,
+  buildWav,
+  extractWavData,
   parseWavMetadata,
   sniffAudioMimeType,
 } from "../../src/intelligence/speech/wavMeta.js";
@@ -38,5 +40,38 @@ describe("wavMeta", () => {
   it("returns undefined for undecodable bytes", () => {
     expect(parseWavMetadata(Buffer.from("definitely not a wav file"))).toBeUndefined();
     expect(parseWavMetadata(Buffer.alloc(0))).toBeUndefined();
+  });
+
+  it("rejects non-PCM and malformed-frame WAV payloads before concatenation", () => {
+    const floatWav = Buffer.from(makeWavFixture({ seconds: 0.1 }));
+    floatWav.writeUInt16LE(3, 20); // IEEE float, not PCM.
+    expect(parseWavMetadata(floatWav)).toBeUndefined();
+    expect(extractWavData(floatWav)).toBeUndefined();
+
+    const partialFrame = Buffer.from(makeWavFixture({ seconds: 0.1 }));
+    partialFrame.writeUInt32LE(partialFrame.readUInt32LE(40) - 1, 40);
+    expect(parseWavMetadata(partialFrame)).toBeUndefined();
+    expect(extractWavData(partialFrame)).toBeUndefined();
+  });
+
+  it("extracts the raw PCM data and format facts", () => {
+    const wav = makeWavFixture({ sampleRateHz: 16_000, channels: 2, seconds: 0.5, bitsPerSample: 16 });
+    const chunk = extractWavData(wav);
+    expect(chunk).toBeDefined();
+    expect(chunk?.sampleRateHz).toBe(16_000);
+    expect(chunk?.channels).toBe(2);
+    expect(chunk?.bitsPerSample).toBe(16);
+    const blockAlign = (2 * 16) / 8;
+    expect(chunk?.data.byteLength).toBe(Math.round(16_000 * 0.5) * blockAlign);
+    expect(extractWavData(Buffer.from("not a wav"))).toBeUndefined();
+  });
+
+  it("round-trips data through buildWav", () => {
+    const source = extractWavData(makeWavFixture({ seconds: 0.3 }));
+    expect(source).toBeDefined();
+    const rebuilt = buildWav(source!);
+    expect(rebuilt.equals(makeWavFixture({ seconds: 0.3 }))).toBe(true);
+    const meta = parseWavMetadata(rebuilt);
+    expect(meta?.durationSeconds).toBeCloseTo(0.3, 3);
   });
 });
