@@ -9,7 +9,13 @@ import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
 import { findAcceptedTerminalCompletion } from "./reconciliation.js";
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
-import { refusedOperatorQaPlan, renderOperatorQaPlan, type ChangedFile, type OperatorQaPlanSource } from "./operatorQaPlan.js";
+import {
+  refusedOperatorQaPlan,
+  renderOperatorQaPlan,
+  type ChangedFile,
+  type OperatorQaPlanResult,
+  type OperatorQaPlanSource
+} from "./operatorQaPlan.js";
 import {
   COMPLETION_SETTLEMENT_LINE,
   composePreservedPullRequestBody,
@@ -690,21 +696,42 @@ function resolvePullRequestBody(
   commitSha: string
 ): { body: string; refusal: string | null } {
   if (typeof plan === "string") return { body: plan, refusal: null };
-  const facts = { branch: request.branch, baseBranch: request.baseBranch, baseRevision: request.baseRevision, commitSha };
+  const result = renderPreservedOperatorQaPlan(plan, {
+    repositoryPath,
+    branch: request.branch,
+    baseBranch: request.baseBranch,
+    baseRevision: request.baseRevision,
+    commitSha
+  });
+  return { body: withValidationEvidence(result.body, plan, request, repositoryPath, commitSha), refusal: result.status === "refused" ? result.reason : null };
+}
+
+/**
+ * The Operator QA plan exactly as host preservation renders it into a
+ * preserved candidate's pull-request body, from the candidate's Git facts in
+ * `repositoryPath` (changed files against the launch base revision, and which
+ * named paths exist at the commit). Exported so the read-only checkpoint
+ * replay (scripts/qa-plan-consistency.ts) re-renders a preserved candidate's
+ * plan through this same path rather than a copy of it.
+ */
+export function renderPreservedOperatorQaPlan(
+  plan: OperatorQaPlanSource,
+  input: { repositoryPath: string; branch: string; baseBranch: string; baseRevision: string; commitSha: string }
+): OperatorQaPlanResult {
+  const { repositoryPath, commitSha } = input;
+  const facts = { branch: input.branch, baseBranch: input.baseBranch, baseRevision: input.baseRevision, commitSha };
   // A rendering failure of any kind (a Git read, a timeout, a renderer defect)
   // becomes an explicit refusal body: it must never stop the push.
-  let result: ReturnType<typeof renderOperatorQaPlan>;
   try {
-    result = renderOperatorQaPlan(plan, {
+    return renderOperatorQaPlan(plan, {
       ...facts,
-      changedFiles: readChangedFiles(repositoryPath, request.baseRevision, commitSha),
+      changedFiles: readChangedFiles(repositoryPath, input.baseRevision, commitSha),
       pathExists: (candidate) => !candidate.startsWith("-") && tryGit(repositoryPath, ["cat-file", "-e", `${commitSha}:${candidate}`]) !== null
     });
   } catch (error) {
-    result = refusedOperatorQaPlan(plan, facts,
+    return refusedOperatorQaPlan(plan, facts,
       `the Operator QA plan could not be rendered (${error instanceof Error ? error.message : String(error)}).`);
   }
-  return { body: withValidationEvidence(result.body, plan, request, repositoryPath, commitSha), refusal: result.status === "refused" ? result.reason : null };
 }
 
 /**
