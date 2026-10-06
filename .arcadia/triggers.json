@@ -1,0 +1,19 @@
+{
+  "schema": "arcadia.triggers.v0",
+  "triggers": [
+    {
+      "id": "pr-1000-merged",
+      "watches": "PR #1000 (milestone PR)",
+      "condition": {
+        "kind": "observed",
+        "observed": false,
+        "lookFor": "PR #1000 has merged."
+      },
+      "fires": {
+        "plan": "bootstrap-managed-production-to-build-flight-deck",
+        "action": "celebrate-pr-1000",
+        "decision": "0084"
+      }
+    }
+  ]
+}

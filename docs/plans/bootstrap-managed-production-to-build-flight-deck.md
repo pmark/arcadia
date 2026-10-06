@@ -4048,6 +4048,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: celebrate-pr-1000
+    title: "Celebrate the milestone: PR #1000 has merged."
+    status: deferred
+    responsibility: agent
+    effort: async
+    next_action: "When PR #1000 merges, surprise the team with a celebration message using `arcadia ping` to coordinate across all agents (Claudia, Owen, Cody) and the operator."
+    expected_artifact: "A ping message celebrating PR #1000 reaching 1000 total pull requests in the project."
+    clarification: clarified
+    confidence: high
+    source: "Operator-directed test of trigger and ping system"
+    acceptance_criteria:
+      - "Trigger condition fires when PR #1000 merges (registry-based trigger in .arcadia/triggers.json, observed: true when set)"
+      - "When triggered, the Action is revived from the deferred queue"
+      - "Agent executing the Action composes a creative, team-directed celebration message"
+      - "Message is sent via `arcadia ping` to all configured agents and the operator"
+      - "Message captures the milestone and includes references to the team members: the operator, Claudia Swift (claude-code), Owen (opencode-cli), and Cody (codex)"
+      - "Success is measured by: trigger fires → Action revives → message successfully pings"
+    depends_on: []
+    decisions: []
+    references: [".arcadia/triggers.json", "docs/agent-guidance/triggers-and-deferrals.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5

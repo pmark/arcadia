@@ -105,6 +105,13 @@
       "path": "docs/agent-guidance/operator-directed-work.md",
       "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
       "sha256": "80ed27ced7a3b37a8652ef8e4c7db92052727dbab175c4b5b2badf7696503014"
+    },
+    {
+      "id": "triggers-and-deferrals",
+      "trigger": "defer, trigger, reactivate, revive, deferred action, deferral, observed, count condition",
+      "path": "docs/agent-guidance/triggers-and-deferrals.md",
+      "read_before": "Before deferring an Action, managing a deferred work item, or setting up a reactivation trigger.",
+      "sha256": "placeholder"
     }
   ]
 }
