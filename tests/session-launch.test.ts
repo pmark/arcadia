@@ -262,7 +262,7 @@ describe("launchGuardedHostSession", () => {
   it("translates an effort recomputed from an Action's execution requirement, not only a packet-verbatim value", () => {
     const fixture = preparedFixture({
       provider: "codex-cli",
-      model: "gpt-5.6-sol",
+      model: "gpt-6.1-sol",
       profileName: "codex_build",
       command: "codex",
       mappingId: "bundled-2026-07-25.1",
@@ -274,7 +274,7 @@ describe("launchGuardedHostSession", () => {
     expect(preview.ready).toBe(true);
     // systems_change resolves to an abstract key, which is the value the session
     // stores and the bound packet records — the spawn must not see it raw.
-    expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-5.6-sol", effort: "e3_deep" });
+    expect(preview.selection).toMatchObject({ provider: "codex-cli", model: "gpt-6.1-sol", effort: "e3_deep" });
 
     const tmux = new FakeTmux();
     doLaunch(fixture, tmux, preview.previewFingerprint);

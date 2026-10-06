@@ -127,7 +127,7 @@ describe("tier resolution", () => {
   it("reverse-maps each agent's bound models to their tier", () => {
     expect(tierForAgentModel("codex", "gpt-5.6-luna")).toBe("light");
     expect(tierForAgentModel("codex", "gpt-5.6-terra")).toBe("standard");
-    expect(tierForAgentModel("codex", "gpt-5.6-sol")).toBe("heavy");
+    expect(tierForAgentModel("codex", "gpt-6.1-sol")).toBe("heavy");
     expect(tierForAgentModel("claude", "haiku")).toBe("light");
     expect(tierForAgentModel("claude", "sonnet")).toBe("standard");
     expect(tierForAgentModel("claude", "opus")).toBe("heavy");

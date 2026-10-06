@@ -46,8 +46,8 @@
       "provider": "codex-cli",
       "agentProfiles": ["codex_planning", "codex_build"],
       "capability": "c3_systems",
-      "model": "gpt-5.6-sol",
-      "modelArgs": ["--model", "gpt-5.6-sol"],
+      "model": "gpt-6.1-sol",
+      "modelArgs": ["--model", "gpt-6.1-sol"],
       "effortArgs": {
         "e1_brief": ["--config", "model_reasoning_effort=\"low\""],
         "e2_standard": ["--config", "model_reasoning_effort=\"medium\""],
