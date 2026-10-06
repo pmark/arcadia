@@ -17,12 +17,15 @@ import { ACTION_1, ACTION_2, FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helper
  * through the same path. The run happens once (beforeAll); each test below
  * reads what it left.
  *
- * It also reproduces Issue #987 end to end: after Action 1 integrates
- * locally, Action 2's PR is opened against the remote's `main`, which the
- * worker never pushes, so the PR's base and changed files disagree with the
- * host-rendered Operator QA plan in its own body. The comparison is the
- * checkpoint-replay check (scripts/qa-plan-consistency.ts,
- * docs/qa-plan-consistency-replay.md), run on the live harness state.
+ * It also reproduces Issue #987's precondition, not the live failure: after
+ * Action 1 integrates locally, Action 2's PR is opened against the remote's
+ * `main`, which the worker never pushes, so the PR's base and changed files
+ * disagree with the host-rendered Operator QA plan published in its own body.
+ * Live run 5 stopped there because the QA reviewer model judged that
+ * mismatch; here the reviewer verdict is stubbed to pass, so Action 2 still
+ * integrates. The mismatch is measured with the checkpoint-replay check
+ * (scripts/qa-plan-consistency.ts, docs/qa-plan-consistency-replay.md) and by
+ * comparing the published plan with the PR directly.
  */
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
@@ -32,6 +35,7 @@ let report: ScenarioReport;
 /** Action 2's PR the moment its terminal preservation opened it: the plan its body publishes, and the replay check against GitHub's view. */
 let published: ReturnType<typeof parseRenderedPlan>;
 let consistency: QaPlanConsistencyReport;
+let action2View: { baseRefOid: string; files: Array<{ path: string }> };
 let action2Base = "";
 let baseAfterAction1 = "";
 let remoteMain = "";
@@ -54,6 +58,7 @@ beforeAll(() => {
   const pr = world.pullRequestFor(ACTION_2)!;
   const view = world.gh.view(pr);
   published = parseRenderedPlan(view.body);
+  action2View = { baseRefOid: view.baseRefOid, files: view.files };
   action2Base = second.session.base_revision;
   consistency = checkQaPlanConsistency({
     repositoryPath: world.repo, pullRequest: view, base: action2Base, baseSource: "Action 2 Session's launch base", branch: pr.branch
@@ -120,7 +125,7 @@ describe("fast rehearsal: serial two-Action run, clean executor", () => {
   });
 });
 
-describe("Issue #987: a serial Action's PR is judged against GitHub's unadvanced base", () => {
+describe("Issue #987 (precondition only): a serial Action's PR is reported against GitHub's unadvanced base", () => {
   it("records what the published plan says and what the PR reports for Action 2 (today: they differ)", () => {
     // The published plan is the host renderer's: the replay re-renders exactly the same claims.
     expect(published.baseRevision).toBe(action2Base);
@@ -130,6 +135,8 @@ describe("Issue #987: a serial Action's PR is judged against GitHub's unadvanced
     expect(published.files.map((file) => file.path)).toEqual(expect.arrayContaining(["MARKER.md", "tests/marker.test.mjs"]));
     // GitHub reports the remote's main, which local integration never moved, and so also Action 1's settlement record.
     expect(consistency.pullRequest.baseRefOid).toBe(remoteMain);
+    expect(action2View.baseRefOid).toBe(remoteMain);
+    expect(action2View.files).toHaveLength(published.fileCount + 1);
     expect(consistency.consistent).toBe(false);
     expect(consistency.mismatches).toEqual([
       { check: "base-revision", plan: baseAfterAction1, pullRequest: remoteMain },
@@ -140,10 +147,14 @@ describe("Issue #987: a serial Action's PR is judged against GitHub's unadvanced
     ]);
   });
 
-  // EXPECTED FAILURE (Issue #987). `it.fails` passes while the plan and the PR
-  // disagree; the fix of #987 makes this body pass, which fails the marker:
-  // then change `it.fails` to `it`.
-  it.fails("the host QA plan's base and changed files equal the PR's base and files as GitHub reports them", () => {
-    expect(consistency.mismatches).toEqual([]);
+  // EXPECTED FAILURE (Issue #987). `it.fails` passes while the PUBLISHED plan
+  // and the PR disagree. It compares the plan the host actually wrote into
+  // the PR body, so either shape of fix flips it: a PR whose base becomes
+  // the launch base (stacked on the previous candidate), or a plan rendered
+  // against GitHub's base. Then change `it.fails` to `it`.
+  it.fails("the published QA plan's base and changed files equal the PR's base and files as GitHub reports them", () => {
+    expect(published.baseRevision).toBe(action2View.baseRefOid);
+    expect(published.fileCount).toBe(action2View.files.length);
+    expect(published.files.map((file) => file.path).sort()).toEqual(action2View.files.map((file) => file.path).sort());
   });
 });

@@ -13,7 +13,9 @@ import path from "node:path";
  * - `HOME` and `XDG_CONFIG_HOME` point into a fresh temporary directory, so
  *   no user configuration (the Arcadia user config that names the live
  *   workspace, `~/.gitconfig`, provider homes) is read or written;
- *   `GIT_CONFIG_NOSYSTEM` keeps the system Git configuration out too.
+ *   `GIT_CONFIG_NOSYSTEM` keeps the system Git configuration out too, and
+ *   {@link SCRUBBED} variables plus every `ARCADIA_CLAUDE_*` and `GIT_CONFIG_*`
+ *   (but `GIT_CONFIG_NOSYSTEM`) are unset.
  * - `ARCADIA_WORKSPACE` names a directory that does not exist until a
  *   scenario points it at its own temporary workspace, so a default
  *   workspace resolution can never land on the live one.
@@ -44,9 +46,26 @@ export interface IsolatedProcess {
 
 const GUARDED = ["gh", "claude", "codex", "opencode"] as const;
 const KEYS = ["HOME", "XDG_CONFIG_HOME", "GIT_CONFIG_NOSYSTEM", "PATH", "ARCADIA_WORKSPACE", "ARCADIA_PRESERVATION_HOST_TEST"] as const;
+/**
+ * Removed for the file's duration: each one could point Git, a provider or
+ * Arcadia's capacity and usage readers at the developer's real state, or (for
+ * CODEX_SANDBOX) change what the worker does (src/commands/worker.ts skips
+ * preservation requests inside a Codex sandbox).
+ */
+const SCRUBBED = [
+  "GIT_CONFIG_GLOBAL", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+  "CODEX_HOME", "CODEX_SANDBOX", "ARCADIA_CAPACITY_RECEIPTS_PATH", "ARCADIA_CODING_AGENT_USAGE_CACHE_PATH"
+] as const;
 
 export function isolateProcess(): IsolatedProcess {
-  const saved = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
+  // Prefix families: every `ARCADIA_CLAUDE_*`, and every `GIT_CONFIG_*`
+  // (GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>,
+  // GIT_CONFIG_VALUE_<n>: an agent's own shell may set them) except the
+  // GIT_CONFIG_NOSYSTEM this function sets.
+  const families = Object.keys(process.env).filter((key) => key.startsWith("ARCADIA_CLAUDE_") || (key.startsWith("GIT_CONFIG_") && key !== "GIT_CONFIG_NOSYSTEM"));
+  const touched = [...new Set([...KEYS, ...SCRUBBED, ...families])];
+  const saved: Record<string, string | undefined> = Object.fromEntries(touched.map((key) => [key, process.env[key]]));
+  for (const key of touched) if (!(KEYS as readonly string[]).includes(key)) delete process.env[key];
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-fast-rehearsal-env-")));
   const home = path.join(root, "home");
   const bin = path.join(root, "guard-bin");
@@ -97,7 +116,7 @@ exit 97
     originalHome: saved.HOME ?? "",
     guardCalls: () => (existsSync(guardLog) ? readFileSync(guardLog, "utf8").split("\n").filter(Boolean) : []),
     restore: () => {
-      for (const key of KEYS) {
+      for (const key of touched) {
         if (saved[key] === undefined) delete process.env[key];
         else process.env[key] = saved[key];
       }
@@ -114,10 +133,13 @@ export function realGit(): string {
 /**
  * A one-shot Git fault: a `git` shim, first on PATH, that fails the next
  * `count` invocations of one subcommand (exit 128, a fixed stderr line) and
- * passes every other invocation to the real Git unchanged. Production code
- * resolves `git` through PATH (`execFileSync("git", ...)`), so this reaches
- * exactly the lifecycle's own Git calls; nothing in the lifecycle is
- * replaced.
+ * passes every other invocation to the real Git unchanged. It reaches every
+ * Git call that resolves `git` through PATH: the lifecycle's own (for
+ * example integration's `git merge --ff-only` in
+ * src/production/sessionHandoff.ts) and also the harness's fake preservation
+ * remote (`FakeGitHub.remote.push` in tests/helpers/rehearsalHarness.ts, the
+ * stand-in for production's `systemPreservationRemote.push`), so arming
+ * `push` models a remote-adapter failure, not a lifecycle Git call.
  */
 export interface GitFaults {
   dir: string;

@@ -9,6 +9,7 @@ import {
   runManagedProductionTick as defaultTick,
   type ManagedProductionTickProjectResult
 } from "../../../src/production/tick.js";
+import { listOpenRedAlerts } from "../../../src/production/redAlerts.js";
 import { processPreservationRequests as defaultProcessPreservationRequests } from "../../../src/sessions/preservationTransport.js";
 import { validatePreservationCandidate } from "../../../src/sessions/preservationValidation.js";
 import { capacity, git, hostReviewer, LINE_A, LINE_B, Rehearsal, unsandboxedValidator } from "../../helpers/rehearsalHarness.js";
@@ -46,6 +47,8 @@ test("marker lines are in order", () => {
 
 type TickImpl = {
   runManagedProductionTick: typeof defaultTick;
+  validatePreservationCandidate: typeof validatePreservationCandidate;
+  unsandboxedValidator: typeof unsandboxedValidator;
   processPreservationRequests: typeof defaultProcessPreservationRequests;
   withDatabase: typeof defaultWithDatabase;
   loadPhase3Registries: typeof defaultLoadRegistries;
@@ -68,9 +71,10 @@ type TickImpl = {
  * Everything else -- admission, the Grant, packet preparation, launch,
  * reconciliation, preservation and its validation, PR readiness, both review
  * commands, integration, settlement, pointer and queue advancement -- is the
- * production code, called exactly as `arcadia worker` calls it
- * (`runManagedProductionIteration` in src/commands/worker.ts: preservation
- * requests serviced, then `runManagedProductionTick`).
+ * production code, called as `arcadia worker` calls it (src/commands/worker.ts:
+ * preservation requests serviced, then `runManagedProductionTick`), with an
+ * injected clock, `agentWorktreeRoot` and the validator choice as the only
+ * differences in its options (see {@link tick} and README.md).
  */
 export class FastRehearsal extends Rehearsal {
   readonly recorder: PhaseRecorder;
@@ -81,6 +85,8 @@ export class FastRehearsal extends Rehearsal {
   private tickNumber = 0;
   private impl: TickImpl = {
     runManagedProductionTick: defaultTick,
+    validatePreservationCandidate,
+    unsandboxedValidator,
     processPreservationRequests: defaultProcessPreservationRequests,
     withDatabase: defaultWithDatabase,
     loadPhase3Registries: defaultLoadRegistries
@@ -121,20 +127,31 @@ export class FastRehearsal extends Rehearsal {
     return `${this.projectSlug}/${actionId}`;
   }
 
-  /** One worker tick, one simulated minute later, as `arcadia worker` runs it. */
+  /**
+   * One worker iteration, one simulated minute later, as `arcadia worker`
+   * runs it (src/commands/worker.ts): service preservation requests, and run
+   * the managed tick only when none was serviced. Live, the worker iterates
+   * every few seconds and the review step polls on its own deadlines; here the
+   * injected clock moves one minute per tick. Unlike the worker's
+   * `runManagedProductionIteration`, a tick that throws is not caught and
+   * logged: it fails the scenario, which makes the harness stricter.
+   */
   override tick(): ManagedProductionTickProjectResult {
     this.tickNumber += 1;
     const n = this.tickNumber;
     this.now = new Date(this.now.getTime() + 60_000);
     const impl = this.impl;
     const validate: typeof validatePreservationCandidate = (...args) =>
-      this.recorder.measure("validation", () => (this.validator === "seatbelt" ? validatePreservationCandidate(...args) : unsandboxedValidator(...args)));
+      this.recorder.measure("validation", () => (this.validator === "seatbelt" ? impl.validatePreservationCandidate(...args) : impl.unsandboxedValidator(...args)));
     return this.recorder.tick(n, () => {
       this.syncTmux();
       const registries = impl.loadPhase3Registries(this.workspace);
       if (!registries.providerAdapters) throw new Error("The fixture workspace has no provider-adapters registry.");
       const adapters = registries.providerAdapters;
-      impl.withDatabase(this.workspace, (db) => impl.processPreservationRequests(db, this.workspace));
+      if (impl.withDatabase(this.workspace, (db) => impl.processPreservationRequests(db, this.workspace))) {
+        this.log.push(`[tick ${n}] (harness) a preservation request was serviced; the worker skips the managed tick this iteration`);
+        return { projectSlug: this.projectSlug, repositoryRoot: null, baseBranchAdvance: null, reconciled: [], handoff: null, launch: null };
+      }
       const result = impl.withDatabase(this.workspace, (db) => impl.runManagedProductionTick(db, this.workspace, {
         profiles: registries.codingAgents.profiles,
         adapters,
@@ -259,14 +276,18 @@ export class FastRehearsal extends Rehearsal {
    */
   async restartWorker(): Promise<void> {
     vi.resetModules();
-    const [tick, transport, connection, registries] = await Promise.all([
+    const [tick, transport, connection, registries, validation, harness] = await Promise.all([
       import("../../../src/production/tick.js"),
       import("../../../src/sessions/preservationTransport.js"),
       import("../../../src/db/connection.js"),
-      import("../../../src/intent/registries.js")
+      import("../../../src/intent/registries.js"),
+      import("../../../src/sessions/preservationValidation.js"),
+      import("../../helpers/rehearsalHarness.js")
     ]);
     this.impl = {
       runManagedProductionTick: tick.runManagedProductionTick,
+      validatePreservationCandidate: validation.validatePreservationCandidate,
+      unsandboxedValidator: harness.unsandboxedValidator,
       processPreservationRequests: transport.processPreservationRequests,
       withDatabase: connection.withDatabase,
       loadPhase3Registries: registries.loadPhase3Registries
@@ -281,6 +302,20 @@ export class FastRehearsal extends Rehearsal {
 
   escalations() {
     return withReadOnlyDatabase(this.workspace, (db) => listOperatorEscalations(db));
+  }
+
+  redAlerts() {
+    return withReadOnlyDatabase(this.workspace, (db) => listOpenRedAlerts(db));
+  }
+
+  /**
+   * Let `ms` of simulated time pass with no tick (the worker idle or the
+   * operator away), so a following tick sees any time-based lifecycle rule:
+   * stall detection, deadlines. Stays inside the activation's 12-hour Grant.
+   */
+  advanceClock(ms: number): void {
+    this.now = new Date(this.now.getTime() + ms);
+    this.recorder.notes.push(`clock advanced ${Math.round(ms / 60_000)} simulated minutes before tick ${this.tickNumber + 1}`);
   }
 
   /** `arcadia production status` as the operator reads it: its data and its rendered text. */

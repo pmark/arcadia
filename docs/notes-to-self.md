@@ -309,8 +309,7 @@ G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is
 
 ## Reproduce a rehearsal defect offline before a live run
 
-keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, binding is stale, terminalRecovery
+keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989
 
 Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after changing the tick, preservation, review steps or settlement (about 1 minute): the real worker tick and settlement with only tmux, GitHub, the reviewer models and the agent faked; it prints per-phase timings and every error and writes `report.json` to a temporary directory. Reproduce a live defect there first (`tests/fast-rehearsal/README.md`, "Add a scenario").
 Its `it.fails` tests are open defects: the fix that flips one changes it to `it`.
-Gotcha: a harness validator that dropped `terminalRecovery` made every preservation retry refuse "Preservation Session binding is stale", a refusal the real validator never gives (fixed in `tests/helpers/rehearsalHarness.ts`). A fake must pass every argument the real function takes.

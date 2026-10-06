@@ -413,11 +413,14 @@ broker): rerun G6.
    (#983; tested, not yet seen live); a stuck candidate in other states and the dashboard rendering of
    escalations are still generic.
 6. **Stalls reproduced offline, not yet seen live** (the fast harness's expected
-   failures, `tests/fast-rehearsal/README.md`): an agent that dies after its
-   settlement commit and before the settlement is recorded, or that leaves an
-   extra file or commit after settling, leaves the Action preserved but never
-   integrated, with no escalation in `production status`. Next step: file an
-   Issue per stall with the scenario as its reproduction.
+   failures, `tests/fast-rehearsal/README.md`): an agent that leaves an extra
+   file or commit after settling (Issue #994), or dies after its settlement
+   commit and before the settlement is recorded (#995), leaves its Action
+   preserved but held by a pending-Ask operator gate: a previewed, unsettled
+   `complete` Ask makes the tick skip every launch, and `production status`
+   never shows it (#997, the shared root cause; the same mechanism as run 2's
+   stall, #968). The harness also reproduces #987's precondition. Next step:
+   fix #997 and flip the markers.
 7. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 

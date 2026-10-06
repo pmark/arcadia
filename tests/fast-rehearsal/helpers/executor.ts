@@ -54,7 +54,12 @@ export type ExecutorBehaviour =
    */
   | "interrupted-after-settlement-commit"
   /** Commits its work and dies before drafting or settling anything. */
-  | "interrupted-after-work-commit";
+  | "interrupted-after-work-commit"
+  /**
+   * Reads its brief and exits at once: no edit, no commit, no draft. A
+   * continuation agent that finds nothing it can do behaves like this.
+   */
+  | "exits-without-completing";
 
 /** What one Action's agent does, in files. */
 export interface ActionWork {
@@ -150,6 +155,10 @@ export class ScriptedExecutor {
     let interrupted: string | null = null;
     let workCommit = "";
     try {
+      if (behaviour === "exits-without-completing") {
+        workCommit = this.git(cwd, ["rev-parse", "HEAD"]).trim();
+        return this.result(brief, requestId, workCommit, null, [], null);
+      }
       this.recorder.measure("agentExecution", () => {
         for (const [file, content] of Object.entries(work.files)) {
           mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
@@ -220,14 +229,18 @@ export class ScriptedExecutor {
         else process.env[key] = value;
       }
     }
+    return this.result(brief, requestId, workCommit, settlementCommit, settleWarnings, interrupted);
+  }
+
+  private result(brief: ParsedBrief, requestId: string, workCommit: string, settlementCommit: string | null, settleWarnings: string[], interrupted: string | null): ExecutorResult {
     return {
       brief,
       requestId,
       workCommit,
       settlementCommit,
-      finalHead: this.git(cwd, ["rev-parse", "HEAD"]).trim(),
+      finalHead: this.git(brief.worktree, ["rev-parse", "HEAD"]).trim(),
       settleWarnings,
-      statusAtExit: this.git(cwd, ["status", "--porcelain", "--untracked-files=all"]),
+      statusAtExit: this.git(brief.worktree, ["status", "--porcelain", "--untracked-files=all"]),
       interrupted
     };
   }

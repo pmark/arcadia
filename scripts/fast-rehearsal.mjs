@@ -7,8 +7,8 @@
 // them, prints a per-phase timing table and every recorded error, and writes
 // the combined report.json next to them. The exit status is vitest's.
 //
-// On macOS, when `sandbox-exec` can run (an unsandboxed shell), preservation
-// validation runs under the real Seatbelt validator
+// Only on macOS, when `sandbox-exec` can run (an unsandboxed shell), does
+// preservation validation run under the real Seatbelt validator
 // (ARCADIA_PRESERVATION_HOST_TEST=1, as tests/manual-preservation.test.ts);
 // otherwise the harness's unsandboxed binding of the same checks. Pass
 // --unsandboxed-validator to force the latter. Any other argument goes to
