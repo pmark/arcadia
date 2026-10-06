@@ -4048,6 +4048,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: fix-pending-completion-gate
+    title: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
+    expected_artifact: Evidence satisfying Agent Ask fix-pending-completion-gate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-pending-completion-gate-2026-10-06
+    acceptance_criteria:
+      - "When the worker tick skips a launch because resolveProjectTransition answers `decision` for an Action in the active Grant's scope (a pending unsettled Agent Ask proposal or open Decision), `arcadia production status` shows exactly one operator-gate entry for it within one tick (gate kind, Action, proposal or Decision id, and the exact governed settle command or the reason it cannot settle, for example 'Action is already done'), deduplicated like `terminal_candidate_not_integrable` (one escalation and one deduplicated worker log line, not one per tick), and cleared when the proposal is settled or rejected or the Decision answered; tests pin it, including run 2's shape (a stale pending proposal for an amended Action) and the #994 and #995 scenarios."
+      - "Issue #994: an agent that leaves an extra uncommitted file or an extra commit after its completion settlement no longer stalls silently: the Action either integrates (only where the governed settlement and every guard stay intact; unreviewed extra work is never integrated) or stops on exactly one visible, actionable entry in production status; a continuation Session never loops on 'Action is already done'; the `it.fails` marker in tests/fast-rehearsal/settle-then-dirty.test.ts flips to `it` with its companion pin revised deliberately."
+      - "Issue #995: an agent that dies after its settlement commit and before the settlement is recorded is recovered deterministically by the tick (no coding-agent process and no LLM call; for example recognising the candidate's own canonical completion settlement or auto-settling the drafted complete Ask whose evidence verbatim-covers every criterion, as attemptAutoSettlePendingCompletion already does before dispatch), and the Action integrates and the next Action is admitted exactly once; the `it.fails` marker in tests/fast-rehearsal/completion-faults.test.ts flips to `it` with its companion pin revised deliberately."
+      - "No authority widens: no proposal is accepted whose evidence does not verbatim-cover the Action's declared criteria with every entry met, nothing outside the Grant's scope is launched or settled, and Decision 0058 and the Grant model are unchanged; `pnpm fast-rehearsal`, lint, tsc, check:agent-guidance and the focused suites pass; the runbook (failure catalog and section 8 item 6), tests/fast-rehearsal/README.md and Issues #994, #995 and #997 are updated; independent review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/997", "https://github.com/pmark/arcadia/issues/994", "https://github.com/pmark/arcadia/issues/995", "https://github.com/pmark/arcadia/issues/968", "tests/fast-rehearsal/README.md", "src/ask/autoSettleBeforeDispatch.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
