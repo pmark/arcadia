@@ -345,7 +345,7 @@ export function renderAgentAskSettleSuccess(response: CommandSuccess<AgentAskSet
     `Project: ${receipt.projectSlug}`,
     ...receipt.effects.map((effect) => `Effect: ${effect}`),
     ...(receipt.warnings ?? []).map((warning) => `Warning: ${warning}`),
-    `Queue:${queueActionKeys.length > 0 ? `${queueActionKeys.join(", ")} starting at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
+    `Queue: ${queueActionKeys.length > 0 ? `${queueActionKeys.join(", ")} starting at position ${(receipt.queuePosition ?? 0) + 1}` : "no executable entry"}`,
     `Next: ${receipt.nextActionKey ?? "none"}`,
     `Discord: ${receipt.notificationStatus}`,
     ...(receipt.recovery ? [`Recovery: ${receipt.recovery.remedy}`] : []),

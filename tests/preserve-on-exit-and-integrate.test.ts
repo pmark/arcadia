@@ -533,6 +533,15 @@ describe("preserve-on-exit and integrate", () => {
       ).run());
       tickAt(other.fixture, other.tmux, 120_000, []);
       expect(escalations(other.fixture)).toMatchObject([{ kind: "repair_budget_exhausted", message: "kept" }]);
+
+      // A durable review block is a finding, not a wait: it stays the open escalation.
+      const blocked = strayDraftCommitted();
+      withDatabase(blocked.fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+         VALUES ('test-project/define-contract', 'review_budget_exhausted', 'review block', NULL, '2026-08-30T12:00:00.000Z', '2026-08-30T12:00:00.000Z')`
+      ).run());
+      tickAt(blocked.fixture, blocked.tmux, 120_000, []);
+      expect(escalations(blocked.fixture)).toMatchObject([{ kind: "review_budget_exhausted", message: "review block" }]);
     });
   });
 

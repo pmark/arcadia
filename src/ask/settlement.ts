@@ -1345,7 +1345,10 @@ export function settleAgentAsk(db: Database.Database, input: {
   }
 
   const settlementWarnings: string[] = [];
-  if (archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision) === null) {
+  const archivedSource = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision);
+  // Also check the canonical draft name when the recorded source was some
+  // other file, so an identical drafted copy cannot stay behind untracked.
+  if (archivedSource !== path.join(".arcadia", "asks", `agent-ask-${proposal.normalized.requestId}.yaml`)) {
     archiveCanonicalDraftAskFile(fileMutations, effects, settlementWarnings, repoRoot, proposal, boundCandidateRevision);
   }
 
@@ -2584,9 +2587,9 @@ function archiveSettledAskFile(
 const CANONICAL_DRAFT_REQUEST_ID = /^[a-z0-9][a-z0-9-]*$/;
 
 /**
- * Fallback for a proposal whose recorded `sourcePath` archived nothing (none
- * was recorded, as for an Ask previewed from inline text, or it named a file
- * outside this repository's `.arcadia/asks/`): archive the canonical drafted
+ * Fallback for a proposal whose recorded `sourcePath` did not archive the
+ * canonical draft (none was recorded, as for an Ask previewed from inline
+ * text, or it named another file): archive the canonical drafted
  * file `.arcadia/asks/agent-ask-<request_id>.yaml` of the repository being
  * settled, in the same settlement commit (Issue #981). Without it, a drafted
  * Ask stayed untracked beside its own settlement commit, a later preservation

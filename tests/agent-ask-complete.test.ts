@@ -516,7 +516,9 @@ describe("Agent Ask complete", () => {
       expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
       expect(applied.data.receipt.warnings).toEqual([expect.stringContaining(
         "Left .arcadia/asks/agent-ask-complete-run4-mismatch.yaml in place: its content does not match settled proposal complete-run4-mismatch")]);
-      expect(renderAgentAskSettleSuccess(preview).join("\n")).toContain("Warning: Left .arcadia/asks/agent-ask-complete-run4-mismatch.yaml in place");
+      const rendered = renderAgentAskSettleSuccess(preview);
+      expect(rendered.join("\n")).toContain("Warning: Left .arcadia/asks/agent-ask-complete-run4-mismatch.yaml in place");
+      expect(rendered.some((line) => line.startsWith("Queue: "))).toBe(true);
       expect(readFileSync(canonical, "utf8")).toBe(different);
       expect(existsSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-run4-mismatch.yaml"))).toBe(false);
     });
@@ -576,6 +578,25 @@ describe("Agent Ask complete", () => {
       })).toThrow(/not clean/);
       expect(readFileSync(path.join(elsewhere, "agent-ask-complete-run4-dir-symlink.yaml"), "utf8")).toBe(ask);
       expect(existsSync(path.join(elsewhere, "archive"))).toBe(false);
+    });
+
+    it("also archives an identical canonical copy when the recorded sourcePath was a differently named file", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-two-copies");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-two-copies", candidate], { cwd: repo });
+      const ask = `${completeAsk("complete-run4-two-copies", "first", head).trim()}\n`;
+      const asksDir = path.join(candidate, ".arcadia", "asks");
+      mkdirSync(asksDir, { recursive: true });
+      const custom = path.join(asksDir, "agent-ask-custom-name.yaml");
+      writeFileSync(custom, ask, "utf8");
+      const proposal = runAgentAskPreviewCommand({ workspace, file: custom, dir: candidate });
+      expect(proposal.data.proposal.sourcePath).toBe(custom);
+      const canonical = path.join(asksDir, "agent-ask-complete-run4-two-copies.yaml");
+      writeFileSync(canonical, ask, "utf8");
+      settleInCandidate(workspace, candidate, proposal.data.proposal.id, "settle-complete-run4-two-copies");
+      expect(existsSync(custom)).toBe(false);
+      expect(existsSync(canonical)).toBe(false);
+      expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: candidate, encoding: "utf8" })).toBe("");
     });
 
     it("behaves exactly as before when neither a sourcePath nor a canonical file exists", () => {
