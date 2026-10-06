@@ -2,6 +2,10 @@
 
 **Status: reference code, not wired into the operator scripts.** These scripts were written during the 2026-10-06 release-manager session to predict a live rehearsal's independent-review verdicts before spending an operator G7 press. They contain that session's absolute scratch paths (`/private/tmp/claude-501/.../scratchpad/...`). Adapt the paths before running; runbook section 10, recommendation 2, is to turn this into a maintained script.
 
+**Cost:** a live smoke makes real reviewer-model calls (quota or spend). Run with `SMOKE_DRY=1` first. Run live attempts only under the release manager's standing permission for that session and the Cost Minimization Directive; the spend boundary stays the operator's.
+
+**Inputs:** the `qa986/` inputs (`pr5-evidence-attempt1.json`, `candidate.patch`) and the worktree it pointed at were not preserved, so `qa986/` cannot be rerun as is. `run8/` can be rebuilt from a fresh reset `--dry-run` evidence directory.
+
 ## What it does
 It runs Arcadia's **real** `runQaPrReviewCommand` (the real reviewer profile, for example `codex_planning` on `codex-cli`, and the real sandbox preflight) in a **temporary workspace**. Only `gh` is stubbed: `pr view`, `commits` and `compare` are served from a preserved attempt's `evidence.json` and `candidate.patch` or from a simulated repository, and every other `gh` call is refused. It writes nothing to GitHub, the live workspace or the fixture. After each use, check that the live `artifacts/qa` file list is unchanged and that the fixture clone's `git status` is clean.
 
