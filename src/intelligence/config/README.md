@@ -13,7 +13,7 @@ sequence, see `docs/intelligence/LITELLM_CONFIGURATION.md`.
 
 Do not add provider-specific settings here, or one environment variable per
 (capability, profile) combination — `buildDefaultRoutes` in `defaults.ts`
-expands the three aliases into the full registry in code.
+expands the configured aliases into the full registry in code.
 
 This stays:
 
