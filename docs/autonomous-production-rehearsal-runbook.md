@@ -162,7 +162,8 @@ exported; with `ARCADIA_REQUIRE_INLINE_WORKSPACE=1` a command without it fails).
       G6 and G7 require every `requiredCommits` entry of the run's parameter file
       (for run 6 and run 7: #922, #924, #983, the #987 stacking fix `26172c74`
       (#1006) and the #997 gate fix `a4a7c184` (#1010); these five are also a
-      fixed floor no parameter change can remove).
+      fixed floor no parameter change can remove; run 7 adds #1017's
+      order-independent Grant Action-set comparison, `3c67b0a8`).
 - [ ] No other session plans a merge, push, reinstall or restart in the freeze
       window (section 5, phase 2).
 - [ ] The operator is reachable for the G7 press inside a 30-minute window.
@@ -296,9 +297,21 @@ operator sleeps: three batches of three tiny dependent Actions (G1's three, then
 `chain-step-04` to `chain-step-09`, each reading its predecessor's output) under
 **one** G7 press inside its 12-hour expiry, bound to run 5's receipts and still
 starting from `7214de28`. Its G7 descriptor names the nine Actions one press
-authorises. Run 7 (`run7-2026-10-06`, N=9) is a clean repeat, committed with its
-run-6 bindings `UNFILLED`; fill them from run 6's reset and G8 receipts after
-run 6's G8. (The three-Action rendering stays covered by the tests.)
+authorises. Run 7 (`run7-2026-10-06`, N=9) is a clean repeat of it, its file filled
+from run 6's receipts: the reset `runs/20261006T141854Z-41044` (`newHead`
+`162f5b19`), the terminal Off `runs/20261006T160825Z-24828` (`fixtureMain`
+`6fbae8d6`) and one candidate per line of that G8's reconciliation, PR #1 to #8.
+Run 6's Action 1 was integrated by local fast-forward and is preserved on PR #7;
+Action 2 is preserved on **PR #8, stacked on PR #7's branch**
+(`claude/write-start-marker-20261006T155142019Z`). The run-7 reset therefore
+plans to move only the clone's local `main` from `6fbae8d6` back to GitHub
+`main` `162f5b19`, after proving both candidates are preserved on GitHub, and
+pushes only its single reset commit on `162f5b19`. Its candidate check accepts a
+pull request whose base is not `main` only when that base is another pinned
+candidate's branch and the pinned base tip is an ancestor of the candidate's tip;
+an unreadable base or a stack on an unpinned branch refuses. It also reads the
+queue and Codex capacity as described in Phase 3. (The three-Action rendering
+stays covered by the tests.)
 
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
@@ -321,11 +334,37 @@ run 6's G8. (The three-Action rendering stays covered by the tests.)
    dry-run docs sync, **refuses** any pending fixture proposal or open Decision
    gating a chain Action (it settles none: give each its own governed
    disposition first), commits once, pushes without force and runs docs sync.
-   Expect a receipt with the new fixture head, the starting head and the N
-   Action and completion ids.
+   **From run 7 it then positions the queue** (Issue #1015). Docs sync reopens
+   and creates Actions without giving them a queue position, and one
+   unpositioned Action makes the queue's order invalid, so `advance queue
+   make-next` refuses every Project (run 6's reset left seven fixture Actions
+   unpositioned until a manual arrange). The reset reads `arcadia advance queue
+   --json`, refuses unless every chain Action is listed, and runs the governed
+   `arcadia advance queue arrange` with every other key in its current relative
+   order followed by the chain's Actions in chain order: a preview that must
+   equal the planned order, then `--apply` at the same queue revision (the
+   request id is fixed by run and revision, so a replay is recognised). It
+   refuses unless the queue read back is `orderValid` with `unpositionedCount` 0.
+   The arrange needs every approved key, so a non-chain Action still
+   unpositioned receives its projected position (listed as `othersUnpositioned`
+   in the receipt); no other Project's relative order changes. A rerun after a
+   refusal resumes here and recognises an already-arranged queue. Expect a
+   receipt with the new fixture head, the starting head, the queue receipt and
+   the N Action and completion ids. The dry run reads the queue read-only and
+   prints "Step 4" with the arrangement it would make.
 2. Immediately run G6: `.../preflight-rehearsal-chain-<run-id>.sh run`
    (read-only). It must print `READY`. Its window is **30 minutes from its
-   finish time**.
+   finish time**. From run 7 it also refuses unless the Action queue is
+   `orderValid` with `unpositionedCount` 0 (check `action_queue`; the receipt
+   records the queue summary), and its Codex capacity check makes a fresh
+   `codex app-server` `account/rateLimits/read` of its own, retried up to three
+   times (20 seconds each, 2 seconds apart), and judges only that reading
+   (Issue #1016). When no attempt answers, `codex_capacity` refuses naming every
+   attempt's failure (a timeout or an exit status) and says no cached
+   observation was used, instead of judging a stale cache (run 6's G6 refused
+   twice on "past the 15-minute freshness limit" although a direct read took
+   about 2 seconds). Its only write is the local coding-agent telemetry cache
+   that live reading refreshes.
 3. Tell the operator right away, in the chat and with `arcadia ping "<what to
    press and the UTC deadline>" --kind attention --link <url> --agent "<name>"`
    (success means queued, not delivered): the exact button
@@ -433,6 +472,8 @@ broker): rerun G6.
 | Agent writes the template completion id and settlement stalls | `complete-<action>-<date>` already settled on a same-day rerun | The amended `next_action` names a fresh id; the reset refuses if it is used |
 | G7 refuses "different main" | A governed settle commit or reinstall moved main or the broker after G6, or a G8 ran | Freeze (phase 2); rerun G6 |
 | G6 invalid after an accidental G8 | G8 reinstalled the broker | Rerun G6; keep the buttons separate in the ping |
+| G6 `action_queue` refused, or `advance queue make-next` says "position every approved Action" | An Action became unpositioned (docs sync reopens or creates Actions without a position; Issue #1015) | The run-7 reset arranges the fixture's Actions; for another Action, a governed `arcadia advance queue arrange` at the current revision keeping every other key's relative order (preview, then `--apply`), then rerun G6 |
+| G6 `codex_capacity` refused with "failed on every attempt" naming a timeout or an exit status (Issue #1016) | The host's `codex app-server` did not answer `account/rateLimits/read` in three 20-second attempts | Read the named failure (a timeout under host load, or the exit status of a missing or broken `codex`), fix that, rerun G6; it never judges a cached reading |
 | `gh pr create` or a merge fails with GraphQL rate limits | Secondary rate limit | Use REST (`gh api`); check `gh api rate_limit` |
 | CI jobs cancelled, no logs | Runner capacity | Rerun failed jobs once |
 | `ps`, `sed -i`, `date` behave differently | macOS BSD tools | `sed -i ''`; compare times in UTC |
@@ -525,8 +566,9 @@ broker): rerun G6.
    G8 implementation, and per run one reviewed parameter file (run id, N, the
    previous run's receipts and heads, required commits) from which the run's
    launchers and descriptors are rendered and checked. Run 6 (N=9, nine
-   Actions under one press) and run 7 (N=9 repeat, bindings to fill from run 6)
-   are prepared; not yet proven live.
+   Actions under one press) ran; run 7 (N=9 repeat, bindings filled from run
+   6's receipts, queue positioning in the reset and a queue and live-capacity
+   check in G6, Issues #1015 and #1016) is prepared; not yet proven live.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983) and an operator gate holding a launch (#997; both tested, not yet seen live);
    a stuck candidate in other states and the dashboard rendering of escalations are

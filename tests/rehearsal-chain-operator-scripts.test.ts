@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAgentAskPreviewCommand } from "../src/commands/agentAsk.js";
+import { runAdvanceQueueArrangeCommand, runAdvanceQueueCommand } from "../src/commands/advance.js";
 import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { runProjectImportCommand, runProjectMetadataCommand } from "../src/commands/project.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -11,7 +12,7 @@ import { discoverDocs } from "../src/docs/discover.js";
 import { recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { beginDevelopmentAttempt, requirementIdentity } from "../src/sessions/roleLineage.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { CHAIN_IMPLEMENTATION, CHAIN_KINDS, REQUIRED_COMMIT_FLOOR, chainActionIds, chainLibraryIds, completionRequestId } from "../src/operatorActions/rehearsalChain.js";
+import { CHAIN_IMPLEMENTATION, CHAIN_KINDS, REQUIRED_COMMIT_FLOOR, chainActionIds, chainLibraryIds, chainQueueKeys, chainQueueRequestId, completionRequestId } from "../src/operatorActions/rehearsalChain.js";
 
 /**
  * Behavioral and static tests of the rehearsal-chain operator script set
@@ -72,13 +73,17 @@ let key = name + " " + args.join(" ");
 let program = "";
 if (name === "mise") {
   const rest = args.slice(2);
-  if (rest[0] === "pnpm") key = "arcadia " + rest.slice(3).filter((a) => !a.startsWith("--")).slice(0, 2).join(" ");
+  if (rest[0] === "pnpm") {
+    const words = rest.slice(3).filter((a) => !a.startsWith("--"));
+    key = "arcadia " + words.slice(0, 2).join(" ") + (words[0] === "advance" && words[1] === "queue" && words[2] === "arrange" ? " arrange" : "");
+  }
   else if (rest.includes("tsx")) {
     program = fs.readFileSync(0, "utf8");
     const named = [["validateChainParams", "params"], ["runProductionStatusCommand", "production"], ["reconciliationProblems", "reconciliation"], ["getProjectMetadata", "registration"],
       ["renderChainPlan", "render"], ["amendmentProblems", "amendment"], ["session_role_attempts", "lineage"], ["decideFixtureStart", "decide"], ["readChainAskState", "asks"],
       ["completionIdProblems", "completion-ids"], ["fixtureSessions", "sessions"], ["classifyPreservedCandidate", "classify"], ["resolveOperatorGate", "operator-gate"],
-      ["syncProjectDocs", "live-sync"], ["checkProviderSignIn", "claude"], ["observeProviderCapacity", "capacity"], ["listActiveAgentSessions", "leases"]].find(([marker]) => program.includes(marker));
+      ["syncProjectDocs", "live-sync"], ["checkProviderSignIn", "claude"], ["observeCodexCapacityLive", "capacity"], ["listActiveAgentSessions", "leases"],
+      ["buildAgentQueue", "queue-read"], ["planChainQueueOrder", "queue-plan"], ["chainQueueProblems", "queue-verify"]].find(([marker]) => program.includes(marker));
     key = "probe " + (named ? named[1] : "other");
   } else key = "node preflight";
 }
@@ -102,7 +107,9 @@ if (reply.passthrough) {
   const run = require("child_process").spawnSync(process.execPath, argv, { cwd: real, input: program, env, encoding: "utf8", timeout: 60000 });
   process.stdout.write(run.stdout || "");
   process.stderr.write(run.stderr || "");
-  process.exit(run.status === null ? 98 : run.status);
+  // Not process.exit: a large answer (the real queue is over a pipe's 64 KB) must drain before the fake exits.
+  process.exitCode = run.status === null ? 98 : run.status;
+  return;
 }
 if (reply.stdout) process.stdout.write(reply.stdout.replace(/[{][{]arg:([^}]+)[}][}]/g, (_m, flag) => args[args.indexOf(flag) + 1] ?? ""));
 if (reply.stderr) process.stderr.write(reply.stderr);
@@ -305,6 +312,13 @@ function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?:
   box.setReplies(resetReplies(box, { base, a1Tip, a2Tip }));
   return { genesis, base, a1Tip, a2Tip, localMain, params, projectId };
 }
+/** Run 7's reviewed file as it was before run 6's receipts existed: every previous-run binding UNFILLED (fail-closed). */
+const unfilledRun7 = () => {
+  const params = JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8"));
+  Object.assign(params.previousRun.bindings, { resetRunId: "UNFILLED: x", resetHead: "UNFILLED: x", terminalOffRunId: "UNFILLED: x", localMain: "UNFILLED: x" });
+  params.previousRun.bindings.candidates.push({ branch: "UNFILLED: x", tip: "UNFILLED", pullRequest: "UNFILLED" });
+  return params;
+};
 const writeParams = (box: Box, runId: string, params: unknown, commit = true) => {
   writeFileSync(path.join(box.scripts, "rehearsal-chain", "params", `${runId}.json`), JSON.stringify(params, null, 2));
   if (commit) box.commitLibrary();
@@ -320,9 +334,10 @@ const resetReplies = (box: Box, state: { base: string; a1Tip: string; a2Tip: str
   // GitHub main stays at the base until the fake push, then follows the clone's local main.
   [`gh api repos/${REPO}/commits/main`]: { exec: `if [ -f "$FAKE_ROOT/pushed" ]; then git -C "$HOME/tmp/arcadia-three-action-rehearsal" rev-parse refs/heads/main; else echo ${state.base}; fi` },
   [`gh api repos/${REPO}/branches/${A1_BRANCH}`]: { stdout: `${state.a1Tip}\n` },
-  [`gh api repos/${REPO}/pulls/5`]: { stdout: JSON.stringify({ state: "open", head: { ref: A1_BRANCH, sha: state.a1Tip } }) },
+  [`gh api repos/${REPO}/pulls/5`]: { stdout: JSON.stringify({ state: "open", head: { ref: A1_BRANCH, sha: state.a1Tip }, base: { ref: "main" } }) },
   [`gh api repos/${REPO}/branches/${A2_BRANCH}`]: { stdout: `${state.a2Tip}\n` },
-  [`gh api repos/${REPO}/pulls/6`]: { stdout: JSON.stringify({ state: "open", head: { ref: A2_BRANCH, sha: state.a2Tip } }) }
+  [`gh api repos/${REPO}/pulls/6`]: { stdout: JSON.stringify({ state: "open", head: { ref: A2_BRANCH, sha: state.a2Tip }, base: { ref: "main" } }) },
+  "arcadia advance queue": { passthrough: "cli" }
 });
 const resetEnv = { ARCADIA_REHEARSAL_GITHUB_REPO: REPO };
 const unchanged = (box: Box, localMain: string) => {
@@ -369,6 +384,24 @@ describe("rehearsal-chain set: static safety", () => {
     // The workspace is never exported or set, and the receipts override is dry-run only.
     expect(text).not.toMatch(/ARCADIA_WORKSPACE=/);
     expect(text).toContain('[[ "$DRY_RUN" == true ]] || refuse "ARCADIA_REHEARSAL_RECEIPTS_DIR is honoured only by --dry-run');
+  });
+
+  it("the reset arranges the queue only through the governed command after docs sync (preview before apply, no database write), and G6 reads the queue and capacity read-only", () => {
+    const text = implSource("reset.sh");
+    const at = ['arcadia docs sync --project "$FIXTURE_PROJECT" --apply --json', "STAGE=queue_order", "queue arrange --order", '--workspace "$WORKSPACE" --apply --json)'].map((marker) => text.indexOf(marker));
+    expect(at.every((index) => index > -1), JSON.stringify(at)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    // The preview call carries no --apply; every arrange passes the verified workspace explicitly and the exact revision.
+    const arranges = text.split("\n").filter((line) => /^\s*QUEUE_(PREVIEW|APPLIED)="\$\(arcadia advance queue arrange /.test(line));
+    expect(arranges).toHaveLength(2);
+    for (const line of arranges) expect(line).toMatch(/--request-id "\$QUEUE_REQUEST_ID" --revision "\$QUEUE_REVISION" --workspace "\$WORKSPACE"/);
+    expect(arranges.map((line) => line.includes("--apply"))).toEqual([false, true]);
+    expect(text).not.toMatch(/action_queue_(positions|state|receipts)|sqlite3|UPDATE |INSERT |DELETE FROM/);
+    const preflight = implSource("preflight.sh");
+    expect(preflight).toMatch(/arcadia advance queue --json/);
+    expect(preflight).not.toMatch(/arcadia advance queue (arrange|reorder|make-next|undo)/);
+    expect(preflight).toContain("observeCodexCapacityLive");
+    expect(preflight).not.toContain("observeProviderCapacity");
   });
 
   it("every implementation binds its launcher exactly as the TypeScript renderer writes it", () => {
@@ -516,9 +549,9 @@ describe("rehearsal-chain reset", () => {
     unchanged(box, state.a1Tip);
   });
 
-  it("refuses unfilled previous-run bindings (the overnight file before run 6) before reading anything else", { timeout: 120_000 }, () => {
+  it("refuses unfilled previous-run bindings (run 7's file before run 6's receipts) before reading anything else", { timeout: 120_000 }, () => {
     const box = sandbox(RUN7);
-    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
+    writeParams(box, RUN7, unfilledRun7());
     box.setReplies({ "probe": { passthrough: "probe" } });
     const result = box.run(box.ids.reset, resetEnv);
     expect(result.status).not.toBe(0);
@@ -529,10 +562,137 @@ describe("rehearsal-chain reset", () => {
   });
 });
 
-describe("rehearsal-chain G6, G7 and G8", () => {
-  it("G6 refuses the overnight file while its run-6 bindings are UNFILLED, before any observation", { timeout: 120_000 }, () => {
+describe("rehearsal-chain reset: stacked candidates and the operational queue (Issues #987, #1015)", () => {
+  const miseCalls = (box: Box) => readFileSync(path.join(box.root, "calls.log"), "utf8").split("\n").filter((line) => line.startsWith("mise ")).map((line) => JSON.parse(line.slice(5)) as string[]);
+  const arrangeCalls = (box: Box) => miseCalls(box).filter((args) => args.includes("arrange"));
+  const after = (args: string[], flag: string) => { const out: string[] = []; for (let i = args.indexOf(flag) + 1; i > 0 && i < args.length && !args[i].startsWith("--"); i++) out.push(args[i]); return out; };
+  const queueReply = (keys: string[], extra: Record<string, unknown> = {}): Reply => ok({ revision: 2, orderValid: true, unpositionedCount: 0, nextActionKey: null, ordered: keys.map((key) => ({ orderKey: key, orderStatus: "explicit" })), ...extra });
+  const chain3 = chainQueueKeys(chainActionIds(3));
+  const stacked = (box: Box, state: { base: string; a1Tip: string; a2Tip: string }, base: unknown, pr = 6) => box.setReplies({
+    ...resetReplies(box, state),
+    [`gh api repos/${REPO}/pulls/${pr}`]: { stdout: JSON.stringify({ state: "open", head: { ref: pr === 6 ? A2_BRANCH : A1_BRANCH, sha: pr === 6 ? state.a2Tip : state.a1Tip }, ...(base === undefined ? {} : { base: { ref: base } }) }) }
+  });
+
+  it("a candidate stacked on a pinned candidate it descends from (run 6's PR #8 on PR #7's branch) passes, and its base is recorded", { timeout: 240_000 }, () => {
+    const box = sandbox(RUN6);
+    const state = afterRun5(box);
+    stacked(box, state, A1_BRANCH);
+    const dry = box.run(box.ids.reset, resetEnv, ["--dry-run"]);
+    expect(dry.status, dry.stdout + dry.stderr).toBe(0);
+    expect(dry.stdout).toContain(`#6 ${A2_BRANCH}@${state.a2Tip.slice(0, 8)} (stacked on ${A1_BRANCH})`);
+    expect(dry.stdout).toContain(`Step 1: move ONLY the clone's local main from ${state.a1Tip} back to GitHub main ${state.base}`);
+    const evidence = readdirSync(box.tmp).filter((d) => d.startsWith("rehearsal-chain-dry-run."));
+    const candidates = JSON.parse(readFileSync(path.join(box.tmp, evidence[0], "candidates-before.json"), "utf8"));
+    expect(candidates.map((c: { pullRequest: number; prBase: string; stackedOn: string | null }) => [c.pullRequest, c.prBase, c.stackedOn])).toEqual([[5, "main", null], [6, A1_BRANCH, A1_BRANCH]]);
+    unchanged(box, state.a1Tip);
+  });
+
+  it.each([
+    ["a stack on a branch the parameter file does not pin", "claude/not-a-pinned-candidate", 6, "is stacked on claude/not-a-pinned-candidate, which is not a candidate the parameter file pins"],
+    ["a pull request whose base cannot be read", undefined, 6, "could not read the base branch of pull request #6"],
+    ["a pinned base the candidate does not descend from", A2_BRANCH, 5, "does not descend from it"]
+  ])("refuses %s, moving nothing", { timeout: 240_000 }, (_label, base, pr, expected) => {
+    const box = sandbox(RUN6);
+    const state = afterRun5(box);
+    stacked(box, state, base, pr);
+    const dry = box.run(box.ids.reset, resetEnv, ["--dry-run"]);
+    expect(dry.status).toBe(1);
+    expect(dry.stdout).toContain(expected);
+    const result = box.run(box.ids.reset, resetEnv);
+    expect(result.status).not.toBe(0);
+    expect(box.receipt(box.ids.reset).json).toMatchObject({ outcome: "refused", stage: "candidates", localMainMoved: false, fixtureCommitted: false });
+    expect(box.receipt(box.ids.reset).json.reason).toContain(expected);
+    unchanged(box, state.a1Tip);
+  });
+
+  it("the dry run reads the queue read-only and names the arrangement it would make after docs sync", { timeout: 240_000 }, () => {
     const box = sandbox(RUN7);
-    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
+    afterRun5(box, { actionCount: 9, runId: RUN7 });
+    const dry = box.run(box.ids.reset, resetEnv, ["--dry-run"]);
+    expect(dry.status, dry.stdout + dry.stderr).toBe(0);
+    expect(dry.stdout).toMatch(/Step 4: position the chain's Actions in the queue \(arcadia advance queue arrange, previewed then applied at the exact revision, refused unless orderValid with 0 unpositioned afterwards\): all 0 other key\(s\) keep their relative order, then three-action-rehearsal\/write-start-marker, /);
+    expect(arrangeCalls(box)).toEqual([]);
+    expect(box.keys().filter((key) => key.startsWith("arcadia advance queue"))).toEqual([]);
+  });
+
+  it("N=9: positions the reopened and created Actions in chain order through the governed arrange (preview, then apply at the exact revision), records the queue receipt, and leaves the queue valid", { timeout: 300_000 }, () => {
+    const box = sandbox(RUN7);
+    afterRun5(box, { actionCount: 9, runId: RUN7 });
+    // An operator-arranged queue whose fixture Actions are positioned in the wrong order: the reset puts them in chain order.
+    const before = runAdvanceQueueCommand({ workspace: box.workspace }).data;
+    const keys = before.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : []);
+    expect(keys.length).toBeGreaterThan(0);
+    runAdvanceQueueArrangeCommand({ workspace: box.workspace, order: [...keys].reverse(), requestId: "pre-position-fixture", revision: before.revision, apply: true });
+    const positioned = runAdvanceQueueCommand({ workspace: box.workspace }).data;
+    const result = box.run(box.ids.reset, resetEnv);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const chain = chainQueueKeys(chainActionIds(9));
+    const { json } = box.receipt(box.ids.reset);
+    expect(json.queue).toMatchObject({
+      state: "arranged", order: chain, othersUnpositioned: [],
+      receipt: { applied: true, requestId: chainQueueRequestId(RUN7, positioned.revision), revisionBefore: positioned.revision, revisionAfter: positioned.revision + 1 },
+      after: { revision: positioned.revision + 1, orderValid: true, unpositionedCount: 0 }
+    });
+    expect(json.receipt === undefined && json.queue.receipt.id).toMatch(/^qorder_/);
+    // The governed command, twice: the preview first, then --apply, each with every key as its own argument at the exact revision.
+    const calls = arrangeCalls(box);
+    expect(calls).toHaveLength(2);
+    expect(calls.map((args) => args.includes("--apply"))).toEqual([false, true]);
+    for (const args of calls) {
+      expect(after(args, "--order")).toEqual(chain);
+      expect(after(args, "--revision")).toEqual([String(positioned.revision)]);
+      expect(after(args, "--request-id")).toEqual([chainQueueRequestId(RUN7, positioned.revision)]);
+      expect(after(args, "--workspace")).toEqual([box.workspace]);
+    }
+    // Read back from the real queue, not inferred from the exit code.
+    const queue = runAdvanceQueueCommand({ workspace: box.workspace }).data;
+    expect(queue).toMatchObject({ orderValid: true, unpositionedCount: 0 });
+    expect(queue.ordered.flatMap((entry) => entry.orderKey ? [entry.orderKey] : [])).toEqual(chain);
+  });
+
+  it.each([
+    ["the queue does not list a chain Action docs sync was meant to create", () => ({ "arcadia advance queue": queueReply(chain3.slice(0, 2)) }), "does not list the chain's Actions", 0],
+    ["the previewed arrangement is not the planned order", () => ({ "arcadia advance queue": { passthrough: "cli" as const }, "arcadia advance queue arrange": ok({ receipt: { id: "q1", applied: false, revisionBefore: 0, after: ["x"] } }) }), "preview is not the planned order", 1],
+    ["the arrange command fails", () => ({ "arcadia advance queue": { passthrough: "cli" as const }, "arcadia advance queue arrange": { status: 1, stderr: "queue revision changed" } }), "arrange preview failed", 1],
+    ["the queue is still invalid afterwards (orderValid false, unpositioned Actions)", () => ({
+      "arcadia advance queue": [{ passthrough: "cli" as const }, queueReply(chain3, { orderValid: false, unpositionedCount: 2, ordered: chain3.map((key, i) => ({ orderKey: key, orderStatus: i < 2 ? "unpositioned" : "explicit" })) })],
+      "arcadia advance queue arrange": { passthrough: "cli" as const } }), "not orderValid after the arrangement", 2]
+  ])("refuses, naming it, when %s", { timeout: 300_000 }, (_label, overrides, expected, arranges) => {
+    const box = sandbox(RUN6);
+    const state = afterRun5(box);
+    box.setReplies({ ...resetReplies(box, state), ...overrides() });
+    const result = box.run(box.ids.reset, resetEnv);
+    expect(result.status).not.toBe(0);
+    const { json } = box.receipt(box.ids.reset);
+    expect(json).toMatchObject({ outcome: "refused", stage: "queue_order", fixtureCommitted: true, githubRepositoryChanged: true });
+    expect(json.reason).toContain(expected);
+    expect(arrangeCalls(box)).toHaveLength(arranges);
+    // Docs sync and the push had landed; nothing else was done, and no success receipt was written.
+    expect(box.pushes()).toHaveLength(1);
+    expect(box.receipts(box.ids.reset).filter((r) => r.json.outcome === "succeeded")).toEqual([]);
+  });
+
+  it("a rerun after a refusal resumes at docs sync and the queue: an already arranged queue is recognised, not arranged twice", { timeout: 300_000 }, () => {
+    const box = sandbox(RUN6);
+    const state = afterRun5(box);
+    box.setReplies({ ...resetReplies(box, state), "arcadia advance queue": [{ passthrough: "cli" as const }, queueReply(chain3, { orderValid: false, unpositionedCount: 1, ordered: chain3.map((key, i) => ({ orderKey: key, orderStatus: i === 0 ? "unpositioned" : "explicit" })) })], "arcadia advance queue arrange": { passthrough: "cli" as const } });
+    expect(box.run(box.ids.reset, resetEnv).status).not.toBe(0);
+    expect(arrangeCalls(box)).toHaveLength(2);
+    box.setReplies(resetReplies(box, state));
+    const again = box.run(box.ids.reset, resetEnv);
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    const { json } = box.receipt(box.ids.reset);
+    expect(json).toMatchObject({ outcome: "succeeded" });
+    expect(json.queue).toMatchObject({ state: "already_valid", orderValid: true, unpositionedCount: 0 });
+    expect(arrangeCalls(box)).toHaveLength(2);
+    expect(box.pushes()).toHaveLength(1);
+  });
+});
+
+describe("rehearsal-chain G6, G7 and G8", () => {
+  it("G6 refuses run 7's file while its run-6 bindings are UNFILLED, before any observation", { timeout: 120_000 }, () => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, unfilledRun7());
     box.setReplies({ "probe": { passthrough: "probe" } });
     expect(box.run(box.ids.preflight).status).not.toBe(0);
     const { json } = box.receipt(box.ids.preflight);
@@ -543,7 +703,7 @@ describe("rehearsal-chain G6, G7 and G8", () => {
 
   it("G7 refuses outside /runs before any Arcadia command, and refuses unfilled parameters without attempting activation", { timeout: 120_000 }, () => {
     const box = sandbox(RUN7);
-    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
+    writeParams(box, RUN7, unfilledRun7());
     box.setReplies({ "probe": { passthrough: "probe" } });
     expect(box.run(box.ids.grant).status).not.toBe(0);
     expect(box.receipt(box.ids.grant).json).toMatchObject({ outcome: "refused", stage: "launch_context", activated: false, offCleanup: "not_attempted" });
@@ -688,6 +848,120 @@ describe("rehearsal-chain G8 is the emergency stop: drift never blocks this run'
   });
 });
 
+/** Every answer G6 needs from the box's fake CLIs once the reset has pushed: all passing, the queue and capacity read for real or by the fakes below. */
+const CODEX_ANSWER = [
+  JSON.stringify({ id: 1, result: { userAgent: "codex" } }),
+  JSON.stringify({ id: 2, result: { rateLimits: { primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600 }, secondary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 86_400 }, planType: "plus" } } })
+].join("\n") + "\n";
+const liveRead = (attempt = 1) => ({ ok: true, maxAttempts: 3, deadlineMs: 20_000, attempts: [...Array.from({ length: attempt - 1 }, (_, i) => ({ attempt: i + 1, ok: false, failure: { kind: "timeout", exitStatus: null, signal: "SIGTERM", detail: "did not answer" } })), { attempt, ok: true }] });
+function chainG6Replies(box: Box, state: { base: string; a1Tip: string; a2Tip: string }, newHead: string, head: string): Replies {
+  return {
+    ...resetReplies(box, state),
+    [`gh api repos/${REPO}/commits/main`]: { stdout: `${newHead}\n` },
+    "arcadia go-broker status": ok({ ready: true, revision: head, preservationTransport: { ready: true }, agentGoTransport: { ready: true } }),
+    "arcadia worker status": { stdout: "Worker: running (fresh heartbeat)\n" },
+    "probe claude": { stdout: JSON.stringify({ verdict: "signed_in" }) },
+    "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_review"], liveRead: liveRead(), codex: { admitted: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "available", unattendedProof: "observed" } }) },
+    "codex --version": { stdout: "codex 1.0\n" },
+    "codex login status": { stdout: "Logged in using ChatGPT\n" },
+    "gh auth status": { stdout: "ok\n" },
+    [`gh api repos/${REPO}`]: { stdout: JSON.stringify({ private: true, archived: false, fork: false, permissions: { push: true }, default_branch: "main" }) },
+    [`gh api repos/${REPO}/branches/main`]: { stdout: JSON.stringify({ commit: { sha: newHead }, protected: false }) },
+    [`gh api repos/${REPO}/commits/${newHead}/check-runs`]: { stdout: JSON.stringify({ total_count: 1, check_runs: [{ status: "completed", conclusion: "success" }] }) }
+  };
+}
+
+describe("rehearsal-chain G6: the operational queue and a live Codex capacity read (Issues #1015, #1016)", () => {
+  const detail = (box: Box, name: string) => box.receipt(box.ids.preflight).json.checks.find((c: { name: string }) => c.name === name) as { status: string; detail: string };
+  const queueReply = (data: Record<string, unknown>): Reply => ok({ revision: 7, nextActionKey: null, ordered: [], ...data });
+  const failedRead = (...failures: Array<{ kind: string; exitStatus: number | null; detail: string }>) => ({
+    ok: false, maxAttempts: 3, deadlineMs: 20_000, attempts: failures.map((failure, i) => ({ attempt: i + 1, ok: false, failure: { signal: null, ...failure } }))
+  });
+
+  it("refuses an invalid queue (orderValid false or any unpositioned Action) or an unreadable one, and names the cause; a valid queue and a live capacity read pass", { timeout: 900_000 }, () => {
+    const box = sandbox(RUN7, { clone: true });
+    const state = afterRun5(box, { actionCount: 9, runId: RUN7 });
+    const reset = box.run(box.ids.reset, resetEnv);
+    expect(reset.status, reset.stdout + reset.stderr).toBe(0);
+    const newHead = git(box.fixture, ["rev-parse", "refs/heads/main"]);
+    const head = git(box.checkout, ["rev-parse", "HEAD"]);
+    const replies = chainG6Replies(box, state, newHead, head);
+    const refusals = (box: Box) => box.receipt(box.ids.preflight).json.checks.filter((c: { status: string }) => c.status !== "pass").map((c: { name: string }) => c.name);
+
+    // Baseline: the real queue the reset left is valid, and a capacity read that answered on its second attempt passes.
+    box.setReplies({ ...replies, "arcadia advance queue": { passthrough: "cli" }, "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_review"], liveRead: liveRead(2), codex: { admitted: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "available", unattendedProof: "observed" } }) } });
+    const ready = box.run(box.ids.preflight);
+    expect(ready.status, ready.stdout + ready.stderr).toBe(0);
+    expect(detail(box, "action_queue")).toMatchObject({ status: "pass", detail: expect.stringContaining("orderValid true, 0 unpositioned") });
+    expect(detail(box, "codex_capacity")).toMatchObject({ status: "pass", detail: expect.stringContaining("read live on attempt 2 of 3") });
+    expect(box.receipt(box.ids.preflight).json.actionQueue).toMatchObject({ orderValid: true, unpositionedCount: 0, unpositioned: [] });
+
+    // The queue is not valid: refused whichever way it says so, naming the unpositioned keys.
+    for (const data of [
+      { orderValid: false, unpositionedCount: 7, ordered: chainQueueKeys(chainActionIds(9)).map((key) => ({ orderKey: key, orderStatus: "unpositioned" })).slice(0, 7) },
+      { orderValid: true, unpositionedCount: 1, ordered: [{ orderKey: "three-action-rehearsal/chain-step-09", orderStatus: "unpositioned" }] },
+      { orderValid: false, unpositionedCount: 0, ordered: [] }
+    ]) {
+      box.setReplies({ ...replies, "arcadia advance queue": queueReply(data) });
+      expect(box.run(box.ids.preflight).status).not.toBe(0);
+      expect(refusals(box)).toEqual(["action_queue"]);
+      expect(detail(box, "action_queue").detail).toContain("the Action queue order is invalid");
+      expect(detail(box, "action_queue").detail).toContain(`"unpositionedCount":${data.unpositionedCount}`);
+    }
+    expect(detail(box, "action_queue").detail).toContain("advance queue arrange");
+    // A queue that cannot be read, or one without the fields, is not known to be valid.
+    for (const reply of [{ status: 1, stderr: "boom" }, { stdout: "{\"ok\":true,\"data\":{}}" }] as Reply[]) {
+      box.setReplies({ ...replies, "arcadia advance queue": reply });
+      expect(box.run(box.ids.preflight).status).not.toBe(0);
+      expect(refusals(box)).toEqual(["action_queue"]);
+      expect(detail(box, "action_queue").detail).toContain("could not be read");
+    }
+
+    // Issue #1016: when no live read answered, the refusal names each failure and says no cache was judged.
+    box.setReplies({ ...replies, "arcadia advance queue": { passthrough: "cli" }, "probe capacity": { stdout: JSON.stringify({
+      readOnlyReviewers: ["codex_review"], codex: null,
+      liveRead: failedRead({ kind: "timeout", exitStatus: null, detail: "the Codex app-server query did not answer within 20000 ms" }, { kind: "exit", exitStatus: 2, detail: "the Codex app-server query failed with exit status 2: Command failed" }, { kind: "no_response", exitStatus: 0, detail: "exited without answering" })
+    }) } });
+    expect(box.run(box.ids.preflight).status).not.toBe(0);
+    expect(refusals(box)).toEqual(["codex_capacity"]);
+    const named = detail(box, "codex_capacity").detail;
+    expect(named).toContain("failed on every attempt");
+    expect(named).toContain("no cached observation was used");
+    expect(named).toContain("attempt 1: timeout: the Codex app-server query did not answer within 20000 ms");
+    expect(named).toContain("attempt 2: exit (exit status 2)");
+    expect(named).toContain("attempt 3: no_response (exit status 0)");
+    // A reading that did answer but is not fresh, included and available is still refused on its own evidence.
+    box.setReplies({ ...replies, "arcadia advance queue": { passthrough: "cli" }, "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_review"], liveRead: liveRead(), codex: { admitted: false, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "usage_limited", reason: "weekly window spent" } }) } });
+    expect(box.run(box.ids.preflight).status).not.toBe(0);
+    expect(refusals(box)).toEqual(["codex_capacity"]);
+    expect(detail(box, "codex_capacity").detail).toContain("weekly window spent");
+  });
+
+  it("the real probe, with a fake codex app server on PATH: a fresh answer is judged; a failing server is retried and named by exit status", { timeout: 900_000 }, () => {
+    const box = sandbox(RUN7, { clone: true });
+    const state = afterRun5(box, { actionCount: 9, runId: RUN7 });
+    expect(box.run(box.ids.reset, resetEnv).status).toBe(0);
+    const newHead = git(box.fixture, ["rev-parse", "refs/heads/main"]);
+    const head = git(box.checkout, ["rev-parse", "HEAD"]);
+    const real = { ...chainG6Replies(box, state, newHead, head), "arcadia advance queue": { passthrough: "cli" as const }, "probe capacity": { passthrough: "probe" as const } };
+    box.setReplies({ ...real, "codex app-server": { stdout: CODEX_ANSWER } });
+    const ok = box.run(box.ids.preflight);
+    expect(ok.status, ok.stdout + ok.stderr).toBe(0);
+    expect(detail(box, "codex_capacity")).toMatchObject({ status: "pass", detail: expect.stringContaining("included capacity read live on attempt 1 of 3") });
+    expect(box.keys().filter((key) => key.startsWith("codex app-server"))).toHaveLength(1);
+    // The server fails with exit status 3 on every attempt: three bounded attempts, each named, nothing judged from a cache.
+    box.setReplies({ ...real, "codex app-server": { status: 3, stderr: "boom" } });
+    const before = box.keys().filter((key) => key.startsWith("codex app-server")).length;
+    const failed = box.run(box.ids.preflight);
+    expect(failed.status).not.toBe(0);
+    expect(box.keys().filter((key) => key.startsWith("codex app-server")).length - before).toBe(3);
+    const named = detail(box, "codex_capacity");
+    expect(named.status).toBe("refuse");
+    expect(named.detail).toContain("failed on every attempt");
+    for (const attempt of [1, 2, 3]) expect(named.detail).toContain(`attempt ${attempt}: exit (exit status 3)`);
+  });
+});
+
 describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its receipt", () => {
   it("the reset's receipt passes this run's G6, and G7 previews and activates exactly the nine Actions under its own request id", { timeout: 600_000 }, () => {
     const box = sandbox(RUN7, { clone: true });
@@ -697,20 +971,7 @@ describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its recei
     const newHead = git(box.fixture, ["rev-parse", "refs/heads/main"]);
     const head = git(box.checkout, ["rev-parse", "HEAD"]);
     const scoped = chainActionIds(9).map((id) => `three-action-rehearsal/${id}`);
-    const g6Replies: Replies = {
-      ...resetReplies(box, state),
-      [`gh api repos/${REPO}/commits/main`]: { stdout: `${newHead}\n` },
-      "arcadia go-broker status": ok({ ready: true, revision: head, preservationTransport: { ready: true }, agentGoTransport: { ready: true } }),
-      "arcadia worker status": { stdout: "Worker: running (fresh heartbeat)\n" },
-      "probe claude": { stdout: JSON.stringify({ verdict: "signed_in" }) },
-      "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_review"], codex: { admitted: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "available", unattendedProof: "observed" } }) },
-      "codex --version": { stdout: "codex 1.0\n" },
-      "codex login status": { stdout: "Logged in using ChatGPT\n" },
-      "gh auth status": { stdout: "ok\n" },
-      [`gh api repos/${REPO}`]: { stdout: JSON.stringify({ private: true, archived: false, fork: false, permissions: { push: true }, default_branch: "main" }) },
-      [`gh api repos/${REPO}/branches/main`]: { stdout: JSON.stringify({ commit: { sha: newHead }, protected: false }) },
-      [`gh api repos/${REPO}/commits/${newHead}/check-runs`]: { stdout: JSON.stringify({ total_count: 1, check_runs: [{ status: "completed", conclusion: "success" }] }) }
-    };
+    const g6Replies = chainG6Replies(box, state, newHead, head);
     box.setReplies(g6Replies);
     const g6 = box.run(box.ids.preflight);
     expect(g6.status, g6.stdout + g6.stderr).toBe(0);
