@@ -4221,7 +4221,7 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1018"]
   - id: make-done-action-settlement-unambiguous
     title: Rewrite next_action when completion settlement marks an Action done, naming the completion request id.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Rewrite next_action when completion settlement marks an Action done, naming the completion request id.
@@ -4241,7 +4241,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: make-done-action-settlement-unambiguous
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
