@@ -284,6 +284,32 @@ record_str fixtureHead "$FIXTURE_HEAD"
 record_str resetReceipt "$RESET_RECEIPT"
 record_str fixtureRoot "$FIXTURE_REPO"
 
+# The coherence guard (run 7's Action 1 failed QA on a fixture that said "three dependent Actions"
+# beside "Action 1 of 9"): no managed document of the fixture at its reset head (PROJECT.md,
+# AGENTS.md, CONSTITUTION.md, the Plan and every Action's text) may state another number of
+# Actions than this run's N. Deterministic, offline, naming file, line and text.
+cat > "$RUN_DIR/probe-coherence.mjs" <<'NODE'
+import { chainCoherenceProblems, readCoherenceFiles } from "./src/operatorActions/rehearsalChainCoherence.ts";
+const [root, count] = process.argv.slice(2);
+console.log(JSON.stringify({ problems: chainCoherenceProblems(readCoherenceFiles(root), Number(count)) }));
+NODE
+if [[ -n "$FIXTURE_HEAD" ]]; then
+  HEAD_TREE="$RUN_DIR/.fixture-head"
+  mkdir -p "$HEAD_TREE"
+  if git -C "$FIXTURE_REPO" archive "$FIXTURE_HEAD" | tar -x -C "$HEAD_TREE" 2>/dev/null && COHERENCE="$(probe "$HEAD_TREE" "$N" < "$RUN_DIR/probe-coherence.mjs")" \
+      && jq -e '.problems | type == "array"' <<<"$COHERENCE" >/dev/null 2>&1; then
+    if jq -e '.problems == []' <<<"$COHERENCE" >/dev/null; then
+      check fixture_coherence pass "no fixture managed document at $FIXTURE_HEAD states another number of Actions than this run's $N"
+    else
+      check fixture_coherence refuse "the fixture at $FIXTURE_HEAD contradicts itself about the chain's size (this run has $N Actions); rerun the reset, which renders every statement of it: $(jq -c '.problems' <<<"$COHERENCE")"
+    fi
+  else
+    check fixture_coherence refuse "the fixture's managed documents at $FIXTURE_HEAD could not be read for the coherence guard"
+  fi
+else
+  check fixture_coherence refuse "not observed: no chain reset head to read the fixture's managed documents from"
+fi
+
 cat > "$RUN_DIR/probe-leases.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
 import { listActiveAgentSessions } from "./src/sessions/index.ts";
