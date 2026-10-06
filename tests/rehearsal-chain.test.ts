@@ -27,6 +27,8 @@ const paramsDir = path.join(library, "rehearsal-chain", "params");
 const readParams = (runId: string) => JSON.parse(readFileSync(path.join(paramsDir, `${runId}.json`), "utf8")) as ChainRunParams;
 const RUN6 = readParams("run6-2026-10-06");
 const RUN7 = readParams("run7-2026-10-06");
+/** Run 6 at N=3 (its first form), a test-only variant that keeps the three-Action rendering covered now that run 6 is the nine-Action chain. */
+const RUN6_N3: ChainRunParams = { ...RUN6, actionCount: 3 };
 const PLAN_FILE = "docs/plans/autonomous-three-action-rehearsal.md";
 const G1 = "prepare-three-action-rehearsal-fixture-2026-10-04";
 const source = (id: string) => readFileSync(path.join(library, `${id}.sh`), "utf8");
@@ -116,10 +118,10 @@ const filled7 = (): ChainRunParams => {
 };
 
 describe("rehearsal-chain parameter files", () => {
-  it("run 6 (N=3) is valid and fully filled: binds run 5's receipts and heads and requires the merged #987 and #997 fixes", () => {
+  it("run 6 (N=9, tonight's one press) is valid and fully filled: binds run 5's receipts and heads and requires the merged #987 and #997 fixes", () => {
     const { params, problems, unfilled } = validateChainParams(RUN6);
     expect(problems).toEqual([]);
-    expect(params?.actionCount).toBe(3);
+    expect(params?.actionCount).toBe(9);
     expect(unfilled).toEqual([]);
     expect(RUN6.requiredCommits[4].commit).toBe("a4a7c18450c6fe38beb390d7ce4fd62570ca841f");
     expect(RUN6.requiredCommits[3].commit).toBe("26172c74ae9dcf795cc69cabd8a62616f7ed42c8");
@@ -145,6 +147,7 @@ describe("rehearsal-chain parameter files", () => {
     expect(unfilled).toContain("params.previousRun.bindings.candidates[6].branch");
     expect(unfilled.filter((entry) => entry.startsWith("params.requiredCommits"))).toEqual([]);
     expect(RUN7.requiredCommits).toEqual(RUN6.requiredCommits);
+    expect(RUN7.actionCount).toBe(RUN6.actionCount);
     // Filled with well-formed values it validates with nothing unfilled.
     expect(validateChainParams(filled7())).toMatchObject({ problems: [], unfilled: [] });
   });
@@ -190,10 +193,10 @@ describe("rehearsal-chain parameter files", () => {
 });
 
 describe("rehearsal-chain Plan rendering", () => {
-  it("N=3 (run 6) from run 5's reset head amends exactly the three next_action lines, the date and the budget, with fresh inputs and only Action 1 ready", () => {
+  it("N=3 (run 6's first form, test-only) from run 5's reset head amends exactly the three next_action lines, the date and the budget, with fresh inputs and only Action 1 ready", () => {
     const { genesis, run5 } = trees();
     const base = readFileSync(path.join(run5, PLAN_FILE), "utf8");
-    const rendered = renderChainPlan(base, RUN6, "2026-10-06");
+    const rendered = renderChainPlan(base, RUN6_N3, "2026-10-06");
     expect(rendered.planUpdatedBefore).toBe("2026-10-06");
     const before = base.split("\n");
     const after = rendered.plan.split("\n");
@@ -227,9 +230,9 @@ describe("rehearsal-chain Plan rendering", () => {
     expect(b["transform-start-marker"].inputRevision.startsWith("6bf8f08dbb3e")).toBe(true);
   });
 
-  it("N=9 (run 7) appends six genuinely dependent chain steps to run 6's chain and from run 5's head alike", () => {
+  it("N=9 (run 7) appends six genuinely dependent chain steps to a three-Action chain and from run 5's head alike", () => {
     const { genesis, run5 } = trees();
-    const run6 = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6, "2026-10-06");
+    const run6 = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6_N3, "2026-10-06");
     const run6Root = withPlan(run5, run6.plan);
     const params = filled7();
     const rendered = renderChainPlan(run6.plan, params, "2026-10-07");
@@ -266,20 +269,42 @@ describe("rehearsal-chain Plan rendering", () => {
   ])("refuses %s", (_label, mutate, date, reason) => {
     const { run5 } = trees();
     const base = mutate(readFileSync(path.join(run5, PLAN_FILE), "utf8"));
-    expect(() => renderChainPlan(base, RUN6, date)).toThrow(expect.objectContaining({ reason }));
+    for (const params of [RUN6, RUN6_N3]) expect(() => renderChainPlan(base, params, date)).toThrow(expect.objectContaining({ reason }));
+  });
+
+  it("run 6 (N=9) from run 5's reset head: the three G1 Actions amended, six chain steps appended, fresh inputs, only Action 1 ready; run 7 repeats it over run 6's chain", () => {
+    const { genesis, run5 } = trees();
+    const rendered = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6, "2026-10-06");
+    expect(rendered.actions.map((a) => [a.id, a.completionId, a.appended])).toEqual(chainActionIds(9).map((id, i) => [id, completionRequestId(id, "run6-2026-10-06"), i >= 3]));
+    for (const action of rendered.actions) expect(action.nextAction).toContain(`rehearsal run 6, run id run6-2026-10-06, Action ${chainActionIds(9).indexOf(action.id) + 1} of 9 in one serial chain`);
+    const amended = withPlan(run5, rendered.plan);
+    const expected = { project: "three-action-rehearsal", plan: "autonomous-three-action-rehearsal", actionIds: chainActionIds(9), nextActions: rendered.actions.map((a) => a.nextAction) };
+    const observation = observe(genesis, run5, amended);
+    expect(amendmentProblems(observation, expected)).toEqual([]);
+    expect(observation.ready).toEqual(["write-start-marker"]);
+    const [b, a] = [identities(run5), identities(amended)];
+    for (const id of chainActionIds(3)) expect(a[id].inputRevision).not.toBe(b[id].inputRevision);
+    // Run 7 over run 6's nine: every Action amended again (fresh inputs), none appended.
+    const repeat = renderChainPlan(rendered.plan, filled7(), "2026-10-07");
+    expect(repeat.actions.every((action) => !action.appended)).toBe(true);
+    const repeated = withPlan(amended, repeat.plan);
+    expect(amendmentProblems(observe(genesis, amended, repeated), { ...expected, nextActions: repeat.actions.map((x) => x.nextAction) })).toEqual([]);
+    const [r] = [identities(repeated)];
+    for (const id of chainActionIds(9)) expect(r[id].inputRevision).not.toBe(a[id].inputRevision);
   });
 
   it("refuses to render the same run twice, and a run of fewer Actions over a longer chain", () => {
     const { run5 } = trees();
-    const run6 = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6, "2026-10-06");
-    expect(() => renderChainPlan(run6.plan, RUN6, "2026-10-06")).toThrow(expect.objectContaining({ reason: "NEXT_ACTION_NOT_FRESH" }));
-    const nine = renderChainPlan(run6.plan, filled7(), "2026-10-07");
-    expect(() => renderChainPlan(nine.plan, { ...RUN6, runId: "run8-2026-10-07", runLabel: "run 8" }, "2026-10-07")).toThrow(ChainPlanError);
+    const run6 = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6_N3, "2026-10-06");
+    expect(() => renderChainPlan(run6.plan, RUN6_N3, "2026-10-06")).toThrow(expect.objectContaining({ reason: "NEXT_ACTION_NOT_FRESH" }));
+    const nine = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6, "2026-10-06");
+    expect(() => renderChainPlan(nine.plan, RUN6, "2026-10-06")).toThrow(expect.objectContaining({ reason: "NEXT_ACTION_NOT_FRESH" }));
+    expect(() => renderChainPlan(nine.plan, { ...RUN6_N3, runId: "run8-2026-10-07", runLabel: "run 8" }, "2026-10-07")).toThrow(ChainPlanError);
   });
 
   it("amendmentProblems names each way an amendment fails", () => {
     const { genesis, run5 } = trees();
-    const rendered = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6, "2026-10-06");
+    const rendered = renderChainPlan(readFileSync(path.join(run5, PLAN_FILE), "utf8"), RUN6_N3, "2026-10-06");
     const amended = withPlan(run5, rendered.plan);
     const expected = { project: "three-action-rehearsal", plan: "autonomous-three-action-rehearsal", actionIds: chainActionIds(3), nextActions: rendered.actions.map((a) => a.nextAction) };
     const base = observe(genesis, run5, amended);
@@ -381,7 +406,13 @@ describe("rendered library entries", () => {
     expect(chainDescriptor("reset", RUN6).desired_effect).toContain("The new line starts from run 5's reset head 7214de28da2745c66f89d81e124e2ab2de05b2ca on GitHub main.");
     expect(chainDescriptor("reset", RUN6).problem).toContain("moves ONLY the clone's local main back to 7214de28da2745c66f89d81e124e2ab2de05b2ca");
     expect(chainDescriptor("reset", RUN7).desired_effect).toContain("still to be filled in the parameter file");
-    expect(chainNextAction(0, RUN6)).toContain("Action 1 of 3");
+    expect(chainNextAction(0, RUN6)).toContain("Action 1 of 9");
+    expect(chainNextAction(0, RUN6_N3)).toContain("Action 1 of 3");
+    // Tonight's run-6 press authorises exactly nine named Actions.
+    const grant6 = chainDescriptor("grant", RUN6);
+    expect(grant6.problem).toContain("ONE PRESS AUTHORISES 9 ACTIONS");
+    expect(grant6.problem).toContain("for each of the 9 disposable fixture Actions write-start-marker, transform-start-marker, verify-final-rehearsal, chain-step-04, chain-step-05, chain-step-06, chain-step-07, chain-step-08 and chain-step-09, in that order");
+    expect(grant6.problem).not.toContain("chain-step-10");
     expect(genesisRoot === null || typeof genesisRoot === "string").toBe(true);
   });
 });

@@ -597,9 +597,10 @@ describe("rehearsal-chain G6, G7 and G8", () => {
   });
 });
 
-const writeG7Receipt = (box: Box, actionIds: string[], dir = "20261006T230000Z-1") => {
+const writeG7Receipt = (box: Box, actionIds: string[], dir = "20261006T230000Z-1", fields: Record<string, unknown> = { outcome: "succeeded", stage: "complete", activated: true }) => {
   mkdirSync(path.join(box.scripts, "runs", dir), { recursive: true });
-  writeFileSync(path.join(box.scripts, "runs", dir, "receipt.json"), JSON.stringify({ id: box.ids.grant, runId: dir, outcome: "succeeded", stage: "complete", activated: true, chainRunId: RUN7, actionIds }));
+  writeFileSync(path.join(box.scripts, "runs", dir, "receipt.json"), JSON.stringify({ id: box.ids.grant, runId: dir, chainRunId: RUN7, actionIds, ...fields }));
+  return realpathSync(path.join(box.scripts, "runs", dir, "receipt.json"));
 };
 
 describe("rehearsal-chain G8 is the emergency stop: drift never blocks this run's Off", () => {
@@ -637,6 +638,31 @@ describe("rehearsal-chain G8 is the emergency stop: drift never blocks this run'
       // The edited count only shapes the later reconciliation record; it never decided ownership.
       expect(json.actionIds).toEqual(chainActionIds(3));
     }
+  });
+
+  it("a later refused G7 attempt with other Actions does not displace the activated Grant's scope: G8 still turns the run's Grant Off", { timeout: 240_000 }, () => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")), false);
+    initWorkspace(box.workspace);
+    const activated = writeG7Receipt(box, chainActionIds(9), "20261006T230000Z-1");
+    // A second press refused (its one-shot or drift checks) after recording a different Action set.
+    writeG7Receipt(box, chainActionIds(3), "20261006T231500Z-2", { outcome: "refused", stage: "production_state", activated: false, offCleanup: "not_attempted" });
+    box.setReplies(offReplies(box));
+    box.run(box.ids.terminalOff, runsEnv(box));
+    const { json } = box.receipt(box.ids.terminalOff);
+    expect(json).toMatchObject({ offState: "confirmed", ownedActions: scoped, ownershipBasis: `G7 receipt ${activated}` });
+    expect(deactivations(box)).toHaveLength(1);
+  });
+
+  it("with only refused G7 attempts it falls back to the latest one with Actions (and refuses a scope that does not match it)", { timeout: 240_000 }, () => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")), false);
+    initWorkspace(box.workspace);
+    const latest = writeG7Receipt(box, chainActionIds(3), "20261006T231500Z-2", { outcome: "refused", stage: "preflight_receipt", activated: false });
+    box.setReplies(offReplies(box));
+    expect(box.run(box.ids.terminalOff, runsEnv(box)).status).not.toBe(0);
+    expect(box.receipt(box.ids.terminalOff).json).toMatchObject({ offState: "not_owned", ownershipBasis: `G7 receipt ${latest}` });
+    expect(deactivations(box)).toEqual([]);
   });
 
   it("with no G7 receipt (a G7 that vanished after activating) it owns its own request id over this fixture's chain Actions only", { timeout: 240_000 }, () => {

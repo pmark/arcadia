@@ -289,10 +289,14 @@ To start a run:
    and every refusal; it writes only into a temporary directory (from a
    candidate checkout, add `ARCADIA_REHEARSAL_RECEIPTS_DIR=<main checkout>/artifacts/generated/operator-scripts/runs`).
 
-Run 6 (`run6-2026-10-06`, N=3) binds run 5's receipts. Run 7 (`run7-2026-10-06`,
-N=9, the overnight run: three batches of three tiny dependent Actions under one
-G7 press inside its 12-hour expiry) is committed with its run-6 bindings
-`UNFILLED`; fill them from run 6's reset and G8 receipts after run 6's G8.
+Run 6 (`run6-2026-10-06`) is the nine-Action chain, run tonight while the
+operator sleeps: three batches of three tiny dependent Actions (G1's three, then
+`chain-step-04` to `chain-step-09`, each reading its predecessor's output) under
+**one** G7 press inside its 12-hour expiry, bound to run 5's receipts and still
+starting from `7214de28`. Its G7 descriptor names the nine Actions one press
+authorises. Run 7 (`run7-2026-10-06`, N=9) is a clean repeat, committed with its
+run-6 bindings `UNFILLED`; fill them from run 6's reset and G8 receipts after
+run 6's G8. (The three-Action rendering stays covered by the tests.)
 
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
@@ -468,7 +472,8 @@ broker): rerun G6.
    PR #5's tip (and contained in PR #6, Action 2's work, both pinned and checked
    locally, on GitHub and as PR heads), moves only the clone's local `main` back
    by compare-and-swap, amends all three Actions' `next_action` with fresh inputs
-   and `complete-<action>-run6-2026-10-06` ids, and pushes one commit on
+   and `complete-<action>-run6-2026-10-06` ids, appends `chain-step-04` to
+   `chain-step-09` (run 6 is the nine-Action chain), and pushes one commit on
    `7214de28` without force. Its `--dry-run` shows exactly that against the real
    fixture before anything is written. (b) **#987, serial Actions: decided and implemented: stacked PRs.**
    After Action 1 integrates locally, GitHub's `main` lags by design (no base
@@ -515,8 +520,9 @@ broker): rerun G6.
    (section 5, "Start a run from the chain set"): one shared reset, G6, G7 and
    G8 implementation, and per run one reviewed parameter file (run id, N, the
    previous run's receipts and heads, required commits) from which the run's
-   launchers and descriptors are rendered and checked. Run 6 (N=3) and run 7
-   (N=9, bindings to fill from run 6) are prepared; not yet proven live.
+   launchers and descriptors are rendered and checked. Run 6 (N=9, nine
+   Actions under one press) and run 7 (N=9 repeat, bindings to fill from run 6)
+   are prepared; not yet proven live.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983) and an operator gate holding a launch (#997; both tested, not yet seen live);
    a stuck candidate in other states and the dashboard rendering of escalations are
