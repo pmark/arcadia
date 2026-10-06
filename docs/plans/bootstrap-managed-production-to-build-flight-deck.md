@@ -4279,7 +4279,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: make-done-action-settlement-unambiguous
+current_action: preserve-unchanged-baseline-skill-symlinks
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
