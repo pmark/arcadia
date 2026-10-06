@@ -3965,7 +3965,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run4-2026-10-05.sh", "tests/three-action-rehearsal-run-4-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/981"]
   - id: document-rehearsal-runbook
     title: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
@@ -3984,7 +3984,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: document-rehearsal-runbook
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
