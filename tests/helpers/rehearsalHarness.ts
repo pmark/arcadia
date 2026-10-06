@@ -96,8 +96,12 @@ import {
  */
 export const HOST_SEATBELT = process.env.ARCADIA_PRESERVATION_HOST_TEST === "1";
 
-export function unsandboxedValidator(db: Parameters<typeof validatePreservationCandidate>[0], workspace: string, lease: AgentSession): ReturnType<typeof validatePreservationCandidate> {
-  const binding = preservationAuthority(db, workspace, lease);
+export function unsandboxedValidator(db: Parameters<typeof validatePreservationCandidate>[0], workspace: string, lease: AgentSession, terminalRecovery = false): ReturnType<typeof validatePreservationCandidate> {
+  // `terminalRecovery` is passed through exactly as validatePreservationCandidate
+  // does: dropping it made every terminal-recovery retry (a preservation retried
+  // after its first attempt failed) refuse "Preservation Session binding is
+  // stale" here, a refusal the real validator never gives.
+  const binding = preservationAuthority(db, workspace, lease, terminalRecovery);
   const tree = snapshotCandidate(lease.worktree_path);
   const checkDefinition = bindCheckDefinitions(lease.repository_path, lease.base_revision, tree, binding.commands);
   const evidenceDirectory = path.join(workspace, "artifacts", "preservation", lease.id);
@@ -699,7 +703,8 @@ function commit(cwd: string, message: string): void {
   git(cwd, ["-c", "user.name=Rehearsal Agent", "-c", "user.email=agent@rehearsal.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", message]);
 }
 
-function capacity(provider: string): ProviderCapacityObservation {
+/** The simulated provider capacity observation every harness tick passes (exported for tests/fast-rehearsal). */
+export function capacity(provider: string): ProviderCapacityObservation {
   const decision: CapacityAdmissionDecision = {
     providerId: provider,
     admitted: true,
@@ -767,7 +772,8 @@ export function hostReviewHost(session: AgentSession, head: string, model: { ver
   return { calls, dependencies };
 }
 
-function hostReviewer(): SelectedCodingAgentConfiguration {
+/** The stubbed read-only reviewer selection (exported for tests/fast-rehearsal). */
+export function hostReviewer(): SelectedCodingAgentConfiguration {
   return {
     mappingId: "host-reviewer-mapping",
     bindingId: HOST_REVIEWER_BINDING,

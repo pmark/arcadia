@@ -81,6 +81,8 @@ backups) and never discards a candidate.
 [docs/autonomous-production-rehearsal-runbook.md](docs/autonomous-production-rehearsal-runbook.md)
 (the standard, the exact steps, the failure catalog and the open gaps). The
 per-run sections below are the historical record and the script details.
+Before any live run, run `pnpm fast-rehearsal` (unsandboxed; about a minute):
+the same lifecycle offline, see [tests/fast-rehearsal/README.md](tests/fast-rehearsal/README.md).
 
 **Rehearsal run 2** reuses fixture `pmark/arcadia-three-action-rehearsal-20261004`.
 The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
