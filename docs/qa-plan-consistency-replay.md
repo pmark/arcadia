@@ -51,7 +51,11 @@ node --import tsx scripts/qa-plan-consistency.ts \
   it from the preservation receipt: the local base branch has usually moved since
   launch. `--receipt` reads a receipt row (`sqlite3 -json` output) and supplies
   `--repo`, `--base`, `--commit`, `--branch` and `--base-branch` unless they are
-  given. Without either flag, the base is the local branch `refs/heads/<base branch>`
+  given. Select the `receipt_json` column too: `--base-branch` then comes from
+  its `prBase.branch`, the branch the PR was opened against (a stacked PR's base
+  is the previous candidate's branch, Issue #987), and falls back to
+  `base_branch` (the Project base) for receipts written before stacked bases.
+  Without either flag, the base is the local branch `refs/heads/<base branch>`
   as it is now, where the base branch is `--base-branch`, else the receipt's
   `base_branch`, else the PR's `baseRefName`. That is how the host launches a fresh
   Session (`git rev-parse <base>` in `src/sessions/launch.ts`).
@@ -88,7 +92,7 @@ were transcribed from the fixture Plan at `f68ec48`
 S=<scratch dir>
 DB=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/database/arcadia.sqlite3
 QA=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/qa/pull-requests/pmark-arcadia-three-action-rehearsal-20261004
-sqlite3 -readonly -json "$DB" "select repository_path, branch, base_branch, base_revision, commit_sha
+sqlite3 -readonly -json "$DB" "select repository_path, branch, base_branch, base_revision, commit_sha, receipt_json
   from candidate_preservation_receipts where commit_sha='69eb7d6283447270a9a16e540f7d4f5f2e3427fc'
   order by created_at desc limit 1" > "$S/pr6-receipt.json"
 node --import tsx scripts/qa-plan-consistency.ts --receipt "$S/pr6-receipt.json" \
@@ -132,28 +136,29 @@ carries Action 1's commits. Its archived Ask appears only in the PR, and
 `MARKER.md` and `MISSION_LOG.md` are additions to the PR but modifications to
 the plan.
 
-## The expected-failure test the fix must flip
+## The flipped test (Issue #987, fixed by stacked PRs)
 
 `tests/qa-plan-pr-consistency.test.ts` builds that serial state synthetically.
-A bare "GitHub" repository holds `main` at M0. The host clone fast-forwards
-Action 1 into its local `main` (M1) without pushing, and Action 2 branches from
-M1, with PR metadata based on M0. The test
-`serial Action 2: the host plan agrees with its PR` is marked `it.fails`. While
-#987 stands, its assertion fails and the suite stays green. The pinned
-diagnostic test beside it asserts the exact mismatch.
+A bare "GitHub" repository holds `main` at M0. The host clone pushes Action 1's
+candidate branch (as preservation does), fast-forwards Action 1 into its local
+`main` (M1) without pushing it, and Action 2 branches from M1. The test
+`serial Action 2: the host plan agrees with its PR stacked on Action 1's branch`
+was an `it.fails` expected failure until the fix. It now asks host
+preservation's own `selectPullRequestBase` for each PR's base (Action 1: `main`;
+Action 2: Action 1's branch, whose tip is M1), builds the PR metadata GitHub
+reports for that base, and asserts the replay finds no mismatch. The pinned
+diagnostic beside it keeps run 5's pre-fix shape (a PR on the unadvanced
+`main`) measurable: base M1 against M0, and Action 1's files only in the PR.
+The fast harness asserts the same on the real lifecycle
+(`tests/fast-rehearsal/serial-two-action.test.ts` and
+`three-action-chain.test.ts`).
 
-When the fix lands in the host plan-rendering path (at or below
-`renderPreservedOperatorQaPlan`), both tests fail. The change
-then turns `it.fails` into `it` and updates the pinned diagnostic. One example
-of such a fix is rendering against the merge base with `origin/<base>`; a
-temporary edit of that shape was verified to flip exactly those two tests. The test passes the
-host base (`base: "main"`) straight into the replay. A fix anywhere else
-therefore does not flip the marker by itself. Examples are recording a different
-base at launch (`src/sessions/launch.ts`), adjusting the base in the preservation
-caller, stacking the PR on the previous candidate branch, or pushing the base
-after integration. Such a fix must update the test's base input or the fixture
-to its new world in the same pull request, because a marker the fix never
-exercises would stay green.
+A PR opened on a base that advanced after launch on its own (for example a
+merge on GitHub the worker has not fetched yet) still reports a `base-revision`
+mismatch: the plan names the launch base, GitHub the branch tip, while the
+files agree. The tick fetches and fast-forwards onto such a base before the
+next launch, so this shows only for a base that moves between launch and
+preservation.
 
 Limits: `gh pr view --json files` may truncate very large PRs. The plan lists at
 most 200 files; above that only the stated count is compared. The plan uses

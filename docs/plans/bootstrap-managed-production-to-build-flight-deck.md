@@ -4033,7 +4033,7 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "docs/agent-guidance/index.json", "src/sessions/", "src/ask/", "src/production/", "src/workspace/"]
   - id: fix-serial-pr-base-stacking
     title: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
@@ -4101,11 +4101,28 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/986", "https://github.com/pmark/arcadia/issues/974", "src/sessions/operatorQaPlan.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: add-long-chain-fast-rehearsal
+    title: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
+    expected_artifact: Evidence satisfying Agent Ask add-long-chain-fast-rehearsal
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-long-chain-fast-rehearsal-2026-10-06
+    acceptance_criteria:
+      - A new fast-rehearsal scenario drives a serial chain of nine tiny dependent Actions (three batches of three, each reading its predecessor's output) under one Grant through the real worker tick, preservation, stacked draft PRs, readiness, both review steps and local fast-forward integration, with simulated time spanning several hours inside the Grant's 12-hour expiry; it asserts every Action is admitted exactly once and integrated in order, each PR is stacked on the previous candidate branch with a QA plan consistent with its GitHub diff, no commit is lost, the remote base is never pushed, production status names the progress, and after the last Action the chain ends with nothing admitted and no silent stall.
+      - "The scenario also covers, in the same or a sibling test, a chain that hits a blocker midway (a failing verdict on Action 5 and, separately, the Grant expiring before the chain finishes): the chain stops on exactly one named, visible entry in production status and never admits a later Action or stalls silently; any behaviour that does not hold today is either fixed in this Action or pinned as an `it.fails` expected failure naming a new Issue with a revival trigger."
+      - "`pnpm fast-rehearsal` still finishes in a few minutes and passes; lint, tsc and the focused suites pass; tests/fast-rehearsal/README.md and the runbook name the scenario and what it proves; independent review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["tests/fast-rehearsal/README.md", "tests/fast-rehearsal/three-action-chain.test.ts", "https://github.com/pmark/arcadia/pull/1006", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-pending-completion-gate
+current_action: add-long-chain-fast-rehearsal
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
