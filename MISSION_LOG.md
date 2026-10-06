@@ -1975,3 +1975,10 @@ updated: 2026-10-06
 - **Result:** Every declared acceptance criterion was accepted as met: "A successful complete settlement rewrites only the completed Action next_action to an unambiguous completed form naming the completion request_id, in active and non-active Plans; pending Actions keep their instructions."; "Deterministic regression tests prove canonical completion rewriting, idempotency and refusal behavior remain correct."; "pnpm fast-rehearsal passes with the settlement change."; "A SMOKE_DRY=1 reviewer smoke built from the rendered run-8 Action 1 candidate proves its done record names the completion request id; paid smoke is held until this chat operator authorizes spend.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-run8-unambiguous-done-settlement-2026-10-06).
+
+## 2026-10-06 — Agent Ask pr-opened-arcadia-pr1033
+
+- **Did:** PR #1033 makes completed Action guidance unambiguous; independent Sonnet review and required CI are running. https://github.com/pmark/arcadia/pull/1033
+- **Result:** The operator explicitly selected one manual preservation commit of the eight hashed regular files after #1032. Commit 3ce811b3795afbf316e3cefc76ee19e7d549cc95 retained normal hooks and the unchanged tracked skill symlink. Canonical completion receipt asksettle_667a6ad5877d4c67be followed at d935cde1047f22353b03eb2a26e679f48d7f3c1b. This records only that one consumed exception; no later manual commit, protected preservation success, deployment, activation or paid reviewer-smoke spend is authorized.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
