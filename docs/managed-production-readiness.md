@@ -54,6 +54,9 @@ PR #865 merged at `650fc23e339fdf541090f5dd58788b52ee09a824`. The supported rest
 
 PR #866 merged at `eb959d54d66063580f402aded406225f61d888e0`. CodeRabbit approved head `185f54aa0`; all required lint, dashboard, four unit shards and e2e checks passed. Focused terminal recovery/refusal tests passed 25/25 and the core build passed. The supported restart installed #866 in worker PID 67663; all four services passed readiness. At that point policy remained Inactive revision 27, epoch 18 with zero live admissions. The repair Action's three criteria were settled through Agent Ask `complete-off-terminal-preservation-recovery-2026-10-01`; the later exact B recovery exercised the installed repair.
 
+Rehearsal procedure, standard and failure catalog (runs 1 to 5, 2026-10-06):
+[autonomous-production-rehearsal-runbook.md](autonomous-production-rehearsal-runbook.md).
+
 ## Vital few next steps
 
 1. Keep B's completed recovery closed: the exact Grant was consumed, the candidate integrated once, and production is Off. Reassess the remaining parent criteria without repeating B or reusing the succeeded button. The literal two-Session A completion remains unproven; browser closure and a complete operator-intervention ledger are also not established by current receipts.
