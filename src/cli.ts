@@ -504,6 +504,14 @@ import {
   runTimeLogCommand
 } from "./commands/activity.js";
 import {
+  renderTimelineNdjson,
+  renderTimelineSuccess,
+  runTimelineCommand,
+  runTimelineFollow,
+  type TimelineCommandOptions
+} from "./commands/timeline.js";
+import { AGENT_TOOLS, WORK_KINDS } from "./timeline/schema.js";
+import {
   createFailure,
   createSuccess,
   type CommandSuccess,
@@ -4601,6 +4609,56 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       renderActivityListSuccess
     )
   );
+
+  addJsonOption(
+    program
+      .command("timeline")
+      .description("The workspace's unified event stream across every Project and coding agent (commits, worktrees, Sessions, Asks, Decisions, governed records, production, operator scripts); read-only and unrecorded")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--since <time>", "Window start: ISO time or a look-back from the window end (30m, 6h, 1d, 2w); default 24h")
+      .option("--until <time>", "Window end: ISO time or a look-back from now; default now")
+      .option("--as-of <time>", "Rewind: the workspace as of this time (active worktrees and Sessions, pointers, production, kinds of work) plus the events before it")
+      .option("--project <slug>", "Only this Project")
+      .option("--tool <tool>", `Only this agent tool: ${AGENT_TOOLS.join(", ")}`)
+      .option("--kind <workKind>", `Only this kind of work: ${WORK_KINDS.join(", ")}`)
+      .option("--limit <n>", "Show at most the newest n events (default 200)")
+      .option("--pull-requests", "Also read GitHub pull requests (gh api GET; network)")
+      .option("--ndjson", "One JSON event per line")
+      .option("--follow", "Keep polling and stream new events until interrupted (NDJSON with --json or --ndjson)")
+      .option("--interval <seconds>", "Polling interval for --follow (default 15)")
+  ).action(async (options: TimelineCommandOptions & { json?: boolean; ndjson?: boolean; follow?: boolean }) => {
+    if (options.follow) {
+      const json = Boolean(options.json || options.ndjson);
+      const controller = new AbortController();
+      const stop = () => controller.abort();
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+      try {
+        await runTimelineFollow(options, { json, signal: controller.signal, write: (line) => process.stdout.write(`${line}\n`) });
+      } catch (error) {
+        const normalized = normalizeError(error);
+        writeFailure(createFailure("timeline", normalized, options.workspace ? path.resolve(options.workspace) : undefined), { json });
+        process.exitCode = normalized.exitCode;
+      } finally {
+        process.off("SIGINT", stop);
+        process.off("SIGTERM", stop);
+      }
+      return;
+    }
+    if (options.ndjson) {
+      // One event per line and nothing else: no envelope, and no blank line when there are no events.
+      try {
+        for (const line of renderTimelineNdjson(await runTimelineCommand(options))) process.stdout.write(`${line}\n`);
+      } catch (error) {
+        // A consumer reading NDJSON gets one JSON line for the failure too.
+        const normalized = normalizeError(error);
+        process.stdout.write(`${JSON.stringify(createFailure("timeline", normalized, options.workspace ? path.resolve(options.workspace) : undefined))}\n`);
+        process.exitCode = normalized.exitCode;
+      }
+      return;
+    }
+    await runCliAction("timeline", options, () => runTimelineCommand(options), renderTimelineSuccess);
+  });
 
   // Joins the existing `report` group (report status) rather than starting a
   // rival one — these are the same question at different time scales.

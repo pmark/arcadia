@@ -4016,7 +4016,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "src/sessions/operatorQaPlan.ts", "src/sessions/validationEvidence.ts", "src/qa/prReview.ts"]
   - id: operator-timeline-phase-1
     title: Design and prove a unified workspace event stream (schema, collectors, command, point-in-time read model) on real data, with Phase 2 UX options for the operator.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Design and prove a unified workspace event stream (schema, collectors, command, point-in-time read model) on real data, with Phase 2 UX options for the operator.
@@ -4035,7 +4035,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: operator-timeline-phase-1
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
