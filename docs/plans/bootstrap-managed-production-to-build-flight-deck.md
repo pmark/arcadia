@@ -4018,7 +4018,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: build-fast-rehearsal-harness
+current_action: build-checkpoint-replay-and-base-check
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
