@@ -231,15 +231,28 @@ const SCRIPT_PATH = /\.(?:m?js|cjs|m?ts|cts|sh|bash|zsh|py|rb|pl)$/i;
 /** How far after the named command its pass word may sit, within one clause. */
 const PASS_WINDOW_CHARS = 60;
 
+/** A test file is run by a test command, never a command itself: `tests/x.mjs`, `x.test.ts`, `x.spec.js`. */
+const TEST_PATH = /(?:^|\/)(?:tests?|__tests__|specs?)\/|\.(?:test|spec)\.[^/]+$/i;
+
+interface PassingCheck {
+  /** Declared validation commands the criterion says must pass, named directly or by the script they run. */
+  declared: string[];
+  /** The criterion says a command that is not declared must pass. */
+  undeclared: boolean;
+  /** The criterion says a test file must pass. */
+  testFile: boolean;
+}
+
 /**
  * A criterion satisfied by running a command: a declared validation command,
- * a script path or a command-shaped code span (several words, not a flag),
- * followed in the same clause by a pass word ("passes", "succeeds", "exits 0")
- * that no negation governs. Returns null when the criterion is not one, else
- * the declared commands whose own occurrence passed. Detection only changes
- * the step's wording; it never makes anything runnable.
+ * a script path, a test file or a command-shaped code span (several words,
+ * not a flag), followed in the same clause by a pass word ("passes",
+ * "succeeds", "exits 0") that no negation governs. Returns null when the
+ * criterion is not one. A bare script path counts as the declared command
+ * that runs exactly that script. Detection only changes the step's wording;
+ * it never makes anything runnable.
  */
-function passingCommands(criterion: string, named: readonly string[], validation: readonly string[]): { declared: string[]; undeclared: boolean } | null {
+function passingCommands(criterion: string, named: readonly string[], validation: readonly string[]): PassingCheck | null {
   const passesAt = (end: number) => {
     const window = criterion.slice(end, end + PASS_WINDOW_CHARS).replace(/^`/, "");
     const clause = window.split(/[;!?]|\.(?=\s|$)/)[0];
@@ -251,16 +264,24 @@ function passingCommands(criterion: string, named: readonly string[], validation
   const declaredText = (at: number, length: number) => declared.some((command) => criterion.slice(at, at + length).includes(command)
     || command.includes(criterion.slice(at, at + length)));
   let undeclared = false;
+  let testFile = false;
   for (const target of named.filter((candidate) => SCRIPT_PATH.test(candidate))) {
     for (let at = criterion.indexOf(target); at >= 0; at = criterion.indexOf(target, at + 1)) {
-      if (passesAt(at + target.length) && !declaredText(at, target.length)) undeclared = true;
+      if (!passesAt(at + target.length) || declaredText(at, target.length)) continue;
+      if (TEST_PATH.test(target)) {
+        testFile = true;
+        continue;
+      }
+      const running = validation.filter((command) => command.trim().split(/\s+/).some((word) => word === target || word === `./${target}`));
+      if (running.length === 0) undeclared = true;
+      for (const command of running) if (!declared.includes(command)) declared.push(command);
     }
   }
   for (const span of criterion.matchAll(/`([^`\n]+)`/g)) {
     const at = (span.index ?? 0) + 1;
     if (/\S\s+\S/.test(span[1]) && !span[1].trim().startsWith("-") && passesAt(at + span[1].length + 1) && !declaredText(at, span[1].length)) undeclared = true;
   }
-  return declared.length > 0 || undeclared ? { declared, undeclared } : null;
+  return declared.length > 0 || undeclared || testFile ? { declared, undeclared, testFile } : null;
 }
 
 /**
@@ -294,7 +315,7 @@ function inspectionScope(present: readonly string[]): string {
 }
 
 /** Where the proof of passing is: the declared-validation step's exit-zero result, never inspection. */
-function passProof(passing: { declared: readonly string[]; undeclared: boolean }, validation: readonly string[], validationStep: number): string {
+function passProof(passing: PassingCheck, validation: readonly string[], validationStep: number): string {
   const sentences: string[] = [];
   const matched = passing.declared;
   if (matched.length > 0) {
@@ -303,18 +324,23 @@ function passProof(passing: { declared: readonly string[]; undeclared: boolean }
       ? `Whether the named command passes is proven only by Step ${validationStep}, the Project's declared validation: ${code("echo $?")} immediately after ${commands[0]} prints ${code("0")}.`
       : `Whether the named commands pass is proven only by Step ${validationStep}, the Project's declared validation: ${code("echo $?")} immediately after each of ${commands.slice(0, -1).join(", ")} and ${commands[commands.length - 1]} prints ${code("0")}.`);
     if (passing.undeclared) {
-      sentences.push(`This criterion also names a command that is not among the Project's declared validation commands; this plan runs no command taken from criterion text, so it offers no direct proof that that command passes.`,
-        "Any part of this criterion that is not a command passing must show in this step's output.");
-    } else {
-      sentences.push("Any other part of this criterion must show in this step's output.");
+      sentences.push("This criterion also names a command that is not among the Project's declared validation commands; this plan runs no command taken from criterion text, so it offers no direct proof that that command passes.");
     }
-  } else if (validation.length > 0) {
-    sentences.push(`This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step ${validationStep} is the command this criterion names: Step ${validationStep}'s exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes.`,
-      "Any other part of this criterion must show in this step's output.");
-  } else {
-    sentences.push("This plan runs no command taken from criterion text and the Project declares no validation commands, so this plan offers no proof that the named command passes.",
-      "Any other part of this criterion must show in this step's output.");
+  } else if (passing.undeclared) {
+    sentences.push(validation.length > 0
+      ? `This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step ${validationStep} is the command this criterion names: Step ${validationStep}'s exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes.`
+      : "This plan runs no command taken from criterion text and the Project declares no validation commands, so this plan offers no proof that the named command passes.");
   }
+  if (passing.testFile) {
+    sentences.push(validation.length > 0
+      ? `A named test file passing is shown only by a run, never by its source; the run this plan offers is Step ${validationStep}, the Project's declared validation, exiting ${code("0")}.`
+      : "A named test file passing is shown only by a run, never by its source, and the Project declares no validation commands, so this plan offers no run that shows it.");
+  }
+  sentences.push(passing.testFile
+    ? "Any part of this criterion that is not a command or test file passing must show in this step's output."
+    : passing.undeclared && matched.length > 0
+      ? "Any part of this criterion that is not a command passing must show in this step's output."
+      : "Any other part of this criterion must show in this step's output.");
   return sentences.join(" ");
 }
 
