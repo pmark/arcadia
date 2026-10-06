@@ -90,7 +90,7 @@ Simulated time advances one minute per tick; the table shows wall time.
 | File | Scenario | Reproduces |
 | --- | --- | --- |
 | `serial-two-action.test.ts` | clean executor, two dependent Actions, end to end | The baseline: admission to integration to the next admission, each exactly once |
-| same | Issue #987 | After Action 1 integrates locally, Action 2's PR base is the remote's unadvanced `main`: the plan says base = Action 1's head and six files, the PR seven. Marked `it.fails` |
+| same | Issue #987 | After Action 1 integrates locally, Action 2's PR base is the remote's unadvanced `main`: the plan says base = Action 1's head and six files, the PR seven. Compared with the checkpoint-replay check (`scripts/qa-plan-consistency.ts`); marked `it.fails` |
 | `executor-behaviours.test.ts` | untracked, unarchived draft | Run 4's defect (#981); with #983 the settle archives the draft and the candidate integrates |
 | same | draft edited after an inline preview | #983's N4 case: settle warning, the guard refuses every tick, one `terminal_candidate_not_integrable` escalation in `production status` |
 | same | extra uncommitted file / extra commit after settling | Today: reconciled incomplete, a continuation Session relaunched that cannot settle ("Action is already done"), then a silent stall. Marked `it.fails` for "integrates or escalates" |
@@ -122,7 +122,3 @@ pins today's exact behaviour, so a broken scenario cannot pass silently.
 Never replace a lifecycle step to make a scenario pass: if a seam the lifecycle
 does not already expose seems necessary, it is a finding to report, not a fake
 to add.
-
-When the checkpoint-replay plan-versus-PR check (Action
-`build-checkpoint-replay-and-base-check`) lands, the #987 scenario should call
-it instead of its local `planClaims` parser.

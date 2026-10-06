@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { checkQaPlanConsistency, parseRenderedPlan, type QaPlanConsistencyReport } from "../../scripts/qa-plan-consistency.js";
 import { git, LINE_A, LINE_B } from "../helpers/rehearsalHarness.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
 import type { ExecutorResult } from "./helpers/executor.js";
@@ -19,15 +20,19 @@ import { ACTION_1, ACTION_2, FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helper
  * It also reproduces Issue #987 end to end: after Action 1 integrates
  * locally, Action 2's PR is opened against the remote's `main`, which the
  * worker never pushes, so the PR's base and changed files disagree with the
- * host-rendered Operator QA plan in its own body.
+ * host-rendered Operator QA plan in its own body. The comparison is the
+ * checkpoint-replay check (scripts/qa-plan-consistency.ts,
+ * docs/qa-plan-consistency-replay.md), run on the live harness state.
  */
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
 let one: ExecutorResult;
 let two: ExecutorResult;
 let report: ScenarioReport;
-/** Action 2's PR the moment its terminal preservation opened it: the plan in its body and what GitHub reports. */
-let action2Pr: { body: string; baseRefOid: string; files: string[] };
+/** Action 2's PR the moment its terminal preservation opened it: the plan its body publishes, and the replay check against GitHub's view. */
+let published: ReturnType<typeof parseRenderedPlan>;
+let consistency: QaPlanConsistencyReport;
+let action2Base = "";
 let baseAfterAction1 = "";
 let remoteMain = "";
 
@@ -48,11 +53,12 @@ beforeAll(() => {
   world.tickUntil((r) => r.handoff?.preservation.kind === "preserved", 2);
   const pr = world.pullRequestFor(ACTION_2)!;
   const view = world.gh.view(pr);
-  action2Pr = { body: view.body, baseRefOid: view.baseRefOid, files: view.files.map((file) => file.path).sort() };
-
-  const claims = planClaims(action2Pr.body);
-  world.recorder.notes.push(`Issue #987, Action 2's PR: plan base ${String(claims.baseRevision)} vs PR base ${action2Pr.baseRefOid}; `
-    + `plan lists ${claims.files.length} files, the PR ${action2Pr.files.length} (${action2Pr.files.filter((file) => !claims.files.includes(file)).join(", ")} extra)`);
+  published = parseRenderedPlan(view.body);
+  action2Base = second.session.base_revision;
+  consistency = checkQaPlanConsistency({
+    repositoryPath: world.repo, pullRequest: view, base: action2Base, baseSource: "Action 2 Session's launch base", branch: pr.branch
+  });
+  world.recorder.notes.push(`Issue #987, Action 2's PR (qa-plan-consistency): ${consistency.consistent ? "consistent" : `mismatches ${JSON.stringify(consistency.mismatches)}`}`);
 
   world.untilIntegrated(ACTION_2);
   world.ticks(2);
@@ -114,35 +120,30 @@ describe("fast rehearsal: serial two-Action run, clean executor", () => {
   });
 });
 
-/** The host-rendered Operator QA plan's claims (src/sessions/operatorQaPlan.ts): its base revision and Step 2's changed files. */
-function planClaims(body: string): { baseRevision: string | null; files: string[] } {
-  const base = /^- \*\*Base:\*\* `[^`]+` at `([0-9a-f]{40})`$/m.exec(body)?.[1] ?? null;
-  const step2 = body.slice(body.indexOf("### Step 2"), body.indexOf("### Step 3"));
-  const files = [...step2.matchAll(/^ {2}- `[A-Z][0-9]*` `([^`]+)`$/gm)].map((match) => match[1]).sort();
-  return { baseRevision: base, files };
-}
-
 describe("Issue #987: a serial Action's PR is judged against GitHub's unadvanced base", () => {
-  it("records what the plan says and what the PR reports for Action 2 (today: they differ)", () => {
-    const plan = planClaims(action2Pr.body);
-    // The plan is rendered against the local base Action 2 started from: Action 1's integrated head.
-    expect(plan.baseRevision).toBe(baseAfterAction1);
-    expect(plan.files).toEqual(expect.arrayContaining(["MARKER.md", "tests/marker.test.mjs"]));
-    // GitHub reports the remote's main, which local integration never moved...
-    expect(action2Pr.baseRefOid).toBe(remoteMain);
-    expect(action2Pr.baseRefOid).not.toBe(plan.baseRevision);
-    // ...so the PR's changed files also carry Action 1's settlement records.
-    const extra = action2Pr.files.filter((file) => !plan.files.includes(file));
-    expect(extra.length).toBeGreaterThan(0);
-    expect(extra).toEqual(expect.arrayContaining([expect.stringMatching(/^\.arcadia\/asks\/archive\/agent-ask-complete-write-marker-a-/)]));
+  it("records what the published plan says and what the PR reports for Action 2 (today: they differ)", () => {
+    // The published plan is the host renderer's: the replay re-renders exactly the same claims.
+    expect(published.baseRevision).toBe(action2Base);
+    expect(published.baseRevision).toBe(baseAfterAction1);
+    expect(consistency.plan.baseRevision).toBe(published.baseRevision);
+    expect(consistency.plan.files).toEqual(published.files);
+    expect(published.files.map((file) => file.path)).toEqual(expect.arrayContaining(["MARKER.md", "tests/marker.test.mjs"]));
+    // GitHub reports the remote's main, which local integration never moved, and so also Action 1's settlement record.
+    expect(consistency.pullRequest.baseRefOid).toBe(remoteMain);
+    expect(consistency.consistent).toBe(false);
+    expect(consistency.mismatches).toEqual([
+      { check: "base-revision", plan: baseAfterAction1, pullRequest: remoteMain },
+      { check: "file-count", plan: published.fileCount, pullRequest: published.fileCount + 1 },
+      { check: "files", onlyInPlan: [], onlyInPullRequest: [expect.stringMatching(/^\.arcadia\/asks\/archive\/agent-ask-complete-write-marker-a-/)] },
+      // Files Action 1 created are "M" against Action 1's head but "ADDED" against the remote's genesis main.
+      { check: "file-status", differences: expect.arrayContaining([{ path: "MARKER.md", plan: "M", pullRequest: "ADDED" }]) }
+    ]);
   });
 
   // EXPECTED FAILURE (Issue #987). `it.fails` passes while the plan and the PR
   // disagree; the fix of #987 makes this body pass, which fails the marker:
   // then change `it.fails` to `it`.
   it.fails("the host QA plan's base and changed files equal the PR's base and files as GitHub reports them", () => {
-    const plan = planClaims(action2Pr.body);
-    expect(plan.baseRevision).toBe(action2Pr.baseRefOid);
-    expect(plan.files).toEqual(action2Pr.files);
+    expect(consistency.mismatches).toEqual([]);
   });
 });
