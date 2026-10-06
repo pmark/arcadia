@@ -37,8 +37,8 @@ Seatbelt validator (45 to 65 s measured before the long chain; 65 s for the 17
 scenarios with the stacked-PR files, on a loaded host); one two-Action
 scenario takes 5 to 25 s. The long-chain files dominate: the nine-Action
 chain takes 1 to 2.5 min (about 12 to 20 s per Action under parallel load)
-and sets the wall time. Measured 2026-10-06 on a loaded host: all 24
-scenarios in 2 min 6 to 10 s, the nine-Action chain about 2 min.
+and sets the wall time. Measured 2026-10-06 on a loaded host: all 27
+scenarios in 2 min 22 s, the nine-Action chain 2 min 10 s.
 
 ## What is real and what is faked
 
