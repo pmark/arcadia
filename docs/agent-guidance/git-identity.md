@@ -9,8 +9,11 @@ any other agent runtime working here directly — is authored under a
 name the platform and its reasoning effort, not who was at the
 keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
 name per platform, surname per reasoning-effort tier: light/standard/heavy).
-The selected concrete model is a separate session property; its model-selection
-tier does not set the identity surname. When a Session has no explicit effort,
+The exact selected model ID and reasoning effort are also shown in the
+human-facing session designation (for example, `Cody · gpt-6.1-astra · High
+reasoning`). Never substitute an effort surname such as `Atlas` or a model
+family nickname for the model ID. The model-selection tier does not set the
+identity surname. When a Session has no explicit effort,
 the configured model binding's default effort supplies it;
 `START_HERE.md` explains it for operators.
 
@@ -32,7 +35,7 @@ runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so unchanged-effort
 builder work needs no additional action from the agent. After any reasoning-
 effort change, re-resolve and apply the current identity before the next commit
 or posted comment; the inherited launch environment no longer identifies that
-effort. The selected model is reported separately from the identity tier. That
+effort. The model remains separate from the Git author name and email. That
 launch path always binds the `builder` role;
 there is no launched "critique Session" yet, so a launched agent producing
 a code review or a plan critique still resolves its own `critic` identity by
@@ -55,9 +58,9 @@ Git resolves `author.*`/`committer.*` config and any already-exported
 to a stale identity from an earlier launch or session), or close a posted
 GitHub PR comment with the printed `signature` (`<name> <<email>>`) the same
 way a commit trailer signs a commit. Pick the identity tier from the session's
-reasoning effort. The selected concrete model is reported separately and can
-change mid-session; re-resolve after a model switch or effort change rather
-than assuming the prior identity still holds. An identity the command
+reasoning effort. The exact concrete model ID is displayed in the session
+designation and can change mid-session; re-resolve after a model switch or
+effort change rather than assuming the prior Git identity still holds. An identity the command
 refuses (an unrecognized platform, tier, or role) means the commit or comment
 must not proceed under the operator's identity either — fix the
 `--agent`/`--tier`/`--role` first.

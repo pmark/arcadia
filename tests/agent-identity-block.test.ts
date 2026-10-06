@@ -72,7 +72,7 @@ describe("renderIdentityBlock", () => {
     const block = renderIdentityBlock(resolveAgentIdentity(agent, tier)).join("\n");
     expectIdentityBlock(block, agent, tier);
     expect(block).toContain(`You are ${name} <`);
-    expect(block).toContain("sign every comment and commit exactly so, never as another tier or name.");
+    expect(block).toContain("sign every comment and commit exactly as the Git identity shown, never as another tier or name.");
     for (const other of TIER_AGENTS.filter((candidate) => candidate !== agent)) {
       expect(block).toContain(`(${other})`);
     }
@@ -200,7 +200,10 @@ describe("readProjectPartners", () => {
       { source: "claim", actionId: "bare", agent: null, identity: null }
     ]);
     const block = renderIdentityBlock(resolveAgentIdentity("claude", "heavy"), partners).join("\n");
-    expect(block).toContain("Cody Mason <cody.mason@agents.arcadia.local> (codex, standard, builder) on Action theirs");
+    expect(block).toContain(
+      "Cody · gpt-5.6-terra · Standard reasoning (Git identity: Cody Mason <cody.mason@agents.arcadia.local>; " +
+        "effort tier standard; codex, builder) on Action theirs"
+    );
     expect(block).toContain("opencode Session (tier unresolved) on Action custom");
     expect(block).toContain("an unattributed claim on Action bare");
   });

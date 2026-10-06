@@ -21,8 +21,9 @@ function isAgentEffortTier(value: string): value is AgentEffortTier {
  *
  * Git history is the one record every session leaves whether or not anyone
  * files a receipt, so the name on the commit should say which platform did the
- * work, how heavy a model it was, and — when it wasn't building — what kind of
- * judgment it was exercising, without ever being the operator's own identity.
+ * work, how much reasoning effort it used, and — when it wasn't building —
+ * what kind of judgment it was exercising, without ever being the operator's
+ * own identity.
  * Platform is the given name, tier the surname, an optional role is a title
  * prefixed onto that (silent for the default `builder` role), and the email is
  * a matching local address that never leaves this machine.
@@ -106,6 +107,28 @@ export function agentIdentityEmail(name: string): string {
 /** `<name> <<email>>`, ready to sign a posted comment the way a commit trailer signs a commit. */
 export function agentIdentitySignature(identity: AgentGitIdentity): string {
   return `${identity.name} <${identity.email}>`;
+}
+
+const REASONING_EFFORT_LABELS: Record<string, string> = {
+  e1_brief: "Brief",
+  e2_standard: "Standard",
+  e3_deep: "Deep",
+  e4_rigorous: "Rigorous",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max"
+};
+
+/** The human-facing session designation keeps the exact model distinct from the Git name. */
+export function agentIdentityDesignation(identity: AgentGitIdentity): string {
+  const role = identity.role === "critic" ? "Critic " : "";
+  const platform = AGENT_GIVEN_NAMES[identity.agent];
+  if (!identity.model) return `${role}${identity.name} (effort tier ${identity.tier})`;
+  const effort = identity.effort ? REASONING_EFFORT_LABELS[identity.effort.toLowerCase()] ?? identity.effort : null;
+  return `${role}${platform} · ${identity.model} · ${effort ? `${effort} reasoning` : "reasoning effort unspecified"}`;
 }
 
 /**
@@ -314,7 +337,10 @@ export interface AgentTeammates {
 
 /** For one resolved identity: who it is, who its teammates are, and which name wins. */
 export function agentTeammates(identity: AgentGitIdentity): AgentTeammates {
-  const self = resolveAgentIdentity(identity.agent, identity.tier, identity.role);
+  const self = {
+    ...resolveAgentIdentity(identity.agent, identity.tier, identity.role),
+    ...(identity.model !== undefined ? { model: identity.model, effort: identity.effort } : {})
+  };
   return {
     self,
     signature: agentIdentitySignature(self),
@@ -340,7 +366,11 @@ export interface AgentPartner {
 const IDENTITY_HEADING = "Identity:";
 
 function describeIdentity(identity: AgentGitIdentity): string {
-  return `${agentIdentitySignature(identity)} (${identity.agent}, ${identity.tier}, ${identity.role})`;
+  const signature = `${agentIdentitySignature(identity)} (${identity.agent}, ${identity.tier}, ${identity.role})`;
+  return identity.model
+    ? `${agentIdentityDesignation(identity)} (Git identity: ${agentIdentitySignature(identity)}; ` +
+        `effort tier ${identity.tier}; ${identity.agent}, ${identity.role})`
+    : signature;
 }
 
 function describeTeammate(platform: RosterPlatform): string {
@@ -368,10 +398,7 @@ export function renderIdentityBlock(identity: AgentGitIdentity, partners: AgentP
   const { self, teammates } = agentTeammates(identity);
   const lines = [
     IDENTITY_HEADING,
-    `You are ${describeIdentity(self)}; sign every comment and commit exactly so, never as another tier or name.`,
-    ...(identity.model
-      ? [`Selected model: ${identity.model}; reasoning effort: ${identity.effort ?? "unspecified"}. The identity tier reflects effort.`]
-      : []),
+    `You are ${describeIdentity(self)}; sign every comment and commit exactly as the Git identity shown, never as another tier or name.`,
     IDENTITY_AUTHORITY_RULE,
     `Your teammates are ${teammates.map(describeTeammate).join(" and ")}, by reasoning-effort tier ${AGENT_EFFORT_TIERS.join("/")}, ` +
       `titled "${ROLE_TITLES.critic}" when critiquing, at <name.in.dots>@${AGENT_GIT_EMAIL_DOMAIN}. ${OPERATOR_PRINCIPAL.rule}`,
@@ -448,7 +475,10 @@ export function renderReviewerIdentityBlock(input: Omit<SessionIdentityBlockInpu
   let identity: AgentGitIdentity | null;
   try {
     identity = input.tier
-      ? resolveAgentIdentity(input.agent, input.tier, "critic")
+      ? {
+          ...resolveAgentIdentity(input.agent, input.tier, "critic"),
+          ...(input.model ? { model: input.model.trim(), effort: input.effort?.trim() || null } : {})
+        }
       : (TIER_AGENTS as readonly string[]).includes(input.agent) && input.model
         ? resolveSessionAgentIdentity({
             agent: input.agent as TierAgent,

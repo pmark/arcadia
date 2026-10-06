@@ -14,7 +14,12 @@ Paste this prompt:
 Load the arcadia-github-issues skill using your skill tool. If discovery fails,
 read .agents/skills/arcadia-github-issues/SKILL.md directly and resolve
 its references beside that file. Use the DeepSeek model selected for this
-session; report its actual provider/model ID. Do not launch subagents.
+session; report the exact provider/model ID and reasoning effort as separate
+values (for example, `Owen · provider/model-id · Medium reasoning`). Preserve
+the full provider/model ID; do not replace it with a model-family label or a
+reasoning-tier surname such as `Atlas`. If OpenCode does not expose a specific
+effort setting, report `default` or `unspecified`; do not guess. Do not launch
+subagents.
 
 Triage every open GitHub Issue in pmark/arcadia:
 https://github.com/pmark/arcadia/issues
@@ -85,7 +90,8 @@ Finish with actual inventory and verified/unknown totals, top 3-5 recommended
 batches, evidence-backed closure candidates, reconciliation discrepancy counts,
 and links to the local artifacts.
 Present a visible numbered picker for the next governed move, its consequence,
-whether this session ends, and the sufficient model/effort for the next session.
+whether this session ends, and the exact provider/model ID and sufficient
+reasoning effort for the next session.
 Return the proposed GitHub changes for review; apply none in this session.
 ```
 

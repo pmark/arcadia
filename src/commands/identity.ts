@@ -2,6 +2,7 @@ import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import {
+  agentIdentityDesignation,
   agentIdentityEnvironment,
   agentIdentitySignature,
   agentRoster,
@@ -114,7 +115,8 @@ export function renderIdentityResolveSuccess(response: CommandSuccess<IdentityRe
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
     .join(" ");
   return [
-    `${name} <${email}>`,
+    `Agent: ${agentIdentityDesignation(response.data)}`,
+    `Git identity: ${name} <${email}>`,
     `${prefix} git commit`,
     `Comment signature: — ${signature}`,
     "",

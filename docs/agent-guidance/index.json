@@ -55,7 +55,7 @@
       "trigger": "commit, comment, signature, author, critic, builder",
       "path": "docs/agent-guidance/git-identity.md",
       "read_before": "Before every agent commit or posted comment; resolve identity for the current model and reasoning effort.",
-      "sha256": "11991b1d3938f8280cba78f6ab79ab9703dfc999a0e6c224bfdf645761efef59"
+      "sha256": "cad7c488132bd3c2588e62ffd36619729a1e65f6a033a0deb66662021f882191"
     },
     {
       "id": "managed-documents",

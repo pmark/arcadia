@@ -13,6 +13,14 @@ OpenCode; provider selection belongs in the invocation, not this skill.
 For repository or personal discovery in Claude Code, OpenCode and Codex, follow
 [the installation instructions](references/installation.md).
 
+When reporting who performed triage, keep these values distinct: agent platform,
+the exact selected model ID, and reasoning effort. Use the model ID exactly as
+the agent reports it (for example, `Cody · gpt-6.1-astra · High reasoning`);
+never use an effort surname such as `Atlas` as the model designation or invent
+a model nickname. For OpenCode, retain its full `provider/model` ID. If the
+agent does not expose an explicit effort setting, report `default` or
+`unspecified` rather than guessing.
+
 ## Scope and authority
 
 Load the Project's Constitution, AGENTS, context policy, active Plan's current
@@ -201,9 +209,11 @@ batches, closure candidates and reasons, missing evidence, and concrete next
 steps, including the two-way reconciliation findings. Save `changes.json` with
 exact proposed label additions/removals and closures, including issue
 `updated_at`, observed base SHA, and the exact Action/Decision values or revisions
-used as proof preconditions. Report model/provider,
-packet count, verification scope, and actual usage if available; do not invent
-token totals. Stop after coverage and necessary checks pass.
+used as proof preconditions. Report the agent platform, exact selected model ID,
+reasoning effort, packet count, verification scope, and actual usage if
+available; do not invent token totals or infer the model ID from an effort
+surname, model family, or selected task. Stop after coverage and necessary
+checks pass.
 
 On a later run, reuse unchanged classification. Refresh validity evidence when
 the issue, relevant comments, base code, or governing contract changes. Compare
@@ -222,8 +232,9 @@ before retrying. Never batch-delete, silently close, or auto-promote work.
 
 Hand off a PR when governed repository changes were authorized, otherwise a
 visible numbered picker naming the specific next move, consequence, new-session
-opening, and sufficient model/effort. Do not equate report completion with all
-issues verified or GitHub changes applied.
+opening, and exact model ID plus sufficient reasoning effort for the next
+session. Do not replace a model ID with a nickname or equate report completion
+with all issues verified or GitHub changes applied.
 
 ## Design references
 
