@@ -63,7 +63,12 @@ export type ExecutorBehaviour =
 
 /** What one Action's agent does, in files. */
 export interface ActionWork {
-  files: Record<string, string>;
+  /**
+   * The files the agent writes, or a function that reads the candidate
+   * worktree (its predecessor's output) and returns them; it throws when the
+   * predecessor's output is not there, as an agent would stop.
+   */
+  files: Record<string, string> | ((worktree: string) => Record<string, string>);
   /** The Project's declared validation command, run from the worktree root. */
   validation: string;
 }
@@ -160,7 +165,8 @@ export class ScriptedExecutor {
         return this.result(brief, requestId, workCommit, null, [], null);
       }
       this.recorder.measure("agentExecution", () => {
-        for (const [file, content] of Object.entries(work.files)) {
+        const files = typeof work.files === "function" ? work.files(cwd) : work.files;
+        for (const [file, content] of Object.entries(files)) {
           mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
           writeFileSync(path.join(cwd, file), content);
         }

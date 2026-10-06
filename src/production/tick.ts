@@ -265,6 +265,13 @@ function recoverTerminalHandoff(
       head, settlementCommit: settlement?.documentsCommit ?? null
     });
   }
+  // A Grant that lapsed after this candidate was preserved (a long serial
+  // chain outrunning its window) refuses here like any other terminal guard,
+  // so it is escalated once and shown in `production status`. Left to the
+  // integration step, it refused before the verdict gate that records a wait,
+  // and the candidate waited with nothing visible at all.
+  const lapsed = lapsedIntegrationGrant(db, session, now);
+  if (lapsed) return refused(lapsed, { head });
   // Every terminal guard passed: an escalation recorded while one of them
   // refused is stale now, whatever the integration step decides next.
   clearTerminalCandidateEscalation(db, `${session.project_slug}/${session.action_id}`);
@@ -284,6 +291,26 @@ function recoverTerminalHandoff(
       } }, integrateDeps)
   };
   return { handoff, sessionId: session.id, head, refusal: null };
+}
+
+/** Prefix of the refusal for a recorded integration Grant that has expired; `terminalCandidateRemedy` keys on it. */
+const LAPSED_INTEGRATION_GRANT = "The integration grant expired at";
+
+/**
+ * The refusal when Active production in scope for this Session's Action
+ * records an integration Grant naming it that has expired at `now`, or null.
+ * Inactive production, an out-of-scope Action or no Grant at all stay with
+ * the integration step's own refusal, as before.
+ */
+function lapsedIntegrationGrant(db: Database.Database, session: AgentSession, now: Date): string | null {
+  const read = readProductionPolicySafely(db);
+  const scope = read.status === "ok" && read.policy.desiredState === "active" ? read.policy.scope : null;
+  const grant = scope?.integrationGrant;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  if (!scope || !grant || !scope.actions.includes(actionKey) || !(grant.actions.length ? grant.actions : scope.actions).includes(actionKey)) return null;
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (!Number.isNaN(expiresAt) && expiresAt > now.getTime()) return null;
+  return `${LAPSED_INTEGRATION_GRANT} ${grant.expiresAt} (Decision ${grant.decisionRef}); the preserved candidate is not readied, reviewed or integrated unattended.`;
 }
 
 /** A terminal-recovery refusal raised by one of `recoverTerminalHandoff`'s own guards, with the read-only facts behind it. */
@@ -805,6 +832,25 @@ function attemptDelegatedPacketApproval(
 }
 
 /**
+ * When the Active policy delegates packet approval (Decision 0072) and that
+ * delegation has expired, the sentence that leads a pending packet's remedy:
+ * the cause is the lapsed Grant, not a forgotten approval, and approving by
+ * hand after the integration Grant lapsed too admits work that cannot
+ * integrate unattended. Null otherwise.
+ */
+function lapsedPacketApprovalNote(db: Database.Database, now: Date): string | null {
+  const read = readProductionPolicySafely(db);
+  const scope = read.status === "ok" && read.policy.desiredState === "active" ? read.policy.scope : null;
+  const expiresAt = scope?.packetApprovalExpiresAt;
+  if (!scope || !expiresAt || !scope.mechanicalTransitions.includes("packet_approval") || now.getTime() < Date.parse(expiresAt)) return null;
+  const grant = scope.integrationGrant;
+  const grantLapsed = grant && !(Date.parse(grant.expiresAt) > now.getTime());
+  return `Blocked: the standing policy's packet_approval delegation expired at ${expiresAt}, so the tick no longer approves build packets.`
+    + (grantLapsed ? ` The integration grant (Decision ${grant.decisionRef}) expired at ${grant.expiresAt} too, so an Action admitted now is built and preserved but not integrated unattended.` : "")
+    + " Record a fresh activation to continue, or approve this one packet by hand.";
+}
+
+/**
  * Record (or refresh) a launch refusal that will not resolve on its own.
  * Returns true only the first time this action key is recorded, so the
  * caller can surface a signal once per continuous episode instead of on
@@ -1126,7 +1172,7 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
         : "Preserve any change worth keeping on a recovery branch rather than committing it to the settled candidate. ")
       + `${retry} Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
   }
-  if (reason === "No current exact validation and integration Grant authorizes terminal recovery.") {
+  if (reason === "No current exact validation and integration Grant authorizes terminal recovery." || reason.startsWith(LAPSED_INTEGRATION_GRANT)) {
     return `${blocked} Record a fresh, unexpired integration Grant (Decision 0058) whose scope names ${actionKey}. ${retry} `
       + `Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
   }
@@ -1977,15 +2023,17 @@ function attemptProjectLaunch(
           : typeof error.details?.packetLifecycleRemedy === "string"
             ? error.details.packetLifecycleRemedy
             : null;
+        const lapsed = escalationKind === "build_packet_approval_pending" ? lapsedPacketApprovalNote(db, input.now) : null;
+        const shownRemedy = lapsed ? `${lapsed} ${remedy ?? ""}`.trimEnd() : remedy;
         const newlyDetected = recordOperatorEscalation(db, {
           actionKey,
           kind: escalationKind,
           message: error.message,
-          remedy,
+          remedy: shownRemedy,
           now: input.now
         });
         if (newlyDetected) {
-          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${remedy ?? error.message}`);
+          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
       } else {
         clearOperatorEscalation(db, actionKey);

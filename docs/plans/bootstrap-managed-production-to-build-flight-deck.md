@@ -4103,7 +4103,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/986", "https://github.com/pmark/arcadia/issues/974", "src/sessions/operatorQaPlan.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: add-long-chain-fast-rehearsal
     title: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a nine-Action serial chain scenario over simulated hours to pnpm fast-rehearsal and fix or file every defect it finds.
@@ -4139,7 +4139,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: add-long-chain-fast-rehearsal
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

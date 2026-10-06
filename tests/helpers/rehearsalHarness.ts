@@ -172,6 +172,14 @@ export interface RehearsalOptions {
    * script's shape.
    */
   thirdAction?: boolean;
+  /**
+   * Replace the fixture Plan's Actions with a custom list (the fast harness's
+   * long chain): `actionsYaml` is the Plan's `actions:` entries, `firstAction`
+   * the pointer's first Action, and `genesisFiles` extra files committed at
+   * the fixture's genesis (a check script the declared validation runs).
+   * Overrides `thirdAction`. Off by default.
+   */
+  fixturePlan?: { firstAction: string; actionsYaml: string; genesisFiles: Record<string, string> };
   /** Simulated out-of-band reviewers before each tick (default on), the real host commands, or the tick's own review step; see the class comment. */
   independentReviewers?: boolean | "host-commands" | "tick";
   /** `"tick"` mode only: overrides for the tick's review deadlines and budget. */
@@ -256,6 +264,12 @@ export class Rehearsal {
     writeFileSync(path.join(this.repo, "CONSTITUTION.md"), "# Constitution\n\n- Do not merge, deploy, or publish from a Session.\n");
     writeFileSync(path.join(this.repo, "scripts", "check-marker.mjs"),
       checkMarkerScript(this.options.thirdAction ? [LINE_A, LINE_B, LINE_C] : [LINE_A, LINE_B]));
+    const custom = this.options.fixturePlan;
+    for (const [file, content] of Object.entries(custom?.genesisFiles ?? {})) {
+      mkdirSync(path.dirname(path.join(this.repo, file)), { recursive: true });
+      writeFileSync(path.join(this.repo, file), content);
+    }
+    const firstAction = custom?.firstAction ?? "write-marker-a";
     writeFileSync(path.join(this.repo, "PROJECT.md"), `---
 arcadia: v1
 type: project
@@ -266,7 +280,7 @@ goal: Disposable fixture proving two dependent Actions run unattended from one p
 outcome: Disposable fixture for prove-two-action-unattended-production; delete after the rehearsal settles.
 milestone: Plan the first usable build
 active_plan: ${this.planSlug}
-current_action: write-marker-a
+current_action: ${firstAction}
 updated: 2026-09-26
 ---
 
@@ -285,7 +299,7 @@ token_impact: small
 token_budget: Two trivial file-edit Actions; no model calls beyond the coding-agent sessions themselves.
 updated: 2026-09-26
 actions:
-  - id: write-marker-a
+${custom ? custom.actionsYaml : `  - id: write-marker-a
     title: Implement MARKER.md containing exactly the line "${LINE_A}" plus a trailing newline.
     status: open
     responsibility: agent
@@ -325,11 +339,11 @@ ${this.options.thirdAction ? `  - id: write-marker-c
       - MARKER.md contains the A, B and C lines in that order.
     depends_on: [write-marker-b]
     decisions: []
-` : ""}questions: []
+` : ""}`}questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: medium
-current_action: write-marker-a
+current_action: ${firstAction}
 ---
 
 # Two Action Rehearsal V4 bootstrap
@@ -373,7 +387,7 @@ Disposable fixture plan.
     const sync = runDocsSyncCommand({ workspace: this.workspace, project: this.projectSlug, apply: true });
     const errors = (sync.data as unknown as { errorCount?: number }).errorCount ?? 0;
     if (errors !== 0) throw new Error(`docs sync reported ${errors} error(s): ${JSON.stringify(sync.data)}`);
-    const workItem = this.workItemFor("write-marker-a");
+    const workItem = this.workItemFor(this.options.fixturePlan?.firstAction ?? "write-marker-a");
     const plan = runWorkPlanCommand({ workspace: this.workspace, workId: workItem, agentProfile: this.profile });
     const approval = (plan.data as unknown as { buildApproval?: { id: string } | null }).buildApproval;
     if (!approval?.id) throw new Error(`work plan returned no buildApproval: ${JSON.stringify(plan.data)}`);

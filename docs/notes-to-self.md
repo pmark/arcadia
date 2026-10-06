@@ -310,7 +310,8 @@ G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is
 
 ## Reproduce a rehearsal defect offline before a live run
 
-keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989
+keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, long chain, nine-Action, Grant expiry
 
-Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after changing the tick, preservation, review steps or settlement (about 1 minute): the real worker tick and settlement with only tmux, GitHub, the reviewer models and the agent faked; it prints per-phase timings and every error and writes `report.json` to a temporary directory. Reproduce a live defect there first (`tests/fast-rehearsal/README.md`, "Add a scenario").
+Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after changing the tick, preservation, review steps or settlement (a few minutes; the nine-Action chain files dominate): the real worker tick and settlement with only tmux, GitHub, the reviewer models and the agent faked; it prints per-phase timings and every error and writes `report.json` to a temporary directory. Reproduce a live defect there first (`tests/fast-rehearsal/README.md`, "Add a scenario").
 Its `it.fails` tests are open defects: the fix that flips one changes it to `it`.
+A long serial chain's likely stop is the Grant's 12-hour expiry: an Action finishing after it is preserved but never readied, reviewed or integrated, now shown as `terminal_candidate_not_integrable` "The integration grant expired at ..." (it showed nothing before); see `long-chain-grant-expiry.test.ts`.
