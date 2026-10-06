@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # Mission Log: Arcadia
@@ -1819,6 +1819,13 @@ updated: 2026-10-05
 ## 2026-10-05 — Agent Ask pr-opened-arcadia-pr975
 
 - **Did:** New: `arcadia ping` lets any agent send you a quick read-only Discord nudge, with optional channel routing; Decision 0084 asks whether agents may use it unprompted. https://github.com/pmark/arcadia/pull/975
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-06 — Agent Ask pr-opened-arcadia-pr982
+
+- **Did:** Docs-only PR: interim guidance for work you ask an agent to start right now, plus a proposal to make it a tracked parallel Plan once parallel Plans land. https://github.com/pmark/arcadia/pull/982
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.

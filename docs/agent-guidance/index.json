@@ -98,6 +98,13 @@
       "path": "docs/agent-guidance/rehearsal-freeze-window.md",
       "read_before": "Before reinstalling, restarting or fast-forwarding shared host state; while production status is Active the window is open.",
       "sha256": "614fd20a4649bcc812a3233bbb021bee573c31f398624c2c5d3874acc81c6845"
+    },
+    {
+      "id": "operator-directed-work",
+      "trigger": "operator-directed, operator asks directly, side track, parallel track, outside the plan, no Action",
+      "path": "docs/agent-guidance/operator-directed-work.md",
+      "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
+      "sha256": "80ed27ced7a3b37a8652ef8e4c7db92052727dbab175c4b5b2badf7696503014"
     }
   ]
 }

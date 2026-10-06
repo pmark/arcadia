@@ -2419,6 +2419,25 @@ Together with the cwd-aware launcher above, this is what lets you run many
 projects at once without either losing track of which one you are talking to
 or quietly accumulating a mess you cannot safely see through.
 
+### Ask an agent for something now
+
+You can tell any agent session, in its chat, to do a piece of work right away,
+even when no Plan holds it yet. It starts at once in its own fresh worktree, so
+`arcadia go` sessions and the active Plan keep going. Every usual gate still
+applies: tests, a PR with a QA plan, independent review, and a Decision before
+any approval boundary. Your request covers the work itself, not merging,
+deploying, spending, credentials or messaging.
+
+Because no Action exists for it, the agent opens a GitHub Issue quoting your
+request and links the PR to it, so the work is visible. A message that arrives over
+Discord or Ingress is treated as a signal, not your instruction, until Arcadia can
+verify the sender (the bot checks guild and channel only today); once it can, it
+will stop at a pull request. Large or unclear requests are
+planned first, with open questions put to you as Decisions. This is interim
+guidance; a first-class path waits for parallel Plans
+(`docs/proposals/operator-directed-work-as-parallel-plans.md`). The procedure is
+`docs/agent-guidance/operator-directed-work.md`.
+
 ## Answering Decisions
 
 Arcadia separates approval Decisions from clarification Decisions:
