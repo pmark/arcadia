@@ -1,0 +1,38 @@
+{
+  "schema": "arcadia-rehearsal-chain-run-v1",
+  "runId": "run6-2026-10-06",
+  "runLabel": "run 6",
+  "actionCount": 3,
+  "requiredCommits": [
+    { "commit": "9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1", "why": "remote preservation (#922)" },
+    { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
+    { "commit": "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4", "why": "settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983)" },
+    { "commit": "26172c74ae9dcf795cc69cabd8a62616f7ed42c8", "why": "each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a))" },
+    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
+  ],
+  "previousRun": {
+    "label": "run 5",
+    "resetId": "reset-three-action-rehearsal-fixture-run5-2026-10-06",
+    "terminalOffId": "restore-terminal-off-three-action-rehearsal-run5-2026-10-06",
+    "grantId": "grant-production-three-action-rehearsal-run5-2026-10-06",
+    "bindings": {
+      "resetRunId": "20261006T031820Z-74070",
+      "resetHead": "7214de28da2745c66f89d81e124e2ab2de05b2ca",
+      "terminalOffRunId": "20261006T033451Z-43195",
+      "localMain": "f68ec48ed4ff95772fee108258d401158c26a54d",
+      "candidates": [
+        { "branch": "claude/write-start-marker-20261004T170245861Z", "tip": "58bcd9155cf64836994045ca63a7707d8b9ebe75", "pullRequest": 1 },
+        { "branch": "claude/write-start-marker-20261005T155147519Z", "tip": "7f1390376f4d49215cd29fd98145d40198475613", "pullRequest": 2 },
+        { "branch": "claude/write-start-marker-20261005T184707757Z", "tip": "50d1eab84e385a5566119831c82f5a6d32e752fd", "pullRequest": 3 },
+        { "branch": "claude/write-start-marker-20261005T220000438Z", "tip": "79c6bae937255964cf0453c163ece0c36bb1985a", "pullRequest": 4 },
+        { "branch": "claude/write-start-marker-20261006T032202909Z", "tip": "f68ec48ed4ff95772fee108258d401158c26a54d", "pullRequest": 5 },
+        { "branch": "claude/transform-start-marker-20261006T032821535Z", "tip": "69eb7d6283447270a9a16e540f7d4f5f2e3427fc", "pullRequest": 6 }
+      ]
+    }
+  },
+  "notes": [
+    "Run 6 (N=3): the three G1 Actions, each amended with a fresh run note. The new line starts from GitHub main 7214de28 (run 5's reset head); the reset moves only the fixture clone's local main back from f68ec48 (run 5's integrated Action 1, preserved on PR #5 and contained in PR #6) and pushes one reset commit on 7214de28 without force.",
+    "Bindings are run 5's receipts: reset runs/20261006T031820Z-74070 (newHead 7214de28) and terminal Off runs/20261006T033451Z-43195 (fixtureMain f68ec48, PRs #1 to #6 reconciled).",
+    "Required commits are all filled: the #987 stacking fix 26172c74ae9d (#1006) and the #997 pending-completion gate fix a4a7c18450c6 (#1010) are on Arcadia main; G6 and G7 require every entry."
+  ]
+}
