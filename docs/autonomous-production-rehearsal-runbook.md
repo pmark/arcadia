@@ -85,7 +85,7 @@ were reproducible offline. So:
   the same shape runs there first: the nine-Action chain over simulated hours
   (`long-chain*.test.ts`) is the offline check for the overnight one-press run.
 
-## 2. What the five runs proved, and what each blocker cost
+## 2. What the runs proved, and what each blocker cost
 
 Fixture: `pmark/arcadia-three-action-rehearsal-20261004` (Project
 `three-action-rehearsal`, Plan `autonomous-three-action-rehearsal`, Actions
@@ -97,7 +97,9 @@ Fixture: `pmark/arcadia-three-action-rehearsal-20261004` (Project
 | 2 (2026-10-05 15:17Z) | Action 1 QA | A stale pending run-1 completion proposal silently gated the amended Action for 33 minutes (`advance` said `decision`); then the host PR body had no Operator QA plan | Reset handles proposals by state (#968, run-3 reset); host-rendered Operator QA plan in preserved PR bodies (#969) | PR #2; G8 Off r33 |
 | 3 (2026-10-05 18:47Z) | Action 1 QA | Attempt 1 failed a nondeterministic HIGH "Approval boundaries" (candidate's own settlement commit); the rerun returned NEEDS-FOLLOW-UP ("Tests and evidence" failed, "Correctness" not checked: no validation command or output in the body) | Validation evidence section and settlement-commit note in the PR body (#974) | PR #3; QA reports in the workspace `artifacts/qa/...`; G8 Off r35 |
 | 4 (2026-10-05 22:00Z) | Action 1 readiness and integration (PR #4 never left draft) | The agent's drafted Agent Ask stayed untracked and unarchived; the worker's preservation committed it on top of the settle commit; the integration guard refused in a silent 3-second loop for about 3 hours | Settle archives the canonical draft (#983, Issue #981); the archive half proven live in run 5; one deduped log line and one `terminal_candidate_not_integrable` escalation in `production status` (tested, **not yet seen live**) | PR #4; G8 Off r37 |
-| 5 (2026-10-06 03:22Z) | Action 2 QA | Action 1 **integrated autonomously** (first time). QA first failed Step 4 wording (Issue #986), passed on the one rerun. Action 2's PR is judged against a stale GitHub base (Issue #987) | Open | PRs #5 (integrated locally) and #6; G8 Off r39 (`runs/20261006T033451Z-43195`) |
+| 5 (2026-10-06 03:22Z) | Action 2 QA | Action 1 **integrated autonomously** (first time). QA first failed Step 4 wording (Issue #986), passed on the one rerun. Action 2's PR is judged against a stale GitHub base (Issue #987) | #1006 (stacked PRs), #1008 (wording) | PRs #5 (integrated locally) and #6; G8 Off r39 (`runs/20261006T033451Z-43195`) |
+| 6 (2026-10-06 15:51Z, N=9) | Action 2 code review | Action 1 integrated with both verdicts PASS on the first attempt (about 4.5 min); Action 2's PR #8 opened **stacked** on Action 1's branch (#987 live-proven). Code review returned NEEDS-FOLLOW-UP twice with no defect: a refused not-applicable on a test file, then Compatibility not-checked. Before that, G7 press 1 refused on an order-sensitive scope comparison and the reset left the queue unpositioned | #1017 (set compare), queue arranged by hand then #1020 (#1015), #1019 (bounded variance reruns, #1018) | PRs #7 (integrated), #8 (preserved); G8 `runs/20261006T160825Z-24828` r41 |
+| 7 (2026-10-06 17:42Z, N=9) | Action 1 QA | Real MEDIUM "Managed documents": the fixture PROJECT.md and Plan still said "three-Action" while the reset's Action text said "Action 1 of 9". The variance rerun correctly did not fire | #1023 (N-Action wording plus coherence guard) | PR #9 (preserved); G8 `runs/20261006T175308Z-12860` |
 
 Merged enablers that every run depends on: remote preservation (#922),
 tick-driven PR readiness and both reviews (#924), G1/G6/G7/G8 runbook scripts
@@ -684,6 +686,43 @@ broker): rerun G6.
    finding or three variance verdicts in a row; none of this has run live yet).
 8. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
+
+## 9. Findings ledger and per-run protocol
+
+Every live run and every reviewer pre-flight smoke appends one row here **before its session ends**, pass or fail. The row is the handoff: the next agent starts from this table, section 10 and `docs/notes-to-self.md`, not from chat history. A failure class that has appeared twice must have a deterministic guard (a test, a refusal or a check in G6) before the next live run; the "Prevention" column names it.
+
+| Run or check | Stopped at | Failure class | Detect after G7 | Fix | Prevention now in place |
+| --- | --- | --- | --- | --- | --- |
+| 1 | A1 code review | reviewer variance (criteria not exercisable) | minutes | #934-#936 | not-applicable classifier |
+| 2 | A1 (33 min silent), then QA | stale pending Ask gate; missing QA plan | 33 min | #968, #969 | reset handles proposals by state; host QA plan; #1010 surfaces gates |
+| 3 | A1 QA | reviewer variance; missing validation evidence | minutes | #974 | validation evidence in PR body |
+| 4 | A1 integration (3 h silent loop) | unarchived Ask committed by preservation | about 3 h | #983 | settle archives the draft; one escalation |
+| 5 | A2 QA | stale GitHub base after local integration (#987); plan wording (#986) | minutes | #1006, #1008 | stacked PRs; bounded check wording |
+| 6 | A2 code review | reviewer variance (zero findings) | about 2 min after A2 readied | #1019 | automatic bounded rerun of zero-finding verdicts (3 attempts; Correctness, Security, Approval boundaries never variance) |
+| 6 (setup) | G7 press 1 | script compared Grant Action lists order-sensitively | 73 s | #1017 | set comparison; e2e test uses the live order |
+| 6 (setup) | queue | reset left reopened and new Actions unpositioned | before press | #1020 (#1015) | reset arranges the queue; G6 `action_queue` |
+| 6 (setup) | G6 | stale Codex capacity cache | before press | #1020 (#1016) | live capacity read with named failures |
+| 7 | A1 QA | fixture documents contradicted the chain size (real finding) | 4 min | #1023 | reset renders N-Action wording; `fixture_coherence` guard in reset and G6 |
+| run-8 reviewer smoke (2 QA calls, read-only) | A1 QA, 1 of 2 | real MEDIUM "Managed documents": a done Action keeps its original `next_action`, which the reviewer reads as stale guidance | n/a (offline) | open | none yet: see section 10, recommendation 1 |
+
+**Protocol for every run (append-only):**
+1. Before G7: run the reviewer pre-flight smoke (`docs/reports/rehearsal-reviewer-smoke/`) on the rendered Action 1 shape; record its verdicts as a row. Do not ask for the press unless it passed every attempt.
+2. After G8: add the run's row (stop point, class, detect time, fix, prevention), the receipts and PRs in section 2, and any new symptom in section 6. File one Issue per defect with a revival trigger.
+3. Classify each stop: **setup** (our scripts, fixture or queue), **product** (Arcadia lifecycle), **reviewer variance** (zero-finding verdict) or **real finding** (reviewer correctly found a defect in the candidate or its documents). Setup and real-finding classes need a deterministic guard before the next live run.
+4. Update section 10 so it is true for the next agent.
+
+## 10. Handoff: current state and next-run recommendations
+
+**State at 2026-10-06 ~19:00Z** (verify before trusting): production Off (run 7's G8 confirmed). Main includes #1006, #1008, #1009, #1010, #1013, #1014, #1017, #1019, #1020 and #1023. The installed broker was last reinstalled at `c26f3a9e` (#1019). #1020 and #1023 changed `src/` after that, so **reinstall before the next G6**; G6 also requires every entry in the run's parameter file `requiredCommits`. The next run is **run 8**, with parameter file `artifacts/generated/operator-scripts/rehearsal-chain/params/run8-2026-10-06.json` (N=9, bound to run 7). Its scripts are `reset-rehearsal-chain-fixture-run8-2026-10-06`, `preflight-rehearsal-chain-run8-2026-10-06`, `grant-production-rehearsal-chain-run8-2026-10-06` and `restore-terminal-off-rehearsal-chain-run8-2026-10-06`. The fixture's GitHub and local `main` are at `f478438a`, run 7's reset head. **Do not ask for the run-8 press while the run-8 reviewer-smoke row in section 9 is open** (recommendations 1 and 2 first). Open Issues touching success: #1012 (admission after Grant expiry), #1018 follow-ups #1021, #1022 (arrange drops invisible positions), #1011.
+
+**Why runs keep failing.** Every stop since run 5 was either our own setup, which is now guarded, or an LLM reviewer judging the wording of governed records. The reviewer reads the fixture's managed documents, including records written by Arcadia's own settle, and each run finds a new interpretation. At about a 50% chance per QA verdict (run-8 smoke: 1 of 2 failed), a 9-Action chain (9 QA verdicts) almost never finishes. The likelihood of success is dominated by the per-verdict pass rate, so raise it deterministically before the next press.
+
+**Recommendations, ranked by expected effect:**
+1. **Remove the "done Action keeps its next_action" finding at the source.** When settlement marks an Action done, it should also make the record unambiguous: either rewrite `next_action` to a completed form naming the completion request id, or have the host QA plan state that a done Action's `next_action` is its original instruction kept as history. Prefer the settle change, because it is deterministic and true. Prove it with the reviewer smoke.
+2. **Make the reviewer pre-flight smoke a gate**: three read-only QA and three code-review calls on the rendered Action 1 shape, all PASS, before the release manager pings for G7. Wire `docs/reports/rehearsal-reviewer-smoke/` into a script, or a G6 option that the release manager runs, and record each attempt in section 9.
+3. **Run 8 with N=3, not 9.** The first victory tier (V1: one run chains at least 2 Actions with no operator step between G7 and G8, and G8 proves terminal Off) needs only two chained Actions, and fewer verdicts means fewer chances for a new interpretation. The current `run8-2026-10-06.json` is N=9, so adopting this needs a reviewed parameter change (`actionCount: 3`) and re-rendered descriptors before the reset; never press the N=9 run-8 G7 if this is adopted. Make the 9-Action chain the following run, once two 3-Action runs pass cleanly (V2: the same result repeated from a fresh reset, G6 and press).
+4. **Generate the fixture fresh instead of amending it.** A disposable fixture whose names are neutral to N (Project "Chain Rehearsal", Actions `step-01`..`step-N`, rendered from the parameter file) removes the remaining "Three Action Rehearsal" name, the `verify-final-rehearsal` misnomer, the growing candidate list and the orphan milestone. This needs G1 parameterised for slug and repository; a new GitHub repository is the operator's call.
+5. **Keep the evidence loop cheap:** Sonnet subagents, one independent review round unless it finds a blocker, `pnpm fast-rehearsal` before each install, and the no-progress watchdog during every run.
 
 ## Appendix A: the no-progress watcher
 
