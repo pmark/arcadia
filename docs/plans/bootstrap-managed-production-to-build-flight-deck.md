@@ -4237,6 +4237,44 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/autonomous-production-rehearsal-runbook.md#10-handoff-current-state-and-next-run-recommendations", "docs/reports/rehearsal-reviewer-smoke/run8"]
+  - id: preserve-unchanged-baseline-skill-symlinks
+    title: Implement protected preservation of unchanged baseline tracked symlink blobs without following candidate links, retaining the current escape and race guards.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement protected preservation of unchanged baseline tracked symlink blobs without following candidate links, retaining the current escape and race guards.
+    expected_artifact: Evidence satisfying Agent Ask preserve-unchanged-baseline-skill-symlinks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rehearsal-v1-preservation-and-neutral-prep-2026-10-06
+    acceptance_criteria:
+      - Protected candidate capture retains an unchanged tracked mode-120000 baseline entry from its immutable Git blob without dereferencing it; candidate-added or modified symlinks and path escapes still refuse, and normal regular-file capture retains its existing guards.
+      - Focused regressions and a hermetic invocation of the literal no-argument Claude preservation launcher prove successful capture, unchanged replay, changed-tree receipt identity, and refusal of modified/new symlinks, ancestor-link escapes and unsafe or raced regular-file inputs; failed capture does not change the candidate index.
+      - "The PR #1033 repair and both preservation packets remain intact; evidence distinguishes reviewed source from installed runtime and gives the exact remaining bootstrap boundary without raw commits, symlink deletion, repeated unchanged refusals, installation or completion resettlement."
+      - Typecheck, lint and focused preservation tests pass; run fast-rehearsal once on final changed source before any separately authorized installation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1032", "src/sessions/candidateSnapshot.ts", "docs/working-copy-safety.md", "/private/tmp/run8-ci-preservation-handoff/manifest.json"]
+  - id: generate-neutral-rehearsal-dry-preparation
+    title: Implement one resumable deterministic preparation command that generates a fresh N-neutral fixture baseline, reviewed descriptor inputs and dry proof from one parameter file, initially N=3.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement one resumable deterministic preparation command that generates a fresh N-neutral fixture baseline, reviewed descriptor inputs and dry proof from one parameter file, initially N=3.
+    expected_artifact: Evidence satisfying Agent Ask generate-neutral-rehearsal-dry-preparation
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rehearsal-v1-preservation-and-neutral-prep-2026-10-06
+    acceptance_criteria:
+      - One parameter file pins run identity, N, the existing repository /Users/pmark/tmp/arcadia-three-action-rehearsal and pmark/arcadia-three-action-rehearsal-20261004, prerequisite revisions and preservation bindings. A fresh reproducible baseline uses N-neutral wording and step-01 through step-NN with serial dependencies; N=2, N=3 and another supported N render coherently without cloning run-specific amendments.
+      - Dry preparation renders in an isolated output, checks fixture coherence and descriptor drift, validates managed-document shape using real Arcadia code, and resumes or reuses hash-bound completed stages. Drift or stale scope refuses. It retains existing Git history, candidates and receipts and performs no live workspace mutation, repository publication, reset, G6 execution, Grant creation, activation or service installation.
+      - The concise preparation receipt binds parameters, baseline, descriptor and source hashes; states the exact next step and separate authority needed; reuses existing operator-script implementations and the governed Ask path for later fixture application. Changed operator flows update START_HERE.md.
+      - SMOKE_DRY=1 uses the exact rendered Action 1 candidate and proves the six-call read-only QA/code-review request shape without paid calls. The maintained smoke gate permits exactly 3 QA plus 3 code-review calls only after this chat operator authorizes spend, requires all six first-attempt PASS on unchanged hashes, and refuses a G7-ready claim on a missing, failed or stale verdict.
+      - V1 evidence evaluation requires at least 2 chained Actions, zero operator or release-manager interventions between G7 and G8, both independent verdicts PASS on attempt 1 per Action, and G8 terminal Off with zero live admissions. Existing variance reruns cannot satisfy V1; a live run-8 failure stops without fix-and-rerun.
+      - Focused deterministic tests cover reproducibility, changed N, stale receipts, interrupted preparation, authority boundaries and smoke failure. Final changed source passes fast-rehearsal once before installation. No live success is claimed by dry proof.
+    depends_on: [preserve-unchanged-baseline-skill-symlinks, make-done-action-settlement-unambiguous]
+    decisions: []
+    references: ["docs/autonomous-production-rehearsal-runbook.md", "src/operatorActions/rehearsalChain.ts", "scripts/render-rehearsal-chain-operator-scripts.ts", "docs/reports/rehearsal-reviewer-smoke/README.md", "https://github.com/pmark/arcadia/issues/1031"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
