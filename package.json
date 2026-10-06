@@ -44,7 +44,8 @@
     "verify:package-boundary": "node scripts/verify-intelligence-package-exports.mjs",
     "bridge:worktree": "node scripts/bridge-worktree-deps.mjs",
     "check:operator-scripts": "node --import tsx scripts/check-operator-scripts.ts",
-    "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts"
+    "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
+    "fast-rehearsal": "node scripts/fast-rehearsal.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.5.1",

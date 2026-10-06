@@ -238,14 +238,6 @@ app tests fail to load, even in files you changed. The script skips a tree
 whose target already exists, so rerunning it is safe. CI does a clean install
 and is the source of truth.
 
-## Where is the Runs page / "This push" section?
-
-keys: runs, this push, next push, dashboard, production control panel
-
-`apps/dashboard/app/runs/page.tsx` (sections: Operator actions, Active now,
-Recent history) and `apps/dashboard/components/production-control-panel.tsx`
-("This push" lanes and "Next push").
-
 ## Run one Vitest file without launching the whole suite
 
 keys: vitest, focused test, pnpm test, double dash, whole suite
@@ -314,3 +306,11 @@ keys: rehearsal, G6, G7, G8, preflight voided, arcadiaHead, brokerRevision, free
 
 G7 accepts a G6 receipt only while `arcadiaHead` equals main now and `brokerRevision` the installed broker now: any push to Arcadia main (even a governed settle commit) or reinstall/restart (an accidental G8 press) between G6 and the G7 press voids it. Run 2's G6 was rerun twice for that; push nothing from G6 until the press.
 G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is set, so an agent's or script's shell cannot run it; run it from the Terminal panel or `/runs`. That refusal runs no Arcadia command, and the run-3, run-4 and run-5 resets ignore such receipts when they look for the previous run's terminal Off.
+
+## Reproduce a rehearsal defect offline before a live run
+
+keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, binding is stale, terminalRecovery
+
+Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after changing the tick, preservation, review steps or settlement (about 1 minute): the real worker tick and settlement with only tmux, GitHub, the reviewer models and the agent faked; it prints per-phase timings and every error and writes `report.json` to a temporary directory. Reproduce a live defect there first (`tests/fast-rehearsal/README.md`, "Add a scenario").
+Its `it.fails` tests are open defects: the fix that flips one changes it to `it`.
+Gotcha: a harness validator that dropped `terminalRecovery` made every preservation retry refuse "Preservation Session binding is stale", a refusal the real validator never gives (fixed in `tests/helpers/rehearsalHarness.ts`). A fake must pass every argument the real function takes.

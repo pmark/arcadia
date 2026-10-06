@@ -46,6 +46,28 @@ and reconciliation, a clean repeat, then one escalation.
 run by the release manager) and Action 2 stopped at QA (open Issue #987), so the
 standard has not been met yet.
 
+### Learning: shorten the loop first
+
+Runs 1 to 5 each found one orchestration defect, and each cost a 2 to 4 hour
+repair loop (fix, review, merge, reinstall, reset, G6, operator press, watch),
+although a trivial Action takes about 6 minutes live. Most of those defects
+were reproducible offline. So:
+
+- **Measure the loop, per defect:** loop cost (wall time and operator attention
+  per live run), time to detect (G7 press to the first visible symptom) and
+  time to fix (symptom to the fix installed). Record them in the run's retro.
+- **The trigger:** two consecutive live runs that each find a new defect a
+  local reproduction could have found means stop and build the cheap
+  experiment first, before the next live run.
+- **The live run is the integration check, not the debugger.** Reproduce and
+  fix defects offline; a live run should confirm what the offline harness
+  already passed.
+- **The cheap experiment must call the same lifecycle code.** A harness that
+  reimplements the tick, preservation, review or settlement proves only
+  itself. `pnpm fast-rehearsal` (`tests/fast-rehearsal/README.md`) runs the
+  real worker tick and settlement with only tmux, GitHub, the reviewer models
+  and the coding agent faked, in about a minute.
+
 ## 2. What the five runs proved, and what each blocker cost
 
 Fixture: `pmark/arcadia-three-action-rehearsal-20261004` (Project
@@ -184,6 +206,12 @@ For each change (one Action per session; one mutation owner per candidate):
 7. Make the next run's G6 and G7 **require** the newest prerequisite commit
    (`REQUIRED_COMMITS` in the preflight and grant scripts) so documentation is
    not the only enforcement.
+8. Run `pnpm fast-rehearsal` before any live run (and after any change to the
+   tick, preservation, the review steps or settlement): unsandboxed, from the
+   checkout that will be installed. It must pass. It prints per-phase timings
+   and every error; its expected failures (`it.fails`) name the open gaps it
+   reproduces (Issue #987 and the stalls listed in its README). A fix that
+   closes one flips that marker, which the fix's change updates.
 
 ### Phase 2: merge window, freeze and the single reinstall
 
@@ -381,7 +409,13 @@ broker): rerun G6.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983; tested, not yet seen live); a stuck candidate in other states and the dashboard rendering of
    escalations are still generic.
-6. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
+6. **Stalls reproduced offline, not yet seen live** (the fast harness's expected
+   failures, `tests/fast-rehearsal/README.md`): an agent that dies after its
+   settlement commit and before the settlement is recorded, or that leaves an
+   extra file or commit after settling, leaves the Action preserved but never
+   integrated, with no escalation in `production status`. Next step: file an
+   Issue per stall with the scenario as its reproduction.
+7. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 
 ## Appendix A: the no-progress watcher
