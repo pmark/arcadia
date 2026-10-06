@@ -4189,7 +4189,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: bound-variance-verdict-reruns
+current_action: prepare-run7-chain
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
