@@ -153,6 +153,34 @@ describe("intelligence narrate command", () => {
     expect(existsSync(path.join(workspace, "second.wav"))).toBe(true);
   });
 
+  it("uses distinct implicit keys when two narrations share a clock tick", async () => {
+    const workspace = newWorkspace();
+    let requests = 0;
+    const { server, baseUrl } = await startFakeOpenAiSpeech({
+      wavBytes: makeWavFixture({ seconds: 0.2 }),
+      onRequest: () => {
+        requests += 1;
+      },
+    });
+    servers.push(server);
+    vi.stubEnv("ARCADIA_LITELLM_BASE_URL", baseUrl);
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+
+    const first = await runIntelligenceNarrateCommand({
+      workspace,
+      text: "first narration",
+      out: path.join(workspace, "first.wav"),
+    });
+    const second = await runIntelligenceNarrateCommand({
+      workspace,
+      text: "second narration",
+      out: path.join(workspace, "second.wav"),
+    });
+
+    expect(first.data.jobIds).not.toEqual(second.data.jobIds);
+    expect(requests).toBe(2);
+  });
+
   it("executes only its own submitted job, leaving an unrelated queued job untouched", async () => {
     const workspace = newWorkspace();
     const { server, baseUrl } = await startFakeOpenAiSpeech({ wavBytes: makeWavFixture({ seconds: 0.2 }) });

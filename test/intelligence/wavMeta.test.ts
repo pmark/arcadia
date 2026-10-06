@@ -42,6 +42,18 @@ describe("wavMeta", () => {
     expect(parseWavMetadata(Buffer.alloc(0))).toBeUndefined();
   });
 
+  it("rejects non-PCM and malformed-frame WAV payloads before concatenation", () => {
+    const floatWav = Buffer.from(makeWavFixture({ seconds: 0.1 }));
+    floatWav.writeUInt16LE(3, 20); // IEEE float, not PCM.
+    expect(parseWavMetadata(floatWav)).toBeUndefined();
+    expect(extractWavData(floatWav)).toBeUndefined();
+
+    const partialFrame = Buffer.from(makeWavFixture({ seconds: 0.1 }));
+    partialFrame.writeUInt32LE(partialFrame.readUInt32LE(40) - 1, 40);
+    expect(parseWavMetadata(partialFrame)).toBeUndefined();
+    expect(extractWavData(partialFrame)).toBeUndefined();
+  });
+
   it("extracts the raw PCM data and format facts", () => {
     const wav = makeWavFixture({ sampleRateHz: 16_000, channels: 2, seconds: 0.5, bitsPerSample: 16 });
     const chunk = extractWavData(wav);

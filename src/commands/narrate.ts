@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { ArcadiaError, validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -116,7 +117,12 @@ export async function runIntelligenceNarrateCommand(
     );
 
     const voiceId = options.voiceId?.trim() || DEFAULT_SPEECH_VOICE;
-    const baseKey = options.idempotencyKey ?? `arcadia-narrate-${Date.now()}`;
+    // An implicit key identifies this invocation, rather than its wall-clock
+    // millisecond. Two narrations can legitimately begin in the same tick; if
+    // they shared a key the job repository would replay one source as another.
+    // Explicit keys retain their documented replay behaviour for callers that
+    // deliberately want it.
+    const baseKey = options.idempotencyKey ?? `arcadia-narrate-${randomUUID()}`;
 
     const wavClips: Buffer[] = [];
     const jobIds: string[] = [];

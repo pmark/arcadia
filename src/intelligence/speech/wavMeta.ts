@@ -65,6 +65,8 @@ export function parseWavMetadata(bytes: Buffer): WavMetadata | undefined {
   let bitsPerSample: number | undefined;
   let dataBytes: number | undefined;
   let byteRate: number | undefined;
+  let audioFormat: number | undefined;
+  let blockAlign: number | undefined;
 
   // Sub-chunks begin after the 12-byte RIFF/WAVE header. Each is an 8-byte
   // header (4-char id + uint32 LE size) followed by `size` bytes, padded to an
@@ -75,15 +77,19 @@ export function parseWavMetadata(bytes: Buffer): WavMetadata | undefined {
     const chunkSize = bytes.readUInt32LE(offset + 4);
     const bodyOffset = offset + 8;
 
+    if (chunkSize > bytes.length - bodyOffset) {
+      return undefined;
+    }
+
     if (chunkId === "fmt " && bodyOffset + 16 <= bytes.length) {
+      audioFormat = bytes.readUInt16LE(bodyOffset);
       channels = bytes.readUInt16LE(bodyOffset + 2);
       sampleRateHz = bytes.readUInt32LE(bodyOffset + 4);
       byteRate = bytes.readUInt32LE(bodyOffset + 8);
+      blockAlign = bytes.readUInt16LE(bodyOffset + 12);
       bitsPerSample = bytes.readUInt16LE(bodyOffset + 14);
     } else if (chunkId === "data") {
-      // Clamp the declared size to what is actually present, so a truncated
-      // file reports the duration of the bytes we hold rather than a lie.
-      dataBytes = Math.min(chunkSize, bytes.length - bodyOffset);
+      dataBytes = chunkSize;
     }
 
     // Advance past this chunk (chunks are word-aligned: pad odd sizes by 1).
@@ -95,6 +101,8 @@ export function parseWavMetadata(bytes: Buffer): WavMetadata | undefined {
     channels === undefined ||
     bitsPerSample === undefined ||
     dataBytes === undefined ||
+    audioFormat !== 1 ||
+    blockAlign === undefined ||
     sampleRateHz <= 0 ||
     channels <= 0 ||
     bitsPerSample <= 0
@@ -102,14 +110,20 @@ export function parseWavMetadata(bytes: Buffer): WavMetadata | undefined {
     return undefined;
   }
 
-  const effectiveByteRate =
-    byteRate && byteRate > 0 ? byteRate : (sampleRateHz * channels * bitsPerSample) / 8;
-  if (effectiveByteRate <= 0) {
+  const expectedBlockAlign = (channels * bitsPerSample) / 8;
+  const expectedByteRate = sampleRateHz * expectedBlockAlign;
+  if (
+    !Number.isInteger(expectedBlockAlign) ||
+    expectedBlockAlign <= 0 ||
+    byteRate !== expectedByteRate ||
+    blockAlign !== expectedBlockAlign ||
+    dataBytes % blockAlign !== 0
+  ) {
     return undefined;
   }
 
   return {
-    durationSeconds: dataBytes / effectiveByteRate,
+    durationSeconds: dataBytes / expectedByteRate,
     sampleRateHz,
     channels,
     bitsPerSample,
@@ -139,6 +153,8 @@ export function extractWavData(bytes: Buffer): WavDataChunk | undefined {
   let sampleRateHz: number | undefined;
   let channels: number | undefined;
   let bitsPerSample: number | undefined;
+  let audioFormat: number | undefined;
+  let blockAlign: number | undefined;
   let data: Buffer | undefined;
 
   let offset = 12;
@@ -147,13 +163,18 @@ export function extractWavData(bytes: Buffer): WavDataChunk | undefined {
     const chunkSize = bytes.readUInt32LE(offset + 4);
     const bodyOffset = offset + 8;
 
+    if (chunkSize > bytes.length - bodyOffset) {
+      return undefined;
+    }
+
     if (chunkId === "fmt " && bodyOffset + 16 <= bytes.length) {
+      audioFormat = bytes.readUInt16LE(bodyOffset);
       channels = bytes.readUInt16LE(bodyOffset + 2);
       sampleRateHz = bytes.readUInt32LE(bodyOffset + 4);
+      blockAlign = bytes.readUInt16LE(bodyOffset + 12);
       bitsPerSample = bytes.readUInt16LE(bodyOffset + 14);
     } else if (chunkId === "data") {
-      const size = Math.min(chunkSize, bytes.length - bodyOffset);
-      data = bytes.subarray(bodyOffset, bodyOffset + size);
+      data = bytes.subarray(bodyOffset, bodyOffset + chunkSize);
     }
 
     offset = bodyOffset + chunkSize + (chunkSize % 2);
@@ -164,9 +185,21 @@ export function extractWavData(bytes: Buffer): WavDataChunk | undefined {
     channels === undefined ||
     bitsPerSample === undefined ||
     data === undefined ||
+    audioFormat !== 1 ||
+    blockAlign === undefined ||
     sampleRateHz <= 0 ||
     channels <= 0 ||
     bitsPerSample <= 0
+  ) {
+    return undefined;
+  }
+
+  const expectedBlockAlign = (channels * bitsPerSample) / 8;
+  if (
+    !Number.isInteger(expectedBlockAlign) ||
+    expectedBlockAlign <= 0 ||
+    blockAlign !== expectedBlockAlign ||
+    data.byteLength % blockAlign !== 0
   ) {
     return undefined;
   }
