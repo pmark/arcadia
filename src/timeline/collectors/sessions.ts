@@ -1,7 +1,7 @@
 import { workKindFor } from "../classify.js";
 import { actorFromRoleActorId, actorFromSession, hostWorkerActor, strongestActor, toolFromWorktreePath } from "../identity.js";
 import { timelineEvent, type TimelineEvent } from "../schema.js";
-import { hasTable, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
+import { capped, hasTable, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
 
 /**
  * Managed Sessions (agent_sessions), their role attempts (planner, critique,
@@ -71,6 +71,7 @@ export function collectSessions(context: CollectorContext): TimelineEvent[] {
       WHERE prepared_at BETWEEN @since AND @until OR started_at BETWEEN @since AND @until
          OR ended_at BETWEEN @since AND @until OR stall_flagged_at BETWEEN @since AND @until
       ORDER BY prepared_at DESC LIMIT @cap`).all(params) as SessionRow[];
+    capped(rows, context, events, "sessions", "agent_sessions");
     for (const row of rows) {
       const who = strongestActor([actorFromSession(row), toolFromWorktreePath(row.worktree_path)]);
       const simulated = row.is_simulated ? " [simulated]" : "";
@@ -105,6 +106,7 @@ export function collectSessions(context: CollectorContext): TimelineEvent[] {
       FROM session_role_attempts
       WHERE created_at BETWEEN @since AND @until OR updated_at BETWEEN @since AND @until
       ORDER BY created_at DESC LIMIT @cap`).all(params) as RoleRow[];
+    capped(rows, context, events, "sessions", "session_role_attempts");
     for (const row of rows) {
       const [project, plan, action] = row.requirement_id.split("/");
       const who = actorFromRoleActorId(row.actor_id, row.role);
@@ -144,6 +146,7 @@ export function collectSessions(context: CollectorContext): TimelineEvent[] {
       FROM session_exit_receipts r LEFT JOIN agent_sessions s ON s.id = r.session_id
       WHERE r.created_at BETWEEN @since AND @until
       ORDER BY r.created_at DESC LIMIT @cap`).all(params) as ExitRow[];
+    capped(rows, context, events, "sessions", "session_exit_receipts");
     for (const row of rows) {
       push({
         id: `sessions:exit:${row.id}`,

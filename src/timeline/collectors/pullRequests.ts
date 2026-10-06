@@ -48,7 +48,7 @@ export function collectPullRequests(repository: TimelineRepository, context: Col
       clock: "github-api" as const,
       source: "pull-requests" as const,
       subjects,
-      actor: { ...who.actor, account: pull.user?.login ? `GitHub ${pull.user.login}` : null },
+      actor: { ...who.actor, account: pull.user?.login ? "GitHub account (login withheld)" : null },
       evidence: [{ kind: "url" as const, value: pull.html_url }]
     };
     const stages: Array<[string, string | null, string, string[]]> = [

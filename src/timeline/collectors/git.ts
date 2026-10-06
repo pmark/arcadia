@@ -1,8 +1,10 @@
-import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
 import path from "node:path";
 import { classifyCommit, workKindFor } from "../classify.js";
 import {
+  actionFromPeerWatchTrailer,
   actionHintFromBranch,
+  actorFromPeerWatchTrailer,
   actorFromCoAuthors,
   actorFromEmail,
   strongestActor,
@@ -43,6 +45,11 @@ export interface ReflogEntry {
   email: string;
   time: Date;
   message: string;
+}
+
+/** `pull https://user:token@host/…` → `pull https://***@host/…`: reflog messages can carry a remote URL. */
+export function redactUrlUserinfo(text: string): string {
+  return text.replace(/\/\/[^@/\s]+@/g, "//***@");
 }
 
 export function parseReflogLine(line: string): ReflogEntry | null {
@@ -90,8 +97,18 @@ function firstLine(file: string): string | null {
   }
 }
 
+/** A regular file, not a symlink, FIFO or device: the timeline never follows or blocks on one. */
+function isRegularFile(file: string): boolean {
+  try {
+    return lstatSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function readBranch(gitDir: string): string | null {
   try {
+    if (!isRegularFile(path.join(gitDir, "HEAD"))) return null;
     const head = readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
     return head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : null;
   } catch {
@@ -106,6 +123,8 @@ export function listWorktreeAdmins(repositoryPath: string, commonDir: string): W
   if (!existsSync(worktreesDir)) return admins;
   for (const name of readdirSync(worktreesDir).sort()) {
     const gitDir = path.join(worktreesDir, name);
+    // A symlinked admin directory could point anywhere; only real ones are read.
+    if (!lstatSync(gitDir).isDirectory() || !isRegularFile(path.join(gitDir, "gitdir"))) continue;
     try {
       const pointer = readFileSync(path.join(gitDir, "gitdir"), "utf8").trim();
       admins.push({ path: path.dirname(pointer), gitDir, isMain: false, branch: readBranch(gitDir) });
@@ -141,7 +160,7 @@ function scanWorktrees(repository: TimelineRepository, admins: WorktreeAdmin[], 
       branch: admin.branch ?? undefined,
       action: actionHint ?? undefined
     };
-    if (existsSync(reflog)) {
+    if (isRegularFile(reflog)) {
       if (!admin.isMain) {
         const created = parseReflogLine(firstLine(reflog) ?? "");
         if (created && inWindow(created.time.toISOString(), context.window)) {
@@ -165,7 +184,23 @@ function scanWorktrees(repository: TimelineRepository, admins: WorktreeAdmin[], 
           });
         }
       }
-      const { text } = readTail(reflog);
+      const { text, truncated: tailOnly } = readTail(reflog);
+      if (tailOnly) {
+        const first = text.split("\n").map(parseReflogLine).find((entry) => entry !== null);
+        if (first && first.time.getTime() > context.window.since.getTime()) {
+          pushEvent(events, {
+            id: `git:${repository.projectSlug}:reflog-truncated:${admin.path}:${context.window.since.toISOString()}`,
+            time: context.window.since,
+            clock: "collector",
+            source: "git",
+            kind: "source.truncated",
+            workKind: workKindFor("source.truncated"),
+            summary: `Only the last ${REFLOG_TAIL_BYTES / 1024} KB of ${admin.isMain ? "the main checkout's" : "a worktree's"} reflog were read (from ${first.time.toISOString()}); earlier commits there are not attributed to it`,
+            subjects: { project: repository.projectSlug, repository: repository.path, worktree: admin.path },
+            provenance: { event: "the reflog tail read did not reach the window start" }
+          });
+        }
+      }
       for (const line of text.split("\n")) {
         const entry = parseReflogLine(line);
         if (!entry || !inWindow(entry.time.toISOString(), context.window)) continue;
@@ -183,7 +218,7 @@ function scanWorktrees(repository: TimelineRepository, admins: WorktreeAdmin[], 
           source: "git",
           kind: "git.worktree.integrated",
           workKind: workKindFor("git.worktree.integrated"),
-          summary: entry.message,
+          summary: redactUrlUserinfo(entry.message),
           subjects: { ...baseSubjects, commit: entry.newSha },
           actor: who.actor,
           evidence: [{ kind: "sha", value: entry.newSha }],
@@ -192,8 +227,8 @@ function scanWorktrees(repository: TimelineRepository, admins: WorktreeAdmin[], 
       }
     }
     const index = path.join(admin.gitDir, "index");
-    if (existsSync(index)) {
-      const touched = statSync(index).mtime;
+    if (isRegularFile(index)) {
+      const touched = lstatSync(index).mtime;
       if (inWindow(touched.toISOString(), context.window)) {
         const who = strongestActor([pathClaim, branchClaim]);
         pushEvent(events, {
@@ -219,7 +254,12 @@ function scanWorktrees(repository: TimelineRepository, admins: WorktreeAdmin[], 
 }
 
 function commitEvents(repository: TimelineRepository, scan: RepositoryScan, context: CollectorContext): TimelineEvent[] {
-  const format = ["%H", "%P", "%an", "%ae", "%cn", "%ce", "%cI", "%S", "%s", "%(trailers:key=Co-authored-by,valueonly,separator=%x1d)"].join("%x1f");
+  const format = [
+    "%H", "%P", "%an", "%ae", "%cn", "%ce", "%cI", "%S", "%s",
+    "%(trailers:key=Co-authored-by,valueonly,separator=%x1d)",
+    "%(trailers:key=Arcadia-Agent,valueonly,separator=%x1d)",
+    "%(trailers:key=Arcadia-Action,valueonly,separator=%x1d)"
+  ].join("%x1f");
   const result = context.git(repository.path, [
     "log",
     "--branches",
@@ -234,7 +274,8 @@ function commitEvents(repository: TimelineRepository, scan: RepositoryScan, cont
   const events: TimelineEvent[] = [];
   const records = result.stdout.split(RECORD).map((record) => record.trim()).filter(Boolean);
   for (const record of records) {
-    const [sha, parents, authorName, authorEmail, , committerEmail, committedAt, sourceRef, subject, trailerField] = record.split(FIELD);
+    const [sha, parents, , authorEmail, , committerEmail, committedAt, sourceRef, subject, trailerField, agentTrailer, actionTrailer] = record.split(FIELD);
+    const contractAction = actionFromPeerWatchTrailer(actionTrailer?.split("\x1d")[0]);
     if (!sha || !committedAt) continue;
     const parentList = (parents ?? "").split(" ").filter(Boolean);
     const branch = (sourceRef ?? "").replace(/^refs\/heads\//, "").replace(/^refs\/remotes\//, "") || null;
@@ -242,6 +283,7 @@ function commitEvents(repository: TimelineRepository, scan: RepositoryScan, cont
     const committerIsGitHub = (committerEmail ?? "").toLowerCase() === "noreply@github.com";
     const attributed = scan.attribution.get(sha);
     const claims: Array<ActorClaim | null> = [
+      actorFromPeerWatchTrailer(agentTrailer?.split("\x1d")[0]),
       actorFromEmail(authorEmail, { operatorEmails: context.operatorEmails }),
       committerIsGitHub ? null : actorFromEmail(committerEmail, { operatorEmails: context.operatorEmails, label: "committer" }),
       actorFromCoAuthors(trailers),
@@ -249,14 +291,16 @@ function commitEvents(repository: TimelineRepository, scan: RepositoryScan, cont
       toolFromBranch(attributed?.worktree.branch ?? branch)
     ];
     const who = strongestActor(claims);
-    if (committerIsGitHub) who.actor.account ??= `GitHub merge under ${authorEmail || authorName}`;
+    // The merging account's address is personal; the stream names only its role.
+    if (committerIsGitHub) who.actor.account ??= "GitHub merge under a human account (address withheld)";
     const classified = classifyCommit({ subject: subject ?? "", parentCount: parentList.length, actorRole: who.actor.role, committerIsGitHub });
     const kind = parentList.length > 1 || committerIsGitHub ? "git.merge" : "git.commit";
     const pullRequest = committerIsGitHub ? /\(#(\d+)\)\s*$/.exec(subject ?? "")?.[1] : undefined;
     const workBranch = attributed?.worktree.branch ?? branch;
-    const actionHint = actionHintFromBranch(workBranch);
+    const actionHint = contractAction?.action ?? actionHintFromBranch(workBranch);
     const dedupeKeys = [`commit:${sha}`];
-    if (/^chore\(arcadia\): point at /.test(subject ?? "") && parentList[0]) dedupeKeys.push(`pointer-after:${parentList[0]}`);
+    const pointedAt = /^chore\(arcadia\): point at (\S+)/.exec(subject ?? "")?.[1];
+    if (pointedAt && parentList[0]) dedupeKeys.push(`pointer-after:${parentList[0]}:${pointedAt}`);
     pushEvent(events, {
       id: `git:${repository.projectSlug}:commit:${sha}`,
       time: committedAt,
@@ -282,7 +326,9 @@ function commitEvents(repository: TimelineRepository, scan: RepositoryScan, cont
         actor: who.provenance,
         workKind: classified.provenance,
         ...(attributed ? { worktree: "commit sha found in that worktree's HEAD reflog" } : {}),
-        ...(actionHint ? { action: "Action slug from the branch name (worktree preparation convention)" } : {})
+        ...(contractAction
+          ? { action: "Action from the Arcadia-Action trailer (peer-watch contract)" }
+          : actionHint ? { action: "Action slug from the branch name (worktree preparation convention)" } : {})
       },
       dedupeKeys
     });

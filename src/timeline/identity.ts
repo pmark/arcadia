@@ -6,6 +6,7 @@ import {
   tierForReasoningEffort
 } from "../codingAgents/agentIdentity.js";
 import type { TierAgent } from "../codingAgents/modelTiers.js";
+import { parseActionRef, parseAgentRef, PEER_WATCH_TRAILERS } from "../agentWatch/contract.js";
 import { UNKNOWN_ACTOR, type AgentTool, type Confidence, type TimelineActor } from "./schema.js";
 
 /**
@@ -117,10 +118,11 @@ export function actorFromEmail(
   }
   if (normalized === "controller@arcadia.local") return hostController(normalized, label);
   if (options.operatorEmails?.has(normalized)) {
+    // The address itself is personal and never enters the stream; only its role does.
     return {
-      actor: actor({ tool: "operator", account: normalized, confidence: "low" }),
+      actor: actor({ tool: "operator", account: "operator's local Git identity", confidence: "low" }),
       provenance:
-        `${label} email ${normalized} is a repository's configured user.email (the operator's local Git identity); ` +
+        `${label} email is a repository's configured user.email (the operator's local Git identity); ` +
         "Arcadia settlement and pointer commits made outside a Session also use it, so the operator authorised it but may not have typed it"
     };
   }
@@ -274,4 +276,23 @@ export function actionHintFromBranch(branch: string | null | undefined): string 
   const short = branch.replace(/^refs\/heads\//, "").replace(/^(refs\/remotes\/)?origin\//, "");
   const match = /^(?:claude|codex|opencode)\/(.+?)-(\d{8}T\d{6,9}Z?)$/.exec(short);
   return match ? match[1] : null;
+}
+
+/**
+ * The peer-watch contract's `Arcadia-Agent: <agent>/<tier>` commit trailer (src/agentWatch/contract.ts).
+ * No launcher writes it yet, but a commit that carries it names its agent and tier exactly.
+ */
+export function actorFromPeerWatchTrailer(value: string | null | undefined): ActorClaim | null {
+  const ref = value ? parseAgentRef(value.trim()) : null;
+  if (!ref) return null;
+  return {
+    actor: actor({ tool: TOOL_FOR_AGENT[ref.agent], tier: ref.tier, name: agentIdentityName(ref.agent, ref.tier), confidence: "high" }),
+    provenance: `actor from the ${PEER_WATCH_TRAILERS.agent} trailer ${ref.agent}/${ref.tier} (peer-watch contract)`
+  };
+}
+
+/** The peer-watch contract's `Arcadia-Action: <project>/<action>` trailer. */
+export function actionFromPeerWatchTrailer(value: string | null | undefined): { project: string; action: string } | null {
+  const ref = value ? parseActionRef(value.trim()) : null;
+  return ref ? { project: ref.project, action: ref.actionId } : null;
 }

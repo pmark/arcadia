@@ -69,8 +69,12 @@ export async function followTimeline(input: FollowInput): Promise<{ polls: numbe
       events = events.slice(events.length - input.backlogLimit);
     }
     for (const event of events) {
-      if (seen.has(event.id)) continue;
-      seen.set(event.id, new Date(event.time).getTime());
+      // A fact is one event even when a later poll merges in a record that changes which record leads.
+      const ids = [event.id, ...event.alsoSeenAs.map((alias) => alias.id)];
+      const already = ids.some((id) => seen.has(id));
+      const time = new Date(event.time).getTime();
+      for (const id of ids) seen.set(id, Math.max(seen.get(id) ?? 0, time));
+      if (already) continue;
       input.emit(event);
       emitted += 1;
     }

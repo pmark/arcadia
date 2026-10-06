@@ -1,6 +1,6 @@
 import { workKindForAskIntent } from "../classify.js";
 import { UNKNOWN_ACTOR, timelineEvent, type TimelineEvent } from "../schema.js";
-import { hasTable, projectFromKey, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
+import { capped, hasTable, projectFromKey, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
 
 /**
  * Agent Asks: proposals (validated previews) and settlements (accepted or
@@ -51,6 +51,7 @@ export function collectAsks(context: CollectorContext): TimelineEvent[] {
   const proposals = db.prepare(`
     SELECT id, request_id, intent_kind, project_ref, created_at FROM agent_ask_proposals
     WHERE created_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as ProposalRow[];
+  capped(proposals, context, events, "asks", "agent_ask_proposals");
   for (const row of proposals) {
     const event = timelineEvent({
       id: `asks:proposal:${row.id}`,
@@ -83,6 +84,7 @@ export function collectAsks(context: CollectorContext): TimelineEvent[] {
            p.request_id AS proposal_request_id
     FROM agent_ask_settlements s LEFT JOIN agent_ask_proposals p ON p.id = s.proposal_id
     WHERE s.created_at BETWEEN @since AND @until ORDER BY s.created_at DESC LIMIT @cap`).all(params) as SettlementRow[];
+  capped(settlements, context, events, "asks", "agent_ask_settlements");
   for (const row of settlements) {
     const accepted = row.disposition === "accepted";
     const effect = firstEffect(row.effects_json);

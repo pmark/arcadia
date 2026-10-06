@@ -20,7 +20,8 @@ export const WORK_KIND_BY_EVENT_KIND: Readonly<Record<string, WorkKind>> = {
   "git.commit": "implement",
   "git.merge": "integrate",
   "git.worktree.created": "implement",
-  "git.worktree.touched": "implement",
+  // Only "Git ran here": any index refresh sets it, including other tools' read-only scans.
+  "git.worktree.touched": "observe",
   "git.worktree.integrated": "integrate",
   // governed records (derived from commits that changed checked-in records)
   "record.project.plan_activated": "govern",

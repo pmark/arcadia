@@ -140,6 +140,9 @@ export interface TimelineFollowIo {
 
 /** `--follow`: stream events as they appear, as NDJSON (`--json`/`--ndjson`) or one line each, until interrupted. */
 export async function runTimelineFollow(options: TimelineCommandOptions, io: TimelineFollowIo): Promise<{ polls: number; emitted: number }> {
+  if (options.until !== undefined || options.asOf !== undefined) {
+    throw validationError("--follow streams up to now; it cannot be combined with --until or --as-of.", { until: options.until ?? null, asOf: options.asOf ?? null });
+  }
   const filters = parseTimelineFilters(options);
   const limit = parsePositive(options.limit, "--limit", DEFAULT_TIMELINE_LIMIT);
   const intervalMs = parsePositive(options.interval, "--interval", DEFAULT_FOLLOW_INTERVAL_MS / 1000) * 1000;

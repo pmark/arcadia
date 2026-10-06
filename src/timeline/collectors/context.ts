@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import type Database from "better-sqlite3";
-import type { TimelineEvent, TimelineSource, TimelineWindow } from "../schema.js";
+import { timelineEvent, type TimelineEvent, type TimelineSource, type TimelineWindow } from "../schema.js";
 
 /** A repository the workspace knows, as a Project's registered checkout. */
 export interface TimelineRepository {
@@ -48,11 +48,20 @@ export interface GitResult {
 export type GitRunner = (cwd: string, args: string[], options?: { input?: string; timeoutMs?: number }) => GitResult;
 export type GhRunner = (args: string[], options?: { timeoutMs?: number }) => GitResult;
 
+/** The inherited environment minus variables that would point Git at another repository, index or work tree. */
+function gitEnvironment(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"]) delete env[name];
+  return { ...env, ...READ_ONLY_GIT_ENV };
+}
+
 const READ_ONLY_GIT_ENV = {
   // Never take optional locks or refresh the index while reading.
   GIT_OPTIONAL_LOCKS: "0",
   GIT_TERMINAL_PROMPT: "0",
-  GIT_PAGER: "cat"
+  GIT_PAGER: "cat",
+  // A partial clone must never fetch a missing object while the timeline reads.
+  GIT_NO_LAZY_FETCH: "1"
 };
 
 export const runGitReadOnly: GitRunner = (cwd, args, options = {}) => {
@@ -62,7 +71,7 @@ export const runGitReadOnly: GitRunner = (cwd, args, options = {}) => {
     input: options.input,
     timeout: options.timeoutMs ?? 20_000,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, ...READ_ONLY_GIT_ENV },
+    env: gitEnvironment(),
     stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"]
   });
   return {
@@ -72,9 +81,17 @@ export const runGitReadOnly: GitRunner = (cwd, args, options = {}) => {
   };
 };
 
+/**
+ * The one GitHub call the timeline makes: `gh api repos/<owner>/<repo>/pulls?<query>`, no flags at all
+ * (any flag could set a method, a field or a body), so it is a GET by construction.
+ */
+export function isAllowedGhCall(args: readonly string[]): boolean {
+  return args.length === 2 && args[0] === "api" && /^repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pulls\?[A-Za-z0-9_=&.-]*$/.test(args[1]);
+}
+
 export const runGhReadOnly: GhRunner = (args, options = {}) => {
-  if (args[0] !== "api" || args.some((arg) => /^(-X|--method)$/i.test(arg) || /^-(f|F)$/.test(arg) || /^--(field|raw-field|input)$/.test(arg))) {
-    return { ok: false, stdout: "", stderr: "Refused: the timeline only issues `gh api` GET requests." };
+  if (!isAllowedGhCall(args)) {
+    return { ok: false, stdout: "", stderr: "Refused: the timeline only issues `gh api repos/<owner>/<repo>/pulls?…` GET requests, with no flags." };
   }
   const result = spawnSync("gh", args, {
     encoding: "utf8",
@@ -96,7 +113,7 @@ function catFile(cwd: string, mode: "--batch" | "--batch-check", input: string[]
     input: `${input.join("\n")}\n`,
     timeout: timeoutMs,
     maxBuffer,
-    env: { ...process.env, ...READ_ONLY_GIT_ENV },
+    env: gitEnvironment(),
     stdio: ["pipe", "pipe", "pipe"]
   });
   if (result.error || result.status !== 0) {
@@ -178,4 +195,23 @@ export function projectFromKey(actionKey: string | null | undefined): { project?
 
 export function shortSha(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 10) : "";
+}
+
+/** A visible notice that a source hit its per-call cap, so a reader knows older rows were not read. */
+export function truncated(source: TimelineSource, what: string, context: CollectorContext): TimelineEvent {
+  return timelineEvent({
+    id: `${source}:truncated:${what}:${context.window.since.toISOString()}`,
+    time: context.window.since,
+    clock: "collector",
+    source,
+    kind: "source.truncated",
+    workKind: "observe",
+    summary: `Only the newest ${context.maxPerSource} rows of ${what} were read; narrow --since to see older ones`,
+    provenance: { event: "the collector's per-source cap was reached" }
+  }) as TimelineEvent;
+}
+
+/** Appends a truncation notice when a capped query returned the cap. */
+export function capped(rows: unknown[], context: CollectorContext, events: TimelineEvent[], source: TimelineSource, what: string): void {
+  if (rows.length >= context.maxPerSource) events.push(truncated(source, what, context));
 }

@@ -1,7 +1,7 @@
 import { workKindFor } from "../classify.js";
 import { hostWorkerActor, operatorActor, type ActorClaim } from "../identity.js";
 import { UNKNOWN_ACTOR, timelineEvent, type TimelineEvent } from "../schema.js";
-import { hasTable, projectFromKey, requireDb, shortSha, windowParams, type Collector, type CollectorContext } from "./context.js";
+import { capped, hasTable, projectFromKey, requireDb, shortSha, windowParams, type Collector, type CollectorContext } from "./context.js";
 
 /**
  * The workspace `events` table: the managed-production tick's observations
@@ -98,6 +98,7 @@ export function collectEventsTable(context: CollectorContext): TimelineEvent[] {
     SELECT id, event_type, source_module, project_id, payload_json, created_at FROM events
     WHERE created_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(windowParams(context)) as EventRow[];
   const events: TimelineEvent[] = [];
+  capped(rows, context, events, "events", "events");
   for (const row of rows) {
     const mapped = mapEventRow(row, row.project_id ? context.projectSlugById.get(row.project_id) : undefined);
     const event = timelineEvent({

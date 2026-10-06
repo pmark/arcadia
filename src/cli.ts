@@ -4646,7 +4646,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       return;
     }
     if (options.ndjson) {
-      await runCliAction("timeline", { ...options, json: false }, () => runTimelineCommand(options), renderTimelineNdjson);
+      // One event per line and nothing else: no envelope, and no blank line when there are no events.
+      try {
+        for (const line of renderTimelineNdjson(await runTimelineCommand(options))) process.stdout.write(`${line}\n`);
+      } catch (error) {
+        // A consumer reading NDJSON gets one JSON line for the failure too.
+        const normalized = normalizeError(error);
+        process.stdout.write(`${JSON.stringify(createFailure("timeline", normalized, options.workspace ? path.resolve(options.workspace) : undefined))}\n`);
+        process.exitCode = normalized.exitCode;
+      }
       return;
     }
     await runCliAction("timeline", options, () => runTimelineCommand(options), renderTimelineSuccess);

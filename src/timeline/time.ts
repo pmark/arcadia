@@ -14,8 +14,8 @@ const UNIT_MS: Record<string, number> = {
 export const DEFAULT_LOOKBACK_MS = 24 * 3_600_000;
 
 /**
- * `--since` / `--until` / `--as-of`: an ISO time (`2026-10-06T03:30Z`, `2026-10-05`)
- * or a relative look-back from `now` (`30m`, `6h`, `1d`, `2w`).
+ * `--since` / `--until` / `--as-of`: an ISO time (`2026-10-06T03:30Z`, `2026-10-05`; a time
+ * without a zone is UTC) or a relative look-back from `now` (`30m`, `6h`, `1d`, `2w`).
  */
 export function parseTimeBound(value: string, now: Date, flag: string): Date {
   const trimmed = value.trim();
@@ -25,7 +25,9 @@ export function parseTimeBound(value: string, now: Date, flag: string): Date {
     return new Date(now.getTime() - amount * UNIT_MS[relative[2].toLowerCase()]);
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    const date = new Date(trimmed);
+    // A time with no zone is UTC, like a bare date (JavaScript would read it as local time).
+    const zoneless = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed);
+    const date = new Date(zoneless ? `${trimmed}Z` : trimmed);
     if (Number.isFinite(date.getTime())) return date;
   }
   throw validationError(`${flag} must be an ISO time (2026-10-06T03:30Z) or a relative look-back (30m, 6h, 1d, 2w).`, {

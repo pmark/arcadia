@@ -1,7 +1,7 @@
 import { workKindFor } from "../classify.js";
 import { hostWorkerActor, strongestActor, toolFromBranch, toolFromWorktreePath, type ActorClaim } from "../identity.js";
 import { UNKNOWN_ACTOR, timelineEvent, type TimelineEvent, type TimelineEventInput } from "../schema.js";
-import { hasTable, projectFromKey, requireDb, shortSha, windowParams, type Collector, type CollectorContext } from "./context.js";
+import { capped, hasTable, projectFromKey, requireDb, shortSha, windowParams, type Collector, type CollectorContext } from "./context.js";
 
 /**
  * Managed-production activity: policy transitions (activate / Terminal Off),
@@ -41,9 +41,10 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
       id: string; request_id: string; transition: string; revision_after: number; epoch_after: number; created_at: string;
       granted_by: string | null; grant_request: string | null; reason: string | null;
     }>;
+    capped(rows, context, events, "production", "production_policy_receipts");
     for (const row of rows) {
       const actor: ActorClaim = row.granted_by
-        ? { actor: { ...UNKNOWN_ACTOR, tool: "operator", name: row.granted_by, confidence: "high" }, provenance: `receipt authority.grantedBy "${row.granted_by}"` }
+        ? { actor: { ...UNKNOWN_ACTOR, tool: "operator", confidence: "high" }, provenance: "receipt authority.grantedBy names the operator (the name itself is withheld)" }
         : { actor: { ...UNKNOWN_ACTOR }, provenance: "the policy receipt names no grantor" };
       const kind = `production.policy.${row.transition}`;
       push({
@@ -74,6 +75,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
       id: string; action_key: string; project_slug: string; plan_slug: string; provider: string; epoch: number; status: string;
       issued_at: string; committed_at: string | null; released_at: string | null; fenced_at: string | null; fenced_reason: string | null;
     }>;
+    capped(rows, context, events, "production", "production_admissions");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       const subjects = { project: row.project_slug, plan: row.plan_slug, action: target.action };
@@ -96,6 +98,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
       SELECT action_key, kind, message, first_detected_at, last_seen_at FROM production_operator_escalations
       WHERE first_detected_at BETWEEN @since AND @until OR last_seen_at BETWEEN @since AND @until
       ORDER BY first_detected_at DESC LIMIT @cap`).all(params) as Array<{ action_key: string; kind: string; message: string; first_detected_at: string; last_seen_at: string }>;
+    capped(rows, context, events, "production", "production_operator_escalations");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       push({
@@ -119,6 +122,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
     const rows = db.prepare(`
       SELECT action_key, message, first_at, last_at FROM production_launch_refusal_log
       WHERE first_at BETWEEN @since AND @until OR last_at BETWEEN @since AND @until ORDER BY first_at DESC LIMIT @cap`).all(params) as Array<{ action_key: string; message: string; first_at: string; last_at: string }>;
+    capped(rows, context, events, "production", "production_launch_refusal_log");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       push({ id: `production:launch-refused:${row.action_key}:${row.first_at}`, time: row.first_at, clock: "workspace-db", source: "production", kind: "production.launch_refused", workKind: workKindFor("production.launch_refused"), summary: `Launch refused for ${row.action_key}: ${row.message}`, subjects: { project: target.project, action: target.action }, actor: worker.actor, evidence: [{ kind: "row", value: `production_launch_refusal_log/${row.action_key}` }], provenance: { event: `production_launch_refusal_log.first_at (last ${row.last_at})`, actor: worker.provenance } });
@@ -129,6 +133,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
     const rows = db.prepare(`
       SELECT action_key, attempts, last_attempt_at FROM production_repair_attempts
       WHERE last_attempt_at BETWEEN @since AND @until ORDER BY last_attempt_at DESC LIMIT @cap`).all(params) as Array<{ action_key: string; attempts: number; last_attempt_at: string }>;
+    capped(rows, context, events, "production", "production_repair_attempts");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       push({ id: `production:repair:${row.action_key}:${row.last_attempt_at}`, time: row.last_attempt_at, clock: "workspace-db", source: "production", kind: "production.repair_attempt", workKind: workKindFor("production.repair_attempt"), summary: `Repair attempt ${row.attempts} for ${row.action_key}`, subjects: { project: target.project, action: target.action }, actor: worker.actor, evidence: [{ kind: "row", value: `production_repair_attempts/${row.action_key}` }], provenance: { event: "production_repair_attempts.last_attempt_at (earlier attempts are not kept)", actor: worker.provenance } });
@@ -141,6 +146,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
       WHERE pushed_at BETWEEN @since AND @until OR ready_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as Array<{
       request_id: string; session_id: string; action_key: string; target_head: string; pull_request_url: string; pushed_at: string | null; ready_at: string | null;
     }>;
+    capped(rows, context, events, "production", "production_review_steps");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       const subjects = { project: target.project, action: target.action, session: row.session_id, commit: row.target_head, pullRequest: prNumber(row.pull_request_url) };
@@ -156,6 +162,7 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
       id: string; repository_path: string; candidate_worktree_path: string; branch: string; action_id: string; commit_sha: string; preservation_state: string;
       pull_request_number: number | null; pull_request_url: string | null; created_at: string;
     }>;
+    capped(rows, context, events, "production", "candidate_preservation_receipts");
     for (const row of rows) {
       const who = strongestActor([toolFromWorktreePath(row.candidate_worktree_path), toolFromBranch(row.branch)]);
       const repository = context.repositories.find((candidate) => candidate.path === row.repository_path);
@@ -170,8 +177,8 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
         subjects: { project: repository?.projectSlug, action: row.action_id, commit: row.commit_sha, branch: row.branch, worktree: row.candidate_worktree_path, pullRequest: row.pull_request_number ? `#${row.pull_request_number}` : undefined },
         actor: who.actor,
         evidence: [{ kind: "receipt", value: `candidate_preservation_receipts/${row.id}` }, { kind: "sha", value: row.commit_sha }, ...(row.pull_request_url ? [{ kind: "url" as const, value: row.pull_request_url }] : [])],
-        provenance: { event: "candidate_preservation_receipts.created_at", actor: who.provenance, ...(repository ? { project: "Project from the receipt's repository_path" } : {}) },
-        dedupeKeys: [`commit:${row.commit_sha}`]
+        // No commit dedupe key: the agent's commit and its settlement are separate facts from the preservation.
+        provenance: { event: "candidate_preservation_receipts.created_at", actor: who.provenance, ...(repository ? { project: "Project from the receipt's repository_path" } : {}) }
       });
     }
   }
@@ -191,6 +198,7 @@ export function collectQueue(context: CollectorContext): TimelineEvent[] {
       FROM action_queue_pointer_receipts WHERE created_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as Array<{
       id: string; request_id: string; action_key: string; head_before: string; created_at: string; previous_action: string | null; plan_path: string | null;
     }>;
+    capped(rows, context, events, "queue", "action_queue_pointer_receipts");
     for (const row of rows) {
       const target = projectFromKey(row.action_key);
       push({
@@ -204,7 +212,7 @@ export function collectQueue(context: CollectorContext): TimelineEvent[] {
         subjects: { project: target.project, action: target.action, plan: row.plan_path?.replace(/^docs\/plans\//, "").replace(/\.md$/, "") },
         evidence: [{ kind: "receipt", value: `action_queue_pointer_receipts/${row.id}` }],
         provenance: { event: "action_queue_pointer_receipts.created_at", actor: "pointer receipts do not record who moved the pointer" },
-        dedupeKeys: [`pointer-after:${row.head_before}`]
+        dedupeKeys: target.action ? [`pointer-after:${row.head_before}:${target.action}`] : []
       });
     }
   }
@@ -216,6 +224,7 @@ export function collectQueue(context: CollectorContext): TimelineEvent[] {
       FROM action_queue_receipts WHERE created_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as Array<{
       id: string; request_id: string; revision_after: number; created_at: string; operation: string | null; order_length: number | null;
     }>;
+    capped(rows, context, events, "queue", "action_queue_receipts");
     for (const row of rows) {
       const settle = /^agent-ask:(.+)$/.exec(row.request_id)?.[1];
       push({

@@ -24,7 +24,7 @@ import { pullRequestCollectors } from "./collectors/pullRequests.js";
 import { sessionsCollector } from "./collectors/sessions.js";
 import { mergeTimeline } from "./merge.js";
 import { buildPointInTimeView, type PointInTimeView } from "./rewind.js";
-import { timelineEvent, type AgentTool, type TimelineEvent, type TimelineSource, type TimelineWindow, type WorkKind } from "./schema.js";
+import { inWindow, timelineEvent, type AgentTool, type TimelineEvent, type TimelineSource, type TimelineWindow, type WorkKind } from "./schema.js";
 
 export * from "./schema.js";
 export { buildPointInTimeView, type PointInTimeView } from "./rewind.js";
@@ -176,7 +176,17 @@ export async function collectTimeline(input: CollectTimelineInput): Promise<Time
   }
 
   try {
-    const loaded = db ? loadRepositories(db) : { repositories: [], projectSlugById: new Map<string, string>() };
+    let loaded: { repositories: TimelineRepository[]; projectSlugById: Map<string, string> } = { repositories: [], projectSlugById: new Map() };
+    if (db) {
+      try {
+        loaded = loadRepositories(db);
+      } catch (error) {
+        // Without the repository list the database collectors still stream.
+        const message = (error instanceof Error ? error.message : String(error)).split("\n")[0].slice(0, 300);
+        raw.push(sourceError("project repositories", "timeline", message, now));
+        sources.push({ source: "timeline", describe: "project repositories", events: 0, durationMs: 0, error: message });
+      }
+    }
     const repositories = input.filters?.project
       ? loaded.repositories.filter((repository) => repository.projectSlug === input.filters?.project)
       : loaded.repositories;
@@ -209,14 +219,18 @@ export async function collectTimeline(input: CollectTimelineInput): Promise<Time
         sources.push({ source: collector.source, describe: collector.describe, events: 0, durationMs: Date.now() - collectorStarted, error: message });
       }
     }
-    for (const event of raw) event.subjects.workspace = input.workspacePath;
-    const merged = mergeTimeline(raw).filter((event) => matchesFilters(event, input.filters ?? {}));
+    // A row is selected when any of its timestamps falls in the window, so a collector may emit stages
+    // outside it (a review item opened inside and decided after --until). Only in-window events stream;
+    // a source_error always does.
+    const windowed = raw.filter((event) => event.kind === "source_error" || inWindow(event.time, input.window));
+    for (const event of windowed) event.subjects.workspace = input.workspacePath;
+    const merged = mergeTimeline(windowed).filter((event) => matchesFilters(event, input.filters ?? {}));
     return {
       workspace: input.workspacePath,
       window: { since: input.window.since.toISOString(), until: input.window.until.toISOString() },
       repositories: repositories.map((repository) => ({ project: repository.projectSlug, path: repository.path })),
       events: merged,
-      raw,
+      raw: windowed,
       sources,
       durationMs: Date.now() - started
     };

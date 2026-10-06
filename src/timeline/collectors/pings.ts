@@ -1,7 +1,7 @@
 import { workKindFor } from "../classify.js";
 import { actorFromName } from "../identity.js";
 import { timelineEvent, type TimelineEvent } from "../schema.js";
-import { hasTable, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
+import { capped, hasTable, requireDb, windowParams, type Collector, type CollectorContext } from "./context.js";
 
 /**
  * What reached the operator on Discord: `arcadia ping` nudges (operator_pings)
@@ -23,6 +23,7 @@ export function collectPings(context: CollectorContext): TimelineEvent[] {
       WHERE created_at BETWEEN @since AND @until OR sent_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as Array<{
       id: string; message: string; kind: string; channel: string | null; agent: string | null; status: string; created_at: string; sent_at: string | null;
     }>;
+    capped(rows, context, events, "pings", "operator_pings");
     for (const row of rows) {
       const who = actorFromName(row.agent);
       push({
@@ -51,6 +52,7 @@ export function collectPings(context: CollectorContext): TimelineEvent[] {
       WHERE notification_status = 'sent' AND notified_at BETWEEN @since AND @until ORDER BY notified_at DESC LIMIT @cap`).all(params) as Array<{
       id: string; request_id: string; project_slug: string; notified_at: string;
     }>;
+    capped(rows, context, events, "pings", "agent_ask_settlements");
     for (const row of rows) {
       push({
         id: `pings:settlement-notified:${row.id}`,

@@ -1,4 +1,4 @@
-import type { AgentTool, Confidence, TimelineEvent, WorkKind } from "./schema.js";
+import { compareText, type AgentTool, type Confidence, type TimelineEvent, type WorkKind } from "./schema.js";
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { none: 0, low: 1, medium: 2, high: 3 };
 
@@ -53,17 +53,20 @@ export interface PointInTimeView {
   activeSessions: ActiveSession[];
   activeWorktrees: ActiveWorktree[];
   production: { state: "active" | "off" | "unknown"; since: string | null };
-  attention: Array<{ id: string; time: string; summary: string; project: string | null }>;
+  attention: Array<{ id: string; time: string; summary: string; project: string | null; decision: string | null }>;
   /** Events per tool per kind of work in the hour before `asOf`. */
   lens: Array<{ tool: AgentTool; workKind: WorkKind; events: number }>;
 }
 
-const WORKTREE_KINDS = new Set(["git.commit", "git.merge", "git.worktree.created", "git.worktree.touched", "git.worktree.integrated"]);
+/** Kinds that show work happened in a worktree. "Git ran here" (git.worktree.touched) alone never makes one active. */
+const WORKTREE_KINDS = new Set(["git.commit", "git.merge", "git.worktree.created", "git.worktree.integrated"]);
+/** Signals that are not work, kept out of the kind-of-work lens. */
+const NOT_WORK = new Set(["source_error", "source.truncated", "git.worktree.touched"]);
 
 /** Folds the raw (pre-merge) events: sub-facts a merge would fold away still move the state. */
 export function buildPointInTimeView(events: TimelineEvent[], asOf: Date, windowStart: Date): PointInTimeView {
   const cutoff = asOf.getTime();
-  const past = events.filter((event) => new Date(event.time).getTime() <= cutoff).sort((a, b) => a.time.localeCompare(b.time) || a.id.localeCompare(b.id));
+  const past = events.filter((event) => new Date(event.time).getTime() <= cutoff).sort((a, b) => compareText(a.time, b.time) || compareText(a.id, b.id));
 
   const projects = new Map<string, ProjectState>();
   const sessions = new Map<string, ActiveSession>();
@@ -106,17 +109,21 @@ export function buildPointInTimeView(events: TimelineEvent[], asOf: Date, window
         name: who.name,
         confidence: who.confidence,
         lastActivity: event.time,
-        lastWorkKind: event.kind === "git.worktree.touched" ? prior?.lastWorkKind ?? event.workKind : event.workKind,
-        lastSummary: event.kind === "git.worktree.touched" ? prior?.lastSummary ?? event.summary : event.summary
+        lastWorkKind: event.workKind,
+        lastSummary: event.summary
       });
     }
 
     if (event.kind === "production.policy.activate") production = { state: "active", since: event.time };
     if (event.kind === "production.policy.deactivate") production = { state: "off", since: event.time };
 
-    if (event.attention) attention.push({ id: event.id, time: event.time, summary: event.summary, project });
+    if (event.attention) attention.push({ id: event.id, time: event.time, summary: event.summary, project, decision: event.subjects.decision ?? null });
+    if (event.kind === "decision.review_item.decided" || event.kind === "record.decision.answered") {
+      // A decided question no longer needs the operator at this moment.
+      for (let index = attention.length - 1; index >= 0; index -= 1) if (attention[index].decision === event.subjects.decision) attention.splice(index, 1);
+    }
 
-    if (cutoff - new Date(event.time).getTime() <= LENS_WITHIN_MS && event.kind !== "source_error") {
+    if (cutoff - new Date(event.time).getTime() <= LENS_WITHIN_MS && !NOT_WORK.has(event.kind)) {
       const key = `${event.actor.tool}|${event.workKind}`;
       const entry = lens.get(key) ?? { tool: event.actor.tool, workKind: event.workKind, events: 0 };
       entry.events += 1;
@@ -127,13 +134,13 @@ export function buildPointInTimeView(events: TimelineEvent[], asOf: Date, window
   return {
     asOf: asOf.toISOString(),
     windowStart: windowStart.toISOString(),
-    projects: [...projects.values()].sort((a, b) => b.lastEvent.time.localeCompare(a.lastEvent.time)),
-    activeSessions: [...sessions.values()].sort((a, b) => b.since.localeCompare(a.since)),
+    projects: [...projects.values()].sort((a, b) => compareText(b.lastEvent.time, a.lastEvent.time)),
+    activeSessions: [...sessions.values()].sort((a, b) => compareText(b.since, a.since)),
     activeWorktrees: [...worktrees.values()]
       .filter((worktree) => cutoff - new Date(worktree.lastActivity).getTime() <= ACTIVE_WITHIN_MS)
-      .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity)),
+      .sort((a, b) => compareText(b.lastActivity, a.lastActivity)),
     production,
     attention: attention.slice(-10).reverse(),
-    lens: [...lens.values()].sort((a, b) => b.events - a.events || a.tool.localeCompare(b.tool) || a.workKind.localeCompare(b.workKind))
+    lens: [...lens.values()].sort((a, b) => b.events - a.events || compareText(a.tool, b.tool) || compareText(a.workKind, b.workKind))
   };
 }

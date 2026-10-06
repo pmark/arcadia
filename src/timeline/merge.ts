@@ -1,4 +1,4 @@
-import type { Confidence, TimelineEvent, TimelineSource } from "./schema.js";
+import { compareText, type Confidence, type TimelineEvent, type TimelineSource } from "./schema.js";
 
 /**
  * De-duplication and ordering.
@@ -55,14 +55,14 @@ function comparePrimary(a: TimelineEvent, b: TimelineEvent): number {
   return (
     rank(SOURCE_PRIORITY, a.source) - rank(SOURCE_PRIORITY, b.source) ||
     rank(KIND_PRIORITY, a.kind) - rank(KIND_PRIORITY, b.kind) ||
-    a.time.localeCompare(b.time) ||
-    a.id.localeCompare(b.id)
+    compareText(a.time, b.time) ||
+    compareText(a.id, b.id)
   );
 }
 
 /** Stream order: time, then source priority, then id — total and stable across runs. */
 export function compareEvents(a: TimelineEvent, b: TimelineEvent): number {
-  return a.time.localeCompare(b.time) || rank(SOURCE_PRIORITY, a.source) - rank(SOURCE_PRIORITY, b.source) || a.id.localeCompare(b.id);
+  return compareText(a.time, b.time) || rank(SOURCE_PRIORITY, a.source) - rank(SOURCE_PRIORITY, b.source) || compareText(a.id, b.id);
 }
 
 class DisjointSet {

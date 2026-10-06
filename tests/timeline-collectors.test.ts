@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -32,8 +32,11 @@ let collection: TimelineCollection;
 
 const OPERATOR_EMAIL = "operator@example.invalid";
 
+/** Fixture Git ignores the developer's global and system config (signing, hooks, templates). */
+const ISOLATED_GIT = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+
 function git(cwd: string, args: string[], env: Record<string, string> = {}): string {
-  return execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...env } }).trim();
+  return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd, encoding: "utf8", env: { ...process.env, ...ISOLATED_GIT, ...env } }).trim();
 }
 
 const agentEnv = (name: string) => {
@@ -127,6 +130,10 @@ beforeAll(async () => {
   const now = new Date();
   const at = (offsetSeconds: number) => new Date(now.getTime() + offsetSeconds * 1000).toISOString();
   writeFileSync(path.join(runs, "receipt.json"), JSON.stringify({ schema: "arcadia-operator-run-receipt-v1", id: "grant-demo", runId: "20261006T010000Z-1", startedAt: at(-50), finishedAt: at(-40), outcome: "succeeded", stage: "complete" }));
+  // A second, later run of the same script is its own event and is not linked to the policy receipt.
+  const rerun = path.join(repo, "artifacts", "generated", "operator-scripts", "runs", "20261006T010500Z-2");
+  mkdirSync(rerun, { recursive: true });
+  writeFileSync(path.join(rerun, "receipt.json"), JSON.stringify({ schema: "arcadia-operator-run-receipt-v1", id: "grant-demo", runId: "20261006T010500Z-2", startedAt: at(-30), finishedAt: at(-20), outcome: "succeeded", stage: "complete" }));
 
   const db = new Database(databaseFile);
   // The fixture seeds one row per source without the rows those reference.
@@ -151,6 +158,9 @@ beforeAll(async () => {
       receipt_json: JSON.stringify({ intent: "complete", documentsCommit: settleSha, authority: { kind: "operator_acceptance" } }), created_at: at(-190)
     });
     insert(db, "review_items", { id: "review_1", slug: "R1", project_id: "proj_demo", status: "open", decision_needed: "Should demo ship?", source_input: "s", proposed_action: "p", resolved_intent: "r", confidence_label: "high", confidence: 1, created_at: at(-180), updated_at: at(-180) });
+    // Opened inside the window, decided after its end: only the opening may stream.
+    insert(db, "review_items", { id: "review_2", slug: "R2", project_id: "proj_demo", status: "approved", decision_needed: "Later?", source_input: "s", proposed_action: "p", resolved_intent: "r", confidence_label: "high", confidence: 1, created_at: at(-170), updated_at: at(7200), decided_at: at(7200) });
+    insert(db, "candidate_preservation_receipts", { id: "presv_1", request_id: "presv-req-1", repository_path: repo, candidate_worktree_path: worktree, branch: "codex/a2-20261006T010203000Z", base_branch: "main", base_revision: "b", action_id: "a2", packet_sha256: "p", policy_epoch: 1, policy_revision: 1, candidate_fingerprint: "f", commit_sha: agentSha, preservation_state: "PUSHED", receipt_json: "{}", created_at: at(-60) });
     insert(db, "events", { id: "event_1", event_type: "managed_production.base_branch_advanced", source_module: "managed_production_tick", project_id: "proj_demo", payload_json: JSON.stringify({ projectSlug: "demo", baseBranch: "main", newSha: settleSha }), created_at: at(-170) });
     insert(db, "production_policy_receipts", { id: "policy_1", request_id: "policy-req-1", transition: "activate", revision_before: 1, revision_after: 2, epoch_after: 3, receipt_json: JSON.stringify({ authority: { grantedBy: "The Operator", requestId: "grant-demo" } }), created_at: at(-45) });
     insert(db, "production_operator_escalations", { action_key: "demo/a2", kind: "independent_verdict_failed", message: "QA failed.", first_detected_at: at(-260), last_seen_at: at(-100) });
@@ -195,7 +205,7 @@ describe("timeline collectors on a fixture workspace", () => {
     const squash = find((event) => event.subjects.commit === squashSha);
     expect(squash).toMatchObject({ kind: "git.merge", workKind: "integrate" });
     expect(squash?.actor).toMatchObject({ tool: "claude-code", name: "Claudia Atlas", confidence: "medium" });
-    expect(squash?.actor.account).toContain("operator-github@example.invalid");
+    expect(squash?.actor.account).toContain("withheld");
     expect(squash?.subjects.pullRequest).toBe("#12");
   });
 
@@ -236,6 +246,73 @@ describe("timeline collectors on a fixture workspace", () => {
     expect(find((event) => event.kind === "ping.created")?.actor).toMatchObject({ tool: "claude-code", name: "Claudia Atlas" });
     const pointer = collection.events.find((event) => event.alsoSeenAs.some((alias) => alias.kind === "queue.pointer_moved") || event.kind === "queue.pointer_moved");
     expect(pointer).toBeDefined();
+  });
+
+  it("never puts a human's email address into the stream", () => {
+    const text = JSON.stringify(collection.events);
+    expect(text).not.toContain("operator-github@example.invalid");
+    expect(text).not.toContain(OPERATOR_EMAIL);
+    expect(text).not.toContain("The Operator");
+  });
+
+  it("skips a symlinked worktree admin directory and a FIFO where a reflog should be", () => {
+    const other = path.join(root, "other");
+    mkdirSync(other);
+    git(other, ["init", "-q", "-b", "main"]);
+    git(other, ["commit", "-q", "--allow-empty", "-m", "seed"], agentEnv("Owen Mason"));
+    const admin = path.join(other, ".git", "worktrees");
+    mkdirSync(admin, { recursive: true });
+    const elsewhere = path.join(root, "elsewhere");
+    mkdirSync(path.join(elsewhere, "logs"), { recursive: true });
+    writeFileSync(path.join(elsewhere, "gitdir"), `${path.join(root, "nowhere", ".git")}\n`);
+    symlinkSync(elsewhere, path.join(admin, "linked"));
+    execFileSync("mkfifo", [path.join(elsewhere, "logs", "HEAD")]);
+    rmSync(path.join(other, ".git", "logs", "HEAD"));
+    execFileSync("mkfifo", [path.join(other, ".git", "logs", "HEAD")]);
+    const context = { workspacePath: workspace, db: null, repositories: [], projectSlugById: new Map(), operatorEmails: new Set<string>(), window, maxPerSource: 100, now: new Date(), git: (cwd: string, args: string[]) => ({ ok: true, stdout: execFileSync("git", args, { cwd, encoding: "utf8" }), stderr: "" }), includePullRequests: false, gh: () => ({ ok: false, stdout: "", stderr: "offline" }) };
+    const events = collectRepositoryGit({ projectSlug: "other", projectId: "proj_other", path: other }, context);
+    expect(events.some((event) => event.subjects.worktree?.includes("nowhere"))).toBe(false);
+    expect(events.filter((event) => event.kind === "git.commit")).toHaveLength(1);
+  });
+
+  it("streams only events inside the window, even when a row has a stage outside it", () => {
+    expect(find((event) => event.id === "decisions:review:review_2:opened")).toMatchObject({ attention: true });
+    expect(collection.raw.find((event) => event.id === "decisions:review:review_2:decided")).toBeUndefined();
+    for (const event of collection.raw) {
+      if (event.kind === "source_error") continue;
+      expect(event.time >= window.since.toISOString() && event.time <= window.until.toISOString(), event.id).toBe(true);
+    }
+  });
+
+  it("keeps each operator-script run, linking only the first succeeded run to its Grant's policy receipt", () => {
+    const runs = collection.events.filter((event) => event.kind === "operator-script.run");
+    expect(runs.map((event) => event.id).sort()).toEqual(["operator-scripts:demo:20261006T010000Z-1", "operator-scripts:demo:20261006T010500Z-2"]);
+    expect(runs.find((event) => event.id.endsWith("Z-1"))?.alsoSeenAs.map((alias) => alias.kind)).toEqual(["production.policy.activate"]);
+    expect(runs.find((event) => event.id.endsWith("Z-2"))?.alsoSeenAs).toEqual([]);
+  });
+
+  it("keeps a preservation receipt and the agent's commit as separate facts", () => {
+    expect(find((event) => event.kind === "production.preservation")).toMatchObject({ subjects: expect.objectContaining({ commit: agentSha }), alsoSeenAs: [] });
+    expect(find((event) => event.kind === "git.commit" && event.subjects.commit === agentSha)).toBeDefined();
+  });
+
+  it("says so when a source hits its cap", async () => {
+    const capped = await collectTimeline({ workspacePath: workspace, window, maxPerSource: 1 });
+    const notices = capped.events.filter((event) => event.kind === "source.truncated");
+    expect(notices.map((event) => event.summary)).toEqual(expect.arrayContaining([expect.stringContaining("review_items")]));
+  });
+
+  it("keeps streaming the database sources when the repository list cannot be read", async () => {
+    const odd = path.join(root, "odd-workspace");
+    mkdirSync(path.dirname(getWorkspacePaths(odd).databaseFile), { recursive: true });
+    const db = new Database(getWorkspacePaths(odd).databaseFile);
+    db.exec("CREATE TABLE projects (id TEXT PRIMARY KEY)");
+    db.exec("CREATE TABLE operator_pings (id TEXT, message TEXT, kind TEXT, channel TEXT, agent TEXT, status TEXT, created_at TEXT, sent_at TEXT)");
+    db.prepare("INSERT INTO operator_pings VALUES ('p1', 'hello', 'fyi', NULL, NULL, 'sent', ?, NULL)").run(new Date().toISOString());
+    db.close();
+    const result = await collectTimeline({ workspacePath: odd, window });
+    expect(result.events.map((event) => event.kind)).toEqual(expect.arrayContaining(["source_error", "ping.created"]));
+    expect(result.sources.find((source) => source.describe === "project repositories")?.error).toBeTruthy();
   });
 
   it("turns an unreadable source into a source_error event and keeps streaming", () => {
@@ -327,6 +404,24 @@ describe("arcadia timeline command", () => {
   it("adds the rewind view with --as-of", async () => {
     const response = await runTimelineCommand({ workspace, asOf: new Date().toISOString(), since: "2h" });
     expect(response.data.view).toMatchObject({ projects: expect.arrayContaining([expect.objectContaining({ project: "demo" })]) });
+  });
+
+  it("--ndjson reports a failure as one JSON line", async () => {
+    const out = await runCli(["timeline", "--workspace", workspace, "--tool", "vim", "--ndjson"]);
+    const lines = out.trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ ok: false, command: "timeline", error: expect.objectContaining({ message: expect.stringContaining("--tool") }) });
+  });
+
+  it("--ndjson prints nothing at all for an empty window", async () => {
+    const out = await runCli(["timeline", "--workspace", workspace, "--since", "2020-01-01T00:00Z", "--until", "2020-01-01T00:01Z", "--project", "nobody", "--ndjson"]);
+    expect(out).toBe("");
+  });
+
+  it("--follow refuses --until and --as-of", async () => {
+    const io = { json: true, signal: new AbortController().signal, write: () => undefined, maxPolls: 1, sleep: () => Promise.resolve() };
+    await expect(runTimelineFollow({ workspace, until: "1h" }, io)).rejects.toThrow(/--follow/);
+    await expect(runTimelineFollow({ workspace, asOf: "1h" }, io)).rejects.toThrow(/--follow/);
   });
 
   it("--follow streams NDJSON and stops on abort", async () => {

@@ -79,8 +79,8 @@ seven days before 2026-10-06T05:00Z.
 | Source (collector) | Where it lives | What an event looks like | Volume here | Time field and trust | Read-only access | Gaps |
 |---|---|---|---|---|---|---|
 | Commits (`git`) | Every Project repository registered in `project_metadata.repo_path` (14 exist on disk, including 8 rehearsal fixtures under `~/tmp`), all local and remote-tracking branches | sha, parents, author and committer email, `Co-authored-by` trailers, the ref that reached it, subject | 7d: arcadia 784, private-practice-now 217, mission-control-site 46, three-action-rehearsal 19, v5 and v6 fixtures 6 each | Committer date: when the commit entered this history. Author dates survive rebases, so they are not used. Host clock. | `git log --branches --remotes --source --since --until --max-count` under `GIT_OPTIONAL_LOCKS=0` | Commits fetched later with old committer dates fall outside a narrow window. A squash merge's author is the operator's GitHub account; the agent shows only in trailers. |
-| Worktrees (`git`) | `<common git dir>/worktrees/*` of each repository: `gitdir`, `HEAD`, `logs/HEAD`, `index` | Worktree opened (first reflog line); merge, pull and rebase-finish reflog entries; Git last ran (index modification time); and the commit sha → worktree mapping that attributes commits | 78 linked worktrees registered (arcadia 43, mission-control-site 10, private-practice-now 5, rebuster 3, rehearsal fixtures 17); 6,833 dead fixture checkouts ignored | Reflog: host clock, exact to the second. Index modification time: set by any Git command that refreshes the index, including other tools' read-only scans, so it means "Git ran here", not "work happened". | `fs` reads of the reflog's last 512 KB plus `stat` | Removed worktrees leave no admin directory, so their history survives only as commits. Index modification time keeps only the latest value. |
-| PRs (`pull-requests`, opt-in `--pull-requests`) | GitHub REST through `gh api` GET (POST, `-f` and `--input` are refused in code) | PR opened, merged (folded into its merge commit) and closed | arcadia: 31 events in 24h from the newest 50 PRs | GitHub server time, to the second | One `gh api repos/<o>/<r>/pulls?state=all&sort=updated&per_page=50` per GitHub repository | Inside the sandbox TLS fails; the collector then reports one `source_error` and the rest of the stream continues (verified). Only the newest 50 PRs are read. Every agent uses the operator's login, so the account names no agent. |
+| Worktrees (`git`) | `<common git dir>/worktrees/*` of each repository: `gitdir`, `HEAD`, `logs/HEAD`, `index` | Worktree opened (first reflog line); merge, pull and rebase-finish reflog entries (URL credentials redacted); "Git last ran here" (index modification time, `observe`, never counted as activity); and the commit sha → worktree mapping that attributes commits | 78 linked worktrees registered (arcadia 43, mission-control-site 10, private-practice-now 5, rebuster 3, rehearsal fixtures 17); 6,833 dead fixture checkouts ignored | Reflog: host clock, exact to the second. Index modification time: set by any Git command that refreshes the index, including other tools' read-only scans, so it means "Git ran here", not "work happened". | `fs` reads of the reflog's last 512 KB plus `lstat`; symlinked admin directories and non-regular files (FIFOs) are skipped | Removed worktrees leave no admin directory, so their history survives only as commits. Index modification time keeps only the latest value. When the 512 KB tail does not reach the window start (the main checkout's reflog is about 3 MB), a `source.truncated` event says so. |
+| PRs (`pull-requests`, opt-in `--pull-requests`) | GitHub REST through `gh api`; the runner accepts only `api repos/<owner>/<repo>/pulls?<query>` with no flags at all, so every call is a GET | PR opened, merged (folded into its merge commit) and closed | arcadia: 31 events in 24h from the newest 50 PRs | GitHub server time, to the second | One `gh api repos/<o>/<r>/pulls?state=all&sort=updated&per_page=50` per GitHub repository | Inside the sandbox TLS fails; the collector then reports one `source_error` and the rest of the stream continues (verified). Only the newest 50 PRs are read. Every agent uses the operator's login, so the account names no agent; the login is withheld from the stream. |
 | Sessions (`sessions`) | `agent_sessions`, `session_role_attempts`, `session_exit_receipts` | Session prepared, started, ended or stalled; role attempt (planner, critique, development, code-review, qa) started, passed or failed; exit receipt | 19 Sessions (16 in 7d), 19 role attempts, 19 exit receipts | `workspace-db` ISO times written by Arcadia on the host clock | `SELECT` on a read-only connection | Managed Sessions only. Development attempt actor ids are opaque hashes (tool `unknown`). |
 | Agent Asks (`asks`) | `agent_ask_proposals`, `agent_ask_settlements` | Ask previewed; Ask settled or rejected, with intent, first effect line, queue Action and the `documentsCommit` sha | 936 proposals and 711 settlements in total; 362 and 285 in 7d | `workspace-db` | Identifiers, intent and effect lines only; proposal bodies are never read into the stream | Settlement rows do not record who settled. |
 | Decisions (`decisions` plus `governed-records`) | `review_items` (approval gates: code-review and QA verdicts, packet approvals, operator questions), `decision_deferral_receipts`; checked-in `docs/decisions/*.md` through their commits | Review item opened or decided; Decision raised or answered | 315 review items (40 in 7d, 69 open); 2 deferrals; 87 Decision documents in arcadia | `workspace-db`; Decision documents use the commit time (their `decided:` field is a date only) | `SELECT`; frontmatter compared before and after each commit | Review items do not record who decided. |
@@ -88,7 +88,7 @@ seven days before 2026-10-06T05:00Z.
 | Events table (`events`) | `events` | Base branch advanced (with sha); packet approved; Session stalled; orientation packets; operator replies | 969 in total, 278 in 7d (747 base-advance rows since 2026-09-15) | `workspace-db` | `SELECT` | Records observations, not who moved the branch. |
 | Managed production (`production`) | `production_policy_receipts`, `production_admissions`, `production_operator_escalations`, `production_launch_refusal_log`, `production_repair_attempts`, `production_review_steps`, `candidate_preservation_receipts` | Activated or Terminal Off (with who granted it), admission issued, committed, released or fenced, escalation, launch refused, repair attempt, PR pushed or ready, candidate preserved | Policy 39 (18 in 7d), admissions 23, escalations 3, preservation 43, review steps 5 | `workspace-db` | `SELECT` | Escalations, refusals and repairs keep only the latest row per Action; earlier occurrences are overwritten. |
 | Queue (`queue`) | `action_queue_pointer_receipts`, `action_queue_receipts` | Pointer moved (with `headBefore`); queue arranged | 95 and 227 (41 and 69 in 7d) | `workspace-db` | `SELECT` | No actor. |
-| Operator scripts (`operator-scripts`) | `artifacts/generated/operator-scripts/runs/*/receipt.json` in each repository's main checkout (git-ignored) | Operator ran a script: id, outcome, stage | 35 receipts (28 `arcadia-operator-run-receipt-v1`, 4 plan-amendment, 3 unversioned) | The receipt's `finishedAt` or `startedAt`; file modification time as a fallback | `readdir` and JSON parse of the identifying fields only | Scripts staged but never run leave no receipt. |
+| Operator scripts (`operator-scripts`) | `artifacts/generated/operator-scripts/runs/*/receipt.json` in each repository's main checkout (git-ignored) | Operator ran a script: id, outcome, stage; each run is its own event | 35 receipts (28 `arcadia-operator-run-receipt-v1`, 4 plan-amendment, 3 unversioned) | The receipt's `finishedAt` or `startedAt`; file modification time as a fallback | `readdir` and JSON parse of the identifying fields only | Scripts staged but never run leave no receipt. |
 | Discord (`pings`) | `operator_pings`; `agent_ask_settlements.notified_at` | Ping created or delivered (with the self-reported agent name); operator notified of a settlement | 3 pings; 285 settlement notifications in 7d | `workspace-db` | `SELECT` | `database/discord-*.json` delivery bookkeeping is not read; the rows above carry delivery state. |
 | Not collected | `activity_events` (CLI interaction log); `~/.claude/projects/*` transcripts, Codex `codex-thread.json` (present in 8 worktree admin dirs), OpenCode storage | | 3.19 M activity rows | | | Left out on purpose: polling noise, and transcripts hold private conversation content. Open question 2. |
 
@@ -102,9 +102,9 @@ One shape (`src/timeline/schema.ts`, `arcadia-timeline-event-v1`), for every sou
 | `time`, `clock` | UTC ISO-8601 with milliseconds, and where it came from: `git-committer-date`, `git-reflog`, `workspace-db`, `receipt-file`, `file-mtime`, `github-api` or `collector`. |
 | `source`, `kind` | The collector, and a dotted source-level kind (`git.commit`, `record.action.done`, `role.qa`, `production.admission.committed`). |
 | `workKind` | The controlled answer to "what kind of work is this" (below). |
-| `summary` | One line, at most 240 characters, built from identifiers and system-written text. No prompts or bodies. |
+| `summary` | One line, at most 240 characters. Built from identifiers plus free text that agents and the operator wrote: commit subjects, Action titles, ping messages, escalation, refusal and fencing reasons, Decision questions and answers, settlement effect lines. Never prompts, proposal bodies or transcript content, but not system-only text either; see open question 8 before posting it anywhere shared. |
 | `subjects` | `workspace`, `project`, `plan`, `action`, `session`, `ask`, `decision`, `pullRequest`, `commit`, `branch`, `worktree`, `repository`; empty values are dropped. |
-| `actor` | `tool` (`opencode`, `claude-code`, `codex`, `operator`, `host-worker`, `unknown`), `name` (for example Claudia Atlas), `tier`, `role` (builder, critic or a Session role), `account` (the account the action was recorded under when it differs, such as the operator's GitHub login), and `confidence` (high, medium, low or none). |
+| `actor` | `tool` (`opencode`, `claude-code`, `codex`, `operator`, `host-worker`, `unknown`), `name` (for example Claudia Atlas), `tier`, `role` (builder, critic or a Session role), `account` (the role of the account the action was recorded under when it differs, for example "GitHub merge under a human account (address withheld)"; a human's email, login or name never enters the stream), and `confidence` (high, medium, low or none). |
 | `attention` | True when the event asks something of the operator: an escalation, an open review item or Decision, an attention ping, a failed QA or Session, a failed operator script. |
 | `evidence` | Pointers: `sha`, `path`, `receipt`, `url`, `row`. |
 | `provenance` | How the event and each derived field were obtained, keyed by field (`event`, `time`, `actor`, `workKind`, `worktree`, `action`, `dedupe`). |
@@ -115,13 +115,13 @@ One shape (`src/timeline/schema.ts`, `arcadia-timeline-event-v1`), for every sou
 | workKind | Answers | Mapped from |
 |---|---|---|
 | `plan-design` | shaping what will be done | planner role; Action created; Plan created; Asks with intent plan, split, action, milestone or project_update; proposals |
-| `implement` | producing the change | development role and managed Sessions; agent commits (the default); worktree opened or touched |
+| `implement` | producing the change | development role and managed Sessions; agent commits (the default); worktree opened |
 | `review` | judging someone else's change | code-review and critique roles; critic identities; code-review review items; PR marked ready for review |
 | `verify` | proving it works | qa role; QA review items; `test:` commits |
 | `integrate` | landing it | merges and GitHub squash merges; PRs; base branch advanced; candidate preserved or pushed; worktree merge, pull or rebase |
 | `govern` | recording authority | Ask settlements with intent complete, decision or proposal; Decisions; pointer moves; Action done; queue changes; packet approval |
 | `operate` | running the machine | production policy, admissions, launch refusals, repairs, escalations, operator scripts, Session preparation and stalls |
-| `observe` | signals about the work | pings, notifications, orientation packets, Project Log entries, `source_error` |
+| `observe` | signals about the work | pings, notifications, orientation packets, Project Log entries, "Git last ran here" (index modification time), `source_error`, `source.truncated` |
 | `unknown` | | any kind not in the table: the table is the one place a new kind gets classified |
 
 Eight values are enough to tell the operator at a glance whether the
@@ -141,8 +141,9 @@ settlement, production). Finer kinds stay in `kind`.
 | Worktree path prefix `/.claude/worktrees/`, `/.codex/worktrees/`, `/.opencode/worktrees/` | tool | medium | The app that created the worktree. Another tool may work inside it (finding 3). |
 | Branch prefix `claude/`, `codex/`, `opencode/` | tool; Action slug from `<tool>/<action>-<timestamp>` | medium | This is worktree preparation's naming convention, so it is reported as a hint. |
 | Commit sha in a worktree's HEAD reflog | which worktree made the commit | high for the mapping | This is what lets a commit on any ref be placed in its worktree. |
-| A repository's configured `user.email` | operator | low | It is the operator's local Git identity, but Arcadia's settle and pointer commits made outside a Session use it too. It renders as `operator?`. |
-| Policy receipt `authority.grantedBy` | operator, by name | high | |
+| A repository's configured `user.email` | operator | low | It is the operator's local Git identity, but Arcadia's settle and pointer commits made outside a Session use it too. It renders as `operator?`. The address itself is never written into the stream. |
+| Policy receipt `authority.grantedBy` | operator | high | The name is withheld; only the role enters the stream. |
+| Peer-watch commit trailers `Arcadia-Agent: <agent>/<tier>` and `Arcadia-Action: <project>/<action>` (`src/agentWatch/contract.ts`) | tool, tier, name; Project and Action | high | Parsed with the contract's own `parseAgentRef` and `parseActionRef`. No launcher writes them yet (none in the last 30 days of arcadia history), so today this row adds nothing; it takes over as soon as agents adopt the contract. |
 | `/runs` operator-script receipt | operator | medium | The runner executes only on the operator's button press. |
 | Role `actor_id` `host-*` | host-worker | high | `qa-reviewer:codex-terra` gives the reviewer profile's tool (medium). |
 | `operator_pings.agent` name | tool and name from the roster | medium | The agent names itself. |
@@ -154,18 +155,29 @@ low-confidence attribution with a `?`.
 
 ## (e) Ordering and de-duplication
 
-- **Order:** time, then source priority, then id. The order is total and
-  stable, so two runs over the same data give the same stream.
+- **Window:** a row is selected when any of its timestamps falls in the
+  window, but only events whose own time is inside the window stream (a review
+  item opened inside the window and decided after `--until` shows only its
+  opening). `source_error` events always stream.
+- **Order:** time, then source priority, then id, compared by code unit (not
+  locale). The order is total and stable, so two runs over the same data give
+  the same stream on any host.
 - **One fact, one event.** Records that share a dedupe key are merged
   (union-find, so the merge is transitive):
   `commit:<sha>` (git commit, settlement `documentsCommit`, governed-record
-  facts, preservation receipt `commit_sha`, the worker's base-branch-advanced
-  `newSha`, PR `merge_commit_sha`), `settlement:<request id>` (settlement,
-  Discord notification, queue receipt `agent-ask:<request>`),
-  `ask:<proposal id>` (preview and settlement), `pointer-after:<sha>` (a
-  `point at` commit's parent and the pointer receipt's `headBefore`),
-  `operator-run:<id>` (operator-script receipt and the policy receipt its
-  Grant produced), `review:<id>` and `session-stalled:<id>`.
+  facts, the worker's base-branch-advanced `newSha`, PR `merge_commit_sha`),
+  `settlement:<request id>` (settlement, Discord notification, queue receipt
+  `agent-ask:<request>`), `ask:<proposal id>` (preview and settlement),
+  `pointer-after:<sha>:<action>` (a `point at <action>` commit's parent and
+  the pointer receipt's `headBefore` plus its Action), `operator-run:<script
+  id>` (only the *first succeeded* run of a script and the policy receipt its
+  Grant produced; every other run, including refused ones, stays its own
+  event), and `session-stalled:<id>`.
+- **Deliberately not merged:** a candidate preservation receipt and the
+  agent's commit it preserved (the receipt keeps the sha as a subject and in
+  its evidence). A review item's opening and its decision are two events,
+  unless the decision came within 5 seconds (machinery deciding, never waiting
+  on the operator), when only the decision is emitted.
 - **Which record leads:** source priority (asks, governed records, operator
   scripts, production, queue, pull requests, sessions, decisions, git, events,
   pings), then the more consequential kind (Action done before pointer moved).
@@ -181,11 +193,13 @@ over the events at or before `asOf`. It runs over the records before
 de-duplication, so sub-facts still move the state. It returns:
 
 - production state and since when;
-- worktrees active in the two hours before, each with tool, name, Action and
-  last kind of work;
+- worktrees active in the two hours before (a commit, merge, worktree opening
+  or reflog merge; "Git last ran here" alone never counts), each with tool,
+  name, Action and last kind of work;
 - running Sessions;
 - each Project's pointer, active Plan and last event;
-- the last ten events that needed attention;
+- the last ten events that needed attention, with a review item's or a
+  Decision's attention cleared once it is decided at or before `asOf`;
 - the "what kind of work" lens: events per tool per `workKind` in the hour
   before.
 
@@ -211,19 +225,29 @@ arcadia timeline --pull-requests          # also GitHub PRs (gh api GET; network
 ```
 
 - `--since` and `--until` take ISO times or look-backs (`30m`, `6h`, `1d`,
-  `2w`). A relative `--since` counts back from the window's end.
+  `2w`). A time with no zone (`2026-10-06T03:30`) is UTC, like a bare date. A
+  relative `--since` counts back from the window's end.
 - `--follow` polls every 15 s by default (`DEFAULT_FOLLOW_INTERVAL_MS`). Each
-  poll re-reads a 10-minute overlap before the previous poll's end and
-  streams each event id once. The tests drive it with fake timers.
+  poll re-reads a 10-minute overlap before the previous poll's end. A fact
+  streams once: an event counts as seen if its id or any id it absorbed
+  (`alsoSeenAs`) was streamed, so a later record that takes the lead does not
+  re-emit it. `--follow` streams up to now and refuses `--until` and
+  `--as-of`. The tests drive it with fake timers.
+- `--ndjson` prints events one per line and nothing else: no blank line for
+  an empty window, and a failure as one JSON line.
 - `--workspace` and inline `ARCADIA_WORKSPACE=` resolve as for every other
   command.
 
 It is **strictly read-only**:
 
-- The database is opened with `readonly: true, fileMustExist: true`. SQLite's
-  WAL index (`-shm`) is written by every reader; the database file never is,
-  and the test checks that.
-- Git runs under `GIT_OPTIONAL_LOCKS=0`, with no `status`, `fetch`, `gc` or
+- The database is opened with `readonly: true, fileMustExist: true`. As every
+  SQLite WAL reader does, it writes the shared-memory index (`-shm`), and on
+  an idle workspace (no other connection open) it leaves an empty `-wal`
+  behind. The database file and its content never change; the test checks
+  that.
+- Git runs under `GIT_OPTIONAL_LOCKS=0` and `GIT_NO_LAZY_FETCH=1`, with
+  `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_COMMON_DIR` stripped
+  from the inherited environment, and never runs `status`, `fetch`, `gc` or
   checkout.
 - The command is `exempt` in the experiment-guard table, as `workspace
   leak-check` is, so it records no activity row.
@@ -242,8 +266,18 @@ Each collector is independently testable against injected read-only handles.
 A collector that throws becomes one `source_error` event and one failed entry
 in `sources`; the stream continues. That was verified live twice: once when a
 30-day read overflowed a buffer (since fixed by chunked streaming), and once
-for PRs when the sandbox blocked TLS. Memory is bounded at 5,000 rows per
-source per call and by streaming blobs.
+for PRs when the sandbox blocked TLS. A failure to read the Project
+repository list is one `source_error` too; the database sources still stream.
+
+**Memory.** There is no total cap. Each query reads at most 5,000 rows per
+table, and the commit log at most 5,000 commits per repository; a capped read
+emits a visible `source.truncated` event. Governed-record facts per commit
+are not capped (a settlement that creates 20 Actions yields 20 facts), and
+the parsed frontmatter of every governed-file revision in the window is held
+until the collector finishes: Plan revisions are reduced by the line scanner
+to ids, titles and statuses. Blob contents are streamed in 32 MB chunks and
+never kept. `--limit` bounds only what is printed. Measured peak RSS is
+232 MB for 24 hours and 550 MB for 30 days.
 
 **How this relates to what already exists:**
 
@@ -251,12 +285,25 @@ source per call and by streaming blobs.
   and delivery state. It runs `git status`, which can refresh an index.
 - The dashboard's `/runs` page lists managed Sessions and execution runs.
 - `arcadia activity` reads the CLI interaction log.
+- `src/agentWatch/` is the peer-watch contract: it defines the
+  `Arcadia-Agent` / `Arcadia-Action` / `Arcadia-Heartbeat` commit trailers and
+  classifies a peer's liveness from them. The timeline reads the first two
+  for attribution, with the contract's own parsers. A future live board
+  (option A) could use the contract's heartbeat for real presence.
 - `arcadia orientation timeline` is an unrelated effort-scale chart. The name
   overlap is open question 7.
 
 None of these is an event history across sources. The timeline reuses the
 agent roster, the model-tier registry, the read-only connection and the
 experiment-guard classification instead of duplicating them.
+
+**Known limits of the parsers:**
+- SHA-256 repositories are untested: the reflog parser expects 40-hex object
+  ids and skips other lines.
+- `--no-renames` reads a renamed Plan as one deleted and one created.
+- A Project `repo_path` that is itself a linked worktree is read through its
+  common Git directory, so its own reflog is attributed as that repository's
+  main checkout.
 
 ## (g) Phase 2 UX options (choose one to start)
 
@@ -359,7 +406,18 @@ header. B is the eye-candy direction, and its cost is mostly front-end.
      subcommand stays namespaced.
    - (b) Rename it to `arcadia stream`. Consequence: no overlap, a less
      obvious word.
-8. **Delivery surface for Phase 2:**
+8. **What may a stream line carry when it leaves this machine?** Summaries
+   hold free text that agents and the operator wrote: commit subjects, Action
+   titles, ping messages, escalation and refusal reasons, Decision questions
+   and answers. Personal emails, logins and names are already withheld.
+   - (a) Default-safe: anything posted to Discord or a shared view gets
+     identifiers and kinds only, and a `--redact` option drops free text
+     locally too. Consequence: safe to share, but less legible.
+   - (b) Full summaries everywhere. Consequence: the most useful; anything an
+     agent wrote into a commit subject can reach a shared channel.
+   - (c) Full summaries locally, redacted when shared (recommended).
+     Consequence: one rule at each delivery boundary.
+9. **Delivery surface for Phase 2:**
    - (a) A dashboard page. Consequence: the best for replay and eye candy.
    - (b) Discord: a pinned live message plus digests. Consequence: ambient
      and low-friction, limited visuals.
@@ -368,18 +426,18 @@ header. B is the eye-candy direction, and its cost is mostly front-end.
 
 ## (i) Measured performance and a sample of real output
 
-Measured on this host against the live workspace on 2026-10-06. The command's
-code ran in-process through `node --import tsx`, calling `collectTimeline`
-directly: read-only database handle, no CLI activity recording, nothing
-written. Before and after a run, the database file and every repository's
-index and refs were byte-for-byte unchanged.
+Measured on this host against the live workspace on 2026-10-06, after the
+review fixes. The command's code ran in-process through `node --import tsx`,
+calling `collectTimeline` directly: read-only database handle, no CLI activity
+recording, nothing written. Before and after a run, every repository's index
+and refs were unchanged, and the database content was unchanged.
 
 | Window | Records before / after de-duplication | Wall time in `collectTimeline` | Peak RSS |
 |---|---|---|---|
-| 1 h | 72 / 35 | 1.9 s (cold) | |
-| 24 h | 620 / 342 | 1.2–1.4 s | 228 MB |
-| 7 d | 3,529 / 1,690 | 1.9 s | |
-| 30 d | 16,292 / 8,820 | 2.6–2.7 s | 545 MB |
+| 1 h | 66 / 41 | 2.2 s (cold) | |
+| 24 h | 621 / 370 | 1.3–1.4 s | 232 MB |
+| 7 d | 3,515 / 1,748 | 1.8 s | |
+| 30 d | 16,288 / 8,948 | 3.0–3.2 s | 550 MB |
 
 - Most of the fixed cost is about 100 short `git` processes across 14
   repositories. Running those in parallel is the obvious next step if
@@ -388,45 +446,49 @@ index and refs were byte-for-byte unchanged.
   0.2 s with the Plan line scanner and object-id streaming.
 - `--pull-requests` adds about 0.8 s per GitHub repository.
 
-**Sample** (sanitised: home directory shown as `~`, operator name as
-`<operator>`; summaries only). Rehearsal run 5, 2026-10-06 03:19–03:31Z:
+**Sample** (sanitised: home directory shown as `~`, GitHub owner as
+`<owner>`; the stream itself already withholds personal emails, logins and
+the operator's name). Rehearsal run 5, 2026-10-06 03:19–03:31Z; 25 of the
+window's 49 events:
 
 ```text
-  10-06 03:19:06Z  arcadia                 operate      operator                    Operator script preflight-three-action-rehearsal-run5-2026-10-06: succeeded at verdict
 ! 10-06 03:19:14Z  -                       observe      claude-code·Claudia Atlas   Ping (attention, delivered): Run 5 G6 passed. Press G7 'grant-production-three-action-rehearsal-run5-2026-
-  10-06 03:22:01Z  arcadia                 operate      operator·<operator>         Operator script grant-production-three-action-rehearsal-run5-2026-10-06: succeeded  [+1]
   10-06 03:22:02Z  three-action-rehearsal  operate      host-worker                 Admission committed: three-action-rehearsal/write-start-marker launching on claude-code-cli
-  10-06 03:22:02Z  three-action-rehearsal  operate      host-worker                 Session prepared for write-start-marker on claude-code-cli (sonnet)
-  10-06 03:22:12Z  three-action-rehearsal  implement    claude-code                 Worktree opened on claude/write-start-marker-20261006T032202909Z
+  10-06 03:22:02Z  three-action-rehearsal  operate      host-worker                 Admission issued for three-action-rehearsal/write-start-marker on claude-code-cli (epoch 24)
   10-06 03:22:12Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Session started on write-start-marker
-  10-06 03:22:42Z  three-action-rehearsal  integrate    claude-code·Claudia Mason   Candidate for write-start-marker preserved: IN PR (PR #5)  [+1]
+  10-06 03:22:29Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Add MARKER.md for three-action rehearsal start (run 5)
+  10-06 03:22:42Z  three-action-rehearsal  integrate    claude-code                 Candidate for write-start-marker preserved: IN PR (PR #5)
   10-06 03:23:46Z  three-action-rehearsal  govern       claude-code·Claudia Mason   Ask complete-write-start-marker-run5-2026-10-06 settled (complete): Marked Action three-action-rehearsal/w
-  10-06 03:24:01Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Session completed on write-start-marker
+  10-06 03:23:54Z  three-action-rehearsal  integrate    claude-code                 Candidate for write-start-marker preserved: IN PR (PR #5)
   10-06 03:24:03Z  three-action-rehearsal  review       host-worker                 PR #5 marked ready for review (three-action-rehearsal/write-start-marker)
   10-06 03:25:04Z  three-action-rehearsal  review       codex                       code-review passed on write-start-marker
-! 10-06 03:26:06Z  three-action-rehearsal  verify       codex                       QA failed on write-start-marker
-  10-06 03:26:40Z  three-action-rehearsal  verify       unknown                     R311 rejected: QA fail for pmark/arcadia-three-action-rehearsal-20261004#5 at f68ec48ed4ff95772fee108258d4
+  10-06 03:25:35Z  three-action-rehearsal  review       unknown                     R310 approved: Code review pass for <owner>/arcadia-three-action-rehearsal-20261004#5 at f68ec48ed4ff95772
+  10-06 03:26:40Z  three-action-rehearsal  verify       unknown                     R311 rejected: QA fail for <owner>/arcadia-three-action-rehearsal-20261004#5 at f68ec48ed4ff95772fee108258
   10-06 03:27:48Z  three-action-rehearsal  verify       codex                       QA attempt 2 started on write-start-marker
-  10-06 03:28:08Z  three-action-rehearsal  verify       codex                       QA passed on write-start-marker
+  10-06 03:28:08Z  three-action-rehearsal  verify       unknown                     R312 approved: QA pass for <owner>/arcadia-three-action-rehearsal-20261004#5 at f68ec48ed4ff95772fee108258
   10-06 03:28:09Z  three-action-rehearsal  integrate    operator?                   merge f68ec48ed4ff95772fee108258d401158c26a54d: Fast-forward
-  10-06 03:28:12Z  three-action-rehearsal  plan-design  host-worker                 planner passed on transform-start-marker
+  10-06 03:28:12Z  three-action-rehearsal  review       host-worker                 critique passed on transform-start-marker
   10-06 03:28:16Z  three-action-rehearsal  govern       host-worker                 Build packet approved for three-action-rehearsal/transform-start-marker
-  10-06 03:28:29Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Session started on transform-start-marker
-  10-06 03:29:06Z  three-action-rehearsal  integrate    claude-code·Claudia Mason   Candidate for transform-start-marker preserved: IN PR (PR #6)  [+1]
+  10-06 03:28:19Z  three-action-rehearsal  govern       unknown                     R313 approved: Approve the immutable build packet for "Implement appending the start line transformed to u
+  10-06 03:28:21Z  three-action-rehearsal  operate      host-worker                 Admission issued for three-action-rehearsal/transform-start-marker on claude-code-cli (epoch 24)
+  10-06 03:28:59Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Append transformed start marker and add marker tests
+  10-06 03:29:06Z  three-action-rehearsal  integrate    claude-code                 Candidate for transform-start-marker preserved: IN PR (PR #6)
+  10-06 03:29:41Z  three-action-rehearsal  observe      unknown                     Git last ran in the main checkout (main)
 ! 10-06 03:30:14Z  three-action-rehearsal  operate      host-worker                 Escalation (independent verdict failed) on three-action-rehearsal/transform-start-marker: Integration wait
-  10-06 03:30:20Z  three-action-rehearsal  implement    claude-code·Claudia Mason   Session completed on transform-start-marker
+  10-06 03:30:14Z  three-action-rehearsal  integrate    claude-code                 Candidate for transform-start-marker preserved: IN PR (PR #6)
   10-06 03:30:23Z  three-action-rehearsal  review       host-worker                 PR #6 marked ready for review (three-action-rehearsal/transform-start-marker)
 ```
 
-(The window holds 46 events; 24 are shown.) The rewind view as of 03:31Z
-(`--as-of 2026-10-06T03:31Z --since 6h`), abridged:
+The rewind view as of 03:31Z (`--as-of 2026-10-06T03:31Z --since 6h`),
+abridged:
 
 ```text
 Production: active since 2026-10-06T03:22:01.033Z
 
 Active worktrees (activity in the 2 hours before):
-  10-06 03:30:20Z  three-action-rehearsal  claude-code·Claudia Mason   govern       transform-start-marker
-  10-06 03:24:00Z  three-action-rehearsal  claude-code·Claudia Mason   govern       write-start-marker
+  10-06 03:30:04Z  three-action-rehearsal  claude-code·Claudia Mason   govern       transform-start-marker
+  10-06 03:28:09Z  three-action-rehearsal  operator?                   integrate    main
+  10-06 03:23:46Z  three-action-rehearsal  claude-code·Claudia Mason   govern       write-start-marker
   10-06 02:39:05Z  arcadia                 claude-code·Claudia Atlas   govern       prepare-run-5-rehearsal-scripts
 
 Running Sessions:
@@ -437,7 +499,7 @@ Projects (latest first):
   arcadia                 pointer fix-reviewer-verdict-name-echo  · last: 10-06 03:22:01Z operate Operator script grant-production-three-action-rehearsal-run5-2026-10-06: succeeded
 
 What kind of work (hour before):
-  claude-code  implement   11
+  claude-code  implement   9
   host-worker  operate     9
   claude-code  govern      8
   codex        verify      3
@@ -447,14 +509,17 @@ Needed attention:
   10-06 03:26:06Z  QA failed on write-start-marker
 ```
 
-One NDJSON event: the preservation receipt with its commit folded in.
+One NDJSON event: a preservation receipt. The agent's commit it preserved
+streams as its own event (line "Add MARKER.md …" above), and the
+receipt's actor comes only from the worktree path and branch (medium, no
+name), so it says no more than its evidence:
 
 ```json
-{"schema":"arcadia-timeline-event-v1","id":"production:preservation:presv_51e8ff43ce4f404ca4","time":"2026-10-06T03:22:42.978Z","clock":"workspace-db","source":"production","kind":"production.preservation","workKind":"integrate","summary":"Candidate for write-start-marker preserved: IN PR (PR #5)","subjects":{"project":"three-action-rehearsal","action":"write-start-marker","commit":"735662021c29b5f43c669edb3b3fcddecdc69345","branch":"claude/write-start-marker-20261006T032202909Z","worktree":"~/.claude/worktrees/write-start-marker-20261006T032202909Z/arcadia-three-action-rehearsal","pullRequest":"#5","workspace":"~/Dev/MR/Arcadia/workspaces/martianrover","repository":"~/tmp/arcadia-three-action-rehearsal"},"actor":{"tool":"claude-code","name":"Claudia Mason","tier":"standard","role":"builder","account":null,"confidence":"high"},"attention":false,"evidence":[{"kind":"receipt","value":"candidate_preservation_receipts/presv_51e8ff43ce4f404ca4"},{"kind":"sha","value":"735662021c29b5f43c669edb3b3fcddecdc69345"},{"kind":"url","value":"https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/5"}],"provenance":{"event":"candidate_preservation_receipts.created_at","actor":"actor from author email claudia.mason@agents.arcadia.local (agent identity roster); …; tool from worktree path prefix .claude/worktrees (the tool that created the worktree); tool from branch prefix claude/ (from merged git record git:three-action-rehearsal:commit:7356620…)","project":"Project from the receipt's repository_path","dedupe":"merged 1 other record(s) of the same fact by shared key"},"alsoSeenAs":[{"id":"git:three-action-rehearsal:commit:735662021c29b5f43c669edb3b3fcddecdc69345","source":"git","kind":"git.commit","time":"2026-10-06T03:22:29.000Z","summary":"Add MARKER.md for three-action rehearsal start (run 5)"}]}
+{"schema":"arcadia-timeline-event-v1","id":"production:preservation:presv_51e8ff43ce4f404ca4","time":"2026-10-06T03:22:42.978Z","clock":"workspace-db","source":"production","kind":"production.preservation","workKind":"integrate","summary":"Candidate for write-start-marker preserved: IN PR (PR #5)","subjects":{"project":"three-action-rehearsal","action":"write-start-marker","commit":"735662021c29b5f43c669edb3b3fcddecdc69345","branch":"claude/write-start-marker-20261006T032202909Z","worktree":"~/.claude/worktrees/write-start-marker-20261006T032202909Z/arcadia-three-action-rehearsal","pullRequest":"#5","workspace":"~/Dev/MR/Arcadia/workspaces/martianrover"},"actor":{"tool":"claude-code","name":null,"tier":null,"role":null,"account":null,"confidence":"medium"},"attention":false,"evidence":[{"kind":"receipt","value":"candidate_preservation_receipts/presv_51e8ff43ce4f404ca4"},{"kind":"sha","value":"735662021c29b5f43c669edb3b3fcddecdc69345"},{"kind":"url","value":"https://github.com/<owner>/arcadia-three-action-rehearsal-20261004/pull/5"}],"provenance":{"event":"candidate_preservation_receipts.created_at","actor":"tool from worktree path prefix .claude/worktrees (the tool that created the worktree); tool from branch prefix claude/","project":"Project from the receipt's repository_path"},"alsoSeenAs":[]}
 ```
 
 In twelve minutes, this sample shows run 5 as the operator lived it: the
-operator's Grant, the worker admitting and launching Claudia Mason, the
-candidate preserved into PR #5, Codex's reviewer passing code review, QA
-failing then passing, and the second Action's QA failure escalating to the
+operator's Grant, the worker admitting and launching Claudia Mason, her commit
+and the candidate preserved into PR #5, Codex's reviewer passing code review,
+QA failing then passing, and the second Action's QA failure escalating to the
 operator. Each line names who did it, of what kind, and how that is known.

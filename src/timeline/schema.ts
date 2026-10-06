@@ -211,3 +211,8 @@ export function inWindow(time: string, window: TimelineWindow): boolean {
   const ms = new Date(time).getTime();
   return ms >= window.since.getTime() && ms <= window.until.getTime();
 }
+
+/** Locale-independent ordering by UTF-16 code unit, so the stream's total order is the same on every host. */
+export function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}

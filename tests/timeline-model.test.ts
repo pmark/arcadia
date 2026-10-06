@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyCommit, workKindFor, WORK_KIND_BY_EVENT_KIND } from "../src/timeline/classify.js";
 import { diffGovernedFile, parseFrontmatter, scanPlanFrontmatter } from "../src/timeline/collectors/governed.js";
-import { parseReflogLine } from "../src/timeline/collectors/git.js";
+import { isAllowedGhCall, runGhReadOnly } from "../src/timeline/collectors/context.js";
+import { parseReflogLine, redactUrlUserinfo } from "../src/timeline/collectors/git.js";
 import { githubSlug } from "../src/timeline/collectors/pullRequests.js";
 import { DEFAULT_FOLLOW_INTERVAL_MS, followTimeline } from "../src/timeline/follow.js";
 import {
@@ -9,6 +10,8 @@ import {
   actorFromCoAuthors,
   actorFromEmail,
   actorFromName,
+  actorFromPeerWatchTrailer,
+  actionFromPeerWatchTrailer,
   actorFromRoleActorId,
   actorFromSession,
   strongestActor,
@@ -89,6 +92,13 @@ describe("agent tool and semantic-name recovery", () => {
     expect(actorFromRoleActorId("development-abc123", "development").actor.tool).toBe("unknown");
   });
 
+  it("reads the peer-watch contract trailers exactly, and nothing malformed", () => {
+    expect(actorFromPeerWatchTrailer("codex/heavy")?.actor).toMatchObject({ tool: "codex", tier: "heavy", name: "Cody Atlas", confidence: "high" });
+    expect(actorFromPeerWatchTrailer("vim/heavy")).toBeNull();
+    expect(actionFromPeerWatchTrailer("arcadia/operator-timeline-phase-1")).toEqual({ project: "arcadia", action: "operator-timeline-phase-1" });
+    expect(actionFromPeerWatchTrailer("not an action")).toBeNull();
+  });
+
   it("lets the strongest claim win, fills gaps from agreeing claims and notes disagreement", () => {
     const combined = strongestActor([toolFromWorktreePath("/h/.codex/worktrees/a/r"), actorFromEmail("claudia.atlas@agents.arcadia.local")]);
     expect(combined.actor).toMatchObject({ tool: "claude-code", name: "Claudia Atlas" });
@@ -107,6 +117,8 @@ describe("work kind classification", () => {
     expect(workKindFor("production.admission.issued")).toBe("operate");
     expect(workKindFor("pr.merged")).toBe("integrate");
     expect(workKindFor("brand.new.kind")).toBe("unknown");
+    // "Git ran here" is a signal, not work.
+    expect(workKindFor("git.worktree.touched")).toBe("observe");
   });
 
   it("classifies commits by critic role, merge shape and conventional prefix", () => {
@@ -137,6 +149,10 @@ describe("time windows", () => {
     expect(parseTimeBound("6h", now, "--since").toISOString()).toBe("2026-10-05T23:00:00.000Z");
     expect(parseTimeBound("30m", now, "--since").toISOString()).toBe("2026-10-06T04:30:00.000Z");
     expect(parseTimeBound("2026-10-06T03:30Z", now, "--since").toISOString()).toBe("2026-10-06T03:30:00.000Z");
+    // A time with no zone is UTC, like a bare date, never the host's local time.
+    expect(parseTimeBound("2026-10-06T03:30", now, "--since").toISOString()).toBe("2026-10-06T03:30:00.000Z");
+    expect(parseTimeBound("2026-10-06", now, "--since").toISOString()).toBe("2026-10-06T00:00:00.000Z");
+    expect(parseTimeBound("2026-10-06T03:30:00-07:00", now, "--since").toISOString()).toBe("2026-10-06T10:30:00.000Z");
     expect(() => parseTimeBound("yesterday", now, "--since")).toThrow(/ISO time/);
     const rewind = resolveWindow({ asOf: "2026-10-06T03:30:00Z", since: "2h", now });
     expect(rewind.until.toISOString()).toBe("2026-10-06T03:30:00.000Z");
@@ -220,6 +236,31 @@ describe("parsers", () => {
   });
 });
 
+describe("read-only GitHub guard", () => {
+  it("allows only the pulls listing with no flags, and refuses every write shape", () => {
+    expect(isAllowedGhCall(["api", "repos/pmark/arcadia/pulls?state=all&sort=updated&direction=desc&per_page=50"])).toBe(true);
+    for (const args of [
+      ["api", "repos/pmark/arcadia/pulls?state=all", "-X", "POST"],
+      ["api", "repos/pmark/arcadia/pulls?state=all", "--method=POST"],
+      ["api", "-XPOST", "repos/pmark/arcadia/pulls?state=all"],
+      ["api", "repos/pmark/arcadia/pulls?state=all", "-fq=x"],
+      ["api", "repos/pmark/arcadia/pulls?state=all", "--raw-field=title=x"],
+      ["api", "graphql"],
+      ["api", "repos/pmark/arcadia/issues?state=all"],
+      ["api", "repos/pmark/arcadia/pulls/1/merge"],
+      ["pr", "merge", "1"]
+    ]) {
+      expect(isAllowedGhCall(args), args.join(" ")).toBe(false);
+      expect(runGhReadOnly(args)).toMatchObject({ ok: false, stderr: expect.stringContaining("Refused") });
+    }
+  });
+
+  it("redacts credentials from URLs a reflog message carries", () => {
+    expect(redactUrlUserinfo("pull https://user:token@github.com/pmark/x.git: Fast-forward")).toBe("pull https://***@github.com/pmark/x.git: Fast-forward");
+    expect(redactUrlUserinfo("pull origin main")).toBe("pull origin main");
+  });
+});
+
 describe("--follow", () => {
   it("polls on the documented default interval and streams each event once", async () => {
     vi.useFakeTimers();
@@ -255,6 +296,22 @@ describe("--follow", () => {
     await expect(done).resolves.toMatchObject({ polls: 3, emitted: 2 });
   });
 
+  it("does not stream a fact again when a later poll changes which record leads it", async () => {
+    const commit = event({ id: "git:commit", time: "2026-10-06T04:00:00Z", dedupeKeys: ["commit:x"] });
+    const settlement = event({ id: "asks:settlement", source: "asks", kind: "ask.settled", workKind: "govern", time: "2026-10-06T04:00:05Z", dedupeKeys: ["commit:x"] });
+    let poll = 0;
+    const emitted: string[] = [];
+    await followTimeline({
+      since: new Date("2026-10-06T03:00:00Z"),
+      now: () => new Date("2026-10-06T05:00:00Z"),
+      maxPolls: 3,
+      sleep: () => Promise.resolve(),
+      collect: () => Promise.resolve(mergeTimeline(poll++ === 0 ? [commit] : [commit, settlement])),
+      emit: (item) => emitted.push(item.id)
+    });
+    expect(emitted).toEqual(["git:commit"]);
+  });
+
   it("caps the backlog on the first poll", async () => {
     const store = [1, 2, 3, 4].map((n) => event({ id: `e${n}`, time: `2026-10-06T0${n}:00:00Z` }));
     const emitted: string[] = [];
@@ -282,6 +339,19 @@ describe("point-in-time read model", () => {
     expect(view.projects[0]).toMatchObject({ project: "demo", pointer: { action: "a1" } });
     expect(view.lens).toContainEqual({ tool: "claude-code", workKind: "implement", events: 2 });
     expect(view.attention).toEqual([]);
+    // "Git ran here" alone never makes a worktree active or counts as work.
+    const touchedOnly = buildPointInTimeView(
+      [event({ id: "t1", kind: "git.worktree.touched", workKind: "observe", time: "2026-10-06T01:20:00Z", subjects: { project: "demo", worktree: "/h/.codex/worktrees/b/r" } })],
+      new Date("2026-10-06T01:30:00Z"),
+      new Date("2026-10-06T00:00:00Z")
+    );
+    expect(touchedOnly.activeWorktrees).toEqual([]);
+    expect(touchedOnly.lens).toEqual([]);
+    // An opened question needs the operator until it is decided.
+    const opened = event({ id: "r-open", source: "decisions", kind: "decision.review_item.opened", workKind: "govern", time: "2026-10-06T01:00:00Z", subjects: { decision: "R1" }, attention: true });
+    const decided = event({ id: "r-done", source: "decisions", kind: "decision.review_item.decided", workKind: "govern", time: "2026-10-06T02:00:00Z", subjects: { decision: "R1" } });
+    expect(buildPointInTimeView([opened, decided], new Date("2026-10-06T01:30:00Z"), new Date("2026-10-06T00:00:00Z")).attention.map((item) => item.id)).toEqual(["r-open"]);
+    expect(buildPointInTimeView([opened, decided], new Date("2026-10-06T02:30:00Z"), new Date("2026-10-06T00:00:00Z")).attention).toEqual([]);
     const later = buildPointInTimeView(events, new Date("2026-10-06T03:00:00Z"), new Date("2026-10-06T00:00:00Z"));
     expect(later.activeSessions).toEqual([]);
     expect(later.production.state).toBe("off");
