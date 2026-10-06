@@ -404,7 +404,12 @@ broker): rerun G6.
    again; so does any candidate whose launch base carries local commits that no
    remote branch has (for example an unpushed operator commit on `main`), which
    before opened on `main` with those commits in its diff. A stacked PR later
-   retargeted on GitHub gets no verdict until its base is restored. An adopter
+   retargeted on GitHub gets no verdict until its base is restored; that
+   includes GitHub's own retarget to `main` after the previous PR is merged
+   there and its branch auto-deleted (restore the branch and retarget back, or
+   land by hand), deliberately conservative because the published plan names
+   the stacked branch. Do not merge a stacked PR on GitHub: it would land in
+   the previous candidate's branch; Arcadia integrates locally. An adopter
    Project whose CI runs only for PRs into `main` reports no checks on a stacked
    PR (a visible `required_checks_timeout`). Proven offline by the fast harness (`tests/fast-rehearsal/`: the
    serial pair, a three-Action chain stacked PR 1 on `main`, PR 2 on candidate

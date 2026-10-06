@@ -310,6 +310,17 @@ describe("preserveCandidate with stacked bases", () => {
     expect(receipt.prBase?.reason).toContain("; kept.");
     expect(kept.updated.map((entry) => entry.number)).toEqual([8]);
     expect(kept.updated[0].body).toContain(`- **Base:** \`main\` at \`${published.previousHead}\``);
+
+    // The reverse: an existing PR stacked on the previous branch stays stacked after the operator publishes main at the base revision.
+    const stackedThenPublished = serial();
+    g(stackedThenPublished.repo, ["push", "-q", "origin", "main"]);
+    const stackedRemote = new Remote();
+    stackedRemote.existing = { number: 10, url: "https://example.test/pull/10", baseRefName: stackedThenPublished.previous };
+    const keptStacked = withDatabase(stackedThenPublished.workspace, (db) => preserveCandidate(db, request(stackedThenPublished), { remote: stackedRemote }));
+    expect(keptStacked.prBase).toMatchObject({ kind: "stacked", branch: stackedThenPublished.previous, tip: stackedThenPublished.previousHead });
+    expect(keptStacked.prBase?.reason).toContain("; kept.");
+    expect(stackedRemote.updated.map((entry) => entry.number)).toEqual([10]);
+    expect(stackedRemote.updated[0].body).toContain(`- **Base:** \`${stackedThenPublished.previous}\` at \`${stackedThenPublished.previousHead}\``);
   });
 });
 
