@@ -73,8 +73,8 @@ describe("Operator QA plan rendering", () => {
     expect(steps).toEqual([["3", "1"], ["4", "2"], ["5", "3"]]);
     expect(body).toContain(`- **Do:** inspect \`tests/marker.test.mjs\` with \`git show ${COMMIT}:tests/marker.test.mjs\`; then run \`git show ${COMMIT}:tests/marker.test.mjs | grep -Fxn -- 'node scripts/check-rehearsal.mjs'\`.`);
     // A backticked command in a criterion is never lifted into a run step.
-    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.\n- **Expected:** the diff shows what changed. That is all this inspection shows: a diff never shows that a command passes. This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step 6 is the command this criterion names: Step 6's exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes. The criterion, exactly as worded: “\\\`pnpm test\\\` passes.”`);
-    expect(body).toContain("Whether it passes is proven only by Step 6, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. The criterion, exactly as worded: “tests/marker.test.mjs exists and passes");
+    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.\n- **Expected:** the diff shows what changed. That is all this inspection shows: a diff never shows that a command passes. This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step 6 is the command this criterion names: Step 6's exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes. Any other part of this criterion must show in this step's output. The criterion, exactly as worded: “\\\`pnpm test\\\` passes.”`);
+    expect(body).toContain("Whether the named command passes is proven only by Step 6, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. Any other part of this criterion must show in this step's output. The criterion, exactly as worded: “tests/marker.test.mjs exists and passes");
     expect(body).not.toContain("that output shows this criterion holds, exactly as worded: “tests/marker.test.mjs");
     expect(body).not.toContain("run `pnpm test`");
     expect(body).not.toContain("run `node --test`");
@@ -95,7 +95,7 @@ describe("Operator QA plan rendering", () => {
       "### Step 4 — Acceptance criterion 2 of 2",
       "",
       `- **Do:** inspect \`scripts/check-rehearsal.mjs\` with \`git show ${COMMIT}:scripts/check-rehearsal.mjs\`.`,
-      "- **Expected:** the file content is shown. That is all this inspection shows: that `scripts/check-rehearsal.mjs` exists at the candidate commit and what it contains. Showing a file's source never shows that a command passes. Whether it passes is proven only by Step 5, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. The criterion, exactly as worded: “The genesis check node scripts/check-rehearsal.mjs passes.”",
+      "- **Expected:** the file content is shown. That is all this inspection shows: that `scripts/check-rehearsal.mjs` exists at the candidate commit and what it contains. Showing a file's source never shows that a command passes. Whether the named command passes is proven only by Step 5, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. Any other part of this criterion must show in this step's output. The criterion, exactly as worded: “The genesis check node scripts/check-rehearsal.mjs passes.”",
       "",
       ""
     ].join("\n"));
@@ -119,24 +119,34 @@ describe("Operator QA plan rendering", () => {
       expect(expected).not.toMatch(/shows this criterion holds/);
       expect(expected).toMatch(/never shows that a command passes/);
       expect(expected).not.toMatch(/(?:source|inspection|diff|output) (?:shows|proves) (?:that )?(?:it|the check|the command|this criterion) (?:passes|holds)/);
-      expect(expected).toMatch(/never shows that a command passes/);
     }
     // A declared command named exactly is the proof; another command, even a near
     // namesake, is not, and the plan says it offers no direct proof.
     const proof = (criterion: string, validationCommands: readonly string[]) =>
       rendered(source({ acceptanceCriteria: [criterion], validationCommands }), facts()).split("\n").find((line) => line.includes("exactly as worded")) ?? "missing";
     expect(proof("`scripts/check.sh` exits 0 on the candidate.", ["pnpm test"])).toContain("none of the Project's declared validation commands in Step 4 is the command this criterion names: Step 4's exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes.");
-    expect(proof("tests/marker.test.mjs exists and passes under node --test.", [])).toContain("the Project declares no validation commands, so this plan offers no proof that it passes.");
+    expect(proof("tests/marker.test.mjs exists and passes under node --test.", [])).toContain("the Project declares no validation commands, so this plan offers no proof that the named command passes.");
     for (const nearNamesake of ["`pnpm test:unit` passes.", "`pnpm test -- --grep x` passes."]) {
       expect(proof(nearNamesake, ["pnpm test"])).toContain("offers no direct proof that this criterion's command passes");
-      expect(proof(nearNamesake, ["pnpm test"])).not.toContain("Whether it passes is proven");
+      expect(proof(nearNamesake, ["pnpm test"])).not.toContain("Whether the named command passes is proven");
     }
-    expect(proof("pnpm test:unit passes.", ["pnpm test"])).not.toContain("Whether it passes is proven");
+    expect(proof("pnpm test:unit passes.", ["pnpm test"])).not.toContain("Whether the named command passes is proven");
     expect(proof("`pnpm lint` and `pnpm test` pass; pnpm lint succeeds and pnpm test passes.", ["pnpm lint", "pnpm test"]))
       .toContain("`echo $?` immediately after each of `pnpm lint` and `pnpm test` prints `0`.");
     // A compound criterion still asks the inspection output to show its file-content parts.
     expect(rendered(source({ acceptanceCriteria: ["MARKER.md contains exactly \"hello\" and `pnpm test` passes."], validationCommands: ["pnpm test"] })))
-      .toContain("and nothing when no line matches; and that output shows whether the parts of this criterion about file content hold. That is all this inspection shows: that `MARKER.md` exists");
+      .toContain("and nothing when no line matches. That is all this inspection shows: that `MARKER.md` exists at the candidate commit and what it contains. Showing a file's source never shows that a command passes. Whether the named command passes is proven only by Step 4, the Project's declared validation: `echo $?` immediately after `pnpm test` prints `0`. Any other part of this criterion must show in this step's output.");
+    // Only a declared command whose own clause passes is cited as proof.
+    expect(proof("`pnpm lint` fails on the old tree but `pnpm test` passes.", ["pnpm lint", "pnpm test"]))
+      .toContain("immediately after `pnpm test` prints `0`.");
+    // A negation that does not govern the pass word, a colon or a version number does not hide the check.
+    for (const criterion of [
+      "`pnpm test` reports no failures and passes.",
+      "Running `pnpm test` with no network passes.",
+      "`pnpm test` (including the new no-op case) passes.",
+      "Run `pnpm test`: it passes.",
+      "`pnpm test` on node v2.0 passes."
+    ]) expect(proof(criterion, ["pnpm test"]), criterion).toContain("Whether the named command passes is proven only by Step 4");
   });
 
   it("keeps the ordinary wording for criteria that are not a command that must pass (Issue #986 false positives)", () => {
@@ -146,14 +156,17 @@ describe("Operator QA plan rendering", () => {
       "`arcadia settle` with a stale id does not succeed.",
       "`scripts/check.sh` never exits 0 when MARKER.md is missing.",
       "The genesis check node scripts/check-rehearsal.mjs fails, then passes once fixed.",
-      "MARKER.md exists."
+      "MARKER.md exists.",
+      "The function `parse` passes its input through unchanged.",
+      "The `--strict` flag passes validation.",
+      "Expose `isPass` so a user passes."
     ]) {
       const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: ["node scripts/check-rehearsal.mjs", "pnpm test"] }));
       expect(body, criterion).toContain(`and that output shows this criterion holds, exactly as worded: “${criterion.replace(/`/g, "\\`")}”`);
       expect(body, criterion).not.toContain("never shows that a command passes");
     }
     expect(rendered(source({ acceptanceCriteria: ["`pnpm lint` succeeds."], validationCommands: ["pnpm lint", "pnpm test"] })))
-      .toContain("Whether it passes is proven only by Step 4, the Project's declared validation: `echo $?` immediately after `pnpm lint` prints `0`.");
+      .toContain("Whether the named command passes is proven only by Step 4, the Project's declared validation: `echo $?` immediately after `pnpm lint` prints `0`.");
   });
 
   it("never turns a negated or mutating criterion into a run step", () => {
