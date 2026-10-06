@@ -4,7 +4,7 @@ type: decision
 id: "0085"
 slug: decide-whether-arcadia-may-make-the-existing-local-litellm-speech-credential
 project: arcadia
-status: open
+status: approved
 question: "Decide whether Arcadia may make the existing local LiteLLM speech credential available solely to render the requested Issue #944 podcast WAV."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-06
+updated: 2026-10-05
+answer: Authorize one local-only render
+decided: 2026-10-05
 ---
 
 # Decision 0085: Decide whether Arcadia may make the existing local LiteLLM speech credential available solely to render the requested Issue #944 podcast WAV.
