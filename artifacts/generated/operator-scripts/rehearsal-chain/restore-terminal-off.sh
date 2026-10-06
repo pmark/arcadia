@@ -162,11 +162,20 @@ record_str chainRunId "$RUN_PARAM_ID"
 # receipt recorded (G7 records them before any preview or activation). With no such receipt (a G7
 # that vanished after activating), the request id, Project and Plan plus a scope made only of this
 # fixture's chain Action ids.
+# The latest receipt of a G7 attempt that activated (activated true, also on a refused run whose
+# cleanup observed its own policy Active) or succeeded is preferred: a later refused attempt also
+# records actionIds before it refuses, and must not displace the scope that was actually activated.
+# Only when no attempt activated or succeeded does the latest receipt with actionIds decide.
 G7_RECEIPT=""
+G7_ANY_RECEIPT=""
 for candidate in "$LIBRARY_DIR"/runs/*/receipt.json; do
   [[ -f "$candidate" ]] || continue
-  if jq -e --arg id "$GRANT_ID" '.id == $id and (.actionIds | type == "array" and length >= 3 and all(.[]; type == "string"))' "$candidate" >/dev/null 2>&1; then G7_RECEIPT="$candidate"; fi
+  if jq -e --arg id "$GRANT_ID" '.id == $id and (.actionIds | type == "array" and length >= 3 and all(.[]; type == "string"))' "$candidate" >/dev/null 2>&1; then
+    G7_ANY_RECEIPT="$candidate"
+    if jq -e '.activated == true or .outcome == "succeeded"' "$candidate" >/dev/null 2>&1; then G7_RECEIPT="$candidate"; fi
+  fi
 done
+[[ -n "$G7_RECEIPT" ]] || G7_RECEIPT="$G7_ANY_RECEIPT"
 if [[ -n "$G7_RECEIPT" ]]; then
   OWNED_ACTIONS_JSON="$(jq -c --arg p "$FIXTURE_PROJECT" '[.actionIds[] | "\($p)/\(.)"]' "$G7_RECEIPT")"
   record_str ownershipBasis "G7 receipt $G7_RECEIPT"
