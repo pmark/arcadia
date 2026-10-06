@@ -196,7 +196,7 @@ describe("preservation git timeouts end to end", () => {
 
     const viewed = run("preserve.pull-request", () => remote.findPullRequest({ repositoryPath: f.repo, branch: BRANCH }));
     expect(viewed.code).toBe("PRESERVATION_GIT_TIMEOUT");
-    expect(viewed.details).toMatchObject({ command: "gh", args: ["pr", "view", BRANCH, "--json", "number,url"], cwd: f.repo });
+    expect(viewed.details).toMatchObject({ command: "gh", args: ["pr", "view", BRANCH, "--json", "number,url,baseRefName"], cwd: f.repo });
     expect(viewed.details.remedy).toContain("already durable");
 
     const upsert = { repositoryPath: f.repo, branch: BRANCH, baseBranch: "main", title: "Candidate", body: "QA" };

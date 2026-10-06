@@ -5,13 +5,14 @@
  *
  * The serial case models Issue #987 (rehearsal run 5, PR #6): Action 1 is
  * integrated by fast-forwarding the local base while GitHub's base stays
- * where it was, so Action 2's host Operator QA plan diffs from the local base
- * and lists fewer files than the PR. It is asserted as an EXPECTED FAILURE
- * with `it.fails`: while #987 stands, the consistency assertion fails and the
- * test passes; once the host rendering path renders a plan that agrees with
- * the PR, the assertion holds, `it.fails` reports the test as failing, and the
- * fixing change must turn it into a plain `it` (and update the pinned
- * diagnostic test below). See docs/qa-plan-consistency-replay.md.
+ * where it was. Run 5 opened Action 2's PR on that unadvanced base, so its
+ * host Operator QA plan (diffed from the local base) listed fewer files than
+ * the PR; the pinned diagnostic below keeps that shape measurable. The fix
+ * (the operator's decision: stack the PRs) opens Action 2's PR on Action 1's
+ * pushed candidate branch, chosen by host preservation's own
+ * `selectPullRequestBase`, and the plan then agrees with the PR. That test
+ * was an `it.fails` expected failure until the fix. See
+ * docs/qa-plan-consistency-replay.md.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
@@ -19,6 +20,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderOperatorQaPlan } from "../src/sessions/operatorQaPlan.js";
+import { selectPullRequestBase, systemPreservationRemote } from "../src/sessions/candidatePreservation.js";
 import {
   QA_PLAN_CONSISTENCY_SCHEMA,
   checkQaPlanConsistency,
@@ -84,6 +86,8 @@ function serialFixture(): SerialFixture {
   write(repo, ".arcadia/asks/archive/complete-action-1.yaml", "request_id: complete-action-1\n");
   write(repo, "PROJECT.md", "# Fixture\n\nAction 1 done.\n");
   const action1 = commit(repo, "settle Action 1");
+  // Host preservation pushed Action 1's candidate branch for its PR.
+  git(repo, ["push", "-q", "origin", "agent/action-1"]);
   git(repo, ["checkout", "-q", "main"]);
   git(repo, ["merge", "-q", "--ff-only", "agent/action-1"]);
 
@@ -99,13 +103,13 @@ function serialFixture(): SerialFixture {
 }
 
 /** PR metadata as GitHub reports it: files of the three-dot diff base...head. */
-function pullRequest(repo: string, input: { number: number; base: string; head: string; branch: string; extraFiles?: string[] }): PullRequestMetadata {
+function pullRequest(repo: string, input: { number: number; base: string; head: string; branch: string; baseRefName?: string; extraFiles?: string[] }): PullRequestMetadata {
   const changeType: Record<string, string> = { A: "ADDED", M: "MODIFIED", D: "DELETED" };
   const files = git(repo, ["diff", "--name-status", "--no-renames", `${input.base}...${input.head}`])
     .split("\n").filter(Boolean)
     .map((line) => { const [status, file] = line.split("\t"); return { path: file, changeType: changeType[status] ?? status }; });
   for (const extra of input.extraFiles ?? []) files.push({ path: extra, changeType: "ADDED" });
-  return { number: input.number, baseRefName: "main", baseRefOid: input.base, headRefName: input.branch, headRefOid: input.head, files };
+  return { number: input.number, baseRefName: input.baseRefName ?? "main", baseRefOid: input.base, headRefName: input.branch, headRefOid: input.head, files };
 }
 
 function refsAndStatus(repo: string): string {
@@ -134,25 +138,32 @@ describe("plan-versus-PR consistency (checkpoint replay)", () => {
     expect(report.plan.files.map((file) => file.path)).toEqual([".arcadia/asks/archive/complete-action-1.yaml", "MARKER.md", "PROJECT.md"]);
   });
 
-  // EXPECTED FAILURE (Issue #987). Passes today because the assertion fails;
-  // the fix for #987 makes it pass, which `it.fails` reports as a failure:
-  // then change this to `it` and update the pinned diagnostic below. Only a
-  // fix at or below renderPreservedOperatorQaPlan flips it on its own: a fix
-  // in launch-base selection or in the preservation caller must also change
-  // this test's `base` input to what the host would then record.
-  it.fails("serial Action 2: the host plan agrees with its PR (Issue #987, expected to fail until fixed)", () => {
+  // Formerly an EXPECTED FAILURE (Issue #987), flipped by the stacked-PR fix:
+  // the host now opens Action 2's PR on the branch its own base selection
+  // picks, and GitHub reports that branch's tip and the three-dot diff from it.
+  it("serial Action 2: the host plan agrees with its PR stacked on Action 1's branch (Issue #987, fixed)", () => {
     const f = serialFixture();
+    const input = { repositoryPath: f.repo, baseBranch: "main", branch: "agent/action-2" };
+    expect(selectPullRequestBase(null, { ...input, baseRevision: f.m0, branch: "agent/action-1" }, systemPreservationRemote))
+      .toMatchObject({ ok: true, base: { kind: "project", branch: "main", tip: f.m0 } });
+    // The host launches from the local base branch (`git rev-parse main`, src/sessions/launch.ts).
+    const selection = selectPullRequestBase(null, { ...input, baseRevision: f.action1 }, systemPreservationRemote);
+    expect(selection).toMatchObject({ ok: true, base: { kind: "stacked", branch: "agent/action-1", tip: f.action1 } });
+    if (!selection.ok) return;
     const report = checkQaPlanConsistency({
       repositoryPath: f.repo,
-      pullRequest: pullRequest(f.repo, { number: 6, base: f.m0, head: f.action2, branch: "agent/action-2" }),
-      // The host launches from the local base branch (`git rev-parse main`, src/sessions/launch.ts).
+      pullRequest: pullRequest(f.repo, { number: 6, base: selection.base.tip!, head: f.action2, branch: "agent/action-2", baseRefName: selection.base.branch }),
       base: "main",
       branch: "agent/action-2"
     });
     expect(report.mismatches).toEqual([]);
+    expect(report.consistent).toBe(true);
+    expect(report.plan).toMatchObject({ baseBranch: "agent/action-1", baseRevision: f.action1, fileCount: 4 });
   });
 
-  it("pins the serial Action 2 diagnostic: plan base M1 vs PR base M0 and Action 1's files only in the PR", () => {
+  // Run 5's pre-fix shape, kept as the checker's own regression pin: a PR
+  // opened on the unadvanced main, as #987's fix no longer does.
+  it("pins the serial Action 2 diagnostic for a PR on the unadvanced main: plan base M1 vs PR base M0 and Action 1's files only in the PR", () => {
     const f = serialFixture();
     const report = checkQaPlanConsistency({
       repositoryPath: f.repo,

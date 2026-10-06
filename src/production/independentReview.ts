@@ -226,6 +226,8 @@ interface PullRequestView {
   isDraft: boolean;
   headRefName: string;
   headRefOid: string;
+  /** The PR's base branch now; checked against the base preservation opened it on (`prBase`). */
+  baseRefName?: string;
   mergeStateStatus: string | null;
   statusCheckRollup: PullRequestCheckRun[];
 }
@@ -379,7 +381,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const outcome = ((): ReviewStepOutcome => {
     const viewed = runCommand({
       command: "gh",
-      args: ["pr", "view", url, "--json", "state,isDraft,headRefName,headRefOid,mergeStateStatus,statusCheckRollup"],
+      args: ["pr", "view", url, "--json", "state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup"],
       cwd: repoRoot,
       timeoutMs: 30_000
     });
@@ -401,12 +403,29 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
 
+    // The base host preservation opened the PR on (Issue #987: possibly a
+    // stacked candidate branch); its Operator QA plan describes that base.
+    const opened = workerPreservationReceipt(db, session)?.prBase ?? null;
+    const restoreBase = opened?.kind === "stacked" && opened.tip
+      ? `\`git -C ${repoRoot} push origin ${opened.tip}:refs/heads/${opened.branch}\``
+      : null;
     if (pr.state.toUpperCase() !== "OPEN" || pr.headRefName !== session.branch) {
       return {
         kind: "blocked",
         code: "review_pull_request_unavailable",
         reason: `PR ${url} is ${pr.state} on ${pr.headRefName}, not an open PR for the candidate branch ${session.branch}; no verdict is requested.`,
         remedy: `Reopen ${url} for ${session.branch} (or review and land the candidate by hand); the next tick resumes.`
+          + (restoreBase ? ` It is stacked on ${opened!.branch}, and GitHub closes a PR whose base branch is deleted: restore that branch first with ${restoreBase}.` : "")
+      };
+    }
+    if (opened && typeof pr.baseRefName === "string" && pr.baseRefName !== opened.branch) {
+      return {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url} is now based on ${pr.baseRefName}, but host preservation opened it on ${opened.branch} and its Operator QA plan describes that base; no verdict is requested.`,
+        remedy: `Retarget it back with \`gh pr edit ${url} --base ${opened.branch}\``
+          + (restoreBase ? ` (if ${opened.branch} is gone from the remote, restore it first with ${restoreBase})` : "")
+          + ", or review and land the candidate by hand; the next tick resumes."
       };
     }
 

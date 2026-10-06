@@ -1,6 +1,6 @@
 # Fast rehearsal harness
 
-A serial two-Action rehearsal over Arcadia's **real** production lifecycle that
+Serial two- and three-Action rehearsals over Arcadia's **real** production lifecycle that
 finishes in about a minute, so an orchestration defect reproduces offline
 instead of in a 2 to 4 hour live repair loop (Issue #989). The live rehearsal
 stays the integration check; this harness is where defects get found and fixed.
@@ -33,7 +33,8 @@ directory. Nothing is written into the repository. The same test files also
 run in the ordinary suite and the CI shards; there they write no report.
 
 It takes about a minute on the operator's Mac with file parallelism and the
-Seatbelt validator (45 to 60 s measured); one scenario takes 5 to 25 s.
+Seatbelt validator (45 to 65 s measured; 65 s for the 17 scenarios with the
+stacked-PR files, on a loaded host); one scenario takes 5 to 25 s.
 
 ## What is real and what is faked
 
@@ -62,7 +63,7 @@ Faked, and why only these (each is an external system or a paid model):
 | --- | --- | --- |
 | tmux | the shared `FakeTmux` (injected), plus a `tmux` on PATH that answers `-V` and `has-session` from the same live set and refuses anything else | A real pane would start a real provider. `src/dispatch/queue.ts` resolves transitions with the default `systemTmux`, so the PATH fake keeps that read consistent with the injected one |
 | The coding agent | `ScriptedExecutor` (`helpers/executor.ts`) | It costs tokens and is nondeterministic. The executor gets only what an agent gets (the launch argv with the Git identity and the rendered brief, and the worktree as cwd) and follows the brief's completion protocol through the real command functions |
-| GitHub (`gh`) | `GitHubModel` (`helpers/github.ts`) over the shared `FakeGitHub`, injected through the lifecycle's own `handoff.preserve.remote` and `review.runCommand` options | No network and no real repository. Pushes are real `git push`es to a local bare remote; the PR's `baseRefOid` and `files` are computed the way GitHub reports them (the remote's base tip, three-dot diff), and its body is what the host wrote |
+| GitHub (`gh`) | `GitHubModel` (`helpers/github.ts`) over the shared `FakeGitHub`, injected through the lifecycle's own `handoff.preserve.remote` and `review.runCommand` options | No network and no real repository. Pushes are real `git push`es to a local bare remote and the branch tips preservation reads are a real `git ls-remote --heads origin`. A PR's base may be any branch (`gh pr create --base <branch>`, refused when the remote lacks it): its `baseRefName` is that branch, `baseRefOid` that branch's remote tip and `files` the three-dot diff against it, the way GitHub reports them; `state` may be set to `CLOSED` or `MERGED`; its body is what the host wrote |
 | The reviewer models | the shared fake's stubbed verdicts (pass by default) | Paid and nondeterministic. The host review commands around them run for real |
 | Provider capacity and sign-in | the shared fixture observation | Needs a real provider account |
 
@@ -109,7 +110,13 @@ Simulated time advances one minute per tick; the table shows wall time.
 | File | Scenario | Reproduces |
 | --- | --- | --- |
 | `serial-two-action.test.ts` | clean executor, two dependent Actions, end to end | The baseline: admission to integration to the next admission, each exactly once |
-| same | Issue #987, precondition only | After Action 1 integrates locally, Action 2's PR base is the remote's unadvanced `main`: the published plan says base = Action 1's head and six files, the PR seven. Live run 5 stopped at QA on this; here the stubbed reviewer passes and Action 2 integrates, so only the mismatch is reproduced (also via `scripts/qa-plan-consistency.ts`). Marked `it.fails` |
+| same | Issue #987, fixed (stacked PRs) | After Action 1 integrates locally the remote's `main` stays behind, so Action 2's PR is opened on Action 1's candidate branch: the published plan, the PR's base and its files agree (also via `scripts/qa-plan-consistency.ts`). Live run 5 stopped at QA with its PR on `main`; a companion test pins what that PR would report. The `it.fails` marker flipped with the fix |
+| `three-action-chain.test.ts` | three dependent Actions, end to end | Every PR stacked on the previous candidate branch (PR 1 on `main`, PR 2 on candidate 1, PR 3 on candidate 2), each consistent with its plan, each Action admitted once, all integrated locally, the remote base never pushed |
+| `stacked-base-refusal.test.ts` | the previous candidate's branch deleted on the remote | Preservation refuses Action 2's PR (nothing pushed, the candidate kept locally) with one `terminal_candidate_not_integrable` escalation naming the branch to push again; after that push it stacks and integrates |
+| same | the operator published the integrated base | Action 2's base is the remote's `main`: its PR opens on `main`, unchanged |
+| `stacked-base-github-state.test.ts` | the previous PR closed on GitHub | Still stacked on its branch; integrates |
+| same | the previous PR merged on GitHub, its branch deleted | The tick fast-forwards onto the merged `main`, so Action 2 launches from it and its PR opens on `main`, consistent |
+| `stacked-base-retarget.test.ts` | the stacked PR retargeted to `main` on GitHub | The review step requests no verdict while the PR's base differs from the one its plan describes: one `review_pull_request_unavailable` escalation naming `gh pr edit --base`; retargeted back, it integrates |
 | `executor-behaviours.test.ts` | untracked, unarchived draft | Run 4's defect (#981); with #983 the settle archives the draft and the candidate integrates |
 | same | draft edited after an inline preview | #983's N4 case: settle warning, the guard refuses every tick, one `terminal_candidate_not_integrable` escalation in `production status` |
 | `settle-then-dirty.test.ts` | extra uncommitted file / extra commit after settling | Today: reconciled incomplete; a continuation drafts and previews its own `complete` Ask but cannot settle it ("Action is already done"); that pending Ask is an operator gate (`resolveProjectTransition` answers `decision`) which production status does not show (#994, #997; same mechanism as #968). Marked `it.fails` for "integrates or shows the blocker" |

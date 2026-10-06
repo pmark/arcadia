@@ -839,8 +839,11 @@ export interface FakePullRequest {
   number: number;
   url: string;
   branch: string;
+  /** The PR's base branch: the Project base, or (stacked, Issue #987) another branch such as the previous candidate's. */
   baseBranch: string;
   isDraft: boolean;
+  /** GitHub's PR state; a scenario may close or merge a PR (default OPEN). */
+  state?: "OPEN" | "CLOSED" | "MERGED";
 }
 
 /**
@@ -863,6 +866,8 @@ export class FakeGitHub {
   mergeState: (pr: FakePullRequest) => string = () => "CLEAN";
   /** Every push, with the exact commit it named (null: the local tip). */
   pushes: Array<{ branch: string; commitSha: string | null }> = [];
+  /** Every `gh pr create`, with the `--base` it named. */
+  prCreates: Array<{ branch: string; baseBranch: string }> = [];
   /** Each entry fails one `gh pr view` with that stderr, in order. */
   viewFailures: string[] = [];
   /** Every reviewer-model invocation's process timeout. */
@@ -894,12 +899,22 @@ export class FakeGitHub {
       git(repositoryPath, ["push", "-q", "origin", `${commitSha ?? `refs/heads/${branch}`}:refs/heads/${branch}`]);
       return { remote: "origin" };
     },
+    // `git ls-remote --heads origin`, as the system adapter runs it.
+    listBranchTips: ({ repositoryPath }) => git(repositoryPath, ["ls-remote", "--heads", "origin"]).split("\n").flatMap((line) => {
+      const match = /^([0-9a-f]{40})\trefs\/heads\/(.+)$/.exec(line.trim());
+      return match ? [{ branch: match[2], sha: match[1] }] : [];
+    }),
     findPullRequest: ({ branch }) => {
       const pr = this.prs.find((entry) => entry.branch === branch);
-      return pr ? { number: pr.number, url: pr.url } : null;
+      return pr ? { number: pr.number, url: pr.url, baseRefName: pr.baseBranch } : null;
     },
     upsertDraftPullRequest: ({ branch, baseBranch, existing }) => {
       if (existing) return existing;
+      // `gh pr create --base <branch>`: GitHub refuses a base branch it does not have.
+      if (spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${baseBranch}`], { cwd: this.origin }).status !== 0) {
+        throw new Error(`pull request create failed: GraphQL: Base ref must be a branch (createPullRequest); no branch ${baseBranch} on the remote`);
+      }
+      this.prCreates.push({ branch, baseBranch });
       const number = 7 + this.prs.length;
       const pr = { number, url: `https://github.com/pmark/rehearsal/pull/${number}`, branch, baseBranch, isDraft: true };
       this.prs.push(pr);
@@ -912,7 +927,7 @@ export class FakeGitHub {
       number: pr.number,
       title: `Candidate ${pr.branch}`,
       url: pr.url,
-      state: "OPEN",
+      state: pr.state ?? "OPEN",
       isDraft: pr.isDraft,
       mergeStateStatus: this.mergeState(pr),
       headRefName: pr.branch,
