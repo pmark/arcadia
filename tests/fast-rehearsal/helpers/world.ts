@@ -167,7 +167,8 @@ export class FastRehearsal extends Rehearsal {
     const integration = result.handoff?.integration;
     const preservation = result.handoff?.preservation;
     const summary = [
-      result.launch ? `launch ${result.launch.outcome}${result.launch.actionKey ? ` ${result.launch.actionKey}` : ""}` : null,
+      result.launch ? `launch ${result.launch.outcome}${result.launch.actionKey ? ` ${result.launch.actionKey}` : ""}`
+        + (result.launch.outcome === "launched" || !result.launch.reason ? "" : ` (${result.launch.reason.slice(0, 160)})`) : null,
       result.reconciled.length ? `reconciled ${result.reconciled.map((entry) => entry.outcome).join(",")}` : null,
       preservation ? `preservation ${preservation.kind}` : null,
       integration ? `integration ${integration.kind}` : null
