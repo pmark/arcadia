@@ -1348,7 +1348,10 @@ export function settleAgentAsk(db: Database.Database, input: {
   const archivedSource = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision);
   // Also check the canonical draft name when the recorded source was some
   // other file, so an identical drafted copy cannot stay behind untracked.
-  if (archivedSource !== path.join(".arcadia", "asks", `agent-ask-${proposal.normalized.requestId}.yaml`)) {
+  // Compared case-insensitively: on a case-insensitive filesystem a
+  // differently cased source is the same file and must not move twice.
+  const canonicalDraft = path.join(".arcadia", "asks", `agent-ask-${proposal.normalized.requestId}.yaml`);
+  if (archivedSource === null || archivedSource.toLowerCase() !== canonicalDraft.toLowerCase()) {
     archiveCanonicalDraftAskFile(fileMutations, effects, settlementWarnings, repoRoot, proposal, boundCandidateRevision);
   }
 

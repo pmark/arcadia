@@ -896,12 +896,13 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
     const inspect = settlementCommit
       ? `Inspect with \`git -C ${worktree} status --porcelain\` and \`git -C ${worktree} log --oneline ${settlementCommit}..HEAD\`.`
       : `Inspect with \`git -C ${worktree} status --porcelain\` and \`git -C ${worktree} log --oneline -5\`.`;
-    if (head && settlementCommit === head) {
+    // Only the guard's own canonical settlement at this head means the ancestry check failed.
+    if (head && facts.settlementCommit === head) {
       return `${blocked} Head ${head} is its completion settlement commit, but the worker's preserved commit is not an ancestor of it, `
         + `so it is not the candidate that preservation validated. ${inspect} ${retry} `
         + `After an independent review, an operator may land it with \`${operatorMergeCommand}\`.`;
     }
-    if (!settlementCommit || !head) {
+    if (!settlementCommit || !head || settlementCommit === head) {
       return `${blocked} No applied completion settlement commit of ${actionKey} matches head ${head ?? "unknown"} on ${session.branch}. ${inspect} `
         + `Unattended integration lands only the exact settlement commit. ${retry} After an independent review, an operator may land it with \`${operatorMergeCommand}\`.`;
     }
