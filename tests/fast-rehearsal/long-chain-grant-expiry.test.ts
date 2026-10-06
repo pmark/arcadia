@@ -144,7 +144,7 @@ describe("the Grant expires between step 3 and step 4 (the batch boundary)", () 
  * tick after launches it: an Action admitted after the Grant lapsed, which can
  * no longer integrate unattended (the first scenario above is what follows).
  * The standing policy itself has no expiry; only its delegations do, so
- * admission does not consult them (Issue TBD-1). Revive when admission is
+ * admission does not consult them (Issue #1012). Revive when admission is
  * made to consult the expiry (the marker flips), or before a live chain
  * planned to end within minutes of its Grant's expiry.
  */
@@ -166,7 +166,7 @@ describe("step 4's packet is approved one tick before the Grant expires", () => 
     expect(world.productionStatus().data.display.label).toBe("Active · Building (1 admitted)");
   });
 
-  it.fails("admits no Action once the Grant has expired (Issue TBD-1)", () => {
+  it.fails("admits no Action once the Grant has expired (Issue #1012)", () => {
     expect(world.sessions().map((s) => s.action_id)).toEqual(CHAIN.slice(0, 3));
   });
 });
