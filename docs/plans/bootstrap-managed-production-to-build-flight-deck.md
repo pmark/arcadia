@@ -4048,11 +4048,64 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: fix-pending-completion-gate
+    title: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
+    expected_artifact: Evidence satisfying Agent Ask fix-pending-completion-gate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-pending-completion-gate-2026-10-06
+    acceptance_criteria:
+      - "When the worker tick skips a launch because resolveProjectTransition answers `decision` for an Action in the active Grant's scope (a pending unsettled Agent Ask proposal or open Decision), `arcadia production status` shows exactly one operator-gate entry for it within one tick (gate kind, Action, proposal or Decision id, and the exact governed settle command or the reason it cannot settle, for example 'Action is already done'), deduplicated like `terminal_candidate_not_integrable` (one escalation and one deduplicated worker log line, not one per tick), and cleared when the proposal is settled or rejected or the Decision answered; tests pin it, including run 2's shape (a stale pending proposal for an amended Action) and the #994 and #995 scenarios."
+      - "Issue #994: an agent that leaves an extra uncommitted file or an extra commit after its completion settlement no longer stalls silently: the Action either integrates (only where the governed settlement and every guard stay intact; unreviewed extra work is never integrated) or stops on exactly one visible, actionable entry in production status; a continuation Session never loops on 'Action is already done'; the `it.fails` marker in tests/fast-rehearsal/settle-then-dirty.test.ts flips to `it` with its companion pin revised deliberately."
+      - "Issue #995: an agent that dies after its settlement commit and before the settlement is recorded is recovered deterministically by the tick (no coding-agent process and no LLM call; for example recognising the candidate's own canonical completion settlement or auto-settling the drafted complete Ask whose evidence verbatim-covers every criterion, as attemptAutoSettlePendingCompletion already does before dispatch), and the Action integrates and the next Action is admitted exactly once; the `it.fails` marker in tests/fast-rehearsal/completion-faults.test.ts flips to `it` with its companion pin revised deliberately."
+      - "No authority widens: no proposal is accepted whose evidence does not verbatim-cover the Action's declared criteria with every entry met, nothing outside the Grant's scope is launched or settled, and Decision 0058 and the Grant model are unchanged; `pnpm fast-rehearsal`, lint, tsc, check:agent-guidance and the focused suites pass; the runbook (failure catalog and section 8 item 6), tests/fast-rehearsal/README.md and Issues #994, #995 and #997 are updated; independent review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/997", "https://github.com/pmark/arcadia/issues/994", "https://github.com/pmark/arcadia/issues/995", "https://github.com/pmark/arcadia/issues/968", "tests/fast-rehearsal/README.md", "src/ask/autoSettleBeforeDispatch.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: build-chain-rehearsal-run-scripts
+    title: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
+    expected_artifact: Evidence satisfying Agent Ask build-chain-rehearsal-run-scripts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask build-chain-rehearsal-run-scripts-2026-10-06
+    acceptance_criteria:
+      - One operator script set (reset, G6 preflight, G7 grant, G8 terminal Off) with descriptors in artifacts/generated/operator-scripts/ takes the run id, the Action count N (3 to 12), the previous run's receipts and the required Arcadia commits from one small reviewed per-run parameter file, so a new run is a reviewed parameter change and not a clone; each script keeps every authority bound of the run-5 set (fail-closed preconditions, refusing-form-only and one-shot where the run-5 script is, receipts and failure handoffs, never exporting the workspace, never touching earlier candidates or pull requests, never force-pushing, deleting or rewriting history); `scripts/check-operator-scripts.ts` and the operator-script tests pass; parameter files for run 6 (N=3) and the overnight run (N=9) are included, with the latter's previous-run bindings left to be filled from run 6's receipts.
+      - "The reset handles run 5's terminal state without losing work or pushing a base other than its single validated reset commit: it verifies that the fixture clone's local main f68ec48 is preserved on run 5's remote candidate branch and pull request #5 (and Action 2's work on #6) before moving only the clone's local main back to GitHub's main, and refuses otherwise; it then renders the fixture Plan as a serial chain of N tiny dependent Actions (the existing three amended and new ones appended, each reading its predecessor's output so the chain is genuinely ordered), each with a fresh requirement input revision, a fresh unused completion request id and the leave-git-status-clean instruction; it validates with Arcadia's own discovery and a dry-run docs sync (every Action an update or create, no error, only Action 1 ready), handles every pending fixture proposal by state, commits once and pushes without force, runs docs sync and writes a receipt naming the new head, the starting head, every earlier candidate's tip and the N Action ids and completion ids."
+      - "G6 binds the reset receipt, the main head and the installed broker revision exactly as the run-5 preflight does and requires the parameterised commits (the merged #987 stacking fix and the #997 gate fix, filled in when they merge); G7's one-shot Grant names exactly the N fixture Actions, with remote preservation and the Decision 0058 integration grant scoped to those Actions and the existing 12-hour expiry, and its descriptor tells the operator plainly what one press authorises for N Actions (if Decision 0058 or Issue #925's answer is limited to three Actions, the descriptor says so and the change stops for the operator instead of widening it); G8 proves terminal Off, reconciles all N candidates as integrated, preserved or empty, and copies the worker log into the run's evidence folder before its reviewed restart."
+      - "Offline proof: the pure parts (parameter validation, Plan rendering for N=3 and N=9, completion-id freshness, previous-head checks) are unit-tested, and a read-only dry-run mode of the reset prints the exact planned fixture change and refusals against the real fixture state without writing anything; the runbook (sections 4, 5 and 8 items 1 and 4) names the new set and how to start a run from it; independent review rounds are recorded on the pull request; running the reset, G6, G7 and G8 remains the release manager's and the operator's, not this Action's."
+    depends_on: []
+    decisions: []
+    references: ["docs/autonomous-production-rehearsal-runbook.md", "artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run5-2026-10-06.json", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run5-2026-10-06.json", "https://github.com/pmark/arcadia/issues/987"]
+  - id: fix-qa-plan-check-wording
+    title: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
+    expected_artifact: Evidence satisfying Agent Ask fix-qa-plan-check-wording
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-qa-plan-check-wording-2026-10-06
+    acceptance_criteria:
+      - In src/sessions/operatorQaPlan.ts a criterion that is satisfied by running a declared validation command, or that names a script or command that must pass, renders as an inspection step whose Expected line is limited to what inspection shows (the file exists and what it contains) and points the proof of 'passes' explicitly at the declared-validation step and its exit-zero result; no QA criteria, reviewer prompts or other plan steps change; a unit test pins that the rendered step never claims source display proves a pass.
+      - "A read-only check with the real QA reviewer on a plan rendered for run 5's Action 1 shape (as done for #974, recording the command and both verdict reports) shows no 'Operator QA plan' finding in two verdicts; if the reviewer cannot be run read-only from the candidate, the pull request says so plainly and the next live run's first QA verdict is named as the check."
+      - "Lint, tsc, `pnpm fast-rehearsal` and the focused suites pass; the runbook failure catalog and Issue #986 are updated; independent review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/986", "https://github.com/pmark/arcadia/issues/974", "src/sessions/operatorQaPlan.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-serial-pr-base-stacking
+current_action: fix-qa-plan-check-wording
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

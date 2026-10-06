@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr1005","project":"arcadia","intent":"log","desired_result":"New PR: the Discord bot can now route alerts, briefings and routine log messages to their own channels (needs your channel ids set after merge). https://github.com/pmark/arcadia/pull/1005"}

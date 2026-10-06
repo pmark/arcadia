@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
 import type { LogLevel } from "../logging.js";
+import { fetchCategoryChannel } from "../notifications/categories.js";
 import type { DiscordReplyRouter } from "../replyRouter/router.js";
 
 /**
@@ -95,9 +96,8 @@ async function maybeSendPacket(
   }
 
   const packet = composed.data.packet;
-  const channel = await client.channels.fetch(config.discordChannelId);
-  if (!channel || !("send" in channel)) {
-    logJson("error", { msg: "orientation channel is not sendable", channelId: config.discordChannelId });
+  const channel = await fetchCategoryChannel(client, config, "briefings", logJson);
+  if (!channel) {
     return;
   }
 
