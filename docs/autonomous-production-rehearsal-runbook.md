@@ -219,7 +219,7 @@ For each change (one Action per session; one mutation owner per candidate):
    tick, preservation, the review steps or settlement): unsandboxed, from the
    checkout that will be installed. It must pass. It prints per-phase timings
    and every error; its expected failures (`it.fails`) name the open gaps it
-   reproduces (Issue #987 and the stalls listed in its README). A fix that
+   reproduces (the stalls listed in its README). A fix that
    closes one flips that marker, which the fix's change updates.
 
 ### Phase 2: merge window, freeze and the single reinstall
@@ -415,8 +415,8 @@ broker): rerun G6.
 | QA FAIL "Tests and evidence", no validation output | PR body gave an exit code without a command or output | Fixed (#974) |
 | QA FAIL HIGH "Approval boundaries" on the candidate's own settle commit | Reviewer nondeterminism about the governed completion settlement | The body now states it (#974); one rerun allowed; record both verdicts |
 | Worker log repeats "differs from its exact canonical completion settlement" every 3 s | An unarchived Ask draft was committed by preservation on top of the settle commit | Fixed (#983: settle archives the draft, proven live in run 5; one deduped log line and a `terminal_candidate_not_integrable` escalation, tested but not yet seen live); the brief asks for a clean tree |
-| QA FAIL Step 4 says source inspection proves a check passes | Plan wording (Issue #986) | One rerun passed it; the wording fix is open |
-| QA FAIL "wrong base and changed-file set" on Action 2 | The PR's GitHub base is stale after Action 1 integrated locally (Issue #987) | Open design choice (section 8) |
+| QA FAIL Step 4 says source inspection proves a check passes | Plan wording (Issue #986) | Fixed by the Issue #986 PR. A criterion where a declared command, a script path, a test file or a several-word code span must pass (no negation governing the pass word) now renders an inspection step limited to what inspection shows. It names the declared-validation step's exit-zero result as the proof for each declared command the criterion says must pass (a bare script path counts as the declared command that runs exactly it), names that step as the run for a test file that must pass, and says the plan offers no direct proof for any other command it names. A read-only smoke of run 5's PR #5 with the new plan passed twice with no findings (evidence in that PR). Known gap: a criterion naming no command ("All tests pass") or a one-word code span (`` `make` passes ``) keeps the old wording, and a veto word anywhere in the clause ("fails", "unless", "non-zero") or conditional or past-tense phrasing ("if `x` passes", "`x` passed in CI") can classify a criterion the wrong way. If it returns, rerun that smoke (real reviewer, `gh` stubbed, temporary workspace) before touching prompts |
+| QA FAIL "wrong base and changed-file set" on Action 2 | The PR was opened on GitHub's `main`, which local integration never advances (Issue #987) | Fixed: serial PRs are stacked on the previous candidate's branch (section 8, item 1(b)); the receipt's `prBase` says which base was chosen and why. If the previous branch is gone from the remote, preservation refuses with a `terminal_candidate_not_integrable` escalation naming the branch to push again; nothing is pushed until then |
 | Agent writes the template completion id and settlement stalls | `complete-<action>-<date>` already settled on a same-day rerun | The amended `next_action` names a fresh id; the reset refuses if it is used |
 | G7 refuses "different main" | A governed settle commit or reinstall moved main or the broker after G6, or a G8 ran | Freeze (phase 2); rerun G6 |
 | G6 invalid after an accidental G8 | G8 reinstalled the broker | Rerun G6; keep the buttons separate in the ping |
@@ -465,16 +465,39 @@ broker): rerun G6.
    by compare-and-swap, amends all three Actions' `next_action` with fresh inputs
    and `complete-<action>-run6-2026-10-06` ids, and pushes one commit on
    `7214de28` without force. Its `--dry-run` shows exactly that against the real
-   fixture before anything is written. (b) **#987, serial Actions (blocking criterion 5 for Action 2 and 3).** After
-   Action 1 integrates locally, GitHub's `main` lags, so Action 2's PR diff and
-   the host QA plan disagree about the base. Options: stack the PR on the previous
-   candidate branch; render the plan against the GitHub base and teach scope
-   checks about earlier integrated Actions; or authorize a base push after each
-   integration (a Grant or Decision change, today forbidden). Pick one, then
-   prove it in a run.
-   [docs/qa-plan-consistency-replay.md](qa-plan-consistency-replay.md) reproduces this
-   mismatch offline in seconds from run 5's preserved PR #6; its expected-failure
-   test must flip with the fix (the doc says which fixes flip it unaided).
+   fixture before anything is written. (b) **#987, serial Actions: decided and implemented: stacked PRs.**
+   After Action 1 integrates locally, GitHub's `main` lags by design (no base
+   push), so host preservation now opens Action 2's draft PR with its base set
+   to the remote candidate branch whose tip is Action 2's launch base (Action
+   1's branch), chosen by `selectPullRequestBase`
+   (`src/sessions/candidatePreservation.ts`) and recorded on the receipt as
+   `prBase`. The PR's GitHub diff, the reviewers' evidence and the host QA plan
+   (its Base line names that branch) then describe exactly Action 2's change.
+   The first Action, and any candidate launched from the published base, open
+   on `main` exactly as before. No base push, merge or force push; the Grant
+   and Decision 0058 are unchanged. A deleted or never-pushed previous branch
+   refuses the PR (nothing pushed, the candidate kept locally) with one
+   `terminal_candidate_not_integrable` escalation naming the branch to push
+   again; so does any candidate whose launch base carries local commits that no
+   remote branch has (for example an unpushed operator commit on `main`), which
+   before opened on `main` with those commits in its diff. An open PR for the
+   branch already on a no-longer-valid base is refused the same way (retarget
+   it); a closed or merged one is ignored and a new PR opens. A stacked PR
+   later retargeted on GitHub, or whose stacked base branch moved, gets no
+   verdict until its base is restored; that
+   includes GitHub's own retarget to `main` after the previous PR is merged
+   there and its branch auto-deleted (restore the branch and retarget back, or
+   land by hand), deliberately conservative because the published plan names
+   the stacked branch. Do not merge a stacked PR on GitHub: it would land in
+   the previous candidate's branch; Arcadia integrates locally. An adopter
+   Project whose CI runs only for PRs into `main` reports no checks on a stacked
+   PR (a visible `required_checks_timeout`). Proven offline by the fast harness (`tests/fast-rehearsal/`: the
+   serial pair, a three-Action chain stacked PR 1 on `main`, PR 2 on candidate
+   1, PR 3 on candidate 2, and the deleted, closed, merged, retargeted and
+   published-base edge cases) and by the flipped marker in
+   [docs/qa-plan-consistency-replay.md](qa-plan-consistency-replay.md). Still to
+   prove in a live run: real `gh pr create --base <candidate branch>` and the
+   QA reviewer's judgment of a stacked PR.
 2. **#986** (plan Step 4 wording), **#984** (review follow-ups of #983),
    **#976** (hook-manager side effect of the plan's checkout step and test gaps):
    small, but each can fail a verdict. (Issues #972 and #981 were fixed by #974 and
@@ -499,7 +522,7 @@ broker): rerun G6.
    preserved but held by a pending-Ask operator gate: a previewed, unsettled
    `complete` Ask makes the tick skip every launch, and `production status`
    never shows it (#997, the shared root cause; the same mechanism as run 2's
-   stall, #968). The harness also reproduces #987's precondition. Next step:
+   stall, #968). The harness also proves #987's fix (stacked PRs). Next step:
    fix #997 and flip the markers.
 7. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.

@@ -104,7 +104,7 @@ function gitSubcommand(args: readonly string[]): string | null {
 }
 
 /** Stages that run only once the preservation commit is durable on the branch. */
-const POST_COMMIT_STAGES = new Set(["preserve.index-sync", "preserve.receipt", "preserve.push", "preserve.pull-request"]);
+const POST_COMMIT_STAGES = new Set(["preserve.index-sync", "preserve.receipt", "preserve.pull-request-base", "preserve.push", "preserve.pull-request"]);
 
 function retryRemedy(stage: string | null): string {
   const outcome = stage && POST_COMMIT_STAGES.has(stage)
