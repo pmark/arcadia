@@ -3967,7 +3967,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: archive-settled-ask-by-canonical-name
+current_action: prepare-run-5-rehearsal-scripts
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
