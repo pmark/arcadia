@@ -412,7 +412,10 @@ broker): rerun G6.
 | --- | --- | --- |
 | Reviewer `needs-follow-up`, criteria `not-checked`, zero findings | A trivial patch cannot exercise the criteria | Fixed (#934-#936); if it returns, run a read-only smoke against the exact patch before touching prompts |
 | Escalation `attempt_retry_not_authorized`, nothing launches | A passed development attempt exists for an unchanged requirement input | Reset the fixture (amend `next_action`); a new fixture is blocked by G1's fixed slug and path |
-| `Active · No admitted work`, no log, `advance` says `decision` | A pending Agent Ask for the old input gates the Action (run 2) | Run-3 and later resets reject that exact proposal by state. Do **not** do it mid-run (freeze, criterion 2); in run 2 it was done to unblock a run that had already stalled, which is why it appears here |
+| `Active · No admitted work`, no log, `advance` says `decision` | A pending Agent Ask for the old input gates the Action (run 2) | Run-3 and later resets reject that exact proposal by state. Do **not** do it mid-run (freeze, criterion 2); in run 2 it was done to unblock a run that had already stalled, which is why it appears here. Since #997 `production status` shows such a gate as one `operator_gate_pending` entry (proposal or Decision id, and the exact settle command or the reason it cannot settle), logged once and cleared when the gate is gone (tested, not yet seen live) |
+| `production status` shows `operator_gate_pending` | A pending Agent Ask proposal or open Decision names an in-scope Action, so the tick launches nothing for it | Read the entry's remedy: settle or answer it with the command it names, or reject a stale proposal with the `--disposition rejected` command it names (preview, then `--apply --preview`); when it says the candidate already records the Action done, follow its longer route instead of rejecting alone. The tick never settles it itself |
+| `terminal_candidate_not_integrable` naming commits after the completion settlement commit | The agent settled, then left an extra file or commit (#994); no continuation is launched for it any more, and the extra work is never integrated | Inspect the extra work; after an independent review an operator may land the settlement commit itself with the remedy's `merge --ff-only <settlement commit>` (the extra commit stays preserved on its branch) |
+| Agent died between its settlement commit and the recorded settlement (#995) | `beforeOperationalProjection` window | Recovered by the exit tick: it derives the settlement again at the Candidate revision and records it only when the candidate's HEAD is exactly that settlement (evidence verbatim-covering every criterion), then integrates as usual (tested, not yet seen live). If the Session was reconciled by hand first, it shows as `operator_gate_pending` naming that settlement commit: do not reject the proposal alone; after an independent review land exactly that commit, retire the candidate worktree and then reject the moot proposal, as the remedy says |
 | QA FAIL "Operator QA plan" missing | Host PR body had no QA plan | Fixed (#969) |
 | QA FAIL "Tests and evidence", no validation output | PR body gave an exit code without a command or output | Fixed (#974) |
 | QA FAIL HIGH "Approval boundaries" on the candidate's own settle commit | Reviewer nondeterminism about the governed completion settlement | The body now states it (#974); one rerun allowed; record both verdicts |
@@ -515,17 +518,23 @@ broker): rerun G6.
    launchers and descriptors are rendered and checked. Run 6 (N=3) and run 7
    (N=9, bindings to fill from run 6) are prepared; not yet proven live.
 5. **Visibility:** `production status` now names a terminal integration refusal
-   (#983; tested, not yet seen live); a stuck candidate in other states and the dashboard rendering of
-   escalations are still generic.
-6. **Stalls reproduced offline, not yet seen live** (the fast harness's expected
-   failures, `tests/fast-rehearsal/README.md`): an agent that leaves an extra
-   file or commit after settling (Issue #994), or dies after its settlement
-   commit and before the settlement is recorded (#995), leaves its Action
-   preserved but held by a pending-Ask operator gate: a previewed, unsettled
-   `complete` Ask makes the tick skip every launch, and `production status`
-   never shows it (#997, the shared root cause; the same mechanism as run 2's
-   stall, #968). The harness also proves #987's fix (stacked PRs). Next step:
-   fix #997 and flip the markers.
+   (#983) and an operator gate holding a launch (#997; both tested, not yet seen live);
+   a stuck candidate in other states and the dashboard rendering of escalations are
+   still generic.
+6. **Stalls reproduced offline, fixed there, not yet seen live** (the fast
+   harness, `tests/fast-rehearsal/README.md`): an agent that leaves an extra
+   file or commit after settling (Issue #994) is no longer resumed by a
+   continuation that can only refuse "Action is already done"; it stops on one
+   `terminal_candidate_not_integrable` entry and the extra work is never
+   integrated. An agent that dies after its settlement commit and before the
+   settlement is recorded (#995) is recovered by the exit tick, which derives
+   the settlement again, records it only when the candidate's HEAD is exactly
+   that settlement, and integrates. A pending Agent Ask
+   proposal or open Decision that gates an in-scope Action (#997, the mechanism
+   of run 2's stall, #968) now shows in `production status` as one
+   `operator_gate_pending` entry with its settle command or the reason it
+   cannot settle. The harness also proves #987's fix (stacked PRs). Next step:
+   watch for these in the next live run.
 7. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 

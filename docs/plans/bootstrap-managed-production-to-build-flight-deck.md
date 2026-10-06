@@ -4050,7 +4050,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: fix-pending-completion-gate
     title: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
@@ -4068,7 +4068,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/997", "https://github.com/pmark/arcadia/issues/994", "https://github.com/pmark/arcadia/issues/995", "https://github.com/pmark/arcadia/issues/968", "tests/fast-rehearsal/README.md", "src/ask/autoSettleBeforeDispatch.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: build-chain-rehearsal-run-scripts
     title: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
-    status: done
+    status: open
     responsibility: agent
     effort: session
     next_action: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
@@ -4122,7 +4122,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-pending-completion-gate
+current_action: add-long-chain-fast-rehearsal
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

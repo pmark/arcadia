@@ -3,6 +3,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
+import { listUnsettledAgentAskProposals, recordCommittedCompletionSettlement, settleAgentAsk } from "../ask/settlement.js";
 import { surfaceMergedAgentAsks, type MergedAskSurfacing } from "../ask/surfaceMergedAsks.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { type ProviderCapacityObservation } from "../codingAgents/capacity.js";
@@ -13,8 +14,9 @@ import { getProjectBySlug, getProjectMetadata, getReviewItem, getWorkItemByDocRe
 import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
-import { git, isAncestor, isPatchEquivalent, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, isPatchEquivalent, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
+import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
@@ -155,11 +157,18 @@ function recoverTerminalHandoff(
     .all() as Array<{ name: string }>;
   if (!tables.some((table) => table.name === "session_exit_receipts")) return null;
   const hasPreservationTable = tables.some((table) => table.name === "candidate_preservation_receipts");
-  const exits = db.prepare(`SELECT r.session_id FROM session_exit_receipts r
+  // An unfinished exit whose candidate already carries this Action's own
+  // recorded completion settlement is terminal too (Issue #994): the agent
+  // settled and then left more work (an extra file or commit). A
+  // continuation could only refuse "Action is already done" and draft another
+  // pending completion, so it is handed to the terminal guards below instead,
+  // which refuse it (the head is not the settlement commit) and escalate once.
+  const exits = db.prepare(`SELECT r.session_id, r.outcome FROM session_exit_receipts r
     JOIN agent_sessions s ON s.id = r.session_id
-    WHERE s.repository_path = ? AND s.project_slug = ? AND r.outcome = 'accepted_completion'
+    WHERE s.repository_path = ? AND s.project_slug = ?
+      AND (r.outcome = 'accepted_completion' OR (r.outcome = 'incomplete_resumable' AND r.superseded_by_session_id IS NULL))
       AND r.request_id = ('worker-tick-reconcile-' || r.session_id)
-    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug) as Array<{ session_id: string }>;
+    ORDER BY r.created_at DESC, r.rowid DESC`).all(canonicalPath(repoRoot), projectSlug) as Array<{ session_id: string; outcome: string }>;
   if (exits.length === 0) return null;
 
   let baseBranch: string;
@@ -172,6 +181,7 @@ function recoverTerminalHandoff(
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
     const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
     if (action?.status === "done") continue;
+    if (exit.outcome !== "accepted_completion" && !latestCandidateSettlementCommit(db, session, repoRoot)) continue;
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
       log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
@@ -305,7 +315,11 @@ const TERMINAL_CANDIDATE_ESCALATION = "terminal_candidate_not_integrable";
 /** The verdict-wait kinds a terminal-guard escalation may replace: waits, not review findings. */
 const PLAIN_VERDICT_WAITS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed"]);
 
-/** The newest documents commit any applied completion settlement recorded on this Session's branch, for the remedy text only. */
+/**
+ * The newest documents commit any applied completion settlement recorded on
+ * this Session's branch (not yet on the base): for the remedy text, and to
+ * recognise an unfinished exit whose candidate already settled its Action.
+ */
 function latestCandidateSettlementCommit(db: Database.Database, session: AgentSession, repoRoot: string): string | null {
   try {
     const baseBranch = resolveBaseBranch(repoRoot);
@@ -825,11 +839,187 @@ function clearTerminalCandidateEscalation(db: Database.Database, actionKey: stri
   if (row?.kind === TERMINAL_CANDIDATE_ESCALATION) clearOperatorEscalation(db, actionKey);
 }
 
-/** Clear every terminal-candidate escalation in this Project except `keepActionKey`'s; reads first so an idle tick writes nothing. */
-function clearProjectTerminalCandidateEscalations(db: Database.Database, projectSlug: string, keepActionKey: string | null): void {
+/** Clear every escalation of `kind` in this Project except `keepActionKey`'s; reads first so an idle tick writes nothing. */
+function clearProjectEscalationsOfKind(db: Database.Database, kind: string, projectSlug: string, keepActionKey: string | null): void {
   const rows = db.prepare("SELECT action_key FROM production_operator_escalations WHERE kind = ? AND action_key LIKE ? AND action_key != ?")
-    .all(TERMINAL_CANDIDATE_ESCALATION, `${projectSlug}/%`, keepActionKey ?? "") as Array<{ action_key: string }>;
+    .all(kind, `${projectSlug}/%`, keepActionKey ?? "") as Array<{ action_key: string }>;
   for (const row of rows) clearOperatorEscalation(db, row.action_key);
+}
+
+/** Clear every terminal-candidate escalation in this Project except `keepActionKey`'s. */
+function clearProjectTerminalCandidateEscalations(db: Database.Database, projectSlug: string, keepActionKey: string | null): void {
+  clearProjectEscalationsOfKind(db, TERMINAL_CANDIDATE_ESCALATION, projectSlug, keepActionKey);
+}
+
+/** Whether the Active policy's scope names exactly this Project, Plan and Action. */
+function actionInActiveScope(db: Database.Database, projectSlug: string, planSlug: string, actionId: string): boolean {
+  const read = readProductionPolicySafely(db);
+  const scope = read.status === "ok" && read.policy.desiredState === "active" ? read.policy.scope : null;
+  return !!scope && scope.projects.includes(projectSlug) && scope.plans.includes(`${projectSlug}/${planSlug}`)
+    && scope.actions.includes(`${projectSlug}/${actionId}`);
+}
+
+/**
+ * Issue #995: an agent that died after `agent-ask settle --apply` committed
+ * its completion in the candidate, and before the settlement was recorded,
+ * leaves its `complete` proposal pending, and that pending proposal gates the
+ * Action on every later tick. Record that settlement deterministically (no
+ * coding agent, no model call) through `recordCommittedCompletionSettlement`,
+ * which derives the settlement again at the proposal's Candidate revision and
+ * accepts only a candidate HEAD whose files are exactly that settlement, for a
+ * proposal whose evidence verbatim-covers the Action's criteria as the base
+ * checkout declares them, every entry met. Only for an Action the Active
+ * policy's scope names exactly. Anything else leaves the proposal pending,
+ * and the operator gate (below) shows it. Never throws.
+ */
+function recordInterruptedCompletionSettlement(
+  db: Database.Database,
+  input: { session: AgentSession; repoRoot: string; log: (message: string) => void }
+): void {
+  const { session } = input;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  try {
+    if (!actionInActiveScope(db, session.project_slug, session.plan_slug, session.action_id)) return;
+    const targets = new Set([`action/${session.action_id}`, `plan/${session.plan_slug}#${session.action_id}`]);
+    const pending = listUnsettledAgentAskProposals(db).filter(({ proposal }) => proposal.normalized.intent === "complete"
+      && proposal.normalized.project === session.project_slug && targets.has(proposal.normalized.targetRef ?? ""));
+    if (pending.length === 0) return;
+    const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
+    const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
+    if (!action || action.status === "done") return;
+    for (const row of pending) {
+      try {
+        const receipt = recordCommittedCompletionSettlement(db, {
+          proposalRef: row.id,
+          settlementRequestId: `worker-tick-record-${row.id}`.slice(0, 120),
+          cwd: session.worktree_path,
+          acceptanceCriteria: action.acceptanceCriteria
+        });
+        input.log(`Recorded the interrupted completion settlement of Agent Ask ${row.requestId} for ${actionKey} (${receipt.id}) `
+          + `from its candidate's settlement commit ${receipt.documentsCommit}; no Session launched.`);
+        return;
+      } catch (error) {
+        input.log(`Did not record pending completion Agent Ask ${row.requestId} for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  } catch (error) {
+    input.log(`Interrupted-completion check for ${actionKey} did not complete: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * The escalation kind for an in-scope Action whose launch the tick skips
+ * because a pending operator item gates it: resolveProjectTransition answers
+ * `decision` for an unsettled Agent Ask proposal or an open Decision naming
+ * that Action (Issue #997; the mechanism of run 2's 33-minute stall, #968).
+ * Recorded once per (Action, item) like `terminal_candidate_not_integrable`,
+ * and cleared the first tick the gate is gone. The tick never settles,
+ * rejects or answers the item itself.
+ */
+const OPERATOR_GATE_ESCALATION = "operator_gate_pending";
+
+/**
+ * Record the gate on `actionKey` as its one operator escalation. An
+ * unchanged gate finds its own row and writes nothing (one escalation, one
+ * log line per episode); a different item starts a new episode. The gate is
+ * what stops the launch this tick, so it replaces any other kind on this
+ * Action's row; that kind is re-detected by its own step once the gate is
+ * gone. The remedy is computed once per episode. Returns true when it wrote.
+ */
+function recordOperatorGateEscalation(
+  db: Database.Database,
+  input: { actionKey: string; item: OperatorGateItem; repoRoot: string; acceptanceCriteria: string[]; now: Date; log: (message: string) => void }
+): boolean {
+  const { actionKey, item } = input;
+  const label = item.kind === "agent_ask" ? "Agent Ask proposal" : "Decision";
+  const message = `Launch of ${actionKey} is held by pending ${label} ${item.id}: ${item.title}`;
+  const previous = db.prepare("SELECT kind, message FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
+    | { kind: string; message: string }
+    | undefined;
+  if (previous?.kind === OPERATOR_GATE_ESCALATION && previous.message === message) return false;
+  const remedy = operatorGateRemedy(db, { ...input, label });
+  if (previous) clearOperatorEscalation(db, actionKey);
+  recordOperatorEscalation(db, { actionKey, kind: OPERATOR_GATE_ESCALATION, message, remedy, now: input.now });
+  input.log(`Escalated ${actionKey} to the operator (${OPERATOR_GATE_ESCALATION}): ${message}`);
+  return true;
+}
+
+/**
+ * The remedy for one operator gate: the item, then either the exact governed
+ * command that settles it or the reason it cannot settle. For an Agent Ask the
+ * reason comes from a settlement preview (which writes nothing) in the checkout
+ * the proposal was drafted in, or the Project's checkout when that is gone. A
+ * `complete` Ask whose own settlement that candidate already committed (the
+ * settling process ended before recording it, and the worker did not see the
+ * exit) is named as such: rejecting it would only let a continuation refuse
+ * "Action is already done" again.
+ */
+function operatorGateRemedy(
+  db: Database.Database,
+  input: { actionKey: string; item: OperatorGateItem; label: string; repoRoot: string; acceptanceCriteria: string[] }
+): string {
+  const { item } = input;
+  const blocked = `Blocked: pending ${input.label} ${item.id} ("${item.title}") gates ${input.actionKey}, so the tick launches nothing for it and never settles it itself.`;
+  const clears = "This entry clears on the first tick after the gate is gone.";
+  if (item.kind === "decision") {
+    const recommended = item.recommendedOption ? ` The recommended option is "${item.recommendedOption}"${item.consequence ? ` (${item.consequence})` : ""}.` : "";
+    return `${blocked} It is the operator's to answer, with \`${item.settleCommand}\` or the same command naming another option${item.relativePath ? ` (${item.relativePath})` : ""}.${recommended} ${clears}`;
+  }
+  const row = db.prepare("SELECT request_id, proposal_json FROM agent_ask_proposals WHERE id = ?").get(item.id) as
+    | { request_id: string; proposal_json: string }
+    | undefined;
+  const requestId = row?.request_id ?? item.id;
+  let sourcePath: string | null = null;
+  let intent: string | null = null;
+  try {
+    const stored = row ? JSON.parse(row.proposal_json) as { sourcePath?: string | null; normalized?: { intent?: string } } : null;
+    sourcePath = stored?.sourcePath ?? null;
+    intent = stored?.normalized?.intent ?? null;
+  } catch { /* the Project's checkout */ }
+  const sourceDirectory = sourcePath ? path.dirname(sourcePath) : null;
+  const checkout = sourceDirectory && existsSync(sourceDirectory) ? projectCheckoutFor(input.repoRoot, sourceDirectory) : input.repoRoot;
+  const command = (disposition: string, settlementRequestId: string) =>
+    `arcadia agent-ask settle --proposal ${item.id} --request-id ${settlementRequestId.slice(0, 120)} --disposition ${disposition}`;
+  const twoPhase = "then the same command with `--apply --preview <fingerprint>`";
+  const reject = `If it is stale, reject it from ${input.repoRoot}: \`${command("rejected", `reject-${requestId}`)}\`, ${twoPhase}.`;
+  let reason: string | null = null;
+  try {
+    settleAgentAsk(db, { proposalRef: item.id, settlementRequestId: `accept-${requestId}`.slice(0, 120), disposition: "accepted", cwd: checkout });
+  } catch (error) {
+    reason = error instanceof Error ? error.message : String(error);
+  }
+  if (reason === null) {
+    return `${blocked} Its settlement preview passes (from ${checkout}); accepting it is the operator's call: \`${command("accepted", `accept-${requestId}`)}\`, ${twoPhase}. ${reject} ${clears}`;
+  }
+  if (intent === "complete" && checkout !== input.repoRoot) {
+    let committed: string | null = null;
+    try {
+      committed = recordCommittedCompletionSettlement(db, {
+        proposalRef: item.id, settlementRequestId: `worker-tick-record-${item.id}`.slice(0, 120), cwd: checkout,
+        acceptanceCriteria: input.acceptanceCriteria, dryRun: true
+      }).documentsCommit ?? null;
+    } catch { /* not its committed settlement */ }
+    const retire = `\`git -C ${input.repoRoot} worktree remove ${checkout}\``;
+    if (committed) {
+      let baseBranch = "the governed base branch";
+      try { baseBranch = resolveBaseBranch(input.repoRoot); } catch { /* keep the generic name */ }
+      return `${blocked} It cannot settle again (${reason}): ${checkout} at ${committed} is already its own canonical completion settlement, `
+        + "never recorded because the settling process ended first and the worker did not reconcile that exit. Do not reject it alone: a continuation could only refuse again. "
+        + `After an independent review of exactly ${committed}, an operator may land it with \`git -C ${input.repoRoot} merge --ff-only ${committed}\` (then push ${baseBranch}), `
+        + `then retire that candidate's worktree with ${retire} (nothing is lost: its head is then on the base) so the next Action can launch, `
+        + `and reject the now-moot proposal: \`${command("rejected", `reject-${requestId}`)}\`, ${twoPhase}. ${clears}`;
+    }
+    const candidatePlan = discoverDocs(checkout).docs.find((doc) => doc.type === "plan" && doc.actions.some((action) => input.actionKey.endsWith(`/${action.id}`)));
+    const doneOnCandidate = candidatePlan?.type === "plan"
+      && candidatePlan.actions.some((action) => input.actionKey.endsWith(`/${action.id}`) && action.status === "done");
+    if (doneOnCandidate) {
+      return `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). That candidate already records the Action done, but its head is not this Ask's `
+        + "canonical settlement, so nothing records it and a continuation could only refuse again: do not reject it alone. "
+        + `Inspect it with \`git -C ${checkout} log --oneline -5\`. To redo the Action instead, retire that candidate's worktree with ${retire} `
+        + `(its commits stay on its branch), then reject the proposal: \`${command("rejected", `reject-${requestId}`)}\`, ${twoPhase}. ${clears}`;
+    }
+  }
+  return `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). ${reject} ${clears}`;
 }
 
 /**
@@ -1287,6 +1477,11 @@ export function runManagedProductionTick(
         // only under Decision 0058's separately recorded grant. Absent a valid
         // grant this stops after preservation and reports the operator merge.
         const preservation = preserveSessionCandidate({ db, workspace, repoRoot, session: lease, now }, options.handoff?.preserve ?? {});
+        // An agent that died between its settlement commit and the receipt
+        // left a pending completion (Issue #995): record it first, so the
+        // reconciliation below finds the settlement exactly as if the agent
+        // had finished.
+        recordInterruptedCompletionSettlement(db, { session: lease, repoRoot, log });
         // A preservation refusal that has now repeated identically past the
         // budget must not be classified as resumable: the next tick would
         // otherwise launch a fresh Session for the same Action, reproduce the
@@ -1294,12 +1489,19 @@ export function runManagedProductionTick(
         // receipt's outcome exactly what the evidence says (still
         // `incomplete_resumable` when the candidate has real changes) while
         // stopping it from being offered to `prepareSession`'s resumption path.
+        // The same holds for a candidate that already carries its Action's
+        // recorded completion settlement with more work after it (Issue
+        // #994): a continuation could only refuse "Action is already done";
+        // the terminal guards take it instead (`recoverTerminalHandoff`).
         const continuation = getSessionContinuation(db, lease);
+        const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot,
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
-            : undefined,
+            : settledOnCandidate
+              ? { reason: `Its candidate already carries the Action's recorded completion settlement ${settledOnCandidate}; not offered for automatic resumption, the terminal guards decide it.` }
+              : undefined,
           // Keep retry accounting atomic with the terminal Session/receipt.
           // A worker crash cannot commit one without the other; replay is a no-op.
           onReceiptWrite: continuation ? (receipt) => {
@@ -1396,6 +1598,7 @@ export function runManagedProductionTick(
     }
 
     let launch: ManagedProductionLaunchAttempt | null = null;
+    const gate: { actionKey: string | null } = { actionKey: null };
     // Re-read the policy: the tick can block for minutes between the scheduling
     // pass and this Project's launch decision, so a grant narrowed mid-tick
     // must take effect here rather than being frozen at the tick's start.
@@ -1416,9 +1619,9 @@ export function runManagedProductionTick(
       // base branch, carrying the completion and pointer settlement. Admit the
       // next eligible Action in this same tick -- no operator command, no
       // one-tick wait.
-      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
+      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch && handoff === null && reconciled.length === 0) {
-      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
+      launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log, gate });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       // Logged once per (Session, head, reason), not on every ~3 s tick: the
@@ -1453,6 +1656,8 @@ export function runManagedProductionTick(
       if (!(mayLaunch && handoff?.integration.kind === "refused" && handoff.integration.operatorMergeCommand)) {
         clearIntegrationRefusalLog(db, project.slug);
       }
+      // An operator-gate escalation lasts exactly as long as the gate holds a launch.
+      clearProjectEscalationsOfKind(db, OPERATOR_GATE_ESCALATION, project.slug, gate.actionKey);
       if (mayLaunch && terminalRefusal) {
         recordTerminalCandidateEscalation(db, { facts: terminalRefusal, repoRoot, now, log });
         clearProjectTerminalCandidateEscalations(db, project.slug, `${terminalRefusal.session.project_slug}/${terminalRefusal.session.action_id}`);
@@ -1503,6 +1708,8 @@ function attemptProjectLaunch(
     tmux: TmuxAdapter;
     now: Date;
     log: (message: string) => void;
+    /** Set to the Action whose launch an operator gate held this tick, if any. */
+    gate?: { actionKey: string | null };
   }
 ): ManagedProductionLaunchAttempt {
   const lease = getRepositoryLease(db, input.repoRoot);
@@ -1547,6 +1754,19 @@ function attemptProjectLaunch(
         recordDependencyUnresolvedSighting(db, { actionKey: currentActionKey, unresolvedId, now: input.now, log: input.log });
       } else {
         clearDependencyUnresolvedSighting(db, currentActionKey);
+      }
+    }
+    // A pending operator item gating an in-scope Action is escalated once,
+    // instead of every tick skipping the launch with no trace (Issue #997).
+    const gateItem = transition.kind === "decision" ? transition.operatorGate?.blocking[0] : undefined;
+    const context = transition.dispatch.context;
+    if (currentActionKey && gateItem && context && actionInActiveScope(db, input.projectSlug, context.activePlan, context.action.id)) {
+      if (input.gate) input.gate.actionKey = currentActionKey;
+      try {
+        recordOperatorGateEscalation(db, { actionKey: currentActionKey, item: gateItem, repoRoot: input.repoRoot,
+          acceptanceCriteria: context.action.acceptanceCriteria, now: input.now, log: input.log });
+      } catch (error) {
+        input.log(`Operator-gate bookkeeping failed for ${currentActionKey}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };

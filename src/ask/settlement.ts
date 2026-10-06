@@ -1,6 +1,7 @@
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { agentAskFingerprint, normalizeAgentAsk, setTopLevelAskScalar, type AgentAskProposal, type NormalizedAgentAsk, type NormalizedAgentAskAction, type NormalizedAgentAskEvidence, type NormalizedAgentAskOption } from "./agentAsk.js";
@@ -1708,6 +1709,157 @@ export function settleAgentAsk(db: Database.Database, input: {
     }
   }
   return settled;
+}
+
+/**
+ * Record the settlement of a pending `complete` Agent Ask whose documents an
+ * earlier `settle --apply` already committed in a candidate checkout, when
+ * that process ended after its Phase 2 commit and before Phase 3 recorded the
+ * receipt (the `beforeOperationalProjection` window; Issue #995). The
+ * proposal then stays pending, and a pending completion gates its Action
+ * (resolveProjectTransition answers `decision`) although the work and its
+ * settlement are both committed.
+ *
+ * Nothing is trusted from the commit itself. The settlement is derived again:
+ * `settleAgentAsk` previews this exact proposal (every refusal it applies:
+ * evidence, required review Decisions, expected Artifact, unique Action id,
+ * pointer resolution) in a temporary detached checkout of the proposal's
+ * `candidate_revision`, and HEAD must be one commit on top of that revision
+ * whose files are exactly the preview's documents (dates aside: the preview
+ * runs on a later day than the commit may have, so only the replay's own
+ * day may differ, by one consistent day) plus `.arcadia/asks/` intake files,
+ * which the settlement archives and which are not compared. The evidence must also verbatim-cover
+ * `acceptanceCriteria` (the Action as the caller admitted it), every entry
+ * `met`. Then Phase 3 (the projection and the receipt) runs as the
+ * interrupted call would have. `dryRun` stops before writing anything durable
+ * (the replay checkout is registered and removed again).
+ * Authority (production scope) is the caller's to check.
+ */
+export function recordCommittedCompletionSettlement(db: Database.Database, input: {
+  proposalRef: string;
+  settlementRequestId: string;
+  /** Any directory inside the checkout that holds the committed settlement. */
+  cwd: string;
+  /** The Action's declared acceptance criteria, as the caller admitted it. */
+  acceptanceCriteria: string[];
+  dryRun?: boolean;
+}): AgentAskSettlementReceipt {
+  const proposalRow = db.prepare("SELECT proposal_json FROM agent_ask_proposals WHERE id = ? OR request_id = ?")
+    .get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
+  if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
+  const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
+  const normalized = proposal.normalized;
+  if (normalized.intent !== "complete" || !normalized.targetRef || !normalized.candidateRevision) {
+    throw validationError("Only a complete Agent Ask with a target and a Candidate revision has a committed completion settlement to record.");
+  }
+  if (db.prepare("SELECT 1 FROM agent_ask_settlements WHERE proposal_id = ? OR request_id = ?").get(proposal.id, input.settlementRequestId)) {
+    throw validationError("Agent Ask proposal is already settled, or the settlement request id was already used.");
+  }
+  const declared = input.acceptanceCriteria;
+  if (declared.length === 0 || normalized.evidence.length !== declared.length
+    || normalized.evidence.some((entry, index) => entry.criterion !== declared[index] || entry.status !== "met")) {
+    throw validationError("Completion evidence does not verbatim-cover every declared acceptance criterion with every entry met.");
+  }
+  const project = getProjectBySlug(db, normalized.project);
+  const metadata = project ? getProjectMetadata(db, project.id) : null;
+  if (!project || !metadata?.repo_path) throw validationError("Agent Ask Project repository is not configured.");
+  const controlRepoPath = path.resolve(metadata.repo_path);
+  const repoRoot = projectCheckoutFor(controlRepoPath, input.cwd);
+  if (repoRoot === controlRepoPath) throw validationError("A committed completion settlement is recorded only from a candidate worktree.", { cwd: input.cwd });
+
+  if ((tryGit(repoRoot, ["status", "--porcelain", "--untracked-files=all"]) ?? "x").trim()) {
+    throw validationError("The checkout holding the committed settlement is missing or not clean.", { repoRoot });
+  }
+  const [head, ...parents] = git(repoRoot, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(/\s+/);
+  const bound = tryGit(repoRoot, ["rev-parse", "--verify", "--quiet", `${normalized.candidateRevision}^{commit}`])?.trim();
+  if (parents.length !== 1 || !bound || parents[0] !== bound) {
+    throw validationError("HEAD is not a single settlement commit on top of the Ask's Candidate revision.", { head, candidateRevision: normalized.candidateRevision });
+  }
+
+  // Derive the settlement again at `bound`, in a throwaway detached checkout
+  // (hooks off), and compare it with what HEAD actually committed.
+  const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-settlement-replay-"));
+  const checkout = path.join(scratch, "checkout");
+  let expected: Map<string, string | null>;
+  let preview: AgentAskSettlementReceipt;
+  // The day the replay writes into `updated:` and the Log heading; the commit
+  // may carry an earlier day there, and only there.
+  const replayDay = today();
+  try {
+    git(repoRoot, ["-c", "core.hooksPath=/dev/null", "worktree", "add", "--detach", "--quiet", checkout, bound]);
+    // No worktree reservation covers this checkout, so the claim fence does
+    // not apply here; both callers only pass proposals for the Session's own
+    // Action, which the dead Session's claim already named.
+    preview = settleAgentAsk(db, { proposalRef: proposal.id, settlementRequestId: input.settlementRequestId, disposition: "accepted", cwd: checkout });
+    expected = new Map((preview.review?.documents ?? []).map((document) => [document.path, document.after]));
+  } finally {
+    tryGit(repoRoot, ["worktree", "remove", "--force", checkout]);
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  const intake = (file: string) => file.startsWith(".arcadia/asks/");
+  // Line by line; a line may differ only where the replay wrote its own day,
+  // and then by one settlement day used consistently across every file.
+  // (`tryGit` trims its output, so both sides compare trimmed.)
+  let settledDay: string | null = null;
+  const sameSettlement = (committed: string | null, derived: string | null): boolean => {
+    if (committed === null || derived === null) return committed === derived;
+    const lines = committed.trim().split("\n");
+    const derivedLines = derived.trim().split("\n");
+    return lines.length === derivedLines.length && lines.every((line, index) => {
+      const want = derivedLines[index];
+      if (line === want) return true;
+      if (!want.includes(replayDay)) return false;
+      const pattern = new RegExp(`^${want.split(replayDay).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(\\d{4}-\\d{2}-\\d{2})")}$`);
+      const days = new Set(pattern.exec(line)?.slice(1) ?? []);
+      if (days.size !== 1) return false;
+      const [day] = [...days];
+      settledDay ??= day;
+      return day === settledDay;
+    });
+  };
+  const changed = git(repoRoot, ["diff", "--name-only", bound, head]).split("\n").map((line) => line.trim()).filter(Boolean);
+  const governed = changed.filter((file) => !intake(file));
+  const expectedPaths = [...expected.keys()].filter((file) => !intake(file));
+  const differing = [...new Set([...governed, ...expectedPaths])].filter((file) =>
+    !expected.has(file) || !sameSettlement(tryGit(repoRoot, ["show", `${head}:${file}`]), expected.get(file) ?? null));
+  if (expectedPaths.length === 0 || differing.length > 0) {
+    throw validationError("HEAD is not this Ask's own canonical completion settlement: its files differ from the settlement derived at the Candidate revision.", { differing });
+  }
+
+  const operation = { proposalRef: input.proposalRef, disposition: "accepted", responsibility: null, placement: null, anchor: null };
+  const effects = [
+    ...preview.effects,
+    `Recorded from commit ${head}, which had already applied these effects: the settling process ended after committing it and before recording it, so no document was rewritten.`
+  ];
+  // As settleAgentAsk reports it: the pointer the completion wrote, not the queue's front.
+  const pointer = discoverDocs(repoRoot).docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug)?.currentAction ?? null;
+  const now = new Date().toISOString();
+  const receipt: AgentAskSettlementReceipt = {
+    ...preview,
+    id: `asksettle_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
+    effects,
+    nextActionKey: pointer ? `${project.slug}/${pointer}` : null,
+    previewFingerprint: sha256(JSON.stringify({ proposalFingerprint: proposal.fingerprint, operation, documentsCommit: head })),
+    applied: true,
+    notificationStatus: "pending",
+    createdAt: now,
+    documentsCommit: head
+  };
+  delete receipt.review;
+  delete receipt.warnings;
+  if (input.dryRun) return receipt;
+  // Phase 3 exactly as settleAgentAsk runs it after its commit: project the
+  // committed documents, then record the receipt, in one transaction.
+  writeTransaction(db, () => {
+    const sync = syncProjectDocs(db, project, { apply: true, repoRoot });
+    const blocking = sync.errors.filter((error) => changed.includes(error.relativePath));
+    if (blocking.length > 0) throw validationError("The committed completion records failed operational sync.", { errors: blocking });
+    insertSettlementRow(db, receipt, {
+      proposalId: proposal.id, settlementRequestId: input.settlementRequestId, operation,
+      previewFingerprint: receipt.previewFingerprint, effects, queueActionKey: receipt.queueActionKey, projectSlug: project.slug, now
+    });
+  });
+  return receipt;
 }
 
 /**
