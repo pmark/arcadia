@@ -229,8 +229,9 @@ else
   # Only this run's own G7 policy, with exactly the fixture scope, is turned Off here.
   REVOKED="$(jq -r '.data.read.policy.authority.requestId // "unknown"' <<<"$STATUS")"
   if ! jq -e --arg id "$GRANT_ID" --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE_PROJECT/$FIXTURE_PLAN" --argjson owned "$OWNED_ACTIONS_JSON" \
-      '.data.read.policy.authority.requestId == $id and .data.read.policy.scope.projects == [$p] and .data.read.policy.scope.plans == [$plan]
-       and (if $owned != null then .data.read.policy.scope.actions == $owned
+      'def same_set($x; $y): ($x | type == "array") and ($x | length) == ($y | length) and ($x | unique | length) == ($x | length) and ($x | sort) == ($y | sort);
+       .data.read.policy.authority.requestId == $id and .data.read.policy.scope.projects == [$p] and .data.read.policy.scope.plans == [$plan]
+       and (if $owned != null then same_set(.data.read.policy.scope.actions; $owned)
             else (.data.read.policy.scope.actions | type == "array" and length > 0 and all(.[]; type == "string" and test("^three-action-rehearsal/(write-start-marker|transform-start-marker|verify-final-rehearsal|chain-step-(0[4-9]|1[0-2]))$"))) end)' <<<"$STATUS" >/dev/null; then
     OFF_STATE=not_owned
     refuse "production is Active under request id $REVOKED, which is not this run's $GRANT_ID with the fixture Project, Plan and the Actions its G7 recorded; G8 does not own it and did not turn it Off"

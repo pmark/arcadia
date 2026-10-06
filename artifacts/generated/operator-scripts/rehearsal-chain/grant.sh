@@ -347,14 +347,16 @@ PREVIEW="$(arcadia production preview "${ARGS[@]}" --json)"
 printf '%s\n' "$PREVIEW" > "$RUN_DIR/preview.json"
 jq -e --argjson rev "$REVISION" --arg p "$PROJECT" --arg plan "$PROJECT/$PLAN" --argjson actions "$SCOPED_ACTIONS_JSON" --arg provider "$PROVIDER" --arg e "$EXPIRES" '
   def same_instant($x; $y): ($x | sub("\\.[0-9]+Z$"; "Z")) == ($y | sub("\\.[0-9]+Z$"; "Z"));
+  # Arcadia may return the scope'"'"'s Actions in its own (queue) order: compare them as a set with no duplicates.
+  def same_set($x; $y): ($x | type == "array") and ($x | length) == ($y | length) and ($x | unique | length) == ($x | length) and ($x | sort) == ($y | sort);
   .ok == true and .data.preview.expectedRevision == $rev
   and .data.preview.scope.projects == [$p] and .data.preview.scope.plans == [$plan]
-  and .data.preview.scope.actions == $actions
+  and same_set(.data.preview.scope.actions; $actions)
   and .data.preview.scope.providers == [$provider] and .data.preview.scope.maxConcurrentSessions == 1
   and (.data.preview.scope.mechanicalTransitions | sort) == (["acceptance", "packet_approval", "pointer", "validation"])
   and .data.preview.scope.remotePreservation == true
   and .data.preview.scope.integrationGrant.decisionRef == "0058"
-  and .data.preview.scope.integrationGrant.actions == $actions
+  and same_set(.data.preview.scope.integrationGrant.actions; $actions)
   and same_instant(.data.preview.scope.integrationGrant.expiresAt; $e)
   and same_instant(.data.preview.scope.packetApprovalExpiresAt; $e)
   and (.data.preview.scope.rehearsalException == null)
