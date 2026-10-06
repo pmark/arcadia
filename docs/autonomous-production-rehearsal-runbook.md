@@ -146,15 +146,23 @@ exported; with `ARCADIA_REQUIRE_INLINE_WORKSPACE=1` a command without it fails).
       revision that is identical to main on the runtime paths (`src scripts apps
       package.json pnpm-lock.yaml tsconfig.json`) and refuse otherwise.
 - [ ] The previous run's G8 receipt is `succeeded` with Off confirmed (the next
-      reset requires it).
-- [ ] The fixture state matches what the next reset pins. **Known blocker for
-      run 6:** run 5 integrated Action 1, so the fixture's local `main` is
-      `f68ec48`, two commits ahead of the run-5 reset head and of GitHub's `main`
-      (both `7214de28`); the existing run-N reset refuses unless local `main`
-      equals the previous reset head, and Action 2 has a passed development
-      attempt and a settled template completion id. See section 8, item 1.
-- [ ] The prerequisite fixes for known blockers are merged **and installed**
-      (G6 and G7 now require the #983 commit).
+      reset binds it by its run directory).
+- [ ] The run's parameter file
+      (`artifacts/generated/operator-scripts/rehearsal-chain/params/<run-id>.json`,
+      section 5 "Start a run from the chain set") is merged on main with no value
+      starting `UNFILLED`: its previous-run bindings come from the previous run's
+      reset and G8 receipts, its `requiredCommits` name every prerequisite fix.
+- [ ] The fixture state matches what the parameter file binds: the reset's
+      read-only dry run prints `DRY RUN: no refusal` (it also shows the planned
+      local-main move, the Plan diff and every completion id). Run 5's terminal
+      state (local `main` `f68ec48`, ahead of GitHub's `7214de28`; Action 2's
+      passed attempt; settled template completion ids) is what run 6's file
+      binds, so the chain reset handles it (section 8, item 1).
+- [ ] The prerequisite fixes for known blockers are merged **and installed**:
+      G6 and G7 require every `requiredCommits` entry of the run's parameter file
+      (for run 6 and run 7: #922, #924, #983, the #987 stacking fix `26172c74`
+      (#1006) and the #997 gate fix `a4a7c184` (#1010); these five are also a
+      fixed floor no parameter change can remove).
 - [ ] No other session plans a merge, push, reinstall or restart in the freeze
       window (section 5, phase 2).
 - [ ] The operator is reachable for the G7 press inside a 30-minute window.
@@ -205,9 +213,10 @@ For each change (one Action per session; one mutation owner per candidate):
    repos/pmark/arcadia/actions/runs/<run>/rerun-failed-jobs`); a failing job is
    fixed, not rerun. When two PRs settle governed files and the second conflicts,
    do not hand-merge: take main's governed files and redo the settlement.
-7. Make the next run's G6 and G7 **require** the newest prerequisite commit
-   (`REQUIRED_COMMITS` in the preflight and grant scripts) so documentation is
-   not the only enforcement.
+7. Make the next run's G6 and G7 **require** the newest prerequisite commit:
+   add it to `requiredCommits` in the run's parameter file (see "Start a run
+   from the chain set" below), so documentation is not the only enforcement.
+   An entry left `UNFILLED` makes G6 and G7 refuse.
 8. Run `pnpm fast-rehearsal` before any live run (and after any change to the
    tick, preservation, the review steps or settlement): unsandboxed, from the
    checkout that will be installed. It must pass. It prints per-phase timings
@@ -238,35 +247,88 @@ stricter stretch from G6 to the G7 press.
 3. From the install until G8: no merges, no queue moves, no fixture docs-sync
    or settlement, no main pushes across runtime commits, no service restarts
    other than G8's. **Exception: the run's own scripts** (the reset, which runs
-   docs sync and may settle-reject a pending fixture proposal; G6; the operator's
-   G7 press; G8). From G6 until the G7 press, additionally **no pushes to main
+   docs sync; the chain reset settles no proposal, it refuses on a pending one;
+   G6; the operator's G7 press; G8). From G6 until the G7 press, additionally **no pushes to main
    at all (not even governed docs-only settles)**: G6's receipt binds the exact
    main head and the installed broker revision, so a main push, a reinstall, a
    reset, a recover or any G8 voids it (G7's `next_after.voided_by` lists them).
+
+### Start a run from the chain set (from run 6 on)
+
+Runs 6 onward use one parameterised operator script set instead of a cloned
+four-script pair per run: the shared implementation
+`artifacts/generated/operator-scripts/rehearsal-chain/{reset,preflight,grant,restore-terminal-off}.sh`,
+the pure tested module `src/operatorActions/rehearsalChain.ts`, and per run one
+reviewed parameter file `rehearsal-chain/params/<run-id>.json` (`run-id` such as
+`run6-2026-10-06`). Each run's four `/runs` entries are thin launchers plus
+descriptors rendered from that file (ids `reset-rehearsal-chain-fixture-<run-id>`,
+`preflight-rehearsal-chain-<run-id>`, `grant-production-rehearsal-chain-<run-id>`,
+`restore-terminal-off-rehearsal-chain-<run-id>`), so each G7 stays one-shot per run.
+The parameter file holds: the run id and label, the Action count N (3 to 12:
+G1's three Actions, then `chain-step-04` onward, each reading its predecessor's
+output), the previous run's ids and **bindings** (its reset receipt's run
+directory and `newHead`, its G8 receipt's run directory and `fixtureMain`, and
+every earlier candidate's branch, tip and pull request from that G8's
+`work-reconciliation.jsonl`), and `requiredCommits`. A value starting `UNFILLED`
+refuses (the reset needs the bindings; G6 and G7 need everything).
+
+To start a run:
+
+1. Write or fill `rehearsal-chain/params/<run-id>.json` (copy the previous run's
+   file; fill the bindings from the previous run's receipts as its `notes` say).
+2. Render and check its library entries:
+   `node --import tsx scripts/render-rehearsal-chain-operator-scripts.ts`, then
+   `pnpm check:operator-scripts` and
+   `pnpm exec vitest run tests/rehearsal-chain.test.ts tests/rehearsal-chain-operator-scripts.test.ts`
+   (the second unsandboxed). `artifacts/generated` is gitignored: `git add -f`.
+3. Review and merge it like any change (Phase 1). A parameter-only change touches
+   no runtime path, so it needs no reinstall, but it moves main: land it before
+   the freeze.
+4. Preview the reset read-only, any time: `ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
+   artifacts/generated/operator-scripts/reset-rehearsal-chain-fixture-<run-id>.sh --dry-run`.
+   It prints the planned local-main move, the reset commit's Plan diff, every
+   Action's fresh completion id and input revision, the live dry-run docs sync,
+   and every refusal; it writes only into a temporary directory (from a
+   candidate checkout, add `ARCADIA_REHEARSAL_RECEIPTS_DIR=<main checkout>/artifacts/generated/operator-scripts/runs`).
+
+Run 6 (`run6-2026-10-06`, N=3) binds run 5's receipts. Run 7 (`run7-2026-10-06`,
+N=9, the overnight run: three batches of three tiny dependent Actions under one
+G7 press inside its 12-hour expiry) is committed with its run-6 bindings
+`UNFILLED`; fill them from run 6's reset and G8 receipts after run 6's G8.
 
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
 1. Reset the fixture (this session needs the operator's yes in its own chat for
    it, section 3): `ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
-   artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run<N>-<date>.sh run`.
-   It amends only `write-start-marker`'s `next_action` (runs 2 to 5; run 6 must
-   also amend Action 2 and 3, section 8 item 1) (a new requirement input
-   revision; a passed development attempt for an unchanged input is never
-   relaunched), names a fresh unused completion request id (the packet template's
-   `complete-<action>-<date>` collides on a same-day rerun), asks the agent to
-   leave `git status` clean after settling, handles earlier proposals by state,
-   and pushes one commit without force after full validation. Expect a receipt
-   with the new fixture head.
-2. Immediately run G6: `.../preflight-three-action-rehearsal-run<N>-<date>.sh run`
+   artifacts/generated/operator-scripts/reset-rehearsal-chain-fixture-<run-id>.sh run`
+   (runs 2 to 5 used `reset-three-action-rehearsal-fixture-run<N>-<date>.sh`).
+   The new line starts from the previous run's reset head on GitHub `main`. If
+   the previous run integrated work by local fast-forward, the reset first proves
+   that exact local `main` (pinned in the parameter file and recorded by the
+   previous G8) is contained in an earlier candidate's remote branch and pull
+   request (every pinned candidate identical locally, on GitHub and as its PR
+   head), then moves **only the clone's local `main`** back to GitHub `main`
+   with a compare-and-swap ref update; otherwise it refuses and moves nothing.
+   It then renders the Plan as the N-Action chain (every Action a fresh
+   requirement input revision, the fresh completion id
+   `complete-<action>-<run-id>` and the clean-tree rule; a passed development
+   attempt for an unchanged input is never relaunched), validates it with
+   Arcadia's own discovery, docs sync and ready set and a read-only live
+   dry-run docs sync, **refuses** any pending fixture proposal or open Decision
+   gating a chain Action (it settles none: give each its own governed
+   disposition first), commits once, pushes without force and runs docs sync.
+   Expect a receipt with the new fixture head, the starting head and the N
+   Action and completion ids.
+2. Immediately run G6: `.../preflight-rehearsal-chain-<run-id>.sh run`
    (read-only). It must print `READY`. Its window is **30 minutes from its
    finish time**.
 3. Tell the operator right away, in the chat and with `arcadia ping "<what to
    press and the UTC deadline>" --kind attention --link <url> --agent "<name>"`
    (success means queued, not delivered): the exact button
-   (`grant-production-three-action-rehearsal-run<N>-<date>`, on `/runs` or
-   `/actions`), **not G8**, the deadline (G6 finish + 30 minutes) and a safer
-   "press by" 5 minutes earlier. Convert the deadline to local time and check
-   the arithmetic.
+   (`grant-production-rehearsal-chain-<run-id>`, on `/runs` or `/actions`),
+   **not G8**, what one press authorises (its descriptor names all N Actions),
+   the deadline (G6 finish + 30 minutes) and a safer "press by" 5 minutes
+   earlier. Convert the deadline to local time and check the arithmetic.
 
 ### Phase 4: the operator presses G7
 
@@ -314,14 +376,23 @@ in `production status`, both verdicts, then integration (the fixture's **local**
 
 ### Phase 7: terminal Off (G8)
 
-Run `.../restore-terminal-off-three-action-rehearsal-run<N>-<date>.sh run` **from
+Run `.../restore-terminal-off-rehearsal-chain-<run-id>.sh run` (runs 2 to 5:
+`restore-terminal-off-three-action-rehearsal-run<N>-<date>.sh`) **from
 the operator's Terminal panel or `/runs`**. A plain non-interactive shell
 refuses with "launch this action through /runs or from an interactive host
-terminal" and changes nothing. Expect `TERMINAL OFF PROVEN: Inactive at revision
+terminal" and changes nothing. It owns only its own run's G7 policy (request id
+`grant-production-rehearsal-chain-<run-id>`, the fixture Project and Plan, and
+the Actions that G7's receipt recorded) and turns it Off before it checks its
+launcher or reads the parameter file, so drift there cannot block the stop.
+Expect `TERMINAL OFF PROVEN: Inactive at revision
 <n>, zero live admissions and Sessions before and after the reviewed restart;
-every fixture candidate is integrated, preserved or empty.` **Before G8, copy the worker log** (`~/Library/Logs/arcadia-services-*/worker.out.log`)
-into the evidence folder: G8's restart recreates it (run 5's log after G8 held
-nothing from runs 1 to 5). G8 restarts host
+every fixture candidate is integrated, preserved or empty.` The chain G8 copies
+every worker log (`~/Library/Logs/arcadia-services-*/worker.out.log` and
+`worker.err.log`) into its run folder's `evidence/worker-logs/` before the
+restart, which recreates them (run 5's log after G8 held nothing from runs 1 to
+5); with an older G8, copy the log by hand first. Its receipt's `fixtureMain`
+and run directory, and its `work-reconciliation.jsonl`, are the next run's
+parameter-file bindings. G8 restarts host
 services (a reviewed restart), so nothing else may run during it. An accidental
 G8 press before G7 is harmless but voids the G6 receipt (it reinstalls the
 broker): rerun G6.
@@ -395,7 +466,15 @@ broker): rerun G6.
    from. Either way the reset must also amend Action 2's (and 3's) `next_action` (Action 2 has a
    passed development attempt at input `6bf8f08dbb3e`) and name fresh completion
    ids for every Action (`complete-transform-start-marker-2026-10-05` is already
-   settled). (b) **#987, serial Actions: decided and implemented: stacked PRs.**
+   settled). **(a) is addressed, not yet run:** the chain reset
+   `reset-rehearsal-chain-fixture-run6-2026-10-06` takes the second route. Its
+   descriptor says the new line starts from `7214de28`; it verifies `f68ec48` is
+   PR #5's tip (and contained in PR #6, Action 2's work, both pinned and checked
+   locally, on GitHub and as PR heads), moves only the clone's local `main` back
+   by compare-and-swap, amends all three Actions' `next_action` with fresh inputs
+   and `complete-<action>-run6-2026-10-06` ids, and pushes one commit on
+   `7214de28` without force. Its `--dry-run` shows exactly that against the real
+   fixture before anything is written. (b) **#987, serial Actions: decided and implemented: stacked PRs.**
    After Action 1 integrates locally, GitHub's `main` lags by design (no base
    push), so host preservation now opens Action 2's draft PR with its base set
    to the remote candidate branch whose tip is Action 2's launch base (Action
@@ -436,9 +515,12 @@ broker): rerun G6.
    pass on the first attempt. Reviewer variance on the plan wording is the known
    cause; keep wording factual and bounded, and measure the pass rate over runs.
 4. **The cost of a run:** each rehearsal cost about an hour to build its script
-   pairs by cloning the previous run's. Propose one parameterised pair (run id,
-   previous heads) instead of copies, so a new run is a reviewed one-line
-   change.
+   pairs by cloning the previous run's. **Addressed by the chain set**
+   (section 5, "Start a run from the chain set"): one shared reset, G6, G7 and
+   G8 implementation, and per run one reviewed parameter file (run id, N, the
+   previous run's receipts and heads, required commits) from which the run's
+   launchers and descriptors are rendered and checked. Run 6 (N=3) and run 7
+   (N=9, bindings to fill from run 6) are prepared; not yet proven live.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983) and an operator gate holding a launch (#997; both tested, not yet seen live);
    a stuck candidate in other states and the dashboard rendering of escalations are
