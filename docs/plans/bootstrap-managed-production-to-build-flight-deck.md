@@ -4035,7 +4035,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: build-checkpoint-replay-and-base-check
+current_action: operator-timeline-phase-1
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
