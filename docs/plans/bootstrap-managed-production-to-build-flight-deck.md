@@ -4105,7 +4105,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: build-chain-rehearsal-run-scripts
+current_action: fix-qa-plan-check-wording
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
