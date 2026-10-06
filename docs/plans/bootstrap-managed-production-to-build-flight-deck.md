@@ -4122,7 +4122,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-pending-completion-gate
+current_action: add-long-chain-fast-rehearsal
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
