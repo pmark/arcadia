@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runAgentAskPendingCommand, runAgentAskSettleCommand } from "../../src/commands/agentAsk.js";
 import { runSessionReconcileCommand } from "../../src/commands/advance.js";
@@ -105,7 +107,9 @@ describe("the agent dies after its settlement commit, before the settlement is r
     expect(atExit.pending).toEqual([]);
     expect(atExit.sessions).toEqual([[ACTION_1, "completed"]]);
     expect(atExit.launches).toBe(1);
-    expect(rehearsal.log.some((line) => line.includes("launch skipped") || line.includes("operator_gate_pending"))).toBe(false);
+    // Never held by its pending completion (the gate's skip reason names it).
+    expect(rehearsal.recorder.tickLog.some((tick) => tick.summary.includes(`(Record ${ACTION_1} complete.)`))).toBe(false);
+    expect(rehearsal.log.some((line) => line.includes("operator_gate_pending"))).toBe(false);
   });
 
   // Was an EXPECTED FAILURE (Issues #995, #997) until the exit tick recorded
@@ -126,10 +130,12 @@ describe("the agent dies after its settlement commit, before the settlement is r
  * never sees the exit, so it neither preserves the candidate nor records the
  * settlement, and the agent's `complete` proposal stays pending: an operator
  * gate (resolveProjectTransition answers `decision`). Production status
- * shows it as exactly one `operator_gate_pending` entry naming the proposal
- * and why it cannot settle ("Action is already done": the candidate's Plan
- * already says done), logged once however many ticks it holds, and cleared
- * by the first tick after the proposal is rejected (Issue #997).
+ * shows it as exactly one `operator_gate_pending` entry naming the proposal,
+ * why it cannot settle again ("Action is already done") and that the
+ * candidate already holds its canonical settlement commit, with the operator
+ * merge of exactly that commit; logged once however many ticks it holds, and
+ * cleared by the first tick after the gate is gone (here: a rejection)
+ * (Issue #997).
  */
 describe("the agent dies after its settlement commit and an operator reconciles the Session before the worker does", () => {
   it("shows one deduplicated operator_gate_pending entry with the reason it cannot settle, cleared once the proposal is rejected", () => {
@@ -149,20 +155,79 @@ describe("the agent dies after its settlement commit and an operator reconciles 
     expect(data.operatorEscalations.map((entry) => [entry.actionKey, entry.kind])).toEqual([[rehearsal.actionKey(ACTION_1), "operator_gate_pending"]]);
     const [entry] = data.operatorEscalations;
     expect(entry.message).toBe(`Launch of ${rehearsal.actionKey(ACTION_1)} is held by pending Agent Ask proposal ${proposal}: Record ${ACTION_1} complete.`);
-    expect(entry.remedy).toContain(`It cannot settle: Action is already done. (previewed in ${result.brief.worktree})`);
-    const reject = `arcadia agent-ask settle --proposal ${proposal} --request-id reject-${result.requestId} --disposition rejected`;
-    expect(entry.remedy).toContain(reject);
+    // The remedy names the candidate's committed settlement (derived again, as the exit tick would have) and advises against rejecting.
+    expect(entry.remedy).toContain(`It cannot settle again (Action is already done.): ${result.brief.worktree} at ${result.settlementCommit} is already its own canonical completion settlement`);
+    expect(entry.remedy).toContain("Do not reject it");
+    expect(entry.remedy).toContain(`merge --ff-only ${result.settlementCommit}`);
     expect(text).toContain(`${rehearsal.actionKey(ACTION_1)} [operator_gate_pending]`);
     expect(rehearsal.log.filter((line) => line.includes("(operator_gate_pending)"))).toHaveLength(1);
     expect(rehearsal.redAlerts()).toEqual([]);
+    // Computing that remedy wrote nothing: no settlement row, the candidate unchanged and clean.
+    expect(runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending.map((item) => item.requestId)).toEqual([result.requestId]);
+    expect(git(result.brief.worktree, ["rev-parse", "HEAD"]).trim()).toBe(result.settlementCommit);
+    expect(git(result.brief.worktree, ["status", "--porcelain", "--untracked-files=all"])).toBe("");
+    expect(git(rehearsal.repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-settlement-replay-");
 
-    // The remedy's own command, preview then apply, from the Project's checkout.
+    // Clearing, proven with a rejection (the remedy advises landing the settlement instead).
     const preview = runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo });
     runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo,
       preview: preview.data.receipt.previewFingerprint, apply: true });
     const after = rehearsal.tick();
     expect(after.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionKey(ACTION_1) });
     expect(rehearsal.escalations()).toEqual([]);
+    expect(isolation.guardCalls()).toEqual([]);
+    expect(rehearsal.finish().errors.filter((error) => !error.expected)).toEqual([]);
+  }, SCENARIO_TIMEOUT_MS);
+});
+
+/**
+ * The same window, but the commit on top of the Candidate revision is not the
+ * settlement Arcadia would write: it also changes a Decision, or the Plan
+ * beyond the completion. Nothing about that commit is trusted: the exit tick
+ * derives the settlement again at the Candidate revision, finds the files
+ * differ, and records nothing, so a hand-made "settlement" never becomes a
+ * deterministic-proof receipt. The proposal stays pending and shows as the
+ * operator gate, with the plain reason it cannot settle.
+ */
+describe.each([
+  { forgery: "also answers a Decision", edit: (worktree: string) => {
+    mkdirSync(path.join(worktree, "docs", "decisions"), { recursive: true });
+    writeFileSync(path.join(worktree, "docs", "decisions", "0999-forged.md"), "---\narcadia: v1\ntype: decision\nid: \"0999\"\nstatus: approved\n---\n");
+  } },
+  { forgery: "also edits the Plan beyond the completion", edit: (worktree: string) => {
+    const plan = git(worktree, ["ls-files", "docs/plans"]).trim().split("\n")[0];
+    writeFileSync(path.join(worktree, plan), `${readFileSync(path.join(worktree, plan), "utf8")}\nA line no settlement writes.\n`);
+  } }
+])("a commit on the Candidate revision that $forgery is not recorded as the settlement", ({ forgery, edit }) => {
+  it("records nothing on the exit tick and shows the pending proposal as the operator gate", () => {
+    const rehearsal = world(`fault-forged-settlement-${forgery.split(" ").slice(-2).join("-").toLowerCase()}`);
+    rehearsal.expectError(/reconciliation outcome was incomplete_resumable/);
+    const { launch } = rehearsal.untilLaunched(ACTION_1, 3);
+    const result = rehearsal.execute(launch, ACTION_1, "interrupted-after-settlement-commit");
+    const worktree = result.brief.worktree;
+    edit(worktree);
+    git(worktree, ["add", "-A"]);
+    git(worktree, ["-c", "user.name=Forger", "-c", "user.email=forger@rehearsal.test", "commit", "-q", "--amend", "--no-edit"]);
+    const forged = git(worktree, ["rev-parse", "HEAD"]).trim();
+    expect(git(worktree, ["rev-parse", "HEAD^"]).trim()).toBe(result.workCommit);
+
+    const exit = rehearsal.tick();
+    expect(exit.reconciled.map((entry) => entry.outcome)).toEqual(["incomplete_resumable"]);
+    expect(rehearsal.log.filter((line) => line.includes(`Did not record pending completion Agent Ask ${result.requestId}`)
+      && line.includes("is not this Ask's own canonical completion settlement"))).toHaveLength(1);
+    expect(rehearsal.log.some((line) => line.includes("Recorded the interrupted completion settlement"))).toBe(false);
+    expect(runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending.map((item) => item.requestId)).toEqual([result.requestId]);
+
+    rehearsal.ticks(2);
+    expect(rehearsal.sessions().map((s) => [s.action_id, s.status])).toEqual([[ACTION_1, "needs_input"]]);
+    const [entry, ...others] = rehearsal.escalations();
+    expect(others).toEqual([]);
+    expect(entry.kind).toBe("operator_gate_pending");
+    expect(entry.remedy).toContain("It cannot settle: Action is already done.");
+    expect(entry.remedy).not.toContain("Do not reject");
+    expect(git(worktree, ["rev-parse", "HEAD"]).trim()).toBe(forged);
+    expect(git(rehearsal.repo, ["worktree", "list", "--porcelain"])).not.toContain("arcadia-settlement-replay-");
+    expect(rehearsal.planAction(rehearsal.repo, ACTION_1)).toBe("open");
     expect(isolation.guardCalls()).toEqual([]);
     expect(rehearsal.finish().errors.filter((error) => !error.expected)).toEqual([]);
   }, SCENARIO_TIMEOUT_MS);

@@ -181,8 +181,8 @@ function recoverTerminalHandoff(
     const plan = basePlans.find((doc) => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug);
     const action = plan?.type === "plan" ? plan.actions.find((entry) => entry.id === session.action_id) : undefined;
     if (action?.status === "done") continue;
-    if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (exit.outcome !== "accepted_completion" && !latestCandidateSettlementCommit(db, session, repoRoot)) continue;
+    if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
       log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
       continue;
@@ -865,7 +865,8 @@ function actionInActiveScope(db: Database.Database, projectSlug: string, planSlu
  * leaves its `complete` proposal pending, and that pending proposal gates the
  * Action on every later tick. Record that settlement deterministically (no
  * coding agent, no model call) through `recordCommittedCompletionSettlement`,
- * which accepts only the candidate's own canonical settlement commit of a
+ * which derives the settlement again at the proposal's Candidate revision and
+ * accepts only a candidate HEAD whose files are exactly that settlement, for a
  * proposal whose evidence verbatim-covers the Action's criteria as the base
  * checkout declares them, every entry met. Only for an Action the Active
  * policy's scope names exactly. Anything else leaves the proposal pending,
@@ -927,7 +928,7 @@ const OPERATOR_GATE_ESCALATION = "operator_gate_pending";
  */
 function recordOperatorGateEscalation(
   db: Database.Database,
-  input: { actionKey: string; item: OperatorGateItem; repoRoot: string; now: Date; log: (message: string) => void }
+  input: { actionKey: string; item: OperatorGateItem; repoRoot: string; acceptanceCriteria: string[]; now: Date; log: (message: string) => void }
 ): boolean {
   const { actionKey, item } = input;
   const label = item.kind === "agent_ask" ? "Agent Ask proposal" : "Decision";
@@ -947,24 +948,34 @@ function recordOperatorGateEscalation(
  * The remedy for one operator gate: the item, then either the exact governed
  * command that settles it or the reason it cannot settle. For an Agent Ask the
  * reason comes from a settlement preview (which writes nothing) in the checkout
- * the proposal was drafted in, or the Project's checkout when that is gone.
+ * the proposal was drafted in, or the Project's checkout when that is gone. A
+ * `complete` Ask whose own settlement that candidate already committed (the
+ * settling process ended before recording it, and the worker did not see the
+ * exit) is named as such: rejecting it would only let a continuation refuse
+ * "Action is already done" again.
  */
 function operatorGateRemedy(
   db: Database.Database,
-  input: { actionKey: string; item: OperatorGateItem; label: string; repoRoot: string }
+  input: { actionKey: string; item: OperatorGateItem; label: string; repoRoot: string; acceptanceCriteria: string[] }
 ): string {
   const { item } = input;
   const blocked = `Blocked: pending ${input.label} ${item.id} ("${item.title}") gates ${input.actionKey}, so the tick launches nothing for it and never settles it itself.`;
   const clears = "This entry clears on the first tick after the gate is gone.";
   if (item.kind === "decision") {
-    return `${blocked} Answer it with \`${item.settleCommand}\`${item.relativePath ? ` (${item.relativePath})` : ""}. ${clears}`;
+    const recommended = item.recommendedOption ? ` The recommended option is "${item.recommendedOption}"${item.consequence ? ` (${item.consequence})` : ""}.` : "";
+    return `${blocked} It is the operator's to answer, with \`${item.settleCommand}\` or the same command naming another option${item.relativePath ? ` (${item.relativePath})` : ""}.${recommended} ${clears}`;
   }
   const row = db.prepare("SELECT request_id, proposal_json FROM agent_ask_proposals WHERE id = ?").get(item.id) as
     | { request_id: string; proposal_json: string }
     | undefined;
   const requestId = row?.request_id ?? item.id;
   let sourcePath: string | null = null;
-  try { sourcePath = row ? (JSON.parse(row.proposal_json) as { sourcePath?: string | null }).sourcePath ?? null : null; } catch { /* the Project's checkout */ }
+  let intent: string | null = null;
+  try {
+    const stored = row ? JSON.parse(row.proposal_json) as { sourcePath?: string | null; normalized?: { intent?: string } } : null;
+    sourcePath = stored?.sourcePath ?? null;
+    intent = stored?.normalized?.intent ?? null;
+  } catch { /* the Project's checkout */ }
   const sourceDirectory = sourcePath ? path.dirname(sourcePath) : null;
   const checkout = sourceDirectory && existsSync(sourceDirectory) ? projectCheckoutFor(input.repoRoot, sourceDirectory) : input.repoRoot;
   const command = (disposition: string, settlementRequestId: string) =>
@@ -977,9 +988,26 @@ function operatorGateRemedy(
   } catch (error) {
     reason = error instanceof Error ? error.message : String(error);
   }
-  return reason === null
-    ? `${blocked} It can settle: from ${checkout}, \`${command("accepted", `accept-${requestId}`)}\`, ${twoPhase}. ${reject} ${clears}`
-    : `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). ${reject} ${clears}`;
+  if (reason === null) {
+    return `${blocked} Its settlement preview passes (from ${checkout}); accepting it is the operator's call: \`${command("accepted", `accept-${requestId}`)}\`, ${twoPhase}. ${reject} ${clears}`;
+  }
+  if (intent === "complete" && checkout !== input.repoRoot) {
+    let committed: string | null = null;
+    try {
+      committed = recordCommittedCompletionSettlement(db, {
+        proposalRef: item.id, settlementRequestId: `worker-tick-record-${item.id}`.slice(0, 120), cwd: checkout,
+        acceptanceCriteria: input.acceptanceCriteria, dryRun: true
+      }).documentsCommit ?? null;
+    } catch { /* not its committed settlement */ }
+    if (committed) {
+      let baseBranch = "the governed base branch";
+      try { baseBranch = resolveBaseBranch(input.repoRoot); } catch { /* keep the generic name */ }
+      return `${blocked} It cannot settle again (${reason}): ${checkout} at ${committed} is already its own canonical completion settlement, `
+        + "never recorded because the settling process ended first and the worker did not reconcile that exit. Do not reject it: a continuation could only refuse again. "
+        + `After an independent review of exactly ${committed}, an operator may land it with \`git -C ${input.repoRoot} merge --ff-only ${committed}\` (then push ${baseBranch}). ${clears}`;
+    }
+  }
+  return `${blocked} It cannot settle: ${reason} (previewed in ${checkout}). ${reject} ${clears}`;
 }
 
 /**
@@ -1441,7 +1469,7 @@ export function runManagedProductionTick(
         // left a pending completion (Issue #995): record it first, so the
         // reconciliation below finds the settlement exactly as if the agent
         // had finished.
-        if (preservation.kind === "preserved") recordInterruptedCompletionSettlement(db, { session: lease, repoRoot, log });
+        recordInterruptedCompletionSettlement(db, { session: lease, repoRoot, log });
         // A preservation refusal that has now repeated identically past the
         // budget must not be classified as resumable: the next tick would
         // otherwise launch a fresh Session for the same Action, reproduce the
@@ -1721,8 +1749,13 @@ function attemptProjectLaunch(
     const gateItem = transition.kind === "decision" ? transition.operatorGate?.blocking[0] : undefined;
     const context = transition.dispatch.context;
     if (currentActionKey && gateItem && context && actionInActiveScope(db, input.projectSlug, context.activePlan, context.action.id)) {
-      recordOperatorGateEscalation(db, { actionKey: currentActionKey, item: gateItem, repoRoot: input.repoRoot, now: input.now, log: input.log });
       if (input.gate) input.gate.actionKey = currentActionKey;
+      try {
+        recordOperatorGateEscalation(db, { actionKey: currentActionKey, item: gateItem, repoRoot: input.repoRoot,
+          acceptanceCriteria: context.action.acceptanceCriteria, now: input.now, log: input.log });
+      } catch (error) {
+        input.log(`Operator-gate bookkeeping failed for ${currentActionKey}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     return { attempted: false, outcome: "skipped", reason: transition.reason, actionKey: null };
   }
