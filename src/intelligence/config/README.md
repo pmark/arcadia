@@ -7,6 +7,10 @@ for the full routing model and the environment variables that configure it
 `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE`, `ARCADIA_LITELLM_BASE_URL`,
 `ARCADIA_LITELLM_API_KEY`).
 
+For the operator-facing map of the current local LiteLLM Docker configuration,
+the semantic route variables (including speech), and the safe model-change
+sequence, see `docs/intelligence/LITELLM_CONFIGURATION.md`.
+
 Do not add provider-specific settings here, or one environment variable per
 (capability, profile) combination — `buildDefaultRoutes` in `defaults.ts`
 expands the three aliases into the full registry in code.

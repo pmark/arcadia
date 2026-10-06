@@ -159,6 +159,10 @@ the job is queued — never silently ignored.
 
 ## Configuration
 
+For the current local Docker/launchd topology, the boundary between LiteLLM
+model aliases and Arcadia semantic route variables, and the safe model-change
+sequence, see [Local LiteLLM model configuration](./LITELLM_CONFIGURATION.md).
+
 The route registry is built from configured LiteLLM aliases plus local Codex,
 Claude Code, and optional ComfyUI/image routes, configured via environment variables
 (`src/intelligence/config/defaults.ts`):
@@ -168,6 +172,9 @@ Claude Code, and optional ComfyUI/image routes, configured via environment varia
 | `ARCADIA_LITELLM_LOCAL_TEXT_ROUTE`  | `arcadia-default`   | `text.generate`, local, fast + standard      |
 | `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`  | *(unset = disabled)* | `text.generate`, cloud, fast + standard + quality |
 | `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` | *(unset = disabled)* | `image.generate`, cloud, quality             |
+| `ARCADIA_SPEECH_LOCAL_ROUTE`         | *(unset = disabled)* | `audio.speech.generate`, local, standard     |
+| `ARCADIA_SPEECH_CLOUD_ROUTE`         | *(unset = disabled)* | `audio.speech.generate`, cloud, standard     |
+| `ARCADIA_SPEECH_VOICE_MAP`           | built-in semantic map | Semantic voice ID to provider voice mapping   |
 | `ARCADIA_CODEX_IMAGE_ROUTE`         | *(unset = disabled)* | `image.generate`, local, quality             |
 | `ARCADIA_CODEX_TEXT_ROUTE`          | `codex-cli`         | `text.generate`, local, fast + standard via Codex |
 | `ARCADIA_CODEX_CLI_COMMAND`         | `codex`             | Codex CLI executable                         |
