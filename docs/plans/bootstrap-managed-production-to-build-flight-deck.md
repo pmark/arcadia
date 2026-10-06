@@ -4068,7 +4068,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/997", "https://github.com/pmark/arcadia/issues/994", "https://github.com/pmark/arcadia/issues/995", "https://github.com/pmark/arcadia/issues/968", "tests/fast-rehearsal/README.md", "src/ask/autoSettleBeforeDispatch.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: build-chain-rehearsal-run-scripts
     title: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Build one parameterised reset, G6, G7 and G8 operator script set for an N-Action serial rehearsal chain on the existing fixture, ready for run 6 with N=3 and an overnight run with N=9.
