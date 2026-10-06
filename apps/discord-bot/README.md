@@ -46,6 +46,8 @@ nothing is ever dropped. An unknown category or a malformed id refuses startup.
 | `briefings` | The daily orientation packet and the narrative digests |
 | `log` | Routine settlement summaries, PR-opened pings, completed Actions, produced artifacts, completed milestones, completed runs, Codex task start and completion |
 
+Keep `alerts` unmuted: it holds CI-blocked pings and blocked work that can need you. Delivery is at-least-once: if Discord accepts a post but the bot sees an error, the same message can also appear in the default channel.
+
 Everything that needs the operator stays in `DISCORD_CHANNEL_ID`: review items,
 opened Decisions, PR-ready pings, runs and Codex tasks that need review, replies,
 and the ask ingress (the only channel that accepts requests). Replies to the

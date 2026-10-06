@@ -51,18 +51,15 @@ export function categorizeNotification(key: string, context: CategorizationConte
 
 function categorizeAgentAsk(notification: AgentAskNotificationItem): NotificationCategory | null {
   const requestId = notification.requestId ?? "";
-  // Something broke: a production red alert, a CI check an agent could not
-  // clear, or a settlement whose recovery is incomplete.
-  if (
-    notification.desiredResult?.startsWith("RED ALERT") ||
-    requestId.startsWith("ci-blocked-") ||
-    notification.recovery
-  ) {
-    return "alerts";
-  }
+  // A production red alert wins over everything else.
+  if (notification.desiredResult?.startsWith("RED ALERT")) return "alerts";
   // Needs the operator: a Decision was opened, or a pull request is ready for
-  // their call.
+  // their call. These stay in the default channel even when the settlement also
+  // carries a recovery note, because that is where they can answer.
   if (notification.intent === "decision" || requestId.startsWith("pr-ready-")) return null;
+  // Something broke: a CI check an agent could not clear, or a settlement whose
+  // recovery is incomplete.
+  if (requestId.startsWith("ci-blocked-") || notification.recovery) return "alerts";
   return "log";
 }
 
@@ -103,9 +100,12 @@ export async function sendToCategory(
 }
 
 /**
- * Fetch the channel a scheduled post should use: the category's, else the
- * default, falling back to the default when the category channel is missing or
- * not sendable. Returns `null` only when no sendable channel exists at all.
+ * The channel a scheduled post should use: the category's, else the default.
+ * Its `send` falls back to the default channel when the category channel cannot
+ * be fetched, is not sendable, or rejects the send (for example a missing Send
+ * Messages permission, which fetches fine). Returns `null` only when no
+ * sendable channel exists at all. Delivery is at-least-once: a send that reached
+ * Discord but failed on the client can be repeated in the default channel.
  */
 export async function fetchCategoryChannel(
   client: Pick<Client, "channels">,
@@ -113,15 +113,45 @@ export async function fetchCategoryChannel(
   category: NotificationCategory,
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
 ): Promise<{ id: string; send: (payload: { content: string }) => Promise<{ id: string }> } | null> {
-  const preferred = resolveCategoryChannel(category, config);
-  for (const channelId of preferred === config.discordChannelId ? [preferred] : [preferred, config.discordChannelId]) {
+  type Sendable = { id: string; send: (payload: { content: string }) => Promise<{ id: string }> };
+  const fetchSendable = async (channelId: string): Promise<Sendable | null> => {
     try {
       const channel = await client.channels.fetch(channelId);
       if (channel && "send" in channel) return channel;
     } catch (error) {
       logJson("warn", { msg: "category channel fetch failed", category, channelId, error: error instanceof Error ? error.message : String(error) });
     }
-    logJson("error", { msg: "category channel is not sendable", category, channelId });
+    return null;
+  };
+
+  const preferredId = resolveCategoryChannel(category, config);
+  const preferred = await fetchSendable(preferredId);
+  if (preferredId === config.discordChannelId) {
+    if (!preferred) logJson("error", { msg: "category channel is not sendable", category, channelId: preferredId });
+    return preferred;
   }
-  return null;
+  if (!preferred) {
+    logJson("warn", { msg: "category channel is not sendable; using default", category, channelId: preferredId });
+    const fallback = await fetchSendable(config.discordChannelId);
+    if (!fallback) logJson("error", { msg: "default channel is not sendable", category, channelId: config.discordChannelId });
+    return fallback;
+  }
+  return {
+    id: preferred.id,
+    send: async (payload) => {
+      try {
+        return await preferred.send(payload);
+      } catch (error) {
+        logJson("warn", {
+          msg: "category channel rejected the send; using default",
+          category,
+          channelId: preferredId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        const fallback = await fetchSendable(config.discordChannelId);
+        if (!fallback) throw error;
+        return fallback.send({ content: `(Routed from "${category}", whose channel rejected the post.)\n${payload.content}` });
+      }
+    }
+  };
 }

@@ -35,7 +35,10 @@ const context: CategorizationContext = {
     settlement("ready", { requestId: "pr-ready-arcadia-pr9-decision-answer-2026-10-06" }),
     settlement("opened", { requestId: "pr-opened-arcadia-pr9" }),
     settlement("complete", { intent: "complete", requestId: "complete-x" }),
-    settlement("plain", { requestId: "ask-1" })
+    settlement("plain", { requestId: "ask-1" }),
+    settlement("rejected", { disposition: "rejected", requestId: "ask-rejected" }),
+    settlement("decision-recover", { intent: "decision", requestId: "d2", recovery: { documentsCommitted: false, operationalSync: "pending", reason: "x", remedy: "y" } }),
+    settlement("red-ready", { requestId: "pr-ready-x", desiredResult: "RED ALERT (stalled) on arcadia/x: stuck" })
   ],
   runs: [
     { id: "r-failed", status: "failed" },
@@ -54,6 +57,9 @@ describe("categorizeNotification", () => {
     ["agent-ask:opened", "log"],
     ["agent-ask:complete", "log"],
     ["agent-ask:plain", "log"],
+    ["agent-ask:rejected", "log"],
+    ["agent-ask:decision-recover", null],
+    ["agent-ask:red-ready", "alerts"],
     ["agent-ask:not-in-the-snapshot", null],
     ["requires-review:abc", null],
     ["requires-review:transition", null],
@@ -157,6 +163,25 @@ describe("fetchCategoryChannel", () => {
     expect(missing?.id).toBe(DEFAULT_ID);
     const errored = await fetchCategoryChannel(clientFor({ [BRIEFINGS_ID]: new Error("Unknown Channel"), [DEFAULT_ID]: sendable(DEFAULT_ID) }), config, "briefings", quiet);
     expect(errored?.id).toBe(DEFAULT_ID);
+  });
+
+  it("falls back to the default channel when the briefings channel fetches fine but rejects the send", async () => {
+    const posted: Array<[string, string]> = [];
+    const denied = { id: BRIEFINGS_ID, send: async () => { throw new Error("Missing Permissions"); } };
+    const defaultChannel = { id: DEFAULT_ID, send: async (payload: { content: string }) => { posted.push([DEFAULT_ID, payload.content]); return { id: "d1" }; } };
+    const logs: string[] = [];
+    const channel = await fetchCategoryChannel(clientFor({ [BRIEFINGS_ID]: denied, [DEFAULT_ID]: defaultChannel }), config, "briefings", (level) => logs.push(level));
+    const sent = await channel!.send({ content: "daily packet" });
+    expect(sent.id).toBe("d1");
+    expect(posted[0][1]).toContain("daily packet");
+    expect(posted[0][1]).toContain('Routed from "briefings"');
+    expect(logs).toEqual(["warn"]);
+  });
+
+  it("throws, so the post is retried next tick, when both channels reject the send", async () => {
+    const denied = (id: string) => ({ id, send: async () => { throw new Error("Missing Permissions"); } });
+    const channel = await fetchCategoryChannel(clientFor({ [BRIEFINGS_ID]: denied(BRIEFINGS_ID), [DEFAULT_ID]: denied(DEFAULT_ID) }), config, "briefings", () => {});
+    await expect(channel!.send({ content: "x" })).rejects.toThrow("Missing Permissions");
   });
 
   it("returns null only when no sendable channel exists", async () => {
