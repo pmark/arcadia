@@ -115,3 +115,90 @@ export function parseWavMetadata(bytes: Buffer): WavMetadata | undefined {
     bitsPerSample,
   };
 }
+
+/** Format facts plus the raw PCM `data` chunk bytes of a WAV payload. */
+export type WavDataChunk = {
+  sampleRateHz: number;
+  channels: number;
+  bitsPerSample: number;
+  data: Buffer;
+};
+
+/**
+ * Extracts the raw PCM `data` chunk and format facts from a WAV payload. Same
+ * safety contract as `parseWavMetadata`: undefined for non-WAV or degenerate
+ * headers, and the returned `data` is clamped to the bytes actually present so
+ * a truncated file yields the audio we hold rather than a declared size we
+ * cannot back. Used to concatenate several generated clips into one file.
+ */
+export function extractWavData(bytes: Buffer): WavDataChunk | undefined {
+  if (!isWav(bytes)) {
+    return undefined;
+  }
+
+  let sampleRateHz: number | undefined;
+  let channels: number | undefined;
+  let bitsPerSample: number | undefined;
+  let data: Buffer | undefined;
+
+  let offset = 12;
+  while (offset + 8 <= bytes.length) {
+    const chunkId = bytes.subarray(offset, offset + 4).toString("latin1");
+    const chunkSize = bytes.readUInt32LE(offset + 4);
+    const bodyOffset = offset + 8;
+
+    if (chunkId === "fmt " && bodyOffset + 16 <= bytes.length) {
+      channels = bytes.readUInt16LE(bodyOffset + 2);
+      sampleRateHz = bytes.readUInt32LE(bodyOffset + 4);
+      bitsPerSample = bytes.readUInt16LE(bodyOffset + 14);
+    } else if (chunkId === "data") {
+      const size = Math.min(chunkSize, bytes.length - bodyOffset);
+      data = bytes.subarray(bodyOffset, bodyOffset + size);
+    }
+
+    offset = bodyOffset + chunkSize + (chunkSize % 2);
+  }
+
+  if (
+    sampleRateHz === undefined ||
+    channels === undefined ||
+    bitsPerSample === undefined ||
+    data === undefined ||
+    sampleRateHz <= 0 ||
+    channels <= 0 ||
+    bitsPerSample <= 0
+  ) {
+    return undefined;
+  }
+
+  return { sampleRateHz, channels, bitsPerSample, data };
+}
+
+/**
+ * Builds a canonical 44-byte-header PCM WAV (`RIFF`/`WAVE`/`fmt `/`data`) from
+ * raw PCM data and format facts. Deliberately emits no extra chunks, so a
+ * concatenated narration file is deterministic and free of provider-specific
+ * metadata.
+ */
+export function buildWav(input: WavDataChunk): Buffer {
+  const { sampleRateHz, channels, bitsPerSample, data } = input;
+  const blockAlign = (channels * bitsPerSample) / 8;
+  const byteRate = sampleRateHz * blockAlign;
+
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "latin1");
+  header.writeUInt32LE(36 + data.byteLength, 4);
+  header.write("WAVE", 8, "latin1");
+  header.write("fmt ", 12, "latin1");
+  header.writeUInt32LE(16, 16); // fmt chunk size
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRateHz, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36, "latin1");
+  header.writeUInt32LE(data.byteLength, 40);
+
+  return Buffer.concat([header, data]);
+}

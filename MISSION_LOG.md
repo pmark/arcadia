@@ -1809,6 +1809,13 @@ updated: 2026-10-06
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-prepare-run-4-rehearsal-scripts-2026-10-05).
 
+## 2026-10-05 — Agent Ask pr-opened-arcadia-pr977
+
+- **Did:** New `arcadia intelligence narrate` command ships in PR #977 — it turns text, a file, or a GitHub issue's full commentary into one podcast WAV through the local speech route. https://github.com/pmark/arcadia/pull/977
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
 ## 2026-10-05 — Completed arcadia/embed-validation-evidence-in-preserved-pr-body
 
 - **Did:** Completed Action arcadia/embed-validation-evidence-in-preserved-pr-body from accepted evidence (Candidate b7948facc6ed0e4ec1c64a339405a912ef9b28da).

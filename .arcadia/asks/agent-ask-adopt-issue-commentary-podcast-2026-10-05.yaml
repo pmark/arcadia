@@ -1,0 +1,33 @@
+{
+  "agent_ask": "v1",
+  "request_id": "adopt-issue-commentary-podcast-2026-10-05",
+  "project": "arcadia",
+  "intent": "plan",
+  "desired_result": "Add an Arcadia Intelligence narration capability that turns a long text or a GitHub issue's commentary into one podcast audio file through the existing local speech route.",
+  "requested_authority": "propose",
+  "rationale": "The Intelligence speech capability exists but is only reachable as a single-utterance smoke check, so the operator's request for a podcast from Issue #944's commentary cannot be satisfied without long-form plumbing. Proposing a new inactive draft Plan keeps this out of the active managed-production plan while making the work governed and reviewable. The first slice is implemented in the same candidate branch for review; settlement is the operator's.",
+  "references": [
+    "docs/proposals/podcast-from-issue-commentary.md",
+    "https://github.com/pmark/arcadia/issues/944"
+  ],
+  "actions": [
+    {
+      "id": "narrate-text-and-issue-commentary-to-audio",
+      "desired_result": "Add `arcadia intelligence narrate`, which turns --text, --file, or a GitHub issue's full commentary into one decodable WAV by reusing the existing audio.speech.generate worker, route, and artifact path.",
+      "references": [
+        "docs/proposals/podcast-from-issue-commentary.md",
+        "docs/intelligence/NARRATION.md",
+        "src/commands/narrate.ts",
+        "src/intelligence/speech/narration.ts"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "`arcadia intelligence narrate` reuses the existing audio.speech.generate worker loop, route resolution, and durable artifact store; it introduces no new provider, endpoint, credential, or paid fallback.",
+        "A long source is split deterministically into chunks no longer than the configured maximum, each synthesized and persisted as an ordinary speech artifact, then concatenated into one decodable PCM WAV whose duration is the sum of its clips.",
+        "`--issue` reads the issue and all its comments read-only via `gh` and attributes each comment by its agent signature or GitHub login, neutralising Markdown for speech without dropping words.",
+        "Failure is explicit and leaves no output file: no or multiple sources, empty text, an unreachable or unconfigured local speech route, an unknown semantic voice, and clips that do not share one audio format each fail with a named error.",
+        "Deterministic tests cover chunking, WAV concatenation, Markdown and speaker formatting, issue-reference parsing, and the command's success and failure paths against the fake speech server; lint and tsc pass."
+      ]
+    }
+  ]
+}
