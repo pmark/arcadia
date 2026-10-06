@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import { systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
-import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, type IndependentVerdictRole } from "../sessions/enrollment.js";
+import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { independentVerdictReadiness } from "../sessions/roleLineage.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import {
@@ -38,7 +38,13 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  * alternate between steps; a GitHub rate limit backs off without spending it
  * and escalates after hours of unbroken limiting). A non-pass verdict is re-run
  * only when its own lineage receipt records that the reviewer was unavailable,
- * which `arcadia qa pr` derives from deterministic evidence alone; a
+ * which `arcadia qa pr` derives from deterministic evidence alone, or that it
+ * was pure reviewer variance (no finding but the gate's refused not-applicable
+ * claims, no criterion judged fail; also derived deterministically, Issue
+ * #1018): a variance verdict is re-judged at most
+ * `MAX_VARIANCE_REVIEW_ATTEMPTS - 1` more times per verdict kind per exact head,
+ * counted from the durable lineage attempts, then stops on one
+ * `independent_verdict_failed` entry that says the reruns are spent. A
  * reviewer's real non-pass judgment is never retried automatically and never
  * integrates.
  *
@@ -47,6 +53,14 @@ import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, rea
  * Out of scope by design: merging the PR on GitHub and pushing the base
  * branch. Integration remains the tick's local fast-forward.
  */
+
+/**
+ * Attempts in all (the first review and its automatic reruns) one
+ * verdict kind may spend on one exact head while its non-pass is pure reviewer
+ * variance: the operator's 2026-10-06 choice (Issue #1018), i.e. at most two
+ * reruns. A new head restarts the count.
+ */
+export const MAX_VARIANCE_REVIEW_ATTEMPTS = 3;
 
 export type ReviewBlockCode =
   | "review_head_moved"
@@ -249,6 +263,17 @@ function retryableVerdictReceipt(json: string | null): boolean {
     return (typeof receipt.reviewerUnavailable === "string" && receipt.reviewerUnavailable.length > 0) || receipt.stale === true;
   } catch {
     return false;
+  }
+}
+
+/** The variance reason a failed lineage attempt's own receipt records, or null (a real judgment, an unavailable reviewer, a stale run, an older receipt). */
+function varianceFromReceipt(json: string | null): string | null {
+  if (!json) return null;
+  try {
+    const receipt = JSON.parse(json) as { variance?: unknown; stale?: unknown };
+    return receipt.stale !== true && typeof receipt.variance === "string" && receipt.variance.length > 0 ? receipt.variance : null;
+  } catch {
+    return null;
   }
 }
 
@@ -556,6 +581,27 @@ export function advanceIndependentReview(db: Database.Database, input: {
       };
     }
 
+    /** Variance verdicts this role has recorded on this exact head: the durable count behind the rerun bound. */
+    const varianceAttempts = (role: IndependentVerdictRole): number =>
+      roleAttemptsOnHead(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role, head)
+        .filter((attempt) => attempt.status === "failed" && varianceFromReceipt(attempt.terminal_receipt_json) !== null).length;
+    const failedVerdict = (role: IndependentVerdictRole): ReviewStepOutcome => ({
+      kind: "blocked",
+      code: "independent_verdict_failed",
+      reason: `The independent ${role} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates.`,
+      remedy: `Read the ${role} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the failure wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
+    });
+    const variancesSpent = (role: IndependentVerdictRole, spent: number): ReviewStepOutcome => {
+      const last = roleAttemptsOnHead(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role, head)
+        .filter((attempt) => attempt.status === "failed").map((attempt) => varianceFromReceipt(attempt.terminal_receipt_json)).filter((reason) => reason !== null).at(-1);
+      return {
+        kind: "blocked",
+        code: "independent_verdict_failed",
+        reason: `The independent ${role} verdict on ${head.slice(0, 12)} was not a pass on ${spent} of ${MAX_VARIANCE_REVIEW_ATTEMPTS} attempts, each reviewer variance only (no finding and no criterion judged fail); the automatic reruns are spent and a failed verdict never integrates. Last reason: ${last ?? "unknown"}`,
+        remedy: `Read the ${role} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, rerun it by hand with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
+      };
+    };
+
     // Checks are green on the exact settled head: the next missing verdict, one per tick.
     for (const role of INDEPENDENT_VERDICT_ROLES) {
       const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
@@ -565,15 +611,17 @@ export function advanceIndependentReview(db: Database.Database, input: {
       if (sameBinding && latest.status === "passed") continue;
       const rerun = sameBinding && latest.status === "failed";
       // Only the failed attempt's own receipt can authorize re-judging the same
-      // binding: the reviewer was unavailable (or the run went stale). A real
-      // non-pass judgment is never re-run automatically.
+      // binding: the reviewer was unavailable (or the run went stale), or the
+      // verdict was pure reviewer variance and its bounded reruns are not
+      // spent. A real non-pass judgment is never re-run automatically.
+      let automaticRerun: { attempt: number; reason: string } | null = null;
       if (rerun && !retryableVerdictReceipt(latest.terminal_receipt_json)) {
-        return {
-          kind: "blocked",
-          code: "independent_verdict_failed",
-          reason: `The independent ${role} verdict on ${head.slice(0, 12)} failed; a failed verdict never integrates.`,
-          remedy: `Read the ${role} report Artifact for ${url}; fix the candidate (a new head is reviewed afresh) or, after judging the failure wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
-        };
+        const variance = varianceFromReceipt(latest.terminal_receipt_json);
+        const spent = variance === null ? 0 : varianceAttempts(role);
+        if (variance === null || spent >= MAX_VARIANCE_REVIEW_ATTEMPTS) {
+          return variance === null ? failedVerdict(role) : variancesSpent(role, spent);
+        }
+        automaticRerun = { attempt: spent + 1, reason: variance };
       }
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld the ${role} reviewer: ${fenced}.` };
@@ -601,12 +649,36 @@ export function advanceIndependentReview(db: Database.Database, input: {
         return fail(role, `${role} review of ${url} failed: ${errorMessage(error)}`);
       } finally {
         input.heartbeat?.();
+        // Named once, and only when the rerun's lineage attempt was really
+        // allocated (a different attempt row than the variance verdict's): a
+        // failure before allocation (GitHub, the policy fence) repeats nothing.
+        if (automaticRerun) {
+          const allocated = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+          if (allocated && allocated.request_id !== latest?.request_id) {
+            input.log?.(`Automatic rerun of the independent ${role} of ${actionKey} at ${head.slice(0, 12)}: attempt ${automaticRerun.attempt} of ${MAX_VARIANCE_REVIEW_ATTEMPTS}; the previous verdict was ${automaticRerun.reason}`);
+          }
+        }
       }
       const unavailable = result.data.reviewerUnavailable;
       if (unavailable) return fail(role, `${role} reviewer unavailable for ${url}: ${unavailable}`);
       succeeded();
       if (result.data.verdict !== "pass") {
         input.log?.(`Independent ${role} of ${actionKey} at ${head.slice(0, 12)}: ${result.data.verdict}.`);
+        // The lineage attempt's own receipt, finished last, is the durable fact
+        // (a stale or unfinished run records no variance): the same one the
+        // next tick reads, so a restart cannot disagree with this decision.
+        const recorded = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role);
+        const variance = recorded?.status === "failed" && recorded.target_head === head ? varianceFromReceipt(recorded.terminal_receipt_json) : null;
+        if (variance !== null) {
+          const spent = varianceAttempts(role);
+          if (spent >= MAX_VARIANCE_REVIEW_ATTEMPTS) return variancesSpent(role, spent);
+          return {
+            kind: "advanced",
+            step: role,
+            reason: `The independent ${role} verdict on ${head.slice(0, 12)} was ${result.data.verdict} on attempt ${spent} of ${MAX_VARIANCE_REVIEW_ATTEMPTS}, ${variance} `
+              + `Automatic rerun ${spent + 1} of ${MAX_VARIANCE_REVIEW_ATTEMPTS} follows on a later tick.`
+          };
+        }
         return {
           kind: "blocked",
           code: "independent_verdict_failed",
@@ -614,8 +686,12 @@ export function advanceIndependentReview(db: Database.Database, input: {
           remedy: `Read ${result.data.reportPath}; fix the candidate (a new head is reviewed afresh) or, after judging the verdict wrong, rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
         };
       }
-      input.log?.(`Independent ${role} of ${actionKey} at ${head.slice(0, 12)} passed${result.data.reused ? " (existing receipt)" : ""}.`);
-      return { kind: "advanced", step: role, reason: `Recorded a passing independent ${role} verdict for ${head.slice(0, 12)}.` };
+      input.log?.(`Independent ${role} of ${actionKey} at ${head.slice(0, 12)} passed${result.data.reused ? " (existing receipt)" : ""}${automaticRerun ? ` on automatic rerun ${automaticRerun.attempt} of ${MAX_VARIANCE_REVIEW_ATTEMPTS}` : ""}.`);
+      return {
+        kind: "advanced",
+        step: role,
+        reason: `Recorded a passing independent ${role} verdict for ${head.slice(0, 12)}${automaticRerun ? ` on automatic rerun ${automaticRerun.attempt} of ${MAX_VARIANCE_REVIEW_ATTEMPTS} (the previous verdict was ${automaticRerun.reason})` : ""}.`
+      };
     }
     return { kind: "waiting", reason: "Both verdicts are recorded; the gate decides integration." };
   })();

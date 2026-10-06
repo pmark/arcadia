@@ -1,0 +1,63 @@
+{
+  "baseRefName": "claude/write-start-marker-20261006T155142019Z",
+  "baseRefOid": "6fbae8d6c04f3014038ff51745ae27572a3524dc",
+  "body": "## Operator QA plan\n\nRendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with `git worktree remove ../qa-2aa3e2489d15`. Every later step except the declared validation only reads Git data, and only the declared validation runs candidate code.\n\n- **Action:** `three-action-rehearsal/transform-start-marker` — Implement appending the start line transformed to upper case (\"THREE-ACTION REHEARSAL START\") to MARKER.md, and add tests/marker.test.mjs asserting both lines in order.\n- **Candidate:** branch `claude/transform-start-marker-20261006T155537486Z` at commit `2aa3e2489d151289eb47a8b3e52629f434897d07`\n- **Base:** `claude/write-start-marker-20261006T155142019Z` at `6fbae8d6c04f3014038ff51745ae27572a3524dc`\n- **Surface:** this repository's code at the candidate commit, exercised by the Project's declared validation commands from a local checkout.\n- **Reachability:** local checkout only. Preservation starts no service, opens no URL and deploys nothing; no demo is implied.\n- **Expected change:** each of the 2 acceptance criteria holds at the candidate commit, and only the files listed in step 2 differ from the base.\n- **End users:** the operator procedure below is also the end-user procedure.\n\n### Step 1 — Check out the exact candidate\n\n- **Do:** run `git fetch origin claude/transform-start-marker-20261006T155537486Z && git worktree add --detach ../qa-2aa3e2489d15 2aa3e2489d151289eb47a8b3e52629f434897d07 && cd ../qa-2aa3e2489d15` from a clone of this repository. Run every later step from that directory.\n- **Expected:** `git rev-parse HEAD` prints `2aa3e2489d151289eb47a8b3e52629f434897d07`.\n\n### Step 2 — Confirm what changed\n\n- **Do:** run `git -c core.quotePath=false diff --name-status --no-renames 6fbae8d6c04f3014038ff51745ae27572a3524dc 2aa3e2489d151289eb47a8b3e52629f434897d07`.\n- **Expected:** exactly 6 changed files:\n  - `A` `.arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml`\n  - `M` `MARKER.md`\n  - `M` `MISSION_LOG.md`\n  - `M` `PROJECT.md`\n  - `M` `docs/plans/autonomous-three-action-rehearsal.md`\n  - `A` `tests/marker.test.mjs`\n\n### Step 3 — Acceptance criterion 1 of 2\n\n- **Do:** inspect `MARKER.md` with `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:MARKER.md | od -c`; then run `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:MARKER.md | grep -Fxn -- 'THREE-ACTION REHEARSAL START'`.\n- **Expected:** `od -c` shows every byte (a newline as `\\n`); `grep -Fxn` prints each quoted text that is a whole line with its line number, and nothing when no line matches; and that output shows this criterion holds, exactly as worded: “MARKER.md contains exactly the start line followed by \"THREE-ACTION REHEARSAL START\", each with a trailing newline.”\n\n### Step 4 — Acceptance criterion 2 of 2\n\n- **Do:** inspect `tests/marker.test.mjs` with `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:tests/marker.test.mjs`; then run `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:tests/marker.test.mjs | grep -Fxn -- 'node scripts/check-rehearsal.mjs'`; then inspect `scripts/check-rehearsal.mjs` with `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:scripts/check-rehearsal.mjs`; then run `git show 2aa3e2489d151289eb47a8b3e52629f434897d07:scripts/check-rehearsal.mjs | grep -Fxn -- 'node scripts/check-rehearsal.mjs'`.\n- **Expected:** the file content is shown; `grep -Fxn` prints each quoted text that is a whole line with its line number, and nothing when no line matches. That is all this inspection shows: that `tests/marker.test.mjs`, `scripts/check-rehearsal.mjs` exist at the candidate commit and what they contain. Showing a file's source never shows that a command passes. Whether the named command passes is proven only by Step 5, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. A named test file passing is shown only by a run, never by its source; the run this plan offers is Step 5, the Project's declared validation, exiting `0`. Any part of this criterion that is not a command or test file passing must show in this step's output. The criterion, exactly as worded: “tests/marker.test.mjs exists and passes under node --test, asserting both lines appear in order; \"node scripts/check-rehearsal.mjs\" passes.”\n\n### Step 5 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`, as host validation recorded before preservation.\n\nMerge, deployment and publication remain separate operator gates.\n\n### Validation evidence\n\nRendered by Arcadia host preservation from the host validation record this candidate's preservation receipt cites; no model wrote it. Command output is untrusted text from the candidate's checks: it is shown with control characters replaced, secret-shaped tokens redacted and only its last lines kept (at most 2048 bytes per stream).\n\n- **Record:** `artifacts/preservation/session_5f46e814a8e34bd498/check-3jxunN/validation.json` (producer `arcadia-host-seatbelt-v1`), bound to candidate tree `5d832ed598b443e529e9c61cf962f0502f7b7be6`, which is the tree of candidate commit `2aa3e2489d151289eb47a8b3e52629f434897d07`\n- **Status:** passed — the declared validation command ran to completion and exited 0.\n\n#### Command 1 of 1 — passed\n\n- **Command:** `node scripts/check-rehearsal.mjs`\n- **Working directory:** `arcadia-preservation-C1Pfaq/source` in the host's temporary directory — the root of candidate tree `5d832ed598b4`, a disposable host copy checked under the macOS Seatbelt sandbox with no network\n- **Exit code:** `0`\n- **Duration:** 169 ms\n- **stdout** (307 bytes recorded):\n\n```text\nTAP version 13\n# Subtest: MARKER.md contains the start and transformed lines in order\nok 1 - MARKER.md contains the start and transformed lines in order\n  ---\n  duration_ms: 1.003208\n  type: 'test'\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 1\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 64.133625\n```\n\n- **stderr:** empty.\n\n**Completion settlement:** a candidate's own governed completion-settlement commit (the commit that marks this Action done and advances the Plan pointer, with its archived Agent Ask) is the record Arcadia expects before independent review and is not an approval-boundary crossing; the independent review verdicts and the operator or worker integration remain separate gates.",
+  "files": [
+    {
+      "path": ".arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "ADDED"
+    },
+    {
+      "path": "MARKER.md",
+      "additions": 1,
+      "deletions": 0,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "MISSION_LOG.md",
+      "additions": 7,
+      "deletions": 0,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "PROJECT.md",
+      "additions": 1,
+      "deletions": 1,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "docs/plans/autonomous-three-action-rehearsal.md",
+      "additions": 2,
+      "deletions": 2,
+      "changeType": "MODIFIED"
+    },
+    {
+      "path": "tests/marker.test.mjs",
+      "additions": 10,
+      "deletions": 0,
+      "changeType": "ADDED"
+    }
+  ],
+  "headRefName": "claude/transform-start-marker-20261006T155537486Z",
+  "headRefOid": "2aa3e2489d151289eb47a8b3e52629f434897d07",
+  "isDraft": false,
+  "mergeStateStatus": "CLEAN",
+  "number": 8,
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-10-06T16:03:09Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/actions/runs/37492585421/job/112368840750",
+      "name": "check",
+      "startedAt": "2026-10-06T16:03:03Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "title": "Candidate: transform-start-marker",
+  "url": "https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/8"
+}

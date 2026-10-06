@@ -561,6 +561,13 @@ export function latestRoleAttempt(db: Database.Database, requirementId: string, 
     .get(requirementId, inputRevision, role) as SessionRoleAttempt | undefined) ?? null;
 }
 
+/** Every attempt one role of one requirement input made on an exact head, oldest first. */
+export function roleAttemptsOnHead(db: Database.Database, requirementId: string, inputRevision: string, role: SessionAttemptRole, head: string): SessionRoleAttempt[] {
+  return db.prepare(`SELECT * FROM session_role_attempts
+    WHERE requirement_id = ? AND input_revision = ? AND role = ? AND target_head = ? ORDER BY ordinal`)
+    .all(requirementId, inputRevision, role, head) as SessionRoleAttempt[];
+}
+
 export function getSessionRoleAttempt(db: Database.Database, requestId: string): SessionRoleAttempt | null {
   return (db.prepare("SELECT * FROM session_role_attempts WHERE request_id = ?").get(requestId) as SessionRoleAttempt | undefined) ?? null;
 }

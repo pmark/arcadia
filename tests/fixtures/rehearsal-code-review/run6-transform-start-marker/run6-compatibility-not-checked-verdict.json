@@ -1,0 +1,46 @@
+{
+  "verdict": "needs-follow-up",
+  "summary": "The requested marker content and its test are present and the supplied deterministic validation passed, but compatibility across the project\u2019s supported Node versions is not established.",
+  "findings": [],
+  "checks": [
+    {
+      "criterion": "correctness",
+      "name": "Correctness",
+      "status": "pass",
+      "evidence": "MARKER.md changes from the required start line to exactly two ordered, newline-terminated lines. tests/marker.test.mjs asserts the full line array equals those two values, and the supplied validation output reports that subtest passing."
+    },
+    {
+      "criterion": "failure-handling",
+      "name": "Failure handling",
+      "status": "pass",
+      "evidence": "The executable addition only synchronously reads MARKER.md and performs assertions; it creates no persistent state or external side effects. A read or assertion failure terminates the test without partially modifying repository state."
+    },
+    {
+      "criterion": "state-and-concurrency",
+      "name": "State and concurrency",
+      "status": "pass",
+      "evidence": "The changed runtime test, tests/marker.test.mjs, only reads MARKER.md and uses no shared mutable state, asynchronous work, persistence, or concurrency."
+    },
+    {
+      "criterion": "security-and-authority",
+      "name": "Security and authority",
+      "status": "pass",
+      "evidence": "tests/marker.test.mjs uses fixed repository-relative path MARKER.md and Node built-ins only; the patch adds no credentials, command execution, user-controlled input, permissions, or authority boundary."
+    },
+    {
+      "criterion": "compatibility",
+      "name": "Compatibility",
+      "status": "not-checked",
+      "evidence": "tests/marker.test.mjs uses Array.prototype.at(-1), which requires a sufficiently recent Node.js runtime. The supplied successful validation proves one unspecified Node environment worked, but supplies no supported-Node-version policy or Linux CI runtime evidence."
+    },
+    {
+      "criterion": "tests",
+      "name": "Tests",
+      "status": "pass",
+      "evidence": "The patch adds tests/marker.test.mjs, which reads MARKER.md and asserts both exact lines in order and the trailing newline. The deterministic validation for node scripts/check-rehearsal.mjs exited 0 and recorded the matching TAP subtest as passing."
+    }
+  ],
+  "residualRisks": [
+    "Confirm the project\u2019s supported Node.js versions include Array.prototype.at, or replace it with a compatibility-safe equivalent."
+  ]
+}

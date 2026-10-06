@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runProductionResetRepairBudgetCommand } from "../src/commands/production.js";
 import { withDatabase } from "../src/db/connection.js";
 import { listReviewSteps } from "../src/production/independentReview.js";
+import { roleAttemptsOnHead } from "../src/sessions/enrollment.js";
 import { policyAuthorizesPullRequestReadiness, PRODUCTION_CONTROL_DEADLINES } from "../src/production/policy.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 import { ensureProductionTickTables, resetProductionRepairBudget } from "../src/production/tick.js";
@@ -531,6 +532,136 @@ describe("tick-driven independent review", () => {
     expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
     expect(verdicts(rehearsal, "qa")).toEqual([]);
     expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", remedy: expect.stringContaining("--rerun") });
+  });
+
+  describe("reviewer variance reruns (Issue #1018)", () => {
+    const rerunLines = (rehearsal: Rehearsal) => rehearsal.log.filter((line) => line.includes("Automatic rerun of the independent"));
+    const receipts = (rehearsal: Rehearsal, role: "code-review" | "qa") =>
+      verdicts(rehearsal, role).map((x) => ({ status: x.status, ...JSON.parse(x.terminal_receipt_json!) as { variance?: string; reviewerUnavailable: string | null } }));
+
+    it("reruns a zero-defect code-review verdict once and integrates when it then passes, with no operator step", () => {
+      const { rehearsal } = finishedA();
+      let calls = 0;
+      rehearsal.github.verdict = (role) => (role === "code-review" && calls++ === 0 ? "variance" : "pass");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      const first = rehearsal.tick(); // code review: variance
+      expect(first.handoff?.integration.kind).toBe("refused");
+      expect(escalation(rehearsal)).toMatchObject({
+        kind: "awaiting_independent_verdicts",
+        remedy: expect.stringContaining("Automatic rerun 2 of 3 follows")
+      });
+      expect(receipts(rehearsal, "code-review")[0]).toMatchObject({ status: "failed", reviewerUnavailable: null, variance: expect.stringMatching(/^reviewer variance only/) });
+      expect(rerunLines(rehearsal)).toEqual([]);
+      const { integrated } = rehearsal.tickThroughReview();
+      expect(integrated.handoff?.integration.kind).toBe("integrated");
+      expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review", "qa"]);
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed", "passed"]);
+      expect(rerunLines(rehearsal)).toHaveLength(1);
+      expect(rerunLines(rehearsal)[0]).toMatch(/independent code-review of .* attempt 2 of 3; the previous verdict was reviewer variance only/);
+      expect(rehearsal.log.some((line) => line.includes("passed on automatic rerun 2 of 3"))).toBe(true);
+      // Never an operator escalation: the variance was absorbed.
+      expect(rehearsal.log.some((line) => line.includes("(independent_verdict_failed)"))).toBe(false);
+      expect(escalation(rehearsal)).toBeUndefined();
+    });
+
+    it("names a rerun only once its lineage attempt was allocated: a failure before allocation repeats nothing", () => {
+      const { rehearsal } = finishedA();
+      let calls = 0;
+      rehearsal.github.verdict = (role) => (role === "code-review" && calls++ === 0 ? "variance" : "pass");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      rehearsal.tick(); // code review: variance
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
+      // The tick's own PR poll succeeds; the review command's own `gh pr view` (the second in the tick) fails before any attempt exists.
+      const github = rehearsal.github as unknown as { runCommand: typeof rehearsal.github.runCommand };
+      const original = github.runCommand;
+      let views = 0;
+      github.runCommand = (input) => {
+        if (input.command === "gh" && input.args[0] === "pr" && input.args[1] === "view" && !input.args.includes("commits")) {
+          views += 1;
+          if (views % 2 === 0) return { status: 1, stdout: "", stderr: "HTTP 502 bad gateway (simulated)", error: null };
+        }
+        return original(input);
+      };
+      try {
+        rehearsal.tick();
+        rehearsal.tick();
+      } finally {
+        github.runCommand = original;
+      }
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed"]);
+      expect(rehearsal.github.reviewerCalls).toHaveLength(1);
+      expect(rehearsal.log.filter((line) => line.includes("Review step code-review") && line.includes("evidence could not be read"))).toHaveLength(2);
+      expect(rerunLines(rehearsal)).toEqual([]);
+      const { integrated } = rehearsal.tickThroughReview();
+      expect(integrated.handoff?.integration.kind).toBe("integrated");
+      expect(rerunLines(rehearsal)).toHaveLength(1);
+      expect(rerunLines(rehearsal)[0]).toMatch(/attempt 2 of 3; the previous verdict was reviewer variance only .*reviewer summary: "/);
+    });
+
+    it("reruns a QA variance verdict too, as its own kind with its own count", () => {
+      const { rehearsal } = finishedA();
+      let calls = 0;
+      rehearsal.github.verdict = (role) => (role === "qa" && calls++ < 2 ? "variance" : "pass");
+      exitTick(rehearsal);
+      const { integrated } = rehearsal.tickThroughReview(10);
+      expect(integrated.handoff?.integration.kind).toBe("integrated");
+      expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "qa", "qa", "qa"]);
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["passed"]);
+      expect(verdicts(rehearsal, "qa").map((x) => x.status)).toEqual(["failed", "failed", "passed"]);
+      expect(rerunLines(rehearsal).map((line) => /independent (\S+) of .* attempt (\d) of 3/.exec(line)?.slice(1, 3))).toEqual([["qa", "2"], ["qa", "3"]]);
+    });
+
+    it("stops on exactly one visible entry saying the reruns are spent after three variance verdicts, and never calls the reviewer a fourth time", () => {
+      const { rehearsal } = finishedA();
+      rehearsal.github.verdict = (role) => (role === "code-review" ? "variance" : "pass");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      for (let i = 0; i < 12; i += 1) expect(rehearsal.tick().handoff?.integration.kind).toBe("refused");
+      expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review", "code-review"]);
+      expect(verdicts(rehearsal, "code-review").map((x) => x.status)).toEqual(["failed", "failed", "failed"]);
+      expect(receipts(rehearsal, "code-review").every((receipt) => typeof receipt.variance === "string")).toBe(true);
+      expect(verdicts(rehearsal, "qa")).toEqual([]);
+      const row = escalation(rehearsal);
+      expect(row).toMatchObject({ kind: "independent_verdict_failed", message: expect.stringContaining("the automatic reruns are spent") });
+      expect(row?.message).toContain("3 of 3 attempts");
+      expect(rehearsal.status().operatorEscalations.filter((entry) => entry.actionKey === rehearsal.actionA)).toHaveLength(1);
+      // Each rerun is named once; the spent entry is logged once however many ticks follow.
+      expect(rerunLines(rehearsal)).toHaveLength(2);
+      expect(rerunLines(rehearsal).map((line) => /attempt (\d) of 3/.exec(line)?.[1])).toEqual(["2", "3"]);
+      expect(rehearsal.log.filter((line) => line.includes("Escalated") && line.includes("(independent_verdict_failed)"))).toHaveLength(1);
+    });
+
+    it("stops at once on a real finding with no rerun, and on a criterion judged fail", () => {
+      const { rehearsal } = finishedA();
+      rehearsal.github.verdict = (role) => (role === "code-review" ? "fail" : "pass");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      for (let i = 0; i < 6; i += 1) rehearsal.tick();
+      expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review"]);
+      expect(receipts(rehearsal, "code-review")).toEqual([{ status: "failed", verdict: "fail", artifactId: expect.any(String), decisionId: expect.any(String), headSha: expect.any(String), evidenceFingerprint: expect.any(String), reviewerUnavailable: null }]);
+      expect(rerunLines(rehearsal)).toEqual([]);
+      expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", message: expect.not.stringContaining("reruns are spent") });
+    });
+
+    it("spends the bound by head and kind from durable attempts: a restarted tick resumes at the same count and a different head starts from none", () => {
+      const { rehearsal } = finishedA();
+      let calls = 0;
+      rehearsal.github.verdict = (role) => (role === "code-review" && calls++ < 1 ? "variance" : "fail");
+      exitTick(rehearsal);
+      rehearsal.tick(); // ready
+      for (let i = 0; i < 8; i += 1) rehearsal.tick();
+      // Variance, then a real failure on the rerun: stopped by the real finding, not by the bound.
+      expect(rehearsal.github.reviewerCalls.map((call) => call.role)).toEqual(["code-review", "code-review"]);
+      expect(escalation(rehearsal)).toMatchObject({ kind: "independent_verdict_failed", message: expect.not.stringContaining("reruns are spent") });
+      const attempts = verdicts(rehearsal, "code-review");
+      const requirement = attempts[0].requirement_id;
+      const counts = (headSha: string) => withDatabase(rehearsal.workspace, (db) =>
+        roleAttemptsOnHead(db, requirement, attempts[0].input_revision, "code-review", headSha).filter((x) => x.status === "failed" && JSON.parse(x.terminal_receipt_json!).variance).length);
+      expect(counts(attempts[0].target_head!)).toBe(1);
+      expect(counts("f".repeat(40))).toBe(0);
+    });
   });
 
   it("drives nothing on GitHub without a current integration grant: the PR stays a draft", () => {

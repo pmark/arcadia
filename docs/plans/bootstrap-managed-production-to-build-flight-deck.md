@@ -4153,7 +4153,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/runs/20261006T151603Z-70938/preview.json", "artifacts/generated/operator-scripts/rehearsal-chain/grant.sh", "artifacts/generated/operator-scripts/rehearsal-chain/restore-terminal-off.sh"]
   - id: bound-variance-verdict-reruns
     title: Classify zero-defect non-PASS independent verdicts as variance and let the tick rerun them within a bound of two, with every rerun recorded and visible.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Classify zero-defect non-PASS independent verdicts as variance and let the tick rerun them within a bound of two, with every rerun recorded and visible.
@@ -4189,7 +4189,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: bound-variance-verdict-reruns
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
