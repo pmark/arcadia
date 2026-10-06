@@ -989,6 +989,24 @@ use the same receipt path and smallest canonical effect:
 
 Rejection is supported for every proposal and never creates executable work.
 
+### Quick pings from an agent
+
+When an agent only needs your eyes on something — it added a button to the
+Actions page, a page is ready to look at, something odd turned up and nobody is
+blocked — it runs `arcadia ping "<message>"` instead of filing an Ask. The bot
+posts it to Discord as a short message headed 👀 Take a look, ℹ️ FYI or 🔔 Needs
+your attention, with an optional link. A ping is read-only: it approves
+nothing, answers nothing, opens no Decision and leaves no durable record beyond
+its delivery row. Anything that needs your answer still arrives as a Decision,
+a picker or a PR.
+
+An agent can aim a ping at a channel with `--channel <alias>`. It reaches only
+channels you list in the bot's `DISCORD_PING_CHANNELS` (for example
+`actions=<channel id>,review=<channel id>`; see `apps/discord-bot/README.md`);
+an unlisted name still arrives, in the default channel, with a note saying so.
+The same message to the same channel inside ten minutes is sent once, and at
+most 30 pings queue per hour, so a looping agent cannot flood your phone.
+
 ## Managed production: the standing authorization
 
 Managed production is the switch that lets Arcadia admit and advance approved

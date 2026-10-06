@@ -6,6 +6,7 @@ import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
+import { drainOperatorPings } from "./operatorPings.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
 import { runFailedMessage } from "./runFailed.js";
@@ -317,6 +318,18 @@ export function startNotificationPoller(
       });
     }
 
+    // Its own try: the outbox lives in the database, not the notification
+    // state file, so a ping problem must not block settlement pings or the
+    // reverse.
+    try {
+      await drainOperatorPings(cli, config, (channelId, content, allowedMentions) => sendToConfiguredChannel(client, channelId, content, allowedMentions), logJson);
+    } catch (error) {
+      logJson("error", {
+        msg: "discord operator ping poll failed",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+
     const nextInterval = hasActiveRuns ? ACTIVE_POLL_INTERVAL_MS : config.pollIntervalSeconds * 1000;
     setTimeout(() => void tick(), nextInterval);
   };
@@ -327,13 +340,18 @@ export function startNotificationPoller(
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 const TRUNCATION_SUFFIX = "\n… (truncated)";
 
-async function sendToConfiguredChannel(client: Client, channelId: string, content: string): Promise<{ id: string }> {
+async function sendToConfiguredChannel(
+  client: Client,
+  channelId: string,
+  content: string,
+  allowedMentions?: { parse: never[] }
+): Promise<{ id: string }> {
   const channel = await client.channels.fetch(channelId);
   if (!channel || !("send" in channel)) {
     throw new Error("Configured Discord channel is not sendable.");
   }
 
-  return channel.send({ content: truncateForDiscord(content) });
+  return channel.send({ content: truncateForDiscord(content), ...(allowedMentions ? { allowedMentions } : {}) });
 }
 
 // Oversized content (e.g. a task title that's actually a full prompt) must not

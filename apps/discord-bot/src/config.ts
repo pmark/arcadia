@@ -11,6 +11,13 @@ export interface BotConfig {
   discordClientId: string;
   discordGuildId: string;
   discordChannelId: string;
+  /**
+   * Channels an operator ping may name, by lowercase alias, from
+   * `DISCORD_PING_CHANNELS="actions=123…,review=456…"`. An agent can only
+   * reach a channel the operator listed here; anything else lands in the
+   * default channel, so a ping can never be aimed at an arbitrary channel.
+   */
+  pingChannels: Record<string, string>;
   arcadiaCliPath: string | null;
   /** Browser base URL used for deep links in proposal notifications. */
   dashboardUrl: string;
@@ -49,6 +56,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     discordClientId: requireEnv(env, "DISCORD_CLIENT_ID"),
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
     discordChannelId: requireEnv(env, "DISCORD_CHANNEL_ID"),
+    pingChannels: parsePingChannels(env.DISCORD_PING_CHANNELS),
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
     dashboardUrl: parseDashboardUrl(env.ARCADIA_DASHBOARD_URL),
     pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
@@ -81,6 +89,18 @@ function parseDashboardUrl(raw: string | undefined): string {
     throw new Error(`ARCADIA_DASHBOARD_URL must be an absolute HTTP(S) URL, got: ${value}`);
   }
   return value.replace(/\/+$/, "");
+}
+
+export function parsePingChannels(raw: string | undefined): Record<string, string> {
+  const channels: Record<string, string> = {};
+  for (const entry of (raw ?? "").split(",").map((part) => part.trim()).filter(Boolean)) {
+    const [alias, id, ...rest] = entry.split("=").map((part) => part.trim());
+    if (!alias || !id || rest.length > 0 || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(alias) || !/^\d{17,20}$/.test(id)) {
+      throw new Error(`DISCORD_PING_CHANNELS entries must look like alias=<channel id>, got: ${entry}`);
+    }
+    channels[alias] = id;
+  }
+  return channels;
 }
 
 function parseAllowedUserIds(raw: string | undefined): string[] {

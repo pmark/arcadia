@@ -24,7 +24,15 @@ Optional:
 ARCADIA_CLI_PATH=/absolute/path/to/arcadia
 ARCADIA_DASHBOARD_URL=http://192.168.1.10:3020
 ARCADIA_DISCORD_POLL_INTERVAL_SECONDS=60
+DISCORD_PING_CHANNELS=actions=123456789012345678,review=234567890123456789
 ```
+
+`DISCORD_PING_CHANNELS` lists the channels an agent's `arcadia ping --channel <alias>`
+can reach, as comma-separated `alias=<channel id>` pairs (lowercase alias). A
+ping naming a channel that is not listed, or that the bot cannot send to, is
+delivered to `DISCORD_CHANNEL_ID` with a note, so a typo never drops it. The bot
+drains the queue (`arcadia ping pending`) on its normal poll and records each
+delivery with `arcadia ping sent`.
 
 `ARCADIA_DASHBOARD_URL` defaults to `http://localhost:3020`. Set it to the
 Mac's LAN or Tailscale Mission Control URL when Discord is read on a phone, so
