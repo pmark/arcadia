@@ -77,6 +77,11 @@ sends no signal itself beyond bounded timeouts (that restart path may SIGTERM Ar
 service processes and rewrites `~/.codex`/`~/.claude` configuration with
 backups) and never discards a candidate.
 
+**Running a rehearsal:** start with the consolidated runbook,
+[docs/autonomous-production-rehearsal-runbook.md](docs/autonomous-production-rehearsal-runbook.md)
+(the standard, the exact steps, the failure catalog and the open gaps). The
+per-run sections below are the historical record and the script details.
+
 **Rehearsal run 2** reuses fixture `pmark/arcadia-three-action-rehearsal-20261004`.
 The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
 G1's genesis. Run these in order, each from a terminal unless noted:
