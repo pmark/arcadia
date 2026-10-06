@@ -1,0 +1,37 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "preflight-rehearsal-chain-run7-2026-10-06",
+  "title": "G6 (rehearsal chain run 7): preflight the 9-Action chain at its reset fixture head (observation only; refuses on unknown, stale, paid, unfilled or unavailable evidence, or a pending item gating dispatch)",
+  "script": "preflight-rehearsal-chain-run7-2026-10-06.sh",
+  "repeatable": true,
+  "problem": "This run's G7 Grant must not activate production unless the host can actually run the 9-Action chain: current production state and installed release, the required Arcadia commits of the parameter file (remote preservation (#922); tick-driven PR readiness and both independent reviews (#924); settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983); each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a)); a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)), a worker-context Claude Code sign-in, a read-only Codex reviewer with real included capacity, a GitHub fixture repository whose checks report, and nothing pending that silently gates dispatch (Issue #968). Guessing any of these spends tokens or stalls unattended work.",
+  "desired_effect": "Make only bounded observations and write one timestamped receipt listing every check and its verdict, bound to the main revision, installed release, workspace, policy revision, fixture and the fixture head recorded by this run's latest succeeded chain reset receipt (reset-rehearsal-chain-fixture-run7-2026-10-06) for the manifest's repository: one reset commit on the parameter file's bound reset head, carrying exactly the Actions write-start-marker, transform-start-marker, verify-final-rehearsal, chain-step-04, chain-step-05, chain-step-06, chain-step-07, chain-step-08 and chain-step-09 and their completion ids. The receipt succeeds only when every check passes; this run's G7 (grant-production-rehearsal-chain-run7-2026-10-06) accepts it for 30 minutes, and only while Arcadia main and the installed release stay exactly where this preflight observed them: do not push to main, reinstall, restart services or press any G8 between this run and the G7 press.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/preflight-rehearsal-chain-run7-2026-10-06.sh run",
+  "authority": {
+    "does": [
+      "Refuses unless started through this run's published launcher with its own parameter file, valid and with every value filled (an UNFILLED required commit or binding refuses before any observation)",
+      "Reads Git state of the Arcadia checkout and the fixture, observes origin main afresh with a 30-second git ls-remote that must equal local main (unknown or ahead refuses), every required commit of the parameter file on main, the configured workspace, production status, go-broker status (the installed release must be ready and runtime-identical to main), worker status and active Session leases (read-only database probe)",
+      "Finds this run's latest succeeded reset-rehearsal-chain-fixture-run7-2026-10-06 receipt for the manifest's exact repository and refuses unless its newHead is local fixture main, its previousMain is the bound reset head (the only parent of local main), its genesis is the fixture's single root, GitHub main was recorded at the same head and its chainRunId, actionIds and completionIds are exactly this run's",
+      "Observes read-only, through Arcadia's own resolveOperatorGate, that no pending proposal or open Decision would gate any of the 9 chain Actions, and refuses naming each one that would",
+      "Runs the worker-context claude-code-cli sign-in check and records only its verdict (signed_in, signed_out, unknown or unavailable); refuses when ANTHROPIC_API_KEY is set, without reading its value",
+      "Runs codex --version and codex login status with 20-second bounds and records only whether sign-in is a ChatGPT subscription, an API key (paid, refused) or unknown (refused)",
+      "Observes Codex capacity directly, ignoring the workspace's unmetered standing choice, and refuses unless it is admitted, fresh, observed or attested, included, not simulated and not unavailable; checks a read-only codex reviewer profile exists",
+      "With this explicit operator press as authorization, reads GitHub only through gh auth status, the exact fixture repository, its main branch (which must be the chain reset head) and the check runs of that head, waiting at most five minutes for those checks",
+      "Writes the receipt and, on any refusal, a failure handoff under runs/<timestamp-pid>/"
+    ],
+    "never_does": [
+      "Never prints, copies or logs a token value or the raw codex or gh sign-in output",
+      "Never previews or activates production, presses G7, or changes any policy, packet, proposal, Decision or capacity receipt",
+      "Never writes to GitHub, the fixture or the parameter file, starts or restarts a service, installs anything, or invokes a model",
+      "Never treats unknown, stale, paid, simulated, unfilled or unavailable evidence as passing"
+    ]
+  },
+  "success": {
+    "effect": "Every check passed; the receipt binds the observed main, installed release, workspace, policy revision, fixture, chain reset head, reset receipt and Action set, and nothing pending gates a chain Action.",
+    "next": "Within 30 minutes, press this run's one-shot G7 Grant (grant-production-rehearsal-chain-run7-2026-10-06) after reading its operator acknowledgement. Until then nothing may push to Arcadia main, reinstall the broker, restart services or run any G8: each moves what this receipt bound and G7 then refuses, so this preflight must be rerun."
+  },
+  "failure": {
+    "effect": "Nothing changed. The receipt lists each refused check and why; the failure handoff says not to press G7.",
+    "next": "Fix each refused check through its reviewed path (an UNFILLED parameter through a reviewed parameter change; reinstall-go-broker or recover-arcadia-host-services for a stale release; verify-claude-code-token for sign-in; the item's own governed settle for a pending proposal or Decision), then rerun this preflight."
+  }
+}
