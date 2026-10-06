@@ -12,7 +12,12 @@
 # It renders the fixture Plan as a serial chain (G1's three Actions amended,
 # chain-step-04 onward appended, each reading its predecessor's output) with a
 # fresh requirement input revision, a fresh unused completion id and the
-# leave-git-status-clean rule on every Action, validates it with Arcadia's own
+# leave-git-status-clean rule on every Action, and renders every statement of the
+# chain's size and purpose in the fixture PROJECT.md and Plan (goal, outcome,
+# milestone, title, budget) for the run's N, leaving PROJECT.md's pointer and
+# status fields untouched; a deterministic coherence guard refuses any fixture
+# managed document that states another Action count than N (file, line and text
+# named). It validates the result with Arcadia's own
 # discovery, docs sync, ready set, requirementIdentity and a read-only live
 # dry-run docs sync, refuses any pending fixture proposal or open Decision that
 # gates a chain Action (it settles none), then commits once, pushes without
@@ -40,6 +45,7 @@ FIXTURE_PROJECT="three-action-rehearsal"
 FIXTURE_NAME="Three Action Rehearsal"
 FIXTURE_PLAN="autonomous-three-action-rehearsal"
 PLAN_FILE="docs/plans/$FIXTURE_PLAN.md"
+PROJECT_FILE="PROJECT.md"
 G1_ACTIONS_JSON='["write-start-marker","transform-start-marker","verify-final-rehearsal"]'
 PROVIDER="claude-code-cli"
 REPO_DESCRIPTION="Disposable Arcadia three-Action rehearsal fixture (arcadia-three-action-rehearsal-v1); safe to delete after its recorded review."
@@ -438,33 +444,47 @@ fx archive "$RESET_HEAD" | tar -x -C "$BEFORE_DIR"
 fx archive "$RESET_HEAD" | tar -x -C "$AMEND_DIR"
 cat > "$RUN_DIR/render.mjs" <<'NODE'
 import { readFileSync, writeFileSync } from "node:fs";
-import { renderChainPlan, ChainPlanError } from "./src/operatorActions/rehearsalChain.ts";
-const [paramsFile, basePlan, outPlan, resetDate] = process.argv.slice(2);
+import { renderChainPlan, renderChainProject, ChainPlanError } from "./src/operatorActions/rehearsalChain.ts";
+const [paramsFile, basePlan, outPlan, resetDate, baseProject, outProject] = process.argv.slice(2);
 try {
-  const rendered = renderChainPlan(readFileSync(basePlan, "utf8"), JSON.parse(readFileSync(paramsFile, "utf8")), resetDate);
+  const params = JSON.parse(readFileSync(paramsFile, "utf8"));
+  const rendered = renderChainPlan(readFileSync(basePlan, "utf8"), params, resetDate);
+  const project = renderChainProject(readFileSync(baseProject, "utf8"), params, resetDate);
   writeFileSync(outPlan, rendered.plan);
-  console.log(JSON.stringify({ ok: true, planUpdatedBefore: rendered.planUpdatedBefore, actions: rendered.actions }));
+  writeFileSync(outProject, project.project);
+  console.log(JSON.stringify({ ok: true, planUpdatedBefore: rendered.planUpdatedBefore, projectUpdatedBefore: project.projectUpdatedBefore, projectChanged: project.changed, actions: rendered.actions }));
 } catch (error) {
   console.log(JSON.stringify({ ok: false, reason: error instanceof ChainPlanError ? error.reason : "RENDER_FAILED", message: error.message }));
 }
 NODE
-RENDER="$(probe "$PARAMS_FILE" "$BEFORE_DIR/$PLAN_FILE" "$AMEND_DIR/$PLAN_FILE" "$RESET_DATE" < "$RUN_DIR/render.mjs")" || refuse "the chain Plan could not be rendered"
+RENDER="$(probe "$PARAMS_FILE" "$BEFORE_DIR/$PLAN_FILE" "$AMEND_DIR/$PLAN_FILE" "$RESET_DATE" "$BEFORE_DIR/$PROJECT_FILE" "$AMEND_DIR/$PROJECT_FILE" < "$RUN_DIR/render.mjs")" || refuse "the chain Plan and PROJECT.md could not be rendered"
 printf '%s\n' "$RENDER" > "$RUN_DIR/render.json"
 if ! jq -e '.ok == true' <<<"$RENDER" >/dev/null; then
   if [[ "$(jq -r '.reason' <<<"$RENDER")" == RESET_DATE_BEFORE_PLAN ]]; then
     RECOVERY="This host's UTC date ($RESET_DATE) is before the base Plan's updated: date, so docs sync would skip the amended Actions as older than their records and the Grant would dispatch nothing. Correct the host clock, or rerun on or after that date UTC. Do not hand-edit the date."
   fi
-  refuse "the chain Plan was not rendered from $PREV_LABEL's reset head: $(jq -r '.message' <<<"$RENDER")"
+  refuse "the chain Plan and PROJECT.md were not rendered from $PREV_LABEL's reset head: $(jq -r '.message' <<<"$RENDER")"
 fi
 NEXT_ACTIONS_JSON="$(jq -c '[.actions[].nextAction]' <<<"$RENDER")"
 jq -e --argjson ids "$ACTION_IDS_JSON" --argjson completions "$COMPLETION_IDS_JSON" '[.actions[].id] == $ids and [.actions[].completionId] == $completions' <<<"$RENDER" >/dev/null || refuse "the rendered chain does not carry exactly this run's Actions and completion ids"
-CHANGED="$( (cd "$RUN_DIR" && diff -rq .fixture-previous .fixture-amended) | tr '\n' ' ' || true)"
-[[ "$CHANGED" == "Files .fixture-previous/$PLAN_FILE and .fixture-amended/$PLAN_FILE differ " ]] || refuse "the rendered amendment changed more than the fixture Plan: $CHANGED"
+# The reset commit changes the fixture Plan and, when it states another chain size, PROJECT.md: nothing else.
+if jq -e '.projectChanged == true' <<<"$RENDER" >/dev/null; then
+  EXPECTED_CHANGED="$PROJECT_FILE"$'\n'"$PLAN_FILE"
+else
+  EXPECTED_CHANGED="$PLAN_FILE"
+fi
+CHANGED="$( (cd "$RUN_DIR" && diff -rq .fixture-previous .fixture-amended) | sed -E 's#^Files \.fixture-previous/(.*) and \.fixture-amended/.* differ$#\1#' | LC_ALL=C sort || true)"
+[[ "$CHANGED" == "$EXPECTED_CHANGED" ]] || refuse "the rendered amendment changed more than the fixture Plan and PROJECT.md's statements of the chain: $(tr '\n' ' ' <<<"$CHANGED")"
 AMENDED_BLOB="$(git hash-object "$AMEND_DIR/$PLAN_FILE")"
+AMENDED_PROJECT_BLOB="$(git hash-object "$AMEND_DIR/$PROJECT_FILE")"
 record_str amendedPlanBlob "$AMENDED_BLOB"
+record_str amendedProjectBlob "$AMENDED_PROJECT_BLOB"
 record_str planUpdatedBefore "$(jq -r '.planUpdatedBefore' <<<"$RENDER")"
 record_str planUpdated "$RESET_DATE"
+record_str projectUpdatedBefore "$(jq -r '.projectUpdatedBefore' <<<"$RENDER")"
+record "projectChanged" "$(jq -c '.projectChanged' <<<"$RENDER")"
 (cd "$RUN_DIR" && diff -u ".fixture-previous/$PLAN_FILE" ".fixture-amended/$PLAN_FILE") > "$RUN_DIR/plan.diff" || true
+(cd "$RUN_DIR" && diff -u ".fixture-previous/$PROJECT_FILE" ".fixture-amended/$PROJECT_FILE") > "$RUN_DIR/project.diff" || true
 
 STAGE=validate_amendment
 cat > "$RUN_DIR/validate-amendment.mjs" <<'NODE'
@@ -476,6 +496,7 @@ import { discoverDocs } from "./src/docs/discover.ts";
 import { resolveReadySet } from "./src/docs/dispatch.ts";
 import { requirementIdentity } from "./src/sessions/roleLineage.ts";
 import { amendmentProblems } from "./src/operatorActions/rehearsalChain.ts";
+import { chainCoherenceProblems, readCoherenceFiles } from "./src/operatorActions/rehearsalChainCoherence.ts";
 const [genesisRoot, beforeRoot, fixtureRoot, scratchWorkspace, name, plan, project, actionIdsJson, nextActionsJson] = process.argv.slice(2);
 const describe = (error) => `${error.relativePath}${error.field ? ` (${error.field})` : ""}: ${error.message}`;
 initWorkspace(scratchWorkspace);
@@ -509,6 +530,8 @@ const observation = {
   genesisIdentity: identities(genesis.doc), beforeIdentity: identities(before.doc), afterIdentity: identities(after.doc)
 };
 const problems = amendmentProblems(observation, { project, plan, actionIds: JSON.parse(actionIdsJson), nextActions: JSON.parse(nextActionsJson) });
+// The coherence guard: no fixture managed document may state another number of Actions than this run's chain.
+problems.push(...chainCoherenceProblems(readCoherenceFiles(fixtureRoot), JSON.parse(actionIdsJson).length).map((problem) => `fixture coherence: ${problem}`));
 console.log(JSON.stringify({ problems, identities: { genesis: observation.genesisIdentity, before: observation.beforeIdentity, after: observation.afterIdentity }, ready: observation.ready }));
 NODE
 VALIDATION_OUT="$RUN_DIR/amendment-validation.json"
@@ -566,8 +589,9 @@ is_reset_commit() {
     && [[ "$(fx rev-parse "$commit^" 2>/dev/null)" == "$RESET_HEAD" ]] \
     && [[ "$(fx rev-list --count "$RESET_HEAD..$commit" 2>/dev/null)" == 1 ]] \
     && [[ "$(fx log -1 --format=%s "$commit" 2>/dev/null)" == "$RESET_SUBJECT" ]] \
-    && [[ "$(fx diff --name-only "$RESET_HEAD" "$commit" 2>/dev/null)" == "$PLAN_FILE" ]] \
-    && [[ "$(fx rev-parse "$commit:$PLAN_FILE" 2>/dev/null)" == "$AMENDED_BLOB" ]]
+    && [[ "$(fx diff --name-only "$RESET_HEAD" "$commit" 2>/dev/null | LC_ALL=C sort)" == "$EXPECTED_CHANGED" ]] \
+    && [[ "$(fx rev-parse "$commit:$PLAN_FILE" 2>/dev/null)" == "$AMENDED_BLOB" ]] \
+    && [[ "$(fx rev-parse "$commit:$PROJECT_FILE" 2>/dev/null)" == "$AMENDED_PROJECT_BLOB" ]]
 }
 LOCAL_IS_RESET=false; is_reset_commit "$LOCAL_MAIN" && LOCAL_IS_RESET=true
 REMOTE_IS_RESET=false
@@ -611,18 +635,23 @@ console.log(JSON.stringify(withReadOnlyDatabase(workspace, (db) => {
   const result = syncProjectDocs(db, project, { apply: false, repoRoot: amendedRoot });
   return { liveDryRun: {
     errors: result.errors.map((error) => `${error.relativePath}: ${error.message}`),
-    actions: result.changes.filter((change) => change.entity === "action").map((change) => ({ ref: change.ref, action: change.action, reason: change.reason ?? null }))
+    actions: result.changes.filter((change) => change.entity === "action").map((change) => ({ ref: change.ref, action: change.action, reason: change.reason ?? null })),
+    projects: result.changes.filter((change) => change.entity === "project").map((change) => ({ ref: change.ref, action: change.action, reason: change.reason ?? null }))
   } };
 })));
 NODE
 LIVE_SYNC="$(probe "$WORKSPACE" "$FIXTURE_PROJECT" "$AMEND_DIR" < "$RUN_DIR/probe-live-sync.mjs")" || refuse "the live workspace's dry-run docs sync of the amended fixture could not run"
 printf '%s\n' "$LIVE_SYNC" > "$RUN_DIR/live-sync-preview.json"
-jq -e --arg plan "$FIXTURE_PLAN" --argjson ids "$ACTION_IDS_JSON" --arg state "$RESET_STATE" '.liveDryRun != null and (.liveDryRun.errors | length) == 0
+PROJECT_CHANGED="$(jq -r '.projectChanged' <<<"$RENDER")"
+# When this reset changes PROJECT.md, its amended statements of the chain must not be skipped as older than the Project's record.
+jq -e --arg plan "$FIXTURE_PLAN" --argjson ids "$ACTION_IDS_JSON" --arg state "$RESET_STATE" --argjson projectChanged "$PROJECT_CHANGED" '.liveDryRun != null and (.liveDryRun.errors | length) == 0
   and (.liveDryRun.actions | map(select(.action == "skipped")) | length) == 0
+  and (.liveDryRun.projects | type) == "array" and (($projectChanged | not) or ((.liveDryRun.projects | map(select(.action == "skipped")) | length) == 0))
   and (.liveDryRun.actions as $changes | all($ids[]; . as $id | ([$changes[] | select(.ref == "plan/\($plan)#\($id)") | .action] as $a | ($a | length) == 1 and ($a[0] == "update" or $a[0] == "create" or ($a[0] == "unchanged" and $state == "pushed")))))' \
   <<<"$LIVE_SYNC" >/dev/null \
   || would_refuse "the live workspace's dry-run docs sync would not apply every chain Action (an error, a skipped Action, or an Action that is not exactly one update or create): $(jq -c '.liveDryRun' <<<"$LIVE_SYNC" 2>/dev/null)"
 record "liveSyncPreview" "$(jq -c '.liveDryRun.actions // null' <<<"$LIVE_SYNC")"
+record "liveSyncProjectPreview" "$(jq -c '.liveDryRun.projects // null' <<<"$LIVE_SYNC")"
 
 # Issue #968: a pending proposal or open Decision naming an in-scope Action makes the
 # dispatch gate answer "decision", and the tick launches nothing. This reset settles none:
@@ -691,7 +720,7 @@ if [[ "$DRY_RUN" == true ]]; then
     pushed) echo "Step 1: resume at docs sync: the reset commit $LOCAL_MAIN is already on GitHub main." ;;
     *) echo "Step 1: refused (see below)." ;;
   esac
-  echo "Step 2: one commit '$RESET_SUBJECT' on $RESET_HEAD changing only $PLAN_FILE (blob $AMENDED_BLOB), pushed to fixture main without force; the new line starts from $RESET_HEAD."
+  echo "Step 2: one commit '$RESET_SUBJECT' on $RESET_HEAD changing only $(tr '\n' ' ' <<<"$EXPECTED_CHANGED")(Plan blob $AMENDED_BLOB, PROJECT.md blob $AMENDED_PROJECT_BLOB; PROJECT.md's pointer and status fields untouched), pushed to fixture main without force; the new line starts from $RESET_HEAD. The coherence guard found no fixture managed document that states another Action count than $N."
   echo "Step 3: arcadia docs sync --project $FIXTURE_PROJECT --apply."
   echo "Step 4: position the chain's Actions in the queue (arcadia advance queue arrange, previewed then applied at the exact revision, refused unless orderValid with 0 unpositioned afterwards): all $(jq '.order | length - ('"$N"')' <<<"$QUEUE_PLANNED") other key(s) keep their relative order, then $(jq -r 'join(", ")' <<<"$CHAIN_KEYS_JSON"). Queue now: $(jq -c '{revision, orderValid, unpositionedCount}' <<<"$QUEUE_NOW"); non-chain Actions the arrange would also position: $(jq -c '.othersUnpositioned' <<<"$QUEUE_PLANNED")."
   echo "Actions and fresh completion ids:"
@@ -700,6 +729,8 @@ if [[ "$DRY_RUN" == true ]]; then
   echo "Earlier candidates (left untouched): $(jq -r '[.[] | "#\(.pullRequest) \(.branch)@\(.tip[0:8])\(if .stackedOn then " (stacked on \(.stackedOn))" else "" end)"] | join(", ")' "$RUN_DIR/candidates-before.json")"
   echo "Plan diff: $RUN_DIR/plan.diff"
   cat "$RUN_DIR/plan.diff"
+  echo "PROJECT.md diff: $RUN_DIR/project.diff"
+  cat "$RUN_DIR/project.diff"
   echo
   [[ -z "$WOULD_REFUSE" ]] || record_str wouldRefuse "$WOULD_REFUSE"
   record "wouldRefuseCount" "$WOULD_REFUSE_COUNT"
@@ -751,10 +782,12 @@ if [[ "$RESET_STATE" == at_base ]]; then
   STAGE=commit
   production_quiet before_commit || refuse "production left Inactive or admitted work before the commit; nothing was committed"
   cp "$AMEND_DIR/$PLAN_FILE" "$FIXTURE_REPO/$PLAN_FILE"
-  [[ "$(fx status --porcelain --untracked-files=all)" == " M $PLAN_FILE" ]] || refuse "the working tree change is not exactly the fixture Plan"
-  fx add -- "$PLAN_FILE"
+  cp "$AMEND_DIR/$PROJECT_FILE" "$FIXTURE_REPO/$PROJECT_FILE"
+  EXPECTED_STATUS="$(while IFS= read -r changed_file; do printf ' M %s\n' "$changed_file"; done <<<"$EXPECTED_CHANGED")"
+  [[ "$(fx status --porcelain --untracked-files=all)" == "$EXPECTED_STATUS" ]] || refuse "the working tree change is not exactly the fixture Plan and PROJECT.md's rendered statements of the chain"
+  while IFS= read -r changed_file; do fx add -- "$changed_file"; done <<<"$EXPECTED_CHANGED"
   fx -c user.name='Arcadia Rehearsal Fixture' -c user.email='rehearsal@localhost' commit -q -m "$RESET_SUBJECT" \
-    -m "Renders the fixture Plan as a $N-Action serial chain from $PREV_LABEL's reset head $RESET_HEAD: each Action's next_action carries a fresh run note (new requirement input revision, unused completion id, clean-tree rule); acceptance criteria of existing Actions are unchanged; earlier candidates are untouched."
+    -m "Renders the fixture Plan as a $N-Action serial chain from $PREV_LABEL's reset head $RESET_HEAD: each Action's next_action carries a fresh run note (new requirement input revision, unused completion id, clean-tree rule); acceptance criteria of existing Actions are unchanged; the Plan's and PROJECT.md's statements of the chain's size and purpose (goal, outcome, milestone, title, budget) state $N Actions, with PROJECT.md's pointer and status fields untouched; earlier candidates are untouched."
   LOCAL_COMMITTED=true
   LOCAL_MAIN="$(fx rev-parse refs/heads/main)"
   is_reset_commit "$LOCAL_MAIN" || refuse "the new fixture commit is not exactly the validated amendment on $RESET_HEAD"
@@ -786,6 +819,8 @@ jq -e --arg plan "$FIXTURE_PLAN" --argjson ids "$ACTION_IDS_JSON" --arg state "$
   | ($actions | map(select(.action == "skipped")) | length) == 0
   and all($ids[]; . as $id | ([$actions[] | select(.ref == "plan/\($plan)#\($id)") | .action] as $a | ($a | length) == 1 and ($a[0] == "update" or $a[0] == "create" or ($a[0] == "unchanged" and $state == "pushed"))))' <<<"$SYNC" >/dev/null \
   || refuse "docs sync did not apply every chain Action (a change was skipped or missing); see $RUN_DIR/docs-sync.json"
+jq -e --argjson projectChanged "$PROJECT_CHANGED" '($projectChanged | not) or (([.data.projects[].changes[] | select(.entity == "project" and .action == "skipped")] | length) == 0)' <<<"$SYNC" >/dev/null \
+  || refuse "docs sync skipped the fixture Project's amended statements of the chain as older than its record; see $RUN_DIR/docs-sync.json"
 WORK="$(arcadia work list --json)"
 for action in $(jq -r '.[]' <<<"$ACTION_IDS_JSON"); do
   jq -e --arg ref "plan/$FIXTURE_PLAN#$action" '[.data.workItems[]? | select(.doc_ref == $ref)] | length == 1' <<<"$WORK" >/dev/null || refuse "Action $action is not synced exactly once after the reset"

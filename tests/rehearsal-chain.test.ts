@@ -27,6 +27,7 @@ const paramsDir = path.join(library, "rehearsal-chain", "params");
 const readParams = (runId: string) => JSON.parse(readFileSync(path.join(paramsDir, `${runId}.json`), "utf8")) as ChainRunParams;
 const RUN6 = readParams("run6-2026-10-06");
 const RUN7 = readParams("run7-2026-10-06");
+const RUN8 = readParams("run8-2026-10-06");
 /** Run 6 at N=3 (its first form), a test-only variant that keeps the three-Action rendering covered now that run 6 is the nine-Action chain. */
 const RUN6_N3: ChainRunParams = { ...RUN6, actionCount: 3 };
 const PLAN_FILE = "docs/plans/autonomous-three-action-rehearsal.md";
@@ -157,6 +158,32 @@ describe("rehearsal-chain parameter files", () => {
     expect(RUN7.actionCount).toBe(RUN6.actionCount);
   });
 
+  it("run 8 (N=9) is valid and fully filled from run 7's receipts: reset runs/20261006T173810Z-40687 (newHead f478438a), terminal Off runs/20261006T175308Z-12860, all nine candidates including run 7's PR #9, and #1019 and #1020 required", () => {
+    const { params, problems, unfilled } = validateChainParams(RUN8);
+    expect(problems).toEqual([]);
+    expect(unfilled).toEqual([]);
+    expect(params?.actionCount).toBe(9);
+    expect(JSON.stringify(RUN8)).not.toContain("UNFILLED");
+    expect(RUN8).toMatchObject({ runId: "run8-2026-10-06", runLabel: "run 8" });
+    expect(RUN8.previousRun).toMatchObject({
+      label: "run 7", resetId: "reset-rehearsal-chain-fixture-run7-2026-10-06", terminalOffId: "restore-terminal-off-rehearsal-chain-run7-2026-10-06", grantId: "grant-production-rehearsal-chain-run7-2026-10-06",
+      bindings: { resetRunId: "20261006T173810Z-40687", resetHead: "f478438a00d98dae34434ca2b6ddebc3da0e9b73", terminalOffRunId: "20261006T175308Z-12860", localMain: "f478438a00d98dae34434ca2b6ddebc3da0e9b73" }
+    });
+    // Run 7 integrated nothing by local fast-forward: its terminal Off recorded the reset head, so the reset moves no local main.
+    expect(RUN8.previousRun.bindings.localMain).toBe(RUN8.previousRun.bindings.resetHead);
+    // Run 6's eight candidates stay pinned and run 7 adds PR #9 (its Action 1, preserved at 8e362475, from its work-reconciliation).
+    expect(RUN8.previousRun.bindings.candidates.slice(0, 8)).toEqual(RUN7.previousRun.bindings.candidates);
+    expect(RUN8.previousRun.bindings.candidates.slice(8)).toEqual([{ branch: "claude/write-start-marker-20261006T174204533Z", tip: "8e362475887c3c7c25d1dc594e48a5c8f586ce0f", pullRequest: 9 }]);
+    expect(RUN8.previousRun.bindings.candidates.map((c) => c.pullRequest)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Run 7's required commits kept, plus #1019 (c26f3a9e) and #1020 (98b532a1).
+    expect(RUN8.requiredCommits.slice(0, RUN7.requiredCommits.length)).toEqual(RUN7.requiredCommits);
+    expect(RUN8.requiredCommits.slice(RUN7.requiredCommits.length)).toEqual([
+      expect.objectContaining({ commit: "c26f3a9ebbdbf87315396a9dffc9fd178e02cf37", why: expect.stringContaining("#1019") }),
+      expect.objectContaining({ commit: "98b532a183d31411da4437792d1e24bd1dd6eb8b", why: expect.stringContaining("#1020") })
+    ]);
+    expect(RUN8.actionCount).toBe(RUN7.actionCount);
+  });
+
   it("a run-7 file with any binding left UNFILLED is still valid in shape and fail-closed: every script refuses it", () => {
     const params = structuredClone(RUN7);
     Object.assign(params.previousRun.bindings, { resetRunId: "UNFILLED: x", resetHead: "UNFILLED: x", terminalOffRunId: "UNFILLED: x", localMain: "UNFILLED: x" });
@@ -219,7 +246,8 @@ describe("rehearsal-chain Plan rendering", () => {
     const after = rendered.plan.split("\n");
     expect(after).toHaveLength(before.length);
     const changed = after.map((line, i) => [before[i], line] as const).filter(([b, a]) => a !== b);
-    expect(changed.map(([, a]) => a.split(":")[0].trim())).toEqual(["token_budget", "next_action", "next_action", "next_action"]);
+    // G1's three-Action wording already states N=3, so only the Plan title gains "chain"; for any other N the milestone and body paragraph change too (rehearsal-chain-coherence.test.ts).
+    expect(changed.map(([, a]) => a.split(":")[0].trim())).toEqual(["token_budget", "next_action", "next_action", "next_action", "# Autonomous three-Action rehearsal chain"]);
     expect(rendered.actions.map((a) => [a.id, a.completionId, a.appended])).toEqual([
       ["write-start-marker", "complete-write-start-marker-run6-2026-10-06", false],
       ["transform-start-marker", "complete-transform-start-marker-run6-2026-10-06", false],
@@ -426,6 +454,30 @@ describe("previous terminal-Off reconciliation of run 6 (a locally integrated Ac
   });
 });
 
+describe("run 8's previous-head decision and reconciliation over run 7's receipts (nothing integrated locally)", () => {
+  const RESET = "f478438a00d98dae34434ca2b6ddebc3da0e9b73";
+  // Run 7's G8 work reconciliation (runs/20261006T175308Z-12860/work-reconciliation.jsonl), abridged to the fields read: nine preserved lines, none integrated.
+  const lines = [
+    ["claude/write-start-marker-20261004T170245861Z", "58bcd9155cf64836994045ca63a7707d8b9ebe75", 1], ["claude/write-start-marker-20261005T155147519Z", "7f1390376f4d49215cd29fd98145d40198475613", 2],
+    ["claude/write-start-marker-20261005T184707757Z", "50d1eab84e385a5566119831c82f5a6d32e752fd", 3], ["claude/write-start-marker-20261005T220000438Z", "79c6bae937255964cf0453c163ece0c36bb1985a", 4],
+    ["claude/write-start-marker-20261006T032202909Z", "f68ec48ed4ff95772fee108258d401158c26a54d", 5], ["claude/transform-start-marker-20261006T032821535Z", "69eb7d6283447270a9a16e540f7d4f5f2e3427fc", 6],
+    ["claude/write-start-marker-20261006T155142019Z", "6fbae8d6c04f3014038ff51745ae27572a3524dc", 7], ["claude/transform-start-marker-20261006T155537486Z", "2aa3e2489d151289eb47a8b3e52629f434897d07", 8],
+    ["claude/write-start-marker-20261006T174204533Z", "8e362475887c3c7c25d1dc594e48a5c8f586ce0f", 9]
+  ].map(([branch, tip, pr]) => ({ session: `s${pr}`, state: "preserved", branch, tip, pullRequest: `https://github.com/pmark/arcadia-three-action-rehearsal-20261004/pull/${pr}` }));
+  it("run 8's pinned candidates cover run 7's reconciliation exactly (including PR #9), and drop, move or live lines are refused", () => {
+    expect(reconciliationProblems(lines, RUN8.previousRun.bindings.candidates)).toEqual([]);
+    expect(reconciliationProblems(lines, RUN7.previousRun.bindings.candidates).join("; ")).toContain("does not pin it");
+    expect(reconciliationProblems(lines.map((l) => l.session === "s9" ? { ...l, tip: "f".repeat(40) } : l), RUN8.previousRun.bindings.candidates).join("; ")).toContain("pins claude/write-start-marker-20261006T174204533Z");
+    expect(reconciliationProblems([...lines, { session: "x", state: "committed_unreconciled", branch: "b", tip: "t" }], RUN8.previousRun.bindings.candidates).join("; ")).toContain("committed_unreconciled");
+  });
+  it("starts at the base: local main, GitHub main and the pinned local main are all run 7's reset head, so no local main moves", () => {
+    const candidates = RUN8.previousRun.bindings.candidates.map((c) => ({ ...c, containsExpectedLocalMain: false }));
+    const facts: FixtureStartFacts = { remoteMain: RESET, localMain: RESET, resetHead: RESET, expectedLocalMain: RESET, resetHeadIsAncestorOfExpectedLocalMain: true, candidates, localMainIsResetCommit: false, remoteMainIsResetCommit: false };
+    expect(decideFixtureStart(facts)).toMatchObject({ state: "at_base", refusals: [], preservedOn: [] });
+    expect(decideFixtureStart({ ...facts, localMain: "a".repeat(40) }).state).toBeNull();
+  });
+});
+
 describe("the operational queue after the chain reset (Issue #1015)", () => {
   const chain = chainQueueKeys(chainActionIds(9));
   const entry = (key: string, status = "explicit") => ({ key, status });
@@ -477,7 +529,7 @@ describe("the operational queue after the chain reset (Issue #1015)", () => {
 });
 
 describe("rendered library entries", () => {
-  it.each([RUN6, RUN7].flatMap((params) => CHAIN_KINDS.map((kind) => [params.runId, kind] as const)))("%s %s: launcher and descriptor match the renderer and the library contract", (runId, kind) => {
+  it.each([RUN6, RUN7, RUN8].flatMap((params) => CHAIN_KINDS.map((kind) => [params.runId, kind] as const)))("%s %s: launcher and descriptor match the renderer and the library contract", (runId, kind) => {
     const params = readParams(runId);
     const id = chainLibraryIds(runId)[kind];
     expect(readFileSync(path.join(library, `${id}.sh`), "utf8")).toBe(chainLauncher(kind, runId));
@@ -486,7 +538,7 @@ describe("rendered library entries", () => {
   });
 
   it("the G7 descriptor tells the operator plainly what one press authorises for N Actions, and that Decision 0058 sets no three-Action limit", () => {
-    for (const params of [RUN6, RUN7]) {
+    for (const params of [RUN6, RUN7, RUN8]) {
       const grant = chainDescriptor("grant", params);
       expect(grant.kind).toBe("grant");
       expect(grant.repeatable).toBe(false);
@@ -502,6 +554,12 @@ describe("rendered library entries", () => {
     expect(chainDescriptor("reset", RUN6).problem).toContain("moves ONLY the clone's local main back to 7214de28da2745c66f89d81e124e2ab2de05b2ca");
     expect(chainDescriptor("reset", RUN7).desired_effect).toContain("The new line starts from run 6's reset head 162f5b19dce5eac700c5edae0a0d640bad07daa0 on GitHub main.");
     expect(chainDescriptor("reset", RUN7).problem).toContain("moves ONLY the clone's local main back to 162f5b19dce5eac700c5edae0a0d640bad07daa0");
+    // Run 8: run 7 integrated nothing locally (its terminal Off recorded the reset head), so no local-main move; the reset states the coherence guard.
+    expect(chainDescriptor("reset", RUN8).desired_effect).toContain("The new line starts from run 7's reset head f478438a00d98dae34434ca2b6ddebc3da0e9b73 on GitHub main.");
+    expect(chainDescriptor("reset", RUN8).problem).toContain("no local-main move is needed");
+    expect(chainDescriptor("reset", RUN8).desired_effect).toContain("the fixture-coherence guard refuses any stated Action count other than 9, naming file, line and text");
+    expect(JSON.stringify(chainDescriptor("reset", RUN8).authority.does)).toContain("chainCoherenceProblems");
+    expect(JSON.stringify(chainDescriptor("preflight", RUN8).authority.does)).toContain("chainCoherenceProblems");
     expect(chainNextAction(0, RUN6)).toContain("Action 1 of 9");
     expect(chainNextAction(0, RUN6_N3)).toContain("Action 1 of 3");
     // Tonight's run-6 press authorises exactly nine named Actions.

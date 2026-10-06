@@ -12,6 +12,7 @@ import { discoverDocs } from "../src/docs/discover.js";
 import { recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { beginDevelopmentAttempt, requirementIdentity } from "../src/sessions/roleLineage.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { chainCoherenceProblems, readCoherenceFiles } from "../src/operatorActions/rehearsalChainCoherence.js";
 import { CHAIN_IMPLEMENTATION, CHAIN_KINDS, REQUIRED_COMMIT_FLOOR, chainActionIds, chainLibraryIds, chainQueueKeys, chainQueueRequestId, completionRequestId } from "../src/operatorActions/rehearsalChain.js";
 
 /**
@@ -242,7 +243,7 @@ const identityOf = (root: string, index: number) => {
  * top of it, both with passed development attempts, and run 5's reset and G8 receipts with the
  * G8's work reconciliation.
  */
-function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?: boolean; runId?: string } = {}) {
+function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?: boolean; runId?: string; projectText?: (text: string) => string } = {}) {
   initWorkspace(box.workspace);
   const fixture = box.fixture;
   mkdirSync(fixture, { recursive: true });
@@ -257,6 +258,7 @@ function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?:
   writeFileSync(path.join(fixture, ".git", "arcadia-three-action-first-packet-approval"), "review_1\n");
   const plan = readFileSync(path.join(fixture, PLAN_FILE), "utf8");
   writeFileSync(path.join(fixture, PLAN_FILE), plan.replace(ORIGINAL_LINE, RUN5_LINE).replace(/^updated: \d{4}-\d{2}-\d{2}$/m, "updated: 2026-10-06"));
+  if (options.projectText) writeFileSync(path.join(fixture, "PROJECT.md"), options.projectText(readFileSync(path.join(fixture, "PROJECT.md"), "utf8")));
   const base = commitAll(fixture, "Reset write-start-marker for three-Action rehearsal run 5");
   expect((runDocsSyncCommand({ workspace: box.workspace, project: "three-action-rehearsal", apply: true }).data as unknown as { errorCount: number }).errorCount).toBe(0);
   const a1Identity = identityOf(fixture, 0);
@@ -466,7 +468,16 @@ describe("rehearsal-chain reset", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
     const newHead = git(box.fixture, ["rev-parse", "refs/heads/main"]);
     expect(git(box.fixture, ["rev-parse", "refs/heads/main^"])).toBe(state.base);
-    expect(git(box.fixture, ["diff", "--name-only", state.base, newHead])).toBe(PLAN_FILE);
+    // G1's three-Action PROJECT.md already states N=3, so only a longer chain changes it (its size statements, never its pointer or status fields).
+    expect(git(box.fixture, ["diff", "--name-only", state.base, newHead])).toBe(n === 3 ? PLAN_FILE : `PROJECT.md\n${PLAN_FILE}`);
+    const projectLines = (revision: string) => git(box.fixture, ["show", `${revision}:PROJECT.md`]).split("\n");
+    const pointers = (lines: string[]) => lines.filter((line) => /^(slug|name|status|active_plan|current_action|type|arcadia): /.test(line));
+    expect(pointers(projectLines(newHead))).toEqual(pointers(projectLines(state.base)));
+    if (n === 9) {
+      expect(projectLines(newHead).filter((line) => /^(goal|outcome|milestone): /.test(line)).join("\n")).toContain("nine serial Actions");
+      expect(chainCoherenceProblems(readCoherenceFiles(box.fixture), 9)).toEqual([]);
+      expect(git(box.fixture, ["show", `${newHead}:${PLAN_FILE}`])).toContain("# Autonomous nine-Action rehearsal chain");
+    }
     expect(git(box.fixture, ["status", "--porcelain"])).toBe("");
     // The earlier candidates are untouched; f68ec48's stand-in is still on its branch.
     expect(git(box.fixture, ["rev-parse", `refs/heads/${A1_BRANCH}`])).toBe(state.a1Tip);
@@ -482,6 +493,13 @@ describe("rehearsal-chain reset", () => {
     });
     expect(json.localMainPreservedOn.map((c: { pullRequest: number }) => c.pullRequest)).toEqual([5, 6]);
     expect(json.candidatesAfter).toEqual(json.candidatesBefore);
+    expect(json).toMatchObject({ projectChanged: n === 9, amendedProjectBlob: git(box.fixture, ["rev-parse", `${newHead}:PROJECT.md`]), amendedPlanBlob: git(box.fixture, ["rev-parse", `${newHead}:${PLAN_FILE}`]) });
+    if (n === 9) {
+      // The Project amendment was applied by the real docs sync, not skipped as older than the record.
+      const sync = JSON.parse(readFileSync(path.join(box.receipt(box.ids.reset).dir, "docs-sync.json"), "utf8"));
+      expect(sync.data.projects[0].changes.filter((c: { entity: string }) => c.entity === "project").map((c: { action: string }) => c.action)).toEqual(["update"]);
+      expect(json.liveSyncProjectPreview.map((c: { action: string }) => c.action)).toEqual(["update"]);
+    }
     expect(json.actions).toHaveLength(n);
     expect(json.actions.slice(0, 3).every((a: { inputRevisionBefore: string; inputRevisionAfter: string }) => a.inputRevisionBefore && a.inputRevisionBefore !== a.inputRevisionAfter)).toBe(true);
     expect(json.actions.slice(3).every((a: { inputRevisionBefore: string | null }) => a.inputRevisionBefore === null)).toBe(true);
@@ -534,6 +552,23 @@ describe("rehearsal-chain reset", () => {
     const result = box.run(box.ids.reset, resetEnv);
     expect(result.status).not.toBe(0);
     expect(box.receipt(box.ids.reset).json).toMatchObject({ outcome: "refused", stage: "proposal_gate", agentAskSettled: false });
+    unchanged(box, state.a1Tip);
+  });
+
+  it("the coherence guard refuses, in the dry run and the real run alike, a base fixture statement the renderer does not know that states another Action count, naming file, line and text, before anything moves", { timeout: 300_000 }, () => {
+    const box = sandbox(RUN7);
+    const state = afterRun5(box, { actionCount: 9, runId: RUN7, projectText: (text) => text.replace("Disposable fixture for the installed three-Action autonomous rehearsal.", "This is the three-Action rehearsal, installed on the host.") });
+    const text = "PROJECT.md:17: states 3 Actions but this run's chain has 9 (\"three-Action\"): This is the three-Action rehearsal, installed on the host.";
+    const dry = box.run(box.ids.reset, resetEnv, ["--dry-run"]);
+    expect(dry.status, dry.stdout + dry.stderr).not.toBe(0);
+    const jsonText = JSON.stringify(text).slice(1, -1);
+    expect(dry.stdout + dry.stderr).toContain(jsonText);
+    expect(dry.stdout + dry.stderr).toContain("fixture coherence");
+    unchanged(box, state.a1Tip);
+    const real = box.run(box.ids.reset, resetEnv);
+    expect(real.status).not.toBe(0);
+    expect(box.receipt(box.ids.reset).json).toMatchObject({ outcome: "refused", stage: "validate_amendment", fixtureCommitted: false, localMainMoved: false, githubRepositoryChanged: false });
+    expect(box.receipt(box.ids.reset).json.reason).toContain(jsonText);
     unchanged(box, state.a1Tip);
   });
 
@@ -962,6 +997,30 @@ describe("rehearsal-chain G6: the operational queue and a live Codex capacity re
   });
 });
 
+describe("rehearsal-chain G6 coherence guard", () => {
+  it("refuses a fixture head whose PROJECT.md states another Action count than this run's N, naming file, line and text, while every other check still passes", { timeout: 600_000 }, () => {
+    const box = sandbox(RUN7, { clone: true });
+    const state = afterRun5(box, { actionCount: 9, runId: RUN7 });
+    expect(box.run(box.ids.reset, resetEnv).status).toBe(0);
+    // Tamper as a hand edit would: amend the pushed reset commit with the stale outcome and re-point the reset receipt at it, so only the coherence check can notice.
+    const goal = readFileSync(path.join(box.fixture, "PROJECT.md"), "utf8");
+    writeFileSync(path.join(box.fixture, "PROJECT.md"), goal.replace("Demonstrate nine dependent Actions", "Demonstrate three dependent Actions"));
+    git(box.fixture, ["-c", "user.name=t", "-c", "user.email=t@t.test", "commit", "-q", "--amend", "-a", "--no-edit"]);
+    const tampered = git(box.fixture, ["rev-parse", "HEAD"]);
+    const receiptFile = path.join(box.receipt(box.ids.reset).dir, "receipt.json");
+    writeFileSync(receiptFile, JSON.stringify({ ...JSON.parse(readFileSync(receiptFile, "utf8")), newHead: tampered, remoteMainAfter: tampered }));
+    const head = git(box.checkout, ["rev-parse", "HEAD"]);
+    box.setReplies(chainG6Replies(box, state, tampered, head));
+    const g6 = box.run(box.ids.preflight);
+    expect(g6.status).not.toBe(0);
+    const checks = box.receipt(box.ids.preflight).json.checks as Array<{ name: string; status: string; detail: string }>;
+    expect(checks.filter((c) => c.status !== "pass").map((c) => c.name)).toEqual(["fixture_coherence"]);
+    const detail = checks.find((c) => c.name === "fixture_coherence")!.detail;
+    expect(detail).toContain("contradicts itself about the chain's size");
+    expect(detail).toContain("PROJECT.md:8: states 3 Actions but this run's chain has 9 (\\\"three dependent Actions\\\"): outcome: Demonstrate three dependent Actions preserved");
+  });
+});
+
 describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its receipt", () => {
   it("the reset's receipt passes this run's G6, and G7 previews and activates exactly the nine Actions under its own request id", { timeout: 600_000 }, () => {
     const box = sandbox(RUN7, { clone: true });
@@ -977,6 +1036,7 @@ describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its recei
     expect(g6.status, g6.stdout + g6.stderr).toBe(0);
     const preflight = box.receipt(box.ids.preflight).json;
     expect(preflight.checks.filter((c: { status: string }) => c.status !== "pass")).toEqual([]);
+    expect(preflight.checks.find((c: { name: string }) => c.name === "fixture_coherence")).toMatchObject({ status: "pass", detail: expect.stringContaining("states another number of Actions than this run's 9") });
     const floorChecks = () => readFileSync(path.join(box.root, "floor.log"), "utf8").trim().split("\n");
     // G6 checked every floor commit against main (and nothing else was answered by the box git).
     expect([...new Set(floorChecks())].sort()).toEqual(Object.keys(REQUIRED_COMMIT_FLOOR).sort());

@@ -188,7 +188,10 @@ exported; with `ARCADIA_REQUIRE_INLINE_WORKSPACE=1` a command without it fails).
       (for run 6 and run 7: #922, #924, #983, the #987 stacking fix `26172c74`
       (#1006) and the #997 gate fix `a4a7c184` (#1010); these five are also a
       fixed floor no parameter change can remove; run 7 adds #1017's
-      order-independent Grant Action-set comparison, `3c67b0a8`).
+      order-independent Grant Action-set comparison, `3c67b0a8`; run 8 adds
+      #1019's bounded reruns of a zero-defect reviewer-variance verdict,
+      `c26f3a9e`, and #1020's queue arrangement and live capacity read,
+      `98b532a1`).
 - [ ] No other session plans a merge, push, reinstall or restart in the freeze
       window (section 5, phase 2).
 - [ ] The operator is reachable for the G7 press inside a 30-minute window.
@@ -338,6 +341,31 @@ an unreadable base or a stack on an unpinned branch refuses. It also reads the
 queue and Codex capacity as described in Phase 3. (The three-Action rendering
 stays covered by the tests.)
 
+Run 8 (`run8-2026-10-06`, N=9) repeats the nine-Action chain after run 7 stopped
+at Action 1's QA on a real MEDIUM "Managed documents" finding (PR #9): the
+fixture's `PROJECT.md` outcome said "three dependent Actions" and its Plan was
+titled "Autonomous three-Action rehearsal" while Action 1's text said "Action 1
+of 9". Its file is filled from run 7's receipts: the reset
+`runs/20261006T173810Z-40687` (`newHead` `f478438a`), the terminal Off
+`runs/20261006T175308Z-12860` (`fixtureMain` `f478438a`, so run 7 integrated
+nothing by local fast-forward and the reset moves no local `main`) and one
+candidate per line of that G8's reconciliation, PR #1 to #9 (PR #9 is run 7's
+Action 1, preserved at `8e362475`). It requires #1019 (`c26f3a9e`) and #1020
+(`98b532a1`) as well. **The fixture-coherence guard** (offline, deterministic):
+the reset renders every statement of the chain's size and purpose for N, and
+refuses, in the real run and the dry run alike (stage `validate_amendment`, reason
+prefixed `fixture coherence:`), any fixture managed document (`PROJECT.md`,
+`AGENTS.md`, `CONSTITUTION.md`, the Plan and every Action's text) that still
+states another number of Actions or rehearsal size than N, naming the file, line
+and text (for example "three-Action", "three dependent Actions", "Action 1 of 3"
+or "3 coding Sessions" with N=9). G6 runs the same guard on the fixture head
+(check `fixture_coherence`). Action ids and slugs (`chain-step-04`,
+`three-action-rehearsal`), the genesis check's marker lines and the Project's
+registered name "Three Action Rehearsal" are not counts. Preview with
+`ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
+.../reset-rehearsal-chain-fixture-run8-2026-10-06.sh --dry-run` before the real
+run: it prints the PROJECT.md diff beside the Plan diff.
+
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
 1. Reset the fixture (this session needs the operator's yes in its own chat for
@@ -354,7 +382,12 @@ stays covered by the tests.)
    It then renders the Plan as the N-Action chain (every Action a fresh
    requirement input revision, the fresh completion id
    `complete-<action>-<run-id>` and the clean-tree rule; a passed development
-   attempt for an unchanged input is never relaunched), validates it with
+   attempt for an unchanged input is never relaunched) and, from run 8, every
+   statement of the chain's size and purpose in the Plan (milestone, title,
+   budget, body) and in `PROJECT.md` (goal, outcome, milestone, body; its
+   `active_plan`, `current_action` and `status` untouched, its `updated:` date
+   the reset date), runs the fixture-coherence guard (run 8 paragraph above),
+   validates it with
    Arcadia's own discovery, docs sync and ready set and a read-only live
    dry-run docs sync, **refuses** any pending fixture proposal or open Decision
    gating a chain Action (it settles none: give each its own governed
@@ -379,7 +412,8 @@ stays covered by the tests.)
    prints "Step 4" with the arrangement it would make.
 2. Immediately run G6: `.../preflight-rehearsal-chain-<run-id>.sh run`
    (read-only). It must print `READY`. Its window is **30 minutes from its
-   finish time**. From run 7 it also refuses unless the Action queue is
+   finish time**. From run 8 it also refuses unless the fixture head passes the
+   coherence guard (check `fixture_coherence`). From run 7 it also refuses unless the Action queue is
    `orderValid` with `unpositionedCount` 0 (check `action_queue`; the receipt
    records the queue summary), and its Codex capacity check makes a fresh
    `codex app-server` `account/rateLimits/read` of its own, retried up to three
@@ -605,7 +639,10 @@ broker): rerun G6.
    launchers and descriptors are rendered and checked. Run 6 (N=9, nine
    Actions under one press) ran; run 7 (N=9 repeat, bindings filled from run
    6's receipts, queue positioning in the reset and a queue and live-capacity
-   check in G6, Issues #1015 and #1016) is prepared; not yet proven live.
+   check in G6, Issues #1015 and #1016) ran and stopped at Action 1's QA on a
+   fixture that contradicted itself about its size; run 8 (bindings from run 7's
+   receipts, rendered N-Action Project and Plan wording, the coherence guard in
+   the reset and G6) is prepared; not yet proven live.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983) and an operator gate holding a launch (#997; both tested, not yet seen live);
    a stuck candidate in other states and the dashboard rendering of escalations are

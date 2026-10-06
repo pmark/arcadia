@@ -1,0 +1,150 @@
+---
+arcadia: v1
+type: plan
+slug: autonomous-three-action-rehearsal
+project: three-action-rehearsal
+status: active
+milestone: Run the bounded three-Action rehearsal
+token_impact: small
+token_budget: 9 trivial file-edit Actions in one serial chain; model use is bounded to the 9 coding Sessions and their two independent reviews each.
+updated: 2026-10-06
+actions:
+  - id: write-start-marker
+    title: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement MARKER.md containing exactly the line "three-action rehearsal start" plus a trailing newline (rehearsal run 7, run id run7-2026-10-06, Action 1 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-write-start-marker-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: MARKER.md with the start line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - MARKER.md exists and contains exactly the line "three-action rehearsal start" followed by a trailing newline, with no other content.
+      - The genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: []
+    decisions: []
+  - id: transform-start-marker
+    title: Implement appending the start line transformed to upper case ("THREE-ACTION REHEARSAL START") to MARKER.md, and add tests/marker.test.mjs asserting both lines in order.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending the line "THREE-ACTION REHEARSAL START" to MARKER.md after the start line, and add tests/marker.test.mjs asserting node --test sees both lines in order (rehearsal run 7, run id run7-2026-10-06, Action 2 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-transform-start-marker-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: MARKER.md with the start and transformed lines, plus a passing tests/marker.test.mjs
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - MARKER.md contains exactly the start line followed by "THREE-ACTION REHEARSAL START", each with a trailing newline.
+      - tests/marker.test.mjs exists and passes under node --test, asserting both lines appear in order; "node scripts/check-rehearsal.mjs" passes.
+    depends_on: [write-start-marker]
+    decisions: []
+  - id: verify-final-rehearsal
+    title: Implement appending the line "three-action rehearsal verified" to MARKER.md, and extend tests/marker.test.mjs to assert all three lines in order.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending the line "three-action rehearsal verified" to MARKER.md after the transformed line, and extend tests/marker.test.mjs to assert all three lines in order (rehearsal run 7, run id run7-2026-10-06, Action 3 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-verify-final-rehearsal-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: MARKER.md with all three lines, plus a passing tests/marker.test.mjs
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - MARKER.md contains exactly the start, transformed and verified lines in that order, each with a trailing newline.
+      - tests/marker.test.mjs asserts all three lines in order and "node scripts/check-rehearsal.mjs" passes.
+    depends_on: [transform-start-marker]
+    decisions: []
+  - id: chain-step-04
+    title: Implement CHAIN.md containing exactly the line "chain step 04 follows three-action rehearsal verified" plus a trailing newline, after reading the last line of MARKER.md.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement CHAIN.md after reading the last line of MARKER.md, which verify-final-rehearsal wrote and which must be "three-action rehearsal verified" (otherwise stop and report without writing anything); CHAIN.md must contain exactly the line "chain step 04 follows three-action rehearsal verified" plus a trailing newline, and MARKER.md stays unchanged (rehearsal run 7, run id run7-2026-10-06, Action 4 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-04-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md whose only line is the chain step 04 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md exists and contains exactly the line "chain step 04 follows three-action rehearsal verified" followed by a trailing newline, with no other content.
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [verify-final-rehearsal]
+    decisions: []
+  - id: chain-step-05
+    title: Implement appending the line "chain step 05 follows chain step 04" to CHAIN.md, after reading its last line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending one line to CHAIN.md after reading its last line, which chain-step-04 wrote and which must start with "chain step 04 follows" (otherwise stop and report without writing anything); the new last line is exactly "chain step 05 follows chain step 04" plus a trailing newline, and every earlier line and MARKER.md stay unchanged (rehearsal run 7, run id run7-2026-10-06, Action 5 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-05-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md ending with the chain step 05 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md holds exactly one line per chain step from 04 to 05 in step order, each with a trailing newline; its earlier lines are unchanged and its last line is exactly "chain step 05 follows chain step 04".
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [chain-step-04]
+    decisions: []
+  - id: chain-step-06
+    title: Implement appending the line "chain step 06 follows chain step 05" to CHAIN.md, after reading its last line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending one line to CHAIN.md after reading its last line, which chain-step-05 wrote and which must start with "chain step 05 follows" (otherwise stop and report without writing anything); the new last line is exactly "chain step 06 follows chain step 05" plus a trailing newline, and every earlier line and MARKER.md stay unchanged (rehearsal run 7, run id run7-2026-10-06, Action 6 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-06-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md ending with the chain step 06 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md holds exactly one line per chain step from 04 to 06 in step order, each with a trailing newline; its earlier lines are unchanged and its last line is exactly "chain step 06 follows chain step 05".
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [chain-step-05]
+    decisions: []
+  - id: chain-step-07
+    title: Implement appending the line "chain step 07 follows chain step 06" to CHAIN.md, after reading its last line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending one line to CHAIN.md after reading its last line, which chain-step-06 wrote and which must start with "chain step 06 follows" (otherwise stop and report without writing anything); the new last line is exactly "chain step 07 follows chain step 06" plus a trailing newline, and every earlier line and MARKER.md stay unchanged (rehearsal run 7, run id run7-2026-10-06, Action 7 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-07-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md ending with the chain step 07 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md holds exactly one line per chain step from 04 to 07 in step order, each with a trailing newline; its earlier lines are unchanged and its last line is exactly "chain step 07 follows chain step 06".
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [chain-step-06]
+    decisions: []
+  - id: chain-step-08
+    title: Implement appending the line "chain step 08 follows chain step 07" to CHAIN.md, after reading its last line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending one line to CHAIN.md after reading its last line, which chain-step-07 wrote and which must start with "chain step 07 follows" (otherwise stop and report without writing anything); the new last line is exactly "chain step 08 follows chain step 07" plus a trailing newline, and every earlier line and MARKER.md stay unchanged (rehearsal run 7, run id run7-2026-10-06, Action 8 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-08-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md ending with the chain step 08 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md holds exactly one line per chain step from 04 to 08 in step order, each with a trailing newline; its earlier lines are unchanged and its last line is exactly "chain step 08 follows chain step 07".
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [chain-step-07]
+    decisions: []
+  - id: chain-step-09
+    title: Implement appending the line "chain step 09 follows chain step 08" to CHAIN.md, after reading its last line.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement appending one line to CHAIN.md after reading its last line, which chain-step-08 wrote and which must start with "chain step 08 follows" (otherwise stop and report without writing anything); the new last line is exactly "chain step 09 follows chain step 08" plus a trailing newline, and every earlier line and MARKER.md stay unchanged (rehearsal run 7, run id run7-2026-10-06, Action 9 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-chain-step-09-run7-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+    expected_artifact: CHAIN.md ending with the chain step 09 line
+    clarification: clarified
+    confidence: high
+    acceptance_criteria:
+      - CHAIN.md holds exactly one line per chain step from 04 to 09 in step order, each with a trailing newline; its earlier lines are unchanged and its last line is exactly "chain step 09 follows chain step 08".
+      - MARKER.md is unchanged and the genesis check node scripts/check-rehearsal.mjs passes.
+    depends_on: [chain-step-08]
+    decisions: []
+questions: []
+decisions: []
+recommended_model: claude-sonnet-5
+recommended_reasoning_effort: medium
+current_action: write-start-marker
+---
+
+# Autonomous three-Action rehearsal
+
+Disposable fixture Plan. Three serial Actions, each preserved to a draft pull
+request, readied and independently reviewed by the production tick, then
+integrated by local fast-forward. GitHub-side merge and base push stay out of
+scope.

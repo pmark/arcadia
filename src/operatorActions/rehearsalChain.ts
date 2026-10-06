@@ -1,10 +1,14 @@
+import { capitalNumberWord, numberWord } from "./rehearsalChainCoherence.js";
+
 /**
  * Pure parts of the parameterised N-Action rehearsal-chain operator script set
  * (artifacts/generated/operator-scripts/rehearsal-chain/): the per-run
  * parameter file's validation, the derived Action and completion ids, the
- * fixture Plan rendering, completion-id freshness and the previous-head
- * (local-main preservation) decision. Nothing here reads Git, GitHub, a
- * workspace or the clock; the shell scripts gather those facts and pass them in.
+ * fixture Plan and PROJECT.md rendering, completion-id freshness and the
+ * previous-head (local-main preservation) decision. Nothing here reads Git,
+ * GitHub, a workspace or the clock; the shell scripts gather those facts and
+ * pass them in. The coherence guard that refuses any stated Action count other
+ * than N lives in rehearsalChainCoherence.ts.
  */
 
 export const CHAIN_PARAMS_SCHEMA = "arcadia-rehearsal-chain-run-v1";
@@ -319,6 +323,25 @@ function actionBlock(index: number, ids: string[], nextAction: string): string[]
 export const chainTokenBudget = (count: number) =>
   `token_budget: ${count} trivial file-edit Actions in one serial chain; model use is bounded to the ${count} coding Sessions and their two independent reviews each.`;
 
+// ---------------------------------------------------------------------------
+// The fixture's statements of the chain's size and purpose (PROJECT.md and the Plan)
+// ---------------------------------------------------------------------------
+
+/** The Milestone line both the fixture PROJECT.md and its Plan carry: "Run the bounded nine-Action rehearsal" (G1's own wording for N=3). */
+export const chainMilestone = (count: number) => `Run the bounded ${numberWord(count)}-Action rehearsal`;
+/** The fixture PROJECT.md goal, outcome and Plan title for N Actions (G1's own wording for N=3, apart from the Plan title's "chain"). */
+export const chainProjectGoal = (count: number) => `Disposable fixture proving ${numberWord(count)} serial Actions run unattended from one bounded production Grant.`;
+export const chainProjectOutcome = (count: number) =>
+  `Demonstrate ${numberWord(count)} dependent Actions preserved, independently reviewed and integrated by the production tick; delete after recorded review.`;
+export const chainPlanTitle = (count: number) => `Autonomous ${numberWord(count)}-Action rehearsal chain`;
+/** The sentence-initial and hyphenated count words inside the two body paragraphs (replaced wherever the base states any chain size). */
+const NUMBER_WORD = "(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)";
+const PROJECT_BODY_COUNT = new RegExp(`^Disposable fixture for the installed (${NUMBER_WORD})-Action autonomous rehearsal\\.$`, "im");
+const PLAN_BODY_COUNT = new RegExp(`^Disposable fixture Plan\\. (${NUMBER_WORD}) serial Actions, each preserved to a draft pull$`, "im");
+const ORIGINAL_PLAN_TITLE = /^# Autonomous (?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)-Action rehearsal(?: chain)?$/im;
+
+const sameWordCase = (found: string, count: number) => found.charAt(0) === found.charAt(0).toUpperCase() && found.charAt(0) !== found.charAt(0).toLowerCase() ? capitalNumberWord(count) : numberWord(count);
+
 export interface RenderedChainPlan {
   plan: string;
   planUpdatedBefore: string;
@@ -357,6 +380,7 @@ export function renderChainPlan(basePlan: string, params: Pick<ChainRunParams, "
   }
   const budgetLines = front.filter((line) => line.startsWith("token_budget: "));
   if (budgetLines.length !== 1) throw new ChainPlanError("TOKEN_BUDGET", "the base Plan does not carry exactly one token_budget line");
+  if (front.filter((line) => line.startsWith("milestone: ")).length !== 1) throw new ChainPlanError("MILESTONE", "the base Plan does not carry exactly one milestone line");
   const actionsAt = front.indexOf("actions:");
   if (actionsAt < 0) throw new ChainPlanError("NO_ACTIONS", "the base Plan has no actions: list");
   let actionsEnd = actionsAt + 1;
@@ -391,12 +415,75 @@ export function renderChainPlan(basePlan: string, params: Pick<ChainRunParams, "
     rendered.push(...fresh);
     actions.push({ id, nextAction, completionId: completionRequestId(id, params.runId), appended: index >= blocks.length });
   });
+  const frontLine = (line: string) => DATE_LINE.test(line) ? `updated: ${resetDate}`
+    : line.startsWith("token_budget: ") ? chainTokenBudget(params.actionCount)
+    : line.startsWith("milestone: ") ? `milestone: ${chainMilestone(params.actionCount)}`
+    : line;
   const newFront = [
-    ...front.slice(0, actionsAt + 1).map((line) => DATE_LINE.test(line) ? `updated: ${resetDate}` : line.startsWith("token_budget: ") ? chainTokenBudget(params.actionCount) : line),
+    ...front.slice(0, actionsAt + 1).map(frontLine),
     ...rendered,
-    ...front.slice(actionsEnd).map((line) => DATE_LINE.test(line) ? `updated: ${resetDate}` : line.startsWith("token_budget: ") ? chainTokenBudget(params.actionCount) : line)
+    ...front.slice(actionsEnd).map(frontLine)
   ];
-  return { plan: ["---", ...newFront, ...lines.slice(end)].join("\n"), planUpdatedBefore, actions };
+  const body = lines.slice(end).join("\n")
+    .replace(ORIGINAL_PLAN_TITLE, `# ${chainPlanTitle(params.actionCount)}`)
+    .replace(PLAN_BODY_COUNT, (_line, found: string) => `Disposable fixture Plan. ${sameWordCase(found, params.actionCount)} serial Actions, each preserved to a draft pull`);
+  return { plan: ["---", ...newFront, body].join("\n"), planUpdatedBefore, actions };
+}
+
+export interface RenderedChainProject {
+  project: string;
+  projectUpdatedBefore: string;
+  /** False when the base PROJECT.md already states this run's N and nothing needed rendering (the file is returned byte for byte). */
+  changed: boolean;
+}
+
+const PROJECT_DATE_LINE = /^updated: ([0-9]{4}-[0-9]{2}-[0-9]{2})$/;
+/** The front-matter fields rendered for N; every other key (pointers, status, name, slug, type) is left exactly as it is. */
+const PROJECT_FIELDS: Array<[string, (count: number) => string]> = [
+  ["goal", chainProjectGoal],
+  ["outcome", chainProjectOutcome],
+  ["milestone", chainMilestone]
+];
+
+/**
+ * Render the fixture PROJECT.md's statements of the chain's size and purpose
+ * for N Actions: its goal, outcome and milestone lines and the body paragraph
+ * that names the rehearsal. Its pointer and status fields (active_plan,
+ * current_action, status), name and slug are never touched; when anything
+ * changes its `updated:` date becomes the reset date (docs sync skips a Project
+ * document older than the synced record), and a reset date before the base
+ * file's own date refuses. A body paragraph in a form the renderer does not know
+ * is left alone: the coherence guard refuses it if it states another count.
+ */
+export function renderChainProject(baseProject: string, params: Pick<ChainRunParams, "actionCount">, resetDate: string): RenderedChainProject {
+  if (!DATE.test(resetDate)) throw new ChainPlanError("INVALID_RESET_DATE", `reset date ${resetDate} is not YYYY-MM-DD`);
+  const lines = baseProject.split("\n");
+  if (lines[0] !== "---") throw new ChainPlanError("NOT_A_PROJECT", "the base PROJECT.md does not start with front matter");
+  const end = lines.indexOf("---", 1);
+  if (end < 0) throw new ChainPlanError("NOT_A_PROJECT", "the base PROJECT.md's front matter is not closed");
+  const front = lines.slice(1, end);
+  const dateLines = front.filter((line) => PROJECT_DATE_LINE.test(line));
+  if (dateLines.length !== 1) throw new ChainPlanError("PROJECT_DATE_LINE", "the base PROJECT.md does not carry exactly one updated: date line");
+  const projectUpdatedBefore = PROJECT_DATE_LINE.exec(dateLines[0])![1];
+  for (const [key] of PROJECT_FIELDS) {
+    if (front.filter((line) => line.startsWith(`${key}: `)).length !== 1) throw new ChainPlanError("PROJECT_FIELD", `the base PROJECT.md does not carry exactly one ${key}: line`);
+  }
+  const rendered = front.map((line) => {
+    for (const [key, text] of PROJECT_FIELDS) if (line.startsWith(`${key}: `)) return `${key}: ${text(params.actionCount)}`;
+    return line;
+  });
+  const baseBody = lines.slice(end).join("\n");
+  const body = baseBody.replace(PROJECT_BODY_COUNT, `Disposable fixture for the installed ${numberWord(params.actionCount)}-Action autonomous rehearsal.`);
+  const changed = rendered.some((line, index) => line !== front[index]) || body !== baseBody;
+  if (!changed) return { project: baseProject, projectUpdatedBefore, changed: false };
+  if (resetDate < projectUpdatedBefore) {
+    throw new ChainPlanError("RESET_DATE_BEFORE_PROJECT", `the reset date ${resetDate} is before the base PROJECT.md's updated: ${projectUpdatedBefore}; docs sync would skip the Project amendment as older than its record`);
+  }
+  return {
+    project: ["---", ...rendered.map((line) => PROJECT_DATE_LINE.test(line) ? `updated: ${resetDate}` : line), body].join("\n"),
+    projectUpdatedBefore,
+    changed: true
+  };
 }
 
 // ---------------------------------------------------------------------------

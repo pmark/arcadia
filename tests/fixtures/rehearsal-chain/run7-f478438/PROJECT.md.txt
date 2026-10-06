@@ -1,0 +1,17 @@
+---
+arcadia: v1
+type: project
+slug: three-action-rehearsal
+name: Three Action Rehearsal
+status: active
+goal: Disposable fixture proving three serial Actions run unattended from one bounded production Grant.
+outcome: Demonstrate three dependent Actions preserved, independently reviewed and integrated by the production tick; delete after recorded review.
+milestone: Run the bounded three-Action rehearsal
+active_plan: autonomous-three-action-rehearsal
+current_action: write-start-marker
+updated: 2026-10-04
+---
+
+# Three Action Rehearsal
+
+Disposable fixture for the installed three-Action autonomous rehearsal.
