@@ -520,7 +520,9 @@ and PR #4 at `79c6bae9…`, beside PRs #3, #2 and #1. Every 2026-10-04,
   on run 4's head, four on genesis. G6 keeps every run-4 check. G7 is the
   run-4 G7 line for line apart from ids, binding and wording, which a test
   compares, and its `next_after` voids on every rehearsal G8 (runs 1 to 5),
-  reset (runs 2 to 5), recover and reinstall. The run-5 G8 also owns the run-5
+  reset (runs 2 to 5), recover and reinstall. Both also require the #983
+  merge commit `bb83f70c…` (the #981 fix) on main beside #922 and #924, so
+  they refuse until it is merged. The run-5 G8 also owns the run-5
   request id. Its reconciliation and hash pins are byte-identical to run 4's.
 - **Order.** Stray-Ask archive fix (#981) merged and reinstalled by the
   release manager → merge this pull request → reset → G6 → main quiet (no push

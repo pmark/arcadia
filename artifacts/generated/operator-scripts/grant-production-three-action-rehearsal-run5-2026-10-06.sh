@@ -35,7 +35,7 @@ INTEGRATION_DECISION="0058"
 DECISION_FILE="docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md"
 GRANT_HOURS=12
 PREFLIGHT_MAX_AGE_SECONDS=1800
-REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e"
+REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4"
 RUNTIME_PATHS="src scripts apps package.json pnpm-lock.yaml tsconfig.json"
 
 case "${1:-run}" in

@@ -153,6 +153,8 @@ const commitAll = (cwd: string, message: string) => {
   return git(cwd, ["rev-parse", "HEAD"]);
 };
 const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
+/** The #983 merge commit (the #981 canonical-name Ask archive fix) that the run-5 G6 and G7 require on main. */
+const FIX_983 = "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4";
 const CHECKOUT_PROJECT = "---\narcadia: v1\ntype: project\nslug: arcadia\nname: Arcadia\nstatus: active\ngoal: Checkout under test.\noutcome: Checkout under test.\nmilestone: Test\nupdated: 2026-10-05\n---\n\n# Arcadia\n";
 
 /** A throwaway Arcadia checkout whose library holds copies of the named pairs. */
@@ -474,6 +476,8 @@ describe("run-5 operator pairs: contract and static safety", () => {
     const descriptor = descriptorOf(RESET);
     expect(descriptor.repeatable).toBe(false);
     expect(descriptor.kind).toBeUndefined();
+    // The recover hint run 4's reset gave, kept: only for a runtime-path move, with the workspace inline.
+    expect(descriptor.success.next.startsWith(descriptorOf(RUN4_RESET).success.next.slice(0, descriptorOf(RUN4_RESET).success.next.indexOf(" Then ")))).toBe(true);
     const text = source(RESET);
     const pushes = text.split("\n").filter((line) => /(\bgit\b|\bfx\b).*\bpush\b/.test(line) && !line.trim().startsWith("#") && !line.includes("echo") && !/refuse "/.test(line));
     expect(pushes).toEqual(['  timeout 120 git -C "$FIXTURE_REPO" push -q origin refs/heads/main:refs/heads/main']);
@@ -568,6 +572,7 @@ describe("run-5 operator pairs: contract and static safety", () => {
   it("the run-5 G7 is the run-4 G7 line for line except its ids, binding and run-5 wording", () => {
     const normalize = (text: string) => text
       .replace(/^# G7 for rehearsal run \d:[\s\S]*?(?=# current policy revision)/m, "")
+      .replace(/^REQUIRED_COMMITS=.*\n/m, "")
       .replace(/-run5-2026-10-06/g, "-run4-2026-10-05")
       .replace(/^# Run [34]'s reset head: the run-[45] reset commit's only parent;.*\n(RUN[34]_HEAD="[0-9a-f]{40}"\n)+/m, "")
       .replace(/^# The run-[45] fixture head:[\s\S]*?\nRESET_RECEIPT=""/m, "RESET_RECEIPT=\"\"")
@@ -616,6 +621,11 @@ describe("run-5 operator pairs: contract and static safety", () => {
     expect(text.match(/--integration-grant-action "\$PROJECT\/\$ACTION_[ABC]"/g)).toHaveLength(3);
     expect(text).toContain("GRANT_HOURS=12");
     expect(text).toContain("PREFLIGHT_MAX_AGE_SECONDS=1800");
+    // Run 5 also requires the #983 fix for the run-4 stall on main, beside run 4's #922 and #924.
+    expect(text).toContain(`REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e ${FIX_983}"`);
+    expect(source(G6).match(/^REQUIRED_COMMITS=.*$/m)?.[0]).toBe(text.match(/^REQUIRED_COMMITS=.*$/m)?.[0]);
+    expect(source(RUN4_G7).match(/^REQUIRED_COMMITS="([^"]+)"$/m)?.[1]).toBe("9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e");
+    expect(descriptorOf(G7).authority.does[2]).toContain("containing #922, #924 and #983");
     const descriptor = descriptorOf(G7);
     const run4 = descriptorOf(RUN4_G7);
     expect(descriptor).toMatchObject({ kind: "grant", repeatable: false });
@@ -646,7 +656,7 @@ describe("run-5 operator pairs: contract and static safety", () => {
     const run5 = source(G6);
     const checks = (text: string) => [...new Set([...text.matchAll(/check ([a-z_]+) (?:pass|refuse)/g)].map((m) => m[1]))];
     expect(checks(run5)).toEqual(checks(run4));
-    for (const line of ["installed_release pass", 'REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e"', "CHECK_WAIT_SECONDS=300", 'RUNTIME_PATHS="src scripts apps package.json pnpm-lock.yaml tsconfig.json"', "resolveOperatorGate"]) {
+    for (const line of ["installed_release pass", `REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e ${FIX_983}"`, "CHECK_WAIT_SECONDS=300", 'RUNTIME_PATHS="src scripts apps package.json pnpm-lock.yaml tsconfig.json"', "resolveOperatorGate"]) {
       expect(run5).toContain(line);
     }
     expect(constantOf(G6, "RUN4_HEAD")).toBe("9642005f2fdca40a4c8859d64ee28e3361df0056");
@@ -658,6 +668,8 @@ describe("run-5 operator pairs: contract and static safety", () => {
     expect(run5).not.toMatch(/agent[-_]ask/);
     // Apart from ids, the binding and wording, the run-5 G6 is the run-4 G6.
     const normalize = (text: string) => text.replace(/^# G6 for rehearsal run \d:[\s\S]*?(?=set -Eeuo pipefail)/m, "")
+      .replace(/^# Installed features the rehearsal depends on:[\s\S]*?\nREQUIRED_COMMITS=.*\n/m, "<REQUIRED COMMITS>\n")
+      .replace(/check installed_features pass "[^"]*"/, "check installed_features pass <FEATURES>")
       .replace(/-run5-2026-10-06/g, "-run4-2026-10-05").replace(/^# Run [34]'s reset head:.*\n(RUN[34]_HEAD=.*\n)+/m, "")
       .replace(/^ {2}# The run-[45] fixture head[\s\S]*?(?=\n {2}if \[\[ -n "\$REPO" \]\]; then)/m, "")
       .replace(/^ {2}elif jq -e --arg head "\$LOCAL_HEAD"[\s\S]*?\n {2}fi\n/m, "<BINDING>\n")

@@ -27,9 +27,11 @@ FIXTURE_PROJECT="three-action-rehearsal"
 FIXTURE_PLAN="autonomous-three-action-rehearsal"
 ACTIONS_JSON='["write-start-marker","transform-start-marker","verify-final-rehearsal"]'
 PROVIDER="claude-code-cli"
-# Installed features the rehearsal depends on: remote preservation (#922) and
-# tick-driven PR readiness with independent reviews (#924).
-REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e"
+# Installed features the rehearsal depends on: remote preservation (#922),
+# tick-driven PR readiness with independent reviews (#924), and settlement
+# archiving the drafted Ask by its canonical name with a once-only escalation of
+# repeated integration refusals (#983, the run-4 stall in #981).
+REQUIRED_COMMITS="9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1 0b3686013f0a924c35d58dc7a09c979f1a994c7e bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4"
 # A broker release counts as current only when no runtime code differs from main.
 RUNTIME_PATHS="src scripts apps package.json pnpm-lock.yaml tsconfig.json"
 CHECK_WAIT_SECONDS=300
@@ -129,7 +131,7 @@ fi
 record_str remoteHead "$REMOTE_HEAD"
 MISSING=""
 for commit in $REQUIRED_COMMITS; do git -C "$ARCADIA_REPO" merge-base --is-ancestor "$commit" HEAD 2>/dev/null || MISSING="$MISSING $commit"; done
-if [[ -z "$MISSING" ]]; then check installed_features pass "remote preservation (#922) and tick-driven reviews (#924) are on main"; else check installed_features refuse "main lacks required commits:$MISSING"; fi
+if [[ -z "$MISSING" ]]; then check installed_features pass "remote preservation (#922), tick-driven reviews (#924) and the canonical-name Ask archive (#983) are on main"; else check installed_features refuse "main lacks required commits:$MISSING"; fi
 
 WORKSPACE=""
 if RESOLVED="$(arcadia workspace resolve --json 2>/dev/null)" && WORKSPACE="$(jq -er '.data | select(.source == "user config") | .workspacePath' <<<"$RESOLVED")" && [[ "${WORKSPACE##*/}" == martianrover ]]; then

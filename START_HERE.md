@@ -225,9 +225,12 @@ files are unchanged (a test pins their sha256), and their G6 and G7 refuse the
 run-5 head anyway. Run these in order, and nothing else in between:
 
 1. Prerequisite, done by the release manager: the stray-Ask archive fix
-   (`archive-settled-ask-by-canonical-name`, #981) is merged and installed
-   through the governed reinstall. Then merge the run-5 pull request. It
-   touches no runtime path, so it needs no reinstall of its own.
+   (`archive-settled-ask-by-canonical-name`, #981, merged as #983
+   `bb83f70c…`) is merged and installed through the governed reinstall. Then
+   merge the run-5 pull request. It touches no runtime path, so it needs no
+   reinstall of its own. The run-5 G6 and G7 require the #983 commit on main
+   (beside #922 and #924) and refuse without it; installing it stays the
+   release manager's step, checked by G6's installed-release check.
 2. Reset the fixture from a terminal, exactly:
 
    ```sh
