@@ -4031,6 +4031,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/autonomous-production-rehearsal-runbook.md", "docs/agent-guidance/index.json", "src/sessions/", "src/ask/", "src/production/", "src/workspace/"]
+  - id: fix-serial-pr-base-stacking
+    title: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
+    expected_artifact: Evidence satisfying Agent Ask fix-serial-pr-base-stacking
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-serial-pr-base-stacking-2026-10-06
+    acceptance_criteria:
+      - "Remote preservation opens a serial Action's draft PR **stacked**: when the candidate's base revision is not the tip of the Project's base branch on the remote (an earlier Action integrated locally and GitHub's base did not advance), the PR's base branch is the remote branch whose tip equals the candidate's base revision (the previous candidate's branch, found deterministically, for example by `git ls-remote`/`for-each-ref --points-at` on the remote and the Project's candidate branch naming), with a clear refusal and an escalation naming the exact blocker and remedy when no such branch exists (deleted or never pushed); the first Action and any candidate whose base equals the remote base behave exactly as today; no GitHub base push, merge or force push ever happens, and nothing in the Grant or Decision 0058 changes. The reason a stacked base was chosen is recorded on the receipt."
+      - "The host-rendered Operator QA plan (Base, Candidate and the Step 2 changed-file list) describes the PR's real base so the plan, the PR's GitHub diff and the reviewers' evidence agree for stacked Actions; `scripts/qa-plan-consistency.ts` reports CONSISTENT for the serial case; the `it.fails` markers for Issue #987 in tests/fast-rehearsal/serial-two-action.test.ts and tests/qa-plan-pr-consistency.test.ts flip to passing (updated deliberately, with the companion pins revised to the new behaviour); the fast harness's fake gh models a PR whose base is a branch (three-dot diff against that branch, `baseRefOid` the branch tip) exactly as GitHub reports it."
+      - "Readiness, both review steps, the settled-head push and integration remain correct with stacked bases, proven through the real lifecycle in the fast harness: the serial two-Action scenario integrates both Actions and a new three-Action chain scenario integrates all three with each PR stacked on the previous candidate branch, each PR's QA plan consistent with its GitHub diff, Action N admitted exactly once, no commit lost and the remote base never pushed; edge cases covered: the previous candidate's branch deleted on the remote (refusal plus one escalation), the previous PR closed or merged, a candidate whose base equals the remote base (unchanged), and the fault-injection scenarios still pass; `pnpm fast-rehearsal`, lint, tsc, check:agent-guidance, the preservation self-check and the focused suites pass; the runbook (section 8 item 1 and the failure catalog) and Issue #987 are updated; independent authority review rounds are recorded on the pull request; the governed reinstall after merge is the release manager's."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
