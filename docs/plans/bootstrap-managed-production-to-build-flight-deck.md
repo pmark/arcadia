@@ -4118,6 +4118,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["tests/fast-rehearsal/README.md", "tests/fast-rehearsal/three-action-chain.test.ts", "https://github.com/pmark/arcadia/pull/1006", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: set-run6-nine-action-chain
+    title: Set run 6's chain length to nine Actions and make G8 prefer the G7 receipt that activated.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Set run 6's chain length to nine Actions and make G8 prefer the G7 receipt that activated.
+    expected_artifact: Evidence satisfying Agent Ask set-run6-nine-action-chain
+    clarification: clarified
+    confidence: high
+    source: Agent Ask set-run6-nine-action-chain-2026-10-06
+    acceptance_criteria:
+      - artifacts/generated/operator-scripts/rehearsal-chain/params/run6-2026-10-06.json declares actionCount 9 with its notes updated; the run-6 launchers and descriptors are re-rendered with no drift (`render-rehearsal-chain-operator-scripts.ts --check`), the run-6 G7 descriptor states that one press authorises exactly nine named fixture Actions, and run 7's parameter file remains a nine-Action repeat whose run-6 bindings stay UNFILLED and refusing; every other run-6 binding and required commit is unchanged.
+      - G8 (`rehearsal-chain/restore-terminal-off.sh`) chooses as its ownership basis the latest G7 receipt for this Grant that activated or succeeded, falling back to the latest receipt with actionIds only when none did, and a test proves that a later refused G7 attempt with different actionIds does not stop G8 from turning the run's Grant Off.
+      - "The rehearsal-chain tests, `check:operator-scripts`, lint and tsc pass, the runbook's run-6 description says nine Actions, and an independent review round is recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/pull/1009", "artifacts/generated/operator-scripts/rehearsal-chain/params/run6-2026-10-06.json", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
