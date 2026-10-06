@@ -4050,7 +4050,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: fix-pending-completion-gate
     title: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
@@ -4122,7 +4122,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-pending-completion-gate
+current_action: add-long-chain-fast-rehearsal
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
