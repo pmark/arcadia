@@ -3,11 +3,18 @@ import {
   BUNDLED_MODEL_TIERS,
   MODEL_TIERS,
   TIER_AGENTS,
-  isModelTier,
   type ModelTier,
   type ModelTierRegistry,
   type TierAgent
 } from "./modelTiers.js";
+
+/** Effort levels used to choose the semantic identity surname. */
+export const AGENT_EFFORT_TIERS = ["light", "standard", "heavy"] as const;
+export type AgentEffortTier = (typeof AGENT_EFFORT_TIERS)[number];
+
+function isAgentEffortTier(value: string): value is AgentEffortTier {
+  return (AGENT_EFFORT_TIERS as readonly string[]).includes(value);
+}
 
 /**
  * The Git identity an Arcadia-dispatched coding agent commits under.
@@ -22,10 +29,15 @@ import {
  */
 export interface AgentGitIdentity {
   agent: TierAgent;
-  tier: ModelTier;
+  /** Reasoning-effort tier used for the semantic identity surname. */
+  tier: AgentEffortTier;
   role: AgentRole;
   name: string;
   email: string;
+  /** Concrete provider model selected for this session, independent of tier. */
+  model?: string | null;
+  /** Provider reasoning effort used to derive the identity tier. */
+  effort?: string | null;
 }
 
 /**
@@ -58,18 +70,17 @@ const AGENT_GIVEN_NAMES: Record<TierAgent, string> = {
   opencode: "Owen"
 };
 
-const TIER_SURNAMES: Record<ModelTier, string> = {
+const TIER_SURNAMES: Record<AgentEffortTier, string> = {
   light: "Swift",
   standard: "Mason",
   heavy: "Atlas"
 };
 
 /**
- * A provider-native reasoning effort read back to a model tier. Used only when
- * a session's concrete model is not one the tier registry binds, so a custom or
- * explicit model still resolves to an identity instead of the operator's.
+ * A provider-native reasoning effort read back to the identity effort tier.
+ * This is independent of the model-selection tier in modelTiers.ts.
  */
-const EFFORT_TIERS: Record<string, ModelTier> = {
+const EFFORT_TIERS: Record<string, AgentEffortTier> = {
   e1_brief: "light",
   e2_standard: "standard",
   e3_deep: "heavy",
@@ -82,7 +93,7 @@ const EFFORT_TIERS: Record<string, ModelTier> = {
   max: "heavy"
 };
 
-export function agentIdentityName(agent: TierAgent, tier: ModelTier, role: AgentRole = "builder"): string {
+export function agentIdentityName(agent: TierAgent, tier: AgentEffortTier, role: AgentRole = "builder"): string {
   const base = `${AGENT_GIVEN_NAMES[agent]} ${TIER_SURNAMES[tier]}`;
   const title = ROLE_TITLES[role];
   return title ? `${title} ${base}` : base;
@@ -104,16 +115,16 @@ export function agentIdentitySignature(identity: AgentGitIdentity): string {
  * defect this module exists to remove.
  */
 export function resolveAgentIdentity(agent: string, tier: string, role: string = "builder"): AgentGitIdentity {
-  if (!(TIER_AGENTS as readonly string[]).includes(agent) || !isModelTier(tier) || !isAgentRole(role)) {
+  if (!(TIER_AGENTS as readonly string[]).includes(agent) || !isAgentEffortTier(tier) || !isAgentRole(role)) {
     throw validationError(`No agent Git identity is defined for platform "${agent}" at the "${tier}" tier in the "${role}" role.`, {
       agent,
       tier,
       role,
       knownAgents: [...TIER_AGENTS],
-      knownTiers: [...MODEL_TIERS],
+      knownTiers: [...AGENT_EFFORT_TIERS],
       knownRoles: [...AGENT_ROLES],
       remedy:
-        "Use a supported coding platform, model tier, and role. Arcadia will not fall back to the operator's Git identity."
+        "Use a supported coding platform, reasoning-effort tier, and role. Arcadia will not fall back to the operator's Git identity."
     });
   }
   const name = agentIdentityName(agent as TierAgent, tier, role);
@@ -142,12 +153,12 @@ export function agentIdentityEnvironmentArgs(identity: AgentGitIdentity): string
 }
 
 /**
- * The tier a concrete model belongs to for one agent, by reverse lookup in the
- * tier registry. Null when the model is not bound to any tier; throwing when a
- * model is bound to more than one, since guessing which tier did the work would
- * be worse than asking.
+ * The model-selection tier a concrete model belongs to for one agent, by
+ * reverse lookup in the selection registry. This is not the session's effort
+ * tier and must not determine its identity surname. Null when the model is not
+ * bound to a selection tier; throwing when it is bound more than once.
  */
-export function tierForAgentModel(
+export function modelSelectionTierForAgentModel(
   agent: TierAgent,
   model: string,
   registry: ModelTierRegistry = BUNDLED_MODEL_TIERS
@@ -155,19 +166,27 @@ export function tierForAgentModel(
   const value = model.trim();
   const matches = MODEL_TIERS.filter((tier) => registry.tiers[tier][agent]?.model === value);
   if (matches.length > 1) {
-    throw validationError(`The model "${value}" is bound to more than one ${agent} tier, so its identity is ambiguous.`, {
+    throw validationError(`The model "${value}" has an ambiguous binding across ${agent} model-selection tiers.`, {
       agent,
       model: value,
       tiers: matches,
-      remedy: "Bind each model to exactly one tier in config/coding-agent-models.json."
+      remedy: "Bind each model to exactly one model-selection tier in config/coding-agent-models.json."
     });
   }
   return matches[0] ?? null;
 }
 
-export function tierForReasoningEffort(effort: string | null | undefined): ModelTier | null {
+/** @deprecated Use modelSelectionTierForAgentModel to distinguish selection from effort. */
+export const tierForAgentModel = modelSelectionTierForAgentModel;
+
+export function tierForReasoningEffort(effort: string | null | undefined): AgentEffortTier | null {
   if (!effort) return null;
   return EFFORT_TIERS[effort.trim()] ?? null;
+}
+
+function defaultEffortForAgentModel(agent: TierAgent, model: string, registry: ModelTierRegistry): string | null {
+  const selectionTier = modelSelectionTierForAgentModel(agent, model, registry);
+  return selectionTier ? registry.tiers[selectionTier][agent]?.effort ?? null : null;
 }
 
 export interface SessionAgentIdentityInput {
@@ -179,28 +198,34 @@ export interface SessionAgentIdentityInput {
 }
 
 /**
- * Resolve the identity for one launched session from its platform and model.
- * The model is the primary signal; its reasoning effort is the fallback for a
- * model the registry does not bind. An unresolvable tier refuses the launch
- * rather than letting the commit use whichever identity Git finds next.
+ * Resolve a launched session identity from its platform, selected model, and
+ * reasoning effort. The effort determines the identity tier; the concrete
+ * model is retained separately. If effort is omitted, use the selected model
+ * binding's explicit default effort, never its model-selection tier.
  */
 export function resolveSessionAgentIdentity(input: SessionAgentIdentityInput): AgentGitIdentity {
   const registry = input.registry ?? BUNDLED_MODEL_TIERS;
-  const tier =
-    tierForAgentModel(input.agent, input.model, registry) ?? tierForReasoningEffort(input.effort);
+  const selectedModel = input.model.trim();
+  const explicitEffort = input.effort?.trim() || null;
+  const effort = explicitEffort ?? defaultEffortForAgentModel(input.agent, selectedModel, registry);
+  const tier = tierForReasoningEffort(effort);
   if (!tier) {
     throw validationError(
-      `Arcadia cannot determine the model tier for the ${input.agent} model "${input.model}".`,
+      `Arcadia cannot determine the reasoning-effort tier for the ${input.agent} model "${selectedModel}".`,
       {
         agent: input.agent,
-        model: input.model,
-        effort: input.effort ?? null,
+        model: selectedModel,
+        effort,
         remedy:
-          "Bind the model to a light/standard/heavy tier in config/coding-agent-models.json, or record a recognized reasoning effort for the session."
+          "Pass a recognized reasoning effort, or configure an explicit default effort for the selected model in config/coding-agent-models.json. Model-selection tier alone does not determine identity."
       }
     );
   }
-  return resolveAgentIdentity(input.agent, tier, input.role ?? "builder");
+  return {
+    ...resolveAgentIdentity(input.agent, tier, input.role ?? "builder"),
+    model: selectedModel,
+    effort
+  };
 }
 
 /**
@@ -217,7 +242,7 @@ export const OPERATOR_PRINCIPAL = {
 
 /** The one rule that settles a disagreement between names. */
 export const IDENTITY_AUTHORITY_RULE =
-  "The identity resolved for this session's own model tier and role is authoritative; if the model actually doing the work differs, run `arcadia identity resolve` for that model instead of inventing or reusing a name.";
+  "The identity resolved for this session's reasoning-effort tier and role is authoritative; selected model and effort are separate values, so resolve again if either changes instead of inventing or reusing a name.";
 
 /**
  * How a session's own `arcadia` commands resolve a workspace, and the opt-in
@@ -231,7 +256,7 @@ export const WORKSPACE_MODE_RULE =
   "then name any workspace, including the live one, inline (ARCADIA_WORKSPACE=<path> arcadia ... or --workspace <path>), never exported.";
 
 export interface RosterIdentity {
-  tier: ModelTier;
+  tier: AgentEffortTier;
   role: AgentRole;
   name: string;
   email: string;
@@ -246,7 +271,7 @@ export interface RosterPlatform {
 
 export interface AgentRoster {
   platforms: RosterPlatform[];
-  tierSurnames: Record<ModelTier, string>;
+  tierSurnames: Record<AgentEffortTier, string>;
   criticTitle: string;
   emailDomain: string;
   operator: typeof OPERATOR_PRINCIPAL;
@@ -263,7 +288,7 @@ export function agentRoster(): AgentRoster {
     platforms: TIER_AGENTS.map((agent) => ({
       agent,
       givenName: AGENT_GIVEN_NAMES[agent],
-      identities: MODEL_TIERS.flatMap((tier) =>
+      identities: AGENT_EFFORT_TIERS.flatMap((tier) =>
         AGENT_ROLES.map((role) => {
           const { name, email } = resolveAgentIdentity(agent, tier, role);
           return { tier, role, name, email };
@@ -319,7 +344,7 @@ function describeIdentity(identity: AgentGitIdentity): string {
 }
 
 function describeTeammate(platform: RosterPlatform): string {
-  const surnames = MODEL_TIERS.map((tier) => TIER_SURNAMES[tier]).join("/");
+  const surnames = AGENT_EFFORT_TIERS.map((tier) => TIER_SURNAMES[tier]).join("/");
   return `${platform.givenName} ${surnames} (${platform.agent})`;
 }
 
@@ -344,8 +369,11 @@ export function renderIdentityBlock(identity: AgentGitIdentity, partners: AgentP
   const lines = [
     IDENTITY_HEADING,
     `You are ${describeIdentity(self)}; sign every comment and commit exactly so, never as another tier or name.`,
+    ...(identity.model
+      ? [`Selected model: ${identity.model}; reasoning effort: ${identity.effort ?? "unspecified"}. The identity tier reflects effort.`]
+      : []),
     IDENTITY_AUTHORITY_RULE,
-    `Your teammates are ${teammates.map(describeTeammate).join(" and ")}, by tier ${MODEL_TIERS.join("/")}, ` +
+    `Your teammates are ${teammates.map(describeTeammate).join(" and ")}, by reasoning-effort tier ${AGENT_EFFORT_TIERS.join("/")}, ` +
       `titled "${ROLE_TITLES.critic}" when critiquing, at <name.in.dots>@${AGENT_GIT_EMAIL_DOMAIN}. ${OPERATOR_PRINCIPAL.rule}`,
     WORKSPACE_MODE_RULE
   ];
@@ -361,7 +389,7 @@ export function renderIdentityBlock(identity: AgentGitIdentity, partners: AgentP
 
 export interface SessionIdentityBlockInput {
   agent: string;
-  /** A tier, when the caller already knows it; otherwise resolved from model/effort. */
+  /** An effort tier, when the caller already knows it; otherwise resolved from effort/default effort. */
   tier?: string | null;
   model?: string | null;
   effort?: string | null;
@@ -380,7 +408,12 @@ export function renderSessionIdentityBlock(input: SessionIdentityBlockInput): st
   const role = input.role ?? "builder";
   let identity: AgentGitIdentity | null = null;
   try {
-    if (input.tier) identity = resolveAgentIdentity(input.agent, input.tier, role);
+    if (input.tier) {
+      identity = {
+        ...resolveAgentIdentity(input.agent, input.tier, role),
+        ...(input.model ? { model: input.model.trim(), effort: input.effort?.trim() || null } : {})
+      };
+    }
     else if ((TIER_AGENTS as readonly string[]).includes(input.agent) && input.model) {
       identity = resolveSessionAgentIdentity({
         agent: input.agent as TierAgent,

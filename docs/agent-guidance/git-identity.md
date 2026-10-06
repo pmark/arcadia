@@ -6,9 +6,12 @@ Every commit an agent makes in this repository — from a Session Arcadia
 launched, or from an interactive terminal, Claude Code, Codex, opencode, or
 any other agent runtime working here directly — is authored under a
 **semantic agent Git identity**, never the operator's own. `git log` should
-name the platform and how heavy a model did the work, not who was at the
+name the platform and its reasoning effort, not who was at the
 keyboard. `src/codingAgents/agentIdentity.ts` is the canonical table (given
-name per platform, surname per model tier: light/standard/heavy);
+name per platform, surname per reasoning-effort tier: light/standard/heavy).
+The selected concrete model is a separate session property; its model-selection
+tier does not set the identity surname. When a Session has no explicit effort,
+the configured model binding's default effort supplies it;
 `START_HERE.md` explains it for operators.
 
 The identity also carries a **role**: `builder` (the default, silent in the
@@ -25,11 +28,12 @@ finding.
 
 A Session Arcadia launches gets this automatically — `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` are set on that one process tree before the agent ever
-runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so unchanged-tier
-builder work needs no additional action from the agent. After any model-tier
-change, re-resolve and apply the current identity before the next commit or
-posted comment; the inherited launch environment no longer identifies that
-model. That launch path always binds the `builder` role;
+runs (`buildSessionLaunch` in `src/sessions/index.ts`) — so unchanged-effort
+builder work needs no additional action from the agent. After any reasoning-
+effort change, re-resolve and apply the current identity before the next commit
+or posted comment; the inherited launch environment no longer identifies that
+effort. The selected model is reported separately from the identity tier. That
+launch path always binds the `builder` role;
 there is no launched "critique Session" yet, so a launched agent producing
 a code review or a plan critique still resolves its own `critic` identity by
 hand, the same way an interactive session does for everything. An
@@ -50,10 +54,10 @@ Git resolves `author.*`/`committer.*` config and any already-exported
 `GIT_AUTHOR_*` ahead of `user.*`, so a `-c user.*` override can silently lose
 to a stale identity from an earlier launch or session), or close a posted
 GitHub PR comment with the printed `signature` (`<name> <<email>>`) the same
-way a commit trailer signs a commit. Pick the tier from whichever model is
-actually doing the work for this turn — it can change mid-session (a model
-switch, a fast/thinking-effort toggle), so re-resolve rather than assuming
-the tier from earlier in the session still holds. An identity the command
+way a commit trailer signs a commit. Pick the identity tier from the session's
+reasoning effort. The selected concrete model is reported separately and can
+change mid-session; re-resolve after a model switch or effort change rather
+than assuming the prior identity still holds. An identity the command
 refuses (an unrecognized platform, tier, or role) means the commit or comment
 must not proceed under the operator's identity either — fix the
 `--agent`/`--tier`/`--role` first.
@@ -62,18 +66,18 @@ must not proceed under the operator's identity either — fix the
 
 Agents often post through the operator's one GitHub login, so the signature
 line is the only record of who is speaking. Sign every commit and posted
-comment exactly as the identity resolved for your own model tier and role —
+comment exactly as the identity resolved for your own reasoning-effort tier and role —
 never as another tier, another name, or the operator. That resolved identity
 is authoritative: if the model actually doing the work differs from the one a
-brief named, run `arcadia identity resolve` for that model instead of
-inventing or reusing a name.
+brief named or the effort changed, run `arcadia identity resolve` with the
+current model and effort instead of inventing or reusing a name.
 
 The roster is data in `src/codingAgents/agentIdentity.ts`; print it with
 `arcadia identity roster`. A name is the platform's given name plus the tier
 surname, with a `Critic` title for the critic role, at a matching
 `<name.in.dots>@agents.arcadia.local` address:
 
-| Platform | Given name | light / standard / heavy |
+| Platform | Given name | light / standard / heavy reasoning effort |
 | --- | --- | --- |
 | codex | Cody | Swift / Mason / Atlas |
 | claude | Claudia | Swift / Mason / Atlas |
