@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runAgentAskPendingCommand, runAgentAskSettleCommand } from "../../src/commands/agentAsk.js";
+import { runSessionReconcileCommand } from "../../src/commands/advance.js";
 import { git } from "../helpers/rehearsalHarness.js";
 import { expectAdvancedExactlyOnce } from "./helpers/assertions.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
@@ -58,66 +60,112 @@ describe("the agent is interrupted after its work commit, before recording compl
  * The narrowest completion window: `agent-ask settle --apply` has committed
  * the settlement in the candidate (Plan done, pointer moved, Ask archived),
  * and the process dies before the settlement is recorded in the workspace
- * (src/ask/settlement.ts's `beforeOperationalProjection` window). The
- * previewed `complete` proposal stays PENDING in the workspace, and a pending
- * completion Ask is an operator gate: resolveProjectTransition answers
- * `decision` ("Settle this before dispatch: ...", src/sessions/index.ts), so
- * every later tick skips the launch, and production status never shows the
- * gate (Issues #995 and #997; the same mechanism as run 2's stall, #968).
+ * (src/ask/settlement.ts's `beforeOperationalProjection` window), so the
+ * previewed `complete` proposal stays PENDING. Before the fix that pending
+ * proposal was an operator gate (resolveProjectTransition answers
+ * `decision`): every later tick skipped the launch and production status
+ * showed nothing (Issues #995 and #997; the mechanism of run 2's stall,
+ * #968). Now the exit tick recognises the candidate's own canonical
+ * settlement commit and records that settlement
+ * (`recordCommittedCompletionSettlement`: no coding agent, no model call),
+ * so reconciliation accepts the completion and the ordinary review and
+ * integration path follows.
  */
 describe("the agent dies after its settlement commit, before the settlement is recorded", () => {
   let rehearsal: FastRehearsal;
   let result: ExecutorResult;
-  let baseBefore: string;
+  let exit: ReturnType<FastRehearsal["tick"]>;
+  let atExit: { pending: string[]; sessions: string[][]; head: string; recorded: string[]; launches: number };
   beforeAll(() => {
     rehearsal = world("fault-interrupted-after-settlement-commit");
-    rehearsal.expectError(/reconciliation outcome was incomplete_resumable/);
-    baseBefore = git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim();
     const { launch } = rehearsal.untilLaunched(ACTION_1, 3);
     result = rehearsal.execute(launch, ACTION_1, "interrupted-after-settlement-commit");
-    rehearsal.ticks(3);
-    // Hours later (inside the 12-hour Grant): still gated, still nothing visible.
-    rehearsal.advanceClock(4 * 3_600_000);
-    rehearsal.ticks(3);
-    rehearsal.finish();
+    exit = rehearsal.tick();
+    atExit = {
+      pending: runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending.map((item) => item.requestId),
+      sessions: rehearsal.sessions().map((s) => [s.action_id, s.status]),
+      head: git(result.brief.worktree, ["rev-parse", "HEAD"]).trim(),
+      recorded: rehearsal.log.filter((line) => line.includes("Recorded the interrupted completion settlement")),
+      launches: rehearsal.tmux.launches.length
+    };
+    rehearsal.untilIntegrated(ACTION_1);
   }, SCENARIO_TIMEOUT_MS);
 
-  it("preserves the settled candidate, then a pending-Ask operator gate stops it, invisible in production status (today)", () => {
+  it("records the candidate's committed settlement on the exit tick: accepted completion, no continuation, no pending proposal", () => {
     expect(result.interrupted).toContain("died after the settlement commit");
     expect(result.statusAtExit).toBe("");
     expect(git(result.brief.worktree, ["show", "--name-only", "--format=", result.settlementCommit!])).toContain(`.arcadia/asks/archive/agent-ask-${result.requestId}.yaml`);
-    const [exit, ...later] = rehearsal.recorder.tickLog.slice(-6);
-    expect(exit.summary).toContain("reconciled incomplete_resumable");
-    expect(exit.summary).toContain("preservation preserved");
-    // The work is not lost: the settled head is on the remote candidate branch and its draft PR.
-    const pr = rehearsal.pullRequestFor(ACTION_1)!;
-    expect(rehearsal.github.headOf(pr.branch)).toBe(result.settlementCommit);
-    expect(pr.isDraft).toBe(true);
-    // Every later tick skips the launch because the pending `complete` Ask gates the Action.
-    for (const tick of later) {
-      expect(tick.summary).toMatch(new RegExp(`launch skipped.* \\(Record ${ACTION_1} complete\\.\\)`));
-      expect(tick.summary).not.toMatch(/launch launched|integration integrated/);
-    }
-    expect(rehearsal.sessions().map((s) => [s.action_id, s.status])).toEqual([[ACTION_1, "needs_input"]]);
-    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(baseBefore);
-    expect(rehearsal.planAction(rehearsal.repo, ACTION_1)).toBe("open");
-    expect(rehearsal.sessions().filter((s) => s.action_id === ACTION_2)).toEqual([]);
-    expect(rehearsal.log.some((line) => line.includes("Integration waits on a governed completion; reconciliation outcome was incomplete_resumable."))).toBe(true);
-    const status = rehearsal.productionStatus().data;
-    expect(status.operatorEscalations).toEqual([]);
-    expect(status.redAlerts).toEqual([]);
-    expect(isolation.guardCalls()).toEqual([]);
+    expect(exit.handoff?.preservation.kind).toBe("preserved");
+    expect(exit.reconciled.map((entry) => entry.outcome)).toEqual(["accepted_completion"]);
+    // Recorded against the agent's own settlement commit; nothing was rewritten or committed on top.
+    expect(atExit.head).toBe(result.settlementCommit);
+    expect(atExit.recorded).toHaveLength(1);
+    expect(atExit.recorded[0]).toContain(`Agent Ask ${result.requestId}`);
+    expect(atExit.recorded[0]).toContain(result.settlementCommit!);
+    expect(atExit.pending).toEqual([]);
+    expect(atExit.sessions).toEqual([[ACTION_1, "completed"]]);
+    expect(atExit.launches).toBe(1);
+    expect(rehearsal.log.some((line) => line.includes("launch skipped") || line.includes("operator_gate_pending"))).toBe(false);
   });
 
-  // EXPECTED FAILURE (Issues #995, #997): nothing recovers this window today.
-  // When the lifecycle completes the recorded settlement (or resumes the
-  // Action) and advances exactly once, this body passes and the marker
-  // fails: change `it.fails` to `it`.
-  it.fails("recovers and advances exactly once", () => {
+  // Was an EXPECTED FAILURE (Issues #995, #997) until the exit tick recorded
+  // the interrupted settlement.
+  it("recovers and advances exactly once", () => {
+    expectAdvancedExactlyOnce(rehearsal, result, isolation);
     expect(rehearsal.planAction(rehearsal.repo, ACTION_1)).toBe("done");
     expect(rehearsal.recorder.tickLog.filter((tick) => tick.summary.includes("integration integrated"))).toHaveLength(1);
     expect(rehearsal.sessions().filter((s) => s.action_id === ACTION_2)).toHaveLength(1);
+    expect(rehearsal.finish().errors.filter((error) => !error.expected)).toEqual([]);
   });
+});
+
+/**
+ * The same window, but an operator reconciles the dead Session by hand
+ * (`arcadia session reconcile`, as `arcadia advance`'s `reconcile`
+ * transition tells them to) before the worker's next tick. The worker then
+ * never sees the exit, so it neither preserves the candidate nor records the
+ * settlement, and the agent's `complete` proposal stays pending: an operator
+ * gate (resolveProjectTransition answers `decision`). Production status
+ * shows it as exactly one `operator_gate_pending` entry naming the proposal
+ * and why it cannot settle ("Action is already done": the candidate's Plan
+ * already says done), logged once however many ticks it holds, and cleared
+ * by the first tick after the proposal is rejected (Issue #997).
+ */
+describe("the agent dies after its settlement commit and an operator reconciles the Session before the worker does", () => {
+  it("shows one deduplicated operator_gate_pending entry with the reason it cannot settle, cleared once the proposal is rejected", () => {
+    const rehearsal = world("fault-interrupted-after-settlement-commit-operator-reconciled");
+    const first = rehearsal.untilLaunched(ACTION_1, 3);
+    const result = rehearsal.execute(first.launch, ACTION_1, "interrupted-after-settlement-commit");
+    expect(runSessionReconcileCommand({ workspace: rehearsal.workspace, repo: rehearsal.repo, session: first.session.id, requestId: `operator-reconcile-${first.session.id}` })
+      .data.receipt.outcome).toBe("incomplete_resumable");
+    const gated = rehearsal.ticks(3);
+    rehearsal.advanceClock(4 * 3_600_000);
+    gated.push(...rehearsal.ticks(2));
+    for (const tick of gated) expect(tick.launch).toMatchObject({ outcome: "skipped", reason: expect.stringContaining(`Record ${ACTION_1} complete.`) });
+    const pending = runAgentAskPendingCommand({ workspace: rehearsal.workspace }).data.pending;
+    expect(pending.map((item) => item.requestId)).toEqual([result.requestId]);
+    const proposal = pending[0].proposalId;
+    const { data, text } = rehearsal.productionStatus();
+    expect(data.operatorEscalations.map((entry) => [entry.actionKey, entry.kind])).toEqual([[rehearsal.actionKey(ACTION_1), "operator_gate_pending"]]);
+    const [entry] = data.operatorEscalations;
+    expect(entry.message).toBe(`Launch of ${rehearsal.actionKey(ACTION_1)} is held by pending Agent Ask proposal ${proposal}: Record ${ACTION_1} complete.`);
+    expect(entry.remedy).toContain(`It cannot settle: Action is already done. (previewed in ${result.brief.worktree})`);
+    const reject = `arcadia agent-ask settle --proposal ${proposal} --request-id reject-${result.requestId} --disposition rejected`;
+    expect(entry.remedy).toContain(reject);
+    expect(text).toContain(`${rehearsal.actionKey(ACTION_1)} [operator_gate_pending]`);
+    expect(rehearsal.log.filter((line) => line.includes("(operator_gate_pending)"))).toHaveLength(1);
+    expect(rehearsal.redAlerts()).toEqual([]);
+
+    // The remedy's own command, preview then apply, from the Project's checkout.
+    const preview = runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo });
+    runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal, requestId: `reject-${result.requestId}`, disposition: "rejected", cwd: rehearsal.repo,
+      preview: preview.data.receipt.previewFingerprint, apply: true });
+    const after = rehearsal.tick();
+    expect(after.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionKey(ACTION_1) });
+    expect(rehearsal.escalations()).toEqual([]);
+    expect(isolation.guardCalls()).toEqual([]);
+    expect(rehearsal.finish().errors.filter((error) => !error.expected)).toEqual([]);
+  }, SCENARIO_TIMEOUT_MS);
 });
 
 /**

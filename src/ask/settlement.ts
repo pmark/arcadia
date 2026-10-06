@@ -1710,6 +1710,136 @@ export function settleAgentAsk(db: Database.Database, input: {
   return settled;
 }
 
+/** The managed records a `complete` settlement writes and commits (kept equal to `isSettlementRecordPath` in sessions/reconciliation.ts). */
+function isCompletionRecordPath(file: string): boolean {
+  return file === "PROJECT.md" || file === "MISSION_LOG.md" || file.startsWith("docs/plans/")
+    || file.startsWith("docs/decisions/") || file.startsWith(".arcadia/asks/");
+}
+
+/**
+ * Record the settlement of a pending `complete` Agent Ask whose documents an
+ * earlier `settle --apply` already committed in a candidate checkout, when
+ * that process ended after its Phase 2 commit and before Phase 3 recorded the
+ * receipt (the `beforeOperationalProjection` window; Issue #995). The
+ * proposal then stays pending, and a pending completion gates its Action
+ * (resolveProjectTransition answers `decision`) although the work and its
+ * settlement are both committed.
+ *
+ * Nothing is re-derived or rewritten: this only recognises that the
+ * checkout's HEAD is exactly this proposal's own canonical settlement commit
+ * and then finishes Phase 3 (the projection and the receipt) as the
+ * interrupted call would have. It refuses unless every one of these holds:
+ * the proposal is unsettled, `complete`, and its evidence verbatim-covers
+ * `acceptanceCriteria` (the Action as the caller admitted it) with every
+ * entry `met`; the checkout is clean; HEAD has one parent, which is the
+ * proposal's `candidate_revision` (settlement requires HEAD to equal it);
+ * HEAD changes only completion records; the checkout's Plan records the
+ * Action done with exactly those criteria and an agent or autonomous
+ * Responsibility; and HEAD itself added the completion Log entry this
+ * settlement stamps with both the bound Candidate revision and this Ask's
+ * request id. Authority (production scope) is the caller's to check.
+ */
+export function recordCommittedCompletionSettlement(db: Database.Database, input: {
+  proposalRef: string;
+  settlementRequestId: string;
+  /** Any directory inside the checkout that holds the committed settlement. */
+  cwd: string;
+  /** The Action's declared acceptance criteria, as the caller admitted it. */
+  acceptanceCriteria: string[];
+}): AgentAskSettlementReceipt {
+  const proposalRow = db.prepare("SELECT proposal_json FROM agent_ask_proposals WHERE id = ? OR request_id = ?")
+    .get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
+  if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
+  const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
+  const normalized = proposal.normalized;
+  if (normalized.intent !== "complete" || !normalized.targetRef || !normalized.candidateRevision) {
+    throw validationError("Only a complete Agent Ask with a target and a Candidate revision has a committed completion settlement to record.");
+  }
+  if (db.prepare("SELECT 1 FROM agent_ask_settlements WHERE proposal_id = ? OR request_id = ?").get(proposal.id, input.settlementRequestId)) {
+    throw validationError("Agent Ask proposal is already settled, or the settlement request id was already used.");
+  }
+  const declared = input.acceptanceCriteria;
+  if (declared.length === 0 || normalized.evidence.length !== declared.length
+    || normalized.evidence.some((entry, index) => entry.criterion !== declared[index] || entry.status !== "met")) {
+    throw validationError("Completion evidence does not verbatim-cover every declared acceptance criterion with every entry met.");
+  }
+  const project = getProjectBySlug(db, normalized.project);
+  const metadata = project ? getProjectMetadata(db, project.id) : null;
+  if (!project || !metadata?.repo_path) throw validationError("Agent Ask Project repository is not configured.");
+  const repoRoot = projectCheckoutFor(path.resolve(metadata.repo_path), input.cwd);
+  const scoped = splitPlanScopedActionRef(normalized.targetRef);
+  const actionId = resolveManagedTargetRef(scoped?.actionRef ?? normalized.targetRef, "action", project.slug);
+
+  if ((tryGit(repoRoot, ["status", "--porcelain", "--untracked-files=all"]) ?? "x").trim()) {
+    throw validationError("The checkout holding the committed settlement is missing or not clean.", { repoRoot });
+  }
+  const [head, ...parents] = git(repoRoot, ["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(/\s+/);
+  const bound = tryGit(repoRoot, ["rev-parse", "--verify", "--quiet", `${normalized.candidateRevision}^{commit}`])?.trim();
+  if (parents.length !== 1 || !bound || parents[0] !== bound) {
+    throw validationError("HEAD is not a single settlement commit on top of the Ask's Candidate revision.", { head, candidateRevision: normalized.candidateRevision });
+  }
+  const changed = git(repoRoot, ["diff", "--name-only", bound, head]).split("\n").map((line) => line.trim()).filter(Boolean);
+  if (changed.length === 0 || changed.some((file) => !isCompletionRecordPath(file))) {
+    throw validationError("HEAD changes more than the completion records a settlement writes.", { changed });
+  }
+  const docs = discoverDocs(repoRoot).docs;
+  const plans = docs.filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project === project.slug && doc.actions.some((action) => action.id === actionId)
+    && (!scoped || doc.slug === resolveManagedTargetRef(scoped.planRef, "plan", project.slug)));
+  const action = plans.length === 1 ? plans[0].actions.find((candidate) => candidate.id === actionId) : undefined;
+  if (!action || action.status !== "done" || (action.responsibility !== "agent" && action.responsibility !== "autonomous")
+    || JSON.stringify(action.acceptanceCriteria) !== JSON.stringify(declared)) {
+    throw validationError("The checkout's Plan does not record this agent Action done with the declared criteria.", { actionId });
+  }
+  const log = docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
+  const logPath = log?.relativePath ?? "MISSION_LOG.md";
+  const added = (tryGit(repoRoot, ["diff", "-U0", bound, head, "--", logPath]) ?? "").split("\n").filter((line) => line.startsWith("+"));
+  if (!added.some((line) => line.includes(`Completed Action ${project.slug}/${actionId} from accepted evidence (Candidate ${bound}).`))
+    || !added.some((line) => line.includes(`None recorded by this settlement (Agent Ask ${normalized.requestId}).`))) {
+    throw validationError("HEAD did not add this Ask's own completion Log entry.", { requestId: normalized.requestId, logPath });
+  }
+
+  const projectDoc = docs.find((doc): doc is ProjectDoc => doc.type === "project" && doc.slug === project.slug);
+  const operation = { proposalRef: input.proposalRef, disposition: "accepted", responsibility: null, placement: null, anchor: null };
+  const effects = [
+    `Recorded the completion of Action ${project.slug}/${actionId} that commit ${head} had already settled from Agent Ask ${normalized.requestId}; `
+      + "the settling process ended after committing it and before recording it, so no document was rewritten."
+  ];
+  const now = new Date().toISOString();
+  const receipt: AgentAskSettlementReceipt = {
+    id: `asksettle_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
+    proposalId: proposal.id,
+    proposalRequestId: normalized.requestId,
+    settlementRequestId: input.settlementRequestId,
+    disposition: "accepted",
+    projectSlug: project.slug,
+    intent: normalized.intent,
+    effects,
+    queueActionKey: null,
+    queueActionKeys: [],
+    queuePosition: null,
+    nextActionKey: projectDoc?.currentAction ? `${project.slug}/${projectDoc.currentAction}` : null,
+    previewFingerprint: sha256(JSON.stringify({ proposalFingerprint: proposal.fingerprint, operation, documentsCommit: head })),
+    queueRevision: buildAgentQueue(db).revision,
+    applied: true,
+    authority: { kind: "deterministic_proof", requestedAuthority: normalized.requestedAuthority, boundedPolicyDecision: null },
+    notificationStatus: "pending",
+    createdAt: now,
+    documentsCommit: head
+  };
+  // Phase 3 exactly as settleAgentAsk runs it after its commit: project the
+  // committed documents, then record the receipt, in one transaction.
+  writeTransaction(db, () => {
+    const sync = syncProjectDocs(db, project, { apply: true, repoRoot });
+    const blocking = sync.errors.filter((error) => changed.includes(error.relativePath));
+    if (blocking.length > 0) throw validationError("The committed completion records failed operational sync.", { errors: blocking });
+    insertSettlementRow(db, receipt, {
+      proposalId: proposal.id, settlementRequestId: input.settlementRequestId, operation,
+      previewFingerprint: receipt.previewFingerprint, effects, queueActionKey: null, projectSlug: project.slug, now
+    });
+  });
+  return receipt;
+}
+
 /**
  * The managed document a previous apply of this Ask already wrote, or null.
  *
