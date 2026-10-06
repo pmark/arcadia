@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-05
+updated: 2026-10-06
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -3930,6 +3930,39 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run3-2026-10-05.sh", "tests/three-action-rehearsal-run-3-operator-scripts.test.ts", "tests/rehearsal-run-3-amended-action.test.ts", "https://github.com/pmark/arcadia/issues/968", "https://github.com/pmark/arcadia/issues/972"]
+  - id: archive-settled-ask-by-canonical-name
+    title: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.
+    expected_artifact: Evidence satisfying Agent Ask archive-settled-ask-by-canonical-name
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-stray-ask-archive-and-run-5-scripts-2026-10-06
+    acceptance_criteria:
+      - "Settlement archives the settled Agent Ask file even when the proposal recorded no sourcePath: `settle --apply` (src/ask/settlement.ts archiveSettledAskFile) falls back to the canonical drafted name `.arcadia/asks/agent-ask-<request_id>.yaml` under the repository being settled and moves it to `.arcadia/asks/archive/` inside the same settlement commit, only when that file's content matches the proposal (same request id and fingerprint), never touching any other file; a settle with neither a sourcePath nor a canonical file behaves exactly as today. Unit tests reproduce the run-4 shape (a complete Ask previewed without a recorded path, settled in a candidate worktree: the settle commit includes the archived file and git status is clean afterwards), the matching-content guard, and the unchanged no-file case."
+      - "The worker no longer fails silently when a terminal candidate cannot integrate: a repeated identical `integration refused` outcome for the same candidate head (the tick.ts 'differs from its exact canonical completion settlement' class and its siblings) is logged once per head, not every tick, and is recorded once as an operator escalation shown in `arcadia production status` with the exact blocker and a remedy (for the run-4 shape: the stray untracked file and what to do), clearing when the candidate integrates or production goes Off; the existing refusal logic and guards are unchanged. Tests cover the dedupe, the escalation text and its clearing."
+      - "The candidate brief (Action packet) tells a completing agent to leave `git status` clean after settlement and not to commit or keep a copy of the Ask file; lint, tsc, check:agent-guidance, the preservation self-check and the focused suites pass; independent authority review rounds are recorded on the pull request; after merge the release manager reinstalls (not the implementer)."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/981", "src/ask/settlement.ts", "src/production/tick.ts"]
+  - id: prepare-run-5-rehearsal-scripts
+    title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fifth rehearsal, without running any of them.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fifth rehearsal, without running any of them.
+    expected_artifact: Evidence satisfying Agent Ask prepare-run-5-rehearsal-scripts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-stray-ask-archive-and-run-5-scripts-2026-10-06
+    acceptance_criteria:
+      - "Run-5 operator pairs (ids ending -run5-2026-10-06 or -run5-2026-10-05 per the host date at build time; descriptor id == file stem) are cloned from the merged run-4 pairs (#973): the reset requires the run-4 reset receipt (9642005f2fdca40a4c8859d64ee28e3361df0056 on run 3's head 4375aafeef38f0ee339a300406c8a865dbb916dc) and a succeeded Off-confirmed run-4 G8 (restore-terminal-off-three-action-rehearsal-run4-2026-10-05, run 20261006T011557Z-3871 or later), checks runs 1-4 branch and PR tips before and after (run 4: branch claude/write-start-marker-20261005T220000438Z, PR #4, tip 79c6bae9 which includes the preservation commit; read the exact full sha from the repo at build time), writes a fifth distinct next_action (input revision differs from 959a3b12c686, 7a8dd4f5960f, e22c8cfadd0b and 7843e2eb12f9) naming the unused completion id complete-write-start-marker-run5-2026-10-06 (or the date variant matching the host date) and telling the agent to leave git status clean after settlement; handles run 4's own proposal as run 3's reset handled run 3's; G6/G7/G8 follow the same derivation rules as run 4's (G8 owns the run-5, run-4, run-3, run-2 and run-1 G7 ids; hash pins byte-identical to run-4's G8; G7's next_after voided_by extended)."
+      - "Tests and docs follow run 4's (fake shims, refusals and happy paths, proposal-state cases, used-id refusal, chain binding in G6/G7, G8 ownership, reset to G6 to G7 chain, real same-day docs-sync of a done work item, lineage test with the real transition resolver and tick through four earlier runs, sha256 pin of every earlier pair file); START_HERE.md and docs/managed-production-readiness.md give the run-5 order including that main must be quiet from G6 to the G7 press; check:operator-scripts, lint, tsc, check:agent-guidance, preservation self-check and the focused suites pass; every script runs only with --describe or against fakes; independent authority review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run4-2026-10-05.sh", "tests/three-action-rehearsal-run-4-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/981"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
