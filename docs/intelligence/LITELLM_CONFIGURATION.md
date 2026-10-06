@@ -109,6 +109,60 @@ snapshot, not a promise that every alias is an Arcadia route.
    authorized local job. A successful LiteLLM alias inventory does not prove a
    backend can produce valid output.
 
+## Manage the local LiteLLM service
+
+Changing `model_list`, an alias, a backend `api_base`, or a backend model in
+`../litellm-database/litellm_config.docker.yaml` requires a **single restart
+of `litellm-proxy`**. LiteLLM reads that file at startup; Arcadia cannot make a
+running proxy reload it.
+
+Before a restart, check whether a managed-production window is active:
+
+```sh
+pnpm -s arcadia production status --json
+```
+
+If its display state is `Active`, defer the restart until the terminal Off
+receipt, unless the operator explicitly authorizes that one interruption. A
+LiteLLM restart changes the shared local provider boundary even though it is
+not one of Arcadia's four launchd services.
+
+When the window is inactive, use this exact bounded procedure:
+
+```sh
+# Confirm the target. Do not substitute a container ID or a broad Docker command.
+docker ps --filter name=litellm-proxy --format '{{.Names}} {{.Status}} {{.Ports}}'
+
+# Reload only the LiteLLM proxy after a configuration change.
+docker restart litellm-proxy
+
+# Wait for the proxy's unauthenticated liveness endpoint to respond.
+curl -fsS http://127.0.0.1:4000/health/liveliness
+```
+
+`litellm-postgres` stays running: it is the proxy's dependency, not a normal
+part of a model-config reload. Do **not** restart Docker Desktop, use
+`docker compose up` as a substitute, or restart Arcadia Intelligence, the
+worker, dashboard, or Discord bot just because LiteLLM's model config changed.
+
+If liveness does not recover, stop after that bounded restart and collect only
+non-secret diagnostics:
+
+```sh
+docker ps --filter name=litellm-proxy --format '{{.Names}} {{.Status}}'
+docker logs --tail 100 litellm-proxy
+```
+
+Do not repeatedly restart the container and do not paste its configuration or
+environment into an Issue: either can expose credentials while obscuring the
+first useful failure. See [#1003](https://github.com/pmark/arcadia/issues/1003)
+for the planned managed doctor and installation flow.
+
+Liveness proves only that the proxy process has started. Then use the safe
+model-change sequence above to verify the intended alias and run the narrow
+capability smoke test; an authenticated model inventory proves proxy access,
+while the smoke test proves the changed backend can actually serve requests.
+
 ## What not to edit for a normal model change
 
 - Do not change `src/intelligence/litellm/httpClient.ts`; it is the generic
