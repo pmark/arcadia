@@ -52,12 +52,12 @@ Fixture: `pmark/arcadia-three-action-rehearsal-20261004` (Project
 `three-action-rehearsal`, Plan `autonomous-three-action-rehearsal`, Actions
 `write-start-marker` then `transform-start-marker` then `verify-final-rehearsal`).
 
-| Run (G7) | Stopped at | Cause | Fix | Evidence |
+| Run (G7 granted) | Stopped at | Cause | Fix | Evidence |
 | --- | --- | --- | --- | --- |
 | 1 (2026-10-04) | Action 1 code review | One-line patch cannot exercise five criteria; reviewer returned `needs-follow-up` (zero findings) | Bounded `not-applicable` per-file classifier, naming anchor, Tests criterion (#934, #935, #936) | PR #1 preserved; G8 Off r31 |
 | 2 (2026-10-05 15:17Z) | Action 1 QA | A stale pending run-1 completion proposal silently gated the amended Action for 33 minutes (`advance` said `decision`); then the host PR body had no Operator QA plan | Reset handles proposals by state (#968, run-3 reset); host-rendered Operator QA plan in preserved PR bodies (#969) | PR #2; G8 Off r33 |
-| 3 (2026-10-05 18:45Z) | Action 1 QA | Attempt 1 failed a nondeterministic HIGH "Approval boundaries" (candidate's own settlement commit); the rerun failed "Tests and evidence" (no validation command or output in the body) | Validation evidence section and settlement-commit note in the PR body (#974) | PR #3; QA reports in the workspace `artifacts/qa/...`; G8 Off r35 |
-| 4 (2026-10-05 22:01Z) | Action 1 integration | The agent's drafted Agent Ask stayed untracked and unarchived; the worker's preservation committed it on top of the settle commit; the integration guard refused in a silent 3-second loop for about 3 hours | Settle archives the canonical draft (#983, Issue #981); one deduped log line and one `terminal_candidate_not_integrable` escalation in `production status` | PR #4; G8 Off r37 |
+| 3 (2026-10-05 18:47Z) | Action 1 QA | Attempt 1 failed a nondeterministic HIGH "Approval boundaries" (candidate's own settlement commit); the rerun returned NEEDS-FOLLOW-UP ("Tests and evidence" failed, "Correctness" not checked: no validation command or output in the body) | Validation evidence section and settlement-commit note in the PR body (#974) | PR #3; QA reports in the workspace `artifacts/qa/...`; G8 Off r35 |
+| 4 (2026-10-05 22:00Z) | Action 1 readiness and integration (PR #4 never left draft) | The agent's drafted Agent Ask stayed untracked and unarchived; the worker's preservation committed it on top of the settle commit; the integration guard refused in a silent 3-second loop for about 3 hours | Settle archives the canonical draft (#983, Issue #981); the archive half proven live in run 5; one deduped log line and one `terminal_candidate_not_integrable` escalation in `production status` (tested, **not yet seen live**) | PR #4; G8 Off r37 |
 | 5 (2026-10-06 03:22Z) | Action 2 QA | Action 1 **integrated autonomously** (first time). QA first failed Step 4 wording (Issue #986), passed on the one rerun. Action 2's PR is judged against a stale GitHub base (Issue #987) | Open | PRs #5 (integrated locally) and #6; G8 Off r39 (`runs/20261006T033451Z-43195`) |
 
 Merged enablers that every run depends on: remote preservation (#922),
@@ -68,34 +68,43 @@ experiment-workspace guard (#943), activity-leak fix and inline-required mode
 reconciliation (#955), run-2 to run-5 script pairs (#959, #970, #973, #985),
 `arcadia ping` (#975).
 
-Observed timings (a trivial one-line Action, installed host, 2026-10-06): G7
-press to production Active 1.7 minutes (hermetic replay); admission to draft
-PR 1 to 2 minutes; draft to readied with settled head about 1.5 minutes; both
-verdicts within about 3 minutes; integration and next-Action admission within
-one more minute. About 6 minutes per Action. CI on a PR: 10 to 15 minutes; a
-run-N script pair built by cloning the previous pair: 40 to 70 minutes.
+Observed timings (a trivial one-line Action, installed host, from the receipts
+and logs; they will be larger for real work): G7 script run 79 to 126 seconds
+(runs 2 to 5), after which production reads `Active`; admission to draft PR 40
+to 180 seconds; draft to readied with the settled head about 1.3 minutes; both
+verdicts within about 3 minutes of readiness; run 5's Action 1 took 6.3 minutes
+from admission to integration **including** one QA rerun. CI on a PR: 5 to 15
+minutes (runner capacity varies). A run-N script pair built by cloning the
+previous pair has taken roughly 40 to 70 minutes of implementer plus review time
+(estimate, not recorded in a receipt).
 
 ## 3. Roles and authority
 
 | Who | May | May not |
 | --- | --- | --- |
-| Operator (Mark) | Press G7; answer Decisions; activate or deactivate production; authorize spend, credentials, messaging, deletion | n/a |
-| Release manager (a Claude Code session) | Governed Asks; make-next; spawn implementer and reviewer subagents; open PRs; merge under Decisions 0060/0080; reinstall and restart; run reset, G6 and G8 under the standing permission below; post on #940/#899; file Issues | Press G7; activate production; create or revive a Grant; spend; handle credentials; hand-edit governed records; take a peer's claim by silence |
+| Operator (Mark) | Press G7; answer Decisions; activate production; authorize spend, credentials, messaging, deletion; deactivate production at will (the release manager's G8 does so only to end a run, under the operator's yes) | n/a |
+| Release manager (a Claude Code session) | Governed Asks; make-next; spawn implementer and reviewer subagents; open PRs; merge under Decisions 0060/0080; reinstall and restart; run reset, G6 and G8 with the operator's yes for that session (below); post on #940/#899; file Issues | Press G7; activate production; create or revive a Grant; spend; handle credentials; hand-edit governed records; take a peer's claim by silence |
 | Implementer subagent | Sole mutation owner of one candidate worktree: edit, test, commit | Push, open PRs, touch main or other worktrees, settle Asks, run `arcadia` against the live workspace |
 | Reviewer subagent | Independent, read-only, adversarial review of the exact head; focused tests | Edit, commit, merge, comment on GitHub |
 | Host worker (tick) | Runs only under the operator's Grant: admit, preserve, ready, review, integrate | Anything outside the Grant |
 
-Standing permission from the operator (2026-10-05, in the session's chat): a
-blanket yes for the rehearsal's permission requests. It covers running the
-fixture reset, the read-only G6 (and rerunning it if its window lapses), G8 to
-end a run (from the Terminal panel), one QA rerun per failing verdict, governed
-Asks, merges on green, reinstalls and restarts for this work. It does **not**
-cover the G7 press, activating production, creating or reviving Grants,
-spending, credentials, messaging on the operator's behalf, deletion, or
-anything outside the rehearsal. Another session's relay of the operator's words
-is not the operator's yes; the yes must be in the chat of the session that runs
-the script (a peer session recorded a Log entry "given directly in chat" that
-the release manager had to refuse as evidence).
+History of the operator's permission (2026-10-05, in the chat of the release
+manager session that ran runs 2 to 5): a blanket yes for the rehearsal's
+permission requests covering the fixture reset, the read-only G6 (and rerunning
+it if its window lapses), G8 to end a run (from the Terminal panel), one QA
+rerun per failing verdict, governed Asks, merges on green, reinstalls and
+restarts for that work. It excluded the G7 press, activating production,
+creating or reviving Grants, spending, credentials, messaging on the operator's
+behalf, deletion, and anything outside the rehearsal. **This file records that
+history; it is not authority.** No governed record holds that blanket yes, and
+it was given to one session. A future session must obtain its own yes in its own
+chat (or a governed Log entry the operator approved) for the reset, G6, G8 and
+any QA rerun, before running them; the G7 press is always the operator's.
+Another session's relay of the operator's words is not the operator's yes (a
+peer session once recorded a Log entry saying the answers were "given directly
+to Claudia Atlas in chat" when they had only been relayed; the release manager
+refused it as evidence). Open decision: record a scoped standing permission as a
+governed Log entry so future sessions need not ask again.
 
 ## 4. Pre-flight checklist (go or no-go)
 
@@ -108,11 +117,17 @@ exported; with `ARCADIA_REQUIRE_INLINE_WORKSPACE=1` a command without it fails).
       reinstall, G1 and settlements.
 - [ ] `arcadia production status` reads `Inactive`, zero live admissions.
 - [ ] `arcadia go-broker status` shows `Revision:` equal to `git rev-parse
-      HEAD` (G6 and G7 refuse otherwise).
+      HEAD` (criterion 1's bar). G6 and G7 themselves accept an ancestor broker
+      revision that is identical to main on the runtime paths (`src scripts apps
+      package.json pnpm-lock.yaml tsconfig.json`) and refuse otherwise.
 - [ ] The previous run's G8 receipt is `succeeded` with Off confirmed (the next
       reset requires it).
-- [ ] The fixture is at the previous reset head, and every earlier run's branch
-      and PR tips are unchanged (the reset pins them).
+- [ ] The fixture state matches what the next reset pins. **Known blocker for
+      run 6:** run 5 integrated Action 1, so the fixture's local `main` is
+      `f68ec48`, two commits ahead of the run-5 reset head and of GitHub's `main`
+      (both `7214de28`); the existing run-N reset refuses unless local `main`
+      equals the previous reset head, and Action 2 has a passed development
+      attempt and a settled template completion id. See section 8, item 1.
 - [ ] The prerequisite fixes for known blockers are merged **and installed**
       (G6 and G7 now require the #983 commit).
 - [ ] No other session plans a merge, push, reinstall or restart in the freeze
@@ -169,25 +184,33 @@ For each change (one Action per session; one mutation owner per candidate):
    (`REQUIRED_COMMITS` in the preflight and grant scripts) so documentation is
    not the only enforcement.
 
-### Phase 2: merge window and the single reinstall
+### Phase 2: merge window, freeze and the single reinstall
+
+The freeze window is defined in `docs/agent-guidance/rehearsal-freeze-window.md`:
+it covers the time production is Active (through G8). This runbook adds a
+stricter stretch from G6 to the G7 press.
 
 1. Announce on #940 and #899 (and message live sessions): production Off, merge
-   what is lawfully ready now, and the freeze starts at a stated **UTC clock time
-   at least 20 minutes ahead**. Double-check the clock time (one announcement
-   was posted with the wrong time and needed a correction).
-2. After the last merge, install once:
-   `ARCADIA_WORKSPACE=<abs> artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run`;
+   what is lawfully ready now, and **merges close at a stated UTC clock time at
+   least 20 minutes ahead**. Double-check the clock time (one announcement was
+   posted with the wrong time and needed a correction).
+2. At the announced time merges stop. As the **first step of the freeze**, install
+   once: `ARCADIA_WORKSPACE=<abs> artifacts/generated/operator-scripts/recover-arcadia-host-services.sh run`;
    confirm `arcadia go-broker status` shows `Revision:` equal to main and that
-   `git status` is clean.
-3. Wait until the announced time. From here **until the G7 press: no pushes to
-   main (not even governed docs-only settles), no merges, no reinstall, no
-   service restarts, no G8.** Each voids the G6 receipt (it binds the exact main
-   head and installed broker revision).
+   `git status` is clean. (Installing before the announced time lets a late merge
+   leave the broker stale against main; installing inside the freeze, before the
+   reset and G6, does not void anything.)
+3. From the install until G8: no merges, no queue moves, no fixture docs-sync
+   or settlement, no main pushes across runtime commits, no service restarts
+   other than G8's. From G6 until the G7 press, additionally **no pushes to main
+   at all (not even governed docs-only settles)**: G6's receipt binds the exact
+   main head and the installed broker revision, so a main push, a reinstall, a
+   reset, a recover or any G8 voids it (G7's `next_after.voided_by` lists them).
 
 ### Phase 3: reset, G6, ping (back to back, inside the freeze)
 
-1. Reset the fixture (the operator's yes must be in this chat or covered by the
-   standing permission): `ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
+1. Reset the fixture (this session needs the operator's yes in its own chat for
+   it, section 3): `ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004
    artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run<N>-<date>.sh run`.
    It amends only `write-start-marker`'s `next_action` (a new requirement input
    revision; a passed development attempt for an unchanged input is never
@@ -209,9 +232,9 @@ For each change (one Action per session; one mutation owner per candidate):
 
 ### Phase 4: the operator presses G7
 
-The Grant's hermetic replay takes about 2 minutes; production then reads
-`Active`. If G7 refuses because main or the broker moved, rerun G6 (standing
-permission) and ask again. The `/actions` page isolates the single next action
+The Grant's hermetic replay takes about 80 to 125 seconds; production then
+reads `Active`. If G7 refuses because main or the broker moved, rerun G6 (with
+the operator's yes for this session) and ask again. The `/actions` page isolates the single next action
 and shows what voids a G6.
 
 ### Phase 5: watch with a watchdog (not a change-only watcher)
@@ -234,8 +257,8 @@ in `production status`, both verdicts, then integration (the fixture's **local**
   corrected plan preamble and the completion-settlement line.
 - A **failed verdict never integrates.** Read the report (workspace
   `artifacts/qa/pull-requests/<repo>/<PR>/<sha>/attempts/*/qa-report.md` and
-  `artifacts/code-review/...`). Under the standing permission one rerun per
-  failing verdict is allowed: `arcadia qa pr <PR url> --rerun`; record both
+  `artifacts/code-review/...`). With the operator's yes for this session, one
+  rerun per failing verdict is allowed: `arcadia qa pr <PR url> --rerun`; record both
   verdicts and do not rerun a second time. File every genuine finding as an
   Issue with a revival trigger.
 - **Active with no admitted work:** run `arcadia advance --repo
@@ -247,7 +270,9 @@ in `production status`, both verdicts, then integration (the fixture's **local**
   `production capacity` (read-only `sqlite3 -readonly` on the workspace
   database only).
 - If the run cannot progress, stop it: G8 (next phase). Do not improvise a
-  bypass, a manual merge or an edit of the fixture.
+  bypass, a manual merge, a mid-run `agent-ask settle` of a fixture proposal or
+  an edit of the fixture (each breaks the freeze and criterion 2); fix the cause
+  after G8, through the next reset.
 
 ### Phase 7: terminal Off (G8)
 
@@ -256,14 +281,17 @@ the operator's Terminal panel or `/runs`**. A plain non-interactive shell
 refuses with "launch this action through /runs or from an interactive host
 terminal" and changes nothing. Expect `TERMINAL OFF PROVEN: Inactive at revision
 <n>, zero live admissions and Sessions before and after the reviewed restart;
-every fixture candidate is integrated, preserved or empty.` G8 restarts host
+every fixture candidate is integrated, preserved or empty.` **Before G8, copy the worker log** (`~/Library/Logs/arcadia-services-*/worker.out.log`)
+into the evidence folder: G8's restart recreates it (run 5's log after G8 held
+nothing from runs 1 to 5). G8 restarts host
 services (a reviewed restart), so nothing else may run during it. An accidental
 G8 press before G7 is harmless but voids the G6 receipt (it reinstalls the
 broker): rerun G6.
 
 ### Phase 8: close out
 
-1. Post "WINDOW OPEN" on #940 and #899 with the outcome.
+1. After G8 proves Off, post "WINDOW OPEN" on #940 and #899 with the outcome
+   (the freeze ended with G8).
 2. Capture evidence: the G6/G7/G8 and reset receipts under
    `artifacts/generated/operator-scripts/runs/`, the PRs on the fixture, the QA
    and code-review reports, and the escalation text if any.
@@ -277,15 +305,15 @@ broker): rerun G6.
 | --- | --- | --- |
 | Reviewer `needs-follow-up`, criteria `not-checked`, zero findings | A trivial patch cannot exercise the criteria | Fixed (#934-#936); if it returns, run a read-only smoke against the exact patch before touching prompts |
 | Escalation `attempt_retry_not_authorized`, nothing launches | A passed development attempt exists for an unchanged requirement input | Reset the fixture (amend `next_action`); a new fixture is blocked by G1's fixed slug and path |
-| `Active · No admitted work`, no log, `advance` says `decision` | A pending Agent Ask for the old input gates the Action (run 2) | `arcadia agent-ask settle --disposition rejected` of that exact proposal (preview then apply); run-3 and later resets do it |
+| `Active · No admitted work`, no log, `advance` says `decision` | A pending Agent Ask for the old input gates the Action (run 2) | Run-3 and later resets reject that exact proposal by state. Do **not** do it mid-run (freeze, criterion 2); in run 2 it was done to unblock a run that had already stalled, which is why it appears here |
 | QA FAIL "Operator QA plan" missing | Host PR body had no QA plan | Fixed (#969) |
 | QA FAIL "Tests and evidence", no validation output | PR body gave an exit code without a command or output | Fixed (#974) |
 | QA FAIL HIGH "Approval boundaries" on the candidate's own settle commit | Reviewer nondeterminism about the governed completion settlement | The body now states it (#974); one rerun allowed; record both verdicts |
-| Worker log repeats "differs from its exact canonical completion settlement" every 3 s | An unarchived Ask draft was committed by preservation on top of the settle commit | Fixed (#983: settle archives the draft; one deduped log line; `terminal_candidate_not_integrable` in status); the brief asks for a clean tree |
+| Worker log repeats "differs from its exact canonical completion settlement" every 3 s | An unarchived Ask draft was committed by preservation on top of the settle commit | Fixed (#983: settle archives the draft, proven live in run 5; one deduped log line and a `terminal_candidate_not_integrable` escalation, tested but not yet seen live); the brief asks for a clean tree |
 | QA FAIL Step 4 says source inspection proves a check passes | Plan wording (Issue #986) | One rerun passed it; the wording fix is open |
 | QA FAIL "wrong base and changed-file set" on Action 2 | The PR's GitHub base is stale after Action 1 integrated locally (Issue #987) | Open design choice (section 8) |
 | Agent writes the template completion id and settlement stalls | `complete-<action>-<date>` already settled on a same-day rerun | The amended `next_action` names a fresh id; the reset refuses if it is used |
-| G7 refuses "different main" | A governed settle commit or reinstall moved main or the broker after G6 | Freeze (phase 2); rerun G6 |
+| G7 refuses "different main" | A governed settle commit or reinstall moved main or the broker after G6, or a G8 ran | Freeze (phase 2); rerun G6 |
 | G6 invalid after an accidental G8 | G8 reinstalled the broker | Rerun G6; keep the buttons separate in the ping |
 | `gh pr create` or a merge fails with GraphQL rate limits | Secondary rate limit | Use REST (`gh api`); check `gh api rate_limit` |
 | CI jobs cancelled, no logs | Runner capacity | Rerun failed jobs once |
@@ -313,7 +341,15 @@ broker): rerun G6.
 
 ## 8. Gaps between today and a minimum viable production standard
 
-1. **#987, serial Actions (blocking criterion 5 for Action 2 and 3).** After
+1. **Fixture state for run 6 and #987 (both block a three-Action run).** (a) Run
+   5 left the fixture's local `main` at `f68ec48` (Action 1 integrated). The
+   reset must treat that without resetting away work and without a base push:
+   either a fresh fixture (G1 parameterised for slug, path and repository) or a
+   reviewed reset that starts a new line from the genesis tree. Whichever is
+   chosen must also amend Action 2's (and 3's) `next_action` (Action 2 has a
+   passed development attempt at input `6bf8f08dbb3e`) and name fresh completion
+   ids for every Action (`complete-transform-start-marker-2026-10-05` is already
+   settled). (b) **#987, serial Actions (blocking criterion 5 for Action 2 and 3).** After
    Action 1 integrates locally, GitHub's `main` lags, so Action 2's PR diff and
    the host QA plan disagree about the base. Options: stack the PR on the previous
    candidate branch; render the plan against the GitHub base and teach scope
@@ -322,8 +358,8 @@ broker): rerun G6.
    prove it in a run.
 2. **#986** (plan Step 4 wording), **#984** (review follow-ups of #983),
    **#976** (hook-manager side effect of the plan's checkout step and test gaps):
-   small, but each can fail a verdict. (#972, the validation-evidence repair,
-   shipped as #974.)
+   small, but each can fail a verdict. (Issues #972 and #981 were fixed by #974 and
+   #983 and are closed.)
 3. **First-attempt verdict pass (criterion 4):** no run has had both verdicts
    pass on the first attempt. Reviewer variance on the plan wording is the known
    cause; keep wording factual and bounded, and measure the pass rate over runs.
@@ -334,8 +370,8 @@ broker): rerun G6.
 5. **Visibility:** `production status` now names a terminal integration refusal
    (#983); a stuck candidate in other states and the dashboard rendering of
    escalations are still generic.
-6. **After criteria 1 to 7 hold twice:** escalate exactly one dimension, in the
-   order of section 1, with a fresh Grant.
+6. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
+   escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 
 ## Appendix A: the no-progress watcher
 
@@ -370,7 +406,8 @@ done
 
 ## Appendix B: sources checked for this document
 
-Receipts under `artifacts/generated/operator-scripts/runs/` (G8: run 2
+Receipts under `artifacts/generated/operator-scripts/runs/` (G8: run 1
+`20261005T043958Z-2548` (r31), run 2
 `20261005T160050Z-46759`, run 3 `20261005T194025Z-26232`, run 4
 `20261006T011557Z-3871`, run 5 `20261006T033451Z-43195`); the fixture PRs #1 to
 #6 on `pmark/arcadia-three-action-rehearsal-20261004`; Issues #899, #940, #968,
