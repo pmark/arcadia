@@ -1,0 +1,194 @@
+{
+  "retrievedAt": "2026-10-06T19:45:12.378151+00:00",
+  "instructions": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 8376
+    },
+    {
+      "path": "CONSTITUTION.md",
+      "bytes": 3320
+    },
+    {
+      "path": "PROJECT.md",
+      "bytes": 31405
+    },
+    {
+      "path": ".arcadia/AGENT_CONTEXT_POLICY.md",
+      "bytes": 539
+    },
+    {
+      "path": ".arcadia/repo-context.md",
+      "bytes": 703
+    },
+    {
+      "path": ".arcadia/context-policy.json",
+      "bytes": 870
+    },
+    {
+      "path": "docs/agent-guidance/index.json",
+      "bytes": 5717
+    },
+    {
+      "path": "docs/agent-guidance/continuation.md",
+      "bytes": 6239
+    },
+    {
+      "path": "docs/agent-guidance/agent-asks.md",
+      "bytes": 17030
+    },
+    {
+      "path": "docs/agent-guidance/pull-requests.md",
+      "bytes": 13629
+    },
+    {
+      "path": "docs/agent-guidance/operator-actions.md",
+      "bytes": 8876
+    },
+    {
+      "path": "docs/agent-guidance/learning.md",
+      "bytes": 1636
+    },
+    {
+      "path": "docs/agent-guidance/git-identity.md",
+      "bytes": 5248
+    },
+    {
+      "path": "docs/agent-guidance/rehearsal-freeze-window.md",
+      "bytes": 4690
+    },
+    {
+      "path": "docs/agent-guidance/arcadia-repository.md",
+      "bytes": 24423
+    },
+    {
+      "path": "docs/working-copy-safety.md",
+      "bytes": 15818
+    },
+    {
+      "path": "docs/managed-documents.md",
+      "bytes": 15551
+    },
+    {
+      "path": "docs/autonomous-production-rehearsal-runbook.md",
+      "bytes": 65491
+    },
+    {
+      "path": "docs/notes-to-self.md",
+      "bytes": 26956
+    },
+    {
+      "path": "docs/model-selection.md",
+      "bytes": 6235
+    },
+    {
+      "path": "docs/arcadia-semantics.md",
+      "bytes": 14180
+    },
+    {
+      "path": "docs/AGENT_ORIENTATION.md",
+      "bytes": 13594
+    },
+    {
+      "path": "docs/managed-production-readiness.md",
+      "bytes": 46969
+    },
+    {
+      "path": "docs/decisions/0080-decide-whether-the-standing-merge-exception-decision-0060-is-conditioned-on-an.md",
+      "bytes": 3989
+    }
+  ],
+  "sections": {
+    "docs/autonomous-production-rehearsal-runbook.md": "9,10; 4,5; 6 pending as symptoms require",
+    "docs/notes-to-self.md": "targeted settle/reviewer-smoke/run8/broker/identity/production/orderValid matches",
+    "docs/agent-guidance/arcadia-repository.md": "Orientation, Semantics, Model Selection, PR QA, Working-Copy Safety, Claude Code specifics",
+    "docs/managed-production-readiness.md": "Current answer, recent handoff link, Refresh contract"
+  },
+  "authority": "Operator 2026-10-06 message; paid smoke/reset/G6 reruns/G8 await this chat yes",
+  "state": {
+    "production": "Inactive revision 43 epoch 26",
+    "broker": "c26f3a9ebbdbf87315396a9dffc9fd178e02cf37",
+    "originMain": "033b682398c0e0dc58a8a4b8c6479652e07c29cb",
+    "queueRevision": 240,
+    "orderValid": true,
+    "unpositionedCount": 0
+  },
+  "friction": [
+    {
+      "operation": "instruction retrieval",
+      "observed": "combined outputs truncated",
+      "remedy": "subsequent targeted small reads; retain byte and section manifest"
+    },
+    {
+      "operation": "publish governed Action settlement",
+      "observed": "non-fast-forward main push refused; local 36ccf7612 and four origin commits diverged",
+      "recovery": "protected Go receipt /private/tmp/run8-go-recovery.json performed governed-merge at 7dd9e4e3b, preserving both histories; push succeeded"
+    },
+    {
+      "operation": "refresh candidate brief",
+      "observed": "candidate created before make-next retained the prior pointer; a second main Go chose unrelated queued Action harden-peer-watch-ownership-join",
+      "recovery": "did not implement unrelated Action; fast-forwarded original clean broker-owned candidate to 93f64d1cd; fixed brief now resolves intended Action; exact receipts retained"
+    },
+    {
+      "operation": "Sonnet deterministic fast validation",
+      "observed": "two concurrent fast-rehearsal parents and an unbounded pgrep wait loop from owned implementer; neither had a passing report",
+      "evidence": [
+        "/private/tmp/run8-implementer1.jsonl",
+        "/private/tmp/fast-rehearsal-run.log",
+        "/private/tmp/run8-interrupted-processes.json"
+      ],
+      "recovery": "stopped only owned implementer/disposable validation descendants; resumed same Sonnet session 55044f57-ef27-4deb-8070-71db9b2a9f0c with bounded direct focused tests; parent owns final fast check",
+      "prevention": "future implementers must not use background jobs or pgrep loops; parent runs one fast rehearsal after final source changes"
+    },
+    {
+      "operation": "prepare N=3 reviewed parameter change",
+      "observed": "renderChainPlan rejects baseIds.length > requested ids.length; reset renders from pinned run7 reset head containing nine Actions, so a parameter-only N=3 change cannot pass reset dry run",
+      "evidence": [
+        "src/operatorActions/rehearsalChain.ts:396",
+        "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh:461"
+      ],
+      "next": "include bounded nine-to-three renderer/reset-validation support in the third governed prerequisite; no live fixture edit"
+    },
+    {
+      "operation": "delegated long-check supervision",
+      "observed": "parent --tools allowed only Read/Edit/Write/Glob/Grep/Bash, omitting TaskOutput; child had no normal async-job retrieval tool when fast-rehearsal outlived the Bash call",
+      "causalStatus": "tool restriction is verified; it contributed to the duplicate-job/wait-loop friction",
+      "correction": "future implementer tool list includes TaskOutput; parent runs one final fast check with exec/write_stdin and no pgrep loops"
+    }
+  ],
+  "currentCandidate": "/Users/pmark/.claude/worktrees/make-done-action-settlement-unambiguous-20261006T194620592Z/arcadia",
+  "requestIds": [
+    "run8-unambiguous-done-settlement-2026-10-06",
+    "settle-run8-unambiguous-done-settlement-2026-10-06",
+    "make-next-run8-settlement-2026-10-06"
+  ],
+  "handoffObservation": {
+    "observedAt": "2026-10-06T20:50:24.973Z",
+    "productionState": "Inactive \u00b7 Idle",
+    "productionRevision": 43,
+    "epoch": 26,
+    "liveAdmissions": 0,
+    "brokerRevision": "c26f3a9ebbdbf87315396a9dffc9fd178e02cf37",
+    "queueRevision": 241,
+    "orderValid": true,
+    "selected": [
+      "make-done-action-settlement-unambiguous",
+      "write-start-marker"
+    ],
+    "openPrNumbers": [
+      1030,
+      1029,
+      1024,
+      977,
+      967,
+      881
+    ]
+  },
+  "preservationBlocker": {
+    "issue": 1032,
+    "receipt": "docs/reports/run8-settlement-preservation-refusal.json",
+    "commitCreated": false,
+    "proposalRequestId": "recover-run8-preservation-symlink-2026-10-06",
+    "proposalAccepted": false
+  }
+}

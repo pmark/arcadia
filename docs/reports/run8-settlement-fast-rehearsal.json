@@ -1,0 +1,159 @@
+{
+  "wallMs": 696942,
+  "vitestStatus": 0,
+  "scenarioCount": 30,
+  "unexpectedErrors": [],
+  "sourceReport": "/var/folders/cm/0dn1wl093f52lr7h5d7xpdn40000gn/T/arcadia-fast-rehearsal-report-UBnaTb/report.json",
+  "scenarios": [
+    {
+      "scenario": "fault-forged-settlement-a-decision",
+      "wallMs": 5709,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-forged-settlement-the-completion",
+      "wallMs": 7254,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-interrupted-after-settlement-commit",
+      "wallMs": 11717,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-interrupted-after-settlement-commit-operator-reconciled",
+      "wallMs": 4693,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-interrupted-after-work-commit",
+      "wallMs": 15894,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-readiness-step-error-then-fresh-modules",
+      "wallMs": 10983,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "behaviour-n4-edit-draft-after-inline-preview",
+      "wallMs": 6633,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "behaviour-run4-untracked-unarchived-draft",
+      "wallMs": 12852,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-git-merge-fails-once",
+      "wallMs": 14089,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "fault-remote-adapter-push-fails-once",
+      "wallMs": 16651,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "long-chain-grant-expires-after-approval",
+      "wallMs": 29173,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "long-chain-grant-expires-between-batches",
+      "wallMs": 31155,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "long-chain-grant-expires-mid-action",
+      "wallMs": 45057,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "long-chain-qa-fails-step-5",
+      "wallMs": 58794,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "long-chain-nine-actions",
+      "wallMs": 97036,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "serial-two-action-clean",
+      "wallMs": 19614,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "serial-real-finding-no-rerun",
+      "wallMs": 12355,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "serial-variance-then-pass",
+      "wallMs": 23750,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "serial-variance-three-times",
+      "wallMs": 18151,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "behaviour-extra-commit-after-settle",
+      "wallMs": 8290,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "behaviour-extra-commit-operator-reconciled",
+      "wallMs": 10898,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "behaviour-extra-uncommitted-file",
+      "wallMs": 9291,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-existing-pr-mismatch",
+      "wallMs": 23676,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-previous-pr-closed",
+      "wallMs": 21079,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-previous-pr-merged",
+      "wallMs": 18920,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-previous-branch-deleted",
+      "wallMs": 24979,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-published-base",
+      "wallMs": 21533,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-pr-retargeted",
+      "wallMs": 25518,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "stacked-base-tip-moved",
+      "wallMs": 22045,
+      "validator": "seatbelt"
+    },
+    {
+      "scenario": "three-action-chain-stacked",
+      "wallMs": 35619,
+      "validator": "seatbelt"
+    }
+  ]
+}

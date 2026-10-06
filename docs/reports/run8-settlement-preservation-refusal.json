@@ -1,0 +1,18 @@
+{
+  "source": "Transcribed from the fixed launcher stderr in the original tool result; the stdout-only capture was empty. The retained host attempt journal independently confirms binding.manual.",
+  "ok": false,
+  "command": "go-broker",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total; verify /usr/bin/python3 is available.",
+    "details": {
+      "captureDiagnostic": "Traceback (most recent call last):\n  File \"<string>\", line 17, in <module>\nOSError: [Errno 62] Too many levels of symbolic links: 'arcadia-github-issues'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 29, in <module>\nValueError: Preservation supports regular candidate files only; symlinks and path escapes are refused\n",
+      "stage": "binding.manual",
+      "attemptRef": "/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/preservation/wtres_cc1934a4114647578a/67dc3064-ac64-4d04-9dce-899fa6c64870.attempt.json"
+    }
+  },
+  "hostAttempt": {
+    "stage": "binding.manual",
+    "at": 1791319629144
+  }
+}
