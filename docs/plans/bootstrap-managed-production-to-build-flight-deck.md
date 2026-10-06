@@ -4137,7 +4137,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/pull/1009", "artifacts/generated/operator-scripts/rehearsal-chain/params/run6-2026-10-06.json", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: fix-chain-scope-order-compare
     title: Compare Grant Action sets order-independently in the rehearsal chain G7 and G8, pinned by tests whose faked preview and status return a different order.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Compare Grant Action sets order-independently in the rehearsal chain G7 and G8, pinned by tests whose faked preview and status return a different order.
@@ -4155,7 +4155,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-chain-scope-order-compare
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
