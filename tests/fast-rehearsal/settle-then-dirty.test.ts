@@ -100,13 +100,22 @@ describe.each([
     expect(integrated || visible).toBe(true);
   });
 
-  it("follows the remedy: once an operator lands the settlement commit itself, the entry clears and the next Action launches once, without the extra work", () => {
+  it("follows the remedy: once an operator lands the settlement commit itself (and pushes the base), the entry clears and the next Action launches once and integrates, without the extra work", () => {
     git(world.repo, ["merge", "--ff-only", "--quiet", result.settlementCommit!]);
-    world.untilLaunched(ACTION_2, 3);
+    // "then push main", as the remedy says: Action 2's candidate base then equals the remote base,
+    // so its PR is opened on main (#987's stacking applies only when the remote base lags).
+    git(world.repo, ["push", "-q", "origin", "refs/heads/main:refs/heads/main"]);
+    const { launch } = world.untilLaunched(ACTION_2, 3);
     expect(world.escalations()).toEqual([]);
     expect(world.sessions().filter((s) => s.action_id === ACTION_2)).toHaveLength(1);
     expect(git(world.repo, ["ls-tree", "--name-only", "refs/heads/main"])).not.toContain(file);
     expect(world.recorder.tickLog.filter((tick) => tick.summary.includes("integration integrated"))).toHaveLength(0);
+    const work = world.execute(launch, ACTION_2);
+    world.untilIntegrated(ACTION_2);
+    expect(world.pullRequestFor(ACTION_2)?.baseBranch).toBe("main");
+    git(world.repo, ["merge-base", "--is-ancestor", work.workCommit, "refs/heads/main"]);
+    expect(git(world.repo, ["ls-tree", "--name-only", "refs/heads/main"])).not.toContain(file);
+    expect(world.escalations()).toEqual([]);
     expect(isolation.guardCalls()).toEqual([]);
   });
 });
