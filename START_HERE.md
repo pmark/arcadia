@@ -1074,6 +1074,18 @@ an unlisted name still arrives, in the default channel, with a note saying so.
 The same message to the same channel inside ten minutes is sent once, and at
 most 30 pings queue per hour, so a looping agent cannot flood your phone.
 
+### Where Discord messages land
+
+Set `DISCORD_CATEGORY_CHANNELS` in the bot's `.env` (see
+`apps/discord-bot/README.md`) to split the bot's proactive messages across
+channels you can mute separately. `alerts` gets production red alerts, CI-blocked
+pings, failed runs and blocked work; `briefings` gets the daily orientation
+packet and digests; `log` gets routine progress such as settlements, PR-opened
+pings and completed work. Anything that needs you (review items, opened
+Decisions, PR-ready pings) always stays in the default channel, which is also the
+only one that accepts requests. A category you leave unset, or a channel the bot
+cannot reach, falls back to the default channel, so nothing is lost.
+
 ## Managed production: the standing authorization
 
 Managed production is the switch that lets Arcadia admit and advance approved

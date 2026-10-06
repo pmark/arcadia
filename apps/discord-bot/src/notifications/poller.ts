@@ -6,6 +6,7 @@ import { formatCodexTaskNotification } from "../formatters/codexFormatter.js";
 import { formatMilestoneCompletedNotification } from "../formatters/milestoneFormatter.js";
 import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
+import { categorizeNotification, sendToCategory } from "./categories.js";
 import { drainOperatorPings } from "./operatorPings.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
@@ -285,7 +286,13 @@ export function startNotificationPoller(
         : evaluation.nextState;
 
       for (const message of evaluation.messages) {
-        const sent = await sendToConfiguredChannel(client, config.discordChannelId, message.content);
+        const sent = await sendToCategory(
+          (channelId, content) => sendToConfiguredChannel(client, channelId, content),
+          config,
+          categorizeNotification(message.key, snapshot),
+          message.content,
+          logJson
+        );
         const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(message.key);
         if (agentAskSettlementId) {
           await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);

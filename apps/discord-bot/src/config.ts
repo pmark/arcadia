@@ -2,6 +2,7 @@ import * as dotenv from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { NOTIFICATION_CATEGORIES, type CategoryChannels } from "./notifications/categories.js";
 
 dotenv.config();
 
@@ -18,6 +19,13 @@ export interface BotConfig {
    * default channel, so a ping can never be aimed at an arbitrary channel.
    */
   pingChannels: Record<string, string>;
+  /**
+   * Channels for categories of proactive notification, from
+   * `DISCORD_CATEGORY_CHANNELS="alerts=<id>,briefings=<id>,log=<id>"`. A
+   * category with no entry posts to `discordChannelId`, as before. Items that
+   * need the operator, replies and the ask ingress always use that channel.
+   */
+  categoryChannels: CategoryChannels;
   arcadiaCliPath: string | null;
   /** Browser base URL used for deep links in proposal notifications. */
   dashboardUrl: string;
@@ -57,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     discordGuildId: requireEnv(env, "DISCORD_GUILD_ID"),
     discordChannelId: requireEnv(env, "DISCORD_CHANNEL_ID"),
     pingChannels: parsePingChannels(env.DISCORD_PING_CHANNELS),
+    categoryChannels: parseCategoryChannels(env.DISCORD_CATEGORY_CHANNELS),
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
     dashboardUrl: parseDashboardUrl(env.ARCADIA_DASHBOARD_URL),
     pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
@@ -99,6 +108,21 @@ export function parsePingChannels(raw: string | undefined): Record<string, strin
       throw new Error(`DISCORD_PING_CHANNELS entries must look like alias=<channel id>, got: ${entry}`);
     }
     channels[alias] = id;
+  }
+  return channels;
+}
+
+export function parseCategoryChannels(raw: string | undefined): CategoryChannels {
+  const channels: CategoryChannels = {};
+  for (const entry of (raw ?? "").split(",").map((part) => part.trim()).filter(Boolean)) {
+    const [category, id, ...rest] = entry.split("=").map((part) => part.trim());
+    const known = NOTIFICATION_CATEGORIES.find((candidate) => candidate === category);
+    if (!known || !id || rest.length > 0 || !/^\d{17,20}$/.test(id)) {
+      throw new Error(
+        `DISCORD_CATEGORY_CHANNELS entries must look like <${NOTIFICATION_CATEGORIES.join("|")}>=<channel id>, got: ${entry}`
+      );
+    }
+    channels[known] = id;
   }
   return channels;
 }
