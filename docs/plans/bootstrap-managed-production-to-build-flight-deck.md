@@ -4168,6 +4168,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1018", "src/production/independentReview.ts", "tests/fast-rehearsal/long-chain-verdict-failure.test.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: prepare-run7-chain
+    title: Fill run 7's parameters from run 6's receipts, make the chain reset position reopened and new fixture Actions in the queue, and make G6 check queue validity and read Codex capacity reliably.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Fill run 7's parameters from run 6's receipts, make the chain reset position reopened and new fixture Actions in the queue, and make G6 check queue validity and read Codex capacity reliably.
+    expected_artifact: Evidence satisfying Agent Ask prepare-run7-chain
+    clarification: clarified
+    confidence: high
+    source: Agent Ask prepare-run7-chain-2026-10-06
+    acceptance_criteria:
+      - "`rehearsal-chain/params/run7-2026-10-06.json` binds run 6's receipts exactly: reset run `20261006T141854Z-41044` (newHead 162f5b19), terminal Off run `20261006T160825Z-24828` (fixtureMain 6fbae8d6) and one candidate entry per integrated or preserved line of that G8's work-reconciliation (including PR #7 and stacked PR #8), with no UNFILLED value left; required commits include #1017 (3c67b0a8); descriptors re-render with no drift; the run-7 reset dry run is expected to plan moving the clone's local main from 6fbae8d6 back to GitHub main 162f5b19 only after verifying both run-6 candidates are preserved on GitHub, and never to push a base other than its single reset commit."
+      - "The chain reset positions every reopened or created fixture Action in chain order through the governed `arcadia advance queue arrange` after its docs sync (keeping every other key's relative order), records the queue receipt in its receipt, and refuses if the queue is not `orderValid` with zero unpositioned afterwards; G6 refuses unless `orderValid` is true and `unpositionedCount` is 0; tests pin both (Issue #1015)."
+      - "G6's Codex capacity check performs a fresh live read with a bounded retry before observing, and when the live read fails it names the failure (exit status or timeout) in the refusal instead of silently judging a stale cache (Issue #1016); tests pin both the success and the named-failure paths; the rehearsal-chain tests, `check:operator-scripts`, render `--check`, lint and tsc pass; the runbook names run 7; an independent review round is recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1015", "https://github.com/pmark/arcadia/issues/1016", "artifacts/generated/operator-scripts/rehearsal-chain/params/run7-2026-10-06.json", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "artifacts/generated/operator-scripts/rehearsal-chain/preflight.sh"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
