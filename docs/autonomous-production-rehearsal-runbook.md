@@ -403,8 +403,11 @@ broker): rerun G6.
    `terminal_candidate_not_integrable` escalation naming the branch to push
    again; so does any candidate whose launch base carries local commits that no
    remote branch has (for example an unpushed operator commit on `main`), which
-   before opened on `main` with those commits in its diff. A stacked PR later
-   retargeted on GitHub gets no verdict until its base is restored; that
+   before opened on `main` with those commits in its diff. An open PR for the
+   branch already on a no-longer-valid base is refused the same way (retarget
+   it); a closed or merged one is ignored and a new PR opens. A stacked PR
+   later retargeted on GitHub, or whose stacked base branch moved, gets no
+   verdict until its base is restored; that
    includes GitHub's own retarget to `main` after the previous PR is merged
    there and its branch auto-deleted (restore the branch and retarget back, or
    land by hand), deliberately conservative because the published plan names

@@ -311,6 +311,39 @@ describe("qa-plan-consistency CLI", () => {
     expect(JSON.parse(result.stdout)).toMatchObject({ candidate: { baseRevision: f.m0, commit: f.action1, baseSource: "receipt base_revision" } });
   });
 
+  it("takes a stacked PR's base branch from the receipt JSON's prBase, not the Project base (Issue #987)", () => {
+    const f = serialFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "qa-plan-consistency-cli-"));
+    roots.push(root);
+    const evidence = path.join(root, "evidence.json");
+    const pr = pullRequest(f.repo, { number: 6, base: f.action1, head: f.action2, branch: "agent/action-2", baseRefName: "agent/action-1" });
+    const published = renderOperatorQaPlan(
+      { kind: "action-acceptance", actionKey: "fixture/action-2", actionTitle: null, acceptanceCriteria: ["Holds."], validationCommands: [] },
+      { branch: "agent/action-2", baseBranch: "agent/action-1", baseRevision: f.action1, commitSha: f.action2,
+        changedFiles: checkQaPlanConsistency({ repositoryPath: f.repo, pullRequest: pr, base: f.action1 }).plan.files }
+    );
+    writeFileSync(evidence, JSON.stringify({ ...pr, body: `${published.body}\n\n### Validation evidence\n` }));
+    const planSource = path.join(root, "plan-source.json");
+    writeFileSync(planSource, JSON.stringify({ kind: "action-acceptance", actionKey: "fixture/action-2", actionTitle: null, acceptanceCriteria: ["Holds."], validationCommands: [] }));
+    const prBase = { kind: "stacked", branch: "agent/action-1", tip: f.action1, reason: "stacked" };
+    const row = { repository_path: f.repo, branch: "agent/action-2", base_branch: "main", base_revision: f.action1, commit_sha: f.action2 };
+    const stacked = path.join(root, "stacked-receipt.json");
+    writeFileSync(stacked, JSON.stringify([{ ...row, receipt_json: JSON.stringify({ prBase }) }]));
+    const result = runCli(["--receipt", stacked, "--pr", evidence, "--plan-source", planSource, "--json"]);
+    expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ consistent: true, candidate: { baseBranch: "agent/action-1" }, plan: { baseBranch: "agent/action-1", matchesPublishedBody: true } });
+    // A receipt object (not a sqlite row) carries prBase directly.
+    const object = path.join(root, "stacked-object.json");
+    writeFileSync(object, JSON.stringify({ ...row, prBase }));
+    expect(runCli(["--receipt", object, "--pr", evidence, "--plan-source", planSource]).exitCode).toBe(0);
+    // Without receipt_json (a pre-stacking query), base_branch main still applies: the spurious mismatch the doc's query avoids.
+    const legacy = path.join(root, "legacy-receipt.json");
+    writeFileSync(legacy, JSON.stringify([row]));
+    const old = runCli(["--receipt", legacy, "--pr", evidence, "--plan-source", planSource, "--json"]);
+    expect(old.exitCode).toBe(1);
+    expect(JSON.parse(old.stdout)).toMatchObject({ plan: { baseBranch: "main", matchesPublishedBody: false }, mismatches: [{ check: "base-branch", plan: "main", pullRequest: "agent/action-1" }] });
+  });
+
   it("exits 2 on unusable input, never claiming consistency", () => {
     const f = cliFixture({ action: 1 });
     expect(runCli(["--repo", f.repo]).exitCode).toBe(2);

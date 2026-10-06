@@ -228,6 +228,8 @@ interface PullRequestView {
   headRefOid: string;
   /** The PR's base branch now; checked against the base preservation opened it on (`prBase`). */
   baseRefName?: string;
+  /** That base branch's tip now; for a stacked base it must still be the tip preservation chose. */
+  baseRefOid?: string;
   mergeStateStatus: string | null;
   statusCheckRollup: PullRequestCheckRun[];
 }
@@ -381,7 +383,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
   const outcome = ((): ReviewStepOutcome => {
     const viewed = runCommand({
       command: "gh",
-      args: ["pr", "view", url, "--json", "state,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,statusCheckRollup"],
+      args: ["pr", "view", url, "--json", "state,isDraft,headRefName,headRefOid,baseRefName,baseRefOid,mergeStateStatus,statusCheckRollup"],
       cwd: repoRoot,
       timeoutMs: 30_000
     });
@@ -426,6 +428,19 @@ export function advanceIndependentReview(db: Database.Database, input: {
         remedy: `Retarget it back with \`gh pr edit ${url} --base ${opened.branch}\``
           + (restoreBase ? ` (if ${opened.branch} is gone from the remote, restore it first with ${restoreBase})` : "")
           + ", or review and land the candidate by hand; the next tick resumes."
+      };
+    }
+    // A stacked base is an ordinary agent branch: if its tip moved (onto this
+    // candidate's own commits, say), GitHub's diff from it is no longer this
+    // candidate's whole change, and the reviewers judge that diff.
+    if (opened?.kind === "stacked" && opened.tip && typeof pr.baseRefOid === "string" && pr.baseRefOid !== opened.tip) {
+      return {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url}'s stacked base ${opened.branch} moved from ${opened.tip.slice(0, 12)}, the tip host preservation opened it on, to ${pr.baseRefOid.slice(0, 12)}; `
+          + "the PR's diff is no longer the candidate's own change, so no verdict is requested.",
+        remedy: `Restore ${opened.branch} on the remote to ${opened.tip} (it is the previous candidate's branch; Arcadia never moves it, and moving it back is an operator decision), `
+          + "or review and land the candidate by hand; the next tick resumes."
       };
     }
 

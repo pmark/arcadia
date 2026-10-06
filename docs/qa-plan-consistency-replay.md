@@ -51,7 +51,11 @@ node --import tsx scripts/qa-plan-consistency.ts \
   it from the preservation receipt: the local base branch has usually moved since
   launch. `--receipt` reads a receipt row (`sqlite3 -json` output) and supplies
   `--repo`, `--base`, `--commit`, `--branch` and `--base-branch` unless they are
-  given. Without either flag, the base is the local branch `refs/heads/<base branch>`
+  given. Select the `receipt_json` column too: `--base-branch` then comes from
+  its `prBase.branch`, the branch the PR was opened against (a stacked PR's base
+  is the previous candidate's branch, Issue #987), and falls back to
+  `base_branch` (the Project base) for receipts written before stacked bases.
+  Without either flag, the base is the local branch `refs/heads/<base branch>`
   as it is now, where the base branch is `--base-branch`, else the receipt's
   `base_branch`, else the PR's `baseRefName`. That is how the host launches a fresh
   Session (`git rev-parse <base>` in `src/sessions/launch.ts`).
@@ -88,7 +92,7 @@ were transcribed from the fixture Plan at `f68ec48`
 S=<scratch dir>
 DB=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/database/arcadia.sqlite3
 QA=/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/artifacts/qa/pull-requests/pmark-arcadia-three-action-rehearsal-20261004
-sqlite3 -readonly -json "$DB" "select repository_path, branch, base_branch, base_revision, commit_sha
+sqlite3 -readonly -json "$DB" "select repository_path, branch, base_branch, base_revision, commit_sha, receipt_json
   from candidate_preservation_receipts where commit_sha='69eb7d6283447270a9a16e540f7d4f5f2e3427fc'
   order by created_at desc limit 1" > "$S/pr6-receipt.json"
 node --import tsx scripts/qa-plan-consistency.ts --receipt "$S/pr6-receipt.json" \

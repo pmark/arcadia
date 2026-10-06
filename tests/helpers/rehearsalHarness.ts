@@ -904,9 +904,10 @@ export class FakeGitHub {
       const match = /^([0-9a-f]{40})\trefs\/heads\/(.+)$/.exec(line.trim());
       return match ? [{ branch: match[2], sha: match[1] }] : [];
     }),
+    // `gh pr view <branch>`: the branch's most recent PR, open or not, with its state.
     findPullRequest: ({ branch }) => {
-      const pr = this.prs.find((entry) => entry.branch === branch);
-      return pr ? { number: pr.number, url: pr.url, baseRefName: pr.baseBranch } : null;
+      const pr = this.prs.filter((entry) => entry.branch === branch).at(-1);
+      return pr ? { number: pr.number, url: pr.url, baseRefName: pr.baseBranch, state: pr.state ?? "OPEN" } : null;
     },
     upsertDraftPullRequest: ({ branch, baseBranch, existing }) => {
       if (existing) return existing;

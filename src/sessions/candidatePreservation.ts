@@ -112,8 +112,12 @@ export interface CandidatePreservationRemote {
    * existed (only test doubles omit it; the system adapter implements it).
    */
   listBranchTips?(input: { repositoryPath: string }): Array<{ branch: string; sha: string }>;
-  /** The open (or most recent) PR for the branch; `baseRefName` when the adapter can read it. */
-  findPullRequest(input: { repositoryPath: string; branch: string }): { number: number; url: string; baseRefName?: string } | null;
+  /**
+   * The open (or most recent) PR for the branch; `baseRefName` and `state`
+   * when the adapter can read them. A PR whose `state` is not OPEN is treated
+   * as no PR (preservation opens a new one).
+   */
+  findPullRequest(input: { repositoryPath: string; branch: string }): { number: number; url: string; baseRefName?: string; state?: string } | null;
   upsertDraftPullRequest(input: {
     repositoryPath: string;
     branch: string;
@@ -699,28 +703,11 @@ export function preserveCandidate(
   // revision no remote branch carries is refused here, with the commit kept
   // on its local branch (a retry reuses it by trailer) and nothing pushed.
   preservationStage("preserve.pull-request-base");
-  const baseInput = { repositoryPath, baseBranch: request.baseBranch, baseRevision: request.baseRevision, branch: request.branch };
-  const tips = remote.listBranchTips ? remote.listBranchTips({ repositoryPath }) : null;
-  const selection = tips ? selectPullRequestBaseFromTips(db, baseInput, tips) : selectPullRequestBase(db, baseInput, remote);
-  if (!selection.ok) throw stackedBaseUnavailable(selection, request);
-  // An existing PR keeps its base (a body edit never retargets it). A base
-  // that is still a valid choice for this base revision is kept; any other
-  // is refused before anything is pushed, since a body describing another
-  // base than the PR's would reproduce Issue #987.
-  const existing = remote.findPullRequest({ repositoryPath, branch: request.branch });
-  let chosen = selection.base;
-  if (existing?.baseRefName && existing.baseRefName !== chosen.branch) {
-    const kept = tips ? existingPullRequestBase(baseInput, existing.baseRefName, tips) : null;
-    if (!kept) {
-      throw validationError(
-        `Pull request ${existing.url} for ${request.branch} is opened against ${existing.baseRefName}, but this candidate's base revision ${request.baseRevision} `
-          + `selects ${chosen.branch} (${chosen.reason}); its Operator QA plan would describe a different base than the PR, so nothing is pushed. `
-          + `Remedy: retarget it with \`gh pr edit ${existing.number} --base ${chosen.branch}\` after checking that is right; the next preservation then updates its body.`,
-        { code: "pull_request_base_mismatch", pullRequest: existing.url, prBase: chosen, existingBase: existing.baseRefName }
-      );
-    }
-    chosen = kept;
-  }
+  const resolved = resolvePullRequestBase(db, {
+    repositoryPath, baseBranch: request.baseBranch, baseRevision: request.baseRevision, branch: request.branch
+  }, remote);
+  if (!resolved.ok) throw resolved.error;
+  const { base: chosen, existing, tips } = resolved;
   const prBase = tips ? chosen : null;
   // Rendered before the push so a refusal or a Git read never lands between
   // the push and the pull request.
@@ -754,14 +741,59 @@ export function preserveCandidate(
   });
 }
 
-function stackedBaseUnavailable(selection: { reason: string; remedy: string }, request: CandidatePreservationRequest): ArcadiaError {
+function stackedBaseUnavailable(selection: { reason: string; remedy: string }, input: { branch: string; baseBranch: string; baseRevision: string }): ArcadiaError {
   return validationError(`${selection.reason} Remedy: ${selection.remedy}`, {
     code: STACKED_BASE_UNAVAILABLE,
-    branch: request.branch,
-    baseBranch: request.baseBranch,
-    baseRevision: request.baseRevision,
+    branch: input.branch,
+    baseBranch: input.baseBranch,
+    baseRevision: input.baseRevision,
     remedy: selection.remedy
   });
+}
+
+/**
+ * The base a candidate's draft PR is opened (or kept) on, with the open PR
+ * already on the branch, or the refusal preservation raises before anything
+ * is pushed: no remote branch can be the base ({@link STACKED_BASE_UNAVAILABLE}),
+ * or an open PR already sits on a base that is no longer a valid choice
+ * (`pull_request_base_mismatch`). Read-only (`ls-remote`, `gh pr view`); the
+ * managed tick's pre-check calls it too, so neither refusal re-runs host
+ * validation while it holds.
+ *
+ * An existing PR keeps its base (a body edit never retargets it): a base still
+ * valid for this base revision is kept; any other is refused, since a body
+ * describing another base than the PR's would reproduce Issue #987. A closed
+ * or merged PR for the branch is no PR at all: a new one is opened.
+ */
+export function resolvePullRequestBase(
+  db: Database.Database | null,
+  input: { repositoryPath: string; baseBranch: string; baseRevision: string; branch: string },
+  remote: Pick<CandidatePreservationRemote, "listBranchTips" | "findPullRequest">
+):
+  | { ok: true; base: PullRequestBase; existing: { number: number; url: string; baseRefName?: string } | null; tips: Array<{ branch: string; sha: string }> | null }
+  | { ok: false; error: ArcadiaError } {
+  const tips = remote.listBranchTips ? remote.listBranchTips({ repositoryPath: input.repositoryPath }) : null;
+  const selection = tips ? selectPullRequestBaseFromTips(db, input, tips) : selectPullRequestBase(db, input, remote);
+  if (!selection.ok) return { ok: false, error: stackedBaseUnavailable(selection, input) };
+  const found = remote.findPullRequest({ repositoryPath: input.repositoryPath, branch: input.branch });
+  const existing = found && (found.state === undefined || found.state.toUpperCase() === "OPEN") ? found : null;
+  let chosen = selection.base;
+  if (existing?.baseRefName && existing.baseRefName !== chosen.branch) {
+    const kept = tips ? existingPullRequestBase(input, existing.baseRefName, tips) : null;
+    if (!kept) {
+      return {
+        ok: false,
+        error: validationError(
+          `Pull request ${existing.url} for ${input.branch} is opened against ${existing.baseRefName}, but this candidate's base revision ${input.baseRevision} `
+            + `selects ${chosen.branch} (${chosen.reason}); its Operator QA plan would describe a different base than the PR, so nothing is pushed. `
+            + `Remedy: retarget it with \`gh pr edit ${existing.number} --base ${chosen.branch}\` after checking that is right; the next preservation then updates its body.`,
+          { code: "pull_request_base_mismatch", pullRequest: existing.url, prBase: chosen, existingBase: existing.baseRefName }
+        )
+      };
+    }
+    chosen = kept;
+  }
+  return { ok: true, base: chosen, existing, tips };
 }
 
 /**
@@ -1019,13 +1051,18 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
   },
   findPullRequest({ repositoryPath, branch }) {
     try {
-      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url,baseRefName"], {
+      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url,baseRefName,state"], {
         cwd: repositoryPath,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"]
       }).toString();
-      const parsed = JSON.parse(output) as { number: number; url: string; baseRefName?: unknown };
-      return { number: parsed.number, url: parsed.url, ...(typeof parsed.baseRefName === "string" && parsed.baseRefName ? { baseRefName: parsed.baseRefName } : {}) };
+      const parsed = JSON.parse(output) as { number: number; url: string; baseRefName?: unknown; state?: unknown };
+      return {
+        number: parsed.number,
+        url: parsed.url,
+        ...(typeof parsed.baseRefName === "string" && parsed.baseRefName ? { baseRefName: parsed.baseRefName } : {}),
+        ...(typeof parsed.state === "string" && parsed.state ? { state: parsed.state } : {})
+      };
     } catch (error) {
       // A timeout is not "no pull request"; that answer would open a duplicate.
       if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;

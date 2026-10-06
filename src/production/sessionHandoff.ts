@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
-import { preserveCandidate, selectPullRequestBase, systemPreservationRemote } from "../sessions/candidatePreservation.js";
+import { preserveCandidate, resolvePullRequestBase, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { operatorQaPlanSource } from "../sessions/operatorQaPlan.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
@@ -142,9 +142,10 @@ export function preserveSessionCandidate(
     };
   }
 
-  // A serial candidate with no remote branch to stack its PR on is refused by
-  // preserveCandidate after host validation; check that first, so a refusal
-  // that only the operator can clear does not re-run validation every tick.
+  // A serial candidate with no remote branch to stack its PR on, or whose open
+  // PR sits on a no-longer-valid base, is refused by preserveCandidate after
+  // host validation; check that first, so a refusal only the operator can
+  // clear does not re-run validation every tick.
   const remote = deps.remote ?? systemPreservationRemote;
   const unstackable = policyAuthorizesRemotePreservation(policy, actionKey(session))
     ? stackedBaseRefusal(db, { repoRoot, session, baseBranch, now: input.now }, remote)
@@ -226,7 +227,11 @@ export function preserveSessionCandidate(
 const STACKED_BASE_RECHECK_MS = 60_000;
 const recentStackedBaseRefusals = new Map<string, { at: number; reason: string }>();
 
-/** The stacked-base refusal preserveCandidate would raise, or null (including when it cannot tell: preservation then decides). Exported for tests. */
+/**
+ * The PR-base refusal preserveCandidate would raise (no remote branch can be
+ * the base, or an open PR sits on a no-longer-valid base), or null (including
+ * when it cannot tell: preservation then decides). Exported for tests.
+ */
 export function stackedBaseRefusal(
   db: Database.Database,
   input: { repoRoot: string; session: AgentSession; baseBranch: string; now: Date },
@@ -243,11 +248,11 @@ export function stackedBaseRefusal(
   recentStackedBaseRefusals.delete(key);
   try {
     if (!remote.listBranchTips || !remote.hasRemote(input.repoRoot)) return null;
-    const selection = selectPullRequestBase(db, {
+    const resolved = resolvePullRequestBase(db, {
       repositoryPath: input.repoRoot, baseBranch: input.baseBranch, baseRevision: session.base_revision, branch: session.branch
     }, remote);
-    if (selection.ok) return null;
-    const reason = `${selection.reason} Remedy: ${selection.remedy}`;
+    if (resolved.ok) return null;
+    const reason = resolved.error.message;
     for (const [entry, value] of recentStackedBaseRefusals) if (now.getTime() - value.at >= STACKED_BASE_RECHECK_MS) recentStackedBaseRefusals.delete(entry);
     recentStackedBaseRefusals.set(key, { at: now.getTime(), reason });
     return reason;

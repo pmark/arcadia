@@ -116,7 +116,7 @@ class Remote implements CandidatePreservationRemote {
   pushes: string[] = [];
   created: Array<{ branch: string; baseBranch: string; body: string }> = [];
   updated: Array<{ number: number; body: string }> = [];
-  existing: { number: number; url: string; baseRefName?: string } | null = null;
+  existing: { number: number; url: string; baseRefName?: string; state?: string } | null = null;
   constructor(readonly withTips = true) {}
   hasRemote() { return true; }
   push(input: { repositoryPath: string; branch: string; commitSha?: string }) {
@@ -324,7 +324,38 @@ describe("preserveCandidate with stacked bases", () => {
   });
 });
 
+describe("a closed or merged PR for the candidate's branch", () => {
+  it("is no PR at all: its old base never refuses, and a new draft PR opens on the selected base", () => {
+    for (const state of ["CLOSED", "MERGED"]) {
+      const f = serial();
+      const remote = new Remote();
+      remote.existing = { number: 4, url: "https://example.test/pull/4", baseRefName: "main", state };
+      const receipt = withDatabase(f.workspace, (db) => preserveCandidate(db, request(f), { remote }));
+      expect(receipt.prBase).toMatchObject({ kind: "stacked", branch: f.previous });
+      expect(remote.updated).toEqual([]);
+      expect(remote.created.map((entry) => entry.baseBranch)).toEqual([f.previous]);
+      expect(receipt.pullRequestNumber).toBe(9);
+    }
+  });
+});
+
 describe("the managed tick's stacked-base pre-check", () => {
+  it("also refuses, and caches, an open PR on a no-longer-valid base", () => {
+    const f = serial();
+    let views = 0;
+    const remote = { ...systemPreservationRemote, findPullRequest: () => { views += 1; return { number: 6, url: "https://example.test/pull/6", baseRefName: "main", state: "OPEN" }; } };
+    const session = { id: "session_mismatch", base_revision: f.previousHead, branch: f.branch } as AgentSession;
+    withDatabase(f.workspace, (db) => {
+      const check = (seconds: number) => stackedBaseRefusal(db, { repoRoot: f.repo, session, baseBranch: "main", now: new Date(NOW.getTime() + seconds * 1000) }, remote);
+      const first = check(0);
+      expect(first).toContain(`Pull request https://example.test/pull/6 for ${f.branch} is opened against main`);
+      expect(first).toContain(`Remedy: retarget it with \`gh pr edit 6 --base ${f.previous}\``);
+      expect(check(30)).toBe(first);
+      expect(views).toBe(1);
+    });
+  });
+
+
   it("refuses before validation, re-reads the remote at most once a minute while refused, and never caches a pass", () => {
     const f = serial({ pushPrevious: false });
     let reads = 0;
