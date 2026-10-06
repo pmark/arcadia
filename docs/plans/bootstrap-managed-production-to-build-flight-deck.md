@@ -3982,7 +3982,7 @@ actions:
     references: ["docs/managed-production-readiness.md", "START_HERE.md", "docs/notes-to-self.md", "https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
   - id: build-fast-rehearsal-harness
     title: A serial two-Action scenario harness over the real lifecycle with a scripted executor, failure injection and phase timings, run by `pnpm fast-rehearsal` in under five minutes.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: A serial two-Action scenario harness over the real lifecycle with a scripted executor, failure injection and phase timings, run by `pnpm fast-rehearsal` in under five minutes.
