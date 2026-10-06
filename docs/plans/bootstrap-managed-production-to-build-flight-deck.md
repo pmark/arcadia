@@ -3999,7 +3999,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/989", "https://github.com/pmark/arcadia/issues/987", "docs/autonomous-production-rehearsal-runbook.md", "tests/rehearsal-run-5-amended-action.test.ts", "tests/preserve-on-exit-and-integrate.test.ts", "src/production/tick.ts"]
   - id: build-checkpoint-replay-and-base-check
     title: "A checkpoint replay tool with a deterministic plan-versus-PR consistency check that reproduces Issue #987 from run 5's preserved PR #6 in seconds."
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: "A checkpoint replay tool with a deterministic plan-versus-PR consistency check that reproduces Issue #987 from run 5's preserved PR #6 in seconds."
