@@ -14,12 +14,15 @@ export interface GitHubFile { path: string; additions: number; deletions: number
  * draft and ready state, checks, stubbed reviewer model) with the two facts
  * the shared fake simplifies reported the way GitHub reports them:
  *
- * - `baseRefOid` is the remote's base branch tip and `files` is the
- *   three-dot diff of the PR head against it (GitHub's "Files changed"),
- *   computed with real Git in the bare remote. The worker integrates by
- *   local fast-forward and never pushes the base, so after Action 1
- *   integrates the remote's `main` does not move: Action 2's PR then reports
- *   Action 1's files too (Issue #987).
+ * - `baseRefName` is the branch the PR was opened against (`gh pr create
+ *   --base`): the Project base, or a stacked base such as the previous
+ *   candidate's branch. `baseRefOid` is that branch's tip on the remote and
+ *   `files` is the three-dot diff of the PR head against it (GitHub's "Files
+ *   changed"), computed with real Git in the bare remote. The worker
+ *   integrates by local fast-forward and never pushes the base, so after
+ *   Action 1 integrates the remote's `main` does not move; Action 2's PR is
+ *   therefore stacked on Action 1's branch (Issue #987), and a PR on `main`
+ *   would report Action 1's files too.
  * - `body` is the exact body the host's preservation wrote (the rendered
  *   Operator QA plan and validation evidence), so a scenario can compare
  *   what the plan says with what the PR reports.
@@ -42,6 +45,7 @@ export class GitHubModel {
   readonly remote: CandidatePreservationRemote = {
     hasRemote: (repositoryPath) => this.fake.remote.hasRemote(repositoryPath),
     push: (input) => this.recorder.measure("gitFinalization", () => this.fake.remote.push(input)),
+    listBranchTips: (input) => this.fake.remote.listBranchTips!(input),
     findPullRequest: (input) => this.fake.remote.findPullRequest(input),
     upsertDraftPullRequest: (input) => this.recorder.measure("gitFinalization", () => {
       const pr = this.fake.remote.upsertDraftPullRequest(input);
@@ -70,7 +74,7 @@ export class GitHubModel {
       number: pr.number,
       title: `Candidate ${pr.branch}`,
       url: pr.url,
-      state: "OPEN",
+      state: pr.state ?? "OPEN",
       isDraft: pr.isDraft,
       mergeStateStatus: this.fake.mergeState(pr),
       headRefName: pr.branch,
