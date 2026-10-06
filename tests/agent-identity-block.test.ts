@@ -224,7 +224,7 @@ describe("partner Action ids from rows", () => {
 
 describe("renderReviewerIdentityBlock", () => {
   it("names only the critic identity and its independence: no command, no signing, no partners", () => {
-    const block = renderReviewerIdentityBlock({ agent: "codex", model: "gpt-5.6-sol", effort: null }).join("\n");
+    const block = renderReviewerIdentityBlock({ agent: "codex", model: "gpt-6.1-sol", effort: null }).join("\n");
     expectIdentityBlock(block, "codex", "heavy", "critic");
     expect(block).toContain("independent of the Candidate's developer");
     expect(block).not.toContain("run `arcadia");
