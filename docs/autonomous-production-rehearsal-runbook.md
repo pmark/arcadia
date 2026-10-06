@@ -31,7 +31,8 @@ the installed host, shows all of the following with evidence:
    code-review or QA verdict with no finding other than the deterministic gate's
    refused not-applicable claims and no criterion judged `fail` (every non-pass
    criterion is a refused not-applicable or `not-checked`, and none of those is
-   Correctness or Security and authority: a `not-checked` there stops at once). By the operator's
+   Correctness, Security and authority or (QA) Approval boundaries: a
+   `not-checked` or refused not-applicable there stops at once). By the operator's
    2026-10-06 choice (Issue #1018; runs 1, 3, 5 and 6 each stopped on one) the
    tick reruns such a verdict automatically, at most 2 more times (3 attempts in
    total) per verdict kind per exact head, each rerun named once in the worker

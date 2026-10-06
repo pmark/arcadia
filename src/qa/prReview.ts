@@ -1405,7 +1405,7 @@ export function classifyReviewerVariance(input: {
   if (verdict !== "needs-follow-up" || model.verdict === "fail") return null;
   if (model.findings.length > 0) return null;
   if (model.checks.length === 0 || model.checks.some((check) => check.status === "fail")) return null;
-  // Correctness and security are never dismissed as variance: a reviewer that
+  // Correctness and the authority criteria are never dismissed as variance: a reviewer that
   // could not establish either has not shown the change is safe, so it stops.
   if (model.checks.some((check) => VARIANCE_EXCLUDED_CRITERIA.has(check.criterion) && check.status !== "pass")) return null;
   const allowedReasons = new Set([REFUSED_NOT_APPLICABLE_REASON, NOT_EVERY_CRITERION_PASSED_REASON]);
@@ -1422,8 +1422,8 @@ export function classifyReviewerVariance(input: {
     + `${risks} residual risk${risks === 1 ? "" : "s"} dismissed; reviewer summary: "${firstSentence(model.summary, VARIANCE_SUMMARY_MAX_CHARS)}").`;
 }
 
-/** The criteria whose non-pass is never variance: Correctness (both roles) and Security and authority (code review). */
-const VARIANCE_EXCLUDED_CRITERIA: ReadonlySet<string> = new Set(["correctness", "security-and-authority"]);
+/** The criteria whose non-pass is never variance: Correctness (both roles), Security and authority (code review) and Approval boundaries (QA's authority analogue). */
+const VARIANCE_EXCLUDED_CRITERIA: ReadonlySet<string> = new Set(["correctness", "security-and-authority", "approval-boundaries"]);
 const VARIANCE_SUMMARY_MAX_CHARS = 160;
 
 /** The summary's first sentence on one line, cut to `max` characters (an ellipsis marks a cut). */

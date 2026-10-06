@@ -843,15 +843,26 @@ describe("reviewer variance classification", () => {
     expect(result.data.varianceReason).toBeNull();
   });
 
-  it("classifies QA's own zero-finding verdicts by the same rule: not-checked Correctness is real, any other criterion is variance", () => {
+  it("classifies QA's own zero-finding verdicts by the same rule: not-checked Correctness or Approval boundaries is real, any other criterion is variance", () => {
     const qa = (notChecked: string) => ({ ...RUN6_NOT_CHECKED_VERDICT, checks: QA_PR_REVIEW_CRITERIA.map((criterion) => ({
       criterion: criterion.id, name: criterion.name,
       status: criterion.id === notChecked ? "not-checked" as const : "pass" as const, evidence: `${criterion.name} judged against the patch.`
     })) });
-    expect(reviewRun6(qa("correctness"), "qa").data.varianceReason).toBeNull();
-    for (const id of ["scope-fidelity", "approval-boundaries", "managed-documents", "hidden-consequences", "operator-qa-plan", "tests-and-evidence"]) {
+    for (const id of ["correctness", "approval-boundaries"]) {
+      const stopped = reviewRun6(qa(id), "qa");
+      expect(stopped.data.verdict).toBe("needs-follow-up");
+      expect(stopped.data.varianceReason).toBeNull();
+    }
+    for (const id of ["scope-fidelity", "managed-documents", "hidden-consequences", "operator-qa-plan", "tests-and-evidence"]) {
       expect(reviewRun6(qa(id), "qa").data.varianceReason).toMatch(/^reviewer variance only/);
     }
+    // A refused not-applicable claim on Approval boundaries is as real as a not-checked one.
+    const refused = { ...RUN6_NOT_CHECKED_VERDICT, checks: QA_PR_REVIEW_CRITERIA.map((criterion) => ({
+      criterion: criterion.id, name: criterion.name,
+      status: criterion.id === "approval-boundaries" ? "not-applicable" as const : "pass" as const, evidence: `${criterion.name} judged against the patch.`
+    })) };
+    const gate = { reasons: [] as string[], findings: [{ severity: "high" as const, title: "Refused not-applicable claim: Approval boundaries", evidence: "x", recommendation: "y" }] };
+    expect(classifyReviewerVariance({ verdict: "needs-follow-up", model: refused, deterministic: gate })).toBeNull();
   });
 
   it("bounds the dismissed summary to its first sentence on one line and counts residual risks", () => {
