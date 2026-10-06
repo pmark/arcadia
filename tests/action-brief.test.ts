@@ -117,6 +117,10 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("arcadia-preserve-broker-codex");
     expect(brief).toContain("Settle a `complete` Agent Ask with `candidate_revision` equal to this worktree's HEAD");
     expect(brief).toContain("`met` evidence entry per acceptance criterion above, verbatim and in order.");
+    // Issue #981: a stray draft beside the settlement commit blocked integration forever.
+    expect(brief).toContain("After you settle, `git status` must be clean: settlement archives the drafted Ask file into");
+    expect(brief).toContain(".arcadia/asks/archive/ in its own commit, so never commit the draft or keep a copy of it.");
+    expect(brief).toContain("If a draft of the Ask you just settled still remains in .arcadia/asks/, delete it.");
   });
 
   it("names the provider's own fixed preservation launcher for every configured provider", () => {

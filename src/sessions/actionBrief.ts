@@ -133,6 +133,9 @@ export function renderActionBrief(input: ActionBriefInput): string {
     "     `met` evidence entry per acceptance criterion above, verbatim and in order.",
     "     If your sandbox cannot commit or reach the Arcadia workspace, `arcadia agent-ask draft` it instead",
     "     and leave the drafted file in .arcadia/asks/; the host preserves and settles it when you exit.",
+    "     After you settle, `git status` must be clean: settlement archives the drafted Ask file into",
+    "     .arcadia/asks/archive/ in its own commit, so never commit the draft or keep a copy of it.",
+    "     If a draft of the Ask you just settled still remains in .arcadia/asks/, delete it.",
     "  4. Exit. The host reconciles the Session only once its process has ended."
   );
   return lines.join("\n");
