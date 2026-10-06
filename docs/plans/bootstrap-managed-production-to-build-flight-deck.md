@@ -4139,7 +4139,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: add-long-chain-fast-rehearsal
+current_action: set-run6-nine-action-chain
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
