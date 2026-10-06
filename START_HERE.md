@@ -77,6 +77,11 @@ sends no signal itself beyond bounded timeouts (that restart path may SIGTERM Ar
 service processes and rewrites `~/.codex`/`~/.claude` configuration with
 backups) and never discards a candidate.
 
+**Running a rehearsal:** start with the consolidated runbook,
+[docs/autonomous-production-rehearsal-runbook.md](docs/autonomous-production-rehearsal-runbook.md)
+(the standard, the exact steps, the failure catalog and the open gaps). The
+per-run sections below are the historical record and the script details.
+
 **Rehearsal run 2** reuses fixture `pmark/arcadia-three-action-rehearsal-20261004`.
 The 2026-10-04 G6 and G7 are retired from use: G7 is consumed and both require
 G1's genesis. Run these in order, each from a terminal unless noted:
@@ -216,6 +221,66 @@ Run 4 evidence to capture: the live QA reviewer's verdicts on the run's pull
 request (PR #4), in `artifacts/qa/pull-requests/.../qa-report.md`, especially
 the "Operator QA plan", "Tests and evidence" and "Approval boundaries"
 criteria.
+
+**Rehearsal run 5** reuses the same fixture from run 4's reset head
+`9642005f…`. Run 4 stalled at integration because its agent's drafted complete
+Ask was never archived and was committed on top of the settlement (#981).
+Every 2026-10-04, 2026-10-05, run-3 and run-4 pair is retired from use. Their
+files are unchanged (a test pins their sha256), and their G6 and G7 refuse the
+run-5 head anyway. Run these in order, and nothing else in between:
+
+1. Prerequisite, done by the release manager: the stray-Ask archive fix
+   (`archive-settled-ask-by-canonical-name`, #981, merged as #983
+   `bb83f70c…`) is merged and installed through the governed reinstall. Then
+   merge the run-5 pull request. It touches no runtime path, so it needs no
+   reinstall of its own. The run-5 G6 and G7 require the #983 commit on main
+   (beside #922 and #924) and refuse without it; installing it stays the
+   release manager's step, checked by G6's installed-release check.
+2. Reset the fixture from a terminal, exactly:
+
+   ```sh
+   ARCADIA_REHEARSAL_GITHUB_REPO=pmark/arcadia-three-action-rehearsal-20261004 /Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run5-2026-10-06.sh run
+   ```
+
+   `reset-three-action-rehearsal-fixture-run5-2026-10-06` is one-shot. It
+   requires run 4's reset receipt (`9642005f…` on run 3's `4375aafe…`), run
+   4's G8 terminal Off (run `20261006T011557Z-3871` or a later success) and
+   fixture main at run 4's reset head. Runs 1, 2, 3 and 4's branches and PRs
+   #1 to #4 must stay at `58bcd915…`, `7f139037…`, `50d1eab8…` and
+   `79c6bae9…` (run 4's tip includes the worker's preservation commit),
+   locally and on GitHub, before and after. It changes only
+   write-start-marker's `next_action` and the Plan date: run 4 left
+   `updated: 2026-10-05`, so a reset on 2026-10-06 (or later) bumps it, which
+   docs sync applies. The new text names the unused completion request id
+   `complete-write-start-marker-run5-2026-10-06` (the reset refuses before
+   any settle or commit if it is already used) and tells the agent to leave
+   `git status` clean after settling, keeping no copy of the Ask file. It
+   handles run 4's `complete-write-start-marker-run4-2026-10-05` as run 4's
+   reset handled run 3's: live it is accepted, so it is left as it is; a
+   pending one is rejected through the governed two-phase settle; any other
+   pending fixture proposal or Decision refuses. The gate must then read
+   clear.
+3. Run the run-5 G6 `preflight-three-action-rehearsal-run5-2026-10-06`. It is
+   read-only and binds the run-5 reset head. **Main stays quiet from here
+   until the G7 press:** nothing may push to Arcadia main (not even a governed
+   settle commit), reinstall, restart services or run any G8. G7 needs G6's
+   `arcadiaHead` and `brokerRevision` to still match, and the G6 to be at
+   most 30 minutes old.
+4. Within 30 minutes of that G6, the operator presses the run-5 G7
+   `grant-production-three-action-rehearsal-run5-2026-10-06` from `/runs`.
+5. After the run, run the run-5 G8
+   `restore-terminal-off-three-action-rehearsal-run5-2026-10-06` from the
+   Terminal panel (or `/runs`). Never use a non-interactive shell: it refuses
+   with "launch this action through /runs or from an interactive host
+   terminal". It turns Off only the run-5, run-4, run-3, run-2 or run-1 G7
+   policy with the exact fixture scope.
+
+Run 5 evidence to capture: the live QA reviewer's verdicts on the run's pull
+request (PR #5), in `artifacts/qa/pull-requests/.../qa-report.md`: the
+"Operator QA plan", "Tests and evidence" and "Approval boundaries" criteria.
+If integration is refused, keep the operator escalation that `arcadia
+production status` now shows for it (from `archive-settled-ask-by-canonical-name`),
+with its exact blocker and remedy text.
 
 Open **Work Queue** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/work-queue>
 (on this Mac: <http://127.0.0.1:3020/work-queue>) to see and control the
@@ -988,6 +1053,24 @@ use the same receipt path and smallest canonical effect:
   preview fingerprint every other intent already requires.
 
 Rejection is supported for every proposal and never creates executable work.
+
+### Quick pings from an agent
+
+When an agent only needs your eyes on something — it added a button to the
+Actions page, a page is ready to look at, something odd turned up and nobody is
+blocked — it runs `arcadia ping "<message>"` instead of filing an Ask. The bot
+posts it to Discord as a short message headed 👀 Take a look, ℹ️ FYI or 🔔 Needs
+your attention, with an optional link. A ping is read-only: it approves
+nothing, answers nothing, opens no Decision and leaves no durable record beyond
+its delivery row. Anything that needs your answer still arrives as a Decision,
+a picker or a PR.
+
+An agent can aim a ping at a channel with `--channel <alias>`. It reaches only
+channels you list in the bot's `DISCORD_PING_CHANNELS` (for example
+`actions=<channel id>,review=<channel id>`; see `apps/discord-bot/README.md`);
+an unlisted name still arrives, in the default channel, with a note saying so.
+The same message to the same channel inside ten minutes is sent once, and at
+most 30 pings queue per hour, so a looping agent cannot flood your phone.
 
 ## Managed production: the standing authorization
 
@@ -2400,6 +2483,25 @@ at a session boundary. That check exists because the accumulation that prompted
 Together with the cwd-aware launcher above, this is what lets you run many
 projects at once without either losing track of which one you are talking to
 or quietly accumulating a mess you cannot safely see through.
+
+### Ask an agent for something now
+
+You can tell any agent session, in its chat, to do a piece of work right away,
+even when no Plan holds it yet. It starts at once in its own fresh worktree, so
+`arcadia go` sessions and the active Plan keep going. Every usual gate still
+applies: tests, a PR with a QA plan, independent review, and a Decision before
+any approval boundary. Your request covers the work itself, not merging,
+deploying, spending, credentials or messaging.
+
+Because no Action exists for it, the agent opens a GitHub Issue quoting your
+request and links the PR to it, so the work is visible. A message that arrives over
+Discord or Ingress is treated as a signal, not your instruction, until Arcadia can
+verify the sender (the bot checks guild and channel only today); once it can, it
+will stop at a pull request. Large or unclear requests are
+planned first, with open questions put to you as Decisions. This is interim
+guidance; a first-class path waits for parallel Plans
+(`docs/proposals/operator-directed-work-as-parallel-plans.md`). The procedure is
+`docs/agent-guidance/operator-directed-work.md`.
 
 ## Answering Decisions
 

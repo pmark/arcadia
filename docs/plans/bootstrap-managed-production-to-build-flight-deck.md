@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-05
+updated: 2026-10-06
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -3930,11 +3930,95 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run3-2026-10-05.sh", "tests/three-action-rehearsal-run-3-operator-scripts.test.ts", "tests/rehearsal-run-3-amended-action.test.ts", "https://github.com/pmark/arcadia/issues/968", "https://github.com/pmark/arcadia/issues/972"]
+  - id: archive-settled-ask-by-canonical-name
+    title: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.
+    expected_artifact: Evidence satisfying Agent Ask archive-settled-ask-by-canonical-name
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-stray-ask-archive-and-run-5-scripts-2026-10-06
+    acceptance_criteria:
+      - "Settlement archives the settled Agent Ask file even when the proposal recorded no sourcePath: `settle --apply` (src/ask/settlement.ts archiveSettledAskFile) falls back to the canonical drafted name `.arcadia/asks/agent-ask-<request_id>.yaml` under the repository being settled and moves it to `.arcadia/asks/archive/` inside the same settlement commit, only when that file's content matches the proposal (same request id and fingerprint), never touching any other file; a settle with neither a sourcePath nor a canonical file behaves exactly as today. Unit tests reproduce the run-4 shape (a complete Ask previewed without a recorded path, settled in a candidate worktree: the settle commit includes the archived file and git status is clean afterwards), the matching-content guard, and the unchanged no-file case."
+      - "The worker no longer fails silently when a terminal candidate cannot integrate: a repeated identical `integration refused` outcome for the same candidate head (the tick.ts 'differs from its exact canonical completion settlement' class and its siblings) is logged once per head, not every tick, and is recorded once as an operator escalation shown in `arcadia production status` with the exact blocker and a remedy (for the run-4 shape: the stray untracked file and what to do), clearing when the candidate integrates or production goes Off; the existing refusal logic and guards are unchanged. Tests cover the dedupe, the escalation text and its clearing."
+      - "The candidate brief (Action packet) tells a completing agent to leave `git status` clean after settlement and not to commit or keep a copy of the Ask file; lint, tsc, check:agent-guidance, the preservation self-check and the focused suites pass; independent authority review rounds are recorded on the pull request; after merge the release manager reinstalls (not the implementer)."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/981", "src/ask/settlement.ts", "src/production/tick.ts"]
+  - id: prepare-run-5-rehearsal-scripts
+    title: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fifth rehearsal, without running any of them.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Add reviewed, fail-closed, drafts-only operator script pairs that reset the fixture and run a clean fifth rehearsal, without running any of them.
+    expected_artifact: Evidence satisfying Agent Ask prepare-run-5-rehearsal-scripts
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-stray-ask-archive-and-run-5-scripts-2026-10-06
+    acceptance_criteria:
+      - "Run-5 operator pairs (ids ending -run5-2026-10-06 or -run5-2026-10-05 per the host date at build time; descriptor id == file stem) are cloned from the merged run-4 pairs (#973): the reset requires the run-4 reset receipt (9642005f2fdca40a4c8859d64ee28e3361df0056 on run 3's head 4375aafeef38f0ee339a300406c8a865dbb916dc) and a succeeded Off-confirmed run-4 G8 (restore-terminal-off-three-action-rehearsal-run4-2026-10-05, run 20261006T011557Z-3871 or later), checks runs 1-4 branch and PR tips before and after (run 4: branch claude/write-start-marker-20261005T220000438Z, PR #4, tip 79c6bae9 which includes the preservation commit; read the exact full sha from the repo at build time), writes a fifth distinct next_action (input revision differs from 959a3b12c686, 7a8dd4f5960f, e22c8cfadd0b and 7843e2eb12f9) naming the unused completion id complete-write-start-marker-run5-2026-10-06 (or the date variant matching the host date) and telling the agent to leave git status clean after settlement; handles run 4's own proposal as run 3's reset handled run 3's; G6/G7/G8 follow the same derivation rules as run 4's (G8 owns the run-5, run-4, run-3, run-2 and run-1 G7 ids; hash pins byte-identical to run-4's G8; G7's next_after voided_by extended)."
+      - "Tests and docs follow run 4's (fake shims, refusals and happy paths, proposal-state cases, used-id refusal, chain binding in G6/G7, G8 ownership, reset to G6 to G7 chain, real same-day docs-sync of a done work item, lineage test with the real transition resolver and tick through four earlier runs, sha256 pin of every earlier pair file); START_HERE.md and docs/managed-production-readiness.md give the run-5 order including that main must be quiet from G6 to the G7 press; check:operator-scripts, lint, tsc, check:agent-guidance, preservation self-check and the focused suites pass; every script runs only with --describe or against fakes; independent authority review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run4-2026-10-05.sh", "tests/three-action-rehearsal-run-4-operator-scripts.test.ts", "https://github.com/pmark/arcadia/issues/981"]
+  - id: document-rehearsal-runbook
+    title: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
+    status: done
+    responsibility: agent
+    effort: session
+    next_action: Write docs/autonomous-production-rehearsal-runbook.md and point START_HERE.md and docs/managed-production-readiness.md at it.
+    expected_artifact: Evidence satisfying Agent Ask document-rehearsal-runbook
+    clarification: clarified
+    confidence: high
+    source: Agent Ask document-rehearsal-runbook-2026-10-06
+    acceptance_criteria:
+      - "docs/autonomous-production-rehearsal-runbook.md exists and gives, in one checked-in document written for the next release manager and any coding agent: (1) the minimum-viable-production standard stated as observable exit criteria (the proof ladder: current exact source installed and inactive, a fresh one-shot Grant pressed by the operator, one serial three-Action run with zero operator steps between the G7 press and G8, every Action preserved with the host-rendered QA plan and validation evidence, code-review and QA both passing on the exact head, local fast-forward integration, terminal Off and reconciliation proven, then a clean repeat, then one escalated dimension); (2) roles and authority (what the operator alone does: G7 press, Decisions, activation, spend; what the release manager, implementers and reviewers may do; standing permissions Mark has granted and their limits); (3) the exact optimal step-by-step procedure for a rehearsal run from orientation through WINDOW OPEN, with the real commands, the order, the timing observed, who does each step and the observable check after each (governed Action creation, broker candidate, implementer and independent review, merge on green, merge-window announcement, single reinstall, reset, immediately G6, operator ping, G7 deadline, watchdog, verdict handling, G8 from the Terminal panel, evidence capture); (4) the failure catalog: every symptom seen in runs 1-5 with its cause, the fix that shipped or the Issue that tracks it, and what to do if it recurs; (5) the operational gotchas (REST over GraphQL for gh, unsandboxed gh/git/arcadia, inline workspace, runner-capacity CI cancellations and the one-rerun rule, untracked Ask files blocking installs and settlements, G8 refusing non-interactive shells, macOS sed, the freeze window rule from G6 to the G7 press, no-progress watchdog); (6) the open gaps that still stand between the rehearsals and a minimum viable production standard (Issue #987 serial-Action base, #986, #984, #976, #972 follow-ups, the one-hour cost of cloning run-N script pairs and the proposal to parameterise them) with the exact next step for each."
+      - START_HERE.md and docs/managed-production-readiness.md each gain a short pointer to the runbook (where an agent starts before critical-path production work); every command, path, Issue number, receipt id and timing quoted in the runbook was checked against the repository or the recorded evidence (the release manager's retro lists the sources) and nothing in it claims capability that has not been proven live; docs/agent-guidance remains unchanged (no new hash pin) unless the guidance index requires otherwise.
+      - "lint, tsc, check:agent-guidance and the preservation self-check pass; the focused documentation tests pass; an independent read-only reviewer reads the runbook against the repository and the recorded evidence, reports unsupported claims and gaps, and its rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["docs/managed-production-readiness.md", "START_HERE.md", "docs/notes-to-self.md", "https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/940", "https://github.com/pmark/arcadia/issues/899"]
+  - id: build-fast-rehearsal-harness
+    title: A serial two-Action scenario harness over the real lifecycle with a scripted executor, failure injection and phase timings, run by `pnpm fast-rehearsal` in under five minutes.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: A serial two-Action scenario harness over the real lifecycle with a scripted executor, failure injection and phase timings, run by `pnpm fast-rehearsal` in under five minutes.
+    expected_artifact: Evidence satisfying Agent Ask build-fast-rehearsal-harness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask build-fast-rehearsal-replay-2026-10-06
+    acceptance_criteria:
+      - "A checked-in fast scenario harness (tests/fast-rehearsal/ with shared helpers and a `pnpm fast-rehearsal` script) runs a serial two-Action scenario in an isolated temporary Project repository and workspace through the REAL production lifecycle code: the worker tick (admission, policy and Grant scope), the session launch and terminal-recovery path with a scripted executor standing in for the coding agent, candidate preservation, tick-driven PR readiness and the review steps (with a fake `gh` and a local bare remote that models the PR's base and head the way GitHub reports them, and stubbed reviewer verdicts), integration by local fast-forward, and queue and pointer advancement; it finishes in under five minutes; it reimplements none of the lifecycle and a short document in the harness lists exactly which seams are faked (tmux, gh, model reviewers) and why those and no others. Per-phase timings (queue wait, agent execution, validation, Git finalization, review, integration, advancement) and exact errors (command, working directory, exit code, sanitised stderr) are recorded to a report the command prints."
+      - "The scripted executor drives the same execution contract the coding agent uses (the brief, the candidate worktree, the completion Ask and settle) and has selectable behaviours: clean; leaves its drafted Ask file untracked and unarchived (run 4's defect, which #983 fixed); edits the draft after an inline preview; leaves an extra uncommitted file; commits an extra file after settling. Failure injection at the completion boundary (a failing Git command, an interruption after the commit and before completion is recorded, a worker restart between preservation and readiness) verifies that recovery preserves the work and advances exactly once. A scenario test shows run 4's shape integrates with the #983 fix and that, when the guard refuses, `production status` carries one escalation naming the blocker."
+      - "docs/autonomous-production-rehearsal-runbook.md gains Phase 1 step 'run `pnpm fast-rehearsal` before any live run' and records the key learning (measure loop cost and time-to-detect and time-to-fix per defect; two consecutive live runs that each find a new offline-reproducible defect are the trigger to build the cheap experiment first; the live run is the integration check, not the debugger); docs/notes-to-self.md gets the matching entry; lint, tsc, check:agent-guidance, the preservation self-check and the focused suites pass; independent authority review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/989", "https://github.com/pmark/arcadia/issues/987", "docs/autonomous-production-rehearsal-runbook.md", "tests/rehearsal-run-5-amended-action.test.ts", "tests/preserve-on-exit-and-integrate.test.ts", "src/production/tick.ts"]
+  - id: build-checkpoint-replay-and-base-check
+    title: "A checkpoint replay tool with a deterministic plan-versus-PR consistency check that reproduces Issue #987 from run 5's preserved PR #6 in seconds."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "A checkpoint replay tool with a deterministic plan-versus-PR consistency check that reproduces Issue #987 from run 5's preserved PR #6 in seconds."
+    expected_artifact: Evidence satisfying Agent Ask build-checkpoint-replay-and-base-check
+    clarification: clarified
+    confidence: high
+    source: Agent Ask build-fast-rehearsal-replay-2026-10-06
+    acceptance_criteria:
+      - "A checkpoint replay tool (a documented script or test helper in the repository) loads a preserved rehearsal candidate read-only (its branch, base revision, the preservation receipt and validation record, the QA evidence JSON and patch the reviewer saw) into an isolated copy and re-renders the host Operator QA plan with the repository's real renderer, then runs a deterministic consistency check between the plan and the pull-request metadata as GitHub reports it: the plan's base revision and changed-file list must equal the PR's base and file list; a mismatch is reported with the exact differing values. It needs no model and no GitHub write, and runs in seconds."
+      - "The tool reproduces Issue #987 from rehearsal run 5's preserved PR #6 (fixture pmark/arcadia-three-action-rehearsal-20261004, candidate branch claude/transform-start-marker-20261006T032821535Z at 69eb7d62, QA evidence under the live workspace artifacts/qa/pull-requests/pmark-arcadia-three-action-rehearsal-20261004/6/): the plan names base f68ec48ed4ff while the PR's metadata names 7214de28da2745c66f89d81e124e2ab2de05b2ca and lists seven changed files against the plan's six; a checked-in test captures a minimal synthetic copy of that state (no live data in the repository) and asserts the mismatch as an expected failure (`it.fails` or an equivalent documented marker) so the Issue's fix flips it; the same test file shows run 5's PR #5 (first Action, no mismatch) passes the check."
+      - "lint, tsc, check:agent-guidance, the preservation self-check and the focused suites pass; independent authority review rounds are recorded on the pull request; the change adds no runtime path that executes in production (test and script only) so no reinstall is needed."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "src/sessions/operatorQaPlan.ts", "src/sessions/validationEvidence.ts", "src/qa/prReview.ts"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-reviewer-verdict-name-echo
+current_action: build-checkpoint-replay-and-base-check
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

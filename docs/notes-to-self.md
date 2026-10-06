@@ -300,16 +300,17 @@ A generated managed document is judged by real Arcadia code, never a canned `err
 
 ## Re-run a passed Action on a reused fixture
 
-keys: rehearsal run 2, rehearsal run 3, rehearsal run 4, reset, amend Action, requirement input revision, attempt_retry_not_authorized, docs sync skipped, older than the record, superseded candidate, Action claim, Transition: decision, pending Agent Ask, Issue 968
+keys: rehearsal run 2, rehearsal run 3, rehearsal run 4, rehearsal run 5, reset, amend Action, requirement input revision, attempt_retry_not_authorized, docs sync skipped, older than the record, superseded candidate, Action claim, Transition: decision, pending Agent Ask, Issue 968
 
 A passed development attempt is never relaunched for the same input. `requirementIdentity` hashes `next_action`, the acceptance criteria, the responsibility and the execution; editing the title changes nothing. Docs sync skips a Plan whose `updated:` date is older than the synced record, and its JSON still reports `errorCount: 0`, so also bump `updated:` and require the Action's change to be `update` (`unchanged` only when resuming an already-synced reset).
 A finished, unmerged candidate from the earlier input used to stop dispatch twice: the tick's terminal handoff deferred every admission, and the Action claim refused the new worktree. Both now skip it only when the worker preserved it and its own passed attempts are all for a superseded input (`developedForSupersededInput`). See `tests/rehearsal-run-2-amended-action.test.ts`.
 An equal `updated:` date applies (day-granular `stalenessOf` in `src/docs/sync.ts`); only an older one is skipped.
-A pending (unsettled) Agent Ask proposal naming the selected Action makes `resolveProjectTransition` answer `Transition: decision`, and the tick launches nothing without saying why (#968; run 2 lost 33 minutes). Read it with `arcadia agent-ask pending`; the run-3 reset rejects only run 2's own one (the run-4 reset only run 3's), and only while it is pending, and refuses any other. See `tests/rehearsal-run-3-amended-action.test.ts` and `tests/rehearsal-run-4-amended-action.test.ts`.
+A pending (unsettled) Agent Ask proposal naming the selected Action makes `resolveProjectTransition` answer `Transition: decision`, and the tick launches nothing without saying why (#968; run 2 lost 33 minutes). Read it with `arcadia agent-ask pending`; the run-3 reset rejects only run 2's own one (the run-4 reset only run 3's, the run-5 reset only run 4's), and only while it is pending, and refuses any other. See `tests/rehearsal-run-3-amended-action.test.ts` to `tests/rehearsal-run-5-amended-action.test.ts`.
+Run 4's Plan says `updated: 2026-10-05`, so a reset on a later UTC day bumps the date line; the run-5 tests prove that bump (and the reopening of a `done` record) with the real docs sync. Pin the records' `updated_at` before such a test so it stays valid on any later day.
 
 ## Rehearsal G6 receipt voided, or G8 refused "launch this action through /runs or from an interactive host terminal"
 
 keys: rehearsal, G6, G7, G8, preflight voided, arcadiaHead, brokerRevision, freeze, non-interactive, TTY, Terminal panel, launch_context
 
 G7 accepts a G6 receipt only while `arcadiaHead` equals main now and `brokerRevision` the installed broker now: any push to Arcadia main (even a governed settle commit) or reinstall/restart (an accidental G8 press) between G6 and the G7 press voids it. Run 2's G6 was rerun twice for that; push nothing from G6 until the press.
-G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is set, so an agent's or script's shell cannot run it; run it from the Terminal panel or `/runs`. That refusal runs no Arcadia command, and the run-3 and run-4 resets ignore such receipts when they look for the previous run's terminal Off.
+G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is set, so an agent's or script's shell cannot run it; run it from the Terminal panel or `/runs`. That refusal runs no Arcadia command, and the run-3, run-4 and run-5 resets ignore such receipts when they look for the previous run's terminal Off.

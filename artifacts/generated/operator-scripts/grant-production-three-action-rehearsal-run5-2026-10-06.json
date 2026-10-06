@@ -1,0 +1,57 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "grant-production-three-action-rehearsal-run5-2026-10-06",
+  "kind": "grant",
+  "title": "G7 (run 5): Grant the fifth disposable three-Action rehearsal at the run-5 reset fixture head (12h; accepts Decision 0058 for PR readiness and reviews, #925 answered yes in the Log; never GitHub merge)",
+  "script": "grant-production-three-action-rehearsal-run5-2026-10-06.sh",
+  "repeatable": false,
+  "next_after": {
+    "id": "preflight-three-action-rehearsal-run5-2026-10-06",
+    "within_minutes": 30,
+    "voided_by": [
+      "restore-terminal-off-three-action-rehearsal-run5-2026-10-06",
+      "restore-terminal-off-three-action-rehearsal-run4-2026-10-05",
+      "restore-terminal-off-three-action-rehearsal-run3-2026-10-05",
+      "restore-terminal-off-three-action-rehearsal-2026-10-05",
+      "restore-terminal-off-three-action-rehearsal-2026-10-04",
+      "recover-arcadia-host-services",
+      "reinstall-go-broker",
+      "reset-three-action-rehearsal-fixture-run5-2026-10-06",
+      "reset-three-action-rehearsal-fixture-run4-2026-10-05",
+      "reset-three-action-rehearsal-fixture-run3-2026-10-05",
+      "reset-three-action-rehearsal-fixture-2026-10-05"
+    ],
+    "when_production": "inactive"
+  },
+  "problem": "OPERATOR ACKNOWLEDGEMENT REQUIRED BEFORE PRESSING (https://github.com/pmark/arcadia/issues/925): the production tick pushes the settled head, marks the host-created PR ready and spends reviewer-model tokens only when the policy carries BOTH --remote-preservation AND a current Decision 0058 integration grant naming the Action. The operator answered #925 yes on 2026-10-05 (Decision 0058 covers gh pr ready, the settled-head push and reviewer spend during a managed rehearsal), recorded in Log operator-answers-rehearsal-run2-2026-10-05 (commit 133e503dc, clarified by 49b1342a8) and the operator's chat confirmations of 2026-10-05; that answer created no Decision and grants nothing by itself. Pressing this Grant records that you accept Decision 0058 for that use, for these three disposable fixture Actions only and until the 12-hour expiry; if you do not, do not press. Rehearsal run 5 needs one bounded live authorization on the run-5 reset fixture: the 2026-10-04, 2026-10-05, run-3 and run-4 Grants are consumed (one-shot, request ids already used) and bound to G1's genesis or run 2's, run 3's or run 4's reset head, so they are retired from use; this Grant has its own request id and binds the fixture head recorded by the latest succeeded reset-three-action-rehearsal-fixture-run5-2026-10-06 receipt. The production tick must preserve each fixture Action to a draft PR, ready it, run both independent reviews and integrate by local fast-forward with no operator step. A generic activation would be too broad, and a stale preview, release, preflight or fixture head must not be activated. Press it within 30 minutes of a passing run-5 G6, with nothing pushed to Arcadia main, reinstalled or restarted and no G8 run in between (run 2's G6 had to be rerun twice: once after a governed settle commit moved main, once after an accidental G8 press moved the installed release).",
+  "desired_effect": "Pressing accepts Decision 0058 for these three fixture Actions only (#925, answered yes in Log operator-answers-rehearsal-run2-2026-10-05 (commit 133e503dc, clarified by 49b1342a8) and the operator's chat confirmations of 2026-10-05): readying the PR, pushing the settled head and reviewer-model spend, until the 12-hour expiry. Read 'What this action does' first. After fail-closed preconditions, the fixture exactly at the run-5 reset head recorded in the latest succeeded run-5 reset receipt for its repository (one commit on run 4's reset head 9642005f2fdca40a4c8859d64ee28e3361df0056, itself one commit on run 3's reset head 4375aafeef38f0ee339a300406c8a865dbb916dc, one on run 2's reset head 0d3d2cedc5548da41896201688a1dc0210208ea4 and one on G1's genesis), a passing run-5 G6 receipt (preflight-three-action-rehearsal-run5-2026-10-06) no older than 30 minutes bound to the same main, installed release, workspace, fixture, reset head, reset receipt and policy revision, and a passing host replay of tests/rehearsal-three-action.test.ts (all three variants including the tick-driven review variant, five-minute bound), recheck main, release, fixture head, leases and policy, preview at the current policy revision, preview again immediately before activation requiring the identical fingerprint and revision, activate once with that expected revision and request id grant-production-three-action-rehearsal-run5-2026-10-06, then verify the activated fingerprint equals the preview and turn this Grant Off on any mismatch: Project three-action-rehearsal, Plan autonomous-three-action-rehearsal, Actions write-start-marker, transform-start-marker and verify-final-rehearsal in order, provider claude-code-cli, concurrency one, transitions validation, acceptance, pointer and packet_approval with a 12-hour packet-approval expiry, --remote-preservation, and a 12-hour Decision 0058 integration grant naming each of the three Actions.",
+  "operator_command": "/Users/pmark/Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run5-2026-10-06.sh run",
+  "authority": {
+    "does": [
+      "Requires the #925 acknowledgement stated at the start of the problem (answered yes in Log operator-answers-rehearsal-run2-2026-10-05 (commit 133e503dc, clarified by 49b1342a8) and the operator's chat confirmations of 2026-10-05; that answer created no Decision): pressing accepts Decision 0058 for pushing the settled head, readying the PR and reviewer spend for these three fixture Actions only, until expiry",
+      "Runs only when launched from /runs (exact id and descriptor) outside any agent sandbox",
+      "Requires main clean, level with last-fetched origin/main and with a fresh 30-second git ls-remote of origin main, containing #922, #924 and #983 (the canonical-name Ask archive fix for the run-4 stall), Decision 0058 approved, an installed broker release that is ready and runtime-identical to main, and fresh host transports",
+      "Requires the fixture clean on main with the exact manifest and origin at exactly the run-5 reset head that the latest succeeded reset-three-action-rehearsal-fixture-run5-2026-10-06 receipt for its repository recorded (newHead, with previousMain run 4's reset head 9642005f2fdca40a4c8859d64ee28e3361df0056 as its only parent, run 3's reset head 4375aafeef38f0ee339a300406c8a865dbb916dc as that head's parent, run 2's reset head 0d3d2cedc5548da41896201688a1dc0210208ea4 below it, genesis the fixture's single root and GitHub main confirmed at that head), production Inactive with zero live admissions, and the latest run-5 G6 receipt (preflight-three-action-rehearsal-run5-2026-10-06) succeeded, at most 30 minutes old and bound to the same main (arcadiaHead equal to main's head now), installed release (brokerRevision equal to the installed broker now), workspace, fixture, reset head, reset receipt and policy revision",
+      "Runs the hermetic three-Action rehearsal on the host before any preview; failure, timeout, a missing tick variant or an agent sandbox prevents activation; afterwards it rechecks main, the installed release, the fixture head, fixture leases and the policy revision before previewing",
+      "Previews at the current policy revision, previews again immediately before activation and requires the identical fingerprint and revision, activates once with request id grant-production-three-action-rehearsal-run5-2026-10-06 and --expected-revision, then verifies the activated fingerprint; activate itself recomputes scope from the queue and takes no fingerprint, so a mismatch is detected afterwards and returns this Grant to Off",
+      "Permits only the reviewed scope and draft-PR remote preservation, and, under Decision 0058 for this use (#925, answered yes), pushing the settled head, readying the host-created PR and running arcadia qa code-review and arcadia qa pr before local fast-forward integration, which the tick does only while the policy carries both --remote-preservation and the Decision 0058 grant naming the Action",
+      "After any activation attempt that does not verify (including a failed, timed-out or unparsable activate, or SIGTERM/SIGINT), reads production status back, returns only its own Grant to Off if it is Active, and records the observed state (or UNKNOWN, telling you to run G8 now) in a timestamped receipt and failure handoff. SIGKILL or a host crash cannot be handled by any trap; if the run vanishes after activation, run the run-5 G8 (restore-terminal-off-three-action-rehearsal-run5-2026-10-06) from the Terminal panel or /runs, which turns off exactly this Grant's policy"
+    ],
+    "never_does": [
+      "Never authorizes a GitHub merge or a push to any base branch; integration is the local fast-forward and origin main never moves",
+      "Never grants another Project, Plan, Action, provider, transition or a concurrency above one, and never lifts the concurrency gate",
+      "Never launches, terminates or resumes a Session, restarts a service, or reactivates production after Off",
+      "Never activates twice under its request id: it refuses when the current policy already carries this request id, and a later rerun with the same id cannot add an activation (the activate command replays the recorded receipt for the same scope or refuses a different scope with 'Use a new request id'); the one-shot button stays disabled after success",
+      "Never changes credentials, branch protection, repository settings or any Decision",
+      "Never changes the fixture, its Plan, runs 1, 2, 3 and 4's candidates or pull requests #1, #2, #3 and #4, and never reuses the consumed 2026-10-04, 2026-10-05, run-3 or run-4 Grant or their request ids"
+    ]
+  },
+  "success": {
+    "effect": "One scoped, expiring policy is Active under request id grant-production-three-action-rehearsal-run5-2026-10-06 whose recorded fingerprint equals both previews; the receipt names the only admitted Actions, the expiry, the run-5 fixture reset head, the installed release and the G6 and reset receipts it relied on.",
+    "next": "Observe the tick admit write-start-marker, then each dependent Action in turn, through production status and the dashboard. When the rehearsal ends or anything looks wrong, run the run-5 G8 (restore-terminal-off-three-action-rehearsal-run5-2026-10-06) from the Terminal panel or /runs, never from a non-interactive shell."
+  },
+  "failure": {
+    "effect": "If no activation was attempted, policy is unchanged. After an attempt, the script reads production status back, returns only its own Grant to Off when it is Active, and records the observed result (not_active, returned_off, other_grant_active, OFF_FAILED or UNKNOWN).",
+    "next": "Do not press again blindly. Read the handoff; if it says OFF_FAILED or UNKNOWN, run the run-5 G8 now from the Terminal panel or /runs. Otherwise resolve the named drift, rerun the run-5 G6 and request a fresh G7."
+  }
+}
