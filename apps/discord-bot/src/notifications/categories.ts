@@ -9,6 +9,8 @@ import type { LogLevel } from "../logging.js";
  * needs the operator's answer or attention is not a category: it stays in the
  * default channel, where replies, review items and the ask ingress live.
  */
+const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+
 export const NOTIFICATION_CATEGORIES = ["alerts", "briefings", "log"] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
@@ -150,7 +152,9 @@ export async function fetchCategoryChannel(
         });
         const fallback = await fetchSendable(config.discordChannelId);
         if (!fallback) throw error;
-        return fallback.send({ content: `(Routed from "${category}", whose channel rejected the post.)\n${payload.content}` });
+        // The caller already truncated to Discord's limit; the note must fit inside it too.
+        const note = `(Routed from "${category}", whose channel rejected the post.)\n`;
+        return fallback.send({ content: note + payload.content.slice(0, Math.max(0, DISCORD_MAX_MESSAGE_LENGTH - note.length)) });
       }
     }
   };

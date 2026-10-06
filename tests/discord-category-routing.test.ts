@@ -178,6 +178,16 @@ describe("fetchCategoryChannel", () => {
     expect(logs).toEqual(["warn"]);
   });
 
+  it("keeps a rerouted maximum-length post inside Discord's 2000-character limit", async () => {
+    const posted: string[] = [];
+    const denied = { id: BRIEFINGS_ID, send: async () => { throw new Error("Missing Permissions"); } };
+    const defaultChannel = { id: DEFAULT_ID, send: async (payload: { content: string }) => { posted.push(payload.content); return { id: "d1" }; } };
+    const channel = await fetchCategoryChannel(clientFor({ [BRIEFINGS_ID]: denied, [DEFAULT_ID]: defaultChannel }), config, "briefings", () => {});
+    await channel!.send({ content: "x".repeat(2000) });
+    expect(posted[0].length).toBeLessThanOrEqual(2000);
+    expect(posted[0]).toContain('Routed from "briefings"');
+  });
+
   it("throws, so the post is retried next tick, when both channels reject the send", async () => {
     const denied = (id: string) => ({ id, send: async () => { throw new Error("Missing Permissions"); } });
     const channel = await fetchCategoryChannel(clientFor({ [BRIEFINGS_ID]: denied(BRIEFINGS_ID), [DEFAULT_ID]: denied(DEFAULT_ID) }), config, "briefings", () => {});
