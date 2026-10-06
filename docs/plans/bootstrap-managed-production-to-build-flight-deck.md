@@ -4086,7 +4086,7 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run5-2026-10-06.json", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run5-2026-10-06.json", "https://github.com/pmark/arcadia/issues/987"]
   - id: fix-qa-plan-check-wording
     title: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
@@ -4105,7 +4105,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-qa-plan-check-wording
+current_action: fix-serial-pr-base-stacking
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

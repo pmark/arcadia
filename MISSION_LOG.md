@@ -1878,3 +1878,10 @@ updated: 2026-10-06
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-06 — Completed arcadia/fix-qa-plan-check-wording
+
+- **Did:** Completed Action arcadia/fix-qa-plan-check-wording from accepted evidence (Candidate f558b7822ea97881ec3f78a5db263031b9d5071f).
+- **Result:** Every declared acceptance criterion was accepted as met: "In src/sessions/operatorQaPlan.ts a criterion that is satisfied by running a declared validation command, or that names a script or command that must pass, renders as an inspection step whose Expected line is limited to what inspection shows (the file exists and what it contains) and points the proof of 'passes' explicitly at the declared-validation step and its exit-zero result; no QA criteria, reviewer prompts or other plan steps change; a unit test pins that the rendered step never claims source display proves a pass."; "A read-only check with the real QA reviewer on a plan rendered for run 5's Action 1 shape (as done for #974, recording the command and both verdict reports) shows no 'Operator QA plan' finding in two verdicts; if the reviewer cannot be run read-only from the candidate, the pull request says so plainly and the next live run's first QA verdict is named as the check."; "Lint, tsc, `pnpm fast-rehearsal` and the focused suites pass; the runbook failure catalog and Issue #986 are updated; independent review rounds are recorded on the pull request.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-qa-plan-check-wording-2026-10-06).
