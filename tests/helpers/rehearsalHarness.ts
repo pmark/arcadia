@@ -823,18 +823,21 @@ function hostPullRequest(branch: string, head: string) {
  * `not-applicable` simulates a code reviewer that judges correctness and
  * reports every other criterion not-applicable to a marker-only candidate,
  * naming the files the patch touches (the honest answer for such a patch).
+ * `variance` simulates run 6's zero-defect non-pass (Issue #1018): needs-follow-up
+ * with no finding, every criterion pass except the last, which is not-checked.
  */
-export type HostModelVerdict = "pass" | "fail" | "not-applicable";
+export type HostModelVerdict = "pass" | "fail" | "not-applicable" | "variance";
 
 function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect"): QaPrModelVerdict {
   return {
-    verdict: verdict === "fail" ? "fail" : "pass",
-    summary: verdict === "fail" ? "A defect blocks this head." : "No defects in the exact head.",
+    verdict: verdict === "fail" ? "fail" : verdict === "variance" ? "needs-follow-up" : "pass",
+    summary: verdict === "fail" ? "A defect blocks this head." : verdict === "variance" ? "No defect found, but one criterion is not established." : "No defects in the exact head.",
     findings: verdict === "fail" ? [{ severity: "blocker", title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
-    checks: criteria.map((criterion) => ({
+    checks: criteria.map((criterion, index) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
-      status: verdict === "fail" ? "fail" : verdict === "not-applicable" && criterion.id !== "correctness" ? "not-applicable" : "pass",
+      status: verdict === "fail" ? "fail" : verdict === "variance" && index === criteria.length - 1 ? "not-checked"
+        : verdict === "not-applicable" && criterion.id !== "correctness" ? "not-applicable" : "pass",
       evidence: verdict === "not-applicable" && criterion.id !== "correctness"
         ? `The patch touches only MARKER.md and Arcadia's governed settlement records, none of which can affect ${criterion.name.toLowerCase()}.`
         : `${criterion.name} judged against the patch.`

@@ -26,9 +26,22 @@ the installed host, shows all of the following with evidence:
    preserved as a draft PR whose body carries the host-rendered Operator QA plan
    and validation evidence, readied and pushed (settled head) by the tick, and
    judged by both independent reviewers (code review and QA) on the exact head.
-4. Both verdicts PASS on the first attempt. A rerun is an operator-attention
-   event: it is allowed once under standing permission (section 3) but a run that
-   needs one has not met this criterion.
+4. Both verdicts PASS on the first attempt, or after the tick's own bounded
+   reruns of pure reviewer variance. A **variance verdict** is a non-pass
+   code-review or QA verdict with no finding other than the deterministic gate's
+   refused not-applicable claims and no criterion judged `fail` (every non-pass
+   criterion is a refused not-applicable or `not-checked`). By the operator's
+   2026-10-06 choice (Issue #1018; runs 1, 3, 5 and 6 each stopped on one) the
+   tick reruns such a verdict automatically, at most 2 more times (3 attempts in
+   total) per verdict kind per exact head, each rerun named once in the worker
+   log and `production status` (verdict kind, attempt n of 3, reason); a new head
+   restarts the count. A verdict with any real finding or any criterion judged
+   `fail` stops at once on `independent_verdict_failed`, as does a third
+   variance verdict (its entry says the reruns are spent). An automatic rerun is
+   not an operator step, so criterion 2 stands. A rerun the **operator or
+   release manager** runs (`--rerun`) is an operator-attention event: allowed
+   once under standing permission (section 3), but a run that needs one has not
+   met this criterion.
 5. The worker integrates each candidate by local fast-forward (never a GitHub
    merge or base push) and admits the next Action without an operator step.
 6. G8 proves terminal Off with zero live admissions and Sessions, and every
@@ -130,6 +143,16 @@ peer session once recorded a Log entry saying the answers were "given directly
 to Claudia Atlas in chat" when they had only been relayed; the release manager
 refused it as evidence). Open decision: record a scoped standing permission as a
 governed Log entry so future sessions need not ask again.
+
+**Variance reruns (2026-10-06, recorded from the release manager's chat; the
+Agent Ask and its PR hold the decision):** the operator chose that the tick
+itself reruns a variance verdict (criterion 4) at most twice more per verdict
+kind per exact head. That changes the repair budget, not authority: it spends
+only the already-granted reviewer calls, never reruns a verdict with a real
+finding or a criterion judged `fail`, and changes nothing about review,
+readiness, integration, the Grant or Decision 0058. Until the PR that
+implements it is merged and the installed host runs it, the old rule holds (any
+non-pass verdict stops the run).
 
 ## 4. Pre-flight checklist (go or no-go)
 
@@ -361,10 +384,19 @@ in `production status`, both verdicts, then integration (the fixture's **local**
   corrected plan preamble and the completion-settlement line.
 - A **failed verdict never integrates.** Read the report (workspace
   `artifacts/qa/pull-requests/<repo>/<PR>/<sha>/attempts/*/qa-report.md` and
-  `artifacts/code-review/...`). With the operator's yes for this session, one
-  rerun per failing verdict is allowed: `arcadia qa pr <PR url> --rerun`; record both
-  verdicts and do not rerun a second time. File every genuine finding as an
-  Issue with a revival trigger.
+  `artifacts/code-review/...`). A **variance** verdict (no finding but the
+  gate's refused not-applicable claims, no criterion judged `fail`; the report
+  says "Refused not-applicable claim" or lists `not-checked` criteria with
+  "Ordered findings: None") is rerun by the tick itself, up to 3 attempts per
+  verdict kind per head: do nothing, and read the worker log lines "Automatic
+  rerun of the independent ..." and the `Now:` text of the
+  `awaiting_independent_verdicts` entry. Only when the entry becomes
+  `independent_verdict_failed` ("the automatic reruns are spent", or a real
+  finding) is the verdict final. With the operator's yes for this session, one
+  manual rerun per such final verdict is allowed: `arcadia qa pr <PR url> --rerun`;
+  record both verdicts and do not rerun a second time (a variance verdict that
+  has spent its reruns stays stopped until a pass or a new head). File every
+  genuine finding as an Issue with a revival trigger.
 - **Active with no admitted work:** run `arcadia advance --repo
   /Users/pmark/tmp/arcadia-three-action-rehearsal` (the fixture clone). `Transition:
   decision` means a pending Agent Ask for the old input gates the Action;
@@ -416,7 +448,9 @@ broker): rerun G6.
 
 | Symptom | Cause | What to do |
 | --- | --- | --- |
-| Reviewer `needs-follow-up`, criteria `not-checked`, zero findings | A trivial patch cannot exercise the criteria | Fixed (#934-#936); if it returns, run a read-only smoke against the exact patch before touching prompts |
+| Reviewer `needs-follow-up`, criteria `not-checked`, zero findings | A trivial patch cannot exercise the criteria | Fixed (#934-#936); if it returns, run a read-only smoke against the exact patch before touching prompts. A zero-finding non-pass that still appears is **reviewer variance** (runs 1, 3, 5, 6): since Issue #1018 the tick reruns it itself, see the next two rows |
+| Worker log "Automatic rerun of the independent <code-review\|qa> ... attempt 2 (or 3) of 3; the previous verdict was reviewer variance only (...)", and `awaiting_independent_verdicts` whose `Now:` says "Automatic rerun n of 3 follows" | The last verdict was a variance verdict: no finding but the gate's refused not-applicable claims, no criterion judged `fail` (live run 6: a HIGH "Refused not-applicable claim" the deterministic checker wrote, then zero findings with Compatibility `not-checked`) | Nothing. One reviewer call per tick; a pass integrates with no operator step. Each rerun is its own lineage attempt whose receipt records `variance`; the bound counts those attempts per verdict kind and exact head, so a restart cannot spend extra calls (proven offline in `tests/fast-rehearsal/serial-verdict-variance.test.ts`, not yet seen live) |
+| `[independent_verdict_failed]` saying "the automatic reruns are spent" | Three attempts in a row on the same head were variance verdicts (1 attempt plus 2 reruns) | Read the last report; a pattern of variance on one patch is worth a read-only smoke against its exact patch before touching prompts. Fix the candidate (a new head restarts the count) or, with the operator's yes, one manual `--rerun`. Any other `independent_verdict_failed` (no "reruns are spent") is a real finding or a criterion judged `fail` and was never rerun automatically |
 | Escalation `attempt_retry_not_authorized`, nothing launches | A passed development attempt exists for an unchanged requirement input | Reset the fixture (amend `next_action`); a new fixture is blocked by G1's fixed slug and path |
 | `Active · No admitted work`, no log, `advance` says `decision` | A pending Agent Ask for the old input gates the Action (run 2) | Run-3 and later resets reject that exact proposal by state. Do **not** do it mid-run (freeze, criterion 2); in run 2 it was done to unblock a run that had already stalled, which is why it appears here. Since #997 `production status` shows such a gate as one `operator_gate_pending` entry (proposal or Decision id, and the exact settle command or the reason it cannot settle), logged once and cleared when the gate is gone (tested, not yet seen live) |
 | `production status` shows `operator_gate_pending` | A pending Agent Ask proposal or open Decision names an in-scope Action, so the tick launches nothing for it | Read the entry's remedy: settle or answer it with the command it names, or reject a stale proposal with the `--disposition rejected` command it names (preview, then `--apply --preview`); when it says the candidate already records the Action done, follow its longer route instead of rejecting alone. The tick never settles it itself |
@@ -563,7 +597,9 @@ broker): rerun G6.
    last Action straddling the expiry as the likely stop. Not exercised offline:
    ticks while an agent pane is live (stall detection over a long agent run),
    the real `gh pr create --base` on a deep stack, and reviewer variance over
-   nine Actions (criterion 4 compounds: nine first-attempt passes in a row).
+   nine Actions (criterion 4 compounds: the tick now absorbs up to two reruns
+   per verdict kind per head, Issue #1018, so a run stops only on a real
+   finding or three variance verdicts in a row; none of this has run live yet).
 8. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 

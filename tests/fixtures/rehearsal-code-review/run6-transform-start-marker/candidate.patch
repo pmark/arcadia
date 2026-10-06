@@ -1,0 +1,118 @@
+From b89efba3ac8c5dadbb3504f0f8fbc15b36428ba9 Mon Sep 17 00:00:00 2001
+From: Claudia Mason <claudia.mason@agents.arcadia.local>
+Date: Tue, 6 Oct 2026 08:57:00 -0700
+Subject: [PATCH 1/2] Append uppercase start line to MARKER.md, add marker test
+
+Implements transform-start-marker: appends "THREE-ACTION REHEARSAL
+START" after the start line and adds tests/marker.test.mjs asserting
+both lines appear in order under node --test.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+---
+ MARKER.md             |  1 +
+ tests/marker.test.mjs | 10 ++++++++++
+ 2 files changed, 11 insertions(+)
+ create mode 100644 tests/marker.test.mjs
+
+diff --git a/MARKER.md b/MARKER.md
+index 4c42e32..155aa32 100644
+--- a/MARKER.md
++++ b/MARKER.md
+@@ -1 +1,2 @@
+ three-action rehearsal start
++THREE-ACTION REHEARSAL START
+diff --git a/tests/marker.test.mjs b/tests/marker.test.mjs
+new file mode 100644
+index 0000000..bf7631c
+--- /dev/null
++++ b/tests/marker.test.mjs
+@@ -0,0 +1,10 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { readFileSync } from "node:fs";
++
++test("MARKER.md contains the start and transformed lines in order", () => {
++  const lines = readFileSync("MARKER.md", "utf8").split("\n");
++  assert.equal(lines.at(-1), "");
++  lines.pop();
++  assert.deepEqual(lines, ["three-action rehearsal start", "THREE-ACTION REHEARSAL START"]);
++});
+
+From 2aa3e2489d151289eb47a8b3e52629f434897d07 Mon Sep 17 00:00:00 2001
+From: Claudia Mason <claudia.mason@agents.arcadia.local>
+Date: Tue, 6 Oct 2026 09:00:36 -0700
+Subject: [PATCH 2/2] chore(arcadia): settle
+ complete-transform-start-marker-run6-2026-10-06
+
+- Marked Action three-action-rehearsal/transform-start-marker done with accepted evidence for all 2 criteria.
+- Advanced to the next eligible Action in the explicit queue order. Pointer: three-action-rehearsal/verify-final-rehearsal.
+- Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml.
+
+Written by `arcadia agent-ask settle --apply` (asksettle_0c2b4536306b46fc80).
+Arcadia writes and lands its own managed documents; it did not author the
+decision they record.
+---
+ ...sk-complete-transform-start-marker-run6-2026-10-06.yaml | 1 +
+ MISSION_LOG.md                                             | 7 +++++++
+ PROJECT.md                                                 | 2 +-
+ docs/plans/autonomous-three-action-rehearsal.md            | 4 ++--
+ 4 files changed, 11 insertions(+), 3 deletions(-)
+ create mode 100644 .arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml
+
+diff --git a/.arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml b/.arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml
+new file mode 100644
+index 0000000..4a8f59a
+--- /dev/null
++++ b/.arcadia/asks/archive/agent-ask-complete-transform-start-marker-run6-2026-10-06.yaml
+@@ -0,0 +1 @@
++{"agent_ask":"v1","request_id":"complete-transform-start-marker-run6-2026-10-06","project":"three-action-rehearsal","intent":"complete","target_ref":"action/transform-start-marker","candidate_revision":"b89efba3ac8c5dadbb3504f0f8fbc15b36428ba9","evidence":[{"criterion":"MARKER.md contains exactly the start line followed by \"THREE-ACTION REHEARSAL START\", each with a trailing newline.","status":"met"},{"criterion":"tests/marker.test.mjs exists and passes under node --test, asserting both lines appear in order; \"node scripts/check-rehearsal.mjs\" passes.","status":"met"}],"desired_result":"Mark transform-start-marker complete."}
+diff --git a/MISSION_LOG.md b/MISSION_LOG.md
+index 4b9aa08..578d9ad 100644
+--- a/MISSION_LOG.md
++++ b/MISSION_LOG.md
+@@ -14,3 +14,10 @@ updated: 2026-10-06
+ - **Result:** Every declared acceptance criterion was accepted as met: "MARKER.md exists and contains exactly the line "three-action rehearsal start" followed by a trailing newline, with no other content."; "The genesis check node scripts/check-rehearsal.mjs passes.".
+ - **Next:** Advanced to the next eligible Action in the explicit queue order.
+ - **Blockers:** None recorded by this settlement (Agent Ask complete-write-start-marker-run6-2026-10-06).
++
++## 2026-10-06 — Completed three-action-rehearsal/transform-start-marker
++
++- **Did:** Completed Action three-action-rehearsal/transform-start-marker from accepted evidence (Candidate b89efba3ac8c5dadbb3504f0f8fbc15b36428ba9).
++- **Result:** Every declared acceptance criterion was accepted as met: "MARKER.md contains exactly the start line followed by "THREE-ACTION REHEARSAL START", each with a trailing newline."; "tests/marker.test.mjs exists and passes under node --test, asserting both lines appear in order; "node scripts/check-rehearsal.mjs" passes.".
++- **Next:** Advanced to the next eligible Action in the explicit queue order.
++- **Blockers:** None recorded by this settlement (Agent Ask complete-transform-start-marker-run6-2026-10-06).
+diff --git a/PROJECT.md b/PROJECT.md
+index 986e671..1cfd0f5 100644
+--- a/PROJECT.md
++++ b/PROJECT.md
+@@ -8,7 +8,7 @@ goal: Disposable fixture proving three serial Actions run unattended from one bo
+ outcome: Demonstrate three dependent Actions preserved, independently reviewed and integrated by the production tick; delete after recorded review.
+ milestone: Run the bounded three-Action rehearsal
+ active_plan: autonomous-three-action-rehearsal
+-current_action: transform-start-marker
++current_action: verify-final-rehearsal
+ updated: 2026-10-06
+ ---
+ 
+diff --git a/docs/plans/autonomous-three-action-rehearsal.md b/docs/plans/autonomous-three-action-rehearsal.md
+index 81cba55..b34fea9 100644
+--- a/docs/plans/autonomous-three-action-rehearsal.md
++++ b/docs/plans/autonomous-three-action-rehearsal.md
+@@ -25,7 +25,7 @@ actions:
+     decisions: []
+   - id: transform-start-marker
+     title: Implement appending the start line transformed to upper case ("THREE-ACTION REHEARSAL START") to MARKER.md, and add tests/marker.test.mjs asserting both lines in order.
+-    status: open
++    status: done
+     responsibility: agent
+     effort: session
+     next_action: Implement appending the line "THREE-ACTION REHEARSAL START" to MARKER.md after the start line, and add tests/marker.test.mjs asserting node --test sees both lines in order (rehearsal run 6, run id run6-2026-10-06, Action 2 of 9 in one serial chain; earlier attempts and candidates stay as evidence; record completion under the unused Agent Ask request id complete-transform-start-marker-run6-2026-10-06; leave `git status` clean after settling (settlement archives the drafted Ask file itself; do not commit or keep a copy of it; if a stray draft remains, delete it)).
+@@ -139,7 +139,7 @@ questions: []
+ decisions: []
+ recommended_model: claude-sonnet-5
+ recommended_reasoning_effort: medium
+-current_action: transform-start-marker
++current_action: verify-final-rehearsal
+ ---
+ 
+ # Autonomous three-Action rehearsal

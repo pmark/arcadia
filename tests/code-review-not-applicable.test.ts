@@ -8,6 +8,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
 import { classifyPatchApplicability, evaluateNotApplicableClaims } from "../src/qa/patchApplicability.js";
 import {
+  classifyReviewerVariance,
   CODE_REVIEW_PR_CRITERIA,
   parsePersistedQaContext,
   QA_PR_REVIEW_CRITERIA,
@@ -159,6 +160,8 @@ function review(input: {
   role?: PrReviewRole;
   /** The PR commit ids `gh pr view --json commits` reports; defaults to the patch's boundaries. */
   commits?: string[] | "unreadable";
+  /** The PR evidence `gh pr view` reports; defaults to the first live rehearsal's. */
+  evidence?: Record<string, unknown>;
 }) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-code-review-na-"));
   temporaryPaths.push(root);
@@ -175,9 +178,10 @@ function review(input: {
     upsertProjectMetadata(db, { projectId: created.project.id, repoPath: repository });
   });
   const patch = input.patch ?? REAL_PATCH;
+  const evidence = input.evidence ?? REAL_EVIDENCE;
   const pullRequest = input.files
-    ? { ...REAL_EVIDENCE, files: input.files.map((file) => ({ path: file, additions: 1, deletions: 0, changeType: "MODIFIED" })) }
-    : REAL_EVIDENCE;
+    ? { ...evidence, files: input.files.map((file) => ({ path: file, additions: 1, deletions: 0, changeType: "MODIFIED" })) }
+    : evidence;
   const calls = { prompt: "", schema: "", commitReads: 0 };
   const dependencies: QaPrReviewDependencies = {
     now: () => new Date("2026-10-04T18:00:00.000Z"),
@@ -732,6 +736,106 @@ describe("deterministic patch applicability", () => {
 
   it("never treats an empty patch as inert", () => {
     expect(classifyPatchApplicability("").inert).toBe(false);
+  });
+});
+
+/**
+ * Reviewer variance (Issue #1018): the live run-6 stop. Fixtures under
+ * tests/fixtures/rehearsal-code-review/run6-transform-start-marker are the
+ * captured attempts for pmark/arcadia-three-action-rehearsal-20261004#8 at
+ * head 2aa3e2489d15: its exact compare patch and PR evidence, and the two real
+ * reviewer verdicts (model-verdict.json verbatim). Attempt one: correctness,
+ * security, compatibility and tests pass but failure handling and state and
+ * concurrency are claimed not-applicable on a patch that adds tests/marker.test.mjs,
+ * which the deterministic checker refuses (a HIGH "Refused not-applicable claim"
+ * finding it wrote itself). Attempt two: no finding, compatibility not-checked.
+ * Both are zero real defects and must classify as variance.
+ */
+const RUN6 = path.join(FIXTURES, "run6-transform-start-marker");
+const RUN6_PATCH = readFileSync(path.join(RUN6, "candidate.patch"), "utf8");
+const RUN6_EVIDENCE = JSON.parse(readFileSync(path.join(RUN6, "evidence.json"), "utf8")) as Record<string, unknown> & { files: Array<{ path: string }> };
+const RUN6_REFUSED_VERDICT = JSON.parse(readFileSync(path.join(RUN6, "run6-refused-not-applicable-verdict.json"), "utf8")) as QaPrModelVerdict;
+const RUN6_NOT_CHECKED_VERDICT = JSON.parse(readFileSync(path.join(RUN6, "run6-compatibility-not-checked-verdict.json"), "utf8")) as QaPrModelVerdict;
+const reviewRun6 = (verdict: QaPrModelVerdict, role: PrReviewRole = "code-review") =>
+  review({ verdict, patch: RUN6_PATCH, files: RUN6_EVIDENCE.files.map((file) => file.path), evidence: RUN6_EVIDENCE, role }).result;
+
+describe("reviewer variance classification", () => {
+  it("classifies the live run-6 attempt that only had a refused not-applicable claim as variance, distinguishing the gate's finding from a reviewer's", () => {
+    const result = reviewRun6(RUN6_REFUSED_VERDICT);
+    expect(RUN6_REFUSED_VERDICT.verdict).toBe("pass");
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.reviewerUnavailable).toBeNull();
+    // The one finding is the deterministic gate's own refusal, not anything the reviewer wrote.
+    expect(RUN6_REFUSED_VERDICT.findings).toEqual([]);
+    expect(result.data.findings.map((finding) => [finding.severity, finding.title])).toEqual([["high", "Refused not-applicable claim: Failure handling, State and concurrency"]]);
+    expect(result.data.varianceReason).toMatch(/^reviewer variance only \(no finding, no criterion judged fail; refused not-applicable claim: Failure handling, State and concurrency\)\.$/);
+    expect(result.data.decision.status).toBe("deferred");
+  });
+
+  it("classifies the live run-6 attempt with zero findings and Compatibility not-checked as variance", () => {
+    expect(RUN6_NOT_CHECKED_VERDICT.verdict).toBe("needs-follow-up");
+    expect(RUN6_NOT_CHECKED_VERDICT.findings).toEqual([]);
+    const result = reviewRun6(RUN6_NOT_CHECKED_VERDICT);
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.findings).toEqual([]);
+    expect(result.data.varianceReason).toMatch(/not-checked: Compatibility\)\.$/);
+  });
+
+  it("records variance durably with the persisted verdict and reads it back when the receipt is reused, never for a pass", () => {
+    const { result, run } = review({ verdict: RUN6_NOT_CHECKED_VERDICT, patch: RUN6_PATCH, files: RUN6_EVIDENCE.files.map((file) => file.path), evidence: RUN6_EVIDENCE });
+    const again = run();
+    expect(again.data.reused).toBe(true);
+    expect(again.data.varianceReason).toBe(result.data.varianceReason);
+    const stored = withDatabase(path.join(temporaryPaths[temporaryPaths.length - 1], "workspace"), (db) =>
+      (db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(result.data.decision.id) as { context_json: string }).context_json);
+    expect(parsePersistedQaContext(stored, "code-review")?.varianceReason).toBe(result.data.varianceReason);
+    const passing = review({ verdict: notApplicableFromReal() }).result;
+    expect(passing.data.verdict).toBe("pass");
+    expect(passing.data.varianceReason).toBeNull();
+  });
+
+  it("classifies a QA non-pass whose only non-pass criteria are not-checked as variance too", () => {
+    const verdict = { ...RUN6_NOT_CHECKED_VERDICT, checks: QA_PR_REVIEW_CRITERIA.map((criterion, index) => ({
+      criterion: criterion.id, name: criterion.name,
+      status: index === 3 ? "not-checked" as const : "pass" as const, evidence: `${criterion.name} judged against the patch.`
+    })) };
+    const result = reviewRun6(verdict, "qa");
+    expect(result.data.verdict).toBe("needs-follow-up");
+    expect(result.data.varianceReason).toMatch(/not-checked: Managed documents\)\.$/);
+  });
+
+  it("never classifies a real finding, a criterion judged fail, or a model fail as variance", () => {
+    const finding = { severity: "low" as const, title: "Odd wording", evidence: "MARKER.md", recommendation: "Reword." };
+    expect(reviewRun6({ ...RUN6_NOT_CHECKED_VERDICT, findings: [finding] }).data.varianceReason).toBeNull();
+    // A reviewer may write the gate's title itself: that is then a model finding, never the gate's.
+    const forged = { ...finding, severity: "high" as const, title: "Refused not-applicable claim: Compatibility" };
+    expect(reviewRun6({ ...RUN6_NOT_CHECKED_VERDICT, findings: [forged] }).data.varianceReason).toBeNull();
+    const failedCriterion = { ...RUN6_NOT_CHECKED_VERDICT, checks: RUN6_NOT_CHECKED_VERDICT.checks.map((check) => check.criterion === "tests" ? { ...check, status: "fail" as const } : check) };
+    const failed = reviewRun6(failedCriterion);
+    expect(failed.data.verdict).toBe("needs-follow-up");
+    expect(failed.data.varianceReason).toBeNull();
+    // A refused not-applicable claim next to a criterion judged fail is a real judgment.
+    const refusedAndFailed = { ...RUN6_REFUSED_VERDICT, verdict: "needs-follow-up" as const, checks: RUN6_REFUSED_VERDICT.checks.map((check) => check.criterion === "tests" ? { ...check, status: "fail" as const } : check) };
+    expect(reviewRun6(refusedAndFailed).data.varianceReason).toBeNull();
+    const modelFail = { ...RUN6_REFUSED_VERDICT, verdict: "fail" as const };
+    const modelFailed = reviewRun6(modelFail);
+    expect(modelFailed.data.verdict).toBe("needs-follow-up");
+    expect(modelFailed.data.varianceReason).toBeNull();
+  });
+
+  it("classifies from the gate's own reasons: pending or failed checks, stale evidence, an unavailable reviewer and a conflicted PR are never variance", () => {
+    const clean = { reasons: [] as string[], findings: [] as QaPrModelVerdict["findings"] };
+    const model = RUN6_NOT_CHECKED_VERDICT;
+    expect(classifyReviewerVariance({ verdict: "needs-follow-up", model, deterministic: clean })).toMatch(/^reviewer variance only/);
+    for (const reason of ["Code review validation is pending", "validation failed", "the Candidate revision changed during QA", "the independent reviewer failed",
+      "merge state is DIRTY", "the reviewer reported material findings despite a Pass label", "the evidence-only reviewer sandbox preflight failed"]) {
+      expect(classifyReviewerVariance({ verdict: "needs-follow-up", model, deterministic: { ...clean, reasons: [reason] } })).toBeNull();
+    }
+    const stale = { severity: "blocker" as const, title: "QA evidence is stale", evidence: "moved", recommendation: "Rerun." };
+    expect(classifyReviewerVariance({ verdict: "needs-follow-up", model, deterministic: { reasons: [], findings: [stale] } })).toBeNull();
+    expect(classifyReviewerVariance({ verdict: "fail", model, deterministic: clean })).toBeNull();
+    expect(classifyReviewerVariance({ verdict: "pass", model, deterministic: clean })).toBeNull();
+    expect(classifyReviewerVariance({ verdict: "needs-follow-up", model: { ...model, checks: [] }, deterministic: clean })).toBeNull();
   });
 });
 

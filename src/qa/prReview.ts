@@ -154,6 +154,15 @@ export interface QaPrReviewCommandData {
    * that moved while it ran), never from anything the model wrote.
    */
   reviewerUnavailable: string | null;
+  /**
+   * Non-null only when a `needs-follow-up` verdict is pure reviewer variance:
+   * no finding other than the deterministic gate's refused not-applicable
+   * claim, and no criterion judged `fail` (every non-pass criterion is a
+   * refused not-applicable or `not-checked`). Decided by `classifyReviewerVariance`
+   * from the structured verdict and the deterministic gate alone, never from
+   * model-written text, and never together with `reviewerUnavailable`.
+   */
+  varianceReason: string | null;
 }
 
 export interface QaReviewerProvenance {
@@ -250,6 +259,8 @@ export interface PersistedQaContext {
   lineageRequestId?: string | null;
   /** See `QaPrReviewCommandData.reviewerUnavailable`; absent in receipts written before it existed. */
   reviewerUnavailable?: string | null;
+  /** See `QaPrReviewCommandData.varianceReason`; absent unless the verdict is variance, and in receipts written before it existed. */
+  varianceReason?: string | null;
 }
 
 export interface QaSandboxProof {
@@ -502,6 +513,10 @@ export function runQaPrReviewCommand(
   const reviewerUnavailable = verdict === "pass"
     ? null
     : deterministicReviewerUnavailability({ sandboxProof, reviewRun, modelError: parsedModel.error, deterministicFindings: deterministic.findings });
+  // Variance never coexists with an unavailable reviewer (that has its own retry and budget).
+  const varianceReason = reviewerUnavailable === null && parsedModel.error === null
+    ? classifyReviewerVariance({ verdict, model: parsedModel.verdict, deterministic })
+    : null;
   const findings = [...deterministic.findings, ...parsedModel.verdict.findings];
   const checks = [...deterministic.checks, ...parsedModel.verdict.checks];
   const residualRisks = uniqueStrings([...deterministic.residualRisks, ...parsedModel.verdict.residualRisks]);
@@ -551,7 +566,8 @@ export function runQaPrReviewCommand(
     evidenceFingerprint,
     receiptFiles: requiredFiles,
     lineageRequestId: lineage?.requestId ?? null,
-    reviewerUnavailable
+    reviewerUnavailable,
+    varianceReason
   }));
   const data: QaPrReviewCommandData = {
     candidate,
@@ -566,7 +582,8 @@ export function runQaPrReviewCommand(
     artifact: persisted.artifact,
     decision: persisted.decision,
     reused: false,
-    reviewerUnavailable
+    reviewerUnavailable,
+    varianceReason
   };
   const receipt: PersistedReceipt = {
     version: 6,
@@ -585,7 +602,7 @@ export function runQaPrReviewCommand(
       requestId: lineage.requestId, actorId: reviewerActorId, session: lineage.session, repoRoot: project.repositoryPath,
       verdict: verdict === "pass" ? "passed" : "failed", now: now(),
       receipt: lineageVerdictReceipt({ verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id, headSha: candidate.headSha, evidenceFingerprint,
-        reviewerUnavailable })
+        reviewerUnavailable, varianceReason })
     }));
   }
 
@@ -602,9 +619,11 @@ function reviewerActorIdFor(profile: PrReviewRoleProfile, bindingId: string): st
  * judgment of the candidate: it is the one fact that authorizes the worker
  * tick to re-run that same binding without a fix.
  */
-function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string; reviewerUnavailable: string | null }) {
+function lineageVerdictReceipt(input: { verdict: QaPrVerdict; artifactId: string; decisionId: string; headSha: string; evidenceFingerprint: string; reviewerUnavailable: string | null; varianceReason?: string | null }) {
   return { verdict: input.verdict, artifactId: input.artifactId, decisionId: input.decisionId, headSha: input.headSha, evidenceFingerprint: input.evidenceFingerprint,
-    reviewerUnavailable: input.reviewerUnavailable };
+    reviewerUnavailable: input.reviewerUnavailable,
+    // Present only for a variance verdict: the one fact that lets the worker tick re-judge a non-pass without a fix, within its bound.
+    ...(input.varianceReason ? { variance: input.varianceReason } : {}) };
 }
 
 /**
@@ -635,7 +654,7 @@ function recoverInFlightVerdict(db: Database.Database, input: {
     verdict: persisted.verdict === "pass" ? "passed" : "failed", now: input.now,
     receipt: lineageVerdictReceipt({ verdict: persisted.verdict, artifactId: persisted.artifact.id, decisionId: persisted.decision.id,
       headSha: persisted.candidate.headSha, evidenceFingerprint: persisted.evidenceFingerprint,
-      reviewerUnavailable: persisted.reviewerUnavailable })
+      reviewerUnavailable: persisted.reviewerUnavailable, varianceReason: persisted.varianceReason ?? null })
   });
 }
 
@@ -1122,6 +1141,11 @@ function reviewerFailureVerdict(message: string, criteria: PrReviewRoleProfile["
   };
 }
 
+/** The two deterministic-gate reasons that a reviewer's own variance can cause; any other gate reason is never variance. */
+const REFUSED_NOT_APPLICABLE_REASON = "the deterministic patch check refused the reviewer's not-applicable claim";
+const NOT_EVERY_CRITERION_PASSED_REASON = "the reviewer did not pass every declared criterion";
+const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
+
 function evaluateDeterministicEvidence(
   pullRequest: RawPullRequest,
   initialFingerprint: string,
@@ -1253,10 +1277,10 @@ function evaluateDeterministicEvidence(
   if (notApplicable.check) checks.push(notApplicable.check);
   if (notApplicable.refused.length > 0) {
     gate = "needs-follow-up";
-    reasons.push("the deterministic patch check refused the reviewer's not-applicable claim");
+    reasons.push(REFUSED_NOT_APPLICABLE_REASON);
     findings.push({
       severity: "high",
-      title: `Refused not-applicable claim: ${notApplicable.refused.map((claim) => claim.name).join(", ")}`,
+      title: `${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: ${notApplicable.refused.map((claim) => claim.name).join(", ")}`,
       evidence: notApplicable.refused.map((claim) => `${claim.name}: ${claim.reason}`).join(" "),
       recommendation: "Judge each refused criterion pass or fail against the patch, or report it not-checked; not-applicable is accepted only for a criterion the change demonstrably cannot affect."
     });
@@ -1266,7 +1290,7 @@ function evaluateDeterministicEvidence(
     check.status !== "pass" && !(check.status === "not-applicable" && acceptedNotApplicable.has(check.criterion))
   ))) {
     gate = "needs-follow-up";
-    reasons.push("the reviewer did not pass every declared criterion");
+    reasons.push(NOT_EVERY_CRITERION_PASSED_REASON);
   }
 
   return { gate, reasons: uniqueStrings(reasons), findings, checks, residualRisks };
@@ -1351,6 +1375,46 @@ function combineVerdicts(
   return "pass";
 }
 
+/**
+ * Whether a non-pass verdict is pure reviewer variance, from the structured
+ * verdict and the deterministic gate alone (Issue #1018, the operator's
+ * 2026-10-06 choice). It is variance only when the combined verdict is
+ * `needs-follow-up` (never `fail`) and nothing real stands behind it:
+ *
+ * - the deterministic gate refused nothing but not-applicable claims (every
+ *   other gate reason: stale evidence, pending or failed checks, a conflicted
+ *   merge state, an unavailable reviewer, a pass label over material findings,
+ *   is a real or infrastructure cause, never variance);
+ * - the reviewer wrote no finding at all, and judged no criterion `fail`
+ *   (its non-pass criteria are `not-checked` or a refused `not-applicable`);
+ * - the only deterministic finding, if any, is the gate's own refused
+ *   not-applicable claim, which the deterministic checker produced, not the
+ *   reviewer (the reviewer can write the same title, but that is then a model
+ *   finding and makes the verdict real).
+ *
+ * Returns the reason an operator reads, or null when the verdict is not variance.
+ */
+export function classifyReviewerVariance(input: {
+  verdict: QaPrVerdict;
+  model: QaPrModelVerdict;
+  deterministic: { reasons: string[]; findings: QaPrFinding[] };
+}): string | null {
+  const { verdict, model, deterministic } = input;
+  if (verdict !== "needs-follow-up" || model.verdict === "fail") return null;
+  if (model.findings.length > 0) return null;
+  if (model.checks.length === 0 || model.checks.some((check) => check.status === "fail")) return null;
+  const allowedReasons = new Set([REFUSED_NOT_APPLICABLE_REASON, NOT_EVERY_CRITERION_PASSED_REASON]);
+  if (!deterministic.reasons.every((reason) => allowedReasons.has(reason))) return null;
+  if (!deterministic.findings.every((finding) => finding.title.startsWith(`${REFUSED_NOT_APPLICABLE_FINDING_TITLE}: `))) return null;
+  const refused = deterministic.findings.map((finding) => finding.title.slice(REFUSED_NOT_APPLICABLE_FINDING_TITLE.length + 2));
+  const notChecked = model.checks.filter((check) => check.status === "not-checked").map((check) => check.name);
+  const parts = [
+    refused.length > 0 ? `refused not-applicable claim: ${refused.join("; ")}` : null,
+    notChecked.length > 0 ? `not-checked: ${notChecked.join(", ")}` : null
+  ].filter((part): part is string => part !== null);
+  return `reviewer variance only (no finding, no criterion judged fail${parts.length > 0 ? `; ${parts.join("; ")}` : `; the reviewer labelled it ${model.verdict} with every criterion passing`}).`;
+}
+
 function verdictSummary(verdict: QaPrVerdict, modelSummary: string, reasons: string[]): string {
   if (reasons.length === 0) return modelSummary.trim();
   return `${modelSummary.trim()} Deterministic gate: ${reasons.join("; ")}. Overall verdict: ${verdict}.`;
@@ -1375,6 +1439,7 @@ function persistQaResult(
     receiptFiles: Array<{ path: string; sha256: string }>;
     lineageRequestId: string | null;
     reviewerUnavailable: string | null;
+    varianceReason: string | null;
   }
 ): { artifact: Artifact; decision: ReviewItemSummary } {
   return db.transaction(() => {
@@ -1411,7 +1476,8 @@ function persistQaResult(
         evidenceFingerprint: input.evidenceFingerprint,
         receiptFiles: input.receiptFiles,
         ...(input.lineageRequestId ? { lineageRequestId: input.lineageRequestId } : {}),
-        ...(input.reviewerUnavailable ? { reviewerUnavailable: input.reviewerUnavailable } : {})
+        ...(input.reviewerUnavailable ? { reviewerUnavailable: input.reviewerUnavailable } : {}),
+        ...(input.varianceReason ? { varianceReason: input.varianceReason } : {})
       }
     });
     const decision = updateReviewItemStatus(db, created.id, {
@@ -1474,7 +1540,8 @@ function readPersistedReceipt(
         reused: true,
         evidenceFingerprint: context.evidenceFingerprint,
         lineageRequestId: context.lineageRequestId ?? null,
-        reviewerUnavailable: context.reviewerUnavailable ?? null
+        reviewerUnavailable: context.reviewerUnavailable ?? null,
+        varianceReason: context.varianceReason ?? null
       };
     });
   } catch {
@@ -1646,14 +1713,17 @@ export function parsePersistedQaContext(value: string | null, role: PrReviewRole
     const context = JSON.parse(value) as unknown;
     const lineageKeyed = context !== null && typeof context === "object" && "lineageRequestId" in context;
     const unavailableKeyed = context !== null && typeof context === "object" && "reviewerUnavailable" in context;
+    const varianceKeyed = context !== null && typeof context === "object" && "varianceReason" in context;
     if (!isRecordWithExactKeys(context, [
       "schemaVersion", "candidate", "verdict", "summary", "findings", "checks", "residualRisks",
       "reviewer", "reportPath", "evidencePath", "metadataPath", "evidenceFingerprint", "receiptFiles",
       ...(lineageKeyed ? ["lineageRequestId"] : []),
-      ...(unavailableKeyed ? ["reviewerUnavailable"] : [])
+      ...(unavailableKeyed ? ["reviewerUnavailable"] : []),
+      ...(varianceKeyed ? ["varianceReason"] : [])
     ])) return null;
     if (lineageKeyed && context.lineageRequestId !== null && !isNonEmptyString(context.lineageRequestId)) return null;
     if (unavailableKeyed && !isNonEmptyString(context.reviewerUnavailable)) return null;
+    if (varianceKeyed && !isNonEmptyString(context.varianceReason)) return null;
     if (
       context.schemaVersion !== 2 ||
       !isQaCandidate(context.candidate) ||
