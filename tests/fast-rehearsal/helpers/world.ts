@@ -16,6 +16,7 @@ import { validatePreservationCandidate } from "../../../src/sessions/preservatio
 import { capacity, git, hostReviewer, LINE_A, LINE_B, LINE_C, Rehearsal, unsandboxedValidator } from "../../helpers/rehearsalHarness.js";
 import type { IsolatedProcess } from "./environment.js";
 import { ScriptedExecutor, type ActionWork, type ExecutorBehaviour, type ExecutorResult, type LaunchRecord } from "./executor.js";
+import { CHAIN, CHAIN_VALIDATION, chainWork, longChainFixture } from "./chain.js";
 import { GitHubModel } from "./github.js";
 import { PhaseRecorder, sanitizer, writeScenarioReport, type Phase, type ScenarioReport } from "./report.js";
 
@@ -46,7 +47,9 @@ test("marker lines are in order", () => {
     },
     validation: "node scripts/check-marker.mjs && node --test tests/marker.test.mjs"
   },
-  [ACTION_3]: { files: { "MARKER.md": `${LINE_A}\n${LINE_B}\n${LINE_C}\n` }, validation: "node scripts/check-marker.mjs" }
+  [ACTION_3]: { files: { "MARKER.md": `${LINE_A}\n${LINE_B}\n${LINE_C}\n` }, validation: "node scripts/check-marker.mjs" },
+  /** Only in a world built with `{ longChain: true }` (helpers/chain.ts). */
+  ...Object.fromEntries(CHAIN.map((id, index) => [id, chainWork(index + 1)]))
 };
 
 type TickImpl = {
@@ -104,8 +107,12 @@ export class FastRehearsal extends Rehearsal {
   private lastIntegrated: string | null = null;
   private expecting: string | null = null;
 
-  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean } = {}) {
-    super({ independentReviewers: "tick", ...(options.thirdAction ? { thirdAction: true } : {}) });
+  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean; longChain?: boolean } = {}) {
+    super({
+      independentReviewers: "tick",
+      ...(options.thirdAction ? { thirdAction: true } : {}),
+      ...(options.longChain ? { fixturePlan: longChainFixture(), validationCommand: CHAIN_VALIDATION } : {})
+    });
     process.env.ARCADIA_WORKSPACE = this.workspace;
     this.validator = process.env.ARCADIA_PRESERVATION_HOST_TEST === "1" ? "seatbelt" : "unsandboxed";
     this.recorder = new PhaseRecorder(scenario, path.basename(file), sanitizer([

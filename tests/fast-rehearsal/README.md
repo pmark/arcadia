@@ -1,7 +1,7 @@
 # Fast rehearsal harness
 
-Serial two- and three-Action rehearsals over Arcadia's **real** production lifecycle that
-finishes in about a minute, so an orchestration defect reproduces offline
+Serial two-, three- and nine-Action rehearsals over Arcadia's **real** production lifecycle that
+finish in a few minutes, so an orchestration defect reproduces offline
 instead of in a 2 to 4 hour live repair loop (Issue #989). The live rehearsal
 stays the integration check; this harness is where defects get found and fixed.
 
@@ -32,9 +32,13 @@ writes `report.json` (with each scenario's per-tick log and worker log) in that
 directory. Nothing is written into the repository. The same test files also
 run in the ordinary suite and the CI shards; there they write no report.
 
-It takes about a minute on the operator's Mac with file parallelism and the
-Seatbelt validator (45 to 65 s measured; 65 s for the 17 scenarios with the
-stacked-PR files, on a loaded host); one scenario takes 5 to 25 s.
+It takes a few minutes on the operator's Mac with file parallelism and the
+Seatbelt validator (45 to 65 s measured before the long chain; 65 s for the 17
+scenarios with the stacked-PR files, on a loaded host); one two-Action
+scenario takes 5 to 25 s. The long-chain files dominate: the nine-Action
+chain takes 1 to 2.5 min (about 12 to 20 s per Action under parallel load)
+and sets the wall time. Measured 2026-10-06 on a loaded host: all 24
+scenarios in 2 min 6 s, the nine-Action chain 1 min 57 s.
 
 ## What is real and what is faked
 
@@ -42,7 +46,8 @@ Real, called as `arcadia worker` calls it (src/commands/worker.ts: preservation
 requests serviced, and the managed tick skipped in an iteration that serviced
 one, as the worker does; then `runManagedProductionTick`), with these
 differences: an injected clock (`now`/`clock`) that moves one simulated
-minute per tick, where the live worker iterates every few seconds and the
+minute per tick (and `advanceClock` for time that passes with no tick, such
+as the long chain's half hour of agent work per Action or a Grant's expiry), where the live worker iterates every few seconds and the
 review step polls on its own deadline; `agentWorktreeRoot` pointing into the
 scenario's temporary directory; and no catch-all around the tick (the worker's
 "Tick error" catch), so a tick that throws fails the scenario, which makes the
@@ -112,6 +117,11 @@ Simulated time advances one minute per tick; the table shows wall time.
 | `serial-two-action.test.ts` | clean executor, two dependent Actions, end to end | The baseline: admission to integration to the next admission, each exactly once |
 | same | Issue #987, fixed (stacked PRs) | After Action 1 integrates locally the remote's `main` stays behind, so Action 2's PR is opened on Action 1's candidate branch: the published plan, the PR's base and its files agree (also via `scripts/qa-plan-consistency.ts`). Live run 5 stopped at QA with its PR on `main`; a companion test pins what that PR would report. The `it.fails` marker flipped with the fix |
 | `three-action-chain.test.ts` | three dependent Actions, end to end | Every PR stacked on the previous candidate branch (PR 1 on `main`, PR 2 on candidate 1, PR 3 on candidate 2), each consistent with its plan, each Action admitted once, all integrated locally, the remote base never pushed |
+| `long-chain.test.ts` | the overnight shape: nine dependent Actions in three batches of three under one Grant, half a simulated hour of agent work each (5.4 simulated hours, inside the 12-hour Grant) | Each step reads its predecessor's output (`helpers/chain.ts`: step k appends to `chain/batch-<b>.md` a line derived from step k-1's, so a wrong launch base stops the executor), so each is launched from its predecessor's integrated head. Every Action admitted exactly once and integrated in order; eight stacked PRs (each on the previous candidate's branch), each with a QA plan consistent with its GitHub diff; no commit lost; the remote base never pushed; `production status` names the Action building, then the Action in review (`awaiting_independent_verdicts`), and each integration as a base advance; at the end nothing is admitted, no escalation, red alert or launch blocker remains, and the tick says every Action is done |
+| `long-chain-verdict-failure.test.ts` | the chain with QA failing step 5's exact head | Steps 1 to 4 integrate; step 5 is preserved, never integrated, and is the one `independent_verdict_failed` entry in `production status` (with its `--rerun` remedy), refreshed every tick and still there three simulated hours later; step 6 is never admitted |
+| `long-chain-grant-expiry.test.ts` | the Grant (integration grant and packet_approval delegation, both 12 hours) expires while step 4's agent is working | Fixed here: the preserved candidate was neither readied nor reviewed nor integrated, with **nothing** in `production status` for hours (the integration step refused before the verdict gate that records a wait). Now one `terminal_candidate_not_integrable` entry names the lapsed Grant and the fresh-Grant remedy; step 5 is never admitted |
+| same | the Grant expires between steps 3 and 4 (the batch boundary) | Step 4 is never admitted. Fixed here: its one `build_packet_approval_pending` escalation said only "approve the packet"; its remedy now leads with the lapsed delegation and integration grant. After five refused ticks the red-alert layer adds `admission_refused_consecutive` for the same Action |
+| same | step 4's packet approved one tick before the expiry | Today step 4 launches one tick after the Grant expired (the standing policy has no expiry of its own; admission does not consult the lapsed delegations), and then can only end as the first scenario. Marked `it.fails` for "admits no Action once the Grant has expired" (Issue TBD-1) |
 | `stacked-base-refusal.test.ts` | the previous candidate's branch deleted on the remote | Preservation refuses Action 2's PR (nothing pushed, the candidate kept locally) with one `terminal_candidate_not_integrable` escalation naming the branch to push again; after that push it stacks and integrates |
 | same | the operator published the integrated base | Action 2's base is the remote's `main`: its PR opens on `main`, unchanged |
 | `stacked-base-github-state.test.ts` | the previous PR closed on GitHub | Still stacked on its branch; integrates |
@@ -138,6 +148,10 @@ pins today's exact behaviour, so a broken scenario cannot pass silently.
 
 1. Call `isolateProcess()` in the file's `beforeAll` and `restore()` in `afterAll`.
 2. `new FastRehearsal("<scenario-name>", isolation, import.meta.filename)`, then `start()`.
+   Pass `{ longChain: true }` for the nine-step chain fixture (`helpers/chain.ts`),
+   whose `runChainStep(world, index)` drives one step from admission to
+   integration (or, with `{ integrate: false }`, to its preserved PR) and keeps
+   `production status` from each stage.
 3. Drive it: `untilLaunched(action)`, `execute(launch, action, behaviour)`,
    `tick()`/`ticks(n)`/`untilIntegrated(action)`; inject faults with
    `installGitFaults(world.root).arm("<git subcommand>")`, the shared

@@ -66,7 +66,9 @@ were reproducible offline. So:
   reimplements the tick, preservation, review or settlement proves only
   itself. `pnpm fast-rehearsal` (`tests/fast-rehearsal/README.md`) runs the
   real worker tick and settlement with only tmux, GitHub, the reviewer models
-  and the coding agent faked, in about a minute.
+  and the coding agent faked, in a few minutes. Before a longer live run,
+  the same shape runs there first: the nine-Action chain over simulated hours
+  (`long-chain*.test.ts`) is the offline check for the overnight one-press run.
 
 ## 2. What the five runs proved, and what each blocker cost
 
@@ -348,6 +350,8 @@ broker): rerun G6.
 | Worker log repeats "differs from its exact canonical completion settlement" every 3 s | An unarchived Ask draft was committed by preservation on top of the settle commit | Fixed (#983: settle archives the draft, proven live in run 5; one deduped log line and a `terminal_candidate_not_integrable` escalation, tested but not yet seen live); the brief asks for a clean tree |
 | QA FAIL Step 4 says source inspection proves a check passes | Plan wording (Issue #986) | One rerun passed it; the wording fix is open |
 | QA FAIL "wrong base and changed-file set" on Action 2 | The PR was opened on GitHub's `main`, which local integration never advances (Issue #987) | Fixed: serial PRs are stacked on the previous candidate's branch (section 8, item 1(b)); the receipt's `prBase` says which base was chosen and why. If the previous branch is gone from the remote, preservation refuses with a `terminal_candidate_not_integrable` escalation naming the branch to push again; nothing is pushed until then |
+| `[terminal_candidate_not_integrable]` "The integration grant expired at ..." on a preserved, unreviewed draft PR | A serial chain outran its 12-hour Grant while that Action's agent was working | Nothing more integrates or launches under this Grant. The tick re-checks every tick, so a fresh, unexpired Grant naming the Action (a new activation) should let it review and integrate (not yet exercised offline or live); or land it by hand after an independent review. Before the fix found by the long-chain harness this showed nothing at all in `production status` |
+| `[build_packet_approval_pending]` whose remedy starts "Blocked: the standing policy's packet_approval delegation expired" | The chain reached its next Action after the Grant lapsed | A fresh activation. Approving the packet by hand admits an Action that cannot integrate unattended while the integration grant is lapsed too (Issue TBD-1) |
 | Agent writes the template completion id and settlement stalls | `complete-<action>-<date>` already settled on a same-day rerun | The amended `next_action` names a fresh id; the reset refuses if it is used |
 | G7 refuses "different main" | A governed settle commit or reinstall moved main or the broker after G6, or a G8 ran | Freeze (phase 2); rerun G6 |
 | G6 invalid after an accidental G8 | G8 reinstalled the broker | Rerun G6; keep the buttons separate in the ping |
@@ -444,7 +448,25 @@ broker): rerun G6.
    never shows it (#997, the shared root cause; the same mechanism as run 2's
    stall, #968). The harness also proves #987's fix (stacked PRs). Next step:
    fix #997 and flip the markers.
-7. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
+7. **A nine-Action chain inside one Grant (the overnight one-press run).**
+   Proven offline by `tests/fast-rehearsal/long-chain*.test.ts`: nine
+   dependent Actions in three batches over 5.4 simulated hours integrate in
+   order, each PR stacked on the previous candidate's branch with a consistent
+   QA plan, nothing lost, the remote base never pushed, `production status`
+   naming the Action building or in review and each base advance. A failed QA
+   verdict on Action 5 stops the chain on one visible
+   `independent_verdict_failed` entry and admits nothing later. The Grant
+   expiring midway was a silent stall (an Action finishing after the expiry
+   showed nothing in `production status`), fixed in the same change; its
+   escalation and the lapsed packet delegation's remedy now name the expiry.
+   Still open: an Action whose packet the delegation approved just before the
+   expiry is launched just after it (Issue TBD-1, an expected failure in the
+   harness), so plan the chain to finish well inside the window, and treat the
+   last Action straddling the expiry as the likely stop. Not exercised offline:
+   ticks while an agent pane is live (stall detection over a long agent run),
+   the real `gh pr create --base` on a deep stack, and reviewer variance over
+   nine Actions (criterion 4 compounds: nine first-attempt passes in a row).
+8. **After criteria 1 to 6 hold in one run and repeat cleanly (criterion 7):**
    escalate exactly one dimension, in the order of section 1, with a fresh Grant.
 
 ## Appendix A: the no-progress watcher
