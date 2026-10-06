@@ -293,7 +293,7 @@ function validatePullRequest(value: unknown): PullRequestMetadata {
 }
 
 function resolveCommit(repository: string, ref: string, label: string): string {
-  const result = spawnSync("git", ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`], { cwd: repository, encoding: "utf8" });
+  const result = spawnSync("git", ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`], { cwd: repository, encoding: "utf8", timeout: 60_000 });
   if (result.status !== 0) throw new ReplayInputError(`The ${label} ${ref} is not a commit in the candidate repository.`);
   return result.stdout.trim();
 }
@@ -382,14 +382,14 @@ function readReceipt(file: string): Record<string, string | undefined> {
 
 function readPlanSource(file: string): OperatorQaPlanSource {
   const raw = readJson(file, "plan source") as Record<string, unknown>;
-  if (raw?.kind === "action-acceptance") {
+  if (typeof raw?.actionKey !== "string") throw new ReplayInputError(`Plan source ${file} needs actionKey with action.acceptanceCriteria, or an OperatorQaPlanSource.`);
+  if (raw.kind === "action-acceptance") {
     return operatorQaPlanSource({
-      actionKey: String(raw.actionKey),
+      actionKey: raw.actionKey,
       action: { title: raw.actionTitle, acceptanceCriteria: raw.acceptanceCriteria },
       validationCommands: raw.validationCommands
     });
   }
-  if (typeof raw?.actionKey !== "string") throw new ReplayInputError(`Plan source ${file} needs actionKey with action.acceptanceCriteria, or an OperatorQaPlanSource.`);
   return operatorQaPlanSource({
     actionKey: raw.actionKey,
     action: raw.action as { title?: unknown; acceptanceCriteria?: unknown },

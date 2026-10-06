@@ -367,7 +367,9 @@ broker): rerun G6.
    checks about earlier integrated Actions; or authorize a base push after each
    integration (a Grant or Decision change, today forbidden). Pick one, then
    prove it in a run.
-   [docs/qa-plan-consistency-replay.md](qa-plan-consistency-replay.md) reproduces this mismatch offline in seconds from run 5's preserved PR #6, and its expected-failure test is what the fix must flip.
+   [docs/qa-plan-consistency-replay.md](qa-plan-consistency-replay.md) reproduces this
+   mismatch offline in seconds from run 5's preserved PR #6; its expected-failure
+   test must flip with the fix (the doc says which fixes flip it unaided).
 2. **#986** (plan Step 4 wording), **#984** (review follow-ups of #983),
    **#976** (hook-manager side effect of the plan's checkout step and test gaps):
    small, but each can fail a verdict. (Issues #972 and #981 were fixed by #974 and

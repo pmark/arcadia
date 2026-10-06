@@ -14,7 +14,7 @@
  * diagnostic test below). See docs/qa-plan-consistency-replay.md.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 function git(cwd: string, args: string[]): string {
-  return execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", ...args], {
+  return execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], {
     cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]
   }).trim();
 }
@@ -109,7 +109,14 @@ function pullRequest(repo: string, input: { number: number; base: string; head: 
 }
 
 function refsAndStatus(repo: string): string {
-  return `${git(repo, ["for-each-ref", "--format=%(refname) %(objectname)"])}\n--\n${git(repo, ["status", "--porcelain"])}\n--\n${readdirSync(repo).sort().join(",")}`;
+  const gitDir = path.join(repo, ".git");
+  return [
+    git(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]),
+    git(repo, ["status", "--porcelain"]),
+    readdirSync(repo).sort().join(","),
+    readdirSync(gitDir).sort().join(","),
+    readFileSync(path.join(gitDir, "config"), "utf8")
+  ].join("\n--\n");
 }
 
 describe("plan-versus-PR consistency (checkpoint replay)", () => {
@@ -129,7 +136,10 @@ describe("plan-versus-PR consistency (checkpoint replay)", () => {
 
   // EXPECTED FAILURE (Issue #987). Passes today because the assertion fails;
   // the fix for #987 makes it pass, which `it.fails` reports as a failure:
-  // then change this to `it` and update the pinned diagnostic below.
+  // then change this to `it` and update the pinned diagnostic below. Only a
+  // fix at or below renderPreservedOperatorQaPlan flips it on its own: a fix
+  // in launch-base selection or in the preservation caller must also change
+  // this test's `base` input to what the host would then record.
   it.fails("serial Action 2: the host plan agrees with its PR (Issue #987, expected to fail until fixed)", () => {
     const f = serialFixture();
     const report = checkQaPlanConsistency({

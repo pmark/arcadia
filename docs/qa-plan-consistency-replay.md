@@ -51,8 +51,9 @@ node --import tsx scripts/qa-plan-consistency.ts \
   it from the preservation receipt: the local base branch has usually moved since
   launch. `--receipt` reads a receipt row (`sqlite3 -json` output) and supplies
   `--repo`, `--base`, `--commit`, `--branch` and `--base-branch` unless they are
-  given. Without either flag, the base is the local branch named by the PR base
-  (`refs/heads/<baseRefName>`) as it is now. That is how the host launches a fresh
+  given. Without either flag, the base is the local branch `refs/heads/<base branch>`
+  as it is now, where the base branch is `--base-branch`, else the receipt's
+  `base_branch`, else the PR's `baseRefName`. That is how the host launches a fresh
   Session (`git rev-parse <base>` in `src/sessions/launch.ts`).
 - `--plan-source`: the Action's governed source,
   `{"actionKey", "action": {"title", "acceptanceCriteria"}, "validationCommands"}`
@@ -141,15 +142,25 @@ M1, with PR metadata based on M0. The test
 #987 stands, its assertion fails and the suite stays green. The pinned
 diagnostic test beside it asserts the exact mismatch.
 
-When the fix lands in the host plan-rendering path, both tests fail. The change
+When the fix lands in the host plan-rendering path (at or below
+`renderPreservedOperatorQaPlan`), both tests fail. The change
 then turns `it.fails` into `it` and updates the pinned diagnostic. One example
 of such a fix is rendering against the merge base with `origin/<base>`; a
-temporary edit of that shape was verified to flip exactly those two tests. A
-fix in a different place (stacking the PR on the previous candidate branch, or
-pushing the base after integration) changes the scenario itself. That change
-must update the fixture to its new world in the same pull request, because a
-marker the fix never exercises would stay green.
+temporary edit of that shape was verified to flip exactly those two tests. The test passes the
+host base (`base: "main"`) straight into the replay. A fix anywhere else
+therefore does not flip the marker by itself. Examples are recording a different
+base at launch (`src/sessions/launch.ts`), adjusting the base in the preservation
+caller, stacking the PR on the previous candidate branch, or pushing the base
+after integration. Such a fix must update the test's base input or the fixture
+to its new world in the same pull request, because a marker the fix never
+exercises would stay green.
 
 Limits: `gh pr view --json files` may truncate very large PRs. The plan lists at
-most 200 files; above that only the stated count is compared. The replay refuses
-(exit `2`) when the renderer's format no longer parses.
+most 200 files; above that only the stated count is compared. The plan uses
+`--no-renames`, so a file GitHub reports as `RENAMED` or `COPIED` (one entry,
+new path) appears in the plan as `D` old plus `A` new. That shows as a
+`file-count` and `files` mismatch even when the bases agree; read the old path
+in `onlyInPlan` as a possible rename. A path with control characters is printed
+with `?` by the renderer and so mismatches. The informational patch file list
+does not decode Git's quoted `"a/..."` headers. The replay refuses (exit `2`)
+when the renderer's format no longer parses.
