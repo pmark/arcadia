@@ -4202,6 +4202,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["artifacts/generated/operator-scripts/runs/20261006T175308Z-12860", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "src/operatorActions/rehearsalChain.ts", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: record-rehearsal-findings-ledger
+    title: Add a findings ledger, a per-run retro protocol, the next-run recommendations and a handoff section to the rehearsal runbook, and preserve the reviewer smoke harness.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Add a findings ledger, a per-run retro protocol, the next-run recommendations and a handoff section to the rehearsal runbook, and preserve the reviewer smoke harness.
+    expected_artifact: Evidence satisfying Agent Ask record-rehearsal-findings-ledger
+    clarification: clarified
+    confidence: high
+    source: Agent Ask record-rehearsal-findings-ledger-2026-10-06
+    acceptance_criteria:
+      - docs/autonomous-production-rehearsal-runbook.md gains a findings ledger (one row per live run and per pre-flight smoke since run 1, each with stop point, failure class, time to detect, fix PR or Issue, and the prevention that now guards it), records runs 6 and 7 and the run-8 reviewer smoke with their receipts and PRs, and states the protocol every future run follows to append its row before the session ends.
+      - The runbook gains a handoff section naming the exact current state (production Off, last receipts, next run id and its parameter file, open Issues blocking success) and the ranked recommendations for the next run, so a fresh session can start from it alone.
+      - "The reviewer pre-flight smoke harness used for #986 and the run-8 check is preserved under docs/reports/rehearsal-reviewer-smoke/ with a README saying what it simulates, what is not faithful, how to run it read-only, and that it is reference code not yet wired into the operator scripts."
+    depends_on: []
+    decisions: []
+    references: ["docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1018"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
