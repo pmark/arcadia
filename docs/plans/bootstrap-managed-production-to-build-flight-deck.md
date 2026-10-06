@@ -4033,7 +4033,7 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "docs/agent-guidance/index.json", "src/sessions/", "src/ask/", "src/production/", "src/workspace/"]
   - id: fix-serial-pr-base-stacking
     title: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Open each serial Action's draft PR stacked on the previous candidate branch, keep the QA plan consistent with it, and prove a three-Action chain through the real lifecycle in the fast harness.
@@ -4105,7 +4105,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-qa-plan-check-wording
+current_action: fix-pending-completion-gate
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board

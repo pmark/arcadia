@@ -371,10 +371,19 @@ function readReceipt(file: string): Record<string, string | undefined> {
   const row = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
   if (!row || typeof row !== "object") throw new ReplayInputError(`Receipt ${file} holds no row.`);
   const pick = (...keys: string[]) => keys.map((key) => row[key]).find((value): value is string => typeof value === "string");
+  // The branch the PR was opened against (Issue #987: a stacked PR's base is the
+  // previous candidate's branch, not the Project base `base_branch` names). It
+  // lives in the receipt JSON (`receipt_json` column, or a receipt object).
+  let prBase: unknown = row.prBase;
+  if (prBase === undefined && typeof row.receipt_json === "string") {
+    try { prBase = (JSON.parse(row.receipt_json) as { prBase?: unknown }).prBase; } catch { /* malformed: fall back to base_branch */ }
+  }
+  const prBaseBranch = prBase && typeof prBase === "object" && typeof (prBase as { branch?: unknown }).branch === "string"
+    ? (prBase as { branch: string }).branch : undefined;
   return {
     repository: pick("repository_path", "repositoryPath"),
     branch: pick("branch"),
-    baseBranch: pick("base_branch", "baseBranch"),
+    baseBranch: prBaseBranch ?? pick("base_branch", "baseBranch"),
     baseRevision: pick("base_revision", "baseRevision"),
     commit: pick("commit_sha", "commitSha")
   };

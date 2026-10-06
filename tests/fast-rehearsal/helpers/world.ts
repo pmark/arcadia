@@ -11,8 +11,9 @@ import {
 } from "../../../src/production/tick.js";
 import { listOpenRedAlerts } from "../../../src/production/redAlerts.js";
 import { processPreservationRequests as defaultProcessPreservationRequests } from "../../../src/sessions/preservationTransport.js";
+import type { CandidatePreservationReceipt } from "../../../src/sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../../../src/sessions/preservationValidation.js";
-import { capacity, git, hostReviewer, LINE_A, LINE_B, Rehearsal, unsandboxedValidator } from "../../helpers/rehearsalHarness.js";
+import { capacity, git, hostReviewer, LINE_A, LINE_B, LINE_C, Rehearsal, unsandboxedValidator } from "../../helpers/rehearsalHarness.js";
 import type { IsolatedProcess } from "./environment.js";
 import { ScriptedExecutor, type ActionWork, type ExecutorBehaviour, type ExecutorResult, type LaunchRecord } from "./executor.js";
 import { GitHubModel } from "./github.js";
@@ -28,6 +29,8 @@ export const SCENARIO_TIMEOUT_MS = 240_000;
 /** The two dependent Actions of the shared rehearsal fixture: write MARKER.md, then extend it and add a test that depends on it. */
 export const ACTION_1 = "write-marker-a";
 export const ACTION_2 = "write-marker-b";
+/** Only in a world built with `{ thirdAction: true }`: append action C's line (depends on B). */
+export const ACTION_3 = "write-marker-c";
 export const WORK: Record<string, ActionWork> = {
   [ACTION_1]: { files: { "MARKER.md": `${LINE_A}\n` }, validation: "node scripts/check-marker.mjs" },
   [ACTION_2]: {
@@ -42,7 +45,8 @@ test("marker lines are in order", () => {
 `
     },
     validation: "node scripts/check-marker.mjs && node --test tests/marker.test.mjs"
-  }
+  },
+  [ACTION_3]: { files: { "MARKER.md": `${LINE_A}\n${LINE_B}\n${LINE_C}\n` }, validation: "node scripts/check-marker.mjs" }
 };
 
 type TickImpl = {
@@ -82,6 +86,8 @@ export class FastRehearsal extends Rehearsal {
   readonly executor: ScriptedExecutor;
   readonly validator: ScenarioReport["validator"];
   readonly executions: ExecutorResult[] = [];
+  /** How many host preservation validations the tick ran. */
+  hostValidations = 0;
   private tickNumber = 0;
   private impl: TickImpl = {
     runManagedProductionTick: defaultTick,
@@ -98,8 +104,8 @@ export class FastRehearsal extends Rehearsal {
   private lastIntegrated: string | null = null;
   private expecting: string | null = null;
 
-  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string) {
-    super({ independentReviewers: "tick" });
+  constructor(readonly scenario: string, readonly isolation: IsolatedProcess, file: string, options: { thirdAction?: boolean } = {}) {
+    super({ independentReviewers: "tick", ...(options.thirdAction ? { thirdAction: true } : {}) });
     process.env.ARCADIA_WORKSPACE = this.workspace;
     this.validator = process.env.ARCADIA_PRESERVATION_HOST_TEST === "1" ? "seatbelt" : "unsandboxed";
     this.recorder = new PhaseRecorder(scenario, path.basename(file), sanitizer([
@@ -141,8 +147,10 @@ export class FastRehearsal extends Rehearsal {
     const n = this.tickNumber;
     this.now = new Date(this.now.getTime() + 60_000);
     const impl = this.impl;
-    const validate: typeof validatePreservationCandidate = (...args) =>
-      this.recorder.measure("validation", () => (this.validator === "seatbelt" ? impl.validatePreservationCandidate(...args) : impl.unsandboxedValidator(...args)));
+    const validate: typeof validatePreservationCandidate = (...args) => {
+      this.hostValidations += 1;
+      return this.recorder.measure("validation", () => (this.validator === "seatbelt" ? impl.validatePreservationCandidate(...args) : impl.unsandboxedValidator(...args)));
+    };
     return this.recorder.tick(n, () => {
       this.syncTmux();
       const registries = impl.loadPhase3Registries(this.workspace);
@@ -328,6 +336,15 @@ export class FastRehearsal extends Rehearsal {
   pullRequestFor(actionId: string) {
     const session = this.sessions().find((entry) => entry.action_id === actionId);
     return session ? this.gh.prs.find((pr) => pr.branch === session.branch) ?? null : null;
+  }
+
+  /** The worker's preservation receipt for one Action's (latest) Session, or null. */
+  preservationReceipt(actionId: string): CandidatePreservationReceipt | null {
+    const session = this.sessions().filter((entry) => entry.action_id === actionId).at(-1);
+    if (!session) return null;
+    const row = withReadOnlyDatabase(this.workspace, (db) => db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
+      .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined);
+    return row ? JSON.parse(row.receipt_json) as CandidatePreservationReceipt : null;
   }
 
   /** Commits on the Project's local base, oldest first. */

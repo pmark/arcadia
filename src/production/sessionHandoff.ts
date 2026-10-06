@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import type { AgentSession } from "../sessions/index.js";
 import type { CandidatePreservationDeps, CandidatePreservationReceipt, PreservationState, RemotePreservationAuthorization } from "../sessions/candidatePreservation.js";
-import { preserveCandidate, systemPreservationRemote } from "../sessions/candidatePreservation.js";
+import { preserveCandidate, resolvePullRequestBase, systemPreservationRemote } from "../sessions/candidatePreservation.js";
 import { validatePreservationCandidate } from "../sessions/preservationValidation.js";
 import { operatorQaPlanSource } from "../sessions/operatorQaPlan.js";
 import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions/preservationRefusalBudget.js";
@@ -142,6 +142,16 @@ export function preserveSessionCandidate(
     };
   }
 
+  // A serial candidate with no remote branch to stack its PR on, or whose open
+  // PR sits on a no-longer-valid base, is refused by preserveCandidate after
+  // host validation; check that first, so a refusal only the operator can
+  // clear does not re-run validation every tick.
+  const remote = deps.remote ?? systemPreservationRemote;
+  const unstackable = policyAuthorizesRemotePreservation(policy, actionKey(session))
+    ? stackedBaseRefusal(db, { repoRoot, session, baseBranch, now: input.now }, remote)
+    : null;
+  if (unstackable) return { kind: "refused", reason: unstackable };
+
   const validate = deps.validate ?? validatePreservationCandidate;
   let validation: ReturnType<typeof validatePreservationCandidate>;
   try {
@@ -192,7 +202,7 @@ export function preserveSessionCandidate(
         remotePreservation,
         now: input.now
       },
-      { remote: deps.remote ?? systemPreservationRemote }
+      { remote }
     ));
     return {
       kind: "preserved",
@@ -205,6 +215,49 @@ export function preserveSessionCandidate(
     };
   } catch (error) {
     return refusedPreservation(error);
+  }
+}
+
+/**
+ * The last stacked-base refusal per Session and base revision, reused for a
+ * minute so a blocked candidate costs one `git ls-remote` a minute rather
+ * than one per worker iteration (about 2 s). Only refusals are remembered: a
+ * restored branch is picked up within that minute.
+ */
+const STACKED_BASE_RECHECK_MS = 60_000;
+const recentStackedBaseRefusals = new Map<string, { at: number; reason: string }>();
+
+/**
+ * The PR-base refusal preserveCandidate would raise (no remote branch can be
+ * the base, or an open PR sits on a no-longer-valid base), or null (including
+ * when it cannot tell: preservation then decides). Exported for tests.
+ */
+export function stackedBaseRefusal(
+  db: Database.Database,
+  input: { repoRoot: string; session: AgentSession; baseBranch: string; now: Date },
+  remote: NonNullable<CandidatePreservationDeps["remote"]>
+): string | null {
+  const { session, now } = input;
+  const key = `${session.id}\n${session.base_revision}`;
+  // A recorded receipt replays without any remote read: nothing to pre-check.
+  try {
+    if (db.prepare("SELECT 1 FROM candidate_preservation_receipts WHERE request_id = ?").get(`worker-tick-preserve-${session.id}`)) return null;
+  } catch { /* no receipts table yet */ }
+  const cached = recentStackedBaseRefusals.get(key);
+  if (cached && now.getTime() >= cached.at && now.getTime() - cached.at < STACKED_BASE_RECHECK_MS) return cached.reason;
+  recentStackedBaseRefusals.delete(key);
+  try {
+    if (!remote.listBranchTips || !remote.hasRemote(input.repoRoot)) return null;
+    const resolved = resolvePullRequestBase(db, {
+      repositoryPath: input.repoRoot, baseBranch: input.baseBranch, baseRevision: session.base_revision, branch: session.branch
+    }, remote);
+    if (resolved.ok) return null;
+    const reason = resolved.error.message;
+    for (const [entry, value] of recentStackedBaseRefusals) if (now.getTime() - value.at >= STACKED_BASE_RECHECK_MS) recentStackedBaseRefusals.delete(entry);
+    recentStackedBaseRefusals.set(key, { at: now.getTime(), reason });
+    return reason;
+  } catch {
+    return null;
   }
 }
 

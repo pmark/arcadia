@@ -3,7 +3,7 @@ import { existsSync, lstatSync, realpathSync, rmSync, type Stats } from "node:fs
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
-import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { git, isAncestor, isPatchEquivalent, listWorktrees, mergesCleanly, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { commitTreeAt, snapshotCandidate } from "./candidateSnapshot.js";
 import { createId } from "../utils/id.js";
 import { getActiveWorktreeReservation, getRepositoryLease, getSession } from "./index.js";
@@ -104,7 +104,20 @@ export interface CandidatePreservationRemote {
    * local tip became in the meantime).
    */
   push(input: { repositoryPath: string; branch: string; commitSha?: string }): { remote: string };
-  findPullRequest(input: { repositoryPath: string; branch: string }): { number: number; url: string } | null;
+  /**
+   * Every branch tip on the remote `push` publishes to, as
+   * `git ls-remote --heads` reports it: read-only, used only to choose the
+   * draft PR's base ({@link selectPullRequestBase}). Optional: an adapter
+   * without it opens every PR on the Project base, as before stacked bases
+   * existed (only test doubles omit it; the system adapter implements it).
+   */
+  listBranchTips?(input: { repositoryPath: string }): Array<{ branch: string; sha: string }>;
+  /**
+   * The open (or most recent) PR for the branch; `baseRefName` and `state`
+   * when the adapter can read them. A PR whose `state` is not OPEN is treated
+   * as no PR (preservation opens a new one).
+   */
+  findPullRequest(input: { repositoryPath: string; branch: string }): { number: number; url: string; baseRefName?: string; state?: string } | null;
   upsertDraftPullRequest(input: {
     repositoryPath: string;
     branch: string;
@@ -148,9 +161,39 @@ export interface CandidatePreservationReceipt {
   retryAction: string | null;
   /** Set only when the Operator QA plan refused; the pull-request body then states why. */
   qaPlanRefusal?: string;
+  /**
+   * The branch the draft PR was opened against and why (IN PR receipts whose
+   * remote adapter reports branch tips). `baseBranch` above stays the
+   * Project's base branch, which integration fast-forwards locally.
+   */
+  prBase?: PullRequestBase;
   createdAt: string;
   replayed: boolean;
 }
+
+/**
+ * The base a candidate's draft PR is opened against (Issue #987, Decision:
+ * stacked PRs). `project`: the Project's base branch, exactly as before.
+ * `stacked`: the remote agent candidate branch whose tip is the candidate's
+ * base revision -- the previous serial Action's branch, after that Action
+ * integrated by local fast-forward while the remote base, which the worker
+ * never pushes, stayed behind. GitHub then diffs the PR from exactly the
+ * candidate's base revision, as the host Operator QA plan does.
+ */
+export interface PullRequestBase {
+  kind: "project" | "stacked";
+  branch: string;
+  /** The remote tip of `branch` when it was chosen; null when the adapter reports no tips or the remote lacks it. */
+  tip: string | null;
+  reason: string;
+}
+
+export type PullRequestBaseSelection =
+  | { ok: true; base: PullRequestBase }
+  | { ok: false; reason: string; remedy: string };
+
+/** Marks the refusal so callers and the escalation can recognize it. */
+export const STACKED_BASE_UNAVAILABLE = "stacked_pull_request_base_unavailable";
 
 const PRESERVATION_TRAILER = "Arcadia-Preservation-Request";
 const FINGERPRINT_TRAILER = "Arcadia-Candidate-Fingerprint";
@@ -656,24 +699,33 @@ export function preserveCandidate(
   }
 
   // --- Remote preservation (AC4) -------------------------------------------
+  // The PR's base is chosen before anything is pushed: a candidate whose base
+  // revision no remote branch carries is refused here, with the commit kept
+  // on its local branch (a retry reuses it by trailer) and nothing pushed.
+  preservationStage("preserve.pull-request-base");
+  const resolved = resolvePullRequestBase(db, {
+    repositoryPath, baseBranch: request.baseBranch, baseRevision: request.baseRevision, branch: request.branch
+  }, remote);
+  if (!resolved.ok) throw resolved.error;
+  const { base: chosen, existing, tips } = resolved;
+  const prBase = tips ? chosen : null;
   // Rendered before the push so a refusal or a Git read never lands between
   // the push and the pull request.
-  const pullRequestBody = resolvePullRequestBody(request.remotePreservation.qaPlan, request, repositoryPath, commitSha);
+  const pullRequestBody = resolvePullRequestBody(request.remotePreservation.qaPlan, request, repositoryPath, commitSha, chosen);
   preservationStage("preserve.push");
   hooks.beforePush?.();
   const { remote: remoteName } = remote.push({ repositoryPath, branch: request.branch });
   hooks.afterPush?.();
 
   preservationStage("preserve.pull-request");
-  const existing = remote.findPullRequest({ repositoryPath, branch: request.branch });
   hooks.beforePullRequestReceipt?.();
   const pullRequest = remote.upsertDraftPullRequest({
     repositoryPath,
     branch: request.branch,
-    baseBranch: request.baseBranch,
+    baseBranch: chosen.branch,
     title: `Candidate: ${request.actionId}`,
     body: pullRequestBody.body,
-    existing
+    existing: existing ? { number: existing.number, url: existing.url } : null
   });
   hooks.afterPullRequestReceipt?.();
 
@@ -684,8 +736,199 @@ export function preserveCandidate(
     pullRequestNumber: pullRequest.number,
     pullRequestUrl: pullRequest.url,
     retryAction: null,
-    ...(pullRequestBody.refusal ? { qaPlanRefusal: pullRequestBody.refusal } : {})
+    ...(pullRequestBody.refusal ? { qaPlanRefusal: pullRequestBody.refusal } : {}),
+    ...(prBase ? { prBase } : {})
   });
+}
+
+function stackedBaseUnavailable(selection: { reason: string; remedy: string }, input: { branch: string; baseBranch: string; baseRevision: string }): ArcadiaError {
+  return validationError(`${selection.reason} Remedy: ${selection.remedy}`, {
+    code: STACKED_BASE_UNAVAILABLE,
+    branch: input.branch,
+    baseBranch: input.baseBranch,
+    baseRevision: input.baseRevision,
+    remedy: selection.remedy
+  });
+}
+
+/**
+ * The base a candidate's draft PR is opened (or kept) on, with the open PR
+ * already on the branch, or the refusal preservation raises before anything
+ * is pushed: no remote branch can be the base ({@link STACKED_BASE_UNAVAILABLE}),
+ * or an open PR already sits on a base that is no longer a valid choice
+ * (`pull_request_base_mismatch`). Read-only (`ls-remote`, `gh pr view`); the
+ * managed tick's pre-check calls it too, so neither refusal re-runs host
+ * validation while it holds.
+ *
+ * An existing PR keeps its base (a body edit never retargets it): a base still
+ * valid for this base revision is kept; any other is refused, since a body
+ * describing another base than the PR's would reproduce Issue #987. A closed
+ * or merged PR for the branch is no PR at all: a new one is opened.
+ */
+export function resolvePullRequestBase(
+  db: Database.Database | null,
+  input: { repositoryPath: string; baseBranch: string; baseRevision: string; branch: string },
+  remote: Pick<CandidatePreservationRemote, "listBranchTips" | "findPullRequest">
+):
+  | { ok: true; base: PullRequestBase; existing: { number: number; url: string; baseRefName?: string } | null; tips: Array<{ branch: string; sha: string }> | null }
+  | { ok: false; error: ArcadiaError } {
+  const tips = remote.listBranchTips ? remote.listBranchTips({ repositoryPath: input.repositoryPath }) : null;
+  const selection = tips ? selectPullRequestBaseFromTips(db, input, tips) : selectPullRequestBase(db, input, remote);
+  if (!selection.ok) return { ok: false, error: stackedBaseUnavailable(selection, input) };
+  const found = remote.findPullRequest({ repositoryPath: input.repositoryPath, branch: input.branch });
+  const existing = found && (found.state === undefined || found.state.toUpperCase() === "OPEN") ? found : null;
+  let chosen = selection.base;
+  if (existing?.baseRefName && existing.baseRefName !== chosen.branch) {
+    const kept = tips ? existingPullRequestBase(input, existing.baseRefName, tips) : null;
+    if (!kept) {
+      return {
+        ok: false,
+        error: validationError(
+          `Pull request ${existing.url} for ${input.branch} is opened against ${existing.baseRefName}, but this candidate's base revision ${input.baseRevision} `
+            + `selects ${chosen.branch} (${chosen.reason}); its Operator QA plan would describe a different base than the PR, so nothing is pushed. `
+            + `Remedy: retarget it with \`gh pr edit ${existing.number} --base ${chosen.branch}\` after checking that is right; the next preservation then updates its body.`,
+          { code: "pull_request_base_mismatch", pullRequest: existing.url, prBase: chosen, existingBase: existing.baseRefName }
+        )
+      };
+    }
+    chosen = kept;
+  }
+  return { ok: true, base: chosen, existing, tips };
+}
+
+/**
+ * Choose the draft PR's base so GitHub diffs it from exactly the candidate's
+ * base revision, the revision the host Operator QA plan diffs from. Read-only:
+ * one `git ls-remote --heads` through the adapter plus local Git reads.
+ *
+ * In order:
+ * - The remote's Project base tip is the base revision: the Project base,
+ *   unchanged (the first Action, and every candidate launched from the
+ *   published base).
+ * - A remote agent candidate branch (SAFE_TASK_BRANCH naming, never the
+ *   Project base or the candidate's own branch) whose tip IS the base
+ *   revision: the PR is stacked on it. This is the previous serial Action's
+ *   branch after that Action integrated by local fast-forward and the remote
+ *   base, never pushed by the worker, stayed behind. Because its tip is the
+ *   base revision itself, GitHub's diff is exactly the candidate's own change
+ *   and can hide none of it. Several such branches all give the identical
+ *   diff, so the choice only names the base: the one most recently preserved
+ *   in this repository wins, then the greatest full name (deterministic; the
+ *   prefix compares first, then the UTC timestamp agent branch names end in).
+ * - The remote base already contains the base revision (it advanced on its
+ *   own, for example the previous PR was merged on GitHub and its branch
+ *   deleted): the Project base, unchanged; GitHub's three-dot diff starts at
+ *   the base revision.
+ * - Otherwise (the previous candidate's branch deleted or never pushed):
+ *   refused, never the Project base, whose diff would show earlier Actions'
+ *   changes as this one's.
+ *
+ * Unchanged where it cannot know better: no tip listing, a remote without the
+ * Project base, or a remote base tip this repository has never fetched with
+ * no candidate branch matching -- the Project base, as before.
+ */
+export function selectPullRequestBase(
+  db: Database.Database | null,
+  input: { repositoryPath: string; baseBranch: string; baseRevision: string; branch: string },
+  remote: Pick<CandidatePreservationRemote, "listBranchTips">
+): PullRequestBaseSelection {
+  if (!remote.listBranchTips) {
+    return { ok: true, base: { kind: "project", branch: input.baseBranch, tip: null, reason: "The remote adapter reports no branch tips, so the PR opens on the Project base." } };
+  }
+  return selectPullRequestBaseFromTips(db, input, remote.listBranchTips({ repositoryPath: input.repositoryPath }));
+}
+
+/** {@link selectPullRequestBase} over an already-read tip listing. */
+function selectPullRequestBaseFromTips(
+  db: Database.Database | null,
+  input: { repositoryPath: string; baseBranch: string; baseRevision: string; branch: string },
+  tips: Array<{ branch: string; sha: string }>
+): PullRequestBaseSelection {
+  const { repositoryPath, baseBranch, baseRevision, branch } = input;
+  const project = (tip: string | null, reason: string): PullRequestBaseSelection => ({ ok: true, base: { kind: "project", branch: baseBranch, tip, reason } });
+  const remoteBase = tips.find((entry) => entry.branch === baseBranch)?.sha ?? null;
+  const short = baseRevision.slice(0, 12);
+  if (remoteBase === baseRevision) return project(remoteBase, `The candidate's base revision ${short} is the tip of ${baseBranch} on the remote.`);
+  const matches = tips
+    .filter((entry) => entry.sha === baseRevision && entry.branch !== baseBranch && entry.branch !== branch && SAFE_TASK_BRANCH.test(entry.branch))
+    .map((entry) => entry.branch);
+  const remoteState = remoteBase === null ? `the remote has no ${baseBranch}` : `the remote ${baseBranch} is at ${remoteBase.slice(0, 12)}`;
+  if (matches.length > 0) {
+    const ranked = rankByLatestPreservation(db, repositoryPath, matches);
+    const others = ranked.slice(1);
+    return {
+      ok: true,
+      base: {
+        kind: "stacked",
+        branch: ranked[0],
+        tip: baseRevision,
+        reason: `The candidate's base revision ${short} is not the tip of the remote ${baseBranch} (${remoteState}; the worker never pushes the base), `
+          + `and ${ranked[0]} is the remote candidate branch whose tip is ${short}, so the PR is stacked on it`
+          + `${others.length > 0 ? ` (also at ${short}: ${others.join(", ")}; the most recently preserved wins)` : ""}.`
+      }
+    };
+  }
+  const known = remoteBase !== null && tryGit(repositoryPath, ["cat-file", "-e", `${remoteBase}^{commit}`]) !== null;
+  if (known && isAncestor(repositoryPath, baseRevision, remoteBase)) {
+    return project(remoteBase, `The remote ${baseBranch} (${remoteBase.slice(0, 12)}) already contains the candidate's base revision ${short}.`);
+  }
+  if (remoteBase === null || !known) {
+    return project(remoteBase, `${remoteState[0].toUpperCase()}${remoteState.slice(1)}${remoteBase !== null ? " (not fetched here)" : ""} and no remote candidate branch has its tip at ${short}, so the PR opens on the Project base.`);
+  }
+  const local = (tryGit(repositoryPath, ["for-each-ref", "--points-at", baseRevision, "--format=%(refname:short)", "refs/heads"]) ?? "")
+    .split("\n").map((line) => line.trim()).filter((name) => name && name !== baseBranch && name !== branch && SAFE_TASK_BRANCH.test(name)).sort();
+  // A fresh agent branch at exactly the base revision always works (and never
+  // needs a force push, even where the old remote branch moved on).
+  const fresh = `\`git -C ${repositoryPath} push origin ${baseRevision}:refs/heads/agent/stack-base-${baseRevision.slice(0, 12)}\``;
+  const restore = local.length > 0
+    ? `push the previous candidate's branch again (\`git -C ${repositoryPath} push origin ${local[0]}\`; if the remote refuses it as a non-fast-forward, push a fresh branch at that revision instead: ${fresh})`
+    : `push a branch at that revision (${fresh})`;
+  return {
+    ok: false,
+    reason: `No remote branch can be this candidate's pull-request base: its base revision ${baseRevision} is not on the remote ${baseBranch} (${remoteState}; `
+      + `an earlier Action integrated by local fast-forward), and no remote candidate branch has its tip there (the previous candidate's branch was deleted or never pushed). `
+      + `A PR on ${baseBranch} would show the earlier Actions' changes as this one's (Issue #987), so nothing is pushed and no PR is opened; the candidate stays preserved locally on ${branch}.`,
+    remedy: `${restore}, or publish the integrated base yourself (\`git -C ${repositoryPath} push origin ${baseBranch}\`: an operator decision; the worker never pushes the base). `
+      + "The next preservation attempt then opens the PR."
+  };
+}
+
+/**
+ * An existing PR's base, kept when it is still a valid choice for this base
+ * revision: an agent candidate branch whose remote tip is the base revision,
+ * or the Project base whose remote tip is, or already contains, it.
+ */
+function existingPullRequestBase(
+  input: { repositoryPath: string; baseBranch: string; baseRevision: string },
+  existingBase: string,
+  tips: Array<{ branch: string; sha: string }>
+): PullRequestBase | null {
+  const tip = tips.find((entry) => entry.branch === existingBase)?.sha ?? null;
+  if (!tip) return null;
+  const short = input.baseRevision.slice(0, 12);
+  if (existingBase === input.baseBranch) {
+    const contains = tip === input.baseRevision || (tryGit(input.repositoryPath, ["cat-file", "-e", `${tip}^{commit}`]) !== null
+      && isAncestor(input.repositoryPath, input.baseRevision, tip));
+    return contains ? { kind: "project", branch: existingBase, tip, reason: `The existing PR's base ${existingBase} (${tip.slice(0, 12)}) contains the candidate's base revision ${short}; kept.` } : null;
+  }
+  return tip === input.baseRevision && SAFE_TASK_BRANCH.test(existingBase)
+    ? { kind: "stacked", branch: existingBase, tip, reason: `The existing PR's base ${existingBase} is the remote candidate branch whose tip is the candidate's base revision ${short}; kept.` }
+    : null;
+}
+
+/** Most recently preserved branch (in this repository) first, then the greatest name (by full name, prefix first). */
+function rankByLatestPreservation(db: Database.Database | null, repositoryPath: string, branches: string[]): string[] {
+  const latest = new Map<string, string>();
+  try {
+    const rows = db?.prepare(`SELECT branch, repository_path, created_at FROM candidate_preservation_receipts WHERE branch IN (${branches.map(() => "?").join(", ")})`)
+      .all(...branches) as Array<{ branch: string; repository_path: string; created_at: string }> | undefined;
+    const repository = canonical(repositoryPath);
+    for (const row of rows ?? []) {
+      if (canonical(row.repository_path) !== repository) continue;
+      if ((latest.get(row.branch) ?? "") < row.created_at) latest.set(row.branch, row.created_at);
+    }
+  } catch { /* no receipts table: names alone decide */ }
+  return [...branches].sort((a, b) => (latest.get(b) ?? "").localeCompare(latest.get(a) ?? "") || (a < b ? 1 : a > b ? -1 : 0));
 }
 
 /** The pull-request body: literal text, or the Operator QA plan rendered from its governed source. */
@@ -693,13 +936,17 @@ function resolvePullRequestBody(
   plan: string | OperatorQaPlanSource,
   request: CandidatePreservationRequest,
   repositoryPath: string,
-  commitSha: string
+  commitSha: string,
+  prBase: PullRequestBase
 ): { body: string; refusal: string | null } {
   if (typeof plan === "string") return { body: plan, refusal: null };
+  // The plan names the branch the PR is opened against. A stacked base's tip
+  // is the candidate's base revision itself, so the diff it lists is the
+  // same diff GitHub shows; the Project base renders exactly as before.
   const result = renderPreservedOperatorQaPlan(plan, {
     repositoryPath,
     branch: request.branch,
-    baseBranch: request.baseBranch,
+    baseBranch: prBase.branch,
     baseRevision: request.baseRevision,
     commitSha
   });
@@ -710,7 +957,9 @@ function resolvePullRequestBody(
  * The Operator QA plan exactly as host preservation renders it into a
  * preserved candidate's pull-request body, from the candidate's Git facts in
  * `repositoryPath` (changed files against the launch base revision, and which
- * named paths exist at the commit). Exported so the read-only checkpoint
+ * named paths exist at the commit). `baseBranch` is the branch the PR is
+ * opened against: the Project base, or a stacked base whose tip is
+ * `baseRevision` ({@link selectPullRequestBase}). Exported so the read-only checkpoint
  * replay (scripts/qa-plan-consistency.ts) re-renders a preserved candidate's
  * plan through this same path rather than a copy of it.
  */
@@ -794,15 +1043,26 @@ export const systemPreservationRemote: CandidatePreservationRemote = {
       : ["push", "--set-upstream", "origin", branch]);
     return { remote: "origin" };
   },
+  listBranchTips({ repositoryPath }) {
+    return git(repositoryPath, ["ls-remote", "--heads", "origin"]).split("\n").flatMap((line) => {
+      const match = /^([0-9a-f]{40,64})\trefs\/heads\/(.+)$/.exec(line.trim());
+      return match ? [{ branch: match[2], sha: match[1] }] : [];
+    });
+  },
   findPullRequest({ repositoryPath, branch }) {
     try {
-      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url"], {
+      const output = boundedExec("gh", ["pr", "view", branch, "--json", "number,url,baseRefName,state"], {
         cwd: repositoryPath,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"]
       }).toString();
-      const parsed = JSON.parse(output) as { number: number; url: string };
-      return { number: parsed.number, url: parsed.url };
+      const parsed = JSON.parse(output) as { number: number; url: string; baseRefName?: unknown; state?: unknown };
+      return {
+        number: parsed.number,
+        url: parsed.url,
+        ...(typeof parsed.baseRefName === "string" && parsed.baseRefName ? { baseRefName: parsed.baseRefName } : {}),
+        ...(typeof parsed.state === "string" && parsed.state ? { state: parsed.state } : {})
+      };
     } catch (error) {
       // A timeout is not "no pull request"; that answer would open a duplicate.
       if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
