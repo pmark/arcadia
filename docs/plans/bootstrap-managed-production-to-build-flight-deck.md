@@ -4219,6 +4219,24 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/autonomous-production-rehearsal-runbook.md", "https://github.com/pmark/arcadia/issues/1018"]
+  - id: make-done-action-settlement-unambiguous
+    title: Rewrite next_action when completion settlement marks an Action done, naming the completion request id.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Rewrite next_action when completion settlement marks an Action done, naming the completion request id.
+    expected_artifact: Evidence satisfying Agent Ask make-done-action-settlement-unambiguous
+    clarification: clarified
+    confidence: high
+    source: Agent Ask run8-unambiguous-done-settlement-2026-10-06
+    acceptance_criteria:
+      - A successful complete settlement rewrites only the completed Action next_action to an unambiguous completed form naming the completion request_id, in active and non-active Plans; pending Actions keep their instructions.
+      - Deterministic regression tests prove canonical completion rewriting, idempotency and refusal behavior remain correct.
+      - pnpm fast-rehearsal passes with the settlement change.
+      - A SMOKE_DRY=1 reviewer smoke built from the rendered run-8 Action 1 candidate proves its done record names the completion request id; paid smoke is held until this chat operator authorizes spend.
+    depends_on: []
+    decisions: []
+    references: ["docs/autonomous-production-rehearsal-runbook.md#10-handoff-current-state-and-next-run-recommendations", "docs/reports/rehearsal-reviewer-smoke/run8"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
