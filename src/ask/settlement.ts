@@ -1,9 +1,9 @@
 import { assertOperatorSettlementContract } from "../operatorActions/operatorExecution.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import { setTopLevelAskScalar, type AgentAskProposal, type NormalizedAgentAsk, type NormalizedAgentAskAction, type NormalizedAgentAskEvidence, type NormalizedAgentAskOption } from "./agentAsk.js";
+import { agentAskFingerprint, normalizeAgentAsk, setTopLevelAskScalar, type AgentAskProposal, type NormalizedAgentAsk, type NormalizedAgentAskAction, type NormalizedAgentAskEvidence, type NormalizedAgentAskOption } from "./agentAsk.js";
 import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
 import { createArtifactRecord, getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
@@ -131,6 +131,12 @@ export interface AgentAskSettlementReceipt {
    * failed, and on receipts from before this field existed.
    */
   documentsCommit?: string | null;
+  /**
+   * Non-fatal findings the settlement did not act on, e.g. a file at the
+   * Ask's canonical draft path whose content is not this Ask (Issue #981).
+   * Absent when there are none.
+   */
+  warnings?: string[];
 }
 
 export interface AgentAskSettlementRecovery {
@@ -1338,7 +1344,16 @@ export function settleAgentAsk(db: Database.Database, input: {
     });
   }
 
-  archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision);
+  const settlementWarnings: string[] = [];
+  const archivedSource = archiveSettledAskFile(fileMutations, effects, repoRoot, proposal.sourcePath ?? null, boundCandidateRevision);
+  // Also check the canonical draft name when the recorded source was some
+  // other file, so an identical drafted copy cannot stay behind untracked.
+  // Compared case-insensitively: on a case-insensitive filesystem a
+  // differently cased source is the same file and must not move twice.
+  const canonicalDraft = path.join(".arcadia", "asks", `agent-ask-${proposal.normalized.requestId}.yaml`);
+  if (archivedSource === null || archivedSource.toLowerCase() !== canonicalDraft.toLowerCase()) {
+    archiveCanonicalDraftAskFile(fileMutations, effects, settlementWarnings, repoRoot, proposal, boundCandidateRevision);
+  }
 
   const previewFingerprint = sha256(JSON.stringify({
     proposalFingerprint: proposal.fingerprint,
@@ -1380,7 +1395,8 @@ export function settleAgentAsk(db: Database.Database, input: {
       boundedPolicyDecision: null
     },
     notificationStatus: input.apply ? "pending" : "withheld_until_apply",
-    createdAt: now
+    createdAt: now,
+    ...(settlementWarnings.length > 0 ? { warnings: settlementWarnings } : {})
   };
   if (!input.apply) return {
     ...baseReceipt,
@@ -2567,7 +2583,104 @@ function archiveSettledAskFile(
   // neither `git add` nor `git status` recognizes.
   if (realpathSync(path.dirname(requested)) !== realpathSync(asksDir)) return null;
   const resolved = path.join(asksDir, path.basename(requested));
-  const content = readFileSync(resolved, "utf8");
+  return pushAskArchiveMutations(fileMutations, effects, repoRoot, resolved, readFileSync(resolved, "utf8"), boundCandidateRevision);
+}
+
+/** The request ids whose canonical draft name `agent-ask draft` writes and `untrackedDraftAskPaths` recognizes. */
+const CANONICAL_DRAFT_REQUEST_ID = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Fallback for a proposal whose recorded `sourcePath` did not archive the
+ * canonical draft (none was recorded, as for an Ask previewed from inline
+ * text, or it named another file): archive the canonical drafted
+ * file `.arcadia/asks/agent-ask-<request_id>.yaml` of the repository being
+ * settled, in the same settlement commit (Issue #981). Without it, a drafted
+ * Ask stayed untracked beside its own settlement commit, a later preservation
+ * committed it, and the candidate could never integrate.
+ *
+ * It moves only that one exact path, and only when the file is a regular file
+ * (never a symlink) whose directory resolves to this repository's own
+ * `.arcadia/asks/` (no symlinked segment can redirect it elsewhere), and whose
+ * content is this proposal itself: the same request id and the same preview
+ * fingerprint `agentAskFingerprint` recorded. A file under that name that is
+ * not this Ask is left in place and reported as a warning; the settlement
+ * proceeds. No canonical file at all is a silent no-op, exactly as before.
+ */
+function archiveCanonicalDraftAskFile(
+  fileMutations: FileMutation[],
+  effects: string[],
+  warnings: string[],
+  repoRoot: string,
+  proposal: AgentAskProposal,
+  boundCandidateRevision: string | null
+): string | null {
+  const requestId = proposal.normalized.requestId;
+  if (!CANONICAL_DRAFT_REQUEST_ID.test(requestId)) return null;
+  const asksDir = path.join(repoRoot, ".arcadia", "asks");
+  const canonical = path.join(asksDir, `agent-ask-${requestId}.yaml`);
+  const relative = path.relative(repoRoot, canonical);
+  let entry: ReturnType<typeof lstatSync>;
+  try { entry = lstatSync(canonical); } catch { return null; }
+  if (!entry.isFile()) {
+    warnings.push(`Left ${relative} in place: it is not a regular file, so it is never archived as the settled Ask.`);
+    return null;
+  }
+  let asksReal: string;
+  let repoReal: string;
+  try { asksReal = realpathSync(asksDir); repoReal = realpathSync(repoRoot); } catch { return null; }
+  if (asksReal !== path.join(repoReal, ".arcadia", "asks")) {
+    warnings.push(`Left ${relative} in place: its directory resolves outside this repository's own .arcadia/asks/.`);
+    return null;
+  }
+  const archiveDir = path.join(asksDir, "archive");
+  let archiveEntry: ReturnType<typeof lstatSync> | null;
+  try { archiveEntry = lstatSync(archiveDir); } catch { archiveEntry = null; }
+  if (archiveEntry && !archiveEntry.isDirectory()) {
+    warnings.push(`Left ${relative} in place: ${path.relative(repoRoot, archiveDir)} is not a plain directory.`);
+    return null;
+  }
+  const content = readFileSync(canonical, "utf8");
+  if (!askFileMatchesProposal(content, proposal)) {
+    warnings.push(`Left ${relative} in place: its content does not match settled proposal ${requestId} (request id or fingerprint differs), so it was not archived. `
+      + "Review it; delete it if it is a stale copy, or re-draft it under a new request id.");
+    return null;
+  }
+  return pushAskArchiveMutations(fileMutations, effects, repoRoot, canonical, content, boundCandidateRevision);
+}
+
+/**
+ * Whether `content` is exactly the Ask this proposal recorded: it normalizes
+ * to the same request id and reproduces the proposal's own preview
+ * fingerprint. The fingerprint hashes the raw request text, so the only
+ * latitude is surrounding whitespace, which `normalizeAgentAsk` discards and
+ * `agent-ask draft` itself rewrites (it stores `trim()` plus one newline) — an
+ * inline preview of the same JSON therefore still matches its drafted file.
+ * The Project is the proposal's resolved slug, as preview hashed it.
+ */
+function askFileMatchesProposal(content: string, proposal: AgentAskProposal): boolean {
+  for (const request of new Set([content, content.trim(), `${content.trim()}\n`])) {
+    let parsed: NormalizedAgentAsk;
+    try {
+      parsed = normalizeAgentAsk({ request, requestId: proposal.normalized.requestId, project: proposal.normalized.project });
+    } catch {
+      return false;
+    }
+    if (parsed.requestId !== proposal.normalized.requestId) return false;
+    if (agentAskFingerprint(request, { ...parsed, project: proposal.normalized.project }) === proposal.fingerprint) return true;
+  }
+  return false;
+}
+
+/** Register the move of one settled Ask file into `.arcadia/asks/archive/`; returns its repository-relative source path. */
+function pushAskArchiveMutations(
+  fileMutations: FileMutation[],
+  effects: string[],
+  repoRoot: string,
+  resolved: string,
+  content: string,
+  boundCandidateRevision: string | null
+): string {
+  const asksDir = path.dirname(resolved);
   const archivePath = path.join(asksDir, "archive", path.basename(resolved));
   // The draft may name its Candidate by an abbreviated sha, or by a revision a
   // pre-dispatch auto-settle refreshed in memory before settling it. Archive

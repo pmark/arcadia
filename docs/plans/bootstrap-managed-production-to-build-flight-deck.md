@@ -3932,7 +3932,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run3-2026-10-05.sh", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run3-2026-10-05.sh", "tests/three-action-rehearsal-run-3-operator-scripts.test.ts", "tests/rehearsal-run-3-amended-action.test.ts", "https://github.com/pmark/arcadia/issues/968", "https://github.com/pmark/arcadia/issues/972"]
   - id: archive-settled-ask-by-canonical-name
     title: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make settlement archive the drafted Ask file when no sourcePath was recorded, and make a repeated integration refusal visible once instead of looping silently.

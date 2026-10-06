@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Bootstrap managed production to run unattended from the GitHub board
 active_plan: bootstrap-managed-production-to-build-flight-deck
 current_action: prepare-run-5-rehearsal-scripts
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # Arcadia
