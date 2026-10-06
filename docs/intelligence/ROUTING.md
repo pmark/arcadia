@@ -232,8 +232,8 @@ that inventory.
 ARCADIA_LITELLM_LOCAL_TEXT_ROUTE=arcadia-default   # local text generation
 ARCADIA_CODEX_TEXT_ROUTE=codex-cli                  # local Codex text generation
 ARCADIA_CLAUDE_CODE_TEXT_ROUTE=claude-code-cli      # local Claude Code text generation
-ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud      # GPT-4o Mini
-ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-image     # GPT Image
+ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud-text # cloud text generation
+ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-cloud-image # cloud image generation
 ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui                 # local FLUX.2 Klein generation/editing
 ARCADIA_CODEX_IMAGE_ROUTE=codex-cli                 # optional local Codex image generation
 ```
@@ -246,10 +246,10 @@ each resolves to:
 | `text.generate` / `local-required` / `fast`              | `arcadia.text.generate.local.fast` → `arcadia-default` |
 | `text.generate` / `local-preferred` / `standard`          | `arcadia.text.generate.local.standard` → `arcadia-default` |
 | `text.generate` / `local-required` / `standard` / target `claude-code` | `arcadia.text.generate.local.standard.claude-code` → Claude Code CLI |
-| `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud` |
+| `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud-text` |
 | `image.generate` / `local-required` / `quality`           | `arcadia.image.generate.local.quality.comfyui` → ComfyUI |
 | `image.edit` / `local-required` / `quality`               | `arcadia.image.edit.local.quality.comfyui` → ComfyUI |
-| `image.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.image.generate.cloud.quality` → `arcadia-image` |
+| `image.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.image.generate.cloud.quality` → `arcadia-cloud-image` |
 
 ## What Rebuster should send
 
