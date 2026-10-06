@@ -4170,7 +4170,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1018", "src/production/independentReview.ts", "tests/fast-rehearsal/long-chain-verdict-failure.test.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: prepare-run7-chain
     title: Fill run 7's parameters from run 6's receipts, make the chain reset position reopened and new fixture Actions in the queue, and make G6 check queue validity and read Codex capacity reliably.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Fill run 7's parameters from run 6's receipts, make the chain reset position reopened and new fixture Actions in the queue, and make G6 check queue validity and read Codex capacity reliably.
@@ -4189,7 +4189,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: prepare-run7-chain
+current_action: bound-variance-verdict-reruns
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
