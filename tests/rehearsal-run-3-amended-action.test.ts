@@ -198,6 +198,13 @@ describe("the worker tick dispatches the run-3 input past runs 1 and 2, once no 
     const blocked = [rehearsal.tick(), rehearsal.tick()];
     expect(blocked.some((r) => r.launch?.outcome === "launched")).toBe(false);
     expect(rehearsal.attempts("write-marker-a")).toEqual(earlier);
+    // Issue #997: production status names the gate within one tick, once, with the reason this stale proposal cannot settle.
+    const gate = rehearsal.status().operatorEscalations;
+    expect(gate.map((entry) => [entry.actionKey, entry.kind])).toEqual([[rehearsal.actionA, "operator_gate_pending"]]);
+    expect(gate[0].message).toMatch(/^Launch of two-action-rehearsal-v4\/write-marker-a is held by pending Agent Ask proposal \S+: Mark write-marker-a complete\.$/);
+    expect(gate[0].remedy).toContain(`It cannot settle: Completion Candidate revision ${run2.tip} does not match`);
+    expect(gate[0].remedy).toContain(`--request-id reject-${pendingRequestId} --disposition rejected`);
+    expect(rehearsal.log.filter((line) => line.includes("(operator_gate_pending)"))).toHaveLength(1);
 
     // What the run-3 reset does before its commit: reject exactly that proposal, preview then apply.
     const preview = runAgentAskSettleCommand({ workspace: rehearsal.workspace, proposal: pendingRequestId, requestId: "run-3-reset-reject-run-2", disposition: "rejected" });
@@ -207,6 +214,7 @@ describe("the worker tick dispatches the run-3 input past runs 1 and 2, once no 
 
     const launched = rehearsal.tickUntil((r) => r.launch?.outcome === "launched", 3).at(-1)!;
     expect(launched.launch).toMatchObject({ outcome: "launched", actionKey: rehearsal.actionA });
+    expect(rehearsal.status().operatorEscalations).toEqual([]);
     const lineage = rehearsal.attempts("write-marker-a");
     expect(lineage.slice(0, earlier.length)).toEqual(earlier);
     const fresh = lineage.slice(earlier.length);

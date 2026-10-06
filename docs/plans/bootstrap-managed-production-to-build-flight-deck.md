@@ -4050,7 +4050,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/987", "https://github.com/pmark/arcadia/issues/989", "tests/fast-rehearsal/README.md", "scripts/qa-plan-consistency.ts", "src/sessions/candidatePreservation.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: fix-pending-completion-gate
     title: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Surface a pending-Ask operator gate once in production status and recover the agent-left-extra-work and died-before-recorded completion stalls, proven in the fast harness.
@@ -4086,7 +4086,7 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run5-2026-10-06.json", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run5-2026-10-06.json", "https://github.com/pmark/arcadia/issues/987"]
   - id: fix-qa-plan-check-wording
     title: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
