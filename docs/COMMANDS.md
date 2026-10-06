@@ -1393,6 +1393,31 @@ pnpm arcadia orientation reply "I spent about an hour on the car mirror this mor
 pnpm arcadia orientation reply "I have 20 minutes, what fits?" --workspace "$WORKSPACE"
 ```
 
+## Watch And Rewind Workspace Activity
+
+`arcadia timeline` is one read-only event stream for the whole workspace and
+every Project: commits and worktrees across the main checkouts and every
+registered Claude Code, Codex and OpenCode worktree, managed Sessions and their
+roles, Agent Asks, Decisions, governed-record changes (Action done, pointer
+moved, Plan activated), managed production, operator-script receipts and
+Discord pings. Each event names its agent tool, semantic agent name where
+derivable, kind of work (`plan-design`, `implement`, `review`, `verify`,
+`integrate`, `govern`, `operate`, `observe`) and how each field was derived.
+
+```sh
+arcadia timeline                                   # last 24h, newest 200 events
+arcadia timeline --since 6h --project arcadia --tool codex --kind verify
+arcadia timeline --as-of 2026-10-06T03:31Z --since 6h   # the workspace as of then
+arcadia timeline --ndjson --limit 1000             # one JSON event per line
+arcadia timeline --follow --json                   # stream new events (polls every 15 s)
+arcadia timeline --pull-requests                   # also read GitHub PRs (gh api GET)
+```
+
+It opens the workspace database read-only, reads repositories with read-only
+Git, and records no activity row. An unreadable source becomes a
+`source_error` event; the stream continues. Design, sources and Phase 2
+options: `docs/proposals/operator-timeline.md`.
+
 ## Reconcile A Dead Session
 
 A coding-agent Session sometimes exits (crashes, is killed, or the host

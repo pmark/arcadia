@@ -84,9 +84,11 @@ const INSIDE_ALLOWED_ROOT = (option: string, flag: string): CommandClassificatio
  * the resolved workspace at all (it names its own target, or is host- or
  * repository-level), so the guard has nothing to decide, and the CLI records
  * no activity row for it (`recordsActivity`). Mark a command exempt only when
- * neither it nor anything it calls resolves or opens a workspace database:
- * `tests/activity-no-record-commands.test.ts` runs every exempt command and
- * fails when one opens the default workspace or records activity.
+ * neither it nor anything it calls resolves or opens a workspace database, or
+ * (the pure observers `workspace leak-check` and `timeline`) opens one only
+ * read-only: `tests/activity-no-record-commands.test.ts` runs every exempt
+ * command and fails when one opens the default workspace writable or records
+ * activity.
  */
 export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassification>> = {
   "audit host-preview": exempt("Serves a named static directory on loopback; reads no workspace."),
@@ -374,6 +376,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "time log": ALLOWED,
   "time list": ALLOWED,
   activity: ALLOWED,
+  timeline: exempt("Reads the resolved workspace database read-only and its repositories with read-only Git; writes and records nothing."),
   "mission-control overview": ALLOWED,
   "mission-control node": ALLOWED,
   "mission-control fits": ALLOWED,

@@ -105,7 +105,8 @@ function invocations(): Record<string, string[][]> {
     "operator-task raise": [["operator-task", "raise", "Approve the fixture", "--because", "Only the operator can", "--repo", repo]],
     "operator-task evidence": [["operator-task", "evidence", "no-such-task", "--note", "looks done", "--repo", repo]],
     "operator-task close": [["operator-task", "close", "no-such-task", "--operator", "--repo", repo]],
-    "operator-task decline": [["operator-task", "decline", "no-such-task", "--because", "not needed", "--operator", "--repo", repo]]
+    "operator-task decline": [["operator-task", "decline", "no-such-task", "--because", "not needed", "--operator", "--repo", repo]],
+    timeline: [["timeline"], ["timeline", "--since", "1h", "--ndjson"], ["timeline", "--as-of", "1h"], ["timeline", "--tool", "nobody"]]
   };
 }
 
@@ -144,7 +145,7 @@ describe("commands that read no workspace state record no activity", () => {
     expect(noRecord).toEqual(commands.filter((key) => COMMAND_CLASSIFICATION[key]?.kind === "exempt").sort());
     expect(noRecord).toEqual(expect.arrayContaining([
       "init", "config get defaultWorkspace", "identity resolve", "identity roster",
-      "workspace resolve", "workspace guard", "workspace leak-check", "audit host-preview"
+      "workspace resolve", "workspace guard", "workspace leak-check", "audit host-preview", "timeline"
     ]));
     expect(Object.keys(invocations()).sort(), "Add an invocation to this test for each newly exempt command").toEqual(noRecord);
     for (const key of commands.filter((command) => COMMAND_CLASSIFICATION[command]?.kind !== "exempt")) {
@@ -163,9 +164,9 @@ describe("commands that read no workspace state record no activity", () => {
       for (const args of runs) {
         const { liveOpens, recorded } = await observe(args);
         expect(recorded, args.join(" ")).toEqual([]);
-        if (key === "workspace leak-check") {
-          // The leak check's purpose is to observe the live database, which it
-          // does only read-only; it never opens it to record itself.
+        if (key === "workspace leak-check" || (key === "timeline" && !args.includes("nobody"))) {
+          // The leak check's and the timeline's purpose is to observe the live
+          // database, which they do only read-only; neither opens it to record itself.
           expect(liveOpens.length, args.join(" ")).toBeGreaterThan(0);
           expect(liveOpens.every((open) => open.readonly), args.join(" ")).toBe(true);
         } else {
