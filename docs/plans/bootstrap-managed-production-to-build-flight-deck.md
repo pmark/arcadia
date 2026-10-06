@@ -4204,7 +4204,7 @@ actions:
     references: ["artifacts/generated/operator-scripts/runs/20261006T175308Z-12860", "artifacts/generated/operator-scripts/rehearsal-chain/reset.sh", "src/operatorActions/rehearsalChain.ts", "docs/autonomous-production-rehearsal-runbook.md"]
   - id: record-rehearsal-findings-ledger
     title: Add a findings ledger, a per-run retro protocol, the next-run recommendations and a handoff section to the rehearsal runbook, and preserve the reviewer smoke harness.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Add a findings ledger, a per-run retro protocol, the next-run recommendations and a handoff section to the rehearsal runbook, and preserve the reviewer smoke harness.
@@ -4223,7 +4223,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: record-rehearsal-findings-ledger
+current_action: fix-reviewer-verdict-name-echo
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
