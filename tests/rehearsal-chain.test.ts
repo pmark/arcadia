@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -116,11 +116,12 @@ const filled7 = (): ChainRunParams => {
 };
 
 describe("rehearsal-chain parameter files", () => {
-  it("run 6 (N=3) is valid, binds run 5's receipts and heads, requires the merged #987 fix and leaves only the #997 fix commit unfilled", () => {
+  it("run 6 (N=3) is valid and fully filled: binds run 5's receipts and heads and requires the merged #987 and #997 fixes", () => {
     const { params, problems, unfilled } = validateChainParams(RUN6);
     expect(problems).toEqual([]);
     expect(params?.actionCount).toBe(3);
-    expect(unfilled).toEqual(["params.requiredCommits[4].commit"]);
+    expect(unfilled).toEqual([]);
+    expect(RUN6.requiredCommits[4].commit).toBe("a4a7c18450c6fe38beb390d7ce4fd62570ca841f");
     expect(RUN6.requiredCommits[3].commit).toBe("26172c74ae9dcf795cc69cabd8a62616f7ed42c8");
     expect(RUN6.previousRun).toMatchObject({
       label: "run 5", resetId: "reset-three-action-rehearsal-fixture-run5-2026-10-06", terminalOffId: "restore-terminal-off-three-action-rehearsal-run5-2026-10-06",
@@ -142,7 +143,7 @@ describe("rehearsal-chain parameter files", () => {
     expect(RUN7.previousRun).toMatchObject({ label: "run 6", resetId: "reset-rehearsal-chain-fixture-run6-2026-10-06", terminalOffId: "restore-terminal-off-rehearsal-chain-run6-2026-10-06", grantId: "grant-production-rehearsal-chain-run6-2026-10-06" });
     for (const binding of ["resetRunId", "resetHead", "terminalOffRunId", "localMain"]) expect(unfilled).toContain(`params.previousRun.bindings.${binding}`);
     expect(unfilled).toContain("params.previousRun.bindings.candidates[6].branch");
-    expect(unfilled).toContain("params.requiredCommits[4].commit");
+    expect(unfilled.filter((entry) => entry.startsWith("params.requiredCommits"))).toEqual([]);
     expect(RUN7.requiredCommits).toEqual(RUN6.requiredCommits);
     // Filled with well-formed values it validates with nothing unfilled.
     expect(validateChainParams(filled7())).toMatchObject({ problems: [], unfilled: [] });
@@ -165,7 +166,7 @@ describe("rehearsal-chain parameter files", () => {
     ["no candidates", (p: Record<string, any>) => { p.previousRun.bindings.candidates = []; }, "candidates"],
     ["this run's own Grant as the previous one", (p: Record<string, any>) => { p.previousRun.grantId = "grant-production-rehearsal-chain-run6-2026-10-06"; }, "own Grant"],
     ["a non-slug previous id", (p: Record<string, any>) => { p.previousRun.resetId = "Reset Run 5"; }, "resetId"],
-    ["a required-commit list without the #922/#924/#983/#987 floor", (p: Record<string, any>) => { p.requiredCommits = p.requiredCommits.slice(4); }, "the floor cannot be removed"]
+    ["a required-commit list without the #922/#924/#983/#987/#997 floor", (p: Record<string, any>) => { p.requiredCommits = p.requiredCommits.slice(4); }, "the floor cannot be removed"]
   ])("refuses %s", (_label, mutate, expected) => {
     const params = structuredClone(RUN6) as unknown as Record<string, any>;
     mutate(params);
@@ -382,5 +383,22 @@ describe("rendered library entries", () => {
     expect(chainDescriptor("reset", RUN7).desired_effect).toContain("still to be filled in the parameter file");
     expect(chainNextAction(0, RUN6)).toContain("Action 1 of 3");
     expect(genesisRoot === null || typeof genesisRoot === "string").toBe(true);
+  });
+});
+
+describe("check:operator-scripts follows a launcher's exec target", () => {
+  it("judges a rehearsal-chain launcher together with its shared implementation, so a settlement hidden there is refused", () => {
+    const lib = temp("chain-checker-");
+    mkdirSync(path.join(lib, "rehearsal-chain"));
+    const id = chainLibraryIds("run6-2026-10-06").reset;
+    for (const ext of ["sh", "json"]) copyFileSync(path.join(library, `${id}.${ext}`), path.join(lib, `${id}.${ext}`));
+    chmodSync(path.join(lib, `${id}.sh`), 0o755);
+    const check = () => spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts", "check-operator-scripts.ts"), lib], { cwd: repoRoot, encoding: "utf8" });
+    writeFileSync(path.join(lib, "rehearsal-chain", "reset.sh"), readFileSync(path.join(library, "rehearsal-chain", "reset.sh"), "utf8"));
+    expect(check().status, check().stderr).toBe(0);
+    writeFileSync(path.join(lib, "rehearsal-chain", "reset.sh"), readFileSync(path.join(library, "rehearsal-chain", "reset.sh"), "utf8") + "\narcadia agent-ask settle --proposal x --disposition rejected\n");
+    const refused = check();
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("UNDECLARED_OPERATOR_SETTLEMENT");
   });
 });

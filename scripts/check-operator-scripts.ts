@@ -29,7 +29,16 @@ for (const entry of readdirSync(library).filter(file => file.endsWith(".json")).
     const scriptBytes = readFileSync(script);
     // Exact-hash pin only: any changed, renamed or new file falls through to full validation.
     if (matchRetirement(retirements, id, descriptorBytes, scriptBytes)) { retired.push(id); continue; }
-    const descriptor = validateOperatorScriptContract(JSON.parse(descriptorBytes.toString("utf8")), id, scriptBytes.toString("utf8"));
+    // A launcher that execs a shared implementation inside the library (the rehearsal-chain set) is
+    // judged together with that implementation, so its text checks (an undeclared settlement, a
+    // bespoke Plan-amendment runner) cannot be hidden one file away.
+    let scriptText = scriptBytes.toString("utf8");
+    for (const target of scriptText.matchAll(/^exec "\$library_dir\/([^"$]+)"/gm)) {
+      const resolved = realpathSync(path.join(library, target[1]));
+      if (!resolved.startsWith(library + path.sep)) throw new Error(`Launcher target ${target[1]} resolves outside the library.`);
+      scriptText += "\n" + readFileSync(resolved, "utf8");
+    }
+    const descriptor = validateOperatorScriptContract(JSON.parse(descriptorBytes.toString("utf8")), id, scriptText);
     // A "Do this next" hint must name a published prerequisite; voided_by may name host-local entries.
     if (descriptor.next_after && !existsSync(path.join(library, `${descriptor.next_after.id}.json`))) {
       throw new OperatorScriptContractError("UNKNOWN_NEXT_AFTER_PREREQUISITE", `next_after names ${descriptor.next_after.id}, which is not in this library.`);

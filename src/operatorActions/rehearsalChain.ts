@@ -24,13 +24,15 @@ export const UNFILLED = "UNFILLED";
  * The fail-closed floor every run's G6 and G7 require on Arcadia main, whatever
  * the parameter file adds: remote preservation (#922), tick-driven PR readiness
  * and reviews (#924), the canonical-name Ask archive (#983), all hard-coded in
- * the run-5 set, and the serial PR base stacking fix (#987, merged as #1006).
+ * the run-5 set, the serial PR base stacking fix (#987, merged as #1006) and the
+ * pending-completion gate fix (#997, merged as #1010).
  */
 export const REQUIRED_COMMIT_FLOOR: Readonly<Record<string, string>> = {
   "9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1": "remote preservation (#922)",
   "0b3686013f0a924c35d58dc7a09c979f1a994c7e": "tick-driven PR readiness and both independent reviews (#924)",
   "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4": "settlement archives the drafted Ask by its canonical name (#983)",
-  "26172c74ae9dcf795cc69cabd8a62616f7ed42c8": "serial Actions' draft PRs stacked on the previous candidate branch (#987, #1006)"
+  "26172c74ae9dcf795cc69cabd8a62616f7ed42c8": "serial Actions' draft PRs stacked on the previous candidate branch (#987, #1006)",
+  "a4a7c18450c6fe38beb390d7ce4fd62570ca841f": "a pending completion Ask gating the tick is shown, recovered or integrated (#997, #1010)"
 };
 
 export interface ChainCandidate { branch: string; tip: string; pullRequest: number }

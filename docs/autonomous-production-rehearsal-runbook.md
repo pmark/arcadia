@@ -159,8 +159,8 @@ exported; with `ARCADIA_REQUIRE_INLINE_WORKSPACE=1` a command without it fails).
 - [ ] The prerequisite fixes for known blockers are merged **and installed**:
       G6 and G7 require every `requiredCommits` entry of the run's parameter file
       (for run 6 and run 7: #922, #924, #983, the #987 stacking fix `26172c74`
-      (#1006), and the merge of `fix-pending-completion-gate` (#997), still
-      `UNFILLED` until it merges).
+      (#1006) and the #997 gate fix `a4a7c184` (#1010); these five are also a
+      fixed floor no parameter change can remove).
 - [ ] No other session plans a merge, push, reinstall or restart in the freeze
       window (section 5, phase 2).
 - [ ] The operator is reachable for the G7 press inside a 30-minute window.
@@ -379,7 +379,9 @@ Run `.../restore-terminal-off-rehearsal-chain-<run-id>.sh run` (runs 2 to 5:
 the operator's Terminal panel or `/runs`**. A plain non-interactive shell
 refuses with "launch this action through /runs or from an interactive host
 terminal" and changes nothing. It owns only its own run's G7 policy (request id
-`grant-production-rehearsal-chain-<run-id>` with exactly the run's N Actions).
+`grant-production-rehearsal-chain-<run-id>`, the fixture Project and Plan, and
+the Actions that G7's receipt recorded) and turns it Off before it checks its
+launcher or reads the parameter file, so drift there cannot block the stop.
 Expect `TERMINAL OFF PROVEN: Inactive at revision
 <n>, zero live admissions and Sessions before and after the reviewed restart;
 every fixture candidate is integrated, preserved or empty.` The chain G8 copies

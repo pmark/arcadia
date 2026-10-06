@@ -237,6 +237,13 @@ STAGE=preflight
 [[ "$(git -C "$ARCADIA_REPO" rev-parse --show-toplevel 2>/dev/null)" == "$ARCADIA_REPO" ]] || refuse "the operator-script library is not inside the Arcadia checkout"
 [[ "$(git -C "$ARCADIA_REPO" branch --show-current)" == main ]] || would_refuse "the Arcadia checkout must be on main"
 [[ -z "$(git -C "$ARCADIA_REPO" status --porcelain)" ]] || would_refuse "the Arcadia checkout must be clean"
+# The reviewed head, as G6 and G7 require it: HEAD level with last-fetched origin/main and with a fresh ls-remote of it.
+ARCADIA_HEAD="$(git -C "$ARCADIA_REPO" rev-parse HEAD)"
+[[ "$ARCADIA_HEAD" == "$(git -C "$ARCADIA_REPO" rev-parse -q --verify origin/main 2>/dev/null)" ]] || would_refuse "the Arcadia checkout's HEAD $ARCADIA_HEAD is not level with its last-fetched origin/main; fetch and fast-forward main, then rerun"
+REMOTE_LINE="$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main 2>/dev/null)" || REMOTE_LINE=""
+ARCADIA_REMOTE_HEAD="${REMOTE_LINE%%[[:space:]]*}"
+[[ "$ARCADIA_REMOTE_HEAD" == "$ARCADIA_HEAD" ]] || would_refuse "origin main observed now (${ARCADIA_REMOTE_HEAD:-unobserved within 30 seconds}) is not the checkout's HEAD $ARCADIA_HEAD; fetch and fast-forward main, then rerun"
+record_str arcadiaHead "$ARCADIA_HEAD"
 [[ -z "${ARCADIA_WORKSPACE+x}" ]] || refuse "ARCADIA_WORKSPACE is set in this shell, so the workspace would not resolve from user config; run 'unset ARCADIA_WORKSPACE' and rerun"
 # Receipts are read from this library's runs/ only; a dry run run from a candidate checkout may read the main checkout's.
 RECEIPTS_DIR="$LIBRARY_DIR/runs"

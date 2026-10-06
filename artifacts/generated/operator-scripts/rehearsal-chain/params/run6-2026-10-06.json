@@ -8,7 +8,7 @@
     { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
     { "commit": "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4", "why": "settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983)" },
     { "commit": "26172c74ae9dcf795cc69cabd8a62616f7ed42c8", "why": "each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a))" },
-    { "commit": "UNFILLED: the merge commit on Arcadia main of Action fix-pending-completion-gate", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
+    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
   ],
   "previousRun": {
     "label": "run 5",
@@ -33,6 +33,6 @@
   "notes": [
     "Run 6 (N=3): the three G1 Actions, each amended with a fresh run note. The new line starts from GitHub main 7214de28 (run 5's reset head); the reset moves only the fixture clone's local main back from f68ec48 (run 5's integrated Action 1, preserved on PR #5 and contained in PR #6) and pushes one reset commit on 7214de28 without force.",
     "Bindings are run 5's receipts: reset runs/20261006T031820Z-74070 (newHead 7214de28) and terminal Off runs/20261006T033451Z-43195 (fixtureMain f68ec48, PRs #1 to #6 reconciled).",
-    "The #987 stacking fix is on Arcadia main as 26172c74ae9d (#1006). Fill the remaining UNFILLED required commit with the merge commit of fix-pending-completion-gate (#997) once it is on Arcadia main. The reset ignores it; G6 and G7 refuse while it is unfilled."
+    "Required commits are all filled: the #987 stacking fix 26172c74ae9d (#1006) and the #997 pending-completion gate fix a4a7c18450c6 (#1010) are on Arcadia main; G6 and G7 require every entry."
   ]
 }

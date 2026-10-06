@@ -8,7 +8,7 @@
     { "commit": "0b3686013f0a924c35d58dc7a09c979f1a994c7e", "why": "tick-driven PR readiness and both independent reviews (#924)" },
     { "commit": "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4", "why": "settlement archives the drafted Ask by its canonical name, with a once-only integration-refusal escalation (#983)" },
     { "commit": "26172c74ae9dcf795cc69cabd8a62616f7ed42c8", "why": "each serial Action's draft PR stacked on the previous candidate branch (Issue #987 option (a))" },
-    { "commit": "UNFILLED: the merge commit on Arcadia main of Action fix-pending-completion-gate", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
+    { "commit": "a4a7c18450c6fe38beb390d7ce4fd62570ca841f", "why": "a pending completion Ask gating the tick is shown, recovered or integrated (Issue #997, with #994 and #995)" }
   ],
   "previousRun": {
     "label": "run 6",
@@ -34,6 +34,6 @@
   "notes": [
     "Run 7, the overnight run (N=9): three batches of three tiny dependent Actions (the three G1 Actions, then chain-step-04 to chain-step-09, each reading its predecessor's output) under ONE G7 press, inside the Grant's 12-hour expiry.",
     "Fill every UNFILLED binding from run 6's receipts only after run 6's G8 succeeded: resetRunId and resetHead from run 6's reset receipt (id reset-rehearsal-chain-fixture-run6-2026-10-06, field newHead); terminalOffRunId and localMain from run 6's G8 receipt (id restore-terminal-off-rehearsal-chain-run6-2026-10-06, field fixtureMain); one candidates entry per line of that G8 run's work-reconciliation.jsonl whose state is integrated or preserved (branch, tip, and the number at the end of pullRequest). The reset cross-checks every value against those receipts and refuses on any mismatch or any value still starting with UNFILLED.",
-    "Fill the remaining UNFILLED required commit (#997) exactly as for run 6. G6 and G7 refuse while it is unfilled."
+    "The required commits match run 6's (#987 26172c74ae9d, #997 a4a7c18450c6); G6 and G7 require every entry."
   ]
 }

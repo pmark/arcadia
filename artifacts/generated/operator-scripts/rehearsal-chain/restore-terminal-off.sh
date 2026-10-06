@@ -2,8 +2,10 @@
 # Rehearsal chain G8: restore and prove terminal Off after one run of the
 # N-Action serial chain, driven only by that run's reviewed parameter file. It
 # is the run-5 G8 with three changes: it owns only this run's G7 policy
-# (request id grant-production-rehearsal-chain-<run-id>, with exactly the
-# fixture Project, Plan and the run's N Actions); it copies the worker logs
+# (request id grant-production-rehearsal-chain-<run-id>, with the fixture
+# Project and Plan and the Actions that G7's receipt recorded), and turns it Off
+# before it reads the parameter file or checks its launcher binding, so a drifted
+# launcher or parameter file cannot block the emergency stop; it copies the worker logs
 # into its evidence folder before the reviewed restart (the restart recreates
 # them); and its receipt names the run's Actions. It uses only governed paths:
 # `arcadia production deactivate` for Off and the reviewed, hash-pinned
@@ -39,13 +41,18 @@ REQUIRED_CONSECUTIVE_OBSERVATIONS=3
 RESTART_TIMEOUT_SECONDS=900
 RUN_PARAM_PATTERN='^run[0-9]{1,3}-[0-9]{4}-[0-9]{2}-[0-9]{2}$'
 
-# --- Launcher binding: only this run's published launcher and parameter file. ---
+# --- Launcher binding. G8 is the emergency stop: only a launch that does not even name a run
+# (a wrong parameter path) stops before turning anything Off. A drifted launcher or descriptor
+# and a broken parameter file are refused only AFTER this run's own Grant is Off.
 PARAMS_FILE="${1:-}"
 MODE="${2:-run}"
 case "$MODE" in run | --describe) ;; *) echo "usage: <launcher> [run|--describe]" >&2; exit 2 ;; esac
 RUN_PARAM_ID="$(basename "$PARAMS_FILE" .json)"
-if [[ ! "$RUN_PARAM_ID" =~ $RUN_PARAM_PATTERN || "$PARAMS_FILE" != "$IMPL_DIR/params/$RUN_PARAM_ID.json" || ! -f "$PARAMS_FILE" ]]; then
-  echo "REFUSED: run this through its per-run library launcher ($KIND_PREFIX-<run-id>.sh), which passes rehearsal-chain/params/<run-id>.json" >&2; exit 2
+LAUNCH_NAMES_RUN=true
+if [[ ! "$RUN_PARAM_ID" =~ $RUN_PARAM_PATTERN || "$PARAMS_FILE" != "$IMPL_DIR/params/$RUN_PARAM_ID.json" ]]; then
+  if [[ "$MODE" == --describe ]]; then echo "REFUSED: run this through its per-run library launcher ($KIND_PREFIX-<run-id>.sh), which passes rehearsal-chain/params/<run-id>.json" >&2; exit 2; fi
+  LAUNCH_NAMES_RUN=false
+  RUN_PARAM_ID="unnamed-run"
 fi
 SCRIPT_ID="$KIND_PREFIX-$RUN_PARAM_ID"
 canonical_launcher() {
@@ -55,10 +62,11 @@ canonical_launcher() {
     'library_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"' \
     "exec \"\$library_dir/rehearsal-chain/$IMPL_FILE\" \"\$library_dir/rehearsal-chain/params/$RUN_PARAM_ID.json\" \"\${1:-run}\""
 }
-if [[ ! -f "$LIBRARY_DIR/$SCRIPT_ID.json" || "$(cat "$LIBRARY_DIR/$SCRIPT_ID.sh" 2>/dev/null)" != "$(canonical_launcher)" ]]; then
-  echo "REFUSED: $SCRIPT_ID is not published in this library with its exact launcher and descriptor" >&2; exit 2
+launcher_published() { [[ -f "$LIBRARY_DIR/$SCRIPT_ID.json" && "$(cat "$LIBRARY_DIR/$SCRIPT_ID.sh" 2>/dev/null)" == "$(canonical_launcher)" ]]; }
+if [[ "$MODE" == --describe ]]; then
+  launcher_published || { echo "REFUSED: $SCRIPT_ID is not published in this library with its exact launcher and descriptor" >&2; exit 2; }
+  cat "$LIBRARY_DIR/$SCRIPT_ID.json"; exit 0
 fi
-if [[ "$MODE" == --describe ]]; then cat "$LIBRARY_DIR/$SCRIPT_ID.json"; exit 0; fi
 # G8 owns only the policy this run's G7 Grant activated.
 GRANT_ID="grant-production-rehearsal-chain-$RUN_PARAM_ID"
 
@@ -137,6 +145,7 @@ echo "== G8 (rehearsal chain $RUN_PARAM_ID): restore and prove terminal Off =="
 # Launch guards: the main-library /runs launcher (exact id and descriptor), or an
 # interactive host terminal, which is preferred because the restart also restarts
 # the dashboard that runs /runs actions. Never an agent sandbox.
+[[ "$LAUNCH_NAMES_RUN" == true ]] || refuse "this launch names no rehearsal-chain run (the parameter path must be rehearsal-chain/params/<run-id>.json beside this implementation), so G8 owns no policy and turned nothing Off; run this run's G8 launcher, or turn production Off from the dashboard switch"
 DESCRIPTOR_PATH="${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}"
 if [[ -n "${ARCADIA_OPERATOR_SCRIPT_ID:-}" || -n "$DESCRIPTOR_PATH" ]]; then
   [[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$SCRIPT_ID" && -n "$DESCRIPTOR_PATH" && -f "$DESCRIPTOR_PATH" ]] || refuse "launched by another operator action; run this one from /runs or a terminal"
@@ -147,14 +156,25 @@ fi
 [[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only action: an agent sandbox may not run it"
 STAGE=preconditions
 for tool in jq mise timeout; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
-# The owned scope comes from the reviewed parameter file's run id and Action count only;
-# previous-run bindings are not needed to turn this run's own Grant Off.
-RUN_N="$(jq -er --arg run "$RUN_PARAM_ID" 'select(.schema == "arcadia-rehearsal-chain-run-v1" and .runId == $run) | .actionCount | select(type == "number" and . >= 3 and . <= 12 and . == floor)' "$PARAMS_FILE")" \
-  || refuse "the parameter file $PARAMS_FILE does not name run $RUN_PARAM_ID with an Action count from 3 to 12"
-FIXTURE_ACTIONS_JSON="$(jq -nc --arg p "$FIXTURE_PROJECT" --argjson n "$RUN_N" '["write-start-marker","transform-start-marker","verify-final-rehearsal"] + [range(4; $n + 1) | "chain-step-\(if . < 10 then "0" else "" end)\(.)"] | map("\($p)/\(.)")')"
 record_str chainRunId "$RUN_PARAM_ID"
-record actionIds "$(jq -c 'map(sub("^[^/]+/"; ""))' <<<"$FIXTURE_ACTIONS_JSON")"
-record scopedActions "$FIXTURE_ACTIONS_JSON"
+# Ownership comes from this run's own G7, never from the parameter file (which may have drifted
+# since the press): its request id, the fixture Project and Plan, and the Actions its latest
+# receipt recorded (G7 records them before any preview or activation). With no such receipt (a G7
+# that vanished after activating), the request id, Project and Plan plus a scope made only of this
+# fixture's chain Action ids.
+G7_RECEIPT=""
+for candidate in "$LIBRARY_DIR"/runs/*/receipt.json; do
+  [[ -f "$candidate" ]] || continue
+  if jq -e --arg id "$GRANT_ID" '.id == $id and (.actionIds | type == "array" and length >= 3 and all(.[]; type == "string"))' "$candidate" >/dev/null 2>&1; then G7_RECEIPT="$candidate"; fi
+done
+if [[ -n "$G7_RECEIPT" ]]; then
+  OWNED_ACTIONS_JSON="$(jq -c --arg p "$FIXTURE_PROJECT" '[.actionIds[] | "\($p)/\(.)"]' "$G7_RECEIPT")"
+  record_str ownershipBasis "G7 receipt $G7_RECEIPT"
+else
+  OWNED_ACTIONS_JSON=null
+  record_str ownershipBasis "request id, Project and Plan (no G7 receipt with actionIds)"
+fi
+record ownedActions "$OWNED_ACTIONS_JSON"
 
 cat > "$RUN_DIR/probe-sessions.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";
@@ -199,10 +219,12 @@ if jq -e '.data.read.policy.desiredState == "inactive"' <<<"$STATUS" >/dev/null;
 else
   # Only this run's own G7 policy, with exactly the fixture scope, is turned Off here.
   REVOKED="$(jq -r '.data.read.policy.authority.requestId // "unknown"' <<<"$STATUS")"
-  if ! jq -e --arg id "$GRANT_ID" --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE_PROJECT/$FIXTURE_PLAN" --argjson actions "$FIXTURE_ACTIONS_JSON" \
-      '.data.read.policy.authority.requestId == $id and .data.read.policy.scope.projects == [$p] and .data.read.policy.scope.plans == [$plan] and .data.read.policy.scope.actions == $actions' <<<"$STATUS" >/dev/null; then
+  if ! jq -e --arg id "$GRANT_ID" --arg p "$FIXTURE_PROJECT" --arg plan "$FIXTURE_PROJECT/$FIXTURE_PLAN" --argjson owned "$OWNED_ACTIONS_JSON" \
+      '.data.read.policy.authority.requestId == $id and .data.read.policy.scope.projects == [$p] and .data.read.policy.scope.plans == [$plan]
+       and (if $owned != null then .data.read.policy.scope.actions == $owned
+            else (.data.read.policy.scope.actions | type == "array" and length > 0 and all(.[]; type == "string" and test("^three-action-rehearsal/(write-start-marker|transform-start-marker|verify-final-rehearsal|chain-step-(0[4-9]|1[0-2]))$"))) end)' <<<"$STATUS" >/dev/null; then
     OFF_STATE=not_owned
-    refuse "production is Active under request id $REVOKED, which is not this run's $GRANT_ID with the exact fixture scope; G8 does not own it and did not turn it Off"
+    refuse "production is Active under request id $REVOKED, which is not this run's $GRANT_ID with the fixture Project, Plan and the Actions its G7 recorded; G8 does not own it and did not turn it Off"
   fi
   REVOKED_SCOPE="$(jq -c '.data.read.policy.scope | if . == null then null else {projects, actions, providers} end' <<<"$STATUS")"
   arcadia production deactivate --request-id "$SCRIPT_ID-$RUN_ID" --reason 'Terminal Off after the rehearsal chain; let committed work finish and preserve every candidate.' --json > "$RUN_DIR/off.json" || refuse "production deactivate failed"
@@ -217,6 +239,15 @@ OFF_REVISION="$(jq -r '.data.read.policy.revision' <<<"$STATUS")"
 OFF_EPOCH="$(jq -r '.data.read.policy.epoch' <<<"$STATUS")"
 record offRevision "$OFF_REVISION"
 record offEpoch "$OFF_EPOCH"
+
+# Only now, with this run's Grant Off: the launcher binding and the parameter file.
+STAGE=parameters
+launcher_published || refuse "$SCRIPT_ID is not published in this library with its exact launcher and descriptor; production is Off (confirmed), but the observations, restart and reconciliation did not run"
+RUN_N="$(jq -er --arg run "$RUN_PARAM_ID" 'select(.schema == "arcadia-rehearsal-chain-run-v1" and .runId == $run) | .actionCount | select(type == "number" and . >= 3 and . <= 12 and . == floor)' "$PARAMS_FILE" 2>/dev/null)" \
+  || refuse "the parameter file $PARAMS_FILE does not name run $RUN_PARAM_ID with an Action count from 3 to 12; production is Off (confirmed), but the observations, restart and reconciliation did not run"
+FIXTURE_ACTIONS_JSON="$(jq -nc --arg p "$FIXTURE_PROJECT" --argjson n "$RUN_N" '["write-start-marker","transform-start-marker","verify-final-rehearsal"] + [range(4; $n + 1) | "chain-step-\(if . < 10 then "0" else "" end)\(.)"] | map("\($p)/\(.)")')"
+record actionIds "$(jq -c 'map(sub("^[^/]+/"; ""))' <<<"$FIXTURE_ACTIONS_JSON")"
+record scopedActions "$FIXTURE_ACTIONS_JSON"
 
 STAGE=preconditions
 for tool in git node; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done

@@ -33,6 +33,7 @@ const RUN7 = "run7-2026-10-06";
 const REPO = "pmark/arcadia-three-action-rehearsal-t1";
 const PLAN_FILE = "docs/plans/autonomous-three-action-rehearsal.md";
 const G1 = "prepare-three-action-rehearsal-fixture-2026-10-04";
+const DECISION_0058 = "docs/decisions/0058-should-the-standing-managed-production-authorization-delegate-a-bounded.md";
 const PREV_RESET = "reset-three-action-rehearsal-fixture-run5-2026-10-06";
 const PREV_G8 = "restore-terminal-off-three-action-rehearsal-run5-2026-10-06";
 const PREV_G7 = "grant-production-three-action-rehearsal-run5-2026-10-06";
@@ -131,16 +132,20 @@ function sandbox(runId: string, options: { clone?: boolean } = {}) {
   const workspace = path.join(root, "martianrover");
   let checkoutHead: string;
   if (options.clone) {
-    // A shared clone of this checkout whose main carries the required-commit floor as ancestors
-    // (an "ours" merge of the #987 fix), with origin pointing at itself, so G6 and G7 can pass their Git checks.
-    git(root, ["clone", "-q", "--shared", "--no-checkout", repoRoot, checkout]);
-    git(checkout, ["checkout", "-q", "-B", "main", git(repoRoot, ["rev-parse", "HEAD"])]);
-    for (const commit of Object.keys(REQUIRED_COMMIT_FLOOR)) {
-      if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"]).status !== 0) git(checkout, ["-c", "user.name=t", "-c", "user.email=t@t.test", "merge", "-q", "-s", "ours", "--no-edit", commit]);
-    }
-    git(checkout, ["remote", "set-url", "origin", checkout]);
+    // A self-contained checkout (no history of this repository is needed, so it works in a shallow
+    // CI clone) carrying the Decision 0058 record G7 reads, with origin pointing at itself so G6's and
+    // G7's level-with-origin and ls-remote checks run for real. The required-commit floor's own commits
+    // are not objects here: the box git answers only `merge-base --is-ancestor <floor commit> HEAD` in
+    // this checkout (recording each such check in floor.log, which the test asserts), and runs every
+    // other command for real.
+    mkdirSync(path.join(checkout, "docs", "decisions"), { recursive: true });
+    writeFileSync(path.join(checkout, ".gitignore"), "artifacts/\n");
+    writeFileSync(path.join(checkout, "PROJECT.md"), CHECKOUT_PROJECT);
+    copyFileSync(path.join(repoRoot, DECISION_0058), path.join(checkout, DECISION_0058));
+    git(checkout, ["init", "-q", "-b", "main"]);
+    checkoutHead = commitAll(checkout, "init");
+    git(checkout, ["remote", "add", "origin", checkout]);
     git(checkout, ["fetch", "-q", "origin"]);
-    checkoutHead = git(checkout, ["rev-parse", "HEAD"]);
   } else {
     mkdirSync(checkout, { recursive: true });
     writeFileSync(path.join(checkout, ".gitignore"), "artifacts/\n");
@@ -163,7 +168,9 @@ function sandbox(runId: string, options: { clone?: boolean } = {}) {
   }
   for (const tool of ["mise", "gh", "codex", "pnpm"]) writeFileSync(path.join(bin, tool), FAKE, { mode: 0o755 });
   // Real Git for everything except `push`, which is recorded (marking GitHub main as moved) and never reaches a network.
-  writeFileSync(path.join(bin, "git"), `#!/bin/sh\nfor a in "$@"; do if [ "$a" = push ]; then printf 'git %s\\n' "$*" >> "$FAKE_ROOT/calls.log"; echo push >> "$FAKE_ROOT/keys.log"; touch "$FAKE_ROOT/pushed"; exit 0; fi; done\nexec ${JSON.stringify(REAL_GIT)} "$@"\n`, { mode: 0o755 });
+  writeFileSync(path.join(bin, "git"), `#!/bin/sh\nfor a in "$@"; do if [ "$a" = push ]; then printf 'git %s\\n' "$*" >> "$FAKE_ROOT/calls.log"; echo push >> "$FAKE_ROOT/keys.log"; touch "$FAKE_ROOT/pushed"; exit 0; fi; done\n`
+    + `if [ -n "$FAKE_FLOOR" ] && [ $# -eq 6 ] && [ "$1" = -C ] && [ "$2" = "$FAKE_CHECKOUT" ] && [ "$3" = merge-base ] && [ "$4" = --is-ancestor ] && [ "$6" = HEAD ]; then case " $FAKE_FLOOR " in *" $5 "*) echo "$5" >> "$FAKE_ROOT/floor.log"; exit 0;; esac; fi\n`
+    + `exec ${JSON.stringify(REAL_GIT)} "$@"\n`, { mode: 0o755 });
   writeFileSync(path.join(bin, "timeout"), "#!/bin/sh\nshift\nexec \"$@\"\n", { mode: 0o755 });
   writeFileSync(path.join(bin, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   for (const file of ["calls.log", "keys.log"]) writeFileSync(path.join(root, file), "");
@@ -171,7 +178,8 @@ function sandbox(runId: string, options: { clone?: boolean } = {}) {
   const tmp = path.join(root, "tmp");
   mkdirSync(tmp);
   const run = (id: string, env: Record<string, string | undefined> = {}, args = ["run"]) => {
-    const childEnv: Record<string, string | undefined> = { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home, TMPDIR: tmp, FAKE_ROOT: root, FAKE_ARCADIA_ROOT: repoRoot, FAKE_WORKSPACE: workspace, ...env };
+    const floor = options.clone ? { FAKE_FLOOR: Object.keys(REQUIRED_COMMIT_FLOOR).join(" "), FAKE_CHECKOUT: realpathSync(checkout) } : {};
+    const childEnv: Record<string, string | undefined> = { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: home, TMPDIR: tmp, FAKE_ROOT: root, FAKE_ARCADIA_ROOT: repoRoot, FAKE_WORKSPACE: workspace, ...floor, ...env };
     for (const key of ["CODEX_SANDBOX", "ARCADIA_OPERATOR_SCRIPT_ID", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "ANTHROPIC_API_KEY", "ARCADIA_REHEARSAL_GITHUB_REPO", "ARCADIA_WORKSPACE", "ARCADIA_REHEARSAL_RECEIPTS_DIR"]) {
       if (!(key in env)) delete childEnv[key];
     }
@@ -193,6 +201,7 @@ function sandbox(runId: string, options: { clone?: boolean } = {}) {
     git(checkout, ["add", "-f", "artifacts/generated/operator-scripts"]);
     if (spawnSync("git", ["-C", checkout, "diff", "--cached", "--quiet"]).status !== 0) git(checkout, ["-c", "user.name=t", "-c", "user.email=t@t.test", "commit", "-q", "-m", "library"]);
     if (options.clone) git(checkout, ["fetch", "-q", "origin"]);
+    else git(checkout, ["push", "-q", "origin", "main"]);
     return git(checkout, ["rev-parse", "HEAD"]);
   };
   return { root, checkout, checkoutHead, commitLibrary, scripts, home, workspace, fixture, tmp, ids, run, runDirs, receipts, receipt, keys, pushes, setReplies };
@@ -521,20 +530,20 @@ describe("rehearsal-chain reset", () => {
 });
 
 describe("rehearsal-chain G6, G7 and G8", () => {
-  it("G6 refuses the run-6 file while its #997 fix commit is UNFILLED, before any observation", { timeout: 120_000 }, () => {
-    const box = sandbox(RUN6);
-    writeParams(box, RUN6, JSON.parse(readFileSync(path.join(impl, "params", `${RUN6}.json`), "utf8")));
+  it("G6 refuses the overnight file while its run-6 bindings are UNFILLED, before any observation", { timeout: 120_000 }, () => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
     box.setReplies({ "probe": { passthrough: "probe" } });
     expect(box.run(box.ids.preflight).status).not.toBe(0);
     const { json } = box.receipt(box.ids.preflight);
     expect(json).toMatchObject({ outcome: "refused", stage: "parameters", productionPreviewedOrActivated: false });
-    expect(json.reason).toContain("params.requiredCommits[4].commit");
+    expect(json.reason).toContain("params.previousRun.bindings.resetHead");
     expect(box.keys()).toEqual(["probe params"]);
   });
 
   it("G7 refuses outside /runs before any Arcadia command, and refuses unfilled parameters without attempting activation", { timeout: 120_000 }, () => {
-    const box = sandbox(RUN6);
-    writeParams(box, RUN6, JSON.parse(readFileSync(path.join(impl, "params", `${RUN6}.json`), "utf8")));
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
     box.setReplies({ "probe": { passthrough: "probe" } });
     expect(box.run(box.ids.grant).status).not.toBe(0);
     expect(box.receipt(box.ids.grant).json).toMatchObject({ outcome: "refused", stage: "launch_context", activated: false, offCleanup: "not_attempted" });
@@ -559,7 +568,8 @@ describe("rehearsal-chain G6, G7 and G8", () => {
     expect(box.run(box.ids.terminalOff, runs).status).not.toBe(0);
     expect(box.receipt(box.ids.terminalOff).json).toMatchObject({ outcome: "refused", offState: "not_owned" });
     expect(box.keys().filter((k) => k.startsWith("arcadia production deactivate"))).toEqual([]);
-    // This run's Grant with only three of its nine Actions is not owned either.
+    // This run's Grant with only three of the nine Actions its G7 receipt recorded is not owned either.
+    writeG7Receipt(box, chainActionIds(9));
     box.setReplies({ "arcadia production status": status("active", {}, { authority: { requestId: box.ids.grant }, scope: { ...scope, actions: scoped.slice(0, 3) } }) });
     expect(box.run(box.ids.terminalOff, runs).status).not.toBe(0);
     expect(box.receipt(box.ids.terminalOff).json).toMatchObject({ outcome: "refused", offState: "not_owned" });
@@ -584,6 +594,71 @@ describe("rehearsal-chain G6, G7 and G8", () => {
     expect(json.workerLogs.map((entry: { source: string }) => path.basename(entry.source)).sort()).toEqual(["worker.err.log", "worker.out.log"]);
     expect(readFileSync(path.join(dir, "evidence", "worker-logs", "arcadia-services-1", "worker.out.log"), "utf8")).toBe("tick 1\ntick 2\n");
     expect(box.keys().filter((k) => k.startsWith("arcadia production deactivate"))).toHaveLength(1);
+  });
+});
+
+const writeG7Receipt = (box: Box, actionIds: string[], dir = "20261006T230000Z-1") => {
+  mkdirSync(path.join(box.scripts, "runs", dir), { recursive: true });
+  writeFileSync(path.join(box.scripts, "runs", dir, "receipt.json"), JSON.stringify({ id: box.ids.grant, runId: dir, outcome: "succeeded", stage: "complete", activated: true, chainRunId: RUN7, actionIds }));
+};
+
+describe("rehearsal-chain G8 is the emergency stop: drift never blocks this run's Off", () => {
+  const runsEnv = (box: Box) => ({ ARCADIA_OPERATOR_SCRIPT_ID: box.ids.terminalOff, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(box.scripts, `${box.ids.terminalOff}.json`) });
+  const scoped = chainActionIds(9).map((id) => `three-action-rehearsal/${id}`);
+  const scope = { projects: ["three-action-rehearsal"], plans: ["three-action-rehearsal/autonomous-three-action-rehearsal"], actions: scoped };
+  const offReplies = (box: Box): Replies => ({
+    "arcadia production status": [status("active", {}, { authority: { requestId: box.ids.grant }, scope }), status("inactive")],
+    "arcadia production deactivate": ok({ result: { policy: { desiredState: "inactive" } } }),
+    "arcadia workspace resolve": ok({ source: "user config", workspacePath: box.workspace }),
+    "probe": { passthrough: "probe" }
+  });
+  const deactivations = (box: Box) => box.keys().filter((k) => k.startsWith("arcadia production deactivate"));
+
+  it.each([
+    ["a broken parameter file", (box: Box) => writeFileSync(path.join(box.scripts, "rehearsal-chain", "params", `${RUN7}.json`), "{ not json"), "does not name run"],
+    ["an Action count edited after the press", (box: Box) => writeParams(box, RUN7, { ...JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")), actionCount: 3 }, false), null],
+    ["a drifted launcher", (box: Box) => writeFileSync(path.join(box.scripts, `${box.ids.terminalOff}.sh`), readFileSync(path.join(box.scripts, `${box.ids.terminalOff}.sh`), "utf8") + "# drift\n"), "not published in this library"]
+  ])("with %s, it still turns this run's Grant Off first (bound to the G7 receipt's Actions)", { timeout: 240_000 }, (_label, drift, refusal) => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")), false);
+    initWorkspace(box.workspace);
+    writeG7Receipt(box, chainActionIds(9));
+    drift(box);
+    box.setReplies(offReplies(box));
+    expect(box.run(box.ids.terminalOff, runsEnv(box)).status).not.toBe(0);
+    const { json } = box.receipt(box.ids.terminalOff);
+    expect(deactivations(box)).toHaveLength(1);
+    expect(json).toMatchObject({ outcome: "refused", offState: "confirmed", ownedActions: scoped });
+    if (refusal) {
+      expect(json.stage).toBe("parameters");
+      expect(json.reason).toContain(refusal);
+      expect(json.reason).toContain("production is Off (confirmed)");
+    } else {
+      // The edited count only shapes the later reconciliation record; it never decided ownership.
+      expect(json.actionIds).toEqual(chainActionIds(3));
+    }
+  });
+
+  it("with no G7 receipt (a G7 that vanished after activating) it owns its own request id over this fixture's chain Actions only", { timeout: 240_000 }, () => {
+    const box = sandbox(RUN7);
+    writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")), false);
+    initWorkspace(box.workspace);
+    box.setReplies({ ...offReplies(box), "arcadia production status": status("active", {}, { authority: { requestId: box.ids.grant }, scope: { ...scope, actions: [...scoped, "three-action-rehearsal/other-action"] } }) });
+    expect(box.run(box.ids.terminalOff, runsEnv(box)).status).not.toBe(0);
+    expect(box.receipt(box.ids.terminalOff).json).toMatchObject({ offState: "not_owned", ownedActions: null });
+    expect(deactivations(box)).toEqual([]);
+    box.setReplies(offReplies(box));
+    box.run(box.ids.terminalOff, runsEnv(box));
+    expect(box.receipt(box.ids.terminalOff).json).toMatchObject({ offState: "confirmed", ownedActions: null });
+    expect(deactivations(box)).toHaveLength(1);
+  });
+
+  it("a launch naming no run owns nothing: it writes a receipt and runs no Arcadia command", { timeout: 120_000 }, () => {
+    const box = sandbox(RUN7);
+    const result = spawnSync("bash", [path.join(box.scripts, "rehearsal-chain", "restore-terminal-off.sh"), path.join(box.root, "elsewhere.json"), "run"], { encoding: "utf8", input: "", env: { ...process.env, PATH: `${path.join(box.root, "bin")}:${process.env.PATH}`, FAKE_ROOT: box.root, HOME: box.home } });
+    expect(result.status).not.toBe(0);
+    expect(box.receipt("restore-terminal-off-rehearsal-chain-unnamed-run").json).toMatchObject({ outcome: "refused", stage: "launch_context" });
+    expect(box.keys()).toEqual([]);
   });
 });
 
@@ -615,6 +690,10 @@ describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its recei
     expect(g6.status, g6.stdout + g6.stderr).toBe(0);
     const preflight = box.receipt(box.ids.preflight).json;
     expect(preflight.checks.filter((c: { status: string }) => c.status !== "pass")).toEqual([]);
+    const floorChecks = () => readFileSync(path.join(box.root, "floor.log"), "utf8").trim().split("\n");
+    // G6 checked every floor commit against main (and nothing else was answered by the box git).
+    expect([...new Set(floorChecks())].sort()).toEqual(Object.keys(REQUIRED_COMMIT_FLOOR).sort());
+    const afterG6 = floorChecks().length;
     expect(preflight).toMatchObject({ outcome: "succeeded", chainRunId: RUN7, actionIds: chainActionIds(9), fixtureHead: newHead, arcadiaHead: head, brokerRevision: head, policyRevision: 33 });
     box.setReplies({
       ...g6Replies,
@@ -641,6 +720,8 @@ describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its recei
     expect(values(activations[0], "--concurrency")).toEqual(["1"]);
     expect(activations[0]).toContain("--remote-preservation");
     expect(box.pushes()).toHaveLength(1);
+    // G7 checked every floor commit again.
+    expect([...new Set(floorChecks().slice(afterG6))].sort()).toEqual(Object.keys(REQUIRED_COMMIT_FLOOR).sort());
   });
 });
 
