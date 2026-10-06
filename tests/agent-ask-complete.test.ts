@@ -1,9 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskNotificationsCommand, runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import {
+  renderAgentAskSettleSuccess, runAgentAskContractCommand, runAgentAskDraftCommand, runAgentAskNotificationsCommand,
+  runAgentAskPreviewCommand, runAgentAskSettleCommand
+} from "../src/commands/agentAsk.js";
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
@@ -438,6 +441,155 @@ describe("Agent Ask complete", () => {
     // The archive is part of the settlement commit, so what a reader finds on
     // the branch agrees with the Log.
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: candidate, encoding: "utf8" })).toBe("");
+  });
+
+  describe("canonical draft fallback when no sourcePath was recorded (Issue #981)", () => {
+    function settleInCandidate(workspace: string, candidate: string, proposalId: string, requestId: string) {
+      const preview = runAgentAskSettleCommand({ workspace, proposal: proposalId, requestId, disposition: "accepted", cwd: candidate });
+      const applied = runAgentAskSettleCommand({
+        workspace, proposal: proposalId, requestId, disposition: "accepted",
+        preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate
+      });
+      return { preview, applied };
+    }
+
+    it("archives the untracked canonical draft into the settlement commit and leaves git status clean (the run-4 shape)", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-shape");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-shape", candidate], { cwd: repo });
+      // Previewed from inline text, so the proposal records no sourcePath...
+      const ask = completeAsk("complete-run4-shape", "first", head);
+      const proposal = runAgentAskPreviewCommand({ workspace, request: ask });
+      expect(proposal.data.proposal.sourcePath).toBeNull();
+      // ...while the same Ask also sits, untracked, at its canonical draft path
+      // in the candidate worktree, exactly as `agent-ask draft` writes it.
+      const canonical = path.join(candidate, ".arcadia", "asks", "agent-ask-complete-run4-shape.yaml");
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      writeFileSync(canonical, `${ask.trim()}\n`, "utf8");
+
+      const { preview, applied } = settleInCandidate(workspace, candidate, proposal.data.proposal.id, "settle-complete-run4-shape");
+      expect(preview.data.receipt.effects).toContain("Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-run4-shape.yaml.");
+      expect(applied.data.receipt.applied).toBe(true);
+      expect(applied.data.receipt.warnings).toBeUndefined();
+      expect(existsSync(canonical)).toBe(false);
+      const archived = readFileSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-run4-shape.yaml"), "utf8");
+      expect(archived).toMatch(new RegExp(`^candidate_revision: ${head}$`, "m"));
+      // The archive is in the settlement commit itself: HEAD is that commit and nothing is left over.
+      expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: candidate, encoding: "utf8" }).trim()).toBe(applied.data.receipt.documentsCommit);
+      expect(execFileSync("git", ["show", "--name-only", "--format=", "HEAD"], { cwd: candidate, encoding: "utf8" }))
+        .toContain(".arcadia/asks/archive/agent-ask-complete-run4-shape.yaml");
+      expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    });
+
+    it("matches a drafted file whose bytes differ from the inline preview only by surrounding whitespace", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-json");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-json", candidate], { cwd: repo });
+      const ask = JSON.stringify({
+        agent_ask: "v1", request_id: "complete-run4-json", project: "demo", intent: "complete", target_ref: "action/first",
+        desired_result: "Accept the completion evidence for the first Action", candidate_revision: head,
+        evidence: [{ criterion: "First proof exists.", status: "met", note: "Verified." }], requested_authority: "apply_if_approved"
+      });
+      const proposal = runAgentAskPreviewCommand({ workspace, request: ask });
+      const canonical = path.join(candidate, ".arcadia", "asks", "agent-ask-complete-run4-json.yaml");
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      writeFileSync(canonical, `${ask}\n`, "utf8");
+      const { applied } = settleInCandidate(workspace, candidate, proposal.data.proposal.id, "settle-complete-run4-json");
+      expect(existsSync(canonical)).toBe(false);
+      expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: candidate, encoding: "utf8" })).toBe("");
+      expect(applied.data.receipt.effects.join(" ")).toContain("Archived the settled Ask file");
+    });
+
+    it("never archives a canonical file whose content is not this Ask, and reports it as a warning", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-mismatch");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-mismatch", candidate], { cwd: repo });
+      const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-run4-mismatch", "first", head) });
+      const canonical = path.join(candidate, ".arcadia", "asks", "agent-ask-complete-run4-mismatch.yaml");
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      // Same request id, different content: a different Ask under the same name.
+      const different = completeAsk("complete-run4-mismatch", "first", head).replace("Verified by the operator.", "Edited after preview.");
+      writeFileSync(canonical, different, "utf8");
+
+      const { preview, applied } = settleInCandidate(workspace, candidate, proposal.data.proposal.id, "settle-complete-run4-mismatch");
+      expect(applied.data.receipt.applied).toBe(true);
+      expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+      expect(applied.data.receipt.warnings).toEqual([expect.stringContaining(
+        "Left .arcadia/asks/agent-ask-complete-run4-mismatch.yaml in place: its content does not match settled proposal complete-run4-mismatch")]);
+      expect(renderAgentAskSettleSuccess(preview).join("\n")).toContain("Warning: Left .arcadia/asks/agent-ask-complete-run4-mismatch.yaml in place");
+      expect(readFileSync(canonical, "utf8")).toBe(different);
+      expect(existsSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-run4-mismatch.yaml"))).toBe(false);
+    });
+
+    it("never archives a symlink at the canonical path, even when it points at a matching Ask", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-symlink");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-symlink", candidate], { cwd: repo });
+      const ask = completeAsk("complete-run4-symlink", "first", head);
+      const proposal = runAgentAskPreviewCommand({ workspace, request: ask });
+      const outside = path.join(path.dirname(repo), "outside-run4-symlink.yaml");
+      writeFileSync(outside, ask, "utf8");
+      const canonical = path.join(candidate, ".arcadia", "asks", "agent-ask-complete-run4-symlink.yaml");
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      symlinkSync(outside, canonical);
+
+      // The preview decides the archive and proposes none; apply then refuses
+      // the tree as dirty (a symlink is not an exempt draft) before writing.
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-run4-symlink", disposition: "accepted", cwd: candidate
+      });
+      expect(preview.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+      expect(preview.data.receipt.review?.documents.some((document) => document.path.includes(".arcadia/asks"))).toBe(false);
+      expect(preview.data.receipt.warnings).toEqual([expect.stringContaining("is not a regular file")]);
+      expect(() => runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-run4-symlink", disposition: "accepted",
+        preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate
+      })).toThrow(/not clean/);
+      expect(lstatSync(canonical).isSymbolicLink()).toBe(true);
+      expect(readFileSync(outside, "utf8")).toBe(ask);
+    });
+
+    it("never follows a symlinked .arcadia/asks directory out of the settling repository", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-dir-symlink");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-dir-symlink", candidate], { cwd: repo });
+      const ask = completeAsk("complete-run4-dir-symlink", "first", head);
+      const proposal = runAgentAskPreviewCommand({ workspace, request: ask });
+      const elsewhere = path.join(path.dirname(repo), "elsewhere-asks");
+      mkdirSync(elsewhere, { recursive: true });
+      writeFileSync(path.join(elsewhere, "agent-ask-complete-run4-dir-symlink.yaml"), ask, "utf8");
+      rmSync(path.join(candidate, ".arcadia", "asks"), { recursive: true, force: true });
+      symlinkSync(elsewhere, path.join(candidate, ".arcadia", "asks"));
+
+      // The settlement preview is where the archive is decided: it must not
+      // propose moving a file reached through a symlinked directory. (Apply
+      // would also refuse this tree as dirty before writing anything.)
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-run4-dir-symlink", disposition: "accepted", cwd: candidate
+      });
+      expect(preview.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+      expect(preview.data.receipt.review?.documents.some((document) => document.path.includes(".arcadia/asks"))).toBe(false);
+      expect(preview.data.receipt.warnings).toEqual([expect.stringContaining("resolves outside this repository's own .arcadia/asks/")]);
+      expect(() => runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: "settle-complete-run4-dir-symlink", disposition: "accepted",
+        preview: preview.data.receipt.previewFingerprint, apply: true, cwd: candidate
+      })).toThrow(/not clean/);
+      expect(readFileSync(path.join(elsewhere, "agent-ask-complete-run4-dir-symlink.yaml"), "utf8")).toBe(ask);
+      expect(existsSync(path.join(elsewhere, "archive"))).toBe(false);
+    });
+
+    it("behaves exactly as before when neither a sourcePath nor a canonical file exists", () => {
+      const { workspace, repo, head } = fixture();
+      const candidate = path.join(path.dirname(repo), "candidate-run4-nofile");
+      execFileSync("git", ["worktree", "add", "-q", "-b", "claude/candidate-run4-nofile", candidate], { cwd: repo });
+      const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-run4-nofile", "first", head) });
+      const { preview, applied } = settleInCandidate(workspace, candidate, proposal.data.proposal.id, "settle-complete-run4-nofile");
+      expect(applied.data.receipt.effects.some((effect) => effect.includes("Archived"))).toBe(false);
+      expect(applied.data.receipt.warnings).toBeUndefined();
+      expect(preview.data.receipt.review?.documents.map((document) => document.path).sort()).toEqual(["MISSION_LOG.md", "PROJECT.md", "docs/plans/demo-plan.md"]);
+      expect(existsSync(path.join(candidate, ".arcadia/asks/archive/agent-ask-complete-run4-nofile.yaml"))).toBe(false);
+      expect(execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: candidate, encoding: "utf8" })).toBe("");
+    });
   });
 
   it("carries the Action's completion in its own PR branch, so merging it alone advances the pointer with no further command", () => {

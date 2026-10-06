@@ -150,7 +150,7 @@ function recoverTerminalHandoff(
   integrateDeps: IntegrateSessionDeps,
   log?: (message: string) => void,
   review?: { deps: IndependentReviewDeps; heartbeat?: () => void; clock?: () => Date }
-): SessionHandoffResult | null {
+): TerminalHandoffRecovery | null {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_exit_receipts', 'candidate_preservation_receipts')")
     .all() as Array<{ name: string }>;
   if (!tables.some((table) => table.name === "session_exit_receipts")) return null;
@@ -194,10 +194,18 @@ function recoverTerminalHandoff(
     ? { kind: "preserved", receiptId: preserved.id, commitSha: preserved.commitSha,
         state: preserved.preservationState, replayed: true, baseBranch: preserved.baseBranch }
     : { kind: "refused", reason: "No canonical worker preservation and validation receipt exists for the terminal Session." };
-  const refused = (reason: string): SessionHandoffResult => ({
-    preservation,
-    integration: { kind: "refused", reason, operatorMergeCommand: merge }
-  });
+  // Every guard below refuses through here, so each refusal also carries the
+  // read-only facts the tick needs to escalate it once (Issue #981). Nothing
+  // here changes which candidate is refused or why.
+  const refused = (reason: string, facts: { head?: string | null; settlementCommit?: string | null } = {}): TerminalHandoffRecovery => {
+    const head = facts.head !== undefined ? facts.head : tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
+    return {
+      handoff: { preservation, integration: { kind: "refused", reason, operatorMergeCommand: merge } },
+      sessionId: session.id,
+      head,
+      refusal: { session, reason, head, settlementCommit: facts.settlementCommit ?? null, operatorMergeCommand: merge }
+    };
+  };
   if (pending.length !== 1) return refused("Multiple unfinished terminal candidates claim this repository; integration is ambiguous.");
   if (!preserved) {
     const policyRead = readProductionPolicySafely(db);
@@ -235,12 +243,17 @@ function recoverTerminalHandoff(
   }
   const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
   const status = tryGit(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
-  if (!head || status === null || status.trim()) return refused("The terminal candidate worktree is missing or changed.");
+  if (!head || status === null || status.trim()) return refused("The terminal candidate worktree is missing or changed.", { head });
   const settlement = findCandidateSettledCompletion(db, session, head);
   if (!settlement || head !== settlement.documentsCommit || !isAncestor(session.worktree_path, preserved.commitSha, head)) {
-    return refused("The terminal candidate differs from its exact canonical completion settlement.");
+    return refused("The terminal candidate differs from its exact canonical completion settlement.", {
+      head, settlementCommit: settlement?.documentsCommit ?? null
+    });
   }
-  return {
+  // Every terminal guard passed: an escalation recorded while one of them
+  // refused is stale now, whatever the integration step decides next.
+  clearTerminalCandidateEscalation(db, `${session.project_slug}/${session.action_id}`);
+  const handoff: SessionHandoffResult = {
     preservation,
     integration: integrateSessionCandidate({ db, workspace, repoRoot, session, now, expectedCandidateHead: head, clock: review?.clock,
       // Called only once policy, scope, grant and an exact fast-forward all
@@ -255,6 +268,52 @@ function recoverTerminalHandoff(
         return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
       } }, integrateDeps)
   };
+  return { handoff, sessionId: session.id, head, refusal: null };
+}
+
+/** A terminal-recovery refusal raised by one of `recoverTerminalHandoff`'s own guards, with the read-only facts behind it. */
+interface TerminalRefusalFacts {
+  session: AgentSession;
+  reason: string;
+  head: string | null;
+  /** The candidate's own recorded completion settlement commit, when one exists. */
+  settlementCommit: string | null;
+  operatorMergeCommand: string;
+}
+
+interface TerminalHandoffRecovery {
+  handoff: SessionHandoffResult;
+  sessionId: string;
+  head: string | null;
+  /** Set only when a terminal guard refused; null once every guard passed (integration may still refuse). */
+  refusal: TerminalRefusalFacts | null;
+}
+
+/**
+ * The escalation kind for a terminal candidate that one of the terminal
+ * recovery guards refuses on every tick (Issue #981). The guard re-runs each
+ * tick and integrates the moment its cause clears; this only makes the
+ * refusal visible in `arcadia production status` instead of the log alone.
+ */
+const TERMINAL_CANDIDATE_ESCALATION = "terminal_candidate_not_integrable";
+
+/** The newest documents commit any applied completion settlement recorded on this Session's branch, for the remedy text only. */
+function latestCandidateSettlementCommit(db: Database.Database, session: AgentSession): string | null {
+  try {
+    const rows = db.prepare(`SELECT s.receipt_json, p.proposal_json FROM agent_ask_settlements s
+      JOIN agent_ask_proposals p ON p.id = s.proposal_id
+      WHERE s.project_slug = ? AND s.disposition = 'accepted' AND p.intent_kind = 'complete'
+      ORDER BY s.created_at DESC LIMIT 20`)
+      .all(session.project_slug) as Array<{ receipt_json: string; proposal_json: string }>;
+    const targets = new Set([`action/${session.action_id}`, `plan/${session.plan_slug}#${session.action_id}`]);
+    for (const row of rows) {
+      const receipt = JSON.parse(row.receipt_json) as { applied?: boolean; documentsCommit?: string | null };
+      const targetRef = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null } }).normalized?.targetRef;
+      if (!receipt.applied || !receipt.documentsCommit || !targetRef || !targets.has(targetRef)) continue;
+      if (isAncestor(session.worktree_path, receipt.documentsCommit, "HEAD")) return receipt.documentsCommit;
+    }
+  } catch { /* the remedy then names no settlement commit */ }
+  return null;
 }
 
 const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed", ...REVIEW_BLOCK_CODES]);
@@ -279,8 +338,12 @@ function escalatingVerdictGate(
   const actionKey = `${session.project_slug}/${session.action_id}`;
   const gate = independentVerdictGate(db, { session, repoRoot });
   const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  // The verdict gate runs only after every terminal guard passed, so a
+  // terminal-guard escalation still on this row is stale: it is replaced or
+  // cleared here exactly like a verdict wait, never kept beside it.
+  const supersedable = (kind: string): boolean => VERDICT_WAIT_ESCALATIONS.has(kind) || kind === TERMINAL_CANDIDATE_ESCALATION;
   if (gate.satisfied) {
-    if (previous && VERDICT_WAIT_ESCALATIONS.has(previous.kind)) clearOperatorEscalation(db, actionKey);
+    if (previous && supersedable(previous.kind)) clearOperatorEscalation(db, actionKey);
     return gate;
   }
   let pullRequestUrl: string | null = null;
@@ -324,7 +387,7 @@ function escalatingVerdictGate(
     remedy = `The candidate is not deterministically ready for verdicts (for example a Session launched before attempt lineage existed, or a head that moved after acceptance). `
       + `After independent review, an operator may land it with \`${merge}\`.`;
   }
-  if (previous && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) {
+  if (previous && !supersedable(previous.kind)) {
     // One row per Action: never overwrite a different, still-open escalation.
     input.log?.(`${actionKey} also waits on independent verdicts (${message}); keeping its open ${previous.kind} escalation.`);
     return gate;
@@ -372,6 +435,11 @@ export function ensureProductionTickTables(db: Database.Database): void {
       message TEXT NOT NULL,
       first_at TEXT NOT NULL,
       last_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS production_integration_refusal_log (
+      project_slug TEXT PRIMARY KEY,
+      dedupe_key TEXT NOT NULL,
+      first_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS production_dependency_unresolved_sightings (
       action_key TEXT PRIMARY KEY,
@@ -441,6 +509,31 @@ function recordLaunchRefusalIfNew(db: Database.Database, actionKey: string, dedu
        last_at = @at`
   ).run({ action_key: actionKey, dedupe_key: dedupeKey, message, at });
   return isNewEpisode;
+}
+
+/**
+ * Whether this Project's integration refusal is a new episode worth one log
+ * line. `dedupeKey` is (Session, candidate head, reason): the same refusal of
+ * the same head reads its own row and writes nothing, so a refusal that holds
+ * for hours costs no log line and no database write per tick.
+ */
+function recordIntegrationRefusalLogIfNew(db: Database.Database, projectSlug: string, dedupeKey: string, now: Date): boolean {
+  const existing = db.prepare("SELECT dedupe_key FROM production_integration_refusal_log WHERE project_slug = ?").get(projectSlug) as
+    | { dedupe_key: string }
+    | undefined;
+  if (existing?.dedupe_key === dedupeKey) return false;
+  db.prepare(
+    `INSERT INTO production_integration_refusal_log (project_slug, dedupe_key, first_at) VALUES (@project_slug, @dedupe_key, @at)
+     ON CONFLICT(project_slug) DO UPDATE SET dedupe_key = @dedupe_key, first_at = @at`
+  ).run({ project_slug: projectSlug, dedupe_key: dedupeKey, at: now.toISOString() });
+  return true;
+}
+
+/** End this Project's integration-refusal episode; reads first so an idle tick writes nothing. */
+function clearIntegrationRefusalLog(db: Database.Database, projectSlug: string): void {
+  if (db.prepare("SELECT 1 FROM production_integration_refusal_log WHERE project_slug = ?").get(projectSlug)) {
+    db.prepare("DELETE FROM production_integration_refusal_log WHERE project_slug = ?").run(projectSlug);
+  }
 }
 
 /** Clear a recorded launch refusal once this Action's launch stops being refused. */
@@ -713,6 +806,115 @@ function recordOperatorEscalation(
 /** Clear a previously recorded escalation once its Action launches or its refusal stops being non-self-resolving. */
 function clearOperatorEscalation(db: Database.Database, actionKey: string): void {
   db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(actionKey);
+}
+
+/** Clear this Action's terminal-candidate escalation, if that is the kind on its row; reads first so an idle tick writes nothing. */
+function clearTerminalCandidateEscalation(db: Database.Database, actionKey: string): void {
+  const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  if (row?.kind === TERMINAL_CANDIDATE_ESCALATION) clearOperatorEscalation(db, actionKey);
+}
+
+/** Clear every terminal-candidate escalation in this Project except `keepActionKey`'s; reads first so an idle tick writes nothing. */
+function clearProjectTerminalCandidateEscalations(db: Database.Database, projectSlug: string, keepActionKey: string | null): void {
+  const rows = db.prepare("SELECT action_key FROM production_operator_escalations WHERE kind = ? AND action_key LIKE ? AND action_key != ?")
+    .all(TERMINAL_CANDIDATE_ESCALATION, `${projectSlug}/%`, keepActionKey ?? "") as Array<{ action_key: string }>;
+  for (const row of rows) clearOperatorEscalation(db, row.action_key);
+}
+
+/**
+ * Record a terminal-guard refusal as one operator escalation per
+ * (Session, head, reason) -- the message names all three, so an unchanged
+ * refusal finds its own row and writes nothing, while a new head or a new
+ * reason replaces it as a fresh episode. Replaces a stale verdict-wait row
+ * for the same Action (the verdict gate is not even reached while a terminal
+ * guard refuses), and never overwrites any other open escalation kind.
+ * Returns true when it wrote.
+ */
+function recordTerminalCandidateEscalation(
+  db: Database.Database,
+  input: { facts: TerminalRefusalFacts; repoRoot: string; now: Date; log: (message: string) => void }
+): boolean {
+  const { session, reason, head } = input.facts;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const message = `Terminal candidate of Session ${session.id} (${session.branch} at ${head ?? "an unreadable head"}) cannot integrate: ${reason}`;
+  const previous = db.prepare("SELECT kind, message FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as
+    | { kind: string; message: string }
+    | undefined;
+  if (previous?.kind === TERMINAL_CANDIDATE_ESCALATION && previous.message === message) return false;
+  if (previous && previous.kind !== TERMINAL_CANDIDATE_ESCALATION && !VERDICT_WAIT_ESCALATIONS.has(previous.kind)) return false;
+  const remedy = terminalCandidateRemedy(db, input.facts, input.repoRoot);
+  // A new episode starts its own `first_detected_at`, rather than inheriting
+  // the replaced row's.
+  if (previous) clearOperatorEscalation(db, actionKey);
+  recordOperatorEscalation(db, { actionKey, kind: TERMINAL_CANDIDATE_ESCALATION, message, remedy, now: input.now });
+  input.log(`Escalated ${actionKey} to the operator (${TERMINAL_CANDIDATE_ESCALATION}): ${message}`);
+  return true;
+}
+
+const MAX_REMEDY_LINES = 8;
+
+function cappedLines(output: string | null): string[] {
+  const lines = (output ?? "").split("\n").map((line) => line.trimEnd()).filter(Boolean);
+  return lines.length > MAX_REMEDY_LINES ? [...lines.slice(0, MAX_REMEDY_LINES), `... ${lines.length - MAX_REMEDY_LINES} more`] : lines;
+}
+
+/** A drafted Agent Ask file path, the kind settlement archives itself (Issue #981). */
+const DRAFTED_ASK_PATH = /^\.arcadia\/asks\/agent-ask-[^/]+\.ya?ml$/;
+
+/**
+ * The operator remedy for one terminal-guard refusal, built only from facts
+ * read without changing anything (`git status`, `git log`, `git diff`). It
+ * names the blocker first, because `production status` shows the remedy.
+ * It proposes no destructive step: the extra work stays preserved.
+ */
+function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFacts, repoRoot: string): string {
+  const { session, reason, head, operatorMergeCommand } = facts;
+  const worktree = session.worktree_path;
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const retry = "The tick re-checks every tick and integrates on its own once the cause clears.";
+  const blocked = `Blocked: ${reason}`;
+  if (reason === "The terminal candidate differs from its exact canonical completion settlement.") {
+    const settlementCommit = facts.settlementCommit ?? latestCandidateSettlementCommit(db, session);
+    const inspect = settlementCommit
+      ? `Inspect with \`git -C ${worktree} status --porcelain\` and \`git -C ${worktree} log --oneline ${settlementCommit}..HEAD\`.`
+      : `Inspect with \`git -C ${worktree} status --porcelain\` and \`git -C ${worktree} log --oneline -5\`.`;
+    if (!settlementCommit || !head || settlementCommit === head) {
+      return `${blocked} No applied completion settlement commit of ${actionKey} matches head ${head ?? "unknown"} on ${session.branch}. ${inspect} `
+        + `Unattended integration lands only the exact settlement commit. ${retry} After an independent review, an operator may land it with \`${operatorMergeCommand}\`.`;
+    }
+    const extra = cappedLines(tryGit(worktree, ["log", "--oneline", "--no-decorate", `${settlementCommit}..${head}`]));
+    const paths = cappedLines(tryGit(worktree, ["diff", "--name-only", settlementCommit, head]));
+    const onlyDraftedAsks = paths.length > 0 && paths.every((file) => DRAFTED_ASK_PATH.test(file));
+    let baseBranch = "the governed base branch";
+    try { baseBranch = resolveBaseBranch(repoRoot); } catch { /* keep the generic name */ }
+    return `${blocked} Head ${head} carries ${extra.length === 0 ? "changes" : `commit(s) ${extra.join("; ")}`} after its completion settlement commit ${settlementCommit}`
+      + `${paths.length > 0 ? `, changing ${paths.join(", ")}` : ""}. `
+      + (onlyDraftedAsks
+        ? "Those commits only add a drafted Agent Ask file: a draft left untracked beside its settlement, which the worker's terminal preservation then committed (Issue #981). "
+        : "")
+      + `${inspect} The tick never integrates a head other than the settlement commit, and no command removes the extra commit. `
+      + `After an independent review of exactly ${settlementCommit}, an operator may land the settlement itself with `
+      + `\`git -C ${repoRoot} merge --ff-only ${settlementCommit}\` (then push ${baseBranch}); the extra commit stays preserved on ${session.branch}.`;
+  }
+  if (reason === "The terminal candidate worktree is missing or changed.") {
+    const status = tryGit(worktree, ["status", "--porcelain", "--untracked-files=all"]);
+    if (status === null) {
+      return `${blocked} The worktree ${worktree} is missing or unreadable as a Git checkout. Restore it at ${session.branch} without changing its commits. ${retry} `
+        + `Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
+    }
+    const changes = cappedLines(status);
+    const onlyDraftedAsks = changes.length > 0 && changes.every((line) => line.startsWith("?? ") && DRAFTED_ASK_PATH.test(line.slice(3)));
+    return `${blocked} \`git -C ${worktree} status --porcelain --untracked-files=all\` shows: ${changes.join("; ")}. `
+      + (onlyDraftedAsks
+        ? "Every change is an untracked drafted Agent Ask file. If its request is already settled (its copy is in .arcadia/asks/archive/), deleting the stray draft lets the next tick integrate; never commit it to the candidate. "
+        : "Preserve any change worth keeping on a recovery branch rather than committing it to the settled candidate. ")
+      + `${retry} Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
+  }
+  if (reason === "No current exact validation and integration Grant authorizes terminal recovery.") {
+    return `${blocked} Record a fresh, unexpired integration Grant (Decision 0058) whose scope names ${actionKey}. ${retry} `
+      + `Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
+  }
+  return `${blocked} ${retry} Manual fallback after an independent review: \`${operatorMergeCommand}\`.`;
 }
 
 /**
@@ -1039,6 +1241,11 @@ export function runManagedProductionTick(
 
     const reconciled: Array<{ sessionId: string; outcome: string }> = [];
     let handoff: SessionHandoffResult | null = null;
+    // Observability only: which Session and head this tick's handoff is
+    // about, and the terminal guard that refused it, if one did.
+    let handoffSessionId: string | null = null;
+    let handoffHead: string | null = null;
+    let terminalRefusal: TerminalRefusalFacts | null = null;
     const alertCtx = { db, workspace, projectSlug: project.slug, now };
     // Set only once the exit-reconcile branch starts, so a throw from the
     // live-session stall observation is never reported as a failed reconcile.
@@ -1106,6 +1313,7 @@ export function runManagedProductionTick(
                 : null
             };
         handoff = { preservation, integration };
+        handoffSessionId = lease.id;
         reconciled.push({ sessionId: lease.id, outcome: result.receipt.outcome });
         log(`Reconciled Session ${lease.id} for ${project.slug}: ${result.receipt.outcome} (${result.receipt.reason})`);
         safelyRaiseRedAlerts(log, "reconcile clear", () => {
@@ -1149,8 +1357,12 @@ export function runManagedProductionTick(
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);
         });
-        handoff = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
+        const recovery = recoverTerminalHandoff(db, workspace, repoRoot, project.slug, now, options.handoff?.preserve ?? {}, options.handoff?.integrate ?? {}, log,
           { deps: { ...(options.handoff?.preserve?.remote ? { remote: options.handoff.preserve.remote } : {}), ...options.review }, heartbeat: options.heartbeat, clock });
+        handoff = recovery?.handoff ?? null;
+        handoffSessionId = recovery?.sessionId ?? null;
+        handoffHead = recovery?.head ?? null;
+        terminalRefusal = recovery?.refusal ?? null;
       }
     } catch (error) {
       log(`Reconciliation failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1183,7 +1395,10 @@ export function runManagedProductionTick(
       launch = attemptProjectLaunch(db, { workspace, repoRoot, projectSlug: project.slug, options, tmux, now, log });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
-      if (refusal?.operatorMergeCommand) {
+      // Logged once per (Session, head, reason), not on every ~3 s tick: the
+      // identical line looped for hours in rehearsal run 4 (Issue #981).
+      if (refusal?.operatorMergeCommand
+        && recordIntegrationRefusalLogIfNew(db, project.slug, [handoffSessionId ?? "", handoffHead ?? "", refusal.reason].join("\n"), now)) {
         log(`Candidate for ${project.slug} preserved but not integrated: ${refusal.reason} Operator merge: ${refusal.operatorMergeCommand}`);
       }
       // A Session for this repository was just reconciled this very tick. Its
@@ -1195,6 +1410,25 @@ export function runManagedProductionTick(
       // before this repository is considered for another launch; the next
       // tick's base-branch-advance detection picks it up as soon as it lands.
       launch = { attempted: false, outcome: "skipped", reason: "Repository was just reconciled this tick; deferring admission one tick for its merge to land.", actionKey: null };
+    }
+    // An integration-refusal episode ends whenever this tick has no refused
+    // handoff to log (it integrated, nothing is pending, or production is Off
+    // or out of scope), so a later recurrence is logged once again.
+    // A terminal guard's refusal is escalated once while production is On for
+    // this Project, and cleared when the candidate passes its guards or
+    // integrates, when nothing is pending, or when production is Off.
+    try {
+      if (!(mayLaunch && handoff?.integration.kind === "refused" && handoff.integration.operatorMergeCommand)) {
+        clearIntegrationRefusalLog(db, project.slug);
+      }
+      if (mayLaunch && terminalRefusal) {
+        recordTerminalCandidateEscalation(db, { facts: terminalRefusal, repoRoot, now, log });
+        clearProjectTerminalCandidateEscalations(db, project.slug, `${terminalRefusal.session.project_slug}/${terminalRefusal.session.action_id}`);
+      } else {
+        clearProjectTerminalCandidateEscalations(db, project.slug, null);
+      }
+    } catch (error) {
+      log(`Integration-refusal bookkeeping failed for ${project.slug}: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     safelyRaiseRedAlerts(log, "admission", () => observeAdmission(alertCtx, launch));

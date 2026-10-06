@@ -8,7 +8,7 @@ import defaultAdapters from "../config/defaults/provider-adapters.json" with { t
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { preservationGitTimeout, validationError } from "../src/cli/errors.js";
-import { runProductionPreviewCommand } from "../src/commands/production.js";
+import { renderProductionStatusSuccess, runProductionPreviewCommand, runProductionStatusCommand } from "../src/commands/production.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import {
   createCodexInvocation,
@@ -24,7 +24,7 @@ import { packetSha256 } from "../src/execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../src/intent/registries.js";
 import { activateProduction, deactivateProduction, fingerprintProductionScope, normalizeIntegrationGrant, normalizeProductionScope, type ProductionScope } from "../src/production/policy.js";
 import { integrateSessionCandidate, preserveSessionCandidate } from "../src/production/sessionHandoff.js";
-import { runManagedProductionTick } from "../src/production/tick.js";
+import { listOperatorEscalations, runManagedProductionTick } from "../src/production/tick.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { getRepositoryLease, getSession, type TmuxAdapter } from "../src/sessions/index.js";
 import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
@@ -413,6 +413,127 @@ describe("preserve-on-exit and integrate", () => {
     const switchedRetry = retryHandoff(switched.fixture, switched.tmux);
     expect(switchedRetry.handoff?.integration.kind).toBe("refused");
     expect(git(switched.fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(switched.baseBefore);
+  });
+
+  describe("a terminal candidate a guard keeps refusing (Issue #981)", () => {
+    /** The run-4 shape: a drafted Ask committed by preservation on top of the agent's settle commit. */
+    function strayDraftCommitted() {
+      const handoff = interruptedHandoff();
+      const settlementCommit = git(handoff.session.worktree_path, ["rev-parse", "HEAD"]).trim();
+      const stray = path.join(handoff.session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract-run4.yaml");
+      writeFileSync(stray, "{\"agent_ask\":\"v1\",\"request_id\":\"complete-define-contract-run4\"}\n");
+      git(handoff.session.worktree_path, ["add", "."]);
+      git(handoff.session.worktree_path, ["commit", "-m", "chore(candidate): preserve stray draft"]);
+      const strayHead = git(handoff.session.worktree_path, ["rev-parse", "HEAD"]).trim();
+      return { ...handoff, settlementCommit, strayHead };
+    }
+
+    function tickAt(fixture: Fixture, tmux: FakeTmux, offsetMs: number, logs: string[]) {
+      return withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+        log: (line) => logs.push(line),
+        handoff: { preserve: { validate: fixtureValidator(true) },
+          integrate: { fastForward: ({ repoRoot, commitSha }) => git(repoRoot, ["merge", "--ff-only", commitSha]) } }
+      })).projects[0];
+    }
+
+    function escalations(fixture: Fixture) {
+      return withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    }
+
+    it("still refuses every tick, but logs and escalates once per head, with the exact blocker and remedy in production status", () => {
+      const { fixture, tmux, session, baseBefore, settlementCommit, strayHead } = strayDraftCommitted();
+      const logs: string[] = [];
+      for (let tick = 0; tick < 6; tick += 1) {
+        const result = tickAt(fixture, tmux, 120_000 + tick * 3_000, logs);
+        // The guard itself is unchanged: every tick still refuses.
+        expect(result.handoff?.integration).toMatchObject({ kind: "refused", reason: "The terminal candidate differs from its exact canonical completion settlement." });
+      }
+      expect(git(fixture.repo, ["rev-parse", "HEAD"]).trim()).toBe(baseBefore);
+      expect(tmux.launches).toHaveLength(1);
+      expect(logs.filter((line) => line.includes("preserved but not integrated"))).toHaveLength(1);
+      expect(logs.filter((line) => line.includes("terminal_candidate_not_integrable"))).toHaveLength(1);
+
+      const rows = escalations(fixture);
+      expect(rows).toHaveLength(1);
+      const [row] = rows;
+      expect(row).toMatchObject({ actionKey: "test-project/define-contract", kind: "terminal_candidate_not_integrable" });
+      expect(row.message).toBe(`Terminal candidate of Session ${session.id} (${session.branch} at ${strayHead}) cannot integrate: `
+        + "The terminal candidate differs from its exact canonical completion settlement.");
+      // Deduped: the first tick wrote the row and no later tick touched it.
+      expect(row.lastSeenAt).toBe(new Date(fixture.now.getTime() + 120_000).toISOString());
+      expect(row.firstDetectedAt).toBe(row.lastSeenAt);
+      expect(row.remedy).toContain("Blocked: The terminal candidate differs from its exact canonical completion settlement.");
+      expect(row.remedy).toContain(`after its completion settlement commit ${settlementCommit}`);
+      expect(row.remedy).toContain(".arcadia/asks/agent-ask-complete-define-contract-run4.yaml");
+      expect(row.remedy).toContain("Those commits only add a drafted Agent Ask file");
+      expect(row.remedy).toContain(`\`git -C ${session.worktree_path} status --porcelain\``);
+      expect(row.remedy).toContain(`\`git -C ${session.worktree_path} log --oneline ${settlementCommit}..HEAD\``);
+      expect(row.remedy).toContain(`\`git -C ${fixture.repo} merge --ff-only ${settlementCommit}\``);
+
+      const status = renderProductionStatusSuccess(runProductionStatusCommand({ workspace: fixture.workspace })).join("\n");
+      expect(status).toContain("test-project/define-contract [terminal_candidate_not_integrable]");
+      expect(status).toContain("Blocked: The terminal candidate differs from its exact canonical completion settlement.");
+    });
+
+    it("re-escalates once for a new head, and clears when the candidate integrates", () => {
+      const { fixture, tmux, session, settlementCommit } = strayDraftCommitted();
+      const logs: string[] = [];
+      tickAt(fixture, tmux, 120_000, logs);
+      tickAt(fixture, tmux, 123_000, logs);
+      writeFileSync(path.join(session.worktree_path, "SECOND.md"), "another extra commit\n");
+      git(session.worktree_path, ["add", "SECOND.md"]);
+      git(session.worktree_path, ["commit", "-m", "second extra commit"]);
+      const secondHead = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
+      tickAt(fixture, tmux, 126_000, logs);
+      tickAt(fixture, tmux, 129_000, logs);
+      expect(logs.filter((line) => line.includes("preserved but not integrated"))).toHaveLength(2);
+      expect(logs.filter((line) => line.includes("terminal_candidate_not_integrable"))).toHaveLength(2);
+      const [row] = escalations(fixture);
+      expect(row.message).toContain(`at ${secondHead})`);
+      expect(row.firstDetectedAt).toBe(new Date(fixture.now.getTime() + 126_000).toISOString());
+      expect(row.remedy).not.toContain("Those commits only add a drafted Agent Ask file");
+
+      // Back at the exact settlement commit (a test-only reset): every guard
+      // passes, the stale escalation clears, and the candidate integrates.
+      git(session.worktree_path, ["reset", "--hard", settlementCommit]);
+      const integrated = tickAt(fixture, tmux, 132_000, logs);
+      expect(integrated.handoff?.integration.kind).toBe("integrated");
+      expect(escalations(fixture).filter((entry) => entry.kind === "terminal_candidate_not_integrable")).toEqual([]);
+    });
+
+    it("clears the escalation when production goes Off, and records nothing while it stays Off", () => {
+      const { fixture, tmux } = strayDraftCommitted();
+      const logs: string[] = [];
+      tickAt(fixture, tmux, 120_000, logs);
+      expect(escalations(fixture)).toHaveLength(1);
+      withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "off-with-stray-draft", now: new Date(fixture.now.getTime() + 121_000) }));
+      const off = tickAt(fixture, tmux, 123_000, logs);
+      expect(off.handoff?.integration.kind).toBe("refused");
+      expect(escalations(fixture)).toEqual([]);
+      tickAt(fixture, tmux, 126_000, logs);
+      expect(escalations(fixture)).toEqual([]);
+      expect(logs.filter((line) => line.includes("terminal_candidate_not_integrable"))).toHaveLength(1);
+    });
+
+    it("replaces a stale verdict-wait escalation but never overwrites another open escalation kind", () => {
+      const { fixture, tmux } = strayDraftCommitted();
+      withDatabase(fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+         VALUES ('test-project/define-contract', 'awaiting_independent_verdicts', 'stale wait', NULL, '2026-08-30T12:00:00.000Z', '2026-08-30T12:00:00.000Z')`
+      ).run());
+      tickAt(fixture, tmux, 120_000, []);
+      expect(escalations(fixture).map((entry) => entry.kind)).toEqual(["terminal_candidate_not_integrable"]);
+
+      const other = strayDraftCommitted();
+      withDatabase(other.fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+         VALUES ('test-project/define-contract', 'repair_budget_exhausted', 'kept', NULL, '2026-08-30T12:00:00.000Z', '2026-08-30T12:00:00.000Z')`
+      ).run());
+      tickAt(other.fixture, other.tmux, 120_000, []);
+      expect(escalations(other.fixture)).toMatchObject([{ kind: "repair_budget_exhausted", message: "kept" }]);
+    });
   });
 
   it("refuses recovery when the governed base diverges after settlement", () => {
