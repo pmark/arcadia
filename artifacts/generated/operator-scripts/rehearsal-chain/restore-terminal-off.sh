@@ -153,7 +153,8 @@ RUN_N="$(jq -er --arg run "$RUN_PARAM_ID" 'select(.schema == "arcadia-rehearsal-
   || refuse "the parameter file $PARAMS_FILE does not name run $RUN_PARAM_ID with an Action count from 3 to 12"
 FIXTURE_ACTIONS_JSON="$(jq -nc --arg p "$FIXTURE_PROJECT" --argjson n "$RUN_N" '["write-start-marker","transform-start-marker","verify-final-rehearsal"] + [range(4; $n + 1) | "chain-step-\(if . < 10 then "0" else "" end)\(.)"] | map("\($p)/\(.)")')"
 record_str chainRunId "$RUN_PARAM_ID"
-record actionIds "$FIXTURE_ACTIONS_JSON"
+record actionIds "$(jq -c 'map(sub("^[^/]+/"; ""))' <<<"$FIXTURE_ACTIONS_JSON")"
+record scopedActions "$FIXTURE_ACTIONS_JSON"
 
 cat > "$RUN_DIR/probe-sessions.mjs" <<'NODE'
 import { withReadOnlyDatabase } from "./src/db/connection.ts";

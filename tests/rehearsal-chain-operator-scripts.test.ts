@@ -11,7 +11,7 @@ import { discoverDocs } from "../src/docs/discover.js";
 import { recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
 import { beginDevelopmentAttempt, requirementIdentity } from "../src/sessions/roleLineage.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { CHAIN_IMPLEMENTATION, CHAIN_KINDS, chainActionIds, chainLibraryIds, completionRequestId } from "../src/operatorActions/rehearsalChain.js";
+import { CHAIN_IMPLEMENTATION, CHAIN_KINDS, REQUIRED_COMMIT_FLOOR, chainActionIds, chainLibraryIds, completionRequestId } from "../src/operatorActions/rehearsalChain.js";
 
 /**
  * Behavioral and static tests of the rehearsal-chain operator script set
@@ -103,7 +103,7 @@ if (reply.passthrough) {
   process.stderr.write(run.stderr || "");
   process.exit(run.status === null ? 98 : run.status);
 }
-if (reply.stdout) process.stdout.write(reply.stdout);
+if (reply.stdout) process.stdout.write(reply.stdout.replace(/[{][{]arg:([^}]+)[}][}]/g, (_m, flag) => args[args.indexOf(flag) + 1] ?? ""));
 if (reply.stderr) process.stderr.write(reply.stderr);
 process.exit(reply.status ?? 0);
 `;
@@ -122,23 +122,38 @@ const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
 const CHECKOUT_PROJECT = "---\narcadia: v1\ntype: project\nslug: arcadia\nname: Arcadia\nstatus: active\ngoal: Checkout under test.\noutcome: Checkout under test.\nmilestone: Test\nupdated: 2026-10-05\n---\n\n# Arcadia\n";
 
 /** A throwaway Arcadia checkout whose library holds this run's launchers, descriptors, the shared implementation and a parameter file. */
-function sandbox(runId: string) {
+function sandbox(runId: string, options: { clone?: boolean } = {}) {
   const root = temp("arcadia-chain-pair-");
   const checkout = path.join(root, "arcadia");
   const scripts = path.join(checkout, "artifacts", "generated", "operator-scripts");
   const bin = path.join(root, "bin");
   const home = path.join(root, "home");
   const workspace = path.join(root, "martianrover");
+  let checkoutHead: string;
+  if (options.clone) {
+    // A shared clone of this checkout whose main carries the required-commit floor as ancestors
+    // (an "ours" merge of the #987 fix), with origin pointing at itself, so G6 and G7 can pass their Git checks.
+    git(root, ["clone", "-q", "--shared", "--no-checkout", repoRoot, checkout]);
+    git(checkout, ["checkout", "-q", "-B", "main", git(repoRoot, ["rev-parse", "HEAD"])]);
+    for (const commit of Object.keys(REQUIRED_COMMIT_FLOOR)) {
+      if (spawnSync("git", ["-C", checkout, "merge-base", "--is-ancestor", commit, "HEAD"]).status !== 0) git(checkout, ["-c", "user.name=t", "-c", "user.email=t@t.test", "merge", "-q", "-s", "ours", "--no-edit", commit]);
+    }
+    git(checkout, ["remote", "set-url", "origin", checkout]);
+    git(checkout, ["fetch", "-q", "origin"]);
+    checkoutHead = git(checkout, ["rev-parse", "HEAD"]);
+  } else {
+    mkdirSync(checkout, { recursive: true });
+    writeFileSync(path.join(checkout, ".gitignore"), "artifacts/\n");
+    writeFileSync(path.join(checkout, "PROJECT.md"), CHECKOUT_PROJECT);
+    git(checkout, ["init", "-q", "-b", "main"]);
+    checkoutHead = commitAll(checkout, "init");
+    git(root, ["init", "-q", "--bare", "-b", "main", "origin.git"]);
+    git(checkout, ["remote", "add", "origin", path.join(root, "origin.git")]);
+    git(checkout, ["push", "-q", "-u", "origin", "main"]);
+  }
   mkdirSync(path.join(scripts, "rehearsal-chain", "params"), { recursive: true });
   mkdirSync(bin);
   mkdirSync(home);
-  writeFileSync(path.join(checkout, ".gitignore"), "artifacts/\n");
-  writeFileSync(path.join(checkout, "PROJECT.md"), CHECKOUT_PROJECT);
-  git(checkout, ["init", "-q", "-b", "main"]);
-  const checkoutHead = commitAll(checkout, "init");
-  git(root, ["init", "-q", "--bare", "-b", "main", "origin.git"]);
-  git(checkout, ["remote", "add", "origin", path.join(root, "origin.git")]);
-  git(checkout, ["push", "-q", "-u", "origin", "main"]);
   const ids = chainLibraryIds(runId);
   for (const kind of CHAIN_KINDS) {
     for (const ext of ["sh", "json"]) copyFileSync(path.join(library, `${ids[kind]}.${ext}`), path.join(scripts, `${ids[kind]}.${ext}`));
@@ -173,7 +188,14 @@ function sandbox(runId: string) {
     writeFileSync(path.join(root, "replies.json"), JSON.stringify(replies));
   };
   const fixture = path.join(home, "tmp", "arcadia-three-action-rehearsal");
-  return { root, checkout, checkoutHead, scripts, home, workspace, fixture, tmp, ids, run, runDirs, receipts, receipt, keys, pushes, setReplies };
+  /** Commit the library (force-added: artifacts/ is ignored), as a reviewed merge would. */
+  const commitLibrary = () => {
+    git(checkout, ["add", "-f", "artifacts/generated/operator-scripts"]);
+    if (spawnSync("git", ["-C", checkout, "diff", "--cached", "--quiet"]).status !== 0) git(checkout, ["-c", "user.name=t", "-c", "user.email=t@t.test", "commit", "-q", "-m", "library"]);
+    if (options.clone) git(checkout, ["fetch", "-q", "origin"]);
+    return git(checkout, ["rev-parse", "HEAD"]);
+  };
+  return { root, checkout, checkoutHead, commitLibrary, scripts, home, workspace, fixture, tmp, ids, run, runDirs, receipts, receipt, keys, pushes, setReplies };
 }
 type Box = ReturnType<typeof sandbox>;
 const ok = (data: unknown): Reply => ({ stdout: JSON.stringify({ ok: true, data }) });
@@ -263,7 +285,7 @@ function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?:
   const runId = options.runId ?? RUN6;
   const params = {
     schema: "arcadia-rehearsal-chain-run-v1", runId, runLabel: `run ${runId.slice(3, 4)}`, actionCount: options.actionCount ?? 3,
-    requiredCommits: [{ commit: box.checkoutHead, why: "the box checkout's own commit" }],
+    requiredCommits: Object.entries(REQUIRED_COMMIT_FLOOR).map(([commit, why]) => ({ commit, why })),
     previousRun: {
       label: "run 5", resetId: PREV_RESET, terminalOffId: PREV_G8, grantId: PREV_G7,
       bindings: { resetRunId: "20261006T031820Z-74070", resetHead: base, terminalOffRunId: "20261006T033451Z-43195", localMain,
@@ -274,7 +296,10 @@ function afterRun5(box: Box, options: { actionCount?: number; extraLocalCommit?:
   box.setReplies(resetReplies(box, { base, a1Tip, a2Tip }));
   return { genesis, base, a1Tip, a2Tip, localMain, params, projectId };
 }
-const writeParams = (box: Box, runId: string, params: unknown) => writeFileSync(path.join(box.scripts, "rehearsal-chain", "params", `${runId}.json`), JSON.stringify(params, null, 2));
+const writeParams = (box: Box, runId: string, params: unknown, commit = true) => {
+  writeFileSync(path.join(box.scripts, "rehearsal-chain", "params", `${runId}.json`), JSON.stringify(params, null, 2));
+  if (commit) box.commitLibrary();
+};
 const resetReplies = (box: Box, state: { base: string; a1Tip: string; a2Tip: string }): Replies => ({
   "arcadia workspace resolve": ok({ source: "user config", workspacePath: box.workspace }),
   "arcadia production status": status("inactive"),
@@ -470,6 +495,18 @@ describe("rehearsal-chain reset", () => {
     unchanged(box, state.a1Tip);
   });
 
+  it("refuses a parameter file that is not committed (rendered but unreviewed), before reading anything else", { timeout: 240_000 }, () => {
+    const box = sandbox(RUN6);
+    const state = afterRun5(box);
+    writeParams(box, RUN6, { ...state.params, actionCount: 12 }, false);
+    const result = box.run(box.ids.reset, resetEnv);
+    expect(result.status).not.toBe(0);
+    expect(box.receipt(box.ids.reset).json).toMatchObject({ outcome: "refused", stage: "parameters" });
+    expect(box.receipt(box.ids.reset).json.reason).toContain("is not tracked and unmodified at the checkout's HEAD");
+    expect(box.run(box.ids.reset, resetEnv, ["--dry-run"]).status).not.toBe(0);
+    unchanged(box, state.a1Tip);
+  });
+
   it("refuses unfilled previous-run bindings (the overnight file before run 6) before reading anything else", { timeout: 120_000 }, () => {
     const box = sandbox(RUN7);
     writeParams(box, RUN7, JSON.parse(readFileSync(path.join(impl, "params", `${RUN7}.json`), "utf8")));
@@ -542,11 +579,68 @@ describe("rehearsal-chain G6, G7 and G8", () => {
     const result = box.run(box.ids.terminalOff, runs);
     expect(result.status).not.toBe(0);
     const { json, dir } = box.receipt(box.ids.terminalOff);
-    expect(json).toMatchObject({ outcome: "refused", stage: "restart_preconditions", offState: "confirmed", restarted: false, chainRunId: RUN7, actionIds: scoped });
+    expect(json).toMatchObject({ outcome: "refused", stage: "restart_preconditions", offState: "confirmed", restarted: false, chainRunId: RUN7, actionIds: chainActionIds(9), scopedActions: scoped });
     expect(json.reason).toContain("recover-arcadia-host-services is missing");
     expect(json.workerLogs.map((entry: { source: string }) => path.basename(entry.source)).sort()).toEqual(["worker.err.log", "worker.out.log"]);
     expect(readFileSync(path.join(dir, "evidence", "worker-logs", "arcadia-services-1", "worker.out.log"), "utf8")).toBe("tick 1\ntick 2\n");
     expect(box.keys().filter((k) => k.startsWith("arcadia production deactivate"))).toHaveLength(1);
+  });
+});
+
+describe("rehearsal-chain end to end (N=9): reset, then G6 and G7 bind its receipt", () => {
+  it("the reset's receipt passes this run's G6, and G7 previews and activates exactly the nine Actions under its own request id", { timeout: 600_000 }, () => {
+    const box = sandbox(RUN7, { clone: true });
+    const state = afterRun5(box, { actionCount: 9, runId: RUN7 });
+    const reset = box.run(box.ids.reset, resetEnv);
+    expect(reset.status, reset.stdout + reset.stderr).toBe(0);
+    const newHead = git(box.fixture, ["rev-parse", "refs/heads/main"]);
+    const head = git(box.checkout, ["rev-parse", "HEAD"]);
+    const scoped = chainActionIds(9).map((id) => `three-action-rehearsal/${id}`);
+    const g6Replies: Replies = {
+      ...resetReplies(box, state),
+      [`gh api repos/${REPO}/commits/main`]: { stdout: `${newHead}\n` },
+      "arcadia go-broker status": ok({ ready: true, revision: head, preservationTransport: { ready: true }, agentGoTransport: { ready: true } }),
+      "arcadia worker status": { stdout: "Worker: running (fresh heartbeat)\n" },
+      "probe claude": { stdout: JSON.stringify({ verdict: "signed_in" }) },
+      "probe capacity": { stdout: JSON.stringify({ readOnlyReviewers: ["codex_review"], codex: { admitted: true, freshness: "fresh", confidence: "observed", usagePolicy: "included", evidence: "real", availability: "available", unattendedProof: "observed" } }) },
+      "codex --version": { stdout: "codex 1.0\n" },
+      "codex login status": { stdout: "Logged in using ChatGPT\n" },
+      "gh auth status": { stdout: "ok\n" },
+      [`gh api repos/${REPO}`]: { stdout: JSON.stringify({ private: true, archived: false, fork: false, permissions: { push: true }, default_branch: "main" }) },
+      [`gh api repos/${REPO}/branches/main`]: { stdout: JSON.stringify({ commit: { sha: newHead }, protected: false }) },
+      [`gh api repos/${REPO}/commits/${newHead}/check-runs`]: { stdout: JSON.stringify({ total_count: 1, check_runs: [{ status: "completed", conclusion: "success" }] }) }
+    };
+    box.setReplies(g6Replies);
+    const g6 = box.run(box.ids.preflight);
+    expect(g6.status, g6.stdout + g6.stderr).toBe(0);
+    const preflight = box.receipt(box.ids.preflight).json;
+    expect(preflight.checks.filter((c: { status: string }) => c.status !== "pass")).toEqual([]);
+    expect(preflight).toMatchObject({ outcome: "succeeded", chainRunId: RUN7, actionIds: chainActionIds(9), fixtureHead: newHead, arcadiaHead: head, brokerRevision: head, policyRevision: 33 });
+    box.setReplies({
+      ...g6Replies,
+      "node preflight": { stdout: "Hermetic three-Action rehearsal passed\n" },
+      "arcadia production preview": ok({ preview: { expectedRevision: 33, scopeFingerprint: "fp-chain", unmatched: { projects: [], plans: [] }, scope: {
+        projects: ["three-action-rehearsal"], plans: ["three-action-rehearsal/autonomous-three-action-rehearsal"], actions: scoped, providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+        mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"], remotePreservation: true, rehearsalException: null,
+        packetApprovalExpiresAt: "{{arg:--packet-approval-expires-at}}", integrationGrant: { decisionRef: "0058", actions: scoped, expiresAt: "{{arg:--integration-grant-expires-at}}" }
+      } } }),
+      "arcadia production activate": ok({ result: { policy: { desiredState: "active", revision: 34, authority: { requestId: box.ids.grant, scopeFingerprint: "fp-chain" } } } })
+    });
+    const runs = { ARCADIA_OPERATOR_SCRIPT_ID: box.ids.grant, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(box.scripts, `${box.ids.grant}.json`) };
+    const g7 = box.run(box.ids.grant, runs);
+    expect(g7.status, g7.stdout + g7.stderr).toBe(0);
+    expect(box.receipt(box.ids.grant).json).toMatchObject({ outcome: "succeeded", activated: true, chainRunId: RUN7, actionIds: chainActionIds(9), fixtureHead: newHead, scopeFingerprint: "fp-chain", policyRevisionAfter: 34 });
+    const calls = readFileSync(path.join(box.root, "calls.log"), "utf8").trim().split("\n").filter((line) => line.startsWith("mise ")).map((line) => JSON.parse(line.slice(5)) as string[]);
+    const activations = calls.filter((args) => args.includes("activate"));
+    expect(activations).toHaveLength(1);
+    const values = (args: string[], flag: string) => args.flatMap((arg, i) => arg === flag ? [args[i + 1]] : []);
+    expect(values(activations[0], "--action")).toEqual(scoped);
+    expect(values(activations[0], "--integration-grant-action")).toEqual(scoped);
+    expect(values(activations[0], "--request-id")).toEqual([box.ids.grant]);
+    expect(values(activations[0], "--expected-revision")).toEqual(["33"]);
+    expect(values(activations[0], "--concurrency")).toEqual(["1"]);
+    expect(activations[0]).toContain("--remote-preservation");
+    expect(box.pushes()).toHaveLength(1);
   });
 });
 

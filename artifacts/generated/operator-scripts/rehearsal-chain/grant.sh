@@ -168,6 +168,12 @@ DESCRIPTOR_PATH="${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}"
 
 STAGE=parameters
 for tool in git jq mise timeout node; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
+# Reviewed, not merely rendered: this run's parameter file, launcher, descriptor and the shared
+# implementation must all be tracked and unmodified at the checkout's HEAD (artifacts/generated is gitignored).
+for reviewed in "$PARAMS_FILE" "$LIBRARY_DIR/$SCRIPT_ID.sh" "$LIBRARY_DIR/$SCRIPT_ID.json" "$IMPL_DIR/$IMPL_FILE"; do
+  git -C "$ARCADIA_REPO" ls-files --error-unmatch -- "$reviewed" >/dev/null 2>&1 && git -C "$ARCADIA_REPO" diff --quiet HEAD -- "$reviewed" \
+    || refuse "$reviewed is not tracked and unmodified at the checkout's HEAD; a run's parameter file, launcher, descriptor and implementation must be reviewed and committed before they run"
+done
 cat > "$RUN_DIR/params.mjs" <<'NODE'
 import { readFileSync } from "node:fs";
 import { validateChainParams, chainActionIds } from "./src/operatorActions/rehearsalChain.ts";

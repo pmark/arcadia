@@ -20,6 +20,19 @@ export const MAX_CHAIN_ACTIONS = 12;
 /** Any parameter value starting with this marker is a binding still to be filled; every script refuses it. */
 export const UNFILLED = "UNFILLED";
 
+/**
+ * The fail-closed floor every run's G6 and G7 require on Arcadia main, whatever
+ * the parameter file adds: remote preservation (#922), tick-driven PR readiness
+ * and reviews (#924), the canonical-name Ask archive (#983), all hard-coded in
+ * the run-5 set, and the serial PR base stacking fix (#987, merged as #1006).
+ */
+export const REQUIRED_COMMIT_FLOOR: Readonly<Record<string, string>> = {
+  "9a9db5e8bfe7b35d0b312fc2f763cc80c2db25f1": "remote preservation (#922)",
+  "0b3686013f0a924c35d58dc7a09c979f1a994c7e": "tick-driven PR readiness and both independent reviews (#924)",
+  "bb83f70cbc0d6c08685735d0f192ef20fc0cf5d4": "settlement archives the drafted Ask by its canonical name (#983)",
+  "26172c74ae9dcf795cc69cabd8a62616f7ed42c8": "serial Actions' draft PRs stacked on the previous candidate branch (#987, #1006)"
+};
+
 export interface ChainCandidate { branch: string; tip: string; pullRequest: number }
 export interface ChainRequiredCommit { commit: string; why: string }
 export interface ChainRunParams {
@@ -105,6 +118,9 @@ export function validateChainParams(raw: unknown): ChainParamsValidation {
         seen.add(entry.commit);
       }
     });
+    for (const [commit, why] of Object.entries(REQUIRED_COMMIT_FLOOR)) {
+      if (!seen.has(commit)) problems.push(`params.requiredCommits must include ${commit} (${why}); the floor cannot be removed by a parameter change`);
+    }
   }
 
   const previous = raw.previousRun;
@@ -492,7 +508,8 @@ export function reconciliationProblems(lines: Array<Record<string, unknown>>, ca
     const pinned = candidates.find((candidate) => candidate.branch === branch);
     if (!pinned) problems.push(`the previous terminal Off reconciled ${branch} (${tip}) but the parameter file does not pin it`);
     else if (pinned.tip !== tip) problems.push(`the parameter file pins ${branch} at ${pinned.tip} but the previous terminal Off reconciled it at ${tip}`);
-    else if (number !== undefined && Number(number) !== pinned.pullRequest) problems.push(`the parameter file pins ${branch} to pull request #${pinned.pullRequest} but the previous terminal Off recorded ${pr}`);
+    else if (number === undefined) problems.push(`the previous terminal Off recorded no pull request for ${branch} (${pr || "none"}), so its preservation cannot be pinned`);
+    else if (Number(number) !== pinned.pullRequest) problems.push(`the parameter file pins ${branch} to pull request #${pinned.pullRequest} but the previous terminal Off recorded ${pr}`);
   }
   return problems;
 }

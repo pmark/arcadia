@@ -164,7 +164,8 @@ describe("rehearsal-chain parameter files", () => {
     ["a branch with ..", (p: Record<string, any>) => { p.previousRun.bindings.candidates[0].branch = "claude/../main"; }, ".."],
     ["no candidates", (p: Record<string, any>) => { p.previousRun.bindings.candidates = []; }, "candidates"],
     ["this run's own Grant as the previous one", (p: Record<string, any>) => { p.previousRun.grantId = "grant-production-rehearsal-chain-run6-2026-10-06"; }, "own Grant"],
-    ["a non-slug previous id", (p: Record<string, any>) => { p.previousRun.resetId = "Reset Run 5"; }, "resetId"]
+    ["a non-slug previous id", (p: Record<string, any>) => { p.previousRun.resetId = "Reset Run 5"; }, "resetId"],
+    ["a required-commit list without the #922/#924/#983/#987 floor", (p: Record<string, any>) => { p.requiredCommits = p.requiredCommits.slice(4); }, "the floor cannot be removed"]
   ])("refuses %s", (_label, mutate, expected) => {
     const params = structuredClone(RUN6) as unknown as Record<string, any>;
     mutate(params);
@@ -350,6 +351,7 @@ describe("previous terminal-Off reconciliation cross-check", () => {
     expect(reconciliationProblems(run5, RUN6.previousRun.bindings.candidates.map((c) => c.pullRequest === 6 ? { ...c, tip: "f".repeat(40) } : c)).join("; ")).toContain("pins claude/transform-start-marker");
     expect(reconciliationProblems([...run5, { session: "x", state: "committed_unreconciled", branch: "b", tip: "t" }], RUN6.previousRun.bindings.candidates).join("; ")).toContain("committed_unreconciled");
     expect(reconciliationProblems([{ session: "y", state: "no_committed_work", branch: "z", tip: "" }], [])).toEqual([]);
+    expect(reconciliationProblems(run5.map((line, i) => i === 5 ? { ...line, pullRequest: "" } : line), RUN6.previousRun.bindings.candidates).join("; ")).toContain("recorded no pull request");
   });
 });
 

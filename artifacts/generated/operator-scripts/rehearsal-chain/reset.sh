@@ -171,6 +171,12 @@ record_str paramsFile "$PARAMS_FILE"
 
 # --- The reviewed parameter file, validated and expanded by the tested pure module. ---
 for tool in git jq mise gh timeout node tar diff; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done
+# Reviewed, not merely rendered: this run's parameter file, launcher, descriptor and the shared
+# implementation must all be tracked and unmodified at the checkout's HEAD (artifacts/generated is gitignored).
+for reviewed in "$PARAMS_FILE" "$LIBRARY_DIR/$SCRIPT_ID.sh" "$LIBRARY_DIR/$SCRIPT_ID.json" "$IMPL_DIR/$IMPL_FILE"; do
+  git -C "$ARCADIA_REPO" ls-files --error-unmatch -- "$reviewed" >/dev/null 2>&1 && git -C "$ARCADIA_REPO" diff --quiet HEAD -- "$reviewed" \
+    || refuse "$reviewed is not tracked and unmodified at the checkout's HEAD; a run's parameter file, launcher, descriptor and implementation must be reviewed and committed before they run"
+done
 cat > "$RUN_DIR/params.mjs" <<'NODE'
 import { readFileSync } from "node:fs";
 import { validateChainParams, chainActionIds, completionRequestId, chainLibraryIds, resetCommitSubject } from "./src/operatorActions/rehearsalChain.ts";
@@ -663,6 +669,8 @@ if [[ "$RESET_STATE" == move_local_main ]]; then
   [[ -z "$(fx status --porcelain --untracked-files=all)" && "$(fx rev-parse refs/heads/main)" == "$LOCAL_MAIN" && "$(fx symbolic-ref HEAD)" == refs/heads/main ]] || refuse "the fixture changed during validation; nothing was moved"
   # Compare-and-swap: only from the exact pinned commit, recorded in the clone's reflog; then the
   # clean working tree follows the ref (a two-tree switch that refuses on any local change).
+  # The move and the working tree following it are not interrupted by INT or TERM.
+  trap '' INT TERM
   fx update-ref -m "$SCRIPT_ID: move local main back to GitHub main $RESET_HEAD; $LOCAL_MAIN is preserved on $(jq -r '[.preservedOn[].branch] | join(", ")' <<<"$DECISION")" refs/heads/main "$RESET_HEAD" "$LOCAL_MAIN"
   LOCAL_MAIN_MOVED=true
   if ! fx read-tree -m -u "$LOCAL_MAIN" "$RESET_HEAD"; then
@@ -671,9 +679,14 @@ if [[ "$RESET_STATE" == move_local_main ]]; then
       LOCAL_MAIN_MOVED=false
       refuse "the working tree did not follow local main to $RESET_HEAD; local main was put back at $LOCAL_MAIN and nothing changed"
     fi
-    RECOVERY="Local main may point at $RESET_HEAD while the working tree still holds $LOCAL_MAIN's files. Nothing is lost: $LOCAL_MAIN is on its preserved candidate branch and pull request and in the clone's reflog. Read 'git -C $FIXTURE_REPO status' and 'git -C $FIXTURE_REPO reflog -3 main' and restore local main with 'git -C $FIXTURE_REPO update-ref refs/heads/main $LOCAL_MAIN $RESET_HEAD' before rerunning."
+    if [[ "$(fx rev-parse refs/heads/main)" == "$LOCAL_MAIN" ]]; then
+      RECOVERY="Local main is back at $LOCAL_MAIN but the working tree is not clean. Nothing is lost: $LOCAL_MAIN is on its preserved candidate branch and pull request and in the clone's reflog. Read 'git -C $FIXTURE_REPO status' and resolve the listed files before rerunning; do not discard anything you have not read."
+    else
+      RECOVERY="Local main points at $RESET_HEAD while the working tree may still hold $LOCAL_MAIN's files. Nothing is lost: $LOCAL_MAIN is on its preserved candidate branch and pull request and in the clone's reflog. Read 'git -C $FIXTURE_REPO status' and 'git -C $FIXTURE_REPO reflog -3 main', and restore local main with 'git -C $FIXTURE_REPO update-ref refs/heads/main $LOCAL_MAIN $RESET_HEAD' before rerunning."
+    fi
     refuse "the working tree did not follow local main to $RESET_HEAD, and putting local main back could not be confirmed"
   fi
+  trap - INT TERM
   [[ "$(fx rev-parse HEAD)" == "$RESET_HEAD" && -z "$(fx status --porcelain --untracked-files=all)" ]] || refuse "after the move the fixture is not clean at $RESET_HEAD"
   record "localMainMove" "$(jq -nc --arg from "$LOCAL_MAIN" --arg to "$RESET_HEAD" --argjson on "$(jq -c '.preservedOn' <<<"$DECISION")" '{from: $from, to: $to, preservedOn: $on}')"
   echo "Moved only the clone's local main from $LOCAL_MAIN back to GitHub main $RESET_HEAD."
