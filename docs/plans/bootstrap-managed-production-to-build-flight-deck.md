@@ -4135,6 +4135,22 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/pull/1009", "artifacts/generated/operator-scripts/rehearsal-chain/params/run6-2026-10-06.json", "docs/autonomous-production-rehearsal-runbook.md"]
+  - id: fix-chain-scope-order-compare
+    title: Compare Grant Action sets order-independently in the rehearsal chain G7 and G8, pinned by tests whose faked preview and status return a different order.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Compare Grant Action sets order-independently in the rehearsal chain G7 and G8, pinned by tests whose faked preview and status return a different order.
+    expected_artifact: Evidence satisfying Agent Ask fix-chain-scope-order-compare
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-chain-scope-order-compare-2026-10-06
+    acceptance_criteria:
+      - "`rehearsal-chain/grant.sh` accepts the preview when `scope.actions` and `scope.integrationGrant.actions` each contain exactly the run's N fixture Actions in any order (same set, same length, no duplicates, nothing extra) and still refuses a missing, extra or duplicated Action; `rehearsal-chain/restore-terminal-off.sh` owns and turns Off the run's Grant when the stored policy's `scope.actions` equal the G7 receipt's actionIds as a set, and still refuses a different set; no other check is loosened."
+      - "`tests/rehearsal-chain-operator-scripts.test.ts` pins both: a faked preview (and stored policy for G8) returning the nine Actions in the live order observed in run 6's refused G7 (transform-start-marker, verify-final-rehearsal, write-start-marker, chain-step-04 to 09) passes G7 and lets G8 turn Off exactly once, while an extra or missing Action still refuses; the rehearsal-chain tests, `check:operator-scripts`, render `--check`, lint and tsc pass; an independent review round is recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["artifacts/generated/operator-scripts/runs/20261006T151603Z-70938/preview.json", "artifacts/generated/operator-scripts/rehearsal-chain/grant.sh", "artifacts/generated/operator-scripts/rehearsal-chain/restore-terminal-off.sh"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
