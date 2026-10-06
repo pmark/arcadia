@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { applyCapabilityMigrations } from "../capabilities/migrations.js";
+import { ensureOperatorPingTable } from "../ping/operatorPing.js";
 import { ensureProductionPolicyTables } from "../production/policy.js";
 import { ensureProductionLaunchBlockersTable } from "../production/tick.js";
 import { ensureRedAlertTables } from "../production/redAlerts.js";
@@ -50,6 +51,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskCaptureEnvelopeTables(db);
   ensureAgentAskProposalTable(db);
   ensureAgentAskSettlementTable(db);
+  ensureOperatorPingTable(db);
   ensureActionQueueOrderTables(db);
   ensureRequiresReviewCompatibility(db);
   // After the requires_review rebuild, which recreates ask_requests and drops its indexes.

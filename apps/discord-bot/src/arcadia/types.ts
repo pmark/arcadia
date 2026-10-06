@@ -87,6 +87,20 @@ export interface AgentAskNotificationsData {
   notifications: AgentAskNotificationItem[];
 }
 
+export interface OperatorPingItem {
+  id: string;
+  message: string;
+  kind: "look" | "fyi" | "attention";
+  channel: string | null;
+  link: string | null;
+  agent: string | null;
+  createdAt: string;
+}
+
+export interface OperatorPingsData {
+  pings: OperatorPingItem[];
+}
+
 export interface ExecutionRunStep {
   status: string;
   plan_step_title: string;

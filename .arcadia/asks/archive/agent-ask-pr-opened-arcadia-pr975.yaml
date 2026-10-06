@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr975","project":"arcadia","intent":"log","desired_result":"New: `arcadia ping` lets any agent send you a quick read-only Discord nudge, with optional channel routing; Decision 0084 asks whether agents may use it unprompted. https://github.com/pmark/arcadia/pull/975"}
