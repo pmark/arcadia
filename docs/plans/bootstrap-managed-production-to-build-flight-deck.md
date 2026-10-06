@@ -4084,6 +4084,23 @@ actions:
     depends_on: []
     decisions: []
     references: ["docs/autonomous-production-rehearsal-runbook.md", "artifacts/generated/operator-scripts/reset-three-action-rehearsal-fixture-run5-2026-10-06.json", "artifacts/generated/operator-scripts/preflight-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/grant-production-three-action-rehearsal-run5-2026-10-06.json", "artifacts/generated/operator-scripts/restore-terminal-off-three-action-rehearsal-run5-2026-10-06.json", "https://github.com/pmark/arcadia/issues/987"]
+  - id: fix-qa-plan-check-wording
+    title: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Render check-passes criteria in the Operator QA plan as bounded inspection steps that point the proof of passing at the declared-validation step.
+    expected_artifact: Evidence satisfying Agent Ask fix-qa-plan-check-wording
+    clarification: clarified
+    confidence: high
+    source: Agent Ask fix-qa-plan-check-wording-2026-10-06
+    acceptance_criteria:
+      - In src/sessions/operatorQaPlan.ts a criterion that is satisfied by running a declared validation command, or that names a script or command that must pass, renders as an inspection step whose Expected line is limited to what inspection shows (the file exists and what it contains) and points the proof of 'passes' explicitly at the declared-validation step and its exit-zero result; no QA criteria, reviewer prompts or other plan steps change; a unit test pins that the rendered step never claims source display proves a pass.
+      - "A read-only check with the real QA reviewer on a plan rendered for run 5's Action 1 shape (as done for #974, recording the command and both verdict reports) shows no 'Operator QA plan' finding in two verdicts; if the reviewer cannot be run read-only from the candidate, the pull request says so plainly and the next live run's first QA verdict is named as the check."
+      - "Lint, tsc, `pnpm fast-rehearsal` and the focused suites pass; the runbook failure catalog and Issue #986 are updated; independent review rounds are recorded on the pull request."
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/986", "https://github.com/pmark/arcadia/issues/974", "src/sessions/operatorQaPlan.ts", "docs/autonomous-production-rehearsal-runbook.md"]
 questions: []
 decisions: []
 recommended_model: claude-sonnet-5
