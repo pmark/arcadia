@@ -91,6 +91,21 @@ describe("the Grant expires while step 4's agent is still working", () => {
     expect(isolation.guardCalls()).toEqual([]);
     expect(report.errors.filter((error) => !error.expected)).toEqual([]);
   });
+
+  // Runs last: it changes the world the tests above read.
+  it("resumes on a fresh Grant, as its remedy says: step 4 is readied, reviewed and integrated and the escalation clears", () => {
+    const pr = world.pullRequestFor(CHAIN[3])!;
+    world.activate("fresh-grant-after-expiry-20260927T121100Z");
+    world.untilIntegrated(CHAIN[3], 8);
+    expect(git(world.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(four.finalHead);
+    expect(world.github.readyCalls).toContain(pr.url);
+    expect(world.attempts(CHAIN[3]).filter((x) => x.role === "code-review" || x.role === "qa").map((x) => [x.role, x.status]))
+      .toEqual([["code-review", "passed"], ["qa", "passed"]]);
+    expect(world.escalations()).toEqual([]);
+    const resumed = world.finish();
+    expect(resumed.errors.filter((error) => !error.expected)).toEqual([]);
+    expect(isolation.guardCalls()).toEqual([]);
+  });
 });
 
 describe("the Grant expires between step 3 and step 4 (the batch boundary)", () => {
@@ -129,7 +144,9 @@ describe("the Grant expires between step 3 and step 4 (the batch boundary)", () 
  * tick after launches it: an Action admitted after the Grant lapsed, which can
  * no longer integrate unattended (the first scenario above is what follows).
  * The standing policy itself has no expiry; only its delegations do, so
- * admission does not consult them (Issue TBD-1).
+ * admission does not consult them (Issue TBD-1). Revive when admission is
+ * made to consult the expiry (the marker flips), or before a live chain
+ * planned to end within minutes of its Grant's expiry.
  */
 describe("step 4's packet is approved one tick before the Grant expires", () => {
   let world: FastRehearsal;

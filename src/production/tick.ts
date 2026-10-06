@@ -1804,15 +1804,16 @@ function attemptProjectLaunch(
             ? error.details.packetLifecycleRemedy
             : null;
         const lapsed = escalationKind === "build_packet_approval_pending" ? lapsedPacketApprovalNote(db, input.now) : null;
+        const shownRemedy = lapsed ? `${lapsed} ${remedy ?? ""}`.trimEnd() : remedy;
         const newlyDetected = recordOperatorEscalation(db, {
           actionKey,
           kind: escalationKind,
           message: error.message,
-          remedy: lapsed ? `${lapsed} ${remedy ?? ""}`.trimEnd() : remedy,
+          remedy: shownRemedy,
           now: input.now
         });
         if (newlyDetected) {
-          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${remedy ?? error.message}`);
+          input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
       } else {
         clearOperatorEscalation(db, actionKey);
