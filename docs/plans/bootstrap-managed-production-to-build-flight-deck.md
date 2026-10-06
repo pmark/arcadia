@@ -3984,7 +3984,7 @@ questions: []
 decisions: []
 recommended_model: claude-sonnet-5
 recommended_reasoning_effort: high
-current_action: fix-reviewer-verdict-name-echo
+current_action: document-rehearsal-runbook
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
