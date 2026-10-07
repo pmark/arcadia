@@ -32,6 +32,32 @@ also scans unprocessed `.arcadia/asks/` files in the selected repository and may
 record their proposals. Report their discovery failures separately from this
 request's result; never settle another request merely because it was discovered.
 
+### One command completes submission
+
+A successful `agent-ask preview` is the entire submission, whether its input is
+inline or a file. Arcadia stores the request content and immutable capture/proposal
+receipts in its configured workspace. No draft, settlement, Git commit, PR,
+Ingress copy or later input-file management is required just to submit it.
+Save the returned receipt id in the session evidence; later approval or execution
+belongs to the governed workflow, not to input-file custody.
+
+Inline input is simplest for a short request. For a longer request, a compact JSON
+file in `/tmp` or an ignored folder is a valid disposable input. For example,
+if `/tmp/my-ask.json` already contains the strict proposal envelope:
+
+```sh
+arcadia agent-ask preview --file /tmp/my-ask.json --dir /tmp --json
+```
+
+`--file` must resolve inside the caller's repository or the directory selected
+by `--dir`; `--dir /tmp` selects that containing directory without selecting a
+new workspace. A file in an ignored folder inside your current repository needs
+no special `--dir`. Inline input needs no file at all. Once the receipt confirms
+registration, deleting or losing the temporary input does not lose the registered
+request. Before successful registration, the file is still the only request copy
+and must be preserved if submission is blocked. These are alternatives; do not
+run `draft` first or both submission forms merely to submit the same request.
+
 There is no need to copy a file to Ingress when this CLI path succeeds. Do not
 assume that an arbitrary Ingress drop has the same proposal-only effects.
 Do not call `settle --apply`, change pointers or queue order, start agents, or
@@ -51,9 +77,9 @@ needed solely to register a proposal; the host may still require approval.
 Never repeat the denied write in the unchanged sandbox, disable restrictions,
 guess a different workspace, edit SQLite, or claim an unrecorded request succeeded.
 
-If host access is unavailable or denied, use `agent-ask draft` in your own
-isolated checkout and preserve the returned file through the normal Git/PR
-handoff. A temporary or ignored local file alone is not durable cross-host custody
+If host access is unavailable or denied and no receipt was recorded, use
+`agent-ask draft` in your own isolated checkout and preserve the returned file
+through the normal Git/PR handoff. A temporary or ignored local file alone is not durable cross-host custody
 and is not registered intake. Report the exact file and remaining preview boundary;
 continue independent authorized work. No general promise of zero friction is
 possible: schema validation, permissions and unavailable services can refuse a

@@ -15,7 +15,9 @@ through `arcadia agent-ask preview` with `intent: proposal` and
 Requesting something outside current authority is not executing it. Preview
 records receipts, changes no Project documents or queue, and grants no authority.
 Use the configured workspace and ordinary host permission path for receipt writes;
-never bypass a denial. Confirm the receipt; a local draft alone is not registered.
+never bypass a denial. One successful preview completes submission; inline input
+needs no file, and temporary/ignored file input is disposable after registration.
+Confirm the receipt; an unregistered local draft alone is not submitted.
 Read `docs/agent-guidance/agent-asks.md` for inline submission and durable fallback.
 Continue authorized work unless the request exposes a genuine blocker.
 

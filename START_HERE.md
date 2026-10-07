@@ -836,13 +836,26 @@ For capture only, submit a strict JSON proposal directly through the CLI:
 pnpm -s arcadia agent-ask preview '{"agent_ask":"v1","request_id":"agent-help-<unique-id>","project":"arcadia","intent":"proposal","requested_authority":"propose","desired_result":"Request a bounded specialist review.","rationale":"Capture for consideration; keep current work unchanged."}' --json
 ```
 
-The configured workspace stores capture/proposal receipts; Project documents and
-the queue stay unchanged. Save the returned ids and inspect refusals. No Ingress
+A successful invocation is the whole submission: Arcadia preserves the request
+and its capture/proposal receipts in the configured workspace; Project documents
+and the queue stay unchanged. Inline input requires no file. A longer request may
+instead be supplied from a temporary or ignored JSON file:
+
+```sh
+pnpm -s arcadia agent-ask preview --file /tmp/my-ask.json --dir /tmp --json
+```
+
+The file contains the same strict proposal envelope. `--dir` permits the external
+input directory and does not change the configured workspace. After successful
+registration, the input file is disposable; no Git commit, PR or ongoing file
+management is required to keep the registered request. If registration fails,
+preserve the input until submission or durable handoff succeeds. Save the returned ids and inspect refusals. No Ingress
 copy, draft file, settlement or new coding session is required on this path.
 If receipt writes are sandbox-denied, request the host's normal permission or
 approved host execution for this same command; proceed only if granted. Otherwise
 preserve a validated draft in an isolated checkout through the Git/PR handoff.
-Local storage alone is not registered intake or a remote backup. The detailed
+Before successful registration, local input storage alone is not registered
+intake or a remote backup. The detailed
 [agent-neutral procedure](docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work)
 covers retry, discovery and preservation boundaries.
 
