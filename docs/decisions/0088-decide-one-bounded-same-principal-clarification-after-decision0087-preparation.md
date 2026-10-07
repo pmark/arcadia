@@ -4,7 +4,7 @@ type: decision
 id: "0088"
 slug: decide-one-bounded-same-principal-clarification-after-decision0087-preparation
 project: arcadia
-status: open
+status: approved
 question: Decide one bounded same-principal clarification after Decision0087 preparation stopped on the installed implementer refusal; preserve the selected preparation scope and absolute expiry.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-07
+answer: Permit one clarification to the same native principal
+decided: 2026-10-07
 ---
 
 # Decision 0088: Decide one bounded same-principal clarification after Decision0087 preparation stopped on the installed implementer refusal; preserve the selected preparation scope and absolute expiry.
