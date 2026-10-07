@@ -534,6 +534,7 @@ export function stageDryPreparation(params: DryPrepParams, resetDate: string, ou
   const fixtureDir = path.join(resolvedOutput, "fixture");
   const receiptPath = receiptPathOf(resolvedOutput);
   const receiptRead = readJson<DryPrepReceipt>(receiptPath);
+  if (existsSync(receiptPath) && !isObject(receiptRead.value) && !receiptRead.malformed) return { status: "refused", problems: ["receipt.json must contain an object; preserved untouched"] };
   if (receiptRead.malformed) return { status: "refused", problems: [`${resolvedOutput}'s receipt.json is malformed; preserved untouched. Choose a fresh output directory.`] };
 
   if (receiptRead.value) {
@@ -589,4 +590,3 @@ export function stageDryPreparation(params: DryPrepParams, resetDate: string, ou
   writeStageFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   return { status: "staged", resumed: false, receipt };
 }
-

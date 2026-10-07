@@ -284,6 +284,16 @@ describe("stageDryPreparation (the dry-only command)", () => {
     expect(result.problems.join("; ")).toContain("unsupported fields");
   });
 
+  it.each(["null", "false", "0", '""'])("refuses a present non-object receipt %s without replacing it", (text) => {
+    const output = temp("dry-prep-null-receipt-");
+    stageDryPreparation(baseParams(), "2026-10-07", output, repoRoot);
+    const file = path.join(output, "receipt.json");
+    writeFileSync(file, text);
+    const result = stageDryPreparation(baseParams(), "2026-10-07", output, repoRoot);
+    expect(result.status).toBe("refused");
+    expect(readFileSync(file, "utf8")).toBe(text);
+  });
+
   it("tamper detection: deleting a staged artifact after a successful stage refuses resume rather than silently reusing it", () => {
     const output = temp("dry-prep-tamper-");
     const first = stageDryPreparation(baseParams(3), "2026-10-07", output, repoRoot);
@@ -363,4 +373,3 @@ describe("dryPrepDescriptor", () => {
     expect(sha256Hex(JSON.stringify(a))).not.toBe(sha256Hex(JSON.stringify(c)));
   });
 });
-
