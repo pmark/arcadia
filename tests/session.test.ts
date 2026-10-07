@@ -140,13 +140,31 @@ describe("tmux-backed Sessions", () => {
     const view = sessionView(result.data.session!, tmux);
     expect(view.observedStatus).toBe("running");
     expect(view.reattachCommand).toBe(`tmux attach-session -t ${result.data.session!.tmux_session_name}`);
-    expect(view.resumeCommand).toContain(`claude --resume ${result.data.session!.provider_session_id}`);
+    expect(view.resumeCommand).toBeNull();
+    expect(view.resumeNotice).toContain("fresh Action brief and launch checks");
 
     // A Session flagged stalled by the worker tick is surfaced as its own
     // observed state -- never silently reported as ordinary "running" -- for
     // as long as its tmux stays live.
     const stalledSession = { ...result.data.session!, stall_flagged_at: "2026-09-22T12:00:00.000Z" };
     expect(sessionView(stalledSession, tmux).observedStatus).toBe("stalled");
+  });
+
+  it("does not advertise native Claude resume after the terminal exits", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const result = launch(fixture, tmux);
+    tmux.live = false;
+    const prepared = sessionView({ ...result.data.session!, status: "prepared" }, tmux);
+    expect(prepared.observedStatus).toBe("prepared");
+    expect(prepared.resumeCommand).toBeNull();
+    expect(prepared.resumeNotice).toContain("This Session is prepared");
+    for (const status of ["running", "completed", "failed", "needs_input"] as const) {
+      const view = sessionView({ ...result.data.session!, status }, tmux);
+      expect(view.observedStatus).toBe("exited");
+      expect(view.resumeCommand).toBeNull();
+      expect(view.resumeNotice).toContain("fresh Action brief and launch checks");
+    }
   });
 
   it("launches the packet-selected Codex adapter and never invents an exact resume command", () => {

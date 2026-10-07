@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildCodingAgentCommand,
+  codingAgentExecutionError,
   finalMessageFromExecution,
   isUninvokedFinalMessage
 } from "../src/codingAgents/adapters.js";
@@ -45,6 +46,16 @@ describe("coding-agent CLI adapters", () => {
       "--config",
       "model_reasoning_effort=\"high\""
     ]));
+  });
+
+  it("recognizes only explicit Claude result errors, not prose refusals", () => {
+    const claude = profile({ provider: "claude-code-cli", command: "claude" });
+    expect(codingAgentExecutionError(claude, JSON.stringify({ type: "result", subtype: "success", is_error: true, result: "Permission denied" }))).toContain("Permission denied");
+    expect(codingAgentExecutionError(claude, JSON.stringify({ type: "result", subtype: "error_max_turns", errors: ["Turn limit reached"] }))).toContain("Turn limit reached");
+    expect(codingAgentExecutionError(claude, JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "I will not start creating files." }))).toBeNull();
+    expect(codingAgentExecutionError(claude, "ordinary output")).toBeNull();
+    expect(codingAgentExecutionError(claude, "null")).toBeNull();
+    expect(codingAgentExecutionError(profile({ provider: "codex-cli", command: "codex" }), JSON.stringify({ type: "result", is_error: true }))).toBeNull();
   });
 
   it("extracts Claude's final result while retaining raw JSON for the execution log", () => {

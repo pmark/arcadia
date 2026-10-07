@@ -27,7 +27,7 @@ const EXPECTED: Record<string, string> = {
   "standard:codex": "gpt-5.6-terra",
   "standard:claude": "sonnet",
   "standard:opencode": "opencode-go/deepseek-v4.1-flash",
-  "heavy:codex": "gpt-5.6-sol",
+  "heavy:codex": "gpt-6.1-sol",
   "heavy:claude": "opus",
   "heavy:opencode": "opencode-go/gpt-5.6-luna"
 };

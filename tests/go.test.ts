@@ -1803,7 +1803,7 @@ describe("arcadia go — next-session model resolution", () => {
 
   it("resolves a logical tier for every agent from the bundled registry", () => {
     const tieredPlan = planDocument.replace("recommended_model: gpt-5.6-terra\n", "recommended_model: heavy\n");
-    const expected = { codex: "gpt-5.6-sol", claude: "opus", opencode: "opencode-go/gpt-5.6-luna" } as const;
+    const expected = { codex: "gpt-6.1-sol", claude: "opus", opencode: "opencode-go/gpt-5.6-luna" } as const;
     for (const agent of ["codex", "claude", "opencode"] as const) {
       const fixture = createFixture(`codex/tier-${agent}`, tieredPlan);
       commitFeature(fixture.feature, "proof.txt", "proof\n");
