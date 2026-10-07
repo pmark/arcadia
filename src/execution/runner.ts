@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import {
   buildCodingAgentCommand,
   codingAgentLabel,
+  codingAgentExecutionError,
   finalMessageFromExecution,
   isUninvokedFinalMessage
 } from "../codingAgents/adapters.js";
@@ -443,7 +444,8 @@ function executeCodexStep(
     }), "utf8");
   }
 
-  if (result.error || result.status !== 0) {
+  const providerError = codingAgentExecutionError(profile, result.stdout ?? "");
+  if (result.error || result.status !== 0 || providerError) {
     updateCodexInvocationStatus(db, invocation.id, "failed");
     const diagnostic = createArtifactRecord(db, {
       projectId: workItem.project_id,
@@ -470,7 +472,7 @@ function executeCodexStep(
           workspace,
           workItem,
           invocation,
-          `Planning Validation not run: executor exited with status ${result.status ?? "unknown"}.`
+          providerError ? `Planning Validation not run: ${providerError}` : `Planning Validation not run: executor exited with status ${result.status ?? "unknown"}.`
         )
       : null;
     return {
@@ -478,7 +480,7 @@ function executeCodexStep(
       status: "failed",
       command,
       output: result.stdout || null,
-      error: result.error?.message ?? result.stderr ?? `${codingAgentLabel(profile)} command failed with status ${result.status}`,
+      error: result.error?.message ?? providerError ?? result.stderr ?? `${codingAgentLabel(profile)} command failed with status ${result.status}`,
       artifactPath: partial?.path ?? diagnostic.path,
       artifact: validation?.artifact ?? diagnostic,
       // `diagnostic` is already returned as `artifact` whenever there is no

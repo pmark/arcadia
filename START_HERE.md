@@ -1996,8 +1996,8 @@ tmux attach-session -t <printed-tmux-name>
 
 `session show` reports only stored linkage and whether the named tmux process
 is alive. It never captures panes, mirrors transcripts, estimates progress, or
-injects input. If tmux has exited, use the printed `claude --resume
-<provider-session-id>` command from the recorded worktree. A successful process
+injects input. If tmux has exited, launch a new governed Session through
+Arcadia so continuation receives a fresh Action brief and launch checks. A successful process
 exit does not complete the Action or approve, merge, deploy, publish, message,
 spend, or use credentials; repository reconciliation is a separate governed
 transition.

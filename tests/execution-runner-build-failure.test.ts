@@ -22,12 +22,14 @@ afterEach(() => {
  * A "coding agent" that always fails, so `executeCodexStep` takes the
  * `result.status !== 0` branch for a `codex_build` step.
  */
-function installFailingBuildAgent(workspace: string): void {
+function installFailingBuildAgent(workspace: string, failure: "exit" | "is_error" | "subtype" = "exit"): void {
   const paths = getWorkspacePaths(workspace);
   const agentPath = path.join(workspace, "fake-failing-build-agent.cjs");
   writeFileSync(
     agentPath,
-    "process.stdin.resume(); process.stdin.on('end', () => { process.stderr.write('simulated executor failure'); process.exit(1); });",
+    failure === "exit"
+      ? "process.stdin.resume(); process.stdin.on('end', () => { process.stderr.write('simulated executor failure'); process.exitCode = 1; });"
+      : `process.stdin.resume(); process.stdin.on('end', () => { process.stdout.write(${JSON.stringify(JSON.stringify({ type: "result", subtype: failure === "subtype" ? "error_max_turns" : "success", is_error: failure === "is_error", result: "simulated provider failure" }))}); });`,
     "utf8"
   );
   const registry = JSON.parse(readFileSync(paths.codingAgentProfiles, "utf8")) as {
@@ -41,14 +43,14 @@ function installFailingBuildAgent(workspace: string): void {
 }
 
 describe("executeCodexStep build-purpose failure", () => {
-  it("does not duplicate the diagnostic artifact id when a codex_build executor fails", () => {
+  it.each(["exit", "is_error", "subtype"] as const)("records build failure without duplicate diagnostic artifacts for %s", (failure) => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-runner-build-failure-"));
     temporaryRoots.push(root);
     const workspace = path.join(root, "workspace");
     const repository = path.join(root, "repository");
     initWorkspace(workspace);
     mkdirSync(repository, { recursive: true });
-    installFailingBuildAgent(workspace);
+    installFailingBuildAgent(workspace, failure);
 
     const imported = runProjectImportCommand({
       workspace,
@@ -66,11 +68,12 @@ describe("executeCodexStep build-purpose failure", () => {
       upsertProjectMetadata(db, { projectId, repoPath: repository, validationCommands: ["node -e \"process.exit(0)\""] });
     });
 
-    const planned = runWorkPlanCommand({ workspace, workId });
+    const planned = runWorkPlanCommand({ workspace, workId, agentProfile: "claude_build" });
     expect(planned.data.plan.steps).toHaveLength(1);
     expect(planned.data.plan.steps[0].executor_type).toBe("codex_build");
     expect(planned.data.buildInvocation).toMatchObject({
       purpose: "build",
+      agent_profile: "claude_build",
       status: "packet_created",
       work_item_id: workId,
       plan_id: planned.data.plan.id
@@ -97,7 +100,7 @@ describe("executeCodexStep build-purpose failure", () => {
     // therefore a brand-new packet, invocation, and open Decision) on every
     // call, because the idempotency checks were keyed off a plan id that
     // never stayed stable across repeat calls.
-    const replanned = runWorkPlanCommand({ workspace, workId });
+    const replanned = runWorkPlanCommand({ workspace, workId, agentProfile: "claude_build" });
     expect(replanned.data.plan.id).toBe(planned.data.plan.id);
     expect(replanned.data.buildInvocation?.id).toBe(planned.data.buildInvocation?.id);
     expect(replanned.data.buildPacketArtifact?.id).toBe(planned.data.buildPacketArtifact?.id);
@@ -119,9 +122,26 @@ describe("executeCodexStep build-purpose failure", () => {
     // run_artifacts.run_id, run_artifacts.artifact_id) instead of returning
     // a clean "failed" run, because the diagnostic artifact was listed both
     // as the step's primary `artifact` and inside `additionalArtifacts`.
-    const result = runWorkRunCommand({ workspace, workId, allowCodexBuild: true });
+    const result = runWorkRunCommand({ workspace, workId, allowCodexBuild: true, agentProfile: "claude_build" });
     expect(result.data.run.status).toBe("failed");
     expect(result.data.run.work_item_id).toBe(workId);
+    if (failure !== "exit") {
+      withDatabase(workspace, (db) => {
+        const invocation = db.prepare("SELECT status FROM codex_invocations WHERE id = ?").get(planned.data.buildInvocation!.id) as { status: string };
+        expect(invocation.status).toBe("failed");
+        const step = db.prepare("SELECT status, error, command FROM execution_run_steps WHERE run_id = ?").get(result.data.run.id) as { status: string; error: string; command: string };
+        expect(step.command).toContain(process.execPath);
+        expect(step.command).toContain("fake-failing-build-agent.cjs");
+        expect(step.status).toBe("failed");
+        expect(step.error).toContain("simulated provider failure");
+        const artifacts = db.prepare("SELECT artifact_type, status FROM artifacts WHERE work_item_id = ?").all(workId) as Array<{ artifact_type: string; status: string }>;
+        expect(artifacts).toEqual(expect.arrayContaining([
+          { artifact_type: "planning_executor_diagnostic", status: "drafted" },
+          { artifact_type: "planning_partial_artifact", status: "drafted" }
+        ]));
+      });
+      expect(readFileSync(path.join(workspace, planned.data.buildInvocation!.jsonl_output_path), "utf8")).toContain('"type":"result"');
+    }
   });
 
   it("re-planning an Action whose build packet is already approved keeps that approval instead of revoking it (Issue #709)", () => {
