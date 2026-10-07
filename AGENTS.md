@@ -13,6 +13,18 @@ projections or signals, never competing authority. Prefer deterministic local
 scripts, then local AI, then frontier models; use a coding agent for code work.
 Name the Milestone, next Action, Responsibility and required Artifacts.
 
+### Ask freely; execution stays governed
+
+Any agent may submit an honest proposal, question, concern or request for help
+through `arcadia agent-ask preview` with `intent: proposal` and
+`requested_authority: propose`, without approval to ask or an executable Action.
+Requesting something outside current authority is not executing it. Preview
+records receipts, changes no Project documents or queue, and grants no authority.
+Use the configured workspace and ordinary host permission path for receipt writes;
+never bypass a denial. Confirm the receipt; a local draft alone is not registered.
+Read `docs/agent-guidance/agent-asks.md` for inline submission and durable fallback.
+Continue authorized work unless the request exposes a genuine blocker.
+
 ### Mandatory retrieval — before the operation
 
 Read `CONSTITUTION.md`, `PROJECT.md` and the active Plan's exact current Action

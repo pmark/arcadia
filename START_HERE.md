@@ -828,8 +828,27 @@ The receipt retains lower-precedence disagreements as ignored candidates.
 
 ### Agent Ask v1
 
+Any coding agent can ask for help, raise a concern or propose work without
+interrupting the current Action. Asking is separate from approving or executing.
+For capture only, submit a strict JSON proposal directly through the CLI:
+
+```sh
+pnpm -s arcadia agent-ask preview '{"agent_ask":"v1","request_id":"agent-help-<unique-id>","project":"arcadia","intent":"proposal","requested_authority":"propose","desired_result":"Request a bounded specialist review.","rationale":"Capture for consideration; keep current work unchanged."}' --json
+```
+
+The configured workspace stores capture/proposal receipts; Project documents and
+the queue stay unchanged. Save the returned ids and inspect refusals. No Ingress
+copy, draft file, settlement or new coding session is required on this path.
+If receipt writes are sandbox-denied, request the host's normal permission or
+approved host execution for this same command; proceed only if granted. Otherwise
+preserve a validated draft in an isolated checkout through the Git/PR handoff.
+Local storage alone is not registered intake or a remote backup. The detailed
+[agent-neutral procedure](docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work)
+covers retry, discovery and preservation boundaries.
+
 A coding agent can hand Project-management intent back to Arcadia without
-authoring managed documents or database rows. The reliable form is strict YAML:
+authoring managed documents or database rows. Prefer compact JSON (accepted as
+YAML 1.2); the equivalent strict YAML form is:
 
 ```yaml
 agent_ask: v1
@@ -887,8 +906,9 @@ listed there.)
 
 - `complete` Asks are the exception. The worker settles those itself from
   their evidence, so it does not surface them.
-- Only an Ask committed on the base branch surfaces. A file that is untracked
-  or edited locally stays out of the approval queue until it is committed.
+- For this file-discovery path, only an Ask committed on the base branch
+  surfaces. A file that is untracked or edited locally is not submitted by
+  saving it; direct CLI preview above registers intake without that commit.
 - An Ask file that will not preview is named in the worker log once per version
   of the file.
 - This needs the worker running with an Active production policy that includes
