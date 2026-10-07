@@ -4,7 +4,7 @@ type: decision
 id: "0089"
 slug: decide-one-corrected-admission-attempt-by-the-existing-sonnet-high-preparation
 project: arcadia
-status: open
+status: approved
 question: Decide ONE corrected admission attempt by the existing Sonnet/high preparation principal after0088 permission-denial STOP, preserving the original preparation scope and absolute expiry.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-07
+answer: Permit one corrected same-principal staging admission
+decided: 2026-10-07
 ---
 
 # Decision 0089: Decide ONE corrected admission attempt by the existing Sonnet/high preparation principal after0088 permission-denial STOP, preserving the original preparation scope and absolute expiry.
