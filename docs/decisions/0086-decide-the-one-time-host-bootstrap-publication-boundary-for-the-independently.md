@@ -4,7 +4,7 @@ type: decision
 id: "0086"
 slug: decide-the-one-time-host-bootstrap-publication-boundary-for-the-independently
 project: arcadia
-status: open
+status: approved
 question: "Decide the one-time host bootstrap publication boundary for the independently reviewed #1032 source packet while preserving contaminated history and all other candidates."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-07
+updated: 2026-10-06
+answer: Approve packet-only host bootstrap recovery
+decided: 2026-10-06
 ---
 
 # Decision 0086: Decide the one-time host bootstrap publication boundary for the independently reviewed #1032 source packet while preserving contaminated history and all other candidates.
