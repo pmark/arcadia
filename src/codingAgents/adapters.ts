@@ -70,6 +70,25 @@ export function finalMessageFromExecution(input: {
   return fallback.endsWith("\n") ? fallback : `${fallback}\n`;
 }
 
+/** A provider-reported error is failure even when its CLI transport exits zero. */
+export function codingAgentExecutionError(profile: CodingAgentProfile, stdout: string): string | null {
+  if (profile.provider !== "claude-code-cli") return null;
+  try {
+    const result = JSON.parse(stdout.trim()) as {
+      type?: unknown; subtype?: unknown; is_error?: unknown; result?: unknown; errors?: unknown;
+    } | null;
+    if (!result || result.type !== "result") return null;
+    const errorSubtype = typeof result.subtype === "string" && result.subtype.startsWith("error_") ? result.subtype : null;
+    if (result.is_error !== true && !errorSubtype) return null;
+    const message = typeof result.result === "string" && result.result.trim()
+      ? result.result.trim()
+      : Array.isArray(result.errors) ? result.errors.filter((entry): entry is string => typeof entry === "string").join("; ") : "";
+    return `Claude Code reported ${errorSubtype ?? "an execution error"}${message ? `: ${message}` : "."}`;
+  } catch {
+    return null;
+  }
+}
+
 export function isUninvokedFinalMessage(filePath: string): boolean {
   if (!existsSync(filePath) || statSync(filePath).size === 0) {
     return true;

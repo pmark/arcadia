@@ -1244,18 +1244,20 @@ export const SESSION_PHONE_LIMITATION_NOTICE =
 
 export function sessionView(session: AgentSession, tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux) {
   const live = tmux.hasSession(session.tmux_session_name);
-  // Claude is the only adapter Arcadia can hand a native session id to, so it
-  // is the only one with an exact `--resume`. Codex and opencode create their
-  // native ids internally and do not expose them to a detached launch.
-  const resumable = session.provider === "claude-code-cli";
+  // A native resume command could be saved while tmux is live and used after
+  // exit, bypassing Arcadia's fresh governed brief and launch checks. Reattach
+  // is the only continuation command this read-only view advertises.
   return {
     ...session,
     observedStatus: live ? (session.stall_flagged_at ? "stalled" : "running") : session.status === "prepared" ? "prepared" : "exited",
     live,
     reattachCommand: `tmux attach-session -t ${session.tmux_session_name}`,
-    resumeCommand: resumable ? `cd ${JSON.stringify(session.worktree_path)} && claude --resume ${session.provider_session_id}` : null,
-    resumeNotice: resumable
-      ? null
+    // Preserve the public nullable-string field for existing view consumers.
+    resumeCommand: null as string | null,
+    resumeNotice: session.provider === "claude-code-cli"
+      ? session.status === "prepared" && !live
+        ? "This Session is prepared. Launch it through Arcadia to receive the governed Action brief and launch checks."
+        : "Reattach the live tmux Session; after exit, launch a new governed Session so continuation receives a fresh Action brief and launch checks."
       : `Exact ${providerLabel(session.provider)} resume is unavailable after this terminal exits: ` +
         `${providerLabel(session.provider)} creates its native session id internally and does not expose it to detached launch. ` +
         "Reattach the live tmux Session; after exit, launch a new governed Session.",
