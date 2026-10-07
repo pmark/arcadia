@@ -159,6 +159,10 @@ the job is queued — never silently ignored.
 
 ## Configuration
 
+For the current local Docker/launchd topology, the boundary between LiteLLM
+model aliases and Arcadia semantic route variables, and the safe model-change
+sequence, see [Local LiteLLM model configuration](./LITELLM_CONFIGURATION.md).
+
 The route registry is built from configured LiteLLM aliases plus local Codex,
 Claude Code, and optional ComfyUI/image routes, configured via environment variables
 (`src/intelligence/config/defaults.ts`):
@@ -168,6 +172,9 @@ Claude Code, and optional ComfyUI/image routes, configured via environment varia
 | `ARCADIA_LITELLM_LOCAL_TEXT_ROUTE`  | `arcadia-default`   | `text.generate`, local, fast + standard      |
 | `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`  | *(unset = disabled)* | `text.generate`, cloud, fast + standard + quality |
 | `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE` | *(unset = disabled)* | `image.generate`, cloud, quality             |
+| `ARCADIA_SPEECH_LOCAL_ROUTE`         | *(unset = disabled)* | `audio.speech.generate`, local, standard     |
+| `ARCADIA_SPEECH_CLOUD_ROUTE`         | *(unset = disabled)* | `audio.speech.generate`, cloud, standard     |
+| `ARCADIA_SPEECH_VOICE_MAP`           | built-in semantic map | Semantic voice ID to provider voice mapping   |
 | `ARCADIA_CODEX_IMAGE_ROUTE`         | *(unset = disabled)* | `image.generate`, local, quality             |
 | `ARCADIA_CODEX_TEXT_ROUTE`          | `codex-cli`         | `text.generate`, local, fast + standard via Codex |
 | `ARCADIA_CODEX_CLI_COMMAND`         | `codex`             | Codex CLI executable                         |
@@ -225,8 +232,8 @@ that inventory.
 ARCADIA_LITELLM_LOCAL_TEXT_ROUTE=arcadia-default   # local text generation
 ARCADIA_CODEX_TEXT_ROUTE=codex-cli                  # local Codex text generation
 ARCADIA_CLAUDE_CODE_TEXT_ROUTE=claude-code-cli      # local Claude Code text generation
-ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud      # GPT-4o Mini
-ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-image     # GPT Image
+ARCADIA_LITELLM_CLOUD_TEXT_ROUTE=arcadia-cloud-text # cloud text generation
+ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE=arcadia-cloud-image # cloud image generation
 ARCADIA_COMFYUI_IMAGE_ROUTE=comfyui                 # local FLUX.2 Klein generation/editing
 ARCADIA_CODEX_IMAGE_ROUTE=codex-cli                 # optional local Codex image generation
 ```
@@ -239,10 +246,10 @@ each resolves to:
 | `text.generate` / `local-required` / `fast`              | `arcadia.text.generate.local.fast` → `arcadia-default` |
 | `text.generate` / `local-preferred` / `standard`          | `arcadia.text.generate.local.standard` → `arcadia-default` |
 | `text.generate` / `local-required` / `standard` / target `claude-code` | `arcadia.text.generate.local.standard.claude-code` → Claude Code CLI |
-| `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud` |
+| `text.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.text.generate.cloud.quality` → `arcadia-cloud-text` |
 | `image.generate` / `local-required` / `quality`           | `arcadia.image.generate.local.quality.comfyui` → ComfyUI |
 | `image.edit` / `local-required` / `quality`               | `arcadia.image.edit.local.quality.comfyui` → ComfyUI |
-| `image.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.image.generate.cloud.quality` → `arcadia-image` |
+| `image.generate` / `cloud-required` / `quality` (paid usage allowed) | `arcadia.image.generate.cloud.quality` → `arcadia-cloud-image` |
 
 ## What Rebuster should send
 

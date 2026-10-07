@@ -1,15 +1,19 @@
 # Arcadia Intelligence Configuration
 
 v0.1 supports a small, explicit route registry (`IntelligenceV01Config.routes`)
-built from at most three LiteLLM aliases — see `docs/intelligence/ROUTING.md`
+built from configured LiteLLM aliases — see `docs/intelligence/ROUTING.md`
 for the full routing model and the environment variables that configure it
 (`ARCADIA_LITELLM_LOCAL_TEXT_ROUTE`, `ARCADIA_LITELLM_CLOUD_TEXT_ROUTE`,
 `ARCADIA_LITELLM_CLOUD_IMAGE_ROUTE`, `ARCADIA_LITELLM_BASE_URL`,
 `ARCADIA_LITELLM_API_KEY`).
 
+For the operator-facing map of the current local LiteLLM Docker configuration,
+the semantic route variables (including speech), and the safe model-change
+sequence, see `docs/intelligence/LITELLM_CONFIGURATION.md`.
+
 Do not add provider-specific settings here, or one environment variable per
 (capability, profile) combination — `buildDefaultRoutes` in `defaults.ts`
-expands the three aliases into the full registry in code.
+expands the configured aliases into the full registry in code.
 
 This stays:
 
