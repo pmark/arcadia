@@ -2713,3 +2713,11 @@ are reported rather than discarded. Custom provider profiles, fallback names
 or extra imports require separate effective-load evidence; passing the default
 file audit does not prove agent understanding. See
 `docs/reports/issue-880-context-delivery.md` for evidence and fresh-session QA.
+
+### N-neutral dry baseline preparation
+
+`node --import tsx scripts/prepare-rehearsal-dry-baseline.ts <params.json> --reset-date YYYY-MM-DD --output-dir <fresh-staging-directory>` renders `step-01` through `step-NN` (N=2–12), validates the serial chain with Arcadia's document parser and ready-set resolver, and records input, source and output hashes. Rerunning unchanged input resumes the same receipt; drift refuses and preserves the existing stage. Use an empty temporary directory or a dedicated directory in the candidate checkout. The main checkout, live fixture/workspace, operator-script library and symlinked stage entries are refused.
+
+The JSON parameters use schema `arcadia-rehearsal-dry-preparation-v1`, `runId`, `actionCount`, the existing fixture pins (`fixtureRepoPath` and `fixtureGithubRepo`), `requiredCommits` entries (`commit`, `why`), and `preservation` (`resetRunId`, `resetHead`, `terminalOffRunId`, `localMain`). The existing required-commit floor cannot be removed; unfilled bindings refuse. These are supplied bindings, not proof that prerequisite receipts were ratified or commits installed.
+
+This command stages two reviewed documents and a receipt only. Its neutral Action IDs are not yet supported by the existing live rehearsal-chain operator scripts. Applying the baseline requires that adapter and the governed Ask path. Real `SMOKE_DRY=1` review dispatch, first-attempt reviewer receipts and unattended V1 evidence remain separate integration work; this generator makes none of those claims and starts no Session.
