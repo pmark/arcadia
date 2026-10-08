@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # Mission Log: Arcadia
@@ -1968,3 +1968,10 @@ updated: 2026-10-06
 - **Result:** Every declared acceptance criterion was accepted as met: "docs/autonomous-production-rehearsal-runbook.md gains a findings ledger (one row per live run and per pre-flight smoke since run 1, each with stop point, failure class, time to detect, fix PR or Issue, and the prevention that now guards it), records runs 6 and 7 and the run-8 reviewer smoke with their receipts and PRs, and states the protocol every future run follows to append its row before the session ends."; "The runbook gains a handoff section naming the exact current state (production Off, last receipts, next run id and its parameter file, open Issues blocking success) and the ranked recommendations for the next run, so a fresh session can start from it alone."; "The reviewer pre-flight smoke harness used for #986 and the run-8 check is preserved under docs/reports/rehearsal-reviewer-smoke/ with a README saying what it simulates, what is not faithful, how to run it read-only, and that it is reference code not yet wired into the operator scripts.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-record-rehearsal-findings-ledger-2026-10-06).
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1042
+
+- **Did:** The operator to-do list Plan is now a governed draft: 9 Actions in 3 parallel batches, with supervisors waiting for your green light. https://github.com/pmark/arcadia/pull/1042 (tracking Issue https://github.com/pmark/arcadia/issues/1043)
+- **Result:** PR lifecycle notification on open, per docs/agent-guidance/pull-requests.md. Signed: Claudia Atlas <claudia.atlas@agents.arcadia.local> (claude/heavy).
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
