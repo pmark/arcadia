@@ -30,6 +30,8 @@ export function composePacket(
     dailyAdvantageLine?: string;
     capacity?: DailyCapacity | null;
     workSafetyLines?: string[];
+    /** Operator to-do counts and blocking items, or one 'to-do unavailable: <reason>' line. */
+    operatorTodoLines?: string[];
     morningNarrative?: string;
     aiSummary?: MorningAiSummary;
   } = {}
@@ -51,6 +53,10 @@ export function composePacket(
 
   if (options.workSafetyLines && options.workSafetyLines.length > 0) {
     sections.push(formatSection("Coding work safety", options.workSafetyLines));
+  }
+
+  if (options.operatorTodoLines && options.operatorTodoLines.length > 0) {
+    sections.push(formatSection("Operator to-do", options.operatorTodoLines));
   }
 
   // A stale entry is a question, not a fact — never plan the day around one.

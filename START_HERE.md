@@ -1601,6 +1601,15 @@ stating whether an open PR was found. Use one branch and worktree per coding ses
 every session merged or represented by at least a draft PR. The full recovery
 procedure is in `docs/working-copy-safety.md`.
 
+The Morning Packet also carries an **Operator to-do** section: the same
+counts `pnpm arcadia todo` prints, then each blocking item (at most five) with
+the command that answers it, escalation items first and marked `STOPPED:` so the
+packet states what halted production overnight, and `N more: arcadia todo` for
+the rest. It is built read-only in-process when the packet composes, so it
+rides the existing scheduled delivery with no new message or schedule. If the
+to-do data cannot be built the section is the single line
+`to-do unavailable: <reason>` and the packet still composes.
+
 Each newly composed Morning Packet also includes a clearly labelled, bounded
 local-AI perspective: one headline and one paragraph explaining what the
 recorded work means. If the local model is unavailable, the deterministic
