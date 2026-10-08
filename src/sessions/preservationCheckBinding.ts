@@ -6,7 +6,7 @@ import { boundedExec } from "./preservationStages.js";
  * only the command text lets a candidate neuter its own check by rewriting the
  * script it runs (pmark/arcadia#326). This binds the check's *definition*: every
  * in-tree file a declared command names, plus the relative imports those files
- * reach, must be byte-identical (same Git blob, or equally absent) to the
+ * reach, must be regular files, byte-identical (same Git blob, or equally absent) to the
  * authorized base revision. The base revision is part of the authorized binding
  * — the Session lease's `base_revision` or the manual binding's `baseRevision` —
  * so the check that judges a candidate is always the one that was authorized,
@@ -23,7 +23,10 @@ import { boundedExec } from "./preservationStages.js";
  * comma-separated, alias-tolerant `import` list — all read from the trusted
  * base. A Python `import` line this scanner cannot fully parse as that
  * supported shape (a line continuation, an unsupported construct) is
- * rejected outright rather than partially bound. It does not cover data the
+ * rejected outright rather than partially bound. A symlink at any discovered
+ * executable path or ancestor in either tree is refused: its blob binds only
+ * the link text, not the code an interpreter would follow and execute.
+ * It does not cover data the
  * check reads by design (the candidate content it judges), a specifier
  * computed at run time, a dotted Python package import (`import os.path`,
  * resolved by its own stdlib/installed leading segment, not a same-directory
@@ -74,7 +77,18 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
   const bound = new Map<string, string | null>();
   const visit = (file: string) => {
     if (bound.has(file)) return;
-    const blob = base.get(file) ?? null;
+    // Link text is not an executable definition. Refuse even unchanged base
+    // links before parsing their blobs; following them would authorize code
+    // outside this closure. Prefixes also catch imports through linked dirs.
+    const link = executableSymlink(file, base, candidate);
+    if (link) {
+      throw validationError(
+        `Declared preservation checks cannot execute symlink \`${link}\` (reached through \`${file}\`); a link's blob does not bind the code it executes. ` +
+        "Use regular check files and dependencies on the base branch, then prepare and authorize a fresh handoff.",
+        { code: PRESERVATION_CHECK_MODIFIED_CODE, path: link, executablePath: file, baseRevision }
+      );
+    }
+    const blob = base.get(file)?.blob ?? null;
     bound.set(file, blob);
     if (!blob) return;
     if (PYTHON_EXTENSION.test(file)) {
@@ -134,7 +148,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     for (const probe of REQUIRE_PROBES) visit(target + probe);
     const manifestPath = `${target}/package.json`;
     visit(manifestPath);
-    const manifestBlob = base.get(manifestPath);
+    const manifestBlob = base.get(manifestPath)?.blob;
     if (!manifestBlob) return;
     let main = "index.js";
     try {
@@ -153,7 +167,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
   }
   const files = [...bound].map(([file, blob]) => ({ path: file, blob })).sort((a, b) => a.path.localeCompare(b.path));
   for (const file of files) {
-    const current = candidate.get(file.path) ?? null;
+    const current = candidate.get(file.path)?.blob ?? null;
     if (current === file.blob) continue;
     const command = commands.find(c => namedFiles(c, base, candidate).includes(file.path)) ?? commands.join(" && ");
     throw validationError(
@@ -193,7 +207,7 @@ const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
  * unbound or every check would be refused by its own test fixtures and
  * output files. A file only the candidate has is still bound — as absent at
  * the base — so the candidate cannot supply it. */
-function namedFiles(command: string, base: Map<string, string>, candidate: Map<string, string>): string[] {
+function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string[] {
   const files: string[] = [];
   for (const segment of command.split(SHELL_SEGMENT)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean).map(raw => raw.replace(/^["']|["']$/g, ""));
@@ -224,7 +238,7 @@ function namedFiles(command: string, base: Map<string, string>, candidate: Map<s
       target = executable;
     }
     const file = target ? inTree(target) : null;
-    if (file && (base.has(file) || candidate.has(file))) files.push(file);
+    if (file && (base.has(file) || candidate.has(file) || executableSymlink(file, base, candidate))) files.push(file);
   }
   return files;
 }
@@ -235,12 +249,23 @@ function inTree(candidate: string): string | null {
   return normalized === "." || normalized.startsWith("../") || normalized === ".." ? null : normalized;
 }
 
-function blobs(repository: string, revision: string): Map<string, string> {
+interface GitBlob { mode: string; blob: string }
+
+function executableSymlink(file: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string | null {
+  const parts = file.split("/");
+  for (let end = 1; end <= parts.length; end++) {
+    const prefix = parts.slice(0, end).join("/");
+    if (base.get(prefix)?.mode === "120000" || candidate.get(prefix)?.mode === "120000") return prefix;
+  }
+  return null;
+}
+
+function blobs(repository: string, revision: string): Map<string, GitBlob> {
   const entries = boundedExec("git", ["ls-tree", "-rz", revision], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0");
-  const map = new Map<string, string>();
+  const map = new Map<string, GitBlob>();
   for (const entry of entries) {
-    const match = /^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
-    if (match) map.set(match[2], match[1]);
+    const match = /^(\d+) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
+    if (match) map.set(match[3], { mode: match[1], blob: match[2] });
   }
   return map;
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,7 +10,7 @@ import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/s
 // exactly as bindCheckDefinitions receives base_revision and a snapshotted
 // candidate tree in production.
 const repos: string[] = [];
-function repo(files: Record<string, string>) {
+function repo(files: Record<string, string>, links: Record<string, string> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "arcadia-check-binding-"));
   repos.push(dir);
   const git = (args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -19,6 +19,10 @@ function repo(files: Record<string, string>) {
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     writeFileSync(path.join(dir, file), content);
+  }
+  for (const [file, target] of Object.entries(links)) {
+    mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    symlinkSync(target, path.join(dir, file));
   }
   git(["add", "."]); git(["commit", "-qm", "base"]);
   const baseCommit = git(["rev-parse", "HEAD"]);
@@ -161,5 +165,76 @@ describe("preservation check-definition binding — review follow-up (PR #552)",
     const rewritten = candidateTree(f, { "rules.node": "altered" });
     expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["node check.mjs"]))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules.node" }) }));
+  });
+});
+
+
+describe("preservation check-definition binding — executable symlinks (#1041)", () => {
+  it("allows an unchanged regular check and its regular dependency while binding both", () => {
+    const f = repo({ "check.mjs": "import './judge.mjs';\n", "judge.mjs": "process.exit(7);\n", "skills/README.md": "baseline skill\n" }, { "skill-link": "skills/README.md" });
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, ["node check.mjs"]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path))
+      .toEqual(["check.mjs", "judge.mjs"]);
+  });
+
+  it.each(["node check.mjs", "./check.mjs"])("refuses an unchanged declared symlink before executing its rewritten target (%s)", (command) => {
+    const f = repo({ "judge.mjs": "process.exit(7);\n" }, { "check.mjs": "judge.mjs" });
+    const candidate = candidateTree(f, { "judge.mjs": "process.exit(0);\n" });
+    expect(f.git(["ls-tree", f.base, "check.mjs"]))
+      .toBe(f.git(["ls-tree", candidate, "check.mjs"]));
+    let executed = false;
+    expect(() => {
+      bindCheckDefinitions(f.dir, f.base, candidate, [command]);
+      executed = true;
+      execFileSync(process.execPath, ["check.mjs"], { cwd: f.dir });
+    }).toThrow(expect.objectContaining({
+      message: expect.stringMatching(/cannot execute symlink/),
+      details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.mjs" })
+    }));
+    expect(executed).toBe(false);
+  });
+
+  it.each([
+    { command: "node check.mjs", source: "import './helper.mjs';\n", link: "helper.mjs", target: "judge.mjs" },
+    { command: "node check.cjs", source: "require('./helper');\n", link: "helper.js", target: "judge.mjs" },
+    { command: "python3 check.py", source: "import helper\n", link: "helper.py", target: "judge.py" },
+    { command: "node check.mjs", source: "import './linked/judge.mjs';\n", link: "linked", target: "rules" }
+  ])("refuses a symlink in the discovered executable closure ($link)", ({ command, source, link, target }) => {
+    const check = command.split(" ")[1];
+    const judge = target === "rules" ? "rules/judge.mjs" : target;
+    const f = repo({ [check]: source, [judge]: "original judge\n" }, { [link]: target });
+    const candidate = candidateTree(f, { [judge]: "rewritten judge\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, [command]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: link }) }));
+  });
+
+  it("refuses a declared check reached through a linked directory", () => {
+    const f = repo({ "rules/check.mjs": "process.exit(7);\n" }, { "linked": "rules" });
+    const candidate = candidateTree(f, { "rules/check.mjs": "process.exit(0);\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node linked/check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "linked" }) }));
+  });
+
+  it("refuses a symlink reached through a directory manifest's main entry", () => {
+    const f = repo({
+      "check.cjs": "require('./rules');\n",
+      "rules/package.json": '{"main":"helper.cjs"}',
+      "judge.cjs": "process.exit(7);\n"
+    }, { "rules/helper.cjs": "../judge.cjs" });
+    const candidate = candidateTree(f, { "judge.cjs": "process.exit(0);\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.cjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules/helper.cjs" }) }));
+  });
+
+  it("refuses a candidate symlink even when its link text has the authorized regular file's blob", () => {
+    const f = repo({ "check.mjs": "judge.mjs", "judge.mjs": "process.exit(0);\n" });
+    rmSync(path.join(f.dir, "check.mjs"));
+    symlinkSync("judge.mjs", path.join(f.dir, "check.mjs"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    const blob = (tree: string) => f.git(["ls-tree", tree, "check.mjs"]).split(/\s+/)[2];
+    expect(blob(candidate)).toBe(blob(f.base));
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "check.mjs" }) }));
   });
 });
