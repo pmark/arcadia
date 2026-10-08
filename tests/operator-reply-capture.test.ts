@@ -82,7 +82,8 @@ describe("captureOperatorReply helper", () => {
     expect("project" in envelope).toBe(false);
     expect(envelope.authority).toBe("untrusted_input");
     expect(ingressSourceKind("operator.reply.review")).toBe("provenance");
-    expect(ingressSourceKind("agent.ask")).toBeNull();
+    expect(ingressSourceKind("agent.ask")).toBe("agent");
+    expect(ingressSourceKind("cli.ask")).toBeNull();
   });
 
   it("is idempotent on replay: one envelope, one event, and the first actor wins", () => {

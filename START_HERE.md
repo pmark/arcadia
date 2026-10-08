@@ -2158,6 +2158,13 @@ every Action, Decision, or Back Burner item it produced, including the Action a
 shelved item was later promoted to. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
 
+To see how much of your input actually reaches Arcadia through Ask or Ingress,
+run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is
+read-only and always says **direct chat: not measured**, so read it as coverage of
+the surfaces Arcadia can count (Ingress files, review and Decision replies), not
+as the share of everything you tell an agent. Discord messages show a captured
+count with no denominator, and agent-written Asks are excluded.
+
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
 

@@ -626,6 +626,23 @@ function listIngressSidecars(directory: string, location: "done" | "failed"): In
   return sidecars;
 }
 
+/**
+ * Every processed-file sidecar (Done and Failed) across all Ingress sources
+ * under `root`: the independent, countable record of files the operator dropped.
+ * Returns null when the root does not exist, so a caller can say "unavailable"
+ * instead of reporting zero. Read-only.
+ */
+export function listProcessedIngressSidecars(root: string): IngressActivityItem[] | null {
+  if (!existsSync(root)) return null;
+  const items: IngressActivityItem[] = [];
+  for (const entry of readableDirectoryEntries(root)) {
+    if (!entry.isDirectory()) continue;
+    const directories = ingressDirectories(root, entry.name);
+    items.push(...listIngressSidecars(directories.done, "done"), ...listIngressSidecars(directories.failed, "failed"));
+  }
+  return items;
+}
+
 function readIngressActivityHealth(source: string): IngressActivityData["service"] {
   const healthStatePath = path.join(
     homedir(),
