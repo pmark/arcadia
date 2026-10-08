@@ -117,7 +117,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "apps/dashboard/app/api/approvals/route.ts", "apps/dashboard/lib/arcadia-cli.ts", "src/orientation/composer.ts", "apps/discord-bot/src/orientation/scheduler.ts", "src/commands/orientation.ts"]
   - id: raise-stale-triage-decision
     title: Prepare the evidence-backed list of stale Arcadia operator items and raise one operator Decision to retire it.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Prepare the evidence-backed list of stale Arcadia operator items and raise one operator Decision to retire it.
