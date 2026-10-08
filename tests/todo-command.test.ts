@@ -147,7 +147,7 @@ describe("arcadia todo", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1", view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } },
+      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } },
       items: [
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
@@ -169,7 +169,7 @@ describe("arcadia todo", () => {
     });
 
     const lines = render(data);
-    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 2 other · stale hidden: 0 (decisions 2, agent asks 1, review items 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 2 other · stale hidden: 0 (decisions 2, agent asks 1, review items 0, operator tasks 0, escalations 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
     expect(lines.filter((line) => line === AGENT_ASK_CAVEAT)).toHaveLength(1);
     expect(AGENT_ASK_CAVEAT).toContain("positive evidence only");
   });
@@ -198,12 +198,12 @@ describe("arcadia todo", () => {
     const workspace = fixtureWorkspace(repo);
 
     const capped = run({ workspace, now: NOW });
-    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0 }, hidden: 2, fixture: { projects: 0, items: 0 } });
+    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0 }, hidden: 2, fixture: { projects: 0, items: 0 } });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
       "decision:demo/0008", "decision:demo/0007", "decision:demo/0006", "decision:demo/0005", "decision:demo/0004"
     ]);
     const lines = render(capped.data);
-    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0, review items 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0, review items 0, operator tasks 0, escalations 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
     expect(lines.at(-1)).toBe("2 more: --all");
     expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (Decisions newest first, then oldest first):"));
 
@@ -266,12 +266,12 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
 
     expect(data.asOf).toMatchObject({ workspace: null, workspacePath: null });
-    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } });
+    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } });
     expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001", "decision:demo/0002"]);
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: no workspace at .*arcadia init <path>/)]);
     const lines = render(data);
     expect(lines.filter((line) => line.startsWith("workspace sources unavailable:"))).toHaveLength(1);
-    expect(lines[0]).toBe("Operator to-do: 1 blocking · 1 other · stale hidden: 0 (decisions 2, agent asks 0, review items 0) (as of 2026-10-08T12:00:00.000Z)");
+    expect(lines[0]).toBe("Operator to-do: 1 blocking · 1 other · stale hidden: 0 (decisions 2, agent asks 0, review items 0, operator tasks 0, escalations 0) (as of 2026-10-08T12:00:00.000Z)");
   });
 
   it("names the configuration remedy when no workspace resolves at all", () => {
@@ -297,7 +297,7 @@ describe("arcadia todo", () => {
     write(repo, "docs/plans/main-plan.md", planDoc());
     const workspace = fixtureWorkspace(repo);
     const lines = render(run({ workspace, now: NOW }).data).join("\n");
-    expect(lines).toContain("0 blocking · 0 other · stale hidden: 0 (decisions 0, agent asks 0, review items 0)");
+    expect(lines).toContain("0 blocking · 0 other · stale hidden: 0 (decisions 0, agent asks 0, review items 0, operator tasks 0, escalations 0)");
     expect(lines).toContain("Nothing is waiting on you");
   });
 });
@@ -356,7 +356,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
       "agent_ask:demo/wrong-intent"
     ]);
     expect(data.counts).toEqual({
-      blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4, review_item: 0 }, hidden: 0,
+      blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4, review_item: 0, operator_task: 0, escalation: 0 }, hidden: 0,
       fixture: { projects: 0, items: 0 }
     });
     expect(data.items.every((item) => item.staleReason === undefined)).toBe(true);
@@ -493,7 +493,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
       view: "stale",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
-        blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0, review_item: 0 }, hidden: 0,
+        blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0 }, hidden: 0,
         fixture: { projects: 0, items: 0 }
       },
       items: [
@@ -656,7 +656,7 @@ describe("arcadia todo: review_items", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1", view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2 }, hidden: 0, fixture: { projects: 0, items: 0 } },
+      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } },
       items: [
         {
           key: "review_item:demo/review-clarify", kind: "review_item", title: "Which database should the demo use?", project: "demo", blocking: false,
@@ -683,7 +683,7 @@ describe("arcadia todo: review_items", () => {
     });
     // Open and deferred only, oldest first alongside the Agent Ask; an agent-flagged or decided item is not the operator's.
     const text = render(data).join("\n");
-    expect(text).toContain("(decisions 0, agent asks 1, review items 2)");
+    expect(text).toContain("(decisions 0, agent asks 1, review items 2, operator tasks 0, escalations 0)");
     expect(text).toContain("origin: ActionClarification");
     expect(text).toContain('answer: arcadia review approve review-clarify --answer "<answer>" --clarify');
   });
@@ -722,7 +722,7 @@ describe("arcadia todo: review_items", () => {
     const { data } = run({ workspace, now: NOW });
 
     expect(keys(data).sort()).toEqual(["decision:demo/0002", "review_item:demo/review-second", "review_item:demo/review-unknown-doc"]);
-    expect(data.counts.byKind).toEqual({ decision: 1, agent_ask: 0, review_item: 2 });
+    expect(data.counts.byKind).toEqual({ decision: 1, agent_ask: 0, review_item: 2, operator_task: 0, escalation: 0 });
   });
 
   it("marks a review_item stale only on positive evidence: a done work_item or an answered Decision", () => {
@@ -792,12 +792,263 @@ describe("arcadia todo: review_items", () => {
     expect(run({ workspace, now: NOW, project: "demo" }).data.items.map((item) => item.key)).toEqual(["review_item:demo/review-norepo"]);
   });
 
+  it("lists a review_item of a completed Project in the 'unknown' bucket instead of dropping it (#1074)", () => {
+    const workspace = fixtureWorkspace(selectableRepo());
+    addReviews(workspace, [{ id: "review-live", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Live Project question." }]);
+    withDatabase(workspace, (db) => {
+      const finished = createProjectWithInitialWork(db, {
+        name: "Finished", mission: "Done.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      db.prepare("UPDATE projects SET status = 'completed' WHERE id = ?").run(finished.project.id);
+      db.prepare(
+        `INSERT INTO review_items (id, slug, project_id, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-finished', 'R-FINISHED', ?, 'open', 'Asked for a completed Project.', 's', 'p', 'ActionClarification', 'medium', 0, '[]', '{}',
+           '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z')`
+      ).run(finished.project.id);
+    });
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
+      ["review_item:demo/review-live", "demo", false],
+      ["review_item:unknown/review-finished", "unknown", false]
+    ]);
+    // A --project view is that Project's alone.
+    expect(keys(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["review_item:demo/review-live"]);
+  });
+
+  it("matches the Plan as well as the Action id, so an Action id repeated in another Plan is not the selected one (#1074)", () => {
+    const workspace = fixtureWorkspace(selectableRepo());
+    const otherPlanWork = addWorkItem(workspace, { docRef: "plan/other-plan#second-step" });
+    addReviews(workspace, [
+      { id: "review-same-plan", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Selected Action.", docRef: "plan/main-plan#second-step" },
+      { id: "review-other-plan-ref", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Same id, other Plan.", docRef: "plan/other-plan#second-step" },
+      { id: "review-other-plan-work", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Work item in the other Plan.", workItemId: otherPlanWork }
+    ]);
+
+    expect(run({ workspace, now: NOW }).data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["review_item:demo/review-same-plan", true],
+      ["review_item:demo/review-other-plan-ref", false],
+      ["review_item:demo/review-other-plan-work", false]
+    ]);
+  });
+
+  it("doc_ref dedupe: a rejected Decision makes the review_item stale; a deferred one is neither listed nor stale evidence (#1074)", () => {
+    const rejected = decisionDoc("0004", "Was this rejected?", "2026-09-10").replace("status: open", "status: rejected\nanswer: No\ndecided: 2026-09-11");
+    const deferred = decisionDoc("0005", "Is this parked?", "2026-09-10").replace("status: open", "status: deferred");
+    const repo = selectableRepo([
+      ["docs/decisions/0004-rejected.md", rejected],
+      ["docs/decisions/0005-deferred.md", deferred]
+    ]);
+    const workspace = fixtureWorkspace(repo);
+    addReviews(workspace, [
+      { id: "review-rejected", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Rejected Decision question.", docRef: "decision/decision-0004" },
+      { id: "review-deferred", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Deferred Decision question.", docRef: "decision/decision-0005" }
+    ]);
+
+    // A deferred Decision is not an open (listed) one: it dedupes nothing and is no positive evidence of staleness.
+    const live = run({ workspace, now: NOW });
+    expect(keys(live.data)).toEqual(["review_item:demo/review-deferred"]);
+    expect(live.data.counts).toMatchObject({ stale: 1, staleHidden: 1 });
+    expect(run({ workspace, now: NOW, stale: true }).data.items.map((item) => [item.key, item.staleReason])).toEqual([
+      ["review_item:demo/review-rejected", "its Decision 0004 (decision/decision-0004) is already rejected"]
+    ]);
+  });
+
   it("with no workspace, still says plainly that workspace sources (Agent Asks, review items) are unavailable", () => {
     const repo = selectableRepo();
     const missing = path.join(temp("missing"), "no-workspace-here");
     const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
-    expect(data.counts.byKind).toEqual({ decision: 0, agent_ask: 0, review_item: 0 });
+    expect(data.counts.byKind).toEqual({ decision: 0, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0 });
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: /)]);
     expect(render(data).at(-1)).toBe(data.unavailable[0]);
+  });
+});
+
+describe("arcadia todo: production escalations and the operator-task ledger", () => {
+  interface FixtureEscalation {
+    actionKey: string;
+    kind: string;
+    message: string;
+    remedy: string | null;
+    firstDetectedAt: string;
+  }
+
+  function addEscalations(workspace: string, rows: FixtureEscalation[]): void {
+    withDatabase(workspace, (db) => {
+      for (const row of rows) {
+        db.prepare(
+          "INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)"
+        ).run(row.actionKey, row.kind, row.message, row.remedy, row.firstDetectedAt, row.firstDetectedAt);
+      }
+    });
+  }
+
+  /** `second-step` is eligible, so it is the selected Action; Decision 0002 is an open alert. */
+  function selectableRepo(): string {
+    const repo = temp("ledger-repo");
+    write(repo, "PROJECT.md", projectDoc());
+    write(repo, "docs/plans/main-plan.md", planDoc().replace('decisions: ["0001"]', "decisions: []"));
+    write(repo, "docs/decisions/0002-alert.md", decisionDoc("0002", "Is this the same question?", "2026-09-10"));
+    return repo;
+  }
+
+  function ledger(repo: string, events: Array<Record<string, unknown>>): void {
+    write(repo, ".arcadia/operator-tasks.jsonl", `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+  }
+
+  function raised(id: string, at: string, asks: string, origin: { kind: string; id: string }, reference: string | null = null) {
+    return { event: "raised", id, at, by: "agent", asks, why_only_you: "Only you hold the account.", origin, reference };
+  }
+
+  const gateMessage = (actionKey: string, id: string) => `Launch of ${actionKey} is held by pending Decision ${id}: Should the second step proceed?`;
+  const keysOf = (data: TodoData): string[] => data.items.map((item) => item.key);
+
+  it("lists an operator_gate_pending and a repair_budget_exhausted escalation as blocking, first, with the row's own words", () => {
+    // fixtureRepo(): Decision 0001 blocks, 0002 is an alert.
+    const workspace = fixtureWorkspace(fixtureRepo());
+    addEscalations(workspace, [
+      {
+        actionKey: "demo/other-step", kind: "operator_gate_pending", firstDetectedAt: "2026-10-08T09:00:00.000Z",
+        message: "Launch of demo/other-step is held by pending Agent Ask proposal proposal-9: Amend the plan.",
+        remedy: "Run `arcadia agent-ask settle --proposal proposal-9 --request-id <id> --disposition accepted --preview`."
+      },
+      {
+        actionKey: "demo/second-step", kind: "repair_budget_exhausted", firstDetectedAt: "2026-10-08T08:00:00.000Z",
+        message: "Repair budget exhausted for demo/second-step after 3 failed launch attempt(s); most recent error: boom.",
+        remedy: "Repair the underlying problem, then run `arcadia production reset-repair-budget demo/second-step`."
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.counts).toEqual({
+      blocking: 3, other: 1, stale: 0, staleHidden: 0,
+      byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 2 }, hidden: 0, fixture: { projects: 0, items: 0 }
+    });
+    // Escalations lead the blocking section (oldest first), then the blocking Decision; the alert Decision follows.
+    expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["escalation:repair_budget_exhausted:demo/second-step", true],
+      ["escalation:operator_gate_pending:demo/other-step", true],
+      ["decision:demo/0001", true],
+      ["decision:demo/0002", false]
+    ]);
+    expect(data.items[0]).toEqual({
+      key: "escalation:repair_budget_exhausted:demo/second-step", kind: "escalation:repair_budget_exhausted",
+      title: "Repair budget exhausted for demo/second-step after 3 failed launch attempt(s); most recent error: boom.",
+      project: "demo", blocking: true, createdAt: "2026-10-08T08:00:00.000Z",
+      sourceRef: "production_operator_escalations:demo/second-step",
+      answer: "Repair the underlying problem, then run `arcadia production reset-repair-budget demo/second-step`."
+    });
+    const text = render(data).join("\n");
+    expect(text).toContain("(decisions 2, agent asks 0, review items 0, operator tasks 0, escalations 2)");
+    expect(text).toContain("escalation:operator_gate_pending:demo/other-step");
+  });
+
+  it("shows an escalation whose gate is also a listed Decision once, as that Decision, marked blocking", () => {
+    const workspace = fixtureWorkspace(fixtureRepo());
+    addEscalations(workspace, [
+      { actionKey: "demo/second-step", kind: "operator_gate_pending", message: gateMessage("demo/second-step", "0002"), remedy: "arcadia decision approve 0002 --project demo", firstDetectedAt: "2026-10-08T08:00:00.000Z" },
+      { actionKey: "demo/third-step", kind: "operator_gate_pending", message: gateMessage("demo/third-step", "0001"), remedy: null, firstDetectedAt: "2026-10-08T08:30:00.000Z" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["decision:demo/0001", true],
+      // The row says the loop is held by 0002, so the one item for it is blocking, not an alert.
+      ["decision:demo/0002", true]
+    ]);
+    expect(data.counts).toMatchObject({ blocking: 2, other: 0, byKind: { decision: 2, escalation: 0 } });
+  });
+
+  it("lists an escalation of a Project outside the list, falls back to `arcadia production status` without a remedy, and honours --project", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0));
+    addEscalations(workspace, [
+      { actionKey: "ghost/lost-step", kind: "dependency_unresolved", message: "Dependency is not resolvable.", remedy: null, firstDetectedAt: "2026-10-08T07:00:00.000Z" }
+    ]);
+
+    const all = run({ workspace, now: NOW });
+    expect(all.data.items.map((item) => [item.key, item.project, item.blocking, item.answer])).toEqual([
+      ["escalation:dependency_unresolved:ghost/lost-step", "ghost", true, "arcadia production status"],
+      ["decision:demo/0001", "demo", true, "arcadia decision approve 0001 --project demo --answer 'Go ahead'"]
+    ]);
+    expect(keysOf(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["decision:demo/0001"]);
+  });
+
+  it("lists a waiting operator task with its own title and the canonical command; blocking only for the selected Action", () => {
+    const repo = selectableRepo();
+    ledger(repo, [
+      raised("op-2026-09-01-selected", "2026-09-01T00:00:00.000Z", "Create the API key in the console.", { kind: "action", id: "second-step" }),
+      raised("op-2026-09-02-other", "2026-09-02T00:00:00.000Z", "Approve the invoice.", { kind: "action", id: "some-other-step" }),
+      raised("op-2026-09-03-closed", "2026-09-03T00:00:00.000Z", "Already done.", { kind: "action", id: "second-step" }),
+      { event: "done", id: "op-2026-09-03-closed", at: "2026-09-04T00:00:00.000Z", by: "operator" }
+    ]);
+    const workspace = fixtureWorkspace(repo);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["operator_task:demo/op-2026-09-01-selected", true],
+      ["decision:demo/0002", false],
+      ["operator_task:demo/op-2026-09-02-other", false]
+    ]);
+    expect(data.items[0]).toEqual({
+      key: "operator_task:demo/op-2026-09-01-selected", kind: "operator_task", title: "Create the API key in the console.", project: "demo",
+      blocking: true, origin: "action:second-step", createdAt: "2026-09-01T00:00:00.000Z",
+      sourceRef: ".arcadia/operator-tasks.jsonl#op-2026-09-01-selected",
+      answer: `arcadia operator-task close op-2026-09-01-selected --operator --repo ${repo}`,
+      answerVia: [
+        `look first: arcadia operator-task show op-2026-09-01-selected --repo ${repo}`,
+        `or decline: arcadia operator-task decline op-2026-09-01-selected --because "<reason>" --operator --repo ${repo}`
+      ]
+    });
+    expect(data.counts).toMatchObject({ blocking: 1, other: 2, byKind: { decision: 1, operator_task: 2 } });
+  });
+
+  it("dedupes a ledger task against the Decision or review_item that already represents it", () => {
+    const repo = selectableRepo();
+    ledger(repo, [
+      raised("op-by-origin", "2026-09-01T00:00:00.000Z", "Origin is the listed Decision.", { kind: "decision", id: "0002" }),
+      raised("op-by-decision-ref", "2026-09-02T00:00:00.000Z", "Reference names the listed Decision.", { kind: "action", id: "some-step" }, "decision/decision-0002"),
+      raised("op-by-review-ref", "2026-09-03T00:00:00.000Z", "Reference names a listed review item.", { kind: "action", id: "some-step" }, "review_items:review-represented"),
+      raised("op-unrepresented", "2026-09-04T00:00:00.000Z", "Nothing else represents this.", { kind: "decision", id: "0099" }, "https://console.example.test")
+    ]);
+    const workspace = fixtureWorkspace(repo);
+    withDatabase(workspace, (db) => {
+      const projectId = (db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string }).id;
+      db.prepare(
+        `INSERT INTO review_items (id, slug, project_id, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-represented', 'R-REP', ?, 'open', 'Represented elsewhere?', 's', 'p', 'ActionClarification', 'medium', 0, '[]', '{}',
+           '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')`
+      ).run(projectId);
+    });
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(keysOf(data).sort()).toEqual([
+      "decision:demo/0002", "operator_task:demo/op-unrepresented", "review_item:demo/review-represented"
+    ]);
+    expect(data.counts.byKind).toEqual({ decision: 1, agent_ask: 0, review_item: 1, operator_task: 1, escalation: 0 });
+  });
+
+  it("reads the ledger without a workspace, and says plainly when it cannot be parsed", () => {
+    const repo = selectableRepo();
+    ledger(repo, [raised("op-local", "2026-09-01T00:00:00.000Z", "Do it by hand.", { kind: "action", id: "second-step" })]);
+    const missing = path.join(temp("missing"), "no-workspace-here");
+
+    const local = run({ workspace: missing, now: NOW, repoRoot: repo });
+    expect(local.data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["operator_task:demo/op-local", true],
+      ["decision:demo/0002", false]
+    ]);
+    expect(local.data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: /)]);
+
+    write(repo, ".arcadia/operator-tasks.jsonl", "{not json\n");
+    const broken = run({ workspace: fixtureWorkspace(repo), now: NOW });
+    expect(keysOf(broken.data)).toEqual(["decision:demo/0002"]);
+    expect(broken.data.unavailable).toEqual([expect.stringMatching(/^project sources unavailable: demo: operator task ledger: /)]);
   });
 });
