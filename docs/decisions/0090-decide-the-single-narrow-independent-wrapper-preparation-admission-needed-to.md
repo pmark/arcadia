@@ -4,7 +4,7 @@ type: decision
 id: "0090"
 slug: decide-the-single-narrow-independent-wrapper-preparation-admission-needed-to
 project: arcadia
-status: open
+status: approved
 question: "Decide the single narrow independent wrapper-preparation admission needed to deliver the retained real PR1032 repair. Admit Cody Atlas in manager chat01a117ea-af9f-7f73-b54c-059897603832 as the sole wrapper-preparation writer in new isolated staging /private/tmp/arcadia-1032-wrapper-preparation-20261007T2351Z. Assign a distinct read-only critical-wrapper-review agent before implementation. Permit only dirty-main refusal before identity, incomplete-lsof-coverage refusal before apply, exact embedded-Python mocked fixtures and frozen-hash independent review. Maximum60 minutes after affirmative admission,3 review rounds, absolute end2026-10-08T02:00:00Z (October7 7pm PDT), whichever first. Stop on custody ambiguity, pin/scope drift, unsupported capability, repeated refusal or expiry; preserve evidence and return reviewed artifacts to existing supervisor. Retain held candidate/claim/history and Decision0086 exact seven-file envelope; no recovery execution, library/source/capability publication, installation, restart, production, spend or claim transfer."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-08
+updated: 2026-10-07
+answer: Approve bounded wrapper-only preparation
+decided: 2026-10-07
 ---
 
 # Decision 0090: Decide the single narrow independent wrapper-preparation admission needed to deliver the retained real PR1032 repair. Admit Cody Atlas in manager chat01a117ea-af9f-7f73-b54c-059897603832 as the sole wrapper-preparation writer in new isolated staging /private/tmp/arcadia-1032-wrapper-preparation-20261007T2351Z. Assign a distinct read-only critical-wrapper-review agent before implementation. Permit only dirty-main refusal before identity, incomplete-lsof-coverage refusal before apply, exact embedded-Python mocked fixtures and frozen-hash independent review. Maximum60 minutes after affirmative admission,3 review rounds, absolute end2026-10-08T02:00:00Z (October7 7pm PDT), whichever first. Stop on custody ambiguity, pin/scope drift, unsupported capability, repeated refusal or expiry; preserve evidence and return reviewed artifacts to existing supervisor. Retain held candidate/claim/history and Decision0086 exact seven-file envelope; no recovery execution, library/source/capability publication, installation, restart, production, spend or claim transfer.
