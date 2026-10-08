@@ -18,6 +18,8 @@ import {
 } from "../db/repositories.js";
 import { resolveDispatch, resolveReadySet } from "../docs/dispatch.js";
 import { discoverDocs } from "../docs/discover.js";
+import { listOperatorTasks, type OperatorTask } from "../docs/operatorTasks.js";
+import { listOperatorEscalations, type OperatorEscalation } from "../production/tick.js";
 import { parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary } from "../domain/types.js";
 import { ACTION_CLARIFICATION_INTENT } from "./review.js";
@@ -53,16 +55,16 @@ export interface TodoCommandOptions {
 export interface TodoItem {
   /** `<kind>:<project>/<source-id>`: Decision ids are per Project, so the Project is part of the identity. Stable while the item is pending. */
   key: string;
-  kind: "decision" | "agent_ask" | "review_item";
-  /** The source's own words: a Decision's question, an Agent Ask's desired result or a review_item's decision_needed. */
+  kind: "decision" | "agent_ask" | "review_item" | "operator_task" | `escalation:${string}`;
+  /** The source's own words: a Decision's question, an Agent Ask's desired result, a review_item's decision_needed, an operator task's `asks` or an escalation's `message`. */
   title: string;
   project: string;
   blocking: boolean;
   /** A Decision's `updated` date (Decisions carry no creation time); an Agent Ask's creation time. */
   createdAt: string;
-  /** The Decision's document path, `agent_ask_proposals:<id>` or `review_items:<id>`. */
+  /** The Decision's document path, `agent_ask_proposals:<id>`, `review_items:<id>`, `.arcadia/operator-tasks.jsonl#<id>` or `production_operator_escalations:<action_key>`. */
   sourceRef: string;
-  /** review_item only: the item's own `resolved_intent` (for example `ActionClarification`), which says what raised it. */
+  /** review_item: the item's own `resolved_intent` (for example `ActionClarification`), which says what raised it. operator_task: its origin, `action:<id>` or `decision:<id>`. */
   origin?: string;
   /** The existing canonical command that answers it. Nothing here runs it. */
   answer: string;
@@ -82,7 +84,7 @@ export interface TodoCounts {
   /** Stale items left out of `items` in this view. */
   staleHidden: number;
   /** Totals by kind across every live item found, shown or not. */
-  byKind: { decision: number; agent_ask: number; review_item: number };
+  byKind: { decision: number; agent_ask: number; review_item: number; operator_task: number; escalation: number };
   /** Live non-blocking items left out of `items` because the cap applies. */
   hidden: number;
   /** Items of fixture Projects, counted here instead of listed. */
@@ -116,6 +118,14 @@ function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
 /** Oldest first; the key breaks ties so the order never depends on source iteration. */
 function byAge(a: TodoItem, b: TodoItem): number {
   return a.createdAt.localeCompare(b.createdAt) || a.key.localeCompare(b.key);
+}
+
+const isEscalation = (item: TodoItem): boolean => item.kind.startsWith("escalation:");
+
+/** Blocking order: production escalations first (a stalled loop outranks everything), then oldest first. */
+function byEscalationsFirst(a: TodoItem, b: TodoItem): number {
+  if (isEscalation(a) !== isEscalation(b)) return isEscalation(a) ? -1 : 1;
+  return byAge(a, b);
 }
 
 /**
@@ -272,6 +282,12 @@ function staleReasonOf(item: OperatorGateItem, context: StaleContext): string | 
   return undefined;
 }
 
+/** The selected Action and the Plan it lives in: `plan/<planSlug>#<actionId>` is its doc_ref. */
+interface SelectedAction {
+  planSlug: string;
+  actionId: string;
+}
+
 /** The same classification `arcadia next` applies to one Project, over a repository and (optionally) a database. */
 function gateForProject(
   db: Parameters<typeof resolveOperatorGate>[0]["db"],
@@ -279,13 +295,14 @@ function gateForProject(
   projectSlug: string
 ): {
   gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[] };
-  /** The Action the gate was resolved against; a review_item linked to it is blocking. */
-  selectedActionId: string | null;
+  /** The Action the gate was resolved against, with its Plan; a review_item or ledger item linked to it is blocking. */
+  selected: SelectedAction | null;
   noProjectDoc: boolean;
 } {
   const dispatch = resolveDispatch(repoRoot, projectSlug);
   const readySet = resolveReadySet(repoRoot, projectSlug);
   const selectedActionId = dispatch.context?.action.id ?? null;
+  const selected = dispatch.context ? { planSlug: dispatch.context.activePlan, actionId: dispatch.context.action.id } : null;
   return {
     gate: resolveOperatorGate({
       db,
@@ -294,7 +311,7 @@ function gateForProject(
       selectedActionId,
       readySetCandidates: readySet.candidates
     }),
-    selectedActionId,
+    selected,
     noProjectDoc: dispatch.blockers.some((blocker) => blocker.field === "type: project")
   };
 }
@@ -308,9 +325,10 @@ function collect(gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[
   return [...gate.blocking.map((item) => build(item, true)), ...gate.alerts.map((item) => build(item, false))];
 }
 
-/** The Action id a Plan-Action doc_ref (`plan/<plan>#<action>`) names, or null for any other shape. */
-function actionIdOfRef(docRef: string | null | undefined): string | null {
-  return docRef ? (parseActionDocRef(docRef.trim())?.actionId ?? null) : null;
+/** True when a Plan-Action doc_ref (`plan/<plan>#<action>`) names the selected Action in the selected Plan; Action ids can repeat across Plans. */
+function refNamesSelected(docRef: string | null | undefined, selected: SelectedAction | null): boolean {
+  const parsed = docRef && selected ? parseActionDocRef(docRef.trim()) : null;
+  return parsed !== null && selected !== null && parsed.planSlug === selected.planSlug && parsed.actionId === selected.actionId;
 }
 
 /** `decision/<slug>` -> slug; null for any other doc_ref shape. */
@@ -339,14 +357,14 @@ function reviewAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answe
  * to-do items. Dedupe: a review_item whose `doc_ref` names a listed (open) Decision is that Decision, shown once;
  * several on one work_item show one (a live item over a stale one, then the first listed: open before deferred, newest first).
  * Stale needs positive evidence: its work_item is done, or its `doc_ref` names an answered Decision.
- * Blocking only when it is linked to the Action the operator gate was resolved against.
+ * Blocking only when it is linked (by `plan/<plan>#<action>`, Plan included) to the Action the operator gate was resolved against.
  */
 function reviewTodoItems(
   db: Parameters<typeof listActionableReviewItems>[0],
   rows: ReviewItemSummary[],
   projectSlug: string,
   evidence: ProjectEvidence | undefined,
-  selectedActionId: string | null
+  selected: SelectedAction | null
 ): TodoItem[] {
   const built: TodoItem[] = [];
   const seenWork = new Map<string, number>();
@@ -362,13 +380,12 @@ function reviewTodoItems(
       staleReason = `its Decision ${decision.id} (${row.doc_ref}) is already ${decision.status}`;
     }
 
-    const linked = [actionIdOfRef(row.doc_ref), actionIdOfRef(workItem?.doc_ref)];
     const todo: TodoItem = {
       key: `review_item:${projectSlug || "unknown"}/${row.id}`,
       kind: "review_item",
       title: row.decision_needed,
       project: projectSlug,
-      blocking: selectedActionId !== null && linked.includes(selectedActionId),
+      blocking: refNamesSelected(row.doc_ref, selected) || refNamesSelected(workItem?.doc_ref, selected),
       origin: row.resolved_intent,
       createdAt: row.created_at,
       sourceRef: `review_items:${row.id}`,
@@ -386,6 +403,112 @@ function reviewTodoItems(
     }
   }
   return built;
+}
+
+/** The id of a listed (live) item of `kind`: the part of its key after `<project>/`. */
+function listedIds(found: TodoItem[], kind: TodoItem["kind"]): Set<string> {
+  return new Set(
+    found.filter((item) => item.kind === kind && !item.staleReason).map((item) => item.key.slice(item.key.indexOf("/") + 1))
+  );
+}
+
+/**
+ * The Decision an escalation's own gate names: only the `operator_gate_pending` template
+ * (`Launch of <key> is held by pending Decision <id>: <title>`, src/production/tick.ts), anchored at the start.
+ * A Decision cited elsewhere (an Agent Ask title, a lapsed-grant "(Decision 0058)") is not the gate.
+ */
+function gateDecisionIdOf(message: string): string | null {
+  const match = /^Launch of \S+ is held by pending Decision ([A-Za-z0-9][A-Za-z0-9_.-]*?):\s/.exec(message);
+  return match ? match[1] : null;
+}
+
+/** Which Project a `production_operator_escalations.action_key` (`<project>/<action>`) belongs to; the rest is the Action. */
+function splitActionKey(actionKey: string): { project: string; actionId: string } {
+  const slash = actionKey.indexOf("/");
+  return slash < 0 ? { project: "", actionId: actionKey } : { project: actionKey.slice(0, slash), actionId: actionKey.slice(slash + 1) };
+}
+
+/**
+ * Production escalations of one Project, read-only: one item per Action (the table keys on it), kind
+ * `escalation:<kind>`, title from `message`, answer from `remedy`, always blocking, created at `first_detected_at`.
+ * An escalation whose message names a listed Decision of the Project is that Decision, shown once: the Decision
+ * stays and is marked blocking, because the escalation row says the loop is held by it.
+ */
+function withEscalations(found: TodoItem[], rows: OperatorEscalation[], projectSlug: string): TodoItem[] {
+  if (rows.length === 0) return found;
+  const decisions = listedIds(found, "decision");
+  const promoted = new Set<string>();
+  const added: TodoItem[] = [];
+  for (const row of rows) {
+    const gate = gateDecisionIdOf(row.message);
+    if (gate !== null && decisions.has(gate)) {
+      promoted.add(`decision:${projectSlug || "unknown"}/${gate}`);
+      continue;
+    }
+    added.push({
+      key: `escalation:${row.kind}:${projectSlug || "unknown"}/${splitActionKey(row.actionKey).actionId}`,
+      kind: `escalation:${row.kind}`,
+      title: row.message,
+      project: projectSlug,
+      blocking: true,
+      createdAt: row.firstDetectedAt,
+      sourceRef: `production_operator_escalations:${row.actionKey}`,
+      answer: row.remedy?.trim() || "arcadia production status"
+    });
+  }
+  return [...found.map((item) => (promoted.has(item.key) ? { ...item, blocking: true } : item)), ...added];
+}
+
+/** A command-line argument, quoted only when it needs it. */
+function shellArg(value: string): string {
+  return /^[\w./@:+=-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Waiting operator-task ledger items of one Project (`.arcadia/operator-tasks.jsonl`, repo-local). Each carries its
+ * own `asks` as the title; the answer is `operator-task show` (look first), with `close --operator` and `decline` as the other
+ * ways. Dedupe: a task whose origin is a listed Decision, or whose `reference` names a listed Decision
+ * (`decision/<slug>`) or review_item (`review_items:<id>`), is shown by that item. Blocking only when its
+ * origin is the Action the operator gate selected.
+ */
+function operatorTaskItems(
+  repoRoot: string,
+  projectSlug: string,
+  found: TodoItem[],
+  evidence: ProjectEvidence | undefined,
+  selected: SelectedAction | null
+): TodoItem[] {
+  const decisions = listedIds(found, "decision");
+  const reviews = listedIds(found, "review_item");
+  const repo = shellArg(repoRoot);
+  const represented = (task: OperatorTask): boolean => {
+    if (task.origin.kind === "decision" && decisions.has(task.origin.id)) return true;
+    const reference = task.reference?.trim() ?? "";
+    const slug = decisionSlugOfRef(reference);
+    const decision = slug ? evidence?.decisionDocs.get(slug) : undefined;
+    if (decision && decisions.has(decision.id)) return true;
+    return reviews.has(reference.replace(/^review_items?[:/]/, ""));
+  };
+  return listOperatorTasks(repoRoot, "waiting")
+    .filter((task) => !represented(task))
+    .map((task) => ({
+      key: `operator_task:${projectSlug || "unknown"}/${task.id}`,
+      kind: "operator_task" as const,
+      title: task.asks,
+      project: projectSlug,
+      // A ledger origin is `{ kind, id }` with no Plan slug (OperatorTaskOrigin), so the Plan cannot be compared as
+      // refNamesSelected does for doc_refs; the bare Action id against the selected Action is all the ledger carries.
+      blocking: task.origin.kind === "action" && selected !== null && task.origin.id === selected.actionId,
+      origin: `${task.origin.kind}:${task.origin.id}`,
+      createdAt: task.raisedAt,
+      sourceRef: `.arcadia/operator-tasks.jsonl#${task.id}`,
+      // `show` first: `close --operator` is the operator's own attestation, never the first thing to copy.
+      answer: `arcadia operator-task show ${task.id} --repo ${repo}`,
+      answerVia: [
+        `once done, the operator closes it: arcadia operator-task close ${task.id} --operator --repo ${repo}`,
+        `or decline: arcadia operator-task decline ${task.id} --because "<reason>" --operator --repo ${repo}`
+      ]
+    }));
 }
 
 /** The remedy line for a workspace that could not be read, in the existing errors' own words where they have them. */
@@ -437,12 +560,14 @@ function defaultFixtureRoots(): string[] {
 /**
  * Everything the operator owes an answer on, as a derived view.
  *
- * It reads three sources: open Decisions (checked-in documents), unsettled
- * Agent Ask proposals and open or deferred review_items (the workspace
- * database, opened read-only).
+ * It reads five sources: open Decisions and waiting operator-task ledger items
+ * (checked-in files), unsettled Agent Ask proposals, open or deferred
+ * review_items and production operator escalations (the workspace database,
+ * opened read-only).
  * Blocking versus alert is `arcadia next`'s own classification, reached
- * through the same `resolveOperatorGate`; a review_item is blocking only when
- * it is linked to the Action that gate was resolved against. Stale items (positive evidence only)
+ * through the same `resolveOperatorGate`; a review_item or ledger item is blocking only when
+ * it is linked to the Action that gate was resolved against, and an escalation is always
+ * blocking (its row says the production loop is stalled). Stale items (positive evidence only)
  * are hidden from the default view. Nothing is stored, nothing is written, and
  * no command is run: `answer` is text the operator can run.
  */
@@ -483,7 +608,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   const view: TodoData["view"] = options.stale ? "stale" : options.all ? "all" : "default";
   const live = items.filter((item) => !item.staleReason);
   const staleItems = items.filter((item) => item.staleReason).sort(byAge);
-  const blocking = live.filter((item) => item.blocking).sort(byAge);
+  const blocking = live.filter((item) => item.blocking).sort(byEscalationsFirst);
   const other = live.filter((item) => !item.blocking).sort(byDecisionsFirst);
   const shownOther = view === "default" ? other.slice(0, TODO_OTHER_CAP) : other;
   const shown =
@@ -504,7 +629,9 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
         byKind: {
           decision: live.filter((item) => item.kind === "decision").length,
           agent_ask: live.filter((item) => item.kind === "agent_ask").length,
-          review_item: live.filter((item) => item.kind === "review_item").length
+          review_item: live.filter((item) => item.kind === "review_item").length,
+          operator_task: live.filter((item) => item.kind === "operator_task").length,
+          escalation: live.filter(isEscalation).length
         },
         hidden: view === "stale" ? 0 : other.length - shownOther.length,
         fixture
@@ -538,6 +665,10 @@ function readWithWorkspace(
       evidence: new Map()
     };
 
+    const escalations = listOperatorEscalations(db);
+    const escalationsOf = (slug: string): OperatorEscalation[] =>
+      escalations.filter((row) => splitActionKey(row.actionKey).project.toLowerCase() === slug.toLowerCase());
+
     const items: TodoItem[] = [];
     const fixtureProjects = new Set<string>();
     let fixtureItems = 0;
@@ -561,42 +692,49 @@ function readWithWorkspace(
       if (!repoPath || !existsSync(repoPath)) {
         note(
           `project sources unavailable: ${project.slug} has ${repoPath ? `no repository at ${repoPath}` : "no repo_path"}; ` +
-            `its Decisions were not read (arcadia project metadata ${project.id} --repo-path <path>)`
+            `its Decisions and operator tasks were not read (arcadia project metadata ${project.id} --repo-path <path>)`
         );
-        // Agent Asks and review_items need no repository: list them without Decisions or Plan evidence.
-        take(project.slug, fixtureProject, collect(classifyAsksOnly(proposals, project.slug), context));
-        take(project.slug, fixtureProject, reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null));
+        // Agent Asks, review_items and escalations need no repository: list them without Decisions or Plan evidence.
+        const found = [
+          ...collect(classifyAsksOnly(proposals, project.slug), context),
+          ...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null)
+        ];
+        take(project.slug, fixtureProject, withEscalations(found, escalationsOf(project.slug), project.slug));
         continue;
       }
 
       // One Project's failure is its own line, never the other Projects' loss.
-      let selected: string | null = null;
+      let selected: SelectedAction | null = null;
+      let found: TodoItem[];
       try {
         context.evidence.set(project.slug.toLowerCase(), readProjectEvidence(repoPath, project.slug));
-        const { gate, selectedActionId, noProjectDoc } = gateForProject(db, repoPath, project.slug);
-        if (noProjectDoc) {
+        const resolvedGate = gateForProject(db, repoPath, project.slug);
+        if (resolvedGate.noProjectDoc) {
           note(
             `project sources unavailable: ${project.slug} has no PROJECT.md under ${repoPath}; ` +
               `which item blocks dispatch was not worked out (add PROJECT.md or fix its repo_path)`
           );
         }
-        selected = selectedActionId;
-        take(project.slug, fixtureProject, collect(gate, context));
+        selected = resolvedGate.selected;
+        found = collect(resolvedGate.gate, context);
       } catch (error) {
         note(`project sources unavailable: ${project.slug}: ${workspaceRemedy(error)}`);
-        take(project.slug, fixtureProject, collect(classifyAsksOnly(proposals, project.slug), context));
+        found = collect(classifyAsksOnly(proposals, project.slug), context);
       }
       // Never blocking when no gate was resolved; Plan evidence is used when it was read.
-      take(
-        project.slug,
-        fixtureProject,
-        reviewTodoItems(db, reviewRowsOf(project.id), project.slug, context.evidence.get(project.slug.toLowerCase()), selected)
-      );
+      const evidence = context.evidence.get(project.slug.toLowerCase());
+      found.push(...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, evidence, selected));
+      try {
+        found.push(...operatorTaskItems(repoPath, project.slug, found, evidence, selected));
+      } catch (error) {
+        note(`project sources unavailable: ${project.slug}: operator task ledger: ${workspaceRemedy(error)}`);
+      }
+      take(project.slug, fixtureProject, withEscalations(found, escalationsOf(project.slug), project.slug));
     }
 
-    // Agent Asks naming a Project outside this list are still the operator's.
-    // They cannot be blocking (no dispatch resolves for them), so they are
-    // listed as alerts rather than dropped.
+    // Agent Asks and escalations naming a Project outside this list are still the operator's.
+    // They cannot be blocking by a gate (no dispatch resolves for them), so Asks are
+    // listed as alerts rather than dropped; an escalation is blocking by its own row.
     if (!options.project) {
       const known = new Set(projects.map((project) => project.slug.toLowerCase()));
       const strays = new Set(
@@ -605,8 +743,22 @@ function readWithWorkspace(
       for (const slug of strays) {
         take(slug, isFixtureProject(slug, undefined, roots), collect(classifyAsksOnly(proposals, slug), context));
       }
-      // A review_item with no Project is still the operator's; it has no gate to block, so it is an alert.
-      take("unknown", false, reviewTodoItems(db, reviewRows.filter((row) => !row.project_id), "unknown", undefined, null));
+      const strayEscalations = new Map<string, OperatorEscalation[]>();
+      for (const row of escalations) {
+        const slug = splitActionKey(row.actionKey).project;
+        if (!known.has(slug.toLowerCase())) strayEscalations.set(slug, [...(strayEscalations.get(slug) ?? []), row]);
+      }
+      for (const [slug, rows] of strayEscalations) {
+        take(slug || "unknown", isFixtureProject(slug, undefined, roots), withEscalations([], rows, slug || "unknown"));
+      }
+      // A review_item with no Project, or whose Project is completed or not listed, is still the operator's;
+      // it has no gate to block, so it is an alert in the `unknown` bucket rather than dropped.
+      const listedProjectIds = new Set(projects.map((project) => project.id));
+      take(
+        "unknown",
+        false,
+        reviewTodoItems(db, reviewRows.filter((row) => !row.project_id || !listedProjectIds.has(row.project_id)), "unknown", undefined, null)
+      );
     }
     return { items, fixture: { projects: fixtureProjects.size, items: fixtureItems } };
   });
@@ -655,6 +807,18 @@ function readDecisionsOnly(repoRoot: string, project: string | undefined, unavai
       unavailable.push(`project sources unavailable: ${slug}: ${workspaceRemedy(error)}`);
     }
   }
+  // The operator-task ledger is repo-local too: the checkout's own Project owns it.
+  try {
+    const projectDoc = discoverDocs(repoRoot).docs.find((doc) => doc.type === "project") as { slug: string } | undefined;
+    if (projectDoc && (!wanted || projectDoc.slug.toLowerCase() === wanted)) {
+      const slug = projectDoc.slug;
+      const evidence = context.evidence.get(slug.toLowerCase()) ?? readProjectEvidence(repoRoot, slug);
+      const mine = items.filter((item) => item.project.toLowerCase() === slug.toLowerCase());
+      items.push(...operatorTaskItems(repoRoot, slug, mine, evidence, gateForProject(null, repoRoot, slug).selected));
+    }
+  } catch (error) {
+    unavailable.push(`repository sources unavailable: ${repoRoot}: operator task ledger: ${workspaceRemedy(error)}`);
+  }
   return items;
 }
 
@@ -674,7 +838,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
     view === "default" ? `stale hidden: ${counts.staleHidden}` : view === "all" ? `stale: ${counts.stale} (shown)` : `stale: ${counts.stale}`;
   const lines = [
     `Operator to-do: ${counts.blocking} blocking · ${counts.other} other · ${staleCount}` +
-      ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask}, review items ${counts.byKind.review_item})` +
+      ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask}, review items ${counts.byKind.review_item}, operator tasks ${counts.byKind.operator_task}, escalations ${counts.byKind.escalation})` +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
 
@@ -709,7 +873,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
   if (items.length === 0 && view === "stale") {
     lines.push("", "No item has positive evidence of being stale.");
   } else if (items.length === 0 && unavailable.length === 0) {
-    lines.push("", "Nothing is waiting on you in the sources this view reads (open Decisions, pending Agent Asks, open and deferred review items).");
+    lines.push("", "Nothing is waiting on you in the sources this view reads (open Decisions, pending Agent Asks, open and deferred review items, waiting operator tasks, production escalations).");
   }
   if (unavailable.length > 0) {
     lines.push("", ...unavailable);

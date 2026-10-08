@@ -1604,9 +1604,8 @@ procedure is in `docs/working-copy-safety.md`.
 The Morning Packet also carries an **Operator to-do** section: the same
 counts `pnpm arcadia todo` prints, then each blocking item (at most five) with
 the command that answers it, escalation items first and marked `STOPPED:` so the
-packet states what halted production overnight (those lines appear once the
-todo escalation source lands; today `arcadia todo` emits only decision and
-agent ask items), and `N more: arcadia todo` for
+packet states what halted production overnight (`arcadia todo` raises an
+`escalation:*` item for each stalled production Action), and `N more: arcadia todo` for
 the rest. It is built read-only in-process when the packet composes, so it
 rides the existing scheduled delivery with no new message or schedule. If the
 to-do data cannot be built the section is the single line
@@ -2655,18 +2654,27 @@ pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 ```
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
-run. It lists three sources per Project: **open Decisions**, **pending Agent
-Ask proposals** and **open or deferred review items** (these include
+run. It lists five sources per Project: **open Decisions**, **pending Agent
+Ask proposals**, **open or deferred review items** (these include
 ActionClarification questions; items an agent has flagged for agent review wait
-on the agent, not you, and are left out). An item is *blocking* when
-`arcadia next` would refuse to dispatch because of it, and otherwise *other*,
-using the same gate; a review item is blocking only when it is linked (by its
-own or its work item's `plan/<plan>#<action>` reference) to the Action that
-gate selected, never recomputed.
-Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal-id>` or `review_item:<project>/<id>`, unique across Projects), its own
+on the agent, not you, and are left out), **waiting operator tasks** (the
+repo-local ledger `.arcadia/operator-tasks.jsonl`) and **production
+escalations** (`production_operator_escalations` rows, read-only). An item is
+*blocking* when `arcadia next` would refuse to dispatch because of it, and
+otherwise *other*, using the same gate; a review item is blocking only when it
+is linked (by its own or its work item's `plan/<plan>#<action>` reference, Plan
+included, since Action ids can repeat across Plans) to the Action that gate
+selected, never recomputed. An operator task is blocking only when its origin is
+that Action. A production escalation is always blocking: its row says the
+production loop is stalled, even when no Decision or Ask exists. Blocking
+escalations are listed first.
+Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal-id>`, `review_item:<project>/<id>`, `operator_task:<project>/<task-id>` or `escalation:<kind>:<project>/<action>`, unique across Projects), its own
 title, project, created date, source, and the existing command that answers it
 (a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview, a
-clarification review item's `arcadia review approve <id> --answer "<answer>" --clarify`).
+clarification review item's `arcadia review approve <id> --answer "<answer>" --clarify`,
+an operator task's `arcadia operator-task show <id> --repo <path>`, with `close --operator` and
+`decline` listed after it (closing is the operator's own attestation), an escalation's own `remedy`; with no remedy,
+`arcadia production status`).
 A review item also shows `origin` (its own `resolved_intent`) and, for a
 clarification, the Discord reply and Mission Control **Answer & continue** paths
 that answer it without `--clarify` (they re-clarify on their own). Any other
@@ -2675,11 +2683,18 @@ approving some kinds authorizes a Run.
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time. A review item raised from a Decision document (`doc_ref`
 `decision/<slug>`) is not listed again beside that open Decision; several review
-items on one work item show once.
+items on one work item show once. An operator task whose origin or `reference`
+(`decision/<slug>`, `review_items:<id>`) names a listed Decision or review item
+shows only as that item; an escalation whose own gate is a listed Decision
+(`Launch of <key> is held by pending Decision 0094: ...`) shows only as that
+Decision, which is then marked blocking. A Decision merely cited elsewhere in the
+message (an Agent Ask's title, a lapsed-grant note) does not merge anything. A review item whose Project is completed or not listed appears
+under Project `unknown` rather than disappearing.
 
 Done when (derived each run, never stored): a Decision is no longer open; an
 Agent Ask is settled; a review item is resolved or approved (no longer open or
-deferred).
+deferred); an operator task is closed or declined; an `escalation:<kind>` row is
+gone, because the production tick clears it once the cause is resolved.
 
 Blocking items come first. Among the others, open Decisions come first, newest
 first, so a freshly raised question is not buried; every other item (Agent Asks
@@ -2687,7 +2702,10 @@ and review items) follows oldest first. `--all`, `--stale` and `--json` use the 
 default view shows the first five others.
 
 The counts line shows live totals and what the view hides, for example
-`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0)`.
+`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0, operator tasks 0, escalations 0)`.
+In `--json` these are `counts.byKind` (`decision`, `agent_ask`, `review_item`,
+`operator_task`, `escalation`); the schema stays `arcadia-todo-v1` and the
+change is additive.
 The printed answer commands omit `--workspace`: add it when you use a
 non-default workspace. The Agent Ask answer contains a
 `<settlement-request-id>` placeholder you must fill in before running it.
@@ -2712,11 +2730,11 @@ and never drops the other Projects. In `--json`, `asOf.workspace` is the
 workspace name and `asOf.workspacePath` its path.
 
 When no workspace resolves, `todo` still reads the open Decisions of the
-checkout you are standing in and ends with one
-`workspace sources unavailable: <remedy>` line, so a short list is never
-mistaken for an empty one; Agent Asks and review items live in the workspace
-database, so they are not listed then. Operator tasks, production escalations
-and unclarified captures are not listed yet.
+checkout you are standing in, plus that checkout's waiting operator tasks, and
+ends with one `workspace sources unavailable: <remedy>` line, so a short list is
+never mistaken for an empty one; Agent Asks, review items and production
+escalations live in the workspace database, so they are not listed then.
+Unclarified captures are not listed yet.
 
 ## Durable planning memory
 
