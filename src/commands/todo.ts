@@ -8,9 +8,19 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
+import {
+  getProject,
+  getProjectBySlug,
+  getProjectMetadata,
+  getWorkItem,
+  listActionableReviewItems,
+  listProjects
+} from "../db/repositories.js";
 import { resolveDispatch, resolveReadySet } from "../docs/dispatch.js";
 import { discoverDocs } from "../docs/discover.js";
+import { parseActionDocRef } from "../docs/types.js";
+import type { ReviewItemSummary } from "../domain/types.js";
+import { ACTION_CLARIFICATION_INTENT } from "./review.js";
 import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGate.js";
 import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
@@ -28,7 +38,7 @@ export interface TodoCommandOptions {
   workspace?: string;
   /** Project id or slug; omitted means every Project. */
   project?: string;
-  /** Show every non-blocking item and the stale ones instead of the oldest few. */
+  /** Show every non-blocking item and the stale ones instead of the first few. */
   all?: boolean;
   /** List only the stale items, each with the evidence that makes it stale. */
   stale?: boolean;
@@ -43,17 +53,21 @@ export interface TodoCommandOptions {
 export interface TodoItem {
   /** `<kind>:<project>/<source-id>`: Decision ids are per Project, so the Project is part of the identity. Stable while the item is pending. */
   key: string;
-  kind: "decision" | "agent_ask";
-  /** The source's own words: a Decision's question or an Agent Ask's desired result. */
+  kind: "decision" | "agent_ask" | "review_item";
+  /** The source's own words: a Decision's question, an Agent Ask's desired result or a review_item's decision_needed. */
   title: string;
   project: string;
   blocking: boolean;
   /** A Decision's `updated` date (Decisions carry no creation time); an Agent Ask's creation time. */
   createdAt: string;
-  /** The Decision's document path, or `agent_ask_proposals:<id>`. */
+  /** The Decision's document path, `agent_ask_proposals:<id>` or `review_items:<id>`. */
   sourceRef: string;
+  /** review_item only: the item's own `resolved_intent` (for example `ActionClarification`), which says what raised it. */
+  origin?: string;
   /** The existing canonical command that answers it. Nothing here runs it. */
   answer: string;
+  /** review_item only: other existing ways to answer it (Discord reply, Mission Control), where one exists. */
+  answerVia?: string[];
   /** Present only when positive evidence says the item no longer waits on the operator. */
   staleReason?: string;
 }
@@ -68,7 +82,7 @@ export interface TodoCounts {
   /** Stale items left out of `items` in this view. */
   staleHidden: number;
   /** Totals by kind across every live item found, shown or not. */
-  byKind: { decision: number; agent_ask: number };
+  byKind: { decision: number; agent_ask: number; review_item: number };
   /** Live non-blocking items left out of `items` because the cap applies. */
   hidden: number;
   /** Items of fixture Projects, counted here instead of listed. */
@@ -104,12 +118,24 @@ function byAge(a: TodoItem, b: TodoItem): number {
   return a.createdAt.localeCompare(b.createdAt) || a.key.localeCompare(b.key);
 }
 
+/**
+ * Non-blocking order: open Decisions first, newest first (a freshly raised question must not hide behind old
+ * items), then every other item oldest first. The key breaks ties.
+ */
+function byDecisionsFirst(a: TodoItem, b: TodoItem): number {
+  const aDecision = a.kind === "decision";
+  if (aDecision !== (b.kind === "decision")) return aDecision ? -1 : 1;
+  return aDecision ? b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key) : byAge(a, b);
+}
+
 /** What a Project's checked-in Plans and open Decisions say, read once per Project for staleness. */
 interface ProjectEvidence {
   /** Action id -> its status across the Project's Plans. An id found unfinished anywhere is not done. */
   actions: Map<string, { done: boolean; plan: string }>;
   /** Open Decision id -> the Action it names, if any. */
   decisionActions: Map<string, string | null>;
+  /** Every Decision document by slug (what a review_item's `decision/<slug>` doc_ref names), whatever its status. */
+  decisionDocs: Map<string, { id: string; status: string }>;
 }
 
 function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvidence {
@@ -125,12 +151,13 @@ function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvid
     }
   }
   const decisionActions: ProjectEvidence["decisionActions"] = new Map();
+  const decisionDocs: ProjectEvidence["decisionDocs"] = new Map();
   for (const doc of docs) {
-    if (doc.type === "decision" && doc.status === "open" && doc.project.toLowerCase() === wanted) {
-      decisionActions.set(doc.id, doc.action);
-    }
+    if (doc.type !== "decision" || doc.project.toLowerCase() !== wanted) continue;
+    decisionDocs.set(doc.slug, { id: doc.id, status: doc.status });
+    if (doc.status === "open") decisionActions.set(doc.id, doc.action);
   }
-  return { actions, decisionActions };
+  return { actions, decisionActions, decisionDocs };
 }
 
 /** The Agent Ask facts staleness reads, taken from the stored proposal. */
@@ -250,17 +277,24 @@ function gateForProject(
   db: Parameters<typeof resolveOperatorGate>[0]["db"],
   repoRoot: string,
   projectSlug: string
-): { gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[] }; noProjectDoc: boolean } {
+): {
+  gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[] };
+  /** The Action the gate was resolved against; a review_item linked to it is blocking. */
+  selectedActionId: string | null;
+  noProjectDoc: boolean;
+} {
   const dispatch = resolveDispatch(repoRoot, projectSlug);
   const readySet = resolveReadySet(repoRoot, projectSlug);
+  const selectedActionId = dispatch.context?.action.id ?? null;
   return {
     gate: resolveOperatorGate({
       db,
       repoRoot,
       projectSlug,
-      selectedActionId: dispatch.context?.action.id ?? null,
+      selectedActionId,
       readySetCandidates: readySet.candidates
     }),
+    selectedActionId,
     noProjectDoc: dispatch.blockers.some((blocker) => blocker.field === "type: project")
   };
 }
@@ -272,6 +306,86 @@ function collect(gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[
     return staleReason ? { ...todo, staleReason } : todo;
   };
   return [...gate.blocking.map((item) => build(item, true)), ...gate.alerts.map((item) => build(item, false))];
+}
+
+/** The Action id a Plan-Action doc_ref (`plan/<plan>#<action>`) names, or null for any other shape. */
+function actionIdOfRef(docRef: string | null | undefined): string | null {
+  return docRef ? (parseActionDocRef(docRef.trim())?.actionId ?? null) : null;
+}
+
+/** `decision/<slug>` -> slug; null for any other doc_ref shape. */
+function decisionSlugOfRef(docRef: string | null | undefined): string | null {
+  const match = /^decision\/(.+)$/.exec(docRef?.trim() ?? "");
+  return match ? match[1] : null;
+}
+
+function reviewAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answerVia"> {
+  if (item.resolved_intent === ACTION_CLARIFICATION_INTENT) {
+    return {
+      answer: `arcadia review approve ${item.id} --answer "<answer>" --clarify`,
+      // These two re-clarify on their own, so they never take --clarify.
+      answerVia: [
+        "Discord: reply to the clarification notification with the answer",
+        "Mission Control: open the item and choose Answer & continue"
+      ]
+    };
+  }
+  // Approving another kind can authorize a Run: inspect first, then approve, reject or defer by id.
+  return { answer: `arcadia review show ${item.id}`, answerVia: [`then: arcadia review approve|reject|defer ${item.id}`] };
+}
+
+/**
+ * Open and deferred review_items of one Project (agent-flagged ones wait on an agent, not the operator), as
+ * to-do items. Dedupe: a review_item whose `doc_ref` names a listed (open) Decision is that Decision, shown once;
+ * several on one work_item show one (a live item over a stale one, then the first listed: open before deferred, newest first).
+ * Stale needs positive evidence: its work_item is done, or its `doc_ref` names an answered Decision.
+ * Blocking only when it is linked to the Action the operator gate was resolved against.
+ */
+function reviewTodoItems(
+  db: Parameters<typeof listActionableReviewItems>[0],
+  rows: ReviewItemSummary[],
+  projectSlug: string,
+  evidence: ProjectEvidence | undefined,
+  selectedActionId: string | null
+): TodoItem[] {
+  const built: TodoItem[] = [];
+  const seenWork = new Map<string, number>();
+  for (const row of rows) {
+    const slug = decisionSlugOfRef(row.doc_ref);
+    const decision = slug ? evidence?.decisionDocs.get(slug) : undefined;
+    if (decision?.status === "open") continue;
+
+    const workItem = row.work_item_id ? getWorkItem(db, row.work_item_id) : null;
+    let staleReason: string | undefined;
+    if (workItem?.status === "done") staleReason = `its work_item ${workItem.id} is done`;
+    else if (decision && (decision.status === "approved" || decision.status === "rejected")) {
+      staleReason = `its Decision ${decision.id} (${row.doc_ref}) is already ${decision.status}`;
+    }
+
+    const linked = [actionIdOfRef(row.doc_ref), actionIdOfRef(workItem?.doc_ref)];
+    const todo: TodoItem = {
+      key: `review_item:${projectSlug || "unknown"}/${row.id}`,
+      kind: "review_item",
+      title: row.decision_needed,
+      project: projectSlug,
+      blocking: selectedActionId !== null && linked.includes(selectedActionId),
+      origin: row.resolved_intent,
+      createdAt: row.created_at,
+      sourceRef: `review_items:${row.id}`,
+      ...reviewAnswer(row),
+      ...(staleReason ? { staleReason } : {})
+    };
+
+    const workId = row.work_item_id;
+    const prior = workId ? seenWork.get(workId) : undefined;
+    if (prior === undefined) {
+      if (workId) seenWork.set(workId, built.length);
+      built.push(todo);
+    } else if (built[prior].staleReason && !todo.staleReason) {
+      built[prior] = todo;
+    }
+  }
+  return built;
 }
 
 /** The remedy line for a workspace that could not be read, in the existing errors' own words where they have them. */
@@ -323,10 +437,12 @@ function defaultFixtureRoots(): string[] {
 /**
  * Everything the operator owes an answer on, as a derived view.
  *
- * It reads two sources: open Decisions (checked-in documents) and unsettled
- * Agent Ask proposals (the workspace database, opened read-only).
+ * It reads three sources: open Decisions (checked-in documents), unsettled
+ * Agent Ask proposals and open or deferred review_items (the workspace
+ * database, opened read-only).
  * Blocking versus alert is `arcadia next`'s own classification, reached
- * through the same `resolveOperatorGate`. Stale items (positive evidence only)
+ * through the same `resolveOperatorGate`; a review_item is blocking only when
+ * it is linked to the Action that gate was resolved against. Stale items (positive evidence only)
  * are hidden from the default view. Nothing is stored, nothing is written, and
  * no command is run: `answer` is text the operator can run.
  */
@@ -368,7 +484,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   const live = items.filter((item) => !item.staleReason);
   const staleItems = items.filter((item) => item.staleReason).sort(byAge);
   const blocking = live.filter((item) => item.blocking).sort(byAge);
-  const other = live.filter((item) => !item.blocking).sort(byAge);
+  const other = live.filter((item) => !item.blocking).sort(byDecisionsFirst);
   const shownOther = view === "default" ? other.slice(0, TODO_OTHER_CAP) : other;
   const shown =
     view === "stale" ? staleItems : view === "all" ? [...blocking, ...shownOther, ...staleItems] : [...blocking, ...shownOther];
@@ -387,7 +503,8 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
         staleHidden: view === "default" ? staleItems.length : 0,
         byKind: {
           decision: live.filter((item) => item.kind === "decision").length,
-          agent_ask: live.filter((item) => item.kind === "agent_ask").length
+          agent_ask: live.filter((item) => item.kind === "agent_ask").length,
+          review_item: live.filter((item) => item.kind === "review_item").length
         },
         hidden: view === "stale" ? 0 : other.length - shownOther.length,
         fixture
@@ -413,6 +530,8 @@ function readWithWorkspace(
     }
 
     const proposals = listUnsettledAgentAskProposals(db);
+    const reviewRows = listActionableReviewItems(db);
+    const reviewRowsOf = (projectId: string): ReviewItemSummary[] => reviewRows.filter((row) => row.project_id === projectId);
     const context: StaleContext = {
       askFacts: askFactsOf(proposals),
       superseded: supersessionsOf(listSupersessionSources(db)),
@@ -444,26 +563,35 @@ function readWithWorkspace(
           `project sources unavailable: ${project.slug} has ${repoPath ? `no repository at ${repoPath}` : "no repo_path"}; ` +
             `its Decisions were not read (arcadia project metadata ${project.id} --repo-path <path>)`
         );
-        // Agent Asks need no repository: classify them without Decisions.
+        // Agent Asks and review_items need no repository: list them without Decisions or Plan evidence.
         take(project.slug, fixtureProject, collect(classifyAsksOnly(proposals, project.slug), context));
+        take(project.slug, fixtureProject, reviewTodoItems(db, reviewRowsOf(project.id), project.slug, undefined, null));
         continue;
       }
 
       // One Project's failure is its own line, never the other Projects' loss.
+      let selected: string | null = null;
       try {
         context.evidence.set(project.slug.toLowerCase(), readProjectEvidence(repoPath, project.slug));
-        const { gate, noProjectDoc } = gateForProject(db, repoPath, project.slug);
+        const { gate, selectedActionId, noProjectDoc } = gateForProject(db, repoPath, project.slug);
         if (noProjectDoc) {
           note(
             `project sources unavailable: ${project.slug} has no PROJECT.md under ${repoPath}; ` +
               `which item blocks dispatch was not worked out (add PROJECT.md or fix its repo_path)`
           );
         }
+        selected = selectedActionId;
         take(project.slug, fixtureProject, collect(gate, context));
       } catch (error) {
         note(`project sources unavailable: ${project.slug}: ${workspaceRemedy(error)}`);
         take(project.slug, fixtureProject, collect(classifyAsksOnly(proposals, project.slug), context));
       }
+      // Never blocking when no gate was resolved; Plan evidence is used when it was read.
+      take(
+        project.slug,
+        fixtureProject,
+        reviewTodoItems(db, reviewRowsOf(project.id), project.slug, context.evidence.get(project.slug.toLowerCase()), selected)
+      );
     }
 
     // Agent Asks naming a Project outside this list are still the operator's.
@@ -477,6 +605,8 @@ function readWithWorkspace(
       for (const slug of strays) {
         take(slug, isFixtureProject(slug, undefined, roots), collect(classifyAsksOnly(proposals, slug), context));
       }
+      // A review_item with no Project is still the operator's; it has no gate to block, so it is an alert.
+      take("unknown", false, reviewTodoItems(db, reviewRows.filter((row) => !row.project_id), "unknown", undefined, null));
     }
     return { items, fixture: { projects: fixtureProjects.size, items: fixtureItems } };
   });
@@ -531,9 +661,10 @@ function readDecisionsOnly(repoRoot: string, project: string | undefined, unavai
 function describe(item: TodoItem): string[] {
   return [
     `${item.key} — ${item.title}`,
-    `    project: ${item.project} · created: ${item.createdAt} · source: ${item.sourceRef}`,
+    `    project: ${item.project} · created: ${item.createdAt} · source: ${item.sourceRef}${item.origin ? ` · origin: ${item.origin}` : ""}`,
     ...(item.staleReason ? [`    stale: ${item.staleReason}`] : []),
-    `    answer: ${item.answer}`
+    `    answer: ${item.answer}`,
+    ...(item.answerVia ?? []).map((via) => `    or ${via}`)
   ];
 }
 
@@ -543,7 +674,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
     view === "default" ? `stale hidden: ${counts.staleHidden}` : view === "all" ? `stale: ${counts.stale} (shown)` : `stale: ${counts.stale}`;
   const lines = [
     `Operator to-do: ${counts.blocking} blocking · ${counts.other} other · ${staleCount}` +
-      ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask})` +
+      ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask}, review items ${counts.byKind.review_item})` +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
 
@@ -555,7 +686,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
     lines.push("", "Blocking:", ...blocking.flatMap((item) => describe(item).map((line) => `  ${line}`)));
   }
   if (other.length > 0) {
-    lines.push("", "Other (oldest first):", ...other.flatMap((item) => describe(item).map((line) => `  ${line}`)));
+    lines.push("", "Other (Decisions newest first, then oldest first):", ...other.flatMap((item) => describe(item).map((line) => `  ${line}`)));
   }
   if (stale.length > 0) {
     lines.push("", "Stale (positive evidence it no longer waits on you):", ...stale.flatMap((item) => describe(item).map((line) => `  ${line}`)));
@@ -578,7 +709,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
   if (items.length === 0 && view === "stale") {
     lines.push("", "No item has positive evidence of being stale.");
   } else if (items.length === 0 && unavailable.length === 0) {
-    lines.push("", "Nothing is waiting on you in the sources this view reads (open Decisions, pending Agent Asks).");
+    lines.push("", "Nothing is waiting on you in the sources this view reads (open Decisions, pending Agent Asks, open and deferred review items).");
   }
   if (unavailable.length > 0) {
     lines.push("", ...unavailable);

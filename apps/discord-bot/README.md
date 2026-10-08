@@ -24,9 +24,21 @@ Optional:
 ARCADIA_CLI_PATH=/absolute/path/to/arcadia
 ARCADIA_DASHBOARD_URL=http://192.168.1.10:3020
 ARCADIA_DISCORD_POLL_INTERVAL_SECONDS=60
+DISCORD_ALLOWED_USER_IDS=123456789012345678
 DISCORD_PING_CHANNELS=actions=123456789012345678,review=234567890123456789
 DISCORD_CATEGORY_CHANNELS=alerts=345678901234567890,briefings=456789012345678901,log=567890123456789012
 ```
+
+`DISCORD_ALLOWED_USER_IDS` is a comma-separated list of Discord user ids allowed
+to send free-text messages and reply-router replies. It does not gate slash
+commands. When set, it gates both the reply router and free-text messages
+in `DISCORD_CHANNEL_ID`: a message from any other author gets a refusal reaction
+(🚫) and is ignored. When it is empty or unset, free-text messages keep guild and
+channel gating only, the reply router refuses every author, and the bot logs one
+startup warning, so an unset value never locks you out. Restart the bot after
+changing it. The bot also passes the author's Discord id as `--actor` when it
+resolves a reply through `arcadia review resolve-reply`, so the capture envelope
+records who answered.
 
 `DISCORD_PING_CHANNELS` lists the channels an agent's `arcadia ping --channel <alias>`
 can reach, as comma-separated `alias=<channel id>` pairs (lowercase alias). A

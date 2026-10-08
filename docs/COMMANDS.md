@@ -719,11 +719,27 @@ after the canonical write, so the exact words survive: `review resolve-reply`,
 approve` with a free-text answer (an offered option label is not free text).
 The request id is `<surface>:<entity-id>:<first 12 hex of sha256(text)>`, so a
 replay returns the first envelope. `review resolve-reply --actor <id>` records
-a caller-asserted, untrusted provenance id for the sender (for example the
-Discord author id; at most 128 characters) in the envelope only; CLI and
-Dashboard replies record actor null. Capture is fail-open: a failure is logged
+a caller-asserted, untrusted provenance id for the sender (the Discord bot
+passes the author id; at most 128
+characters) in the envelope only; CLI and Dashboard replies record actor null. Capture is fail-open: a failure is logged
 to stderr and never blocks or changes the canonical write. The capture id is in
 the `operator.reply.captured` event payload; `capture_id` columns are untouched.
+
+`arcadia ask show --coverage [--since <ISO|Nd>] [--ingress-root <path>] [--json]`
+is a read-only report (no new store; default window 7d) of how much operator
+input passed through Ask or Ingress. Its headline always says **direct chat: not
+measured**, so it is never the share of all operator input. Per surface it states
+captured envelopes over the surface's independent canonical record: Ingress files
+(`ingress:*` envelopes over Done/Failed sidecars under the Ingress root, which is
+reported unavailable when absent), review replies (`operator.reply.review` and
+`operator.reply.work-question` envelopes over decided review items) and Decision
+replies (`operator.reply.decision` envelopes over free-text-answered Decision
+documents). Only sources classified as operator intake (`ingress:*`,
+`discord.message`, `discord.request`) feed the intake total; the reply sources are
+provenance-only, shown per surface and never added to it. Discord messages are
+reported as captured N with denominator unknown. `agent.ask` and `codex.*`
+envelopes are excluded and counted separately, and unclassified sources (`ask`,
+`cli.ask`) are listed but not counted.
 
 `review reject R1` withdraws a question that turned out to be wrong — the
 Decision keeps the history, and the Action drops back to `unclarified` so it

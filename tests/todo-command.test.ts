@@ -23,7 +23,7 @@ import {
   type TodoData
 } from "../src/commands/todo.js";
 import { withDatabase } from "../src/db/connection.js";
-import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
+import { createProjectWithInitialWork, createWorkItemRecord, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const NOW = new Date("2026-10-08T12:00:00.000Z");
@@ -147,7 +147,7 @@ describe("arcadia todo", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1", view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1 }, hidden: 0, fixture: { projects: 0, items: 0 } },
+      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } },
       items: [
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
@@ -155,21 +155,21 @@ describe("arcadia todo", () => {
           answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'"
         },
         {
-          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
-          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
-          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
-        },
-        {
           key: "decision:demo/0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
           createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md",
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'"
+        },
+        {
+          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
+          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
         }
       ],
       unavailable: []
     });
 
     const lines = render(data);
-    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 2 other · stale hidden: 0 (decisions 2, agent asks 1) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 2 other · stale hidden: 0 (decisions 2, agent asks 1, review items 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
     expect(lines.filter((line) => line === AGENT_ASK_CAVEAT)).toHaveLength(1);
     expect(AGENT_ASK_CAVEAT).toContain("positive evidence only");
   });
@@ -193,24 +193,44 @@ describe("arcadia todo", () => {
     expect(new Set(data.items.map((item) => item.key)).size).toBe(2);
   });
 
-  it("shows every blocking item, caps the others at five oldest-first, and says how many more", () => {
+  it("shows every blocking item, caps the others at five (Decisions newest-first), and says how many more", () => {
     const repo = fixtureRepo(7);
     const workspace = fixtureWorkspace(repo);
 
     const capped = run({ workspace, now: NOW });
-    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0 }, hidden: 2, fixture: { projects: 0, items: 0 } });
+    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0 }, hidden: 2, fixture: { projects: 0, items: 0 } });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
-      "decision:demo/0002", "decision:demo/0003", "decision:demo/0004", "decision:demo/0005", "decision:demo/0006"
+      "decision:demo/0008", "decision:demo/0007", "decision:demo/0006", "decision:demo/0005", "decision:demo/0004"
     ]);
     const lines = render(capped.data);
-    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0, review items 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
     expect(lines.at(-1)).toBe("2 more: --all");
-    expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (oldest first):"));
+    expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (Decisions newest first, then oldest first):"));
 
     const all = run({ workspace, now: NOW, all: true });
     expect(all.data.counts.hidden).toBe(0);
     expect(all.data.items).toHaveLength(8);
     expect(render(all.data).join("\n")).not.toContain("more: --all");
+  });
+
+  it("lists open Decisions first, newest first, then the other items oldest first, under the cap and in every view", () => {
+    // Decisions 0002 (older) and 0003 (newer) are alerts; the Agent Asks are older than both.
+    const repo = fixtureRepo(2);
+    const asks = ["a", "b", "c", "d", "e"].map((name, index) => ({
+      id: `proposal-${name}`, createdAt: `2026-08-0${index + 1}T00:00:00.000Z`, desiredResult: `Ask ${name}.`
+    }));
+    const workspace = fixtureWorkspace(repo, asks);
+
+    const capped = run({ workspace, now: NOW });
+    const order = ["decision:demo/0003", "decision:demo/0002", "agent_ask:demo/proposal-a", "agent_ask:demo/proposal-b", "agent_ask:demo/proposal-c"];
+    expect(capped.data.items.map((item) => item.key)).toEqual(["decision:demo/0001", ...order]);
+    expect(capped.data.counts.hidden).toBe(2);
+    expect(render(capped.data)).toContain("2 more: --all");
+
+    const all = run({ workspace, now: NOW, all: true });
+    expect(all.data.items.map((item) => item.key)).toEqual([
+      "decision:demo/0001", ...order, "agent_ask:demo/proposal-d", "agent_ask:demo/proposal-e"
+    ]);
   });
 
   it("filters to one Project and refuses an unknown one", () => {
@@ -246,12 +266,12 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
 
     expect(data.asOf).toMatchObject({ workspace: null, workspacePath: null });
-    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } });
+    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0 }, hidden: 0, fixture: { projects: 0, items: 0 } });
     expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001", "decision:demo/0002"]);
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: no workspace at .*arcadia init <path>/)]);
     const lines = render(data);
     expect(lines.filter((line) => line.startsWith("workspace sources unavailable:"))).toHaveLength(1);
-    expect(lines[0]).toBe("Operator to-do: 1 blocking · 1 other · stale hidden: 0 (decisions 2, agent asks 0) (as of 2026-10-08T12:00:00.000Z)");
+    expect(lines[0]).toBe("Operator to-do: 1 blocking · 1 other · stale hidden: 0 (decisions 2, agent asks 0, review items 0) (as of 2026-10-08T12:00:00.000Z)");
   });
 
   it("names the configuration remedy when no workspace resolves at all", () => {
@@ -277,7 +297,7 @@ describe("arcadia todo", () => {
     write(repo, "docs/plans/main-plan.md", planDoc());
     const workspace = fixtureWorkspace(repo);
     const lines = render(run({ workspace, now: NOW }).data).join("\n");
-    expect(lines).toContain("0 blocking · 0 other · stale hidden: 0 (decisions 0, agent asks 0)");
+    expect(lines).toContain("0 blocking · 0 other · stale hidden: 0 (decisions 0, agent asks 0, review items 0)");
     expect(lines).toContain("Nothing is waiting on you");
   });
 });
@@ -336,7 +356,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
       "agent_ask:demo/wrong-intent"
     ]);
     expect(data.counts).toEqual({
-      blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4 }, hidden: 0,
+      blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4, review_item: 0 }, hidden: 0,
       fixture: { projects: 0, items: 0 }
     });
     expect(data.items.every((item) => item.staleReason === undefined)).toBe(true);
@@ -473,7 +493,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
       view: "stale",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
-        blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0 }, hidden: 0,
+        blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0, review_item: 0 }, hidden: 0,
         fixture: { projects: 0, items: 0 }
       },
       items: [
@@ -556,5 +576,228 @@ describe("arcadia todo: per-Project isolation and fixture grouping", () => {
     expect(bySlug.data.counts.fixture.projects).toBe(3);
     expect(bySlug.data.items.map((item) => item.project).sort()).toEqual(["demo", "scratch"]);
     expect(bySlug.data.unavailable).toEqual([]);
+  });
+});
+
+describe("arcadia todo: review_items", () => {
+  interface FixtureReview {
+    id: string;
+    createdAt: string;
+    decisionNeeded: string;
+    intent?: string;
+    status?: "open" | "deferred" | "approved" | "rejected";
+    docRef?: string | null;
+    workItemId?: string | null;
+    /** Stored in context_json; `agentReview.status: flagged` waits on an agent, not the operator. */
+    agentFlagged?: boolean;
+  }
+
+  /** Plan whose open Action `second-step` is eligible, so it is the selected Action and no Decision blocks it. */
+  function selectableRepo(extra: Array<[string, string]> = []): string {
+    const repo = temp("review-repo");
+    write(repo, "PROJECT.md", projectDoc());
+    write(repo, "docs/plans/main-plan.md", planDoc().replace('decisions: ["0001"]', "decisions: []"));
+    for (const [file, content] of extra) write(repo, file, content);
+    return repo;
+  }
+
+  function projectIdOf(workspace: string): string {
+    return withDatabase(workspace, (db) => (db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string }).id);
+  }
+
+  /** A work item of the Project; `docRef` is where the Plan Action it mirrors lives. */
+  function addWorkItem(workspace: string, input: { status?: "open" | "done"; docRef?: string }): string {
+    const projectId = projectIdOf(workspace);
+    return withDatabase(workspace, (db) => {
+      const item = createWorkItemRecord(db, {
+        projectId, title: "Work", rawInput: "Work", queue: "work_queue", workClassification: "agent", nextAction: "Do the work",
+        status: input.status ?? "open"
+      });
+      if (input.docRef) db.prepare("UPDATE work_items SET doc_ref = ? WHERE id = ?").run(input.docRef, item.id);
+      return item.id;
+    });
+  }
+
+  function addReviews(workspace: string, reviews: FixtureReview[]): void {
+    const projectId = projectIdOf(workspace);
+    withDatabase(workspace, (db) => {
+      for (const review of reviews) {
+        db.prepare(
+          `INSERT INTO review_items (id, slug, work_item_id, project_id, status, decision_needed, source_input, proposed_action,
+             resolved_intent, confidence_label, confidence, missing_fields, context_json, created_at, updated_at, doc_ref)
+           VALUES (?, ?, ?, ?, ?, ?, 'source', 'propose', ?, 'medium', 0, '[]', ?, ?, ?, ?)`
+        ).run(
+          review.id, review.id.toUpperCase(), review.workItemId ?? null, projectId, review.status ?? "open", review.decisionNeeded,
+          review.intent ?? "ActionClarification",
+          JSON.stringify(review.agentFlagged ? { agentReview: { status: "flagged" } } : {}),
+          review.createdAt, review.createdAt, review.docRef ?? null
+        );
+      }
+    });
+  }
+
+  function keys(data: TodoData): string[] {
+    return data.items.map((item) => item.key);
+  }
+
+  it("lists an ActionClarification and another kind, each with the source's own words, canonical answer and additive JSON", () => {
+    const workspace = fixtureWorkspace(selectableRepo(), [
+      { id: "proposal-1", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Amend the demo Action." }
+    ]);
+    addReviews(workspace, [
+      { id: "review-clarify", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Which database should the demo use?" },
+      { id: "review-run", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Accept the planning artifact?", intent: "CodexPlanningArtifactAcceptance", status: "deferred" },
+      { id: "review-flagged", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Waits on an agent.", status: "deferred", agentFlagged: true },
+      { id: "review-answered", createdAt: "2026-09-04T00:00:00.000Z", decisionNeeded: "Already approved.", status: "approved" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data).toEqual({
+      schema: "arcadia-todo-v1", view: "default",
+      asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
+      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2 }, hidden: 0, fixture: { projects: 0, items: 0 } },
+      items: [
+        {
+          key: "review_item:demo/review-clarify", kind: "review_item", title: "Which database should the demo use?", project: "demo", blocking: false,
+          origin: "ActionClarification", createdAt: "2026-09-01T00:00:00.000Z", sourceRef: "review_items:review-clarify",
+          answer: 'arcadia review approve review-clarify --answer "<answer>" --clarify',
+          answerVia: [
+            "Discord: reply to the clarification notification with the answer",
+            "Mission Control: open the item and choose Answer & continue"
+          ]
+        },
+        {
+          key: "review_item:demo/review-run", kind: "review_item", title: "Accept the planning artifact?", project: "demo", blocking: false,
+          origin: "CodexPlanningArtifactAcceptance", createdAt: "2026-09-02T00:00:00.000Z", sourceRef: "review_items:review-run",
+          answer: "arcadia review show review-run",
+          answerVia: ["then: arcadia review approve|reject|defer review-run"]
+        },
+        {
+          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
+          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
+        }
+      ],
+      unavailable: []
+    });
+    // Open and deferred only, oldest first alongside the Agent Ask; an agent-flagged or decided item is not the operator's.
+    const text = render(data).join("\n");
+    expect(text).toContain("(decisions 0, agent asks 1, review items 2)");
+    expect(text).toContain("origin: ActionClarification");
+    expect(text).toContain('answer: arcadia review approve review-clarify --answer "<answer>" --clarify');
+  });
+
+  it("keeps open Decisions first, newest first, with review_items among the other items oldest first", () => {
+    const repo = selectableRepo([
+      ["docs/decisions/0002-alert.md", decisionDoc("0002", "Unrelated question 0002?", "2026-09-10")]
+    ]);
+    const workspace = fixtureWorkspace(repo, [{ id: "proposal-a", createdAt: "2026-08-03T00:00:00.000Z", desiredResult: "Ask a." }]);
+    addReviews(workspace, [
+      { id: "review-new", createdAt: "2026-08-02T00:00:00.000Z", decisionNeeded: "Newer review." },
+      { id: "review-old", createdAt: "2026-08-01T00:00:00.000Z", decisionNeeded: "Older review." }
+    ]);
+
+    expect(keys(run({ workspace, now: NOW }).data)).toEqual([
+      "decision:demo/0002", "review_item:demo/review-old", "review_item:demo/review-new", "agent_ask:demo/proposal-a"
+    ]);
+  });
+
+  it("dedupes by work_item_id and by doc_ref against a listed Decision", () => {
+    const repo = selectableRepo([
+      ["docs/decisions/0002-alert.md", decisionDoc("0002", "Is this the same question?", "2026-09-10")]
+    ]);
+    const workspace = fixtureWorkspace(repo);
+    const workItemId = addWorkItem(workspace, {});
+    addReviews(workspace, [
+      // Raised from the open Decision document: the Decision is the one to-do item, not this row too.
+      { id: "review-of-decision", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Is this the same question?", docRef: "decision/decision-0002" },
+      // Two questions on one work_item show once: the first listed (newest) one.
+      { id: "review-first", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "First question.", workItemId },
+      { id: "review-second", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Second question.", workItemId },
+      // A Decision this Project has no document for is not deduped (no evidence).
+      { id: "review-unknown-doc", createdAt: "2026-09-04T00:00:00.000Z", decisionNeeded: "Unknown document.", docRef: "decision/no-such-slug" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(keys(data).sort()).toEqual(["decision:demo/0002", "review_item:demo/review-second", "review_item:demo/review-unknown-doc"]);
+    expect(data.counts.byKind).toEqual({ decision: 1, agent_ask: 0, review_item: 2 });
+  });
+
+  it("marks a review_item stale only on positive evidence: a done work_item or an answered Decision", () => {
+    const answered = decisionDoc("0003", "Was this answered?", "2026-09-10").replace("status: open", "status: approved\nanswer: Go ahead\ndecided: 2026-09-11");
+    const repo = selectableRepo([["docs/decisions/0003-answered.md", answered]]);
+    const workspace = fixtureWorkspace(repo);
+    const doneWork = addWorkItem(workspace, { status: "done" });
+    const openWork = addWorkItem(workspace, { status: "open" });
+    addReviews(workspace, [
+      { id: "review-done-work", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Done work question.", workItemId: doneWork },
+      { id: "review-answered", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Answered Decision question.", docRef: "decision/decision-0003" },
+      { id: "review-live", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Live question.", workItemId: openWork },
+      { id: "review-no-evidence", createdAt: "2026-09-04T00:00:00.000Z", decisionNeeded: "No evidence either way.", docRef: "decision/gone" }
+    ]);
+
+    const hidden = run({ workspace, now: NOW });
+    expect(keys(hidden.data)).toEqual(["review_item:demo/review-live", "review_item:demo/review-no-evidence"]);
+    expect(hidden.data.counts).toMatchObject({ stale: 2, staleHidden: 2, byKind: { review_item: 2 } });
+
+    const stale = run({ workspace, now: NOW, stale: true });
+    expect(stale.data.items.map((item) => [item.key, item.staleReason])).toEqual([
+      ["review_item:demo/review-done-work", `its work_item ${doneWork} is done`],
+      ["review_item:demo/review-answered", "its Decision 0003 (decision/decision-0003) is already approved"]
+    ]);
+    expect(render(stale.data).join("\n")).toContain("stale: its work_item");
+  });
+
+  it("is blocking only when linked to the Action the operator gate selected; otherwise an alert", () => {
+    const workspace = fixtureWorkspace(selectableRepo());
+    const selectedWork = addWorkItem(workspace, { docRef: "plan/main-plan#second-step" });
+    const otherWork = addWorkItem(workspace, { docRef: "plan/main-plan#some-other-step" });
+    addReviews(workspace, [
+      { id: "review-by-work", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Blocks via its work item.", workItemId: selectedWork },
+      { id: "review-by-ref", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Blocks via its own doc_ref.", docRef: "plan/main-plan#second-step" },
+      { id: "review-other", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Another Action.", workItemId: otherWork },
+      { id: "review-unlinked", createdAt: "2026-09-04T00:00:00.000Z", decisionNeeded: "Linked to nothing." }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["review_item:demo/review-by-work", true],
+      ["review_item:demo/review-by-ref", true],
+      ["review_item:demo/review-other", false],
+      ["review_item:demo/review-unlinked", false]
+    ]);
+    expect(data.counts).toMatchObject({ blocking: 2, other: 2 });
+  });
+
+  it("lists a review_item of a Project with no repository, never blocking, and one with no Project as 'unknown'", () => {
+    const workspace = fixtureWorkspace(path.join(tmpdir(), "arcadia-todo-no-such-repo"));
+    addReviews(workspace, [{ id: "review-norepo", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "Asked without a repository." }]);
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        `INSERT INTO review_items (id, slug, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-stray', 'R-STRAY', 'open', 'Belongs to no Project.', 's', 'p', 'ActionClarification', 'medium', 0, '[]', '{}', '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z')`
+      ).run();
+    });
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
+      ["review_item:demo/review-norepo", "demo", false],
+      ["review_item:unknown/review-stray", "unknown", false]
+    ]);
+    expect(run({ workspace, now: NOW, project: "demo" }).data.items.map((item) => item.key)).toEqual(["review_item:demo/review-norepo"]);
+  });
+
+  it("with no workspace, still says plainly that workspace sources (Agent Asks, review items) are unavailable", () => {
+    const repo = selectableRepo();
+    const missing = path.join(temp("missing"), "no-workspace-here");
+    const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
+    expect(data.counts.byKind).toEqual({ decision: 0, agent_ask: 0, review_item: 0 });
+    expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: /)]);
+    expect(render(data).at(-1)).toBe(data.unavailable[0]);
   });
 });

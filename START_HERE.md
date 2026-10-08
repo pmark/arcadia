@@ -1601,6 +1601,17 @@ stating whether an open PR was found. Use one branch and worktree per coding ses
 every session merged or represented by at least a draft PR. The full recovery
 procedure is in `docs/working-copy-safety.md`.
 
+The Morning Packet also carries an **Operator to-do** section: the same
+counts `pnpm arcadia todo` prints, then each blocking item (at most five) with
+the command that answers it, escalation items first and marked `STOPPED:` so the
+packet states what halted production overnight (those lines appear once the
+todo escalation source lands; today `arcadia todo` emits only decision and
+agent ask items), and `N more: arcadia todo` for
+the rest. It is built read-only in-process when the packet composes, so it
+rides the existing scheduled delivery with no new message or schedule. If the
+to-do data cannot be built the section is the single line
+`to-do unavailable: <reason>` and the packet still composes.
+
 Each newly composed Morning Packet also includes a clearly labelled, bounded
 local-AI perspective: one headline and one paragraph explaining what the
 recorded work means. If the local model is unavailable, the deterministic
@@ -2147,6 +2158,13 @@ every Action, Decision, or Back Burner item it produced, including the Action a
 shelved item was later promoted to. It only reads. Asks recorded before this
 command existed are linked when their text and time match exactly one capture.
 
+To see how much of your input actually reaches Arcadia through Ask or Ingress,
+run `pnpm arcadia ask show --coverage` (add `--since 14d` or `--json`). It is
+read-only and always says **direct chat: not measured**, so read it as coverage of
+the surfaces Arcadia can count (Ingress files, review and Decision replies), not
+as the share of everything you tell an agent. Discord messages show a captured
+count with no denominator, and agent-written Asks are excluded.
+
 For project-specific, vague, household, date-based, dependency-based, and
 predicate-based examples, see the [Back Burner Guide](docs/back-burner-guide.md).
 
@@ -2629,7 +2647,7 @@ Other CLI commands are advanced or compatibility surfaces, not part of normal da
 ## What is waiting on you: `arcadia todo`
 
 ```sh
-pnpm arcadia todo                      # blocking items, then the five oldest others
+pnpm arcadia todo                      # blocking items, then five others: open Decisions newest first, then the rest oldest first
 pnpm arcadia todo --all                # every other item too, stale last
 pnpm arcadia todo --stale              # only items with positive evidence they are done
 pnpm arcadia todo --project arcadia    # one Project
@@ -2637,17 +2655,39 @@ pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 ```
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
-run. This first slice lists two sources, **open Decisions** and **pending Agent
-Ask proposals**, per Project. An item is *blocking* when `arcadia next` would
-refuse to dispatch because of it, and otherwise *other*, using the same gate.
-Each item shows `key` (`decision:<project>/<id>` or `agent_ask:<project>/<proposal-id>`, unique across Projects), its own
+run. It lists three sources per Project: **open Decisions**, **pending Agent
+Ask proposals** and **open or deferred review items** (these include
+ActionClarification questions; items an agent has flagged for agent review wait
+on the agent, not you, and are left out). An item is *blocking* when
+`arcadia next` would refuse to dispatch because of it, and otherwise *other*,
+using the same gate; a review item is blocking only when it is linked (by its
+own or its work item's `plan/<plan>#<action>` reference) to the Action that
+gate selected, never recomputed.
+Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal-id>` or `review_item:<project>/<id>`, unique across Projects), its own
 title, project, created date, source, and the existing command that answers it
-(a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview).
+(a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview, a
+clarification review item's `arcadia review approve <id> --answer "<answer>" --clarify`).
+A review item also shows `origin` (its own `resolved_intent`) and, for a
+clarification, the Discord reply and Mission Control **Answer & continue** paths
+that answer it without `--clarify` (they re-clarify on their own). Any other
+review item prints `arcadia review show <id>`: look before you approve, since
+approving some kinds authorizes a Run.
 A Decision's created date is its `updated` field, since Decisions carry no
-creation time.
+creation time. A review item raised from a Decision document (`doc_ref`
+`decision/<slug>`) is not listed again beside that open Decision; several review
+items on one work item show once.
+
+Done when (derived each run, never stored): a Decision is no longer open; an
+Agent Ask is settled; a review item is resolved or approved (no longer open or
+deferred).
+
+Blocking items come first. Among the others, open Decisions come first, newest
+first, so a freshly raised question is not buried; every other item (Agent Asks
+and review items) follows oldest first. `--all`, `--stale` and `--json` use the same order, and the
+default view shows the first five others.
 
 The counts line shows live totals and what the view hides, for example
-`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194)`.
+`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0)`.
 The printed answer commands omit `--workspace`: add it when you use a
 non-default workspace. The Agent Ask answer contains a
 `<settlement-request-id>` placeholder you must fill in before running it.
@@ -2657,7 +2697,9 @@ non-default workspace. The Agent Ask answer contains a
 exists in a Plan of its Project with status `done`; an Ask naming only absent
 Actions is an un-adopted proposal and is never stale. An Ask is also stale when
 another unsettled Ask's rationale has an explicit `Supersedes: <proposal ids>`
-line naming it (two Asks naming each other cancel out). An open Decision is
+line naming it (two Asks naming each other cancel out). A review item is stale
+when its work item is done or its `doc_ref` names an answered (approved or
+rejected) Decision. An open Decision is
 stale when its `action` is done. The default view hides stale items;
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
@@ -2672,7 +2714,8 @@ workspace name and `asOf.workspacePath` its path.
 When no workspace resolves, `todo` still reads the open Decisions of the
 checkout you are standing in and ends with one
 `workspace sources unavailable: <remedy>` line, so a short list is never
-mistaken for an empty one. Review items, operator tasks, production escalations
+mistaken for an empty one; Agent Asks and review items live in the workspace
+database, so they are not listed then. Operator tasks, production escalations
 and unclarified captures are not listed yet.
 
 ## Durable planning memory

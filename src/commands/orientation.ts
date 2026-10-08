@@ -50,6 +50,8 @@ import { exportOrientationPacket, type MemorySyncEntry } from "../memory/obsidia
 import { isStale } from "../orientation/staleness.js";
 import { formatFitResult, parseAvailableMinutesRequest, selectFittingEntries, type FitToGapResult } from "../orientation/fit.js";
 import { buildTimeline, renderTimelineAscii, type Timeline } from "../orientation/timeline.js";
+import { runTodoCommand } from "./todo.js";
+import { formatOperatorTodoLines, operatorTodoUnavailableLine } from "../orientation/operatorTodoLines.js";
 import { listMonitoredProjects } from "./workMonitor.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
 import {
@@ -298,6 +300,14 @@ export async function runOrientationPacketComposeCommand(
       const detail = error instanceof Error ? error.message : String(error);
       workSafetyLines = [`Working-copy safety scan could not complete: ${detail}`];
     }
+    // Same read-only builder `arcadia todo` uses, in-process; any failure
+    // degrades to one line rather than blocking the packet.
+    let operatorTodoLines: string[];
+    try {
+      operatorTodoLines = formatOperatorTodoLines(runTodoCommand({ workspace: workspacePath, now }).data);
+    } catch (error) {
+      operatorTodoLines = [operatorTodoUnavailableLine(error instanceof Error ? error.message : String(error))];
+    }
     const morningSnapshot = gatherMorningNarrativeSnapshot(db, now, workSnapshot ?? null);
     const morningNarrative = composeMorningNarrative(morningSnapshot);
     let aiSummary: MorningAiSummary | null = null;
@@ -317,6 +327,7 @@ export async function runOrientationPacketComposeCommand(
       dailyAdvantageLine,
       capacity,
       workSafetyLines,
+      operatorTodoLines,
       morningNarrative,
       aiSummary: aiSummary ?? undefined
     });

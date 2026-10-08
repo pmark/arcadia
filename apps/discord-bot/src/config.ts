@@ -2,6 +2,7 @@ import * as dotenv from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logJson } from "./logging.js";
 import { NOTIFICATION_CATEGORIES, type CategoryChannels } from "./notifications/categories.js";
 
 dotenv.config();
@@ -30,7 +31,12 @@ export interface BotConfig {
   /** Browser base URL used for deep links in proposal notifications. */
   dashboardUrl: string;
   pollIntervalSeconds: number;
-  /** Per-user allowlist for the shared Discord Reply Router. Empty = no one authorized (fail closed). */
+  /**
+   * Per-user allowlist from `DISCORD_ALLOWED_USER_IDS`. The Reply Router
+   * fails closed on an empty list; the free-text message path fails open to
+   * guild and channel gating (with a startup warning) so an unset value never
+   * locks the operator out.
+   */
   allowedUserIds: string[];
   /** Local "HH:MM" time the Daily Orientation Packet targets. Default 06:00. */
   orientationTargetLocalTime: string;
@@ -58,6 +64,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
   const arcadiaWorkspace = resolveConfiguredWorkspace(env);
   refuseExperimentWorkspace(arcadiaWorkspace);
 
+  const allowedUserIds = parseAllowedUserIds(env.DISCORD_ALLOWED_USER_IDS);
+  if (allowedUserIds.length === 0) {
+    logJson("warn", {
+      msg:
+        "DISCORD_ALLOWED_USER_IDS is empty or unset: free-text messages are accepted from any member of the configured guild channel, " +
+        "and the reply router refuses every author. Set it to a comma-separated list of Discord user ids to restrict both."
+    });
+  }
+
   return {
     arcadiaWorkspace,
     discordBotToken: requireEnv(env, "DISCORD_BOT_TOKEN"),
@@ -69,7 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     arcadiaCliPath: env.ARCADIA_CLI_PATH?.trim() ? path.resolve(env.ARCADIA_CLI_PATH) : null,
     dashboardUrl: parseDashboardUrl(env.ARCADIA_DASHBOARD_URL),
     pollIntervalSeconds: parsePollInterval(env.ARCADIA_DISCORD_POLL_INTERVAL_SECONDS),
-    allowedUserIds: parseAllowedUserIds(env.DISCORD_ALLOWED_USER_IDS),
+    allowedUserIds,
     orientationTargetLocalTime: parseTargetLocalTime(env.ARCADIA_ORIENTATION_TARGET_TIME, "06:00", "ARCADIA_ORIENTATION_TARGET_TIME"),
     orientationCheckIntervalSeconds: parseCheckInterval(
       env.ARCADIA_ORIENTATION_CHECK_INTERVAL_SECONDS,

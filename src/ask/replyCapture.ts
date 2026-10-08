@@ -7,21 +7,19 @@ import { captureAskEnvelope, type CaptureActor } from "./captureEnvelope.js";
 /**
  * Ingress source vocabulary for Ask capture envelopes.
  *
- * Every source is marked either `intake` (the operator handed Arcadia new work
- * or information; it counts toward "operator input that passed through Ask or
- * Ingress") or `provenance` (the envelope only records the exact words behind
- * a canonical write that already happened; it is never counted as intake and
- * never creates work). A coverage report must use the numerator
- * `intake` sources only.
+ * Every classified source is one of:
+ * - `intake`: the operator handed Arcadia new work or information through
+ *   Ingress or Discord. Only these count toward "operator input that passed
+ *   through Ask or Ingress" in the coverage report's numerator.
+ * - `provenance`: the envelope only records the exact words behind a canonical
+ *   write that already happened; it is never counted as intake and never
+ *   creates work. Operator replies to a Decision or review are provenance-only:
+ *   the canonical record is the review item or Decision document.
+ * - `agent`: written by a coding agent (`agent.ask`, `codex.*`), never operator
+ *   input; the coverage report excludes and reports these separately.
  *
- * Operator replies to a Decision or review are provenance-only: the canonical
- * record is the review item or Decision document, and the envelope preserves
- * what the operator actually said.
- *
- * Only sources this module writes are classified here. Existing sources
- * (`agent.ask`, `ingress:*`, `cli.ask`, ...) stay unclassified until the
- * coverage report names them; `ingressSourceKind` answers `null` for them
- * rather than guessing.
+ * Sources outside this vocabulary (`ask`, `cli.ask`, ...) answer `null` rather
+ * than a guess: nothing recorded says whether an operator or an agent typed them.
  */
 export const OPERATOR_REPLY_INGRESS_SOURCES = {
   /** `arcadia review resolve-reply`: Discord, dashboard and CLI replies to a Requires Review Decision. */
@@ -33,12 +31,25 @@ export const OPERATOR_REPLY_INGRESS_SOURCES = {
 } as const;
 
 export type OperatorReplyIngressSource = keyof typeof OPERATOR_REPLY_INGRESS_SOURCES;
-export type IngressSourceKind = "intake" | "provenance";
+export type IngressSourceKind = "intake" | "provenance" | "agent";
+
+/** Exact sources. Discord free text and `/request` are operator intake. */
+const CLASSIFIED_INGRESS_SOURCES: Record<string, IngressSourceKind> = {
+  ...OPERATOR_REPLY_INGRESS_SOURCES,
+  "discord.message": "intake",
+  "discord.request": "intake",
+  "agent.ask": "agent"
+};
+
+/** Prefix families: every Ingress inbox is `ingress:<source>`; Codex-written envelopes are `codex.*`. */
+const CLASSIFIED_INGRESS_PREFIXES: Array<[string, IngressSourceKind]> = [
+  ["ingress:", "intake"],
+  ["codex.", "agent"]
+];
 
 export function ingressSourceKind(source: string): IngressSourceKind | null {
-  return Object.prototype.hasOwnProperty.call(OPERATOR_REPLY_INGRESS_SOURCES, source)
-    ? OPERATOR_REPLY_INGRESS_SOURCES[source as OperatorReplyIngressSource]
-    : null;
+  if (Object.prototype.hasOwnProperty.call(CLASSIFIED_INGRESS_SOURCES, source)) return CLASSIFIED_INGRESS_SOURCES[source] ?? null;
+  return CLASSIFIED_INGRESS_PREFIXES.find(([prefix]) => source.startsWith(prefix))?.[1] ?? null;
 }
 
 export interface CaptureOperatorReplyInput {
