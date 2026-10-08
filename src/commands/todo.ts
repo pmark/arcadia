@@ -28,7 +28,7 @@ export interface TodoCommandOptions {
   workspace?: string;
   /** Project id or slug; omitted means every Project. */
   project?: string;
-  /** Show every non-blocking item and the stale ones instead of the oldest few. */
+  /** Show every non-blocking item and the stale ones instead of the first few. */
   all?: boolean;
   /** List only the stale items, each with the evidence that makes it stale. */
   stale?: boolean;
@@ -102,6 +102,16 @@ function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
 /** Oldest first; the key breaks ties so the order never depends on source iteration. */
 function byAge(a: TodoItem, b: TodoItem): number {
   return a.createdAt.localeCompare(b.createdAt) || a.key.localeCompare(b.key);
+}
+
+/**
+ * Non-blocking order: open Decisions first, newest first (a freshly raised question must not hide behind old
+ * items), then every other item oldest first. The key breaks ties.
+ */
+function byDecisionsFirst(a: TodoItem, b: TodoItem): number {
+  const aDecision = a.kind === "decision";
+  if (aDecision !== (b.kind === "decision")) return aDecision ? -1 : 1;
+  return aDecision ? b.createdAt.localeCompare(a.createdAt) || a.key.localeCompare(b.key) : byAge(a, b);
 }
 
 /** What a Project's checked-in Plans and open Decisions say, read once per Project for staleness. */
@@ -368,7 +378,7 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
   const live = items.filter((item) => !item.staleReason);
   const staleItems = items.filter((item) => item.staleReason).sort(byAge);
   const blocking = live.filter((item) => item.blocking).sort(byAge);
-  const other = live.filter((item) => !item.blocking).sort(byAge);
+  const other = live.filter((item) => !item.blocking).sort(byDecisionsFirst);
   const shownOther = view === "default" ? other.slice(0, TODO_OTHER_CAP) : other;
   const shown =
     view === "stale" ? staleItems : view === "all" ? [...blocking, ...shownOther, ...staleItems] : [...blocking, ...shownOther];
@@ -555,7 +565,7 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
     lines.push("", "Blocking:", ...blocking.flatMap((item) => describe(item).map((line) => `  ${line}`)));
   }
   if (other.length > 0) {
-    lines.push("", "Other (oldest first):", ...other.flatMap((item) => describe(item).map((line) => `  ${line}`)));
+    lines.push("", "Other (Decisions newest first, then oldest first):", ...other.flatMap((item) => describe(item).map((line) => `  ${line}`)));
   }
   if (stale.length > 0) {
     lines.push("", "Stale (positive evidence it no longer waits on you):", ...stale.flatMap((item) => describe(item).map((line) => `  ${line}`)));
