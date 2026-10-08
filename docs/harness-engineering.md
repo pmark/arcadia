@@ -34,7 +34,7 @@ Status first, because it matters more than the pitch.
 | Ask capture envelope: immutable, idempotent intake log | **Today** |
 | Agent Ask: two-phase preview and settle for every governed change | **Today** |
 | Clarify rubric: one next action, or exactly one question | **Today** |
-| Peer-watch trailer grammar and classifier (reads only, posts nothing) | **Today** |
+| Peer-watch trailer grammar, parser and classifier library (reads only, posts nothing; no running watcher yet) | **Today** |
 | `arcadia ping send` operator nudge with a link | **Today** |
 | Independent review of every pull request before merge | **Today** |
 | `arcadia todo`: one derived list of what Arcadia needs from the operator | **Planned** |
@@ -45,7 +45,7 @@ Status first, because it matters more than the pitch.
 | One-way projection to GitHub Issues/Projects and the Flight Deck Kanban | **Planned, deferred** |
 | Registering a new workflow when its instruction file is committed | **Planned, deferred** |
 
-The planned items live in one governed Plan, *Operator to-do list with Ask-only input*: nine Actions, merged as an inactive draft on 2026-10-08 and on hold until a preservation fix (described below) is settled. None of it is running yet.
+As of 2026-10-08, the planned items live in one governed Plan, *Operator to-do list with Ask-only input*: nine Actions, merged as an inactive draft on 2026-10-08 and on hold until a preservation fix (described below) is settled. None of it is running yet.
 
 ## Don't build an orchestrator
 
@@ -67,7 +67,7 @@ The same idea applies to new workflows. **Planned:** a new workflow is one check
 
 ```sh
 arcadia identity resolve --agent claude --tier heavy
-# Claudia Atlas <claudia.atlas@agents.arcadia.local>
+# first line of output: Claudia Atlas <claudia.atlas@agents.arcadia.local>
 ```
 
 Handoffs go to files, never to chat. An agent that needs something, or is stopping partway, writes an Agent Ask: a strict JSON request that Arcadia previews, fingerprints and settles in two phases. The next session finds it from the governed record instead of a conversation that no longer exists.
@@ -112,7 +112,7 @@ Some of the coordination a long-running system needs is not code yet. Arcadia's 
 - **Identity.** One session per Action, using the resolved agent identity in titles, comments and commits.
 - **Lease.** Work only from the claim Arcadia gave you. Silence never releases a claim, and a comment asking for release is only a request.
 - **States.** An agent reports `working`, `needs_input`, `handed_off` or `done`. Labels like *idle* or *stalled* are a watcher's inferences, never self-declared.
-- **Heartbeat.** Commit trailers that the existing peer-watch classifier already parses:
+- **Heartbeat.** Commit trailers that the existing peer-watch contract parses and checks when it binds commit evidence (no launcher adds them yet; agents add them by hand):
 
   ```text
   Arcadia-Agent: claude/heavy
@@ -126,17 +126,17 @@ Some of the coordination a long-running system needs is not code yet. Arcadia's 
     --kind attention --link <issue-url>
   ```
 
-- **Handoff and receipts.** Handoffs go to a file or an Agent Ask. Completion requires per-criterion evidence.
+- **Handoff and receipts.** Handoffs go to a file or an Agent Ask. Completion requires per-criterion evidence, which `arcadia agent-ask settle` already enforces today.
 
 The trailer grammar, the classifier and `arcadia ping send` exist **today**. The written protocol and a test that keeps it consistent with the code are **planned**.
 
 ## Trust boundaries: agents must not grade themselves
 
-Here is why this matters, from this week.
+Here is why this matters, from the week this guide was written (October 2026).
 
 A repair needed to preserve unchanged symlinks from a baseline commit, which until then had been refused outright. The change was reasonable. Independent read-only review found a problem anyway. A validation check could be declared as a symlink, `check.mjs -> judge.mjs`. If the candidate left the link unchanged but edited `judge.mjs` to always exit 0, the check binding recorded the unchanged link and never bound the modified target. The candidate's own code would then report its own success. A disposable reproduction confirmed it.
 
-The fix was not cleverer target resolution. It was a **fail-closed rule**: refuse symlinks in declared executable checks and their dependencies before anything runs. Each later review round found one more path around the rule: first a symlinked ancestor hidden by `..` in a check path, then a symlink whose name differed only by letter case on a case-insensitive filesystem. Fixes for both, also fail-closed, are on the same pull request. Passing CI did not authorize a merge while that finding was open. At the time of writing, the pull request (#1040) is still in review and not merged.
+The fix was not cleverer target resolution. It was a **fail-closed rule**: refuse symlinks in declared executable checks and their dependencies before anything runs. Each later review round found one more path around the rule: first a symlinked ancestor hidden by `..` in a check path, then a symlink whose name differed only by letter case on a case-insensitive filesystem. Fixes for both, also fail-closed, are on the same pull request. Passing CI did not authorize a merge while that finding was open. As of 2026-10-08, the pull request (#1040) is still in review and not merged.
 
 The lesson generalizes. Preservation and check binding exist so the thing being graded cannot quietly rewrite the grader. The planned next-action grader follows the same principle.
 
@@ -161,7 +161,7 @@ The same review produced an explicit **not now** list: no role or tenant tables,
 
 ## What's next
 
-The Plan is drafted, reviewed and merged as inactive. The next steps are in order:
+As of 2026-10-08, the Plan is drafted, reviewed and merged as inactive. The next steps are in order:
 
 1. Finish the preservation correction in PR #1040.
 2. The operator activates the Plan.
