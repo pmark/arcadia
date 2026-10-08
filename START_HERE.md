@@ -2611,7 +2611,8 @@ Other CLI commands are advanced or compatibility surfaces, not part of normal da
 
 ```sh
 pnpm arcadia todo                      # blocking items, then the five oldest others
-pnpm arcadia todo --all                # every other item too
+pnpm arcadia todo --all                # every other item too, stale last
+pnpm arcadia todo --stale              # only items with positive evidence they are done
 pnpm arcadia todo --project arcadia    # one Project
 pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 ```
@@ -2626,12 +2627,28 @@ title, project, created date, source, and the existing command that answers it
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time.
 
-The counts line ends with per-kind totals, for example
-`0 blocking · 273 other (decisions 6, agent asks 267)`. Agent Asks are listed
-while unsettled, not verified as still live; stale filtering arrives in a later
-slice. The printed answer commands omit `--workspace`: add it when you use a
+The counts line shows live totals and what the view hides, for example
+`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194)`.
+The printed answer commands omit `--workspace`: add it when you use a
 non-default workspace. The Agent Ask answer contains a
 `<settlement-request-id>` placeholder you must fill in before running it.
+
+**Stale** means positive evidence only. An Agent Ask of intent `complete`,
+`split` or `action` with a `target_ref` is stale when every Action it targets
+exists in a Plan of its Project with status `done`; an Ask naming only absent
+Actions is an un-adopted proposal and is never stale. An Ask is also stale when
+another unsettled Ask's rationale has an explicit `Supersedes: <proposal ids>`
+line naming it (two Asks naming each other cancel out). An open Decision is
+stale when its `action` is done. The default view hides stale items;
+`--stale` lists only them, each with a `stale:` reason; `--all` shows every
+item, stale last.
+
+Projects whose slug contains `rehearsal`, or whose `repo_path` is under the OS
+temp directory or `~/tmp`, are fixtures: they appear only as one
+`Fixture Projects collapsed` line. A Project that fails to read, or whose
+repository has no `PROJECT.md`, becomes a `project sources unavailable:` line
+and never drops the other Projects. In `--json`, `asOf.workspace` is the
+workspace name and `asOf.workspacePath` its path.
 
 When no workspace resolves, `todo` still reads the open Decisions of the
 checkout you are standing in and ends with one

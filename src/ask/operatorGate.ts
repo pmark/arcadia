@@ -42,6 +42,26 @@ function extractActionIds(normalized: NormalizedAgentAsk): string[] {
 }
 
 /**
+ * The Action ids an Agent Ask *targets* through a `target_ref`: the top-level
+ * one (for `complete`, `split` or `action` intent) and any per-Action one.
+ * Unlike `extractActionIds` it excludes the ids an Ask proposes for new
+ * Actions, so an Ask that only names Actions it would create has no targets.
+ * `arcadia todo` uses it for positive-evidence staleness.
+ */
+export function targetedActionIds(normalized: NormalizedAgentAsk): string[] {
+  const ids = new Set<string>();
+  for (const action of normalized.actions) {
+    const fromTarget = parseActionRef(action.targetRef);
+    if (fromTarget) ids.add(fromTarget);
+  }
+  if (normalized.intent === "complete" || normalized.intent === "split" || normalized.intent === "action") {
+    const fromTarget = parseActionRef(normalized.targetRef);
+    if (fromTarget) ids.add(fromTarget);
+  }
+  return [...ids];
+}
+
+/**
  * Gather every pending operator item (unsettled Agent Ask proposals, open
  * Decisions) and classify them against the dispatch resolution this call
  * would otherwise hand off.
