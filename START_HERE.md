@@ -2629,7 +2629,7 @@ Other CLI commands are advanced or compatibility surfaces, not part of normal da
 ## What is waiting on you: `arcadia todo`
 
 ```sh
-pnpm arcadia todo                      # blocking items, then the five oldest others
+pnpm arcadia todo                      # blocking items, then five others: open Decisions newest first, then the rest oldest first
 pnpm arcadia todo --all                # every other item too, stale last
 pnpm arcadia todo --stale              # only items with positive evidence they are done
 pnpm arcadia todo --project arcadia    # one Project
@@ -2645,6 +2645,11 @@ title, project, created date, source, and the existing command that answers it
 (a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview).
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time.
+
+Blocking items come first. Among the others, open Decisions come first, newest
+first, so a freshly raised question is not buried; every other item (Agent Asks)
+follows oldest first. `--all`, `--stale` and `--json` use the same order, and the
+default view shows the first five others.
 
 The counts line shows live totals and what the view hides, for example
 `0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194)`.

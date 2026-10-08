@@ -155,14 +155,14 @@ describe("arcadia todo", () => {
           answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'"
         },
         {
-          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
-          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
-          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
-        },
-        {
           key: "decision:demo/0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
           createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md",
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'"
+        },
+        {
+          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
+          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
         }
       ],
       unavailable: []
@@ -193,24 +193,44 @@ describe("arcadia todo", () => {
     expect(new Set(data.items.map((item) => item.key)).size).toBe(2);
   });
 
-  it("shows every blocking item, caps the others at five oldest-first, and says how many more", () => {
+  it("shows every blocking item, caps the others at five (Decisions newest-first), and says how many more", () => {
     const repo = fixtureRepo(7);
     const workspace = fixtureWorkspace(repo);
 
     const capped = run({ workspace, now: NOW });
     expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0 }, hidden: 2, fixture: { projects: 0, items: 0 } });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
-      "decision:demo/0002", "decision:demo/0003", "decision:demo/0004", "decision:demo/0005", "decision:demo/0006"
+      "decision:demo/0008", "decision:demo/0007", "decision:demo/0006", "decision:demo/0005", "decision:demo/0004"
     ]);
     const lines = render(capped.data);
     expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other · stale hidden: 0 (decisions 8, agent asks 0) (as of 2026-10-08T12:00:00.000Z, workspace ${path.basename(workspace)})`);
     expect(lines.at(-1)).toBe("2 more: --all");
-    expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (oldest first):"));
+    expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (Decisions newest first, then oldest first):"));
 
     const all = run({ workspace, now: NOW, all: true });
     expect(all.data.counts.hidden).toBe(0);
     expect(all.data.items).toHaveLength(8);
     expect(render(all.data).join("\n")).not.toContain("more: --all");
+  });
+
+  it("lists open Decisions first, newest first, then the other items oldest first, under the cap and in every view", () => {
+    // Decisions 0002 (older) and 0003 (newer) are alerts; the Agent Asks are older than both.
+    const repo = fixtureRepo(2);
+    const asks = ["a", "b", "c", "d", "e"].map((name, index) => ({
+      id: `proposal-${name}`, createdAt: `2026-08-0${index + 1}T00:00:00.000Z`, desiredResult: `Ask ${name}.`
+    }));
+    const workspace = fixtureWorkspace(repo, asks);
+
+    const capped = run({ workspace, now: NOW });
+    const order = ["decision:demo/0003", "decision:demo/0002", "agent_ask:demo/proposal-a", "agent_ask:demo/proposal-b", "agent_ask:demo/proposal-c"];
+    expect(capped.data.items.map((item) => item.key)).toEqual(["decision:demo/0001", ...order]);
+    expect(capped.data.counts.hidden).toBe(2);
+    expect(render(capped.data)).toContain("2 more: --all");
+
+    const all = run({ workspace, now: NOW, all: true });
+    expect(all.data.items.map((item) => item.key)).toEqual([
+      "decision:demo/0001", ...order, "agent_ask:demo/proposal-d", "agent_ask:demo/proposal-e"
+    ]);
   });
 
   it("filters to one Project and refuses an unknown one", () => {
