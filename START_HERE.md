@@ -2584,8 +2584,13 @@ exists, that the action opens with a verb, and that every file path, Action id,
 Decision id and `arcadia` command it names appears in the Action's own text
 (title, raw input, expected artifact, the earlier question and your answer). If
 any check fails you get exactly one follow-up question naming what is missing,
-instead of an action nobody can recognise as finished. The done-condition is
-shown in the preview but not yet stored on `--apply`.
+instead of an action nobody can recognise as finished. An action that passes
+those checks is then graded by a separate local grader (concrete verb, a first
+step startable in under 15 minutes, an observable done-condition, no invented
+facts); only a pass records `clarified`, and a fail gives you exactly one
+question. If the grader cannot be reached the Action keeps its state and the
+preview says why. The done-condition and the grade are stored together as a
+`clarify.grader.verdict` receipt on `--apply`.
 
 In Discord, reply directly to a clarification notification with the answer in
 your own words. Arcadia confirms the Decision id, records the answer, and

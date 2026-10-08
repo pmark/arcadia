@@ -8,7 +8,7 @@ import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqlite
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
-import type { IntelligenceJob } from "../intelligence/types.js";
+import type { IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
 import { buildClarifyRequest, CLARIFY_ACTORS, type ClarifyActor } from "./contract.js";
 import { missingDoneConditionQuestion } from "./lint.js";
 import type { ClarifyEvaluator, ClarifyVerdict } from "./types.js";
@@ -31,11 +31,14 @@ export class ClarifyVerdictUnusableError extends Error {
 }
 
 /**
- * The real evaluator: one Intelligence job per Action, run in-process rather
+ * Runs one Intelligence job to completion and returns it, in-process rather
  * than waiting on the worker daemon's poll loop, mirroring
- * `interpretOrientationReply`.
+ * `interpretOrientationReply`. Shared by the generator and the separate grader
+ * so both are held to the same unavailable/unusable contract.
  */
-export function createIntelligenceEvaluator(db: Database.Database, workspacePath: string): ClarifyEvaluator {
+export type ClarifyJobRunner = (request: IntelligenceRequest, subject: string) => Promise<IntelligenceJob>;
+
+export function createClarifyJobRunner(db: Database.Database, workspacePath: string): ClarifyJobRunner {
   const repository = createSqliteIntelligenceJobRepository(db);
   const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
   const config = loadIntelligenceConfig(process.env);
@@ -46,17 +49,14 @@ export function createIntelligenceEvaluator(db: Database.Database, workspacePath
   });
   const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
 
-  return async (workItem: WorkItemSummary): Promise<ClarifyVerdict> => {
-    const request = buildClarifyRequest(workItem, {
-      idempotencyKey: `clarify-${workItem.id}-${workItem.updated_at}`
-    });
+  return async (request: IntelligenceRequest, subject: string): Promise<IntelligenceJob> => {
     const { job: submitted } = await submitIntelligenceRequest(repository, request);
     const finished = await worker.runOnce();
     const job: IntelligenceJob | undefined =
       finished?.id === submitted.id ? finished : await repository.findById(submitted.id);
 
     if (!job) {
-      throw new ClarifyEngineUnavailableError(`Clarify job disappeared after submission for ${workItem.id}.`);
+      throw new ClarifyEngineUnavailableError(`Clarify job disappeared after submission for ${subject}.`);
     }
 
     if (job.status === "blocked") {
@@ -67,10 +67,23 @@ export function createIntelligenceEvaluator(db: Database.Database, workspacePath
 
     if (job.status !== "completed") {
       throw new ClarifyVerdictUnusableError(
-        `Clarify job did not complete for ${workItem.id} (${job.error?.code ?? "UNKNOWN"}): ${job.error?.message ?? "no detail"}`
+        `Clarify job did not complete for ${subject} (${job.error?.code ?? "UNKNOWN"}): ${job.error?.message ?? "no detail"}`
       );
     }
 
+    return job;
+  };
+}
+
+/** The real evaluator: one Intelligence job per Action. */
+export function createIntelligenceEvaluator(db: Database.Database, workspacePath: string): ClarifyEvaluator {
+  const run = createClarifyJobRunner(db, workspacePath);
+
+  return async (workItem: WorkItemSummary): Promise<ClarifyVerdict> => {
+    const request = buildClarifyRequest(workItem, {
+      idempotencyKey: `clarify-${workItem.id}-${workItem.updated_at}`
+    });
+    const job = await run(request, workItem.id);
     return normalizeVerdict(job.result);
   };
 }

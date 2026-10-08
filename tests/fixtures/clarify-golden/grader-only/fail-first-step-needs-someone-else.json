@@ -1,0 +1,14 @@
+{
+  "name": "fail-first-step-needs-someone-else",
+  "reason": "The first step cannot start until another person grants access that the source does not say exists.",
+  "nextAction": "Run the migration against the production database",
+  "doneCondition": "The migration command exits with status 0 and the new column exists",
+  "actor": "coding-agent",
+  "source": {
+    "title": "Run the migration against the production database",
+    "rawInput": "We still need production access from the infrastructure owner before anyone can touch the database"
+  },
+  "expected": "fail",
+  "failedCriteria": ["startable-first-step"],
+  "request": "Has the infrastructure owner granted production database access yet, and to whom?"
+}

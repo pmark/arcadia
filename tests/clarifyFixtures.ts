@@ -1,3 +1,12 @@
+import {
+  GRADER_INSTRUCTIONS,
+  GRADER_OPERATION_ID,
+  GRADER_PROFILE,
+  graderInputSha256,
+  normalizeGrade,
+  sha256Hex,
+  type ClarifyGrader
+} from "../src/clarify/grader.js";
 import type { ClarifyVerdict } from "../src/clarify/types.js";
 
 export interface ClarifyGoldenExample {
@@ -156,3 +165,19 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     expectedAfterApply: { clarification_status: "question_open", gap_type: "missing-success-criteria" }
   }
 ];
+
+/**
+ * A grader that returns a fixed raw grade for every candidate, through the same
+ * `normalizeGrade` the real grader uses, so a test exercises the whole outcome
+ * and receipt shape without a model.
+ */
+export function stubGrader(raw: Record<string, unknown>, graderId = "stub-grader"): ClarifyGrader {
+  return async (input) =>
+    normalizeGrade(raw, {
+      grader: { id: graderId, operationId: GRADER_OPERATION_ID, profile: GRADER_PROFILE },
+      promptSha256: sha256Hex(GRADER_INSTRUCTIONS),
+      inputSha256: graderInputSha256(input)
+    });
+}
+
+export const passingGrader: ClarifyGrader = stubGrader({ grade: "pass", reason: "Every criterion holds." });

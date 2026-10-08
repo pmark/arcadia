@@ -599,8 +599,26 @@ done-condition appears in the Action's title, raw input, current next action,
 expected artifact, prior question or prior answer. A failure turns the verdict
 into one `question_open` naming what is missing (`missing-success-criteria` when
 the done-condition is absent, otherwise `missing-definition`), shown with a
-`Lint:` line. The done-condition is not yet persisted by `--apply`; a later
-slice of the grader work stores it with the grader receipt.
+`Lint:` line.
+
+A YES that passes the lint is then graded by a separate call: its own
+instruction file (`.agents/skills/next-action-grader/SKILL.md`), its own
+operation id and prompt, the `standard` local text profile instead of the
+generator's `fast`, and never the generator's confidence. By default both
+profiles resolve to the same local model alias, so only prompt independence is
+claimed until the route configuration separates them. The grader checks for a
+concrete verb, a first step the named actor can start in under 15 minutes, an
+observable done-condition, no facts beyond the source, and, when something is
+missing, a request for exactly that one item. A pass records `clarified`; a fail
+records `question_open` with the grader's single request as the clarification
+Decision, which `arcadia todo` shows. If the grader is unreachable or returns
+something unusable, the Action is skipped with a `Grader unavailable` reason and
+keeps its state; grading never escalates to a paid model. On `--apply`, each
+grade is stored as a `clarify.grader.verdict` event (no new table) holding the
+grader identity (the resolved route), the prompt sha256, the input sha256, the
+verdict, and the graded next action and done-condition. Preview runs the grader
+but writes nothing. The checked-in golden set in `tests/fixtures/clarify-golden/`
+is the contract any deterministic replacement grader must pass.
 
 A `missing-definition` verdict comes back with a proposed decomposition.
 **`clarify` never creates those subtasks.** They are printed and returned so you

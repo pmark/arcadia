@@ -1,6 +1,7 @@
 import type { ClarificationConfidence, GapType } from "../domain/constants.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import type { ClarifyActor } from "./contract.js";
+import type { GraderCandidate, GraderReceipt } from "./grader.js";
 import type { ClarifyLintFinding } from "./lint.js";
 
 /** A YES: a concrete next action was named. */
@@ -42,6 +43,12 @@ export interface ClarifyEvaluation {
    * is the question it was downgraded to. Absent when the lint passed.
    */
   lintFindings?: ClarifyLintFinding[];
+  /**
+   * Set when the separate grader graded a clarified verdict that passed the
+   * lint. `verdict` is then the pass (unchanged) or the question the grader's
+   * single information request was turned into. `candidate` is what was graded.
+   */
+  grader?: { receipt: GraderReceipt; candidate: GraderCandidate };
 }
 
 /** What `--apply` actually changed, per Action. */
@@ -56,6 +63,8 @@ export interface ClarifyApplication {
    * operator can act on them, never written by this command.
    */
   proposedSubtasks?: string[];
+  /** The `clarify.grader.verdict` event that holds this Action's grader receipt. */
+  graderEventId?: string;
 }
 
 /**
