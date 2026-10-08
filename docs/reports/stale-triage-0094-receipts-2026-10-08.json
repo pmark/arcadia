@@ -1,0 +1,876 @@
+{
+  "schema": "arcadia-stale-triage-receipts-v1",
+  "action": "arcadia/apply-approved-stale-triage",
+  "decision": "0094",
+  "decisionAnswer": "Reject all 52 listed stale Asks, bound to sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37",
+  "list": {
+    "path": "docs/reports/stale-operator-items-arcadia-2026-10-08.json",
+    "sha256": "2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37",
+    "items": 52
+  },
+  "writer": "arcadia agent-ask settle --disposition rejected (two-phase preview/apply), serialized one at a time",
+  "identity": "Claudia Atlas <claudia.atlas@agents.arcadia.local> (claude, heavy, builder)",
+  "workspace": "martianrover",
+  "recheck": "Before settling, every listed item was confirmed still unsettled and still stale with the same staleReason in fresh `arcadia todo --stale --json --project arcadia` (52 of 52 matched; no fresh stale item outside the list).",
+  "counts": {
+    "listed": 52,
+    "applied": 52,
+    "skipped": 0
+  },
+  "todoCounts": {
+    "project": "arcadia",
+    "before": {
+      "default": {
+        "blocking": 0,
+        "other": 118,
+        "stale": 52,
+        "staleHidden": 52,
+        "hidden": 113,
+        "byKind": {
+          "decision": 3,
+          "agent_ask": 115
+        }
+      },
+      "all": {
+        "blocking": 0,
+        "other": 118,
+        "stale": 52,
+        "staleHidden": 0,
+        "hidden": 0,
+        "byKind": {
+          "decision": 3,
+          "agent_ask": 115
+        }
+      }
+    },
+    "after": {
+      "default": {
+        "blocking": 0,
+        "other": 118,
+        "stale": 0,
+        "staleHidden": 0,
+        "hidden": 113,
+        "byKind": {
+          "decision": 3,
+          "agent_ask": 115
+        }
+      },
+      "all": {
+        "blocking": 0,
+        "other": 118,
+        "stale": 0,
+        "staleHidden": 0,
+        "hidden": 0,
+        "byKind": {
+          "decision": 3,
+          "agent_ask": 115
+        }
+      }
+    }
+  },
+  "noOtherChanges": "Every settlement reported \"Preserved the proposal and created no Project or queue changes.\"; no Action status, pointer, PROJECT.md or queue change.",
+  "notifications": "Each applied settlement queued the standard Agent Ask settlement Discord notification (notificationStatus pending at apply).",
+  "applied": [
+    {
+      "proposalId": "agentask_bc7418916b03d81466",
+      "proposalRequestId": "complete-define-managed-production-policy-2026-09-05",
+      "staleReason": "every Action it targets is done: define-managed-production-policy",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_bc7418916b03d81466",
+      "settleReceiptId": "asksettle_af6e5ea76ffb4869af",
+      "previewFingerprint": "200e230435cdd5356359f948622de14aaa2fafb85f6bb5f2dd6b621894ff29b9",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:31:22.318Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_e543cfb483129b68b6",
+      "proposalRequestId": "complete-prove-provider-capacity-admission-2026-09-06",
+      "staleReason": "every Action it targets is done: prove-provider-capacity-admission",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_e543cfb483129b68b6",
+      "settleReceiptId": "asksettle_d329e699db904bfd8a",
+      "previewFingerprint": "e86f5bb41802785a25f5c0681a10b314abdb4a5d9b8654baf0d77931e5ba5512",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:36:13.456Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_212650f570e2a906d6",
+      "proposalRequestId": "complete-connect-action-to-launch-packet-2026-09-06",
+      "staleReason": "every Action it targets is done: connect-action-to-launch-packet",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_212650f570e2a906d6",
+      "settleReceiptId": "asksettle_3f0e6bcaa231415ab2",
+      "previewFingerprint": "78486dd80c353f76d3a93aa5d9dd9b6afc7a47e179cca007f9fb26fc0324bb02",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:41:00.466Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_2936c670ee18b39939",
+      "proposalRequestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_2936c670ee18b39939",
+      "settleReceiptId": "asksettle_fcd40cc93f0f45e9ba",
+      "previewFingerprint": "0cafbf14ff005590addc8432a3ecabac5ef1f488c4931f9118efc17d22ad8010",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:23:03.221Z",
+      "outcome": "rejected",
+      "earlierAttempts": [
+        {
+          "outcome": "apply_failed",
+          "reason": "apply refused: preview fingerprint changed between preview and apply (queue revision moved under concurrent settlements); re-previewed and applied"
+        }
+      ]
+    },
+    {
+      "proposalId": "agentask_5a2ccc6bd5339e6dcc",
+      "proposalRequestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06-v2",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_5a2ccc6bd5339e6dcc",
+      "settleReceiptId": "asksettle_0155b571551e486481",
+      "previewFingerprint": "68ecc367596e2d2284e5652217634f9457c4401cd9ed9645e83804fc0423ddf3",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:45:13.015Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_6368491a385170bd82",
+      "proposalRequestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06-v3",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_6368491a385170bd82",
+      "settleReceiptId": "asksettle_c1731586e56047fcb9",
+      "previewFingerprint": "791903f21094bd56eb5f28775167d4b8f0621e9d711f63caf47c2923bd033de5",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:46:18.361Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_6bb4661624d2c7ba58",
+      "proposalRequestId": "complete-make-worktree-runtime-self-contained-2026-09-07",
+      "staleReason": "every Action it targets is done: make-worktree-runtime-self-contained",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_6bb4661624d2c7ba58",
+      "settleReceiptId": "asksettle_ee9012512879461c8f",
+      "previewFingerprint": "d38890195c7dbf3fb2aa7735f2e79aad708e691c59e13f9c9da353f438e141f7",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:47:10.320Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_c0fecc105847da26ba",
+      "proposalRequestId": "complete-make-worktree-runtime-self-contained-native-profile-2026-09-07",
+      "staleReason": "every Action it targets is done: make-worktree-runtime-self-contained",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_c0fecc105847da26ba",
+      "settleReceiptId": "asksettle_f28edbd1a31b4fe599",
+      "previewFingerprint": "133b8c2242c27217c2a3475905f0e1cdd9cf74c9fbe7e4e57b66d2f7a317fd40",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:48:18.235Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_1aa563e48bd4c0b02d",
+      "proposalRequestId": "complete-broker-candidate-preservation-2026-09-08",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_1aa563e48bd4c0b02d",
+      "settleReceiptId": "asksettle_a93b31eff926486485",
+      "previewFingerprint": "7cf6b8be98ac058d6e219a6d922fe95cabce71d313aec2dc27a094a8a6b5bb4d",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:48:52.958Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_a1bfc3c2c295f0f9e1",
+      "proposalRequestId": "complete-arcadia-broker-candidate-preservation-7eb50a67f41a",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_a1bfc3c2c295f0f9e1",
+      "settleReceiptId": "asksettle_ae266ec8501b47f7b0",
+      "previewFingerprint": "51f5b484007e3ecf44841bbec56c089fc0b412593e5aab94a3ac9698855d6377",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:49:29.670Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_ceb79796f65c8e937d",
+      "proposalRequestId": "complete-arcadia-broker-candidate-preservation-6d922cb38fb2",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_ceb79796f65c8e937d",
+      "settleReceiptId": "asksettle_ef7a25c562304a34ae",
+      "previewFingerprint": "88e9b117f74ec3ff574914443c45704cad826d1f97484a81785d4134dede3f60",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:49:57.950Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_d9eaac1242c868b0a1",
+      "proposalRequestId": "complete-arcadia-isolate-agent-asks-from-production-handoff-5a5a0360129d",
+      "staleReason": "every Action it targets is done: isolate-agent-asks-from-production-handoff",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_d9eaac1242c868b0a1",
+      "settleReceiptId": "asksettle_00808314d4154bc0bb",
+      "previewFingerprint": "fab8e59e945f21dfd8ed3458f1e629392d8c2aefb90c0f79840adf82f190775f",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:50:20.684Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_faee0408def68a70fb",
+      "proposalRequestId": "complete-design-and-build-the-mechanism-that-2026-09-14",
+      "staleReason": "every Action it targets is done: design-and-build-the-mechanism-that",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_faee0408def68a70fb",
+      "settleReceiptId": "asksettle_f335cc1bdad64678b7",
+      "previewFingerprint": "1fdafe2920b2bd9ac4443e9d417db87df87fd58ccfee4d65e5aa4f8f9a414a9a",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:51:45.326Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_4df907a6ceafb69bfd",
+      "proposalRequestId": "complete-observe-portfolio-agent-sessions-2026-09-14",
+      "staleReason": "every Action it targets is done: observe-portfolio-agent-sessions",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_4df907a6ceafb69bfd",
+      "settleReceiptId": "asksettle_b8340463942f4c3ab8",
+      "previewFingerprint": "5ecc090986643456f9fba688129669c62a99577f57a54120414f8f5dcd81e8a9",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:52:40.590Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_ed85ac577a60301772",
+      "proposalRequestId": "complete-observe-portfolio-agent-sessions-2026-09-14b",
+      "staleReason": "every Action it targets is done: observe-portfolio-agent-sessions",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_ed85ac577a60301772",
+      "settleReceiptId": "asksettle_dc20d64742914c959e",
+      "previewFingerprint": "e8847a330176c7f05991f198961115d64aafc05f60494bf31bd16f2f0d1750ae",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:53:25.529Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_58ac087ed6cf4e37f8",
+      "proposalRequestId": "complete-reconcile-session-exits-to-next-move-2026-09-14",
+      "staleReason": "every Action it targets is done: reconcile-session-exits-to-next-move",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_58ac087ed6cf4e37f8",
+      "settleReceiptId": "asksettle_19f46eac881c4788ba",
+      "previewFingerprint": "b9ea61fb6862e188e225527fef9f156d6fb008d3c6f77ccbb82ea3a211168ca6",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:53:57.804Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_7f27bf1b64f5c3324a",
+      "proposalRequestId": "complete-feed-and-supervise-managed-production-2026-09-14",
+      "staleReason": "every Action it targets is done: feed-and-supervise-managed-production",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_7f27bf1b64f5c3324a",
+      "settleReceiptId": "asksettle_2d2fe65a97f54f869d",
+      "previewFingerprint": "c77b2d4aebed813bad271bf46cc39777260c94537ffef2cd5185508b39a1a8d9",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:54:22.393Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_e9ef4cbb5afec84a4f",
+      "proposalRequestId": "complete-refresh-preservation-heartbeat-off-tick-2026-09-16",
+      "staleReason": "every Action it targets is done: refresh-preservation-heartbeat-off-tick",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_e9ef4cbb5afec84a4f",
+      "settleReceiptId": "asksettle_733ed7aee45643879e",
+      "previewFingerprint": "d4dfe2d7c97bc77e0022939480cb54566c0e11533e4730b4d28ae3f9da9f5618",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:55:01.046Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_7df8c44f053f7368ba",
+      "proposalRequestId": "complete-arcadia-let-agent-preserve-its-candidate-349b75fb0349",
+      "staleReason": "every Action it targets is done: let-agent-preserve-its-candidate",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_7df8c44f053f7368ba",
+      "settleReceiptId": "asksettle_d388d61e854648edaf",
+      "previewFingerprint": "fa295798aaede991de45a7a196745c98c923387841cbc6c89dcfb94948f7e627",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:55:26.551Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_68605185bf260015de",
+      "proposalRequestId": "complete-resolve-agent-handoff-model-per-provider-2026-09-17",
+      "staleReason": "every Action it targets is done: resolve-agent-handoff-model-per-provider",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_68605185bf260015de",
+      "settleReceiptId": "asksettle_33c2ed45801649eb82",
+      "previewFingerprint": "817cc1e275783a998c70e045d6e0a8ca93c72026cffdea5f8a966cf6b56dd01b",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:55:49.789Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_c8b71dabc1c35f4aaa",
+      "proposalRequestId": "complete-fix-decision-deferral-review-bugs-2026-09-18-v2",
+      "staleReason": "every Action it targets is done: fix-decision-deferral-review-bugs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_c8b71dabc1c35f4aaa",
+      "settleReceiptId": "asksettle_da11053cb8bf4f35a6",
+      "previewFingerprint": "949caec4765b54ca023800150e90a58b0d0242bfc82474f08fb4f7d62e4532fc",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:56:09.394Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_3469b8eb2f9508856d",
+      "proposalRequestId": "complete-fix-accepted-plan-to-build-packet-path-2026-09-19",
+      "staleReason": "every Action it targets is done: fix-accepted-plan-to-build-packet-path",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_3469b8eb2f9508856d",
+      "settleReceiptId": "asksettle_1c559e74f66f45dd81",
+      "previewFingerprint": "c11d2ad72adc8b50fa731f34f13075c7aa39e2ca2412bde5ccd9b23b382753c2",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:56:42.940Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_318ec8634de826f070",
+      "proposalRequestId": "complete-fix-packet-lifecycle-latest-planning-decision-2026-09-19",
+      "staleReason": "every Action it targets is done: fix-packet-lifecycle-latest-planning-decision",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_318ec8634de826f070",
+      "settleReceiptId": "asksettle_02f6ec78416949928e",
+      "previewFingerprint": "11ac92d9f9629c1244b324d09efdeecf78cabcb114ebed86c11bc54884d85484",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:57:30.748Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_f2598f9357e087fae1",
+      "proposalRequestId": "complete-approval-must-apply-or-refuse-2026-09-20",
+      "staleReason": "every Action it targets is done: approval-must-apply-or-refuse",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_f2598f9357e087fae1",
+      "settleReceiptId": "asksettle_6f1206d773dc4a8c8d",
+      "previewFingerprint": "4ede8c2a46a5f106db8aa0c89002e03aead78085027c4c75a9467952ae5286d2",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:58:12.671Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_333197cf38b93237fe",
+      "proposalRequestId": "complete-verify-worker-recovery-before-success-2026-09-20",
+      "staleReason": "every Action it targets is done: verify-worker-recovery-before-success",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_333197cf38b93237fe",
+      "settleReceiptId": "asksettle_b47342df373c4c379d",
+      "previewFingerprint": "7d2ff2932b99a5a53019d13ee26e8fbc046d39b8505d509ee7053caede3100cb",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:58:32.397Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_3cec860b60ee830dd1",
+      "proposalRequestId": "complete-verify-worker-recovery-before-success-2026-09-20-v2",
+      "staleReason": "every Action it targets is done: verify-worker-recovery-before-success",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_3cec860b60ee830dd1",
+      "settleReceiptId": "asksettle_381bcab116c04834ab",
+      "previewFingerprint": "01785561a32b84d17b6e4b7ba3c45847fb532aba3b69e38b8263bfa35aef20a6",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:58:50.396Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_e7cd2749545edaf051",
+      "proposalRequestId": "complete-arcadia-bind-candidate-revision-in-action-settle-f5acbf42d8de",
+      "staleReason": "every Action it targets is done: bind-candidate-revision-in-action-settle",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_e7cd2749545edaf051",
+      "settleReceiptId": "asksettle_041647485cae4d4794",
+      "previewFingerprint": "4bf485c855d3041e02c5c9814654dda47b8392dd709936248e1907cdfe8d5f9a",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:59:06.946Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_cace81b801048e42c3",
+      "proposalRequestId": "complete-arcadia-apply-answered-decision-consequences-449c90ff6de9",
+      "staleReason": "every Action it targets is done: apply-answered-decision-consequences",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_cace81b801048e42c3",
+      "settleReceiptId": "asksettle_d74e5ae49ba44ec591",
+      "previewFingerprint": "4144eb8d403df6d48286a04acacbc72d0e957299f7099e5633b176fd3c64805a",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:59:21.570Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_65244b5a9bf773d835",
+      "proposalRequestId": "complete-bind-preservation-checks-to-host-owned-code-2026-09-23",
+      "staleReason": "every Action it targets is done: bind-preservation-checks-to-host-owned-code",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_65244b5a9bf773d835",
+      "settleReceiptId": "asksettle_aa593ff62edd4264b2",
+      "previewFingerprint": "f3b1741d31384202fe521285180980bb67cd19bdf18d3165e9172e6a095061a9",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T18:59:41.527Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_88a2452b6b58fa69c4",
+      "proposalRequestId": "complete-give-zero-prompt-fixture-actions-a-build-packet-2026-09-23",
+      "staleReason": "every Action it targets is done: give-zero-prompt-fixture-actions-a-build-packet",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_88a2452b6b58fa69c4",
+      "settleReceiptId": "asksettle_9c38f96e6cfc4f4e87",
+      "previewFingerprint": "ffc74f92830f99f9762cbfc618ab13772beca9048fe4122aac3137761f4be9e8",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:00:06.461Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_711195ea7ad6ecdd71",
+      "proposalRequestId": "assign-false-agent-completion-gate-2026-09-23",
+      "staleReason": "every Action it targets is done: prove-fault-matrix-remaining-boundaries",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_711195ea7ad6ecdd71",
+      "settleReceiptId": "asksettle_87f5e4f4733d4d2f99",
+      "previewFingerprint": "624d2966b758537beba5744680c8225528ea0b4b55102baea392dfc2d6bea47c",
+      "intent": "action",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:00:39.649Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_7c2f6550b217f17486",
+      "proposalRequestId": "amend-false-agent-completion-gate-2026-09-23b",
+      "staleReason": "every Action it targets is done: prove-fault-matrix-remaining-boundaries",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_7c2f6550b217f17486",
+      "settleReceiptId": "asksettle_23f083965f3d4a5399",
+      "previewFingerprint": "15774ab5f447ab37d2768b8bfed92dd2c736cd879e41c76ee66a65ca1c569848",
+      "intent": "action",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:01:06.786Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_f651b8f6f707044759",
+      "proposalRequestId": "complete-preflight-provider-signin-before-launch-2026-09-23",
+      "staleReason": "every Action it targets is done: preflight-provider-signin-before-launch",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_f651b8f6f707044759",
+      "settleReceiptId": "asksettle_d2550801121145e59a",
+      "previewFingerprint": "40c97e5874294eab22391463ccf67f4350c77aee4f679c2db670c09fa416715b",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:01:36.209Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_dcfd746004ed2c6bcc",
+      "proposalRequestId": "complete-detect-duplicate-ids-and-dangling-refs-2026-09-24",
+      "staleReason": "every Action it targets is done: detect-duplicate-ids-and-dangling-refs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_dcfd746004ed2c6bcc",
+      "settleReceiptId": "asksettle_ae81a078419642c584",
+      "previewFingerprint": "3f6e16fe3fde2086ad4c78996370d2b8b50a0708edb2e1d73e59f4fe8031a0e3",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:01:56.650Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_0df9e616f30bcf9b01",
+      "proposalRequestId": "split-surface-terminal-operator-approvals-in-runs-2026-09-24",
+      "staleReason": "every Action it targets is done: surface-terminal-operator-approvals-in-runs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_0df9e616f30bcf9b01",
+      "settleReceiptId": "asksettle_a48c5311e2ce4fa98e",
+      "previewFingerprint": "8b1149a3b483ab5feb066ab8740e11cb1c2441fb1318ead27e1e6548f7aa42fb",
+      "intent": "split",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes.",
+        "Archived the settled Ask file to .arcadia/asks/archive/agent-ask-split-surface-terminal-operator-approvals-in-runs-2026-09-24.yaml."
+      ],
+      "documentsCommit": "1f0230f1c580c39b493daa182a933cec9a46894a",
+      "appliedAt": "2026-10-08T19:24:48.038Z",
+      "outcome": "rejected",
+      "earlierAttempts": [
+        {
+          "outcome": "skipped_unexpected_preview",
+          "reason": "runner guard held it: preview also archives the Ask file under .arcadia/asks/ (an allowed path); re-previewed and applied with the guard limited to .arcadia/asks/**"
+        }
+      ]
+    },
+    {
+      "proposalId": "agentask_22cf543a51eff903aa",
+      "proposalRequestId": "split-surface-terminal-operator-approvals-in-runs-2026-09-24-v2",
+      "staleReason": "every Action it targets is done: surface-terminal-operator-approvals-in-runs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_22cf543a51eff903aa",
+      "settleReceiptId": "asksettle_82e3830bc8914652ab",
+      "previewFingerprint": "39821dd9b3f3774e34cf0bef3c6c0d83a3b1f093b698e2bee747c5be8d6758ab",
+      "intent": "split",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:02:16.118Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_ef5e46f91b0dfbf786",
+      "proposalRequestId": "complete-gate-dispatch-on-blocking-operator-items-2026-09-24",
+      "staleReason": "every Action it targets is done: gate-dispatch-on-blocking-operator-items",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_ef5e46f91b0dfbf786",
+      "settleReceiptId": "asksettle_60bec2ddadc84cc085",
+      "previewFingerprint": "ab0c0deda414f95539d3e9d2ba6c64b5adb6849d8399040c36ffb27f5c1287e5",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:02:44.441Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_b5ed3a7f59790546d3",
+      "proposalRequestId": "complete-place-session-naming-screenshot-2026-09-25",
+      "staleReason": "every Action it targets is done: place-session-naming-screenshot",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_b5ed3a7f59790546d3",
+      "settleReceiptId": "asksettle_4f5fc752d5004e0fb0",
+      "previewFingerprint": "fd23cf012c8d42e091c940f77c4dc2ae173d9b454b52e4bbe140d5e5bc7ce7d8",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:02:58.996Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_59dde61c3ba63d15f2",
+      "proposalRequestId": "complete-natural-ask-target-resolution-2026-09-25-v2",
+      "staleReason": "every Action it targets is done: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_59dde61c3ba63d15f2",
+      "settleReceiptId": "asksettle_c8495b11d2c3415394",
+      "previewFingerprint": "af8bdc6ecfcd13fdceab27659875e13e9ed88e0a1b8eae83755557af45cf243d",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:03:17.514Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_a0fd1e16d62db4f7a2",
+      "proposalRequestId": "complete-refuse-packets-without-validation-commands-2026-09-25",
+      "staleReason": "every Action it targets is done: refuse-packets-without-validation-commands",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_a0fd1e16d62db4f7a2",
+      "settleReceiptId": "asksettle_cdec97ce9a664fa2ac",
+      "previewFingerprint": "5239501c349a9518697f2f1dab9938cc4a629e9a6ff61aae66d6a05a27aec79a",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:03:29.835Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_214df04378bb325923",
+      "proposalRequestId": "complete-enforce-concurrency-gate-at-admission-2026-09-26",
+      "staleReason": "every Action it targets is done: enforce-concurrency-gate-at-admission",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_214df04378bb325923",
+      "settleReceiptId": "asksettle_f6c55492b6864771aa",
+      "previewFingerprint": "d553f62c69a59e470138237c9ea4353b43b9873950b82b3c5bc3c6665a2364b5",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:03:52.915Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_8bd0b0e360c793a99f",
+      "proposalRequestId": "complete-rewire-dependents-on-split-2026-09-27",
+      "staleReason": "every Action it targets is done: rewire-dependents-on-split",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_8bd0b0e360c793a99f",
+      "settleReceiptId": "asksettle_330e60b4518e4a32bb",
+      "previewFingerprint": "36db91cff59027bc54f792c5377136cad8cc3c4c4364ba371dfa922c90bfbf43",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:04:24.695Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_b61c777de9bddf5466",
+      "proposalRequestId": "complete-fix-action-intent-target-ref-amendments-2026-09-27",
+      "staleReason": "every Action it targets is done: fix-action-intent-target-ref-amendments",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_b61c777de9bddf5466",
+      "settleReceiptId": "asksettle_8ac58f736dcc48ffb0",
+      "previewFingerprint": "f4b835c266f8bdfb0e6ee0bd00341ccc71e05aacecc682115bde96aa5ff4c771",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:04:41.199Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_0f2aa75847f5cad1f8",
+      "proposalRequestId": "complete-fix-auto-settle-eligibility-docs-2026-09-30",
+      "staleReason": "every Action it targets is done: fix-auto-settle-eligibility-docs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_0f2aa75847f5cad1f8",
+      "settleReceiptId": "asksettle_ead9ceeb62b94f41b3",
+      "previewFingerprint": "6790b811d39e552513fc85de3939bc1b3def65cc4900e9fc21ddf115ec16d3e1",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes.",
+        "Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-fix-auto-settle-eligibility-docs-2026-09-30.yaml."
+      ],
+      "documentsCommit": "3a9a8aafe6f6ff57758eb9a665d473ce4bb0d757",
+      "appliedAt": "2026-10-08T19:26:00.400Z",
+      "outcome": "rejected",
+      "earlierAttempts": [
+        {
+          "outcome": "skipped_unexpected_preview",
+          "reason": "runner guard held it: preview also archives the Ask file under .arcadia/asks/ (an allowed path); re-previewed and applied with the guard limited to .arcadia/asks/**"
+        }
+      ]
+    },
+    {
+      "proposalId": "agentask_50aad7ccec694309a3",
+      "proposalRequestId": "complete-harden-tidy-quarantine-safety-and-docs-2026-09-30",
+      "staleReason": "every Action it targets is done: harden-tidy-quarantine-safety-and-docs",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_50aad7ccec694309a3",
+      "settleReceiptId": "asksettle_1539f561994048ebb6",
+      "previewFingerprint": "ae0dca48eef6427889012d2b99339ad18f42e71a90e13c5185a3df7626f07fd0",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:05:16.399Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_21ffbefb9ccd04a252",
+      "proposalRequestId": "complete-retire-legacy-operator-script-descriptors-887-2026-10-03",
+      "staleReason": "every Action it targets is done: retire-legacy-operator-script-descriptors",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_21ffbefb9ccd04a252",
+      "settleReceiptId": "asksettle_ee6eca85f8754adfab",
+      "previewFingerprint": "caec51e4658f3e8c73079c564c934734cab12832875bce6fb68085e398e1e5c7",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:06:18.047Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_4d6c436de4f37027b1",
+      "proposalRequestId": "complete-reset-managed-preservation-timeout-history-896-2026-10-03",
+      "staleReason": "every Action it targets is done: reset-managed-preservation-timeout-history-on-success",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_4d6c436de4f37027b1",
+      "settleReceiptId": "asksettle_6221f7a189db45f1ab",
+      "previewFingerprint": "8c69f6f0485213cf960c3de530d345dfe33a7b1bfdb23ecdafe7e2bef755907c",
+      "intent": "complete",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:08:37.453Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_32bcb7b2a78da07675",
+      "proposalRequestId": "split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05",
+      "staleReason": "every Action it targets is done: add-operator-qa-plan-to-preserved-pr-body",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_32bcb7b2a78da07675",
+      "settleReceiptId": "asksettle_098cf2f6385a43dc96",
+      "previewFingerprint": "1a6cefaf6b76fd9288f6b4d3a8e2f5f984e4f2b533b5ca870b9562dd97541191",
+      "intent": "split",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:09:56.065Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_3b07406ec8dc13e410",
+      "proposalRequestId": "interim-ask-delivery-pivot-20261008-v2",
+      "staleReason": "superseded by Agent Ask agentask_c3e0e44e36415ff66d (explicit Supersedes line in its rationale)",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_3b07406ec8dc13e410",
+      "settleReceiptId": "asksettle_b96a954e4ff24612a6",
+      "previewFingerprint": "f021110eb87d96e177cd31d823bcb18746bd7b1c6ddb40a1a197999540c7d7f6",
+      "intent": "plan",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:11:15.745Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_58f7a77c2a4de8eab7",
+      "proposalRequestId": "standard-harness-ask-delivery-pivot-20261008-v3",
+      "staleReason": "superseded by Agent Ask agentask_c3e0e44e36415ff66d (explicit Supersedes line in its rationale)",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_58f7a77c2a4de8eab7",
+      "settleReceiptId": "asksettle_c97b45a2c1df4d71b8",
+      "previewFingerprint": "c61f698c3fbeda20ccb1c04b0114567b8fedf94d307041658c41599f99492630",
+      "intent": "plan",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:12:36.450Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_c3e0e44e36415ff66d",
+      "proposalRequestId": "operator-todo-ask-pivot-20261008-v4",
+      "staleReason": "superseded by Agent Ask agentask_ac815a0e6f60ffcbc0 (explicit Supersedes line in its rationale)",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_c3e0e44e36415ff66d",
+      "settleReceiptId": "asksettle_542b9ae503da4ae29a",
+      "previewFingerprint": "8484d817c0d87d958732b90d758ea4eae73f41a8bd6cd9241555c303aa1ddfb7",
+      "intent": "plan",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:15:13.487Z",
+      "outcome": "rejected"
+    },
+    {
+      "proposalId": "agentask_ac815a0e6f60ffcbc0",
+      "proposalRequestId": "operator-todo-ask-pivot-20261008-v5",
+      "staleReason": "superseded by Agent Ask agentask_8f96ecd904f3115ce8 (explicit Supersedes line in its rationale)",
+      "settlementRequestId": "reject-stale-triage-0094-agentask_ac815a0e6f60ffcbc0",
+      "settleReceiptId": "asksettle_2a663cbbc5364bd2ba",
+      "previewFingerprint": "e61a20ed68d9fe175155d1e616424ecd61a1af43fa35e88350b01632db3bd980",
+      "intent": "plan",
+      "effects": [
+        "Preserved the proposal and created no Project or queue changes."
+      ],
+      "documentsCommit": "no document change",
+      "appliedAt": "2026-10-08T19:18:13.174Z",
+      "outcome": "rejected"
+    }
+  ],
+  "skipped": []
+}
