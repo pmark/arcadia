@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # Mission Log: Arcadia
@@ -1968,3 +1968,10 @@ updated: 2026-10-06
 - **Result:** Every declared acceptance criterion was accepted as met: "docs/autonomous-production-rehearsal-runbook.md gains a findings ledger (one row per live run and per pre-flight smoke since run 1, each with stop point, failure class, time to detect, fix PR or Issue, and the prevention that now guards it), records runs 6 and 7 and the run-8 reviewer smoke with their receipts and PRs, and states the protocol every future run follows to append its row before the session ends."; "The runbook gains a handoff section naming the exact current state (production Off, last receipts, next run id and its parameter file, open Issues blocking success) and the ranked recommendations for the next run, so a fresh session can start from it alone."; "The reviewer pre-flight smoke harness used for #986 and the run-8 check is preserved under docs/reports/rehearsal-reviewer-smoke/ with a README saying what it simulates, what is not faithful, how to run it read-only, and that it is reference code not yet wired into the operator scripts.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-record-rehearsal-findings-ledger-2026-10-06).
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1040
+
+- **Did:** The seven-file baseline-symlink preservation repair is published in draft PR1040; independent review and required CI are running: https://github.com/pmark/arcadia/pull/1040
+- **Result:** Required PR lifecycle notification; source delivery under approved Decision0091. No runtime or production change.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
