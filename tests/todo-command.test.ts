@@ -963,6 +963,33 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
     expect(data.counts).toMatchObject({ blocking: 2, other: 0, byKind: { decision: 2, escalation: 0 } });
   });
 
+  it("does not merge an escalation into a Decision that is only cited in its message (Ask title, lapsed grant)", () => {
+    const workspace = fixtureWorkspace(fixtureRepo());
+    addEscalations(workspace, [
+      {
+        actionKey: "demo/ask-held", kind: "operator_gate_pending", firstDetectedAt: "2026-10-08T08:00:00.000Z",
+        message: "Launch of demo/ask-held is held by pending Agent Ask proposal proposal-9: Amend the plan per Decision 0002.",
+        remedy: "arcadia agent-ask settle --proposal proposal-9 --request-id <id> --disposition accepted --preview"
+      },
+      {
+        actionKey: "demo/lapsed", kind: "integration_grant_lapsed", firstDetectedAt: "2026-10-08T08:30:00.000Z",
+        message: "Integration grant lapsed at 2026-10-01T00:00:00.000Z (Decision 0002); the preserved candidate is not readied.",
+        remedy: "Record a fresh integration Grant."
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
+      ["escalation:operator_gate_pending:demo/ask-held", true],
+      ["escalation:integration_grant_lapsed:demo/lapsed", true],
+      ["decision:demo/0001", true],
+      // Only cited, never the gate: still an alert.
+      ["decision:demo/0002", false]
+    ]);
+    expect(data.counts.byKind).toMatchObject({ decision: 2, escalation: 2 });
+  });
+
   it("lists an escalation of a Project outside the list, falls back to `arcadia production status` without a remedy, and honours --project", () => {
     const workspace = fixtureWorkspace(fixtureRepo(0));
     addEscalations(workspace, [
@@ -998,9 +1025,9 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       key: "operator_task:demo/op-2026-09-01-selected", kind: "operator_task", title: "Create the API key in the console.", project: "demo",
       blocking: true, origin: "action:second-step", createdAt: "2026-09-01T00:00:00.000Z",
       sourceRef: ".arcadia/operator-tasks.jsonl#op-2026-09-01-selected",
-      answer: `arcadia operator-task close op-2026-09-01-selected --operator --repo ${repo}`,
+      answer: `arcadia operator-task show op-2026-09-01-selected --repo ${repo}`,
       answerVia: [
-        `look first: arcadia operator-task show op-2026-09-01-selected --repo ${repo}`,
+        `once done, the operator closes it: arcadia operator-task close op-2026-09-01-selected --operator --repo ${repo}`,
         `or decline: arcadia operator-task decline op-2026-09-01-selected --because "<reason>" --operator --repo ${repo}`
       ]
     });

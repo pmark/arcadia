@@ -2665,8 +2665,8 @@ Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal
 title, project, created date, source, and the existing command that answers it
 (a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview, a
 clarification review item's `arcadia review approve <id> --answer "<answer>" --clarify`,
-an operator task's `arcadia operator-task close <id> --operator --repo <path>` with
-`show` and `decline` beside it, an escalation's own `remedy`; with no remedy,
+an operator task's `arcadia operator-task show <id> --repo <path>`, with `close --operator` and
+`decline` listed after it (closing is the operator's own attestation), an escalation's own `remedy`; with no remedy,
 `arcadia production status`).
 A review item also shows `origin` (its own `resolved_intent`) and, for a
 clarification, the Discord reply and Mission Control **Answer & continue** paths
@@ -2678,9 +2678,10 @@ creation time. A review item raised from a Decision document (`doc_ref`
 `decision/<slug>`) is not listed again beside that open Decision; several review
 items on one work item show once. An operator task whose origin or `reference`
 (`decision/<slug>`, `review_items:<id>`) names a listed Decision or review item
-shows only as that item; an escalation whose message names a listed Decision
-(`... pending Decision 0094: ...`) shows only as that Decision, which is then
-marked blocking. A review item whose Project is completed or not listed appears
+shows only as that item; an escalation whose own gate is a listed Decision
+(`Launch of <key> is held by pending Decision 0094: ...`) shows only as that
+Decision, which is then marked blocking. A Decision merely cited elsewhere in the
+message (an Agent Ask's title, a lapsed-grant note) does not merge anything. A review item whose Project is completed or not listed appears
 under Project `unknown` rather than disappearing.
 
 Done when (derived each run, never stored): a Decision is no longer open; an

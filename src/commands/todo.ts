@@ -412,9 +412,14 @@ function listedIds(found: TodoItem[], kind: TodoItem["kind"]): Set<string> {
   );
 }
 
-/** Decision ids a production escalation message names (`... pending Decision 0094: ...`). */
-function decisionIdsNamedIn(message: string): string[] {
-  return [...message.matchAll(/\bDecision\s+([A-Za-z0-9][A-Za-z0-9_.-]*)/g)].map((match) => match[1].replace(/[.-]+$/, ""));
+/**
+ * The Decision an escalation's own gate names: only the `operator_gate_pending` template
+ * (`Launch of <key> is held by pending Decision <id>: <title>`, src/production/tick.ts), anchored at the start.
+ * A Decision cited elsewhere (an Agent Ask title, a lapsed-grant "(Decision 0058)") is not the gate.
+ */
+function gateDecisionIdOf(message: string): string | null {
+  const match = /^Launch of \S+ is held by pending Decision ([A-Za-z0-9][A-Za-z0-9_.-]*?):\s/.exec(message);
+  return match ? match[1] : null;
 }
 
 /** Which Project a `production_operator_escalations.action_key` (`<project>/<action>`) belongs to; the rest is the Action. */
@@ -435,9 +440,9 @@ function withEscalations(found: TodoItem[], rows: OperatorEscalation[], projectS
   const promoted = new Set<string>();
   const added: TodoItem[] = [];
   for (const row of rows) {
-    const named = decisionIdsNamedIn(row.message).filter((id) => decisions.has(id));
-    if (named.length > 0) {
-      for (const id of named) promoted.add(`decision:${projectSlug || "unknown"}/${id}`);
+    const gate = gateDecisionIdOf(row.message);
+    if (gate !== null && decisions.has(gate)) {
+      promoted.add(`decision:${projectSlug || "unknown"}/${gate}`);
       continue;
     }
     added.push({
@@ -461,7 +466,7 @@ function shellArg(value: string): string {
 
 /**
  * Waiting operator-task ledger items of one Project (`.arcadia/operator-tasks.jsonl`, repo-local). Each carries its
- * own `asks` as the title; the answer is the canonical `operator-task close`, with `show` and `decline` as the other
+ * own `asks` as the title; the answer is `operator-task show` (look first), with `close --operator` and `decline` as the other
  * ways. Dedupe: a task whose origin is a listed Decision, or whose `reference` names a listed Decision
  * (`decision/<slug>`) or review_item (`review_items:<id>`), is shown by that item. Blocking only when its
  * origin is the Action the operator gate selected.
@@ -491,13 +496,16 @@ function operatorTaskItems(
       kind: "operator_task" as const,
       title: task.asks,
       project: projectSlug,
+      // A ledger origin is `{ kind, id }` with no Plan slug (OperatorTaskOrigin), so the Plan cannot be compared as
+      // refNamesSelected does for doc_refs; the bare Action id against the selected Action is all the ledger carries.
       blocking: task.origin.kind === "action" && selected !== null && task.origin.id === selected.actionId,
       origin: `${task.origin.kind}:${task.origin.id}`,
       createdAt: task.raisedAt,
       sourceRef: `.arcadia/operator-tasks.jsonl#${task.id}`,
-      answer: `arcadia operator-task close ${task.id} --operator --repo ${repo}`,
+      // `show` first: `close --operator` is the operator's own attestation, never the first thing to copy.
+      answer: `arcadia operator-task show ${task.id} --repo ${repo}`,
       answerVia: [
-        `look first: arcadia operator-task show ${task.id} --repo ${repo}`,
+        `once done, the operator closes it: arcadia operator-task close ${task.id} --operator --repo ${repo}`,
         `or decline: arcadia operator-task decline ${task.id} --because "<reason>" --operator --repo ${repo}`
       ]
     }));
