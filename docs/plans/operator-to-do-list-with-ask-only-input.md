@@ -82,7 +82,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/ask/captureEnvelope.ts", "src/commands/review.ts", "src/commands/decision.ts", "src/commands/askTrail.ts", "apps/discord-bot/src/events/messageCreate.ts", "apps/discord-bot/src/replyRouter/router.ts", "apps/discord-bot/src/config.ts", "src/db/schema.ts"]
   - id: render-plan-progress-as-todo
     title: Show any Plan's progress in the to-do motif through the existing arcadia plans command.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Show any Plan's progress in the to-do motif through the existing arcadia plans command.
