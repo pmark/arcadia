@@ -1,0 +1,14 @@
+{
+  "name": "fail-empty-done-condition",
+  "reason": "An empty done-condition fails: nobody could tell when the action is finished.",
+  "nextAction": "Add a retry to the nightly sync",
+  "doneCondition": "",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "missing-done-condition"
+  ]
+}

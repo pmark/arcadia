@@ -1,0 +1,13 @@
+{
+  "name": "pass-decision-in-expected-artifact",
+  "reason": "A Decision number is matched across padding: 92 and 0092 are the same Decision.",
+  "nextAction": "Write the follow-up that Decision 92 asks for",
+  "doneCondition": "The follow-up is checked in under docs",
+  "source": {
+    "title": "Follow up",
+    "rawInput": "",
+    "expectedArtifact": "Follow-up required by Decision 0092"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

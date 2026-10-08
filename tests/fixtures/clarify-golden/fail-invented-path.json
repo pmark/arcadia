@@ -1,0 +1,14 @@
+{
+  "name": "fail-invented-path",
+  "reason": "A file path that appears nowhere in the source material is an invented fact.",
+  "nextAction": "Add a retry to src/sync/batchRunner.ts",
+  "doneCondition": "The retry is covered by a test",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "unsourced-reference"
+  ]
+}

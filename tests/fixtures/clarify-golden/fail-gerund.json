@@ -1,0 +1,14 @@
+{
+  "name": "fail-gerund",
+  "reason": "A gerund does not start with an imperative verb.",
+  "nextAction": "Fixing the nightly sync",
+  "doneCondition": "The sync no longer loses batches",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "not-a-verb"
+  ]
+}

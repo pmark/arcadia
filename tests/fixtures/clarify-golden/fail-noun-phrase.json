@@ -1,0 +1,14 @@
+{
+  "name": "fail-noun-phrase",
+  "reason": "A noun phrase is a label, not an action.",
+  "nextAction": "Nightly sync retries",
+  "doneCondition": "Retries work",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "not-a-verb"
+  ]
+}

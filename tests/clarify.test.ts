@@ -63,13 +63,19 @@ describe("clarify request contract", () => {
       execution: "local-preferred",
       profile: "fast",
       executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
-      outputContract: { schemaId: CLARIFY_SCHEMA_ID, schemaVersion: 1 },
-      template: { id: "arcadia.clarify.rubric", version: "1" }
+      outputContract: { schemaId: CLARIFY_SCHEMA_ID, schemaVersion: 2 },
+      template: { id: "arcadia.clarify.rubric", version: "2" }
     });
 
     const input = request.input as { instructions: string; action: Record<string, unknown> };
     expect(input.action.title).toBe("Sort out the nightly sync");
     expect(input.instructions).toContain("exactly ONE gapType");
+    // The rubric asks for the done-condition and the schema requires it.
+    expect(input.instructions).toContain("doneCondition");
+    expect(request.outputContract.jsonSchema).toMatchObject({
+      properties: { doneCondition: { type: "string" } },
+      then: { required: ["nextAction", "doneCondition"] }
+    });
     // Negative guard: the rubric itself must not teach a personal name.
     expect(input.instructions).not.toMatch(/\bMark\b/);
     expect(input.instructions).toContain("the operator");
@@ -96,6 +102,30 @@ describe("clarify verdict normalization", () => {
     );
   });
 
+  it("downgrades a clarified verdict with no done-condition to exactly one question", () => {
+    for (const doneCondition of [undefined, "", "   "]) {
+      const verdict = normalizeVerdict({
+        verdict: "clarified",
+        nextAction: "Add a retry to the nightly sync",
+        doneCondition,
+        actor: "coding-agent",
+        source: "title",
+        confidence: "high"
+      });
+
+      expect(verdict).toMatchObject({ verdict: "question_open", gapType: "missing-success-criteria" });
+      const question = (verdict as { question: string }).question;
+      expect(question).toContain("done-condition");
+      expect(question.match(/\?/g)).toHaveLength(1);
+    }
+  });
+
+  it("keeps a clarified verdict that states a done-condition", () => {
+    expect(
+      normalizeVerdict({ verdict: "clarified", nextAction: "Run the tests", doneCondition: " All pass ", actor: "operator" })
+    ).toMatchObject({ verdict: "clarified", doneCondition: "All pass" });
+  });
+
   it("refuses a question with a gap type outside the taxonomy", () => {
     expect(() =>
       normalizeVerdict({ verdict: "question_open", gapType: "missing-everything", question: "What?" })
@@ -118,6 +148,7 @@ describe("clarify verdict normalization", () => {
     const verdict = normalizeVerdict({
       verdict: "clarified",
       nextAction: "Do the thing",
+      doneCondition: "The thing is done",
       actor: "the-intern",
       source: "title"
     });
@@ -178,6 +209,58 @@ describe("clarify orchestrator", () => {
       }
     });
   }
+
+  it("turns a clarified verdict with no done-condition into one open question, in preview and on apply", async () => {
+    const workspace = initializedWorkspace();
+    const action = captureAction(workspace, "Sort out the nightly sync");
+    const raw = { ...clarifyGoldenExamples[0].rawResult, doneCondition: undefined };
+
+    const preview = await runClarifyCommand({ workspace, evaluator: stubEvaluator(raw) });
+    expect(preview.data.evaluated[0].verdict).toMatchObject({
+      verdict: "question_open",
+      gapType: "missing-success-criteria"
+    });
+    expect(withDatabase(workspace, (db) => getWorkItem(db, action.id))?.clarification_status).toBe("unclarified");
+
+    const applied = await runClarifyCommand({ workspace, apply: true, evaluator: stubEvaluator(raw) });
+    expect(applied.data.applications[0].clarificationStatus).toBe("question_open");
+    const after = withDatabase(workspace, (db) => getWorkItem(db, action.id));
+    expect(after?.clarification_status).toBe("question_open");
+    expect(after?.gap_type).toBe("missing-success-criteria");
+    expect(after?.open_question).toContain("done-condition");
+    const opened = withDatabase(workspace, (db) => listReviewItems(db, "open")).filter(
+      (item) => item.work_item_id === action.id
+    );
+    expect(opened).toHaveLength(1);
+  });
+
+  it("runs the lint before recording clarified: an invented file path becomes one question", async () => {
+    const workspace = initializedWorkspace();
+    const action = captureAction(workspace, "Sort out the nightly sync");
+    const raw = { ...clarifyGoldenExamples[0].rawResult, nextAction: "Add a retry to src/sync/ghost.ts" };
+
+    const response = await runClarifyCommand({ workspace, apply: true, evaluator: stubEvaluator(raw) });
+
+    expect(response.data.evaluated[0].verdict.verdict).toBe("question_open");
+    expect(response.data.evaluated[0].lintFindings?.map((finding) => finding.code)).toEqual(["unsourced-reference"]);
+    expect(withDatabase(workspace, (db) => getWorkItem(db, action.id))?.clarification_status).toBe("question_open");
+    expect(renderClarifySuccess(response).join("\n")).toContain("src/sync/ghost.ts");
+  });
+
+  it("shows the done-condition in the preview of a passing verdict", async () => {
+    const workspace = initializedWorkspace();
+    captureAction(workspace, "Sort out the nightly sync");
+
+    const response = await runClarifyCommand({
+      workspace,
+      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+    });
+
+    expect(response.data.evaluated[0].lintFindings).toBeUndefined();
+    expect(renderClarifySuccess(response).join("\n")).toContain(
+      `Done when: ${clarifyGoldenExamples[0].rawResult.doneCondition as string}`
+    );
+  });
 
   it("never auto-creates subtasks from a missing-definition decomposition", async () => {
     const workspace = initializedWorkspace();

@@ -1,0 +1,12 @@
+{
+  "name": "pass-action-id-in-title",
+  "reason": "An Action id named in the title is sourced.",
+  "nextAction": "Open the Plan and read the criteria of Action grade-next-actions-before-actionable",
+  "doneCondition": "The criteria are quoted in the PR description",
+  "source": {
+    "title": "Review Action grade-next-actions-before-actionable",
+    "rawInput": ""
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

@@ -12,6 +12,7 @@ import {
   ClarifyEngineUnavailableError,
   ClarifyVerdictUnusableError
 } from "../clarify/engine.js";
+import { enforceClarifyLint, sourceMaterialFor } from "../clarify/lint.js";
 import type { ClarifyApplication, ClarifyEvaluation, ClarifyEvaluator } from "../clarify/types.js";
 import { runReviewOpenCommand } from "./review.js";
 
@@ -94,7 +95,14 @@ export async function runClarifyCommand(
   try {
     for (const workItem of candidates) {
       try {
-        evaluated.push({ workItem, verdict: await evaluator(workItem) });
+        // The lint runs here, once, so a preview and `--apply` always agree and
+        // an injected evaluator is held to the same bar as the model.
+        const linted = enforceClarifyLint(await evaluator(workItem), sourceMaterialFor(workItem));
+        evaluated.push({
+          workItem,
+          verdict: linted.verdict,
+          ...(linted.findings.length > 0 ? { lintFindings: linted.findings } : {})
+        });
       } catch (error) {
         // One unusable verdict must not abandon the rest of the pass. A skipped
         // Action keeps exactly the state it had.
@@ -210,13 +218,17 @@ export function renderClarifySuccess(response: CommandSuccess<ClarifyCommandData
     applied ? `Clarified ${evaluated.length} Action(s).` : `Preview of ${evaluated.length} Action(s) — nothing written.`
   ];
 
-  for (const { workItem, verdict } of evaluated) {
+  for (const { workItem, verdict, lintFindings } of evaluated) {
     lines.push("", `${workItem.title} (${workItem.id})`);
+    if (lintFindings?.length) {
+      lines.push(`  Lint: clarified verdict rejected — ${lintFindings.map((finding) => finding.detail).join("; ")}`);
+    }
 
     if (verdict.verdict === "clarified") {
       lines.push(
         `  Verdict: clarified (${verdict.confidence} confidence)`,
         `  Next action: ${verdict.nextAction}`,
+        `  Done when: ${verdict.doneCondition}`,
         `  Actor: ${verdict.actor} -> ${RESPONSIBILITY_FOR_ACTOR[verdict.actor]}`,
         `  Source: ${verdict.source}`
       );

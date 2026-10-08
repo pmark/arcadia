@@ -1,0 +1,12 @@
+{
+  "name": "pass-url-is-not-a-path",
+  "reason": "A URL is not a repository path and needs no sourcing.",
+  "nextAction": "Read https://example.com/docs/setup.html and list the open questions",
+  "doneCondition": "A list of open questions is pasted into the Action notes",
+  "source": {
+    "title": "Read the setup guide",
+    "rawInput": "There is a setup guide online"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

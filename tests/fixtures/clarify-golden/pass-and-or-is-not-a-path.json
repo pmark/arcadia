@@ -1,0 +1,12 @@
+{
+  "name": "pass-and-or-is-not-a-path",
+  "reason": "Prose such as and/or is not a path.",
+  "nextAction": "Decide client and/or server rendering for the dashboard",
+  "doneCondition": "The choice is recorded in the Action notes",
+  "source": {
+    "title": "Dashboard rendering",
+    "rawInput": "Pick how the dashboard renders"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

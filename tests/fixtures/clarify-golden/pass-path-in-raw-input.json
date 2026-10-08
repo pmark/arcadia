@@ -1,0 +1,12 @@
+{
+  "name": "pass-path-in-raw-input",
+  "reason": "A file path named in the raw input is sourced.",
+  "nextAction": "Add a retry to src/sync/nightly.ts for failed batches",
+  "doneCondition": "A forced batch failure in src/sync/nightly.ts is retried once and logged",
+  "source": {
+    "title": "Nightly sync loses batches",
+    "rawInput": "src/sync/nightly.ts dies halfway and we lose the batch"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

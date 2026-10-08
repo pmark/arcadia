@@ -1,0 +1,15 @@
+{
+  "name": "fail-invented-decision",
+  "reason": "A Decision number absent from the source is an invented fact.",
+  "nextAction": "Apply Decision 0042 to the retention setting",
+  "doneCondition": "The setting follows Decision 0042",
+  "source": {
+    "title": "Retention setting",
+    "rawInput": "Retention is unclear",
+    "expectedArtifact": "Decision 0092"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "unsourced-reference"
+  ]
+}

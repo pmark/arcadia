@@ -33,6 +33,7 @@ export const CLARIFY_JSON_SCHEMA: JsonValue = {
     verdict: { type: "string", enum: ["clarified", "question_open"] },
     // Present when verdict = clarified.
     nextAction: { type: "string" },
+    doneCondition: { type: "string", minLength: 1 },
     actor: { type: "string", enum: [...CLARIFY_ACTORS] },
     source: { type: "string" },
     confidence: { type: "string", enum: [...CLARIFICATION_CONFIDENCE_LEVELS] },
@@ -43,7 +44,13 @@ export const CLARIFY_JSON_SCHEMA: JsonValue = {
     decomposition: { type: "array", items: { type: "string" } },
     draftAsk: { type: "string" }
   },
-  required: ["verdict"]
+  required: ["verdict"],
+  // The clarified branch must carry both a next action and a done-condition.
+  // `normalizeVerdict` is the backstop for any path that does not validate the
+  // schema: it downgrades a clarified verdict lacking a done-condition to one
+  // question instead of recording an unfinishable next action.
+  if: { properties: { verdict: { const: "clarified" } }, required: ["verdict"] },
+  then: { required: ["nextAction", "doneCondition"] }
 };
 
 export const CLARIFY_SCHEMA_ID = "arcadia.clarify.verdict.v1";
@@ -54,8 +61,9 @@ const RUBRIC =
   "can you name one concrete, physical next action — something a person or a coding agent " +
   "could start in their next work session? " +
   'If YES, set verdict to "clarified" and give nextAction (one sentence, starts with a verb, ' +
-  "physically doable), actor (who does it), source (which Action detail or linked document " +
-  "justified it), and confidence. " +
+  "physically doable), doneCondition (one sentence stating how anyone would observe that it is " +
+  "finished — an output, a file, a command result or a state, never 'it feels done'), " +
+  "actor (who does it), source (which Action detail or linked document justified it), and confidence. " +
   'If NO, set verdict to "question_open" and classify the gap as exactly ONE gapType: ' +
   '"missing-decision" (a choice has not been made — also give 2-4 criteria that matter), ' +
   '"missing-external-input" (waiting on someone or something outside — also give a draftAsk), ' +
@@ -64,7 +72,9 @@ const RUBRIC =
   '"missing-success-criteria" (the action is clear but "done" is not). ' +
   "Then give exactly ONE question: the single highest-leverage question whose answer unblocks " +
   "this Action. Not a list. One question, asking for specific information. " +
-  "Never invent facts about the Action that are not in the material you were given, and never " +
+  "Never invent facts about the Action that are not in the material you were given — in " +
+  "particular, name a file path, Action id, Decision id or `arcadia` command only if it already " +
+  "appears in that material — and never " +
   "refer to the operator by a personal name — say \"the operator\".";
 
 /**
@@ -106,10 +116,10 @@ export function buildClarifyRequest(
     },
     outputContract: {
       schemaId: CLARIFY_SCHEMA_ID,
-      schemaVersion: 1,
+      schemaVersion: 2,
       jsonSchema: CLARIFY_JSON_SCHEMA
     },
-    template: { id: "arcadia.clarify.rubric", version: "1" },
+    template: { id: "arcadia.clarify.rubric", version: "2" },
     executionPolicy: { allowPaidUsage: false, maxRetries: 1 }
   };
 }

@@ -1,0 +1,12 @@
+{
+  "name": "pass-plain-prose",
+  "reason": "A verb-led action with a done-condition and no references passes.",
+  "nextAction": "Call the accountant and confirm which quarter the filing covers",
+  "doneCondition": "The quarter is written into the Action notes",
+  "source": {
+    "title": "Confirm filing quarter",
+    "rawInput": "Not sure which quarter the filing covers"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}
