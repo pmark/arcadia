@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0094"
+slug: decide-whether-to-reject-exactly-the-52-stale-arcadia-agent-asks-listed-in-docs
+project: arcadia
+status: open
+question: Decide whether to reject exactly the 52 stale Arcadia Agent Asks listed in docs/reports/stale-operator-items-arcadia-2026-10-08.json (sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37). Nothing is settled by raising this Decision.
+gap_type: missing-decision
+gate_question: resists_reversal
+recommendation: Reject all 52 listed stale Asks, bound to sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37
+options:
+  - label: Reject all 52 listed stale Asks, bound to sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37
+    consequence: The Action apply-approved-stale-triage then settles exactly those 52 proposals with the existing two-phase agent-ask settle --disposition rejected, one receipt each, batched and serialized against fresh main; any item whose state changed since the list was made is skipped and reported. Rejected is a recorded, permanent settlement of those proposals, but no Action status, pointer or queue changes, the 48 done Actions stay done, and the four superseded proposals stay covered by the accepted v6 Ask. arcadia todo then shows 52 fewer stale items; the 118 non-stale items and other Projects are untouched.
+    recommended: true
+  - label: Review the list first
+    consequence: Nothing is settled. The 52 items stay hidden as stale in arcadia todo and apply-approved-stale-triage stays blocked until you read the Artifact and either approve it as written or ask for a corrected list (a new sha256 and a new Decision).
+    recommended: false
+  - label: Keep them
+    consequence: Nothing is settled. The 52 stale Asks stay unsettled and hidden from the default arcadia todo view (visible with --stale or --all), so the proposal backlog does not shrink and apply-approved-stale-triage records the declined answer and does nothing.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-10-08
+---
+
+# Decision 0094: Decide whether to reject exactly the 52 stale Arcadia Agent Asks listed in docs/reports/stale-operator-items-arcadia-2026-10-08.json (sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37). Nothing is settled by raising this Decision.
+
+## Options
+
+- **Reject all 52 listed stale Asks, bound to sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37** (recommended): The Action apply-approved-stale-triage then settles exactly those 52 proposals with the existing two-phase agent-ask settle --disposition rejected, one receipt each, batched and serialized against fresh main; any item whose state changed since the list was made is skipped and reported. Rejected is a recorded, permanent settlement of those proposals, but no Action status, pointer or queue changes, the 48 done Actions stay done, and the four superseded proposals stay covered by the accepted v6 Ask. arcadia todo then shows 52 fewer stale items; the 118 non-stale items and other Projects are untouched.
+- **Review the list first**: Nothing is settled. The 52 items stay hidden as stale in arcadia todo and apply-approved-stale-triage stays blocked until you read the Artifact and either approve it as written or ask for a corrected list (a new sha256 and a new Decision).
+- **Keep them**: Nothing is settled. The 52 stale Asks stay unsettled and hidden from the default arcadia todo view (visible with --stale or --all), so the proposal backlog does not shrink and apply-approved-stale-triage records the declined answer and does nothing.
+
+## Rationale
+
+arcadia todo --stale --json --project arcadia found 52 stale Arcadia items, all Agent Asks: 48 complete/split/action Asks whose every targeted Action is done in a checked-in Plan, and 4 proposals (agentask_3b07406ec8dc13e410, agentask_58f7a77c2a4de8eab7, agentask_c3e0e44e36415ff66d, agentask_ac815a0e6f60ffcbc0) named in the Supersedes line in the rationale of the settled (accepted) Ask operator-todo-ask-pivot-20261008-v6. Of the 170 Arcadia items in arcadia todo --all, 118 are not stale: 6 name Actions that are not all done, and 112 are unclassifiable (an Ask whose intent names no Action, or a Decision naming no Action, 0052 and 0079) and are left untouched. Items of other Projects (private-practice-now 97, mission-control-site 9, unknown 1) are out of scope; each needs its own Project's Decision, which is the revival trigger for them. Binding to the sha256 means a changed list is a different Decision. Evidence per item is in the Artifact. Answering approves nothing beyond the later Action apply-approved-stale-triage, which re-checks every item against fresh main before settling it.
+
+Proposed by Agent Ask raise-stale-triage-decision-20261008.
