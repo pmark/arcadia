@@ -2,26 +2,8 @@
 
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import type { Approval } from "../lib/approvals";
 import { EmptyState, ErrorState } from "./dashboard-ui";
-
-interface ApprovalOption {
-  label: string;
-  consequence: string;
-  recommended: boolean;
-}
-
-interface Approval {
-  kind: "agent_ask" | "decision";
-  id: string;
-  project: string;
-  title: string;
-  detail: string | null;
-  gateQuestion: string | null;
-  options: ApprovalOption[];
-  evidence: string[];
-  cost: string;
-  createdAt: string;
-}
 
 interface Choice {
   /** The action button's own label, shown while pending. */
@@ -36,6 +18,12 @@ interface Choice {
 // earlier response overwriting a later one, the same pattern the Operator
 // actions section already uses for the same reason.
 let approvalRefreshSequence = 0;
+
+const KIND_LABEL: Record<Approval["kind"], string> = {
+  decision: "Decision",
+  agent_ask: "Agent Ask",
+  review_item: "Review item"
+};
 
 function cardKey(approval: Approval): string {
   // Decision ids are per-repository sequences ("0001", "0002", …), so two
@@ -53,6 +41,7 @@ function cardKey(approval: Approval): string {
 export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } = {}) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -63,10 +52,11 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
     const requested = ++approvalRefreshSequence;
     await fetch("/api/approvals", { cache: "no-store" })
       .then(async (response) => {
-        const body = (await response.json()) as { approvals?: Approval[]; error?: string };
+        const body = (await response.json()) as { approvals?: Approval[]; note?: string | null; error?: string };
         if (!response.ok) throw new Error(body.error ?? "Could not load pending approvals.");
         if (requested === approvalRefreshSequence) {
           setApprovals(body.approvals ?? []);
+          setNote(body.note ?? null);
           setError(null);
         }
       })
@@ -124,7 +114,7 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
           onClick={() => setOpen((value) => !value)}
           className="inline-flex min-h-11 items-center gap-2 uppercase tracking-[0.14em]"
         >
-          Needs your approval{hasLoaded ? ` (${approvals.length})` : ""}
+          Needs you{hasLoaded ? ` (${approvals.length})` : ""}
           {open ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
         </button>
       </h2>
@@ -133,6 +123,7 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
       ) : (
         <>
       {error ? <ErrorState title="Approvals unavailable" message={error} /> : null}
+      {note ? <p role="status" className="mb-3 rounded-md border border-line bg-panel p-3 text-sm text-muted">{note}</p> : null}
       {message ? <p className="mb-3 flex items-center gap-2 text-sm text-moss"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{message}</p> : null}
       {approvals.length === 0 && !error ? (
         <EmptyState text="Nothing is waiting on you." />
@@ -155,12 +146,16 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      {approval.kind === "decision" ? "Decision" : "Agent Ask"} · {approval.project}
+                      {KIND_LABEL[approval.kind]} · {approval.project}
+                      {approval.blocking ? " · Blocking" : ""}
+                      {approval.staleReason ? " · Stale" : ""}
                     </span>
                     <h3 className="mt-1 font-semibold">{approval.title}</h3>
                   </div>
                 </div>
-                {approval.kind === "decision" ? (
+                {approval.readOnly ? (
+                  <ReadOnlyAnswer approval={approval} />
+                ) : approval.kind === "decision" ? (
                   recommendedOption ? (
                     <p className="mt-2 text-sm text-muted">
                       Recommended: <strong className="text-ink">{recommendedOption.label}</strong> — {recommendedOption.consequence}
@@ -172,7 +167,7 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
                   <p className="mt-2 text-sm text-muted">Recommended: accept, unless the details below change your mind.</p>
                 )}
                 <div className="mt-3 flex items-center gap-3">
-                  {approval.kind === "decision" ? (
+                  {approval.readOnly ? null : approval.kind === "decision" ? (
                     recommendedOption ? (
                       <button
                         type="button"
@@ -206,17 +201,18 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
                       </button>
                     </>
                   )}
-                  <button
+                  {approval.readOnly ? null : <button
                     type="button"
                     aria-expanded={expanded}
                     onClick={() => setExpandedId(expanded ? null : key)}
                     className="inline-flex items-center gap-1 text-sm font-medium text-steel hover:underline"
                   >
                     Details {expanded ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
-                  </button>
+                  </button>}
                 </div>
-                {expanded ? (
+                {expanded && !approval.readOnly ? (
                   <div className="mt-3 space-y-2 border-t border-line pt-3 text-sm text-muted">
+                    {approval.staleReason ? <p>Stale: {approval.staleReason}</p> : null}
                     {approval.detail ? <p>{approval.detail}</p> : null}
                     {approval.gateQuestion ? <p>Gate: {approval.gateQuestion}</p> : null}
                     <p>Cost: {approval.cost}</p>
@@ -266,5 +262,24 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
         </>
       )}
     </section>
+  );
+}
+
+/** A read-only row: the dashboard offers no control, only the command that answers it. */
+function ReadOnlyAnswer({ approval }: { approval: Approval }) {
+  return (
+    <div className="mt-2 space-y-2 text-sm text-muted">
+      {approval.origin ? <p>Raised by: {approval.origin}</p> : null}
+      {approval.staleReason ? <p>Stale: {approval.staleReason}</p> : null}
+      <p>Read-only here. Answer it from a terminal:</p>
+      {approval.answer ? (
+        <code className="block overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas p-2 text-xs text-ink">{approval.answer}</code>
+      ) : null}
+      {approval.answerVia.length > 0 ? (
+        <ul className="ml-4 list-disc">
+          {approval.answerVia.map((line, index) => <li key={index}>{line}</li>)}
+        </ul>
+      ) : null}
+    </div>
   );
 }

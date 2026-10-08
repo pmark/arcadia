@@ -4,82 +4,44 @@ import {
   approveDecision,
   ArcadiaCliError,
   loadOpenDecisions,
+  loadOperatorTodo,
   loadPendingAgentAsks,
-  settlePendingAgentAsk,
-  type AgentAskPendingItem,
-  type OpenDecisionItem
+  settlePendingAgentAsk
 } from "../../../lib/arcadia-cli";
+import { buildApprovals } from "../../../lib/approvals";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export type ApprovalOption = { label: string; consequence: string; recommended: boolean };
-
 /**
- * One terminal operator-only approval blocking managed production: either an
- * Agent Ask proposal awaiting settlement, or an open Decision awaiting an
- * answer. Both are read fresh on every GET — a cheap, deterministic read, no
- * model call — and both settle through their existing canonical writer:
- * `agent-ask settle --apply` or `decision approve`.
+ * The operator's one list, read fresh on every GET — a cheap, deterministic
+ * read, no model call. `arcadia todo --json --all` supplies the list; the
+ * Decision and Agent Ask loaders that predate it still supply each row's
+ * options and settle controls, so those rows keep settling through their
+ * existing canonical writer (`agent-ask settle --apply` or `decision
+ * approve`) exactly as before. Review items and any other kind are read-only.
+ * If the to-do call fails the old loaders stand alone with a visible note.
  */
-export interface Approval {
-  kind: "agent_ask" | "decision";
-  id: string;
-  project: string;
-  title: string;
-  detail: string | null;
-  gateQuestion: string | null;
-  options: ApprovalOption[];
-  evidence: string[];
-  /** What settling this costs to run — both settlement paths are deterministic CLI writes, never a model call. */
-  cost: string;
-  createdAt: string;
-}
-
-const NO_MODEL_COST = "Deterministic — a CLI write, no model call.";
-
-function toAgentAskApproval(item: AgentAskPendingItem): Approval {
-  return {
-    kind: "agent_ask",
-    id: item.proposalId,
-    project: item.project,
-    title: item.desiredResult,
-    detail: item.rationale,
-    gateQuestion: item.gateQuestion,
-    options: item.options,
-    evidence: item.effects,
-    cost: NO_MODEL_COST,
-    createdAt: item.createdAt
-  };
-}
-
-function toDecisionApproval(item: OpenDecisionItem): Approval {
-  return {
-    kind: "decision",
-    id: item.id,
-    project: item.projectSlug,
-    title: item.question,
-    detail: item.recommendation,
-    gateQuestion: item.gateQuestion,
-    options: item.options,
-    evidence: [],
-    cost: NO_MODEL_COST,
-    createdAt: item.updated
-  };
-}
-
-/** Every pending approval, most recently raised first, with anything still awaiting an operator decision ranked above one already recommended but merely unactioned — there is no such split today, so this is simply newest-first. */
 export async function GET() {
   try {
-    const [asks, decisions] = await Promise.all([loadPendingAgentAsks(), loadOpenDecisions()]);
-    const approvals: Approval[] = [
-      ...asks.data.pending.map(toAgentAskApproval),
-      ...decisions.data.decisions.map(toDecisionApproval)
-    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return NextResponse.json({ approvals });
+    const [asks, decisions, todo] = await Promise.allSettled([loadPendingAgentAsks(), loadOpenDecisions(), loadOperatorTodo()]);
+    const loaderFailure = [asks, decisions].find((result) => result.status === "rejected");
+    if (loaderFailure && todo.status === "rejected") throw loaderFailure.reason;
+    const list = buildApprovals({
+      asks: asks.status === "fulfilled" ? asks.value.data.pending : null,
+      decisions: decisions.status === "fulfilled" ? decisions.value.data.decisions : null,
+      todo: todo.status === "fulfilled" ? { items: todo.value.data.items, unavailable: todo.value.data.unavailable ?? [] } : null,
+      loadError: loaderFailure ? describeFailure(loaderFailure.reason) : undefined,
+      todoError: todo.status === "rejected" ? describeFailure(todo.reason) : undefined
+    });
+    return NextResponse.json(list);
   } catch (error) {
     return errorResponse(error);
   }
+}
+
+function describeFailure(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
 }
 
 interface ApprovalActionRequest {

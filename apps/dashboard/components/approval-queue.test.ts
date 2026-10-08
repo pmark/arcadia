@@ -17,3 +17,12 @@ describe("ApprovalQueue loading", () => {
     expect(effect).toMatch(/\[open, refresh, refreshSignal\]/);
   });
 });
+
+describe("ApprovalQueue read-only rows and notes", () => {
+  it("renders a note when the list is degraded, and gives read-only rows no settle controls", () => {
+    expect(source).toMatch(/\{note \? <p role="status"/);
+    expect(source).toContain("<ReadOnlyAnswer approval={approval} />");
+    // Both settle control branches sit behind the readOnly guard.
+    expect(source).toMatch(/\{approval\.readOnly \? null : approval\.kind === "decision" \? \(/);
+  });
+});

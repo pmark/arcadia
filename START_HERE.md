@@ -315,8 +315,9 @@ and `undo`.
 
 Open **Runs** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs> (on
 this Mac: <http://127.0.0.1:3020/runs>). It leads with the buttons you come for:
-**Needs your approval** (Accept/Reject for Agent Asks, Approve for Decisions)
-loads and opens first, then any **Operator actions** that are running, failed,
+**Needs you** (Accept/Reject for Agent Asks, Approve for Decisions, and any
+review items read-only with the command that answers them; the same list as
+`arcadia todo --all`) loads and opens first, then any **Operator actions** that are running, failed,
 or recently added. Everything else is collapsed and loads nothing until you tap
 it, so the page opens fast: **Production control**, and **Sessions and runs**.
 Operator-action authors must run `mise exec -- pnpm check:operator-scripts`
@@ -911,7 +912,7 @@ or approval.
 phone session can only commit its Ask to `.arcadia/asks/`, because it has no
 workspace to preview it in. Once that commit is merged, the managed-production
 worker previews the Ask on its next tick, right after it fast-forwards the
-Project's base branch. The Ask then waits under **Needs your approval** at the
+Project's base branch. The Ask then waits under **Needs you** at the
 top of <http://arcadia-1.alpine-rattlesnake.ts.net:3020/runs>, titled with its
 `desired_result`, with Accept and Reject. You never need to run an `agent-ask`
 command on this Mac. (`/review` is the Decision board; Agent Asks are not
