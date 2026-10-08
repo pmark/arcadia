@@ -2031,3 +2031,52 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1069
+
+- **Did:** arcadia todo now surfaces open Decisions first, newest on top, so a fresh Decision never hides behind old Asks again. https://github.com/pmark/arcadia/pull/1069
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1070
+
+- **Did:** Discord free-text now honors DISCORD_ALLOWED_USER_IDS (fail-open with a warning when unset), and replies record the Discord author as actor. Needs a bot restart by Mark after merge. https://github.com/pmark/arcadia/pull/1070
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1071
+
+- **Did:** Your morning packet will now open its to-do with counts and every blocking item plus the command to answer it, and escalations go first. https://github.com/pmark/arcadia/pull/1071
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1072
+
+- **Did:** arcadia todo now also lists open review items, including clarification questions with a ready-to-run answer command, so they stop hiding in a separate queue. https://github.com/pmark/arcadia/pull/1072
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1073
+
+- **Did:** New arcadia ask show --coverage reports, per surface, how much operator input reached Ask or Ingress, and says plainly that direct chat is not measured. https://github.com/pmark/arcadia/pull/1073
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1076
+
+- **Did:** arcadia todo now shows stalled-production escalations first and waiting operator tasks, so the morning packet can say exactly what stopped overnight. https://github.com/pmark/arcadia/pull/1076
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Completed arcadia/capture-operator-decision-replies-as-asks
+
+- **Did:** Completed Action arcadia/capture-operator-decision-replies-as-asks from accepted evidence (Candidate b647e35663a472661a0ec28c3fe2b8e8e929b7e5).
+- **Result:** Every declared acceptance criterion was accepted as met: "One fail-open helper calls the existing captureAskEnvelope for free-text operator replies at review resolve-reply (src/commands/review.ts), decision approve when free text accompanies the answer (src/commands/decision.ts), and the dashboard work-question route; Discord replies to Decision notifications reach the same helper through those commands. requestId is <surface>:<entity-id>:<sha256(text) first 12 hex>, originalText is the exact reply, and ingressSource comes from a small documented vocabulary in which each source is marked intake or provenance-only; these replies are provenance-only. The helper is skipped when the caller already holds a capture id (the arcadia ask reply path), so one reply yields one envelope. Capture failure is logged and never blocks or changes the canonical write. The capture id goes into the existing event or receipt payload; an existing capture_id column is never overwritten. The helper accepts optional actor ({ id }, set only when the calling surface authenticates a principal, today the Discord author id passed through a new --actor option on review resolve-reply) and optional project (slug, only where the call site already holds it). Both are stored in envelope_json only and excluded from the fingerprint, so replay returns the first stored envelope and never throws on an actor mismatch; CLI and dashboard replies record actor null and no id is invented."; "The Discord free-text message path newly enforces DISCORD_ALLOWED_USER_IDS in messageCreate isAllowedMessage when it is configured, with the router's refusal reaction; when it is empty the bot keeps guild and channel gating and logs a startup warning, so the operator is never locked out by an unset value."; "A read-only coverage report (ask show --coverage or an ask-trail aggregate over existing tables, no new store) states, for a time window and per surface, captured operator inputs over canonical operator writes for surfaces with an independent countable canonical record (review and Decision replies, Ingress files). The numerator counts only sources marked operator intake; agent.ask and codex.* envelopes are excluded and reported separately. Discord messages, chat and other surfaces without an independent record are reported as captured N with denominator unknown, and the report headline states 'direct chat: not measured' so the metric cannot be read as the share of all operator input."; "Tests prove each wrapped surface creates exactly one envelope per distinct reply, replay is idempotent, a capture failure leaves the canonical write unchanged, the allowlist behaves as specified when set and unset, and the coverage math, and that a replay of the same reply with a different actor returns the original envelope unchanged; type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact; LOCAL ONLY or an unresolved blocker is labelled explicitly.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-capture-operator-decision-replies-as-asks-20261008).

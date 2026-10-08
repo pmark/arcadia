@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr1070","project":"arcadia","intent":"log","desired_result":"Discord free-text now honors DISCORD_ALLOWED_USER_IDS (fail-open with a warning when unset), and replies record the Discord author as actor. Needs a bot restart by Mark after merge. https://github.com/pmark/arcadia/pull/1070"}

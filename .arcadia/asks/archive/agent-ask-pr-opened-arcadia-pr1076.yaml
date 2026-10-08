@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr1076","project":"arcadia","intent":"log","desired_result":"arcadia todo now shows stalled-production escalations first and waiting operator tasks, so the morning packet can say exactly what stopped overnight. https://github.com/pmark/arcadia/pull/1076"}
