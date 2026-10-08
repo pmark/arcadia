@@ -80,8 +80,15 @@ export interface TodoItem {
   createdAt: string;
   /** The Decision's document path, `agent_ask_proposals:<id>`, `review_items:<id>`, `.arcadia/operator-tasks.jsonl#<id>`, `production_operator_escalations:<action_key>`, `work_items:<id>` or `<plan path>#<action id>`. */
   sourceRef: string;
-  /** review_item: the item's own `resolved_intent` (for example `ActionClarification`), which says what raised it. operator_task: its origin, `action:<id>` or `decision:<id>`. plan_action: why it waits, `question_open` or `requires_review`. */
-  origin?: string;
+  /**
+   * What raised the item, as one string taken only from a field its source already records, or null when the source
+   * records nothing usable (always present). review_item: its own `resolved_intent` (for example `ActionClarification`).
+   * operator_task: its origin, `action:<id>` or `decision:<id>`. plan_action: why it waits, `question_open` or `requires_review`.
+   * decision: its `plan:<slug>` and `action:<id>` frontmatter fields, whichever it has. agent_ask: `request:<request_id>`, then
+   * `via:<source>` of its capture envelope when that envelope is stored. escalation: `action:<id>` of its action_key (the kind is
+   * already in `kind`). clarify: `capture:<capture_id>`, then `via:<source>` of that envelope when it is stored.
+   */
+  origin: string | null;
   /** The existing canonical command that answers it. Nothing here runs it. */
   answer: string;
   /** Other existing ways to answer it (Discord reply, dashboard route), where one exists; never invented. A Decision has a Discord path only through the review item raised from its document; an Agent Ask has none. */
@@ -137,7 +144,7 @@ function dashboardAnswerVia(item: OperatorGateItem): string[] {
       ];
 }
 
-function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
+function toItem(item: OperatorGateItem, blocking: boolean, askIngress?: string): TodoItem {
   return {
     key: `${item.kind}:${item.projectSlug || "unknown"}/${item.id}`,
     kind: item.kind,
@@ -146,6 +153,7 @@ function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
     blocking,
     createdAt: item.timestamp,
     sourceRef: item.relativePath ?? `agent_ask_proposals:${item.id}`,
+    origin: item.kind === "agent_ask" && item.origin && askIngress ? `${item.origin} via:${askIngress}` : item.origin,
     answer: item.settleCommand,
     answerVia: dashboardAnswerVia(item),
     ...(item.gateQuestion ? { gateQuestion: item.gateQuestion } : {}),
@@ -246,6 +254,19 @@ function askFactsOf(rows: UnsettledAsk[]): Map<string, AskFacts> {
   );
 }
 
+/** Where each unsettled Ask came in: `ingress_source` of the capture envelope the proposal row's own `capture_id` names. An Ask whose envelope is not stored has no entry. */
+function askIngressOf(db: Parameters<typeof listUnsettledAgentAskProposals>[0], rows: UnsettledAsk[]): Map<string, string> {
+  const lookup = db.prepare(
+    "SELECT c.ingress_source FROM agent_ask_proposals p JOIN ask_capture_envelopes c ON c.id = p.capture_id WHERE p.id = ?"
+  );
+  const ingress = new Map<string, string>();
+  for (const row of rows) {
+    const found = lookup.get(row.id) as { ingress_source: string } | undefined;
+    if (found?.ingress_source) ingress.set(row.id, found.ingress_source);
+  }
+  return ingress;
+}
+
 /** One stored proposal, settled or not, as supersession reads it. */
 interface SupersessionSource {
   id: string;
@@ -309,6 +330,8 @@ function supersessionsOf(rows: SupersessionSource[]): Map<string, string> {
 
 interface StaleContext {
   askFacts: Map<string, AskFacts>;
+  /** Proposal id -> `ingress_source` of the capture envelope its `captureId` names, when that envelope is stored. */
+  askIngress: Map<string, string>;
   superseded: Map<string, string>;
   evidence: Map<string, ProjectEvidence>;
 }
@@ -372,7 +395,7 @@ function gateForProject(
 
 function collect(gate: { blocking: OperatorGateItem[]; alerts: OperatorGateItem[] }, context: StaleContext): TodoItem[] {
   const build = (item: OperatorGateItem, blocking: boolean): TodoItem => {
-    const todo = toItem(item, blocking);
+    const todo = toItem(item, blocking, context.askIngress.get(item.id));
     const staleReason = staleReasonOf(item, context);
     return staleReason ? { ...todo, staleReason } : todo;
   };
@@ -532,6 +555,7 @@ function withEscalations(found: TodoItem[], rows: OperatorEscalation[], projectS
       blocking: true,
       createdAt: row.firstDetectedAt,
       sourceRef: `production_operator_escalations:${row.actionKey}`,
+      origin: row.actionKey ? `action:${splitActionKey(row.actionKey).actionId}` : null,
       answer: row.remedy?.trim() || "arcadia production status"
     });
   }
@@ -668,8 +692,9 @@ function planActionItems(
 function clarifyItems(db: Parameters<typeof listActionableReviewItems>[0], projectId: string, projectSlug: string): TodoItem[] {
   const rows = db
     .prepare(
-      `SELECT wi.id, wi.title, wi.created_at
+      `SELECT wi.id, wi.title, wi.created_at, wi.capture_id, c.ingress_source
          FROM work_items wi
+         LEFT JOIN ask_capture_envelopes c ON c.id = wi.capture_id
         WHERE wi.project_id = ?
           AND wi.status != 'done'
           AND wi.clarification_status = 'unclarified'
@@ -677,7 +702,7 @@ function clarifyItems(db: Parameters<typeof listActionableReviewItems>[0], proje
           AND NOT EXISTS (SELECT 1 FROM review_items ri WHERE ri.work_item_id = wi.id AND ri.status IN ('open', 'deferred'))
         ORDER BY wi.created_at ASC, wi.id ASC`
     )
-    .all(projectId) as Array<{ id: string; title: string; created_at: string }>;
+    .all(projectId) as Array<{ id: string; title: string; created_at: string; capture_id: string; ingress_source: string | null }>;
   return rows.map((row) => ({
     key: `clarify:${projectSlug || "unknown"}/${row.id}`,
     kind: "clarify" as const,
@@ -686,6 +711,7 @@ function clarifyItems(db: Parameters<typeof listActionableReviewItems>[0], proje
     blocking: false,
     createdAt: row.created_at,
     sourceRef: `work_items:${row.id}`,
+    origin: `capture:${row.capture_id}${row.ingress_source ? ` via:${row.ingress_source}` : ""}`,
     answer: `arcadia clarify --work ${row.id} --apply`,
     answerVia: [`dry run first (writes nothing): arcadia clarify --work ${row.id}`]
   }));
@@ -848,6 +874,7 @@ function readWithWorkspace(
     const reviewRowsOf = (projectId: string): ReviewItemSummary[] => reviewRows.filter((row) => row.project_id === projectId);
     const context: StaleContext = {
       askFacts: askFactsOf(proposals),
+      askIngress: askIngressOf(db, proposals),
       superseded: supersessionsOf(listSupersessionSources(db)),
       evidence: new Map()
     };
@@ -996,7 +1023,7 @@ function readDecisionsOnly(repoRoot: string, project: string | undefined, unavai
     return [];
   }
   const wanted = project?.toLowerCase();
-  const context: StaleContext = { askFacts: new Map(), superseded: new Map(), evidence: new Map() };
+  const context: StaleContext = { askFacts: new Map(), askIngress: new Map(), superseded: new Map(), evidence: new Map() };
   const items: TodoItem[] = [];
   const resolvedBySlug = new Map<string, ReturnType<typeof gateForProject>>();
   for (const slug of slugs.filter((candidate) => !wanted || candidate.toLowerCase() === wanted)) {

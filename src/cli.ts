@@ -3881,6 +3881,9 @@ Done when (the rule per kind; derived each run, never stored):
   escalation:<kind>  the production tick no longer holds the Action: it clears the row once the cause is gone
   clarify      the work item is clarified, done, or has an open review item (answer: arcadia clarify --work <id> --apply)
   plan_action  the Action is done, its question is answered (no longer question_open), or it is no longer requires_review
+
+Limit: Decisions raised only on unmerged candidate branches are not listed: todo reads the files on disk in each Project's configured repo_path checkout (normally its base branch), so a Decision appears once its PR merges there.
+Origin: every item has "origin" (a string from a field its source records, else null); see START_HERE.md.
 `
       )
   ).action((options: { workspace?: string; project?: string; all?: boolean; stale?: boolean; json?: boolean }) =>

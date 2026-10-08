@@ -22,6 +22,8 @@ export interface PendingDecisionGateInput {
   question: string;
   /** The Action this Decision governs, per its `action:` field. Null when it names none. */
   actionId: string | null;
+  /** The Plan its `plan:` field names, when it has one. */
+  plan?: string | null;
   options: OperatorGateOption[];
   /** Which Constitution gate question justified opening it, as recorded; null when none. */
   gateQuestion?: string | null;
@@ -60,6 +62,11 @@ export interface OperatorGateItem {
   timestamp: string;
   /** The Decision's document path, for a "decision" item; null for an Agent Ask (no fixed doc path). */
   relativePath: string | null;
+  /**
+   * What the source records about where it came from, else null. Decision: its `plan:<slug>` and `action:<id>` fields,
+   * whichever it has. Agent Ask: `request:<request_id>`. Nothing is derived.
+   */
+  origin: string | null;
 }
 
 export interface OperatorGateResolution {
@@ -92,7 +99,8 @@ function decisionGateItem(decision: PendingDecisionGateInput): OperatorGateItem 
       : `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer "<answer>"`,
     projectSlug: decision.projectSlug,
     timestamp: decision.updated,
-    relativePath: decision.relativePath
+    relativePath: decision.relativePath,
+    origin: [decision.plan ? `plan:${decision.plan}` : null, decision.actionId ? `action:${decision.actionId}` : null].filter(Boolean).join(" ") || null
   };
 }
 
@@ -110,7 +118,8 @@ function agentAskGateItem(ask: PendingAgentAskGateInput): OperatorGateItem {
     settleCommand: `arcadia agent-ask settle --proposal ${ask.proposalId} --request-id <settlement-request-id> --disposition accepted`,
     projectSlug: ask.projectSlug,
     timestamp: ask.createdAt,
-    relativePath: null
+    relativePath: null,
+    origin: ask.requestId ? `request:${ask.requestId}` : null
   };
 }
 

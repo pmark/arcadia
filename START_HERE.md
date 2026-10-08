@@ -2681,7 +2681,27 @@ an operator task's `arcadia operator-task show <id> --repo <path>`, with `close 
 `arcadia production status`; a `clarify` item's `arcadia clarify --work <id> --apply`, with the
 dry run `arcadia clarify --work <id>` listed first; a `plan_action`'s Agent Ask preview, which records the answer
 to its question or completes the Action once you have done the step).
-A review item also shows `origin` (its own `resolved_intent`) and, for a
+Every item carries `origin` in `--json` (always present, a string or `null`; the
+text view prints it when set). It is one string taken only from a field the source
+already records, never synthesized:
+
+| kind | `origin` | source field |
+| --- | --- | --- |
+| `decision` | `plan:<slug> action:<id>`, whichever it has | the Decision's `plan` and `action` frontmatter; `null` when it names neither |
+| `agent_ask` | `request:<request_id>`, then ` via:<source>` | the proposal's `request_id`, and `ingress_source` of the capture envelope its `capture_id` names (omitted when that envelope is not stored) |
+| `review_item` | its `resolved_intent`, for example `ActionClarification` | the review item row |
+| `operator_task` | `action:<id>` or `decision:<id>` | the ledger entry's `origin` |
+| `escalation:<kind>` | `action:<id>` | the id part of `production_operator_escalations.action_key` (the kind is already in `kind`) |
+| `clarify` | `capture:<capture_id>`, then ` via:<source>` | the work item's `capture_id`, and `ingress_source` of that capture envelope when stored |
+| `plan_action` | `question_open` or `requires_review` | why the Action waits |
+
+The shapes differ by kind because each source records different things; the type
+is the same everywhere (`string | null`), so a consumer can print it as-is. A
+`null` origin means the source records nothing usable (a Decision with neither
+`plan` nor `action`), not that the field was left out. The dashboard's read-only
+rows show it as received.
+
+A review item also shows, for a
 clarification, the Discord reply and Mission Control **Answer & continue** paths
 that answer it without `--clarify` (they re-clarify on their own). Any other
 review item prints `arcadia review show <id>`: look before you approve, since
@@ -2728,6 +2748,12 @@ that names it (`action:`), a review item whose `doc_ref` (or its work item's) is
 the Action, or a waiting operator task whose origin is the Action. A `plan_action`
 is blocking only when it is the Action `arcadia next` selected; its created date
 is its Plan's `updated` date, since an Action carries no creation time.
+
+**Limit:** Decisions raised only on unmerged candidate branches are not listed.
+`todo` reads Decision documents as files on disk in each Project's configured
+`repo_path` checkout (normally its base branch; it runs no `git` command and does
+not look at other branches or worktrees), so a Decision appears once its PR
+merges there.
 
 Done when (derived each run, never stored): a Decision is no longer open; an
 Agent Ask is settled; a review item is resolved or approved (no longer open or

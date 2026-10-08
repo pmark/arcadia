@@ -31,7 +31,7 @@ export interface Approval {
   /** The canonical command that answers the row, when `arcadia todo` supplied one. */
   answer: string | null;
   answerVia: string[];
-  /** review_item only: what raised it. */
+  /** What raised it, as `arcadia todo` records it (a review_item's intent, a Decision's plan/action, an Agent Ask's request); null when the source records none. */
   origin: string | null;
 }
 
