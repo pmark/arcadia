@@ -2024,3 +2024,10 @@ updated: 2026-10-08
 - **Result:** Every declared acceptance criterion was accepted as met: "Only after the triage Decision is answered approving the list: each listed Agent Ask is settled rejected with the existing two-phase agent-ask settle and each listed review_item is resolved with the existing review writer, batched and serialized against fresh main per the settlement-conflict procedure, with one receipt per item; items whose state changed since the list's sha256 are skipped and reported. If the answer declines, nothing is settled and the answer is recorded."; "The before and after arcadia todo counts are recorded; no Action status, pointer or queue changes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-apply-approved-stale-triage-20261008).
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1068
+
+- **Did:** Stale triage is closed out: all 52 stale Asks are rejected (#1067 merged), and #1068 records both triage Actions done. The operator to-do Plan is now at 4 of 9. https://github.com/pmark/arcadia/pull/1068
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
