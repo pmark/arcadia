@@ -2101,3 +2101,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Completed arcadia/point-operator-surfaces-at-todo
+
+- **Did:** Completed Action arcadia/point-operator-surfaces-at-todo from accepted evidence (Candidate 21027ee3290b936b8927ad6d2ce620f049dd8559).
+- **Result:** Every declared acceptance criterion was accepted as met: "The dashboard approvals page reads arcadia todo --json --all: Decision and Agent Ask rows keep today's settle controls and POST paths unchanged, while review, ledger and Action rows appear read-only with their answer command, so the phone-friendly dashboard shows the one list. The Flight Deck page and needs-you scoring are untouched. Parity tests prove every Decision and Ask the old loaders returned still appears with its options."; "The morning orientation packet gains an optional operatorTodoLines input fed the way workSafetyLines is (src/orientation/composer.ts, src/commands/orientation.ts), showing the to-do counts and each blocking item with its answer, escalation items first so the packet states what stopped production overnight, degrading to 'to-do unavailable: <reason>'; it is delivered through the packet's already-live path with no new message type, channel or schedule."; "Tests cover the approvals reader and the packet line including degradation; the PR includes runnable operator QA steps; type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact; LOCAL ONLY or an unresolved blocker is labelled explicitly.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-point-operator-surfaces-at-todo-20261008).
