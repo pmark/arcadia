@@ -193,9 +193,10 @@ export interface ReviewResolveReplyCommandOptions {
   execute?: boolean;
   executor?: string;
   /**
-   * The authenticated sender of the reply, when the surface knows one (today
-   * the Discord author id). Recorded in the capture envelope only; never
-   * invented for CLI or dashboard replies.
+   * Caller-asserted, untrusted provenance id for the sender (for example a
+   * Discord author id), at most 128 characters. Recorded in the capture
+   * envelope only; never used for authorization and never invented for CLI or
+   * dashboard replies.
    */
   actor?: string | null;
   /** The caller already holds a capture id for this reply; no new envelope is made. */
@@ -573,12 +574,17 @@ export function runReviewFlagAgentCommand(
   });
 }
 
+const MAX_REPLY_ACTOR_LENGTH = 128;
+
 export function runReviewResolveReplyCommand(
   options: ReviewResolveReplyCommandOptions
 ): CommandSuccess<ReviewResolveReplyCommandData> {
+  const actor = options.actor?.trim();
+  if (actor && actor.length > MAX_REPLY_ACTOR_LENGTH) {
+    throw validationError(`--actor must be at most ${MAX_REPLY_ACTOR_LENGTH} characters.`, { length: actor.length });
+  }
   const response = applyReviewReply(options);
   // After the canonical write, fail-open: a capture failure never changes it.
-  const actor = options.actor?.trim();
   try {
     withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) =>
       captureOperatorReply(db, {

@@ -8,6 +8,7 @@ import {
   ingressSourceKind,
   operatorReplyRequestId
 } from "../src/ask/replyCapture.js";
+import { runAskCommand } from "../src/commands/ask.js";
 import { runDecisionApproveCommand, runDecisionNewCommand } from "../src/commands/decision.js";
 import { ACTION_CLARIFICATION_INTENT, runReviewResolveReplyCommand } from "../src/commands/review.js";
 import { runWorkResolveQuestionCommand } from "../src/commands/workQuestion.js";
@@ -206,6 +207,30 @@ describe("review resolve-reply capture", () => {
   it("makes no envelope when the reply is refused", () => {
     const workspace = workspaceOnly();
     expect(() => runReviewResolveReplyCommand({ workspace, id: "review_missing", reply: "Yes." })).toThrow();
+    expect(envelopes(workspace)).toHaveLength(0);
+  });
+});
+
+describe("ask reply path", () => {
+  it("yields exactly one envelope for a reply routed through ask, with no operator.reply.review duplicate", () => {
+    const workspace = workspaceOnly();
+    const { reviewId } = clarificationItem(workspace);
+    const reply = `${reviewId} Yes, ship it as written.`;
+
+    runAskCommand({ workspace, request: reply, sourceIngress: "discord.message" });
+
+    expect(reviewRow(workspace, reviewId).status).toBe("approved");
+    const rows = envelopes(workspace);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.ingress_source).toBe("discord.message");
+    expect(captureEvents(workspace)).toHaveLength(0);
+  });
+
+  it("rejects an over-long --actor before any write", () => {
+    const workspace = workspaceOnly();
+    const { reviewId } = clarificationItem(workspace);
+    expect(() => runReviewResolveReplyCommand({ workspace, id: reviewId, reply: "Yes.", actor: "x".repeat(129) })).toThrow(/at most 128/);
+    expect(reviewRow(workspace, reviewId).status).toBe("open");
     expect(envelopes(workspace)).toHaveLength(0);
   });
 });
