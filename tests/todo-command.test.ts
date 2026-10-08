@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runTodoCommand, renderTodoSuccess, type TodoData } from "../src/commands/todo.js";
+import { AGENT_ASK_CAVEAT, runTodoCommand, renderTodoSuccess, type TodoData } from "../src/commands/todo.js";
 import { withDatabase } from "../src/db/connection.js";
 import { createProjectWithInitialWork, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -108,26 +108,50 @@ describe("arcadia todo", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace },
-      counts: { blocking: 1, other: 2, hidden: 0 },
+      counts: { blocking: 1, other: 2, byKind: { decision: 2, agent_ask: 1 }, hidden: 0 },
       items: [
         {
-          key: "decision:0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
+          key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
           createdAt: "2026-09-03", sourceRef: "docs/decisions/0001-block.md",
           answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'"
         },
         {
-          key: "agent_ask:proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
+          key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
           createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
           answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
         },
         {
-          key: "decision:0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
+          key: "decision:demo/0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
           createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md",
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'"
         }
       ],
       unavailable: []
     });
+
+    const lines = render(data);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 2 other (decisions 2, agent asks 1) (as of 2026-10-08T12:00:00.000Z, workspace ${workspace})`);
+    expect(lines.filter((line) => line === AGENT_ASK_CAVEAT)).toHaveLength(1);
+    expect(AGENT_ASK_CAVEAT).toBe("Agent Asks are listed while unsettled, not verified as still live; stale filtering arrives in a later slice.");
+  });
+
+  it("gives the same Decision id in two Projects distinct keys", () => {
+    const repo = fixtureRepo(0);
+    const workspace = fixtureWorkspace(repo);
+    const otherRepo = temp("other-repo");
+    write(otherRepo, "PROJECT.md", projectDoc().replace("slug: demo", "slug: other").replace("name: Demo", "name: Other"));
+    write(otherRepo, "docs/decisions/0001-block.md", decisionDoc("0001", "Other Project question?", "2026-09-04").replace("project: demo", "project: other"));
+    withDatabase(workspace, (db) => {
+      const bundle = createProjectWithInitialWork(db, {
+        name: "Other", mission: "A second Project.", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      upsertProjectMetadata(db, { projectId: bundle.project.id, repoPath: otherRepo });
+    });
+
+    const { data } = runTodoCommand({ workspace, now: NOW, all: true });
+
+    expect(data.items.map((item) => item.key).sort()).toEqual(["decision:demo/0001", "decision:other/0001"]);
+    expect(new Set(data.items.map((item) => item.key)).size).toBe(2);
   });
 
   it("shows every blocking item, caps the others at five oldest-first, and says how many more", () => {
@@ -135,12 +159,12 @@ describe("arcadia todo", () => {
     const workspace = fixtureWorkspace(repo);
 
     const capped = runTodoCommand({ workspace, now: NOW });
-    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, hidden: 2 });
+    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, byKind: { decision: 8, agent_ask: 0 }, hidden: 2 });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
-      "decision:0002", "decision:0003", "decision:0004", "decision:0005", "decision:0006"
+      "decision:demo/0002", "decision:demo/0003", "decision:demo/0004", "decision:demo/0005", "decision:demo/0006"
     ]);
     const lines = render(capped.data);
-    expect(lines[0]).toBe(`Operator to-do: 1 blocking, 7 other (as of 2026-10-08T12:00:00.000Z, workspace ${workspace})`);
+    expect(lines[0]).toBe(`Operator to-do: 1 blocking · 7 other (decisions 8, agent asks 0) (as of 2026-10-08T12:00:00.000Z, workspace ${workspace})`);
     expect(lines.at(-1)).toBe("2 more: --all");
     expect(lines.indexOf("Blocking:")).toBeLessThan(lines.indexOf("Other (oldest first):"));
 
@@ -162,8 +186,8 @@ describe("arcadia todo", () => {
     ]);
     const { data } = runTodoCommand({ workspace, now: NOW });
     expect(data.items.map((item) => [item.key, item.project, item.blocking])).toEqual([
-      ["decision:0001", "demo", true],
-      ["agent_ask:stray", "elsewhere", false]
+      ["decision:demo/0001", "demo", true],
+      ["agent_ask:elsewhere/stray", "elsewhere", false]
     ]);
   });
 
@@ -183,12 +207,12 @@ describe("arcadia todo", () => {
     const { data } = runTodoCommand({ workspace: missing, now: NOW, repoRoot: repo });
 
     expect(data.asOf.workspace).toBeNull();
-    expect(data.counts).toEqual({ blocking: 1, other: 1, hidden: 0 });
-    expect(data.items.map((item) => item.key)).toEqual(["decision:0001", "decision:0002"]);
+    expect(data.counts).toEqual({ blocking: 1, other: 1, byKind: { decision: 2, agent_ask: 0 }, hidden: 0 });
+    expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001", "decision:demo/0002"]);
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: no workspace at .*arcadia init <path>/)]);
     const lines = render(data);
     expect(lines.filter((line) => line.startsWith("workspace sources unavailable:"))).toHaveLength(1);
-    expect(lines[0]).toBe("Operator to-do: 1 blocking, 1 other (as of 2026-10-08T12:00:00.000Z)");
+    expect(lines[0]).toBe("Operator to-do: 1 blocking · 1 other (decisions 2, agent asks 0) (as of 2026-10-08T12:00:00.000Z)");
   });
 
   it("names the configuration remedy when no workspace resolves at all", () => {
@@ -205,7 +229,7 @@ describe("arcadia todo", () => {
     expect(data.unavailable).toEqual([
       "workspace sources unavailable: pass --workspace <path>, set ARCADIA_WORKSPACE=<path> inline on this command, or run from inside an initialized workspace"
     ]);
-    expect(data.items.map((item) => item.key)).toEqual(["decision:0001"]);
+    expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001"]);
   });
 
   it("states plainly when nothing is waiting", () => {
@@ -214,7 +238,7 @@ describe("arcadia todo", () => {
     write(repo, "docs/plans/main-plan.md", planDoc());
     const workspace = fixtureWorkspace(repo);
     const lines = render(runTodoCommand({ workspace, now: NOW }).data).join("\n");
-    expect(lines).toContain("0 blocking, 0 other");
+    expect(lines).toContain("0 blocking · 0 other (decisions 0, agent asks 0)");
     expect(lines).toContain("Nothing is waiting on you");
   });
 });

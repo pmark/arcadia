@@ -2605,11 +2605,18 @@ pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 run. This first slice lists two sources, **open Decisions** and **pending Agent
 Ask proposals**, per Project. An item is *blocking* when `arcadia next` would
 refuse to dispatch because of it, and otherwise *other*, using the same gate.
-Each item shows `key` (`decision:<id>` or `agent_ask:<proposal-id>`), its own
+Each item shows `key` (`decision:<project>/<id>` or `agent_ask:<project>/<proposal-id>`, unique across Projects), its own
 title, project, created date, source, and the existing command that answers it
 (a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview).
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time.
+
+The counts line ends with per-kind totals, for example
+`0 blocking · 273 other (decisions 6, agent asks 267)`. Agent Asks are listed
+while unsettled, not verified as still live; stale filtering arrives in a later
+slice. The printed answer commands omit `--workspace`: add it when you use a
+non-default workspace. The Agent Ask answer contains a
+`<settlement-request-id>` placeholder you must fill in before running it.
 
 When no workspace resolves, `todo` still reads the open Decisions of the
 checkout you are standing in and ends with one

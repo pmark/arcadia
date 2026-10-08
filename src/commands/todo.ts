@@ -14,6 +14,8 @@ import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
 
 export const TODO_SCHEMA = "arcadia-todo-v1";
+export const AGENT_ASK_CAVEAT =
+  "Agent Asks are listed while unsettled, not verified as still live; stale filtering arrives in a later slice.";
 /** Non-blocking items the default view shows before pointing at `--all`. */
 export const TODO_OTHER_CAP = 5;
 
@@ -31,7 +33,7 @@ export interface TodoCommandOptions {
 }
 
 export interface TodoItem {
-  /** `<kind>:<source-id>`, stable for as long as the source item is pending. */
+  /** `<kind>:<project>/<source-id>`: Decision ids are per Project, so the Project is part of the identity. Stable while the item is pending. */
   key: string;
   kind: "decision" | "agent_ask";
   /** The source's own words: a Decision's question or an Agent Ask's desired result. */
@@ -49,6 +51,8 @@ export interface TodoItem {
 export interface TodoCounts {
   blocking: number;
   other: number;
+  /** Totals by kind across every item found, shown or not. */
+  byKind: { decision: number; agent_ask: number };
   /** Non-blocking items left out of `items` because the cap applies. */
   hidden: number;
 }
@@ -64,7 +68,7 @@ export interface TodoData {
 
 function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
   return {
-    key: `${item.kind}:${item.id}`,
+    key: `${item.kind}:${item.projectSlug || "unknown"}/${item.id}`,
     kind: item.kind,
     title: item.title,
     project: item.projectSlug,
@@ -170,7 +174,15 @@ export function runTodoCommand(options: TodoCommandOptions): CommandSuccess<Todo
     data: {
       schema: TODO_SCHEMA,
       asOf: { at, workspace: workspacePath },
-      counts: { blocking: blocking.length, other: other.length, hidden: other.length - shownOther.length },
+      counts: {
+        blocking: blocking.length,
+        other: other.length,
+        byKind: {
+          decision: items.filter((item) => item.kind === "decision").length,
+          agent_ask: items.filter((item) => item.kind === "agent_ask").length
+        },
+        hidden: other.length - shownOther.length
+      },
       items: [...blocking, ...shownOther],
       unavailable
     }
@@ -266,7 +278,8 @@ function describe(item: TodoItem): string[] {
 export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] {
   const { counts, items, unavailable, asOf } = response.data;
   const lines = [
-    `Operator to-do: ${counts.blocking} blocking, ${counts.other} other` +
+    `Operator to-do: ${counts.blocking} blocking · ${counts.other} other` +
+      ` (decisions ${counts.byKind.decision}, agent asks ${counts.byKind.agent_ask})` +
       ` (as of ${asOf.at}${asOf.workspace ? `, workspace ${asOf.workspace}` : ""})`
   ];
 
@@ -281,6 +294,9 @@ export function renderTodoSuccess(response: CommandSuccess<TodoData>): string[] 
   }
   if (counts.hidden > 0) {
     lines.push("", `${counts.hidden} more: --all`);
+  }
+  if (counts.byKind.agent_ask > 0) {
+    lines.push("", AGENT_ASK_CAVEAT);
   }
   if (items.length === 0 && unavailable.length === 0) {
     lines.push("", "Nothing is waiting on you in the sources this slice reads (open Decisions, pending Agent Asks).");
