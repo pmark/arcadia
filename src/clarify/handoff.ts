@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { runAgentAskDraftCommand } from "../commands/agentAsk.js";
 import { withDatabase } from "../db/connection.js";
@@ -26,6 +26,20 @@ export interface HandoffReport {
   reason?: string;
   /** The drafted file, when `status` is `drafted`. */
   path?: string;
+  /** Whether the draft was also previewed into the workspace; `preview_blocked` or `not_available` means no proposal row exists yet. */
+  workspaceStatus?: "previewed" | "not_available" | "preview_blocked";
+}
+
+function existingHandoffDraft(repoPath: string, prefix: string): string | null {
+  try {
+    return (
+      readdirSync(path.join(repoPath, ".arcadia", "asks")).find(
+        (name) => name.startsWith(`agent-ask-${prefix}`) && /\.ya?ml$/.test(name)
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /** Only a graded coding-agent Action that came from a captured Ask is handed off. */
@@ -33,9 +47,23 @@ export function isHandoffEligible(workItem: WorkItemSummary, verdict: ClarifiedV
   return verdict.actor === "coding-agent" && Boolean(workItem.capture_id);
 }
 
+/**
+ * Work item ids carry an underscore (`work_<hex>`). Request ids stay within
+ * `[a-z0-9-]` so the draft file name is one `untrackedDraftAskPaths` recognizes
+ * as intake and never counts as dirt in the Project's checkout.
+ */
+function requestIdSegment(workItemId: string): string {
+  return workItemId.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+/** Every handoff request id for one Action starts with this, whatever its candidate text. */
+export function handoffRequestPrefix(workItemId: string): string {
+  return `handoff-${requestIdSegment(workItemId)}-`;
+}
+
 /** Stable for the same Action, next action and done-condition, so a re-run replays instead of duplicating. */
 export function handoffRequestId(workItemId: string, nextAction: string, doneCondition: string): string {
-  return `handoff-${workItemId}-${sha256Hex(nextAction + doneCondition).slice(0, 12)}`;
+  return `${handoffRequestPrefix(workItemId)}${sha256Hex(nextAction + doneCondition).slice(0, 12)}`;
 }
 
 /** The strict v1 Ask as a compact JSON document (valid YAML, like the other checked-in Asks). */
@@ -75,7 +103,15 @@ export function draftHandoffAsk(workspacePath: string, workItem: WorkItemSummary
     // A proposal row survives settlement and archiving, so it is the record of
     // "this request id was ever used"; the file check covers a draft written
     // before a workspace could preview it.
-    const known = db.prepare("SELECT 1 FROM agent_ask_proposals WHERE request_id = ?").get(requestId) !== undefined;
+    // One handoff per Action: the candidate text varies between runs, so any
+    // request id with this Action's prefix counts, not just this exact one.
+    const prefix = handoffRequestPrefix(workItem.id);
+    const known =
+      (
+        db
+          .prepare("SELECT request_id FROM agent_ask_proposals WHERE substr(request_id, 1, ?) = ? LIMIT 1")
+          .get(prefix.length, prefix) as { request_id: string } | undefined
+      )?.request_id ?? null;
     return { project, repoPath, known };
   });
 
@@ -89,10 +125,11 @@ export function draftHandoffAsk(workspacePath: string, workItem: WorkItemSummary
     return { requestId, status: "skipped", reason: `Project ${context.project.slug} repo_path is not a directory: ${context.repoPath}` };
   }
   if (context.known) {
-    return { requestId, status: "skipped", reason: `Agent Ask ${requestId} already exists (proposed, settled or archived)` };
+    return { requestId, status: "skipped", reason: `Agent Ask ${context.known} already hands off this Action (proposed, settled or archived)` };
   }
-  if (existsSync(path.join(context.repoPath, ".arcadia", "asks", `agent-ask-${requestId}.yaml`))) {
-    return { requestId, status: "skipped", reason: `Agent Ask ${requestId} already exists as a draft file` };
+  const existingDraft = existingHandoffDraft(context.repoPath, handoffRequestPrefix(workItem.id));
+  if (existingDraft) {
+    return { requestId, status: "skipped", reason: `Agent Ask draft ${existingDraft} already hands off this Action` };
   }
 
   try {
@@ -101,7 +138,7 @@ export function draftHandoffAsk(workspacePath: string, workItem: WorkItemSummary
       workspace: workspacePath,
       dir: context.repoPath
     });
-    return { requestId, status: "drafted", path: drafted.data.path };
+    return { requestId, status: "drafted", path: drafted.data.path, workspaceStatus: drafted.data.workspaceStatus };
   } catch (error) {
     // The clarification is already recorded; a failed draft must not undo or
     // hide it. Report why and let the operator re-run `clarify --work`.

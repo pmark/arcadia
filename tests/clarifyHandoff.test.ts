@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,6 +21,7 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import type { WorkItemSummary } from "../src/domain/types.js";
+import { assertClean, untrackedDraftAskPaths } from "../src/git/worktrees.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { clarifyGoldenExamples, passingGrader, stubGrader } from "./clarifyFixtures.js";
 
@@ -102,7 +104,7 @@ function proposalCount(workspace: string, requestId: string): number {
 }
 
 const expectedRequestId = (workItemId: string) =>
-  `handoff-${workItemId}-${createHash("sha256")
+  `handoff-${workItemId.replace(/_/g, "-")}-${createHash("sha256")
     .update(String(YES.nextAction) + String(YES.doneCondition))
     .digest("hex")
     .slice(0, 12)}`;
@@ -191,9 +193,56 @@ describe("clarify --apply hands a graded coding-agent Action to a file", () => {
     const again = await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
 
     expect(again.data.applications[0].handoff).toMatchObject({ requestId, status: "skipped" });
-    expect(again.data.applications[0].handoff?.reason).toContain("already exists");
+    expect(again.data.applications[0].handoff?.reason).toContain("already hands off this Action");
     expect(draftFiles(repo)).toHaveLength(1);
     expect(proposalCount(workspace, requestId)).toBe(1);
+  });
+
+  it("drafts a regex-safe request id whose file does not dirty the Project's checkout", async () => {
+    const { workspace, repo, action } = fixture();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, stdio: "pipe" });
+    git("init", "-q");
+    git("-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "init");
+
+    const response = await runClarifyCommand({ workspace, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
+
+    const handoff = response.data.applications[0].handoff;
+    expect(handoff?.status).toBe("drafted");
+    expect(handoff?.workspaceStatus).toBe("previewed");
+    expect(handoff?.requestId).toMatch(/^handoff-[a-z0-9-]+$/);
+    expect(handoff?.requestId).toBe(expectedRequestId(action.id));
+    const drafts = untrackedDraftAskPaths(repo);
+    expect(drafts).toHaveLength(1);
+    // The draft is untracked intake: a clean check that ignores drafts passes.
+    expect(() => assertClean(repo, "Project repository", drafts)).not.toThrow();
+    expect(() => assertClean(repo, "Project repository")).toThrow();
+  });
+
+  it("hands one Action off once even when a re-run produces different candidate text", async () => {
+    const { workspace, repo, action } = fixture();
+    await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
+    const different: ClarifyEvaluator = async () =>
+      normalizeVerdict({ ...YES, nextAction: "Add a per-batch retry and a metrics counter", doneCondition: "The counter increments on a forced failure" });
+
+    const again = await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: different, grader: passingGrader });
+
+    expect(again.data.applications[0].handoff).toMatchObject({ status: "skipped" });
+    expect(again.data.applications[0].handoff?.reason).toContain("already hands off this Action");
+    expect(draftFiles(repo)).toHaveLength(1);
+
+    // Also when the earlier handoff was settled and archived: the file is gone, the proposal row remains.
+    rmSync(path.join(repo, ".arcadia", "asks", draftFiles(repo)[0]));
+    const archived = await runClarifyCommand({ workspace, workId: action.id, apply: true, evaluator: different, grader: passingGrader });
+    expect(archived.data.applications[0].handoff?.status).toBe("skipped");
+    expect(draftFiles(repo)).toHaveLength(0);
+
+    // An unproposed draft file alone also blocks a second handoff.
+    const drafted = fixture();
+    mkdirSync(path.join(drafted.repo, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(drafted.repo, ".arcadia", "asks", `agent-ask-handoff-${drafted.action.id.replace(/_/g, "-")}-aaaaaaaaaaaa.yaml`), "{}\n");
+    const blocked = await runClarifyCommand({ workspace: drafted.workspace, apply: true, evaluator: AGENT_EVALUATOR, grader: passingGrader });
+    expect(blocked.data.applications[0].handoff?.status).toBe("skipped");
+    expect(draftFiles(drafted.repo)).toHaveLength(1);
   });
 
   it("treats a request id that was settled and archived as existing", async () => {

@@ -366,7 +366,11 @@ export function renderClarifyData(data: ClarifyCommandData): string[] {
       if (handoff) {
         lines.push(
           handoff.status === "drafted"
-            ? `  Handoff: drafted Agent Ask ${handoff.requestId} (${handoff.path})`
+            ? `  Handoff: drafted Agent Ask ${handoff.requestId} (${handoff.path})${
+                handoff.workspaceStatus && handoff.workspaceStatus !== "previewed"
+                  ? `; no proposal recorded yet (${handoff.workspaceStatus})`
+                  : ""
+              }`
             : `  Handoff: skipped ${handoff.requestId} — ${handoff.reason}`
         );
       }

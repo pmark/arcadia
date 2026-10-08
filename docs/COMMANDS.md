@@ -623,12 +623,13 @@ is the contract any deterministic replacement grader must pass.
 `arcadia ask` creates its Actions `unclarified`, so they enter this pass. When a
 graded YES names a coding agent as the actor and the Action came from a captured
 Ask, `--apply` also drafts one strict v1 Agent Ask (intent `action`, request id
-`handoff-<work-item-id>-<first 12 hex of sha256(next action + done-condition)>`,
+`handoff-<work-item-id with underscores as hyphens>-<first 12 hex of sha256(next action + done-condition)>`,
 the done-condition as its acceptance) into the Project repository's
 `.arcadia/asks/` through `agent-ask draft`, so the handoff is a file and appears
 in `arcadia todo` as a pending proposal. It is skipped, with the reason printed
-under `Handoff:`, when the Project has no `repo_path` or that request id already
-exists (proposed, settled or archived). Clarify itself writes no Action status,
+under `Handoff:`, when the Project has no `repo_path` or any handoff Ask for that
+Action already exists (proposed, settled or archived), so one Action is handed
+off once even if a re-run words the next action differently. Clarify itself writes no Action status,
 pointer or queue entry; the operator accepts or rejects the Ask.
 
 A `missing-definition` verdict comes back with a proposed decomposition.
