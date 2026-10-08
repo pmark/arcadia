@@ -588,7 +588,7 @@ export function preserveCandidate(
   hooks.onStage?.("candidate-stage-and-fingerprint");
   preservationStage("preserve.snapshot");
   hooks.beforeStage?.();
-  const candidateFingerprint = snapshotCandidate(candidateWorktreePath);
+  const candidateFingerprint = snapshotCandidate(candidateWorktreePath, request.baseRevision);
   hooks.afterStage?.();
   if (candidateFingerprint !== request.validation.candidateFingerprint) {
     throw validationError("Candidate content differs from the validated snapshot.", { evidenceRef: request.validation.evidenceRef });
@@ -630,7 +630,7 @@ export function preserveCandidate(
     syncIndexToPreservedTree(candidateWorktreePath, candidateFingerprint);
   } else {
     preservationStage("preserve.recheck-snapshot");
-    if (snapshotCandidate(candidateWorktreePath) !== candidateFingerprint) {
+    if (snapshotCandidate(candidateWorktreePath, request.baseRevision) !== candidateFingerprint) {
       throw validationError("Candidate changed between validation and preservation.");
     }
     preservationStage("preserve.recheck-binding");

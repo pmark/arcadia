@@ -79,7 +79,7 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
   assertBinding();
   onStage?.("validation-candidate-capture");
   preservationStage("validation.snapshot");
-  const tree = snapshotCandidate(candidate.worktree);
+  const tree = snapshotCandidate(candidate.worktree, candidate.base);
   // Refuse before executing anything: a check the candidate rewrote cannot judge it.
   preservationStage("validation.check-definitions");
   const checkDefinition = bindCheckDefinitions(candidate.repository, candidate.base, tree, candidate.commands);
@@ -149,7 +149,7 @@ export function validateBoundCandidate<T>(workspace: string, candidate: { id: st
     assertBinding();
     onStage?.("post-validation-candidate-recapture");
     preservationStage("validation.recheck-snapshot", { evidenceRef });
-    if (snapshotCandidate(candidate.worktree) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
+    if (snapshotCandidate(candidate.worktree, candidate.base) !== tree) throw validationError("Candidate changed during validation; passing evidence cannot authorize altered content.", { evidenceRef });
     return { passed: true, evidenceRef, candidateFingerprint: tree, checkDefinition, binding };
   } catch (error) {
     throw preservationStageFailure(error);
