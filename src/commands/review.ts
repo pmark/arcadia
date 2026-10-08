@@ -6,6 +6,7 @@ import { prepareBuildPacketForAcceptedPlan } from "./work.js";
 import { prepareDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { captureOperatorReply } from "../ask/replyCapture.js";
 import { withDatabase } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import {
@@ -191,6 +192,15 @@ export interface ReviewResolveReplyCommandOptions {
   id?: string | null;
   execute?: boolean;
   executor?: string;
+  /**
+   * Caller-asserted, untrusted provenance id for the sender (for example a
+   * Discord author id), at most 128 characters. Recorded in the capture
+   * envelope only; never used for authorization and never invented for CLI or
+   * dashboard replies.
+   */
+  actor?: string | null;
+  /** The caller already holds a capture id for this reply; no new envelope is made. */
+  captureId?: string | null;
 }
 
 export interface ReviewResolveReplyCommandData {
@@ -564,7 +574,37 @@ export function runReviewFlagAgentCommand(
   });
 }
 
+const MAX_REPLY_ACTOR_LENGTH = 128;
+
 export function runReviewResolveReplyCommand(
+  options: ReviewResolveReplyCommandOptions
+): CommandSuccess<ReviewResolveReplyCommandData> {
+  const actor = options.actor?.trim();
+  if (actor && actor.length > MAX_REPLY_ACTOR_LENGTH) {
+    throw validationError(`--actor must be at most ${MAX_REPLY_ACTOR_LENGTH} characters.`, { length: actor.length });
+  }
+  const response = applyReviewReply(options);
+  // After the canonical write, fail-open: a capture failure never changes it.
+  try {
+    withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) =>
+      captureOperatorReply(db, {
+        surface: "review.resolve-reply",
+        entityId: response.data.item.id,
+        text: options.reply,
+        ingressSource: "operator.reply.review",
+        actor: actor ? { id: actor } : null,
+        heldCaptureId: options.captureId,
+        links: { reviewItemId: response.data.item.id },
+        payload: { action: response.data.action }
+      })
+    );
+  } catch (error) {
+    process.stderr.write(`warning: operator reply capture failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+  return response;
+}
+
+function applyReviewReply(
   options: ReviewResolveReplyCommandOptions
 ): CommandSuccess<ReviewResolveReplyCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);

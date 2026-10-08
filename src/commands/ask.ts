@@ -287,7 +287,9 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       id: parsedReviewResponse.reviewId,
       reply: request,
       execute: options.executeReview,
-      executor: options.reviewExecutor
+      executor: options.reviewExecutor,
+      // This path already captured the same text above; one reply, one envelope.
+      captureId: captureEnvelope.id
     });
     const ask = withDatabase(workspacePath, (db) =>
       createAskRequest(db, {

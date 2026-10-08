@@ -1,3 +1,4 @@
+import { captureOperatorReply } from "../ask/replyCapture.js";
 import { validationError } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -126,6 +127,8 @@ export function runWorkResolveQuestionCommand(options: {
   workspace: string;
   workId: string;
   answer: string;
+  /** The caller already holds a capture id for this answer; no new envelope is made. */
+  captureId?: string | null;
 }): CommandSuccess<WorkResolveQuestionData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const answer = options.answer.trim();
@@ -164,6 +167,23 @@ export function runWorkResolveQuestionCommand(options: {
   const updatedWorkItem = withDatabase(workspacePath, (db) => getWorkItem(db, workItem.id));
   if (!updatedWorkItem) {
     throw validationError("Action was not found after recording the answer.", { workId: workItem.id });
+  }
+
+  // Provenance for the dashboard work-question route and the CLI: the exact
+  // words, after the canonical write, fail-open.
+  try {
+    withDatabase(workspacePath, (db) =>
+      captureOperatorReply(db, {
+        surface: "work.resolve-question",
+        entityId: workItem.id,
+        text: options.answer,
+        ingressSource: "operator.reply.work-question",
+        heldCaptureId: options.captureId,
+        links: { workItemId: workItem.id, reviewItemId, projectId: workItem.project_id ?? null }
+      })
+    );
+  } catch (error) {
+    process.stderr.write(`warning: operator reply capture failed: ${error instanceof Error ? error.message : String(error)}\n`);
   }
 
   return createSuccess({

@@ -3390,12 +3390,13 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .description("Resolve a Requires Review item from a short reply")
       .argument("<reply>", "Reply text, such as 'R45 A' or 'approve'")
       .option("--id <id>", "Requires Review item id when the reply came from a known message")
+      .option("--actor <id>", "Caller-asserted, untrusted provenance id for the sender (for example a Discord author id, max 128 chars); recorded in the capture envelope only")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((reply: string, options: { id?: string; workspace: string; json?: boolean }) =>
+  ).action((reply: string, options: { id?: string; actor?: string; workspace: string; json?: boolean }) =>
     runCliAction(
       "review.resolve-reply",
       reviewOptionsFromArgv(options),
-      () => runReviewResolveReplyCommand({ ...reviewOptionsFromArgv(options), id: options.id, reply }),
+      () => runReviewResolveReplyCommand({ ...reviewOptionsFromArgv(options), id: options.id, actor: options.actor, reply }),
       renderReviewResolveReplySuccess
     )
   );
