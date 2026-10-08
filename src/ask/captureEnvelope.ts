@@ -43,6 +43,18 @@ export interface AskCaptureEnvelope {
   derivations: CaptureDerivation[];
   status: "captured";
   authority: "untrusted_input";
+  /**
+   * Who authenticated as the sender, when the calling surface knows. Stored in
+   * envelope_json only and never part of the fingerprint, so a replay returns
+   * the first stored envelope. Absent on envelopes captured before this field.
+   */
+  actor?: CaptureActor | null;
+  /** Project slug, only where the call site already held it. Same storage rule as `actor`. */
+  project?: string | null;
+}
+
+export interface CaptureActor {
+  id: string;
 }
 
 export function captureAskEnvelope(db: Database.Database, input: {
@@ -51,6 +63,9 @@ export function captureAskEnvelope(db: Database.Database, input: {
   ingressSource: string;
   attachments?: CaptureAttachmentInput[];
   reuseExisting?: boolean;
+  /** Provenance metadata kept out of the fingerprint; see AskCaptureEnvelope. */
+  actor?: CaptureActor | null;
+  project?: string | null;
 }): AskCaptureEnvelope {
   const requestId = input.requestId?.trim() || `request_${randomUUID()}`;
   const existing = db.prepare("SELECT envelope_json, fingerprint FROM ask_capture_envelopes WHERE request_id = ?")
@@ -83,7 +98,9 @@ export function captureAskEnvelope(db: Database.Database, input: {
     attachments: attachmentReceipts,
     derivations,
     status: "captured",
-    authority: "untrusted_input"
+    authority: "untrusted_input",
+    ...(input.actor !== undefined ? { actor: input.actor } : {}),
+    ...(input.project !== undefined ? { project: input.project } : {})
   };
 
   db.transaction(() => {

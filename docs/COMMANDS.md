@@ -664,6 +664,18 @@ surfaces immediately run clarification again after the answer is durable, so
 the operator sees either the concrete next Action or one focused follow-up
 question without a second command.
 
+Each free-text operator reply is also preserved as an Ask capture envelope
+(`ask_capture_envelopes`, ingress source `operator.reply.*`, provenance-only)
+after the canonical write, so the exact words survive: `review resolve-reply`,
+`work resolve-question` (the Dashboard work-question route) and `decision
+approve` with a free-text answer (an offered option label is not free text).
+The request id is `<surface>:<entity-id>:<first 12 hex of sha256(text)>`, so a
+replay returns the first envelope. `review resolve-reply --actor <id>` records
+the authenticated sender (the Discord author id) in the envelope only; CLI and
+Dashboard replies record actor null. Capture is fail-open: a failure is logged
+to stderr and never blocks or changes the canonical write. The capture id is in
+the `operator.reply.captured` event payload; `capture_id` columns are untouched.
+
 `review reject R1` withdraws a question that turned out to be wrong — the
 Decision keeps the history, and the Action drops back to `unclarified` so it
 stops advertising a question nobody will answer. `review defer R1` leaves it

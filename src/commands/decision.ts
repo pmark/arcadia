@@ -5,6 +5,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { captureOperatorReply } from "../ask/replyCapture.js";
 import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import { getProject, getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
 import type { ClarificationConfidence, GapType } from "../domain/constants.js";
@@ -147,6 +148,8 @@ export interface DecisionApproveOptions {
   dryRun?: boolean;
   /** Idempotency key for the deferral's pointer transition; derived when omitted. */
   requestId?: string;
+  /** The caller already holds a capture id for this answer; no new envelope is made. */
+  captureId?: string | null;
 }
 
 export interface DecisionApproveData {
@@ -263,6 +266,36 @@ export function prepareDecisionAnswer(
 
 export function runDecisionApproveCommand(options: DecisionApproveOptions): CommandSuccess<DecisionApproveData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  // Set once the answer is prepared. An answer that is not one of a Decision's
+  // offered option labels is the operator's own words, so it is preserved as
+  // an Ask capture envelope after the canonical write (fail-open).
+  const reply: { entityId: string | null; freeText: boolean } = { entityId: null, freeText: false };
+  const response = applyDecisionApprove(workspacePath, options, reply);
+  if (reply.freeText && reply.entityId && response.data.applied && !options.dryRun) {
+    try {
+      withDatabase(workspacePath, (db) =>
+        captureOperatorReply(db, {
+          surface: "decision.approve",
+          entityId: reply.entityId as string,
+          text: options.answer,
+          ingressSource: "operator.reply.decision",
+          project: (getProjectBySlug(db, options.project) ?? getProject(db, options.project))?.slug ?? options.project,
+          heldCaptureId: options.captureId,
+          payload: { receiptId: response.data.receiptId, relativePath: response.data.relativePath }
+        })
+      );
+    } catch (error) {
+      process.stderr.write(`warning: operator reply capture failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
+  return response;
+}
+
+function applyDecisionApprove(
+  workspacePath: string,
+  options: DecisionApproveOptions,
+  reply: { entityId: string | null; freeText: boolean }
+): CommandSuccess<DecisionApproveData> {
   return withDatabase(workspacePath, (db) => {
     const repoRoot = resolveProjectRepoFromDb(db, options.project);
     const status = options.status ?? "approved";
@@ -274,6 +307,8 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
       decided: options.decided
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
+    reply.entityId = prepared.decisionId ?? relativePath;
+    reply.freeText = chosen === null;
     const parsedDecision = parseDoc(relativePath, absolutePath, prepared.before).doc;
     const decisionDoc = parsedDecision && parsedDecision.type === "decision" ? parsedDecision : null;
 

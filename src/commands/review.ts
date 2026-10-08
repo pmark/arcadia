@@ -6,6 +6,7 @@ import { prepareBuildPacketForAcceptedPlan } from "./work.js";
 import { prepareDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { captureOperatorReply } from "../ask/replyCapture.js";
 import { withDatabase } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import {
@@ -191,6 +192,14 @@ export interface ReviewResolveReplyCommandOptions {
   id?: string | null;
   execute?: boolean;
   executor?: string;
+  /**
+   * The authenticated sender of the reply, when the surface knows one (today
+   * the Discord author id). Recorded in the capture envelope only; never
+   * invented for CLI or dashboard replies.
+   */
+  actor?: string | null;
+  /** The caller already holds a capture id for this reply; no new envelope is made. */
+  captureId?: string | null;
 }
 
 export interface ReviewResolveReplyCommandData {
@@ -565,6 +574,31 @@ export function runReviewFlagAgentCommand(
 }
 
 export function runReviewResolveReplyCommand(
+  options: ReviewResolveReplyCommandOptions
+): CommandSuccess<ReviewResolveReplyCommandData> {
+  const response = applyReviewReply(options);
+  // After the canonical write, fail-open: a capture failure never changes it.
+  const actor = options.actor?.trim();
+  try {
+    withDatabase(resolveReadyWorkspace(options.workspace).workspacePath, (db) =>
+      captureOperatorReply(db, {
+        surface: "review.resolve-reply",
+        entityId: response.data.item.id,
+        text: options.reply,
+        ingressSource: "operator.reply.review",
+        actor: actor ? { id: actor } : null,
+        heldCaptureId: options.captureId,
+        links: { reviewItemId: response.data.item.id },
+        payload: { action: response.data.action }
+      })
+    );
+  } catch (error) {
+    process.stderr.write(`warning: operator reply capture failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+  return response;
+}
+
+function applyReviewReply(
   options: ReviewResolveReplyCommandOptions
 ): CommandSuccess<ReviewResolveReplyCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
