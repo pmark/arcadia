@@ -4,7 +4,7 @@ type: decision
 id: "0094"
 slug: decide-whether-to-reject-exactly-the-52-stale-arcadia-agent-asks-listed-in-docs
 project: arcadia
-status: open
+status: approved
 question: Decide whether to reject exactly the 52 stale Arcadia Agent Asks listed in docs/reports/stale-operator-items-arcadia-2026-10-08.json (sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37). Nothing is settled by raising this Decision.
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-08
+answer: Reject all 52 listed stale Asks, bound to sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37
+decided: 2026-10-08
 ---
 
 # Decision 0094: Decide whether to reject exactly the 52 stale Arcadia Agent Asks listed in docs/reports/stale-operator-items-arcadia-2026-10-08.json (sha256 2d0ae73aaac8c1223b631aae34d0313d5f140982695f6e91610cd5a583d66b37). Nothing is settled by raising this Decision.
