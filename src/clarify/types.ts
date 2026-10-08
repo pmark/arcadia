@@ -2,6 +2,7 @@ import type { ClarificationConfidence, GapType } from "../domain/constants.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import type { ClarifyActor } from "./contract.js";
 import type { GraderCandidate, GraderReceipt } from "./grader.js";
+import type { HandoffReport } from "./handoff.js";
 import type { ClarifyLintFinding } from "./lint.js";
 
 /** A YES: a concrete next action was named. */
@@ -65,6 +66,11 @@ export interface ClarifyApplication {
   proposedSubtasks?: string[];
   /** The `clarify.grader.verdict` event that holds this Action's grader receipt. */
   graderEventId?: string;
+  /**
+   * Set when a graded coding-agent Action from a captured Ask was eligible for a
+   * file handoff: the Agent Ask drafted into the Project repository, or why not.
+   */
+  handoff?: HandoffReport;
 }
 
 /**

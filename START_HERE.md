@@ -2590,7 +2590,12 @@ step startable in under 15 minutes, an observable done-condition, no invented
 facts); only a pass records `clarified`, and a fail gives you exactly one
 question. If the grader cannot be reached the Action keeps its state and the
 preview says why. The done-condition and the grade are stored together as a
-`clarify.grader.verdict` receipt on `--apply`.
+`clarify.grader.verdict` receipt on `--apply`. At the CLI, add `--clarify` to
+`review approve <id> --answer <text>` (or `review resolve-reply <reply> --id
+<id>`) to re-clarify once as soon as your answer is recorded. For a coding-agent
+action that came from an `arcadia ask`, `--apply` also drafts a handoff Agent
+Ask into the Project's `.arcadia/asks/`; it waits in `arcadia todo` until you
+accept it.
 
 In Discord, reply directly to a clarification notification with the answer in
 your own words. Arcadia confirms the Decision id, records the answer, and
