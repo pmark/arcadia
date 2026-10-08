@@ -111,7 +111,7 @@
       "trigger": "harness, orchestration, new workflow, instruction file, session protocol, inactive work, inactivity ping, file handoff",
       "path": "docs/agent-guidance/standard-harness.md",
       "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
-      "sha256": "b6705779b4a0cbb3866a484df70d81e8fa82793977fed75d734a081a35b25e13"
+      "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
     }
   ]
 }

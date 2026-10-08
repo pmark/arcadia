@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { PEER_WATCH_TRAILERS } from "../src/agentWatch/contract.js";
+import { PEER_WATCH_TRAILERS, PEER_WATCH_WINDOWS } from "../src/agentWatch/contract.js";
 import { guidanceEntries } from "../src/projects/agentGuidance.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -29,6 +29,11 @@ describe("standard harness guidance", () => {
     expect(section).toContain("docs/agent-guidance/agent-peer-watch.md");
     expect(section).toContain("src/agentWatch/contract.ts");
     expect(section).toContain("arcadia ping send");
+  });
+
+  it("states the heartbeat interval the contract uses", () => {
+    expect(PEER_WATCH_WINDOWS.heartbeatMaxIntervalMs).toBe(600000);
+    expect(sessionProtocol()).toContain("10 minutes");
   });
 
   it("names exactly the PEER_WATCH_TRAILERS keys, spelled as the contract spells them", () => {

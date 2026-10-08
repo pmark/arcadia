@@ -65,16 +65,26 @@ Follow this as if enforced. Grammar, windows and classification live in
 2. **Lease.** Work only from the claim `arcadia go` or the host gave. Takeover
    only by an `arcadia-peer-takeover-request-v1` with basis `claim_released` or
    `principal_proven_terminal`. `release_requested` and silence release nothing.
-3. **Reportable states:** `working`, `needs_input`, `handed_off`, `done`.
+3. **Reportable states:** `working`, `needs_input`, `handed_off`, `done`
+   (a convention here; not parsed by the peer-watch contract).
    `healthy`, `idle` and `stalled` are watcher inferences, never declarations.
 4. **Heartbeat.** Hand-write `Arcadia-Agent` and `Arcadia-Action` and, when
    known, `Arcadia-Claim` and `Arcadia-Heartbeat` trailers on every commit, at
-   least every 10 minutes while working. `src/agentWatch/contract.ts` parses
-   them; no launcher adds them yet, so agents add them by hand.
+   least every 10 minutes while working (windows: see `agent-peer-watch.md`).
+   `src/agentWatch/contract.ts` parses them; no launcher adds them yet, so
+   agents add them by hand.
 5. **Inactivity ping.** Before any turn that leaves supervised or claimed work
    inactive without a PR, picker or completion, run
-   `arcadia ping send "<agent/tier> <project>/<actionId> <needs_input|handed_off|blocked>: <reason>; resume: <command>" --kind attention --agent <agent/tier> --link <related Issue URL, else PR>`.
-   A `needs_input` state also raises an item `arcadia todo` reads.
+   `arcadia ping send "<agent/tier> <project>/<actionId> <needs_input|handed_off|blocked>: <reason>; resume: <command>" --kind attention --agent <agent/tier> --link <related Issue URL, else PR>`;
+   when neither an Issue nor a PR exists, omit `--link`.
+   This is the read-only Decision 0084 nudge: it informs only, asks for and
+   approves nothing, and never substitutes for a picker, Decision or Agent Ask.
+   If you need an answer, stop at the picker or Ask; the ping only reports that
+   you stopped. Keep the message at or under 500 characters; dedup and hourly
+   caps apply (`operator-actions.md`, "Pinging the operator").
+   Once `arcadia todo` ships, a `needs_input` state is raised through a source
+   it reads (an ActionClarification or an Agent Ask). Until then, also stop at
+   a picker or Decision.
 6. **Handoff** by file or Agent Ask naming agent/tier, claim generation and
    candidate revision. Never chat.
 7. **Receipts.** Completion is a complete Agent Ask with per-criterion
