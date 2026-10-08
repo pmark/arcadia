@@ -2052,3 +2052,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1072
+
+- **Did:** arcadia todo now also lists open review items, including clarification questions with a ready-to-run answer command, so they stop hiding in a separate queue. https://github.com/pmark/arcadia/pull/1072
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
