@@ -1,0 +1,12 @@
+{
+  "name": "pass-unlisted-verb-harden",
+  "reason": "Any verb is accepted, not only a listed one: harden.",
+  "nextAction": "Harden the nightly sync against partial batch failure",
+  "doneCondition": "A forced mid-batch failure leaves no partial rows",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

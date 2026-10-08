@@ -33,7 +33,12 @@ export const CLARIFY_JSON_SCHEMA: JsonValue = {
     verdict: { type: "string", enum: ["clarified", "question_open"] },
     // Present when verdict = clarified.
     nextAction: { type: "string" },
-    doneCondition: { type: "string", minLength: 1 },
+    // Asked for by the rubric but deliberately NOT schema-required: a reply that
+    // fails output validation becomes a failed job that the idempotency key
+    // keeps reusing, so the Action would be skipped silently with no question.
+    // `normalizeVerdict` and the lint enforce it instead and turn a missing one
+    // into exactly one question for the operator.
+    doneCondition: { type: "string" },
     actor: { type: "string", enum: [...CLARIFY_ACTORS] },
     source: { type: "string" },
     confidence: { type: "string", enum: [...CLARIFICATION_CONFIDENCE_LEVELS] },
@@ -44,16 +49,10 @@ export const CLARIFY_JSON_SCHEMA: JsonValue = {
     decomposition: { type: "array", items: { type: "string" } },
     draftAsk: { type: "string" }
   },
-  required: ["verdict"],
-  // The clarified branch must carry both a next action and a done-condition.
-  // `normalizeVerdict` is the backstop for any path that does not validate the
-  // schema: it downgrades a clarified verdict lacking a done-condition to one
-  // question instead of recording an unfinishable next action.
-  if: { properties: { verdict: { const: "clarified" } }, required: ["verdict"] },
-  then: { required: ["nextAction", "doneCondition"] }
+  required: ["verdict"]
 };
 
-export const CLARIFY_SCHEMA_ID = "arcadia.clarify.verdict.v1";
+export const CLARIFY_SCHEMA_ID = "arcadia.clarify.verdict.v2";
 export const CLARIFY_OPERATION_ID = "arcadia.clarify.evaluate-action";
 
 const RUBRIC =

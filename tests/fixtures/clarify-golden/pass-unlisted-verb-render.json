@@ -1,0 +1,12 @@
+{
+  "name": "pass-unlisted-verb-render",
+  "reason": "Any verb is accepted: render.",
+  "nextAction": "Render the plan progress as a list",
+  "doneCondition": "The list shows every open Action",
+  "source": {
+    "title": "Plan progress",
+    "rawInput": "show plan progress"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

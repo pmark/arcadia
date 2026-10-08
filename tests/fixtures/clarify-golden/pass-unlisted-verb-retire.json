@@ -1,0 +1,12 @@
+{
+  "name": "pass-unlisted-verb-retire",
+  "reason": "Any verb is accepted: retire.",
+  "nextAction": "Retire the old retention setting",
+  "doneCondition": "The old setting is gone from the Action notes",
+  "source": {
+    "title": "Retention setting",
+    "rawInput": "old setting is obsolete"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

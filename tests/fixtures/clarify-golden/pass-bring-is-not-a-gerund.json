@@ -1,0 +1,12 @@
+{
+  "name": "pass-bring-is-not-a-gerund",
+  "reason": "A true verb that happens to end in ing is not a gerund.",
+  "nextAction": "Bring the dashboard copy in line with the CLI",
+  "doneCondition": "The two texts match",
+  "source": {
+    "title": "Dashboard copy",
+    "rawInput": "copy has drifted"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

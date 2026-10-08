@@ -9,7 +9,9 @@ import type { ClarifiedVerdict, ClarifyVerdict, QuestionOpenVerdict } from "./ty
  * and never reaches a grader or the queue. The lint checks form, not quality.
  *
  *   1. `doneCondition` is non-empty.
- *   2. `nextAction` starts with a verb (the explicit list below).
+ *   2. `nextAction` does not open with a clearly non-imperative word (see
+ *      `startsWithVerb`): the rule rejects known bad openings rather than
+ *      requiring a listed verb, because English verbs are an open set.
  *   3. Every file path, Action id, Decision id and `arcadia ...` command named
  *      in `nextAction` or `doneCondition` appears in the source material. This
  *      is the guard against an invented fact: a model that names a file nobody
@@ -19,8 +21,8 @@ import type { ClarifiedVerdict, ClarifyVerdict, QuestionOpenVerdict } from "./ty
  * match, so an Action id is recognised only after the word "Action" and only
  * with three or more kebab segments; a bare prose mention of a file with no
  * extension and no known root directory is not detected. A miss lets a verdict
- * through to the grader; it never blocks a valid one wrongly except for the
- * verb rule, which fails closed by design (an unlisted verb costs one question).
+ * through to the grader; it does not block a valid verdict on a missing verb,
+ * because the verb rule only rejects openings that are clearly not imperative.
  */
 
 /** What the lint may treat as evidence that a reference is real. */
@@ -49,31 +51,34 @@ export interface ClarifyLintResult {
 }
 
 /**
- * The verb heuristic: the first word of `nextAction`, lower-cased, must be one
- * of these imperative verbs. It is deliberately an allowlist so the rule is
- * inspectable and testable; extend it when a real next action is wrongly
- * refused. Gerunds ("Fixing"), nouns ("Sync"), and hedges ("Maybe") fail.
+ * The verb heuristic, inverted. English verbs are an open set and an allowlist
+ * false-failed 41% of real open Actions, so this rejects only openings that are
+ * clearly not an imperative and accepts everything else:
+ *
+ *   - empty text;
+ *   - a gerund (first word ending in "ing", other than the listed true verbs);
+ *   - an article, determiner or possessive ("the", "a", "this", "our");
+ *   - a hedge, conjunction, preposition of time or condition ("maybe", "after",
+ *     "if", "once", "when");
+ *   - a pronoun or question word ("we", "it", "what", "how");
+ *   - a placeholder ("todo", "tbd").
+ *
+ * A leading backticked command (for example `arcadia go`) is accepted. This is
+ * a shape check; the separate grader judges whether the action is concrete.
  */
-export const NEXT_ACTION_VERBS: ReadonlySet<string> = new Set([
-  "add", "address", "adjust", "align", "allow", "analyze", "announce", "answer", "append", "apply", "approve",
-  "archive", "ask", "assign", "attach", "audit", "backfill", "back", "benchmark", "book", "build",
-  "call", "cancel", "capture", "change", "check", "choose", "clean", "clarify", "clear", "close", "collect", "commit",
-  "compare", "complete", "configure", "confirm", "connect", "consolidate", "convert", "copy", "count", "create",
-  "decide", "define", "delete", "deploy", "describe", "design", "detect", "document", "download", "draft", "drop",
-  "edit", "email", "enable", "ensure", "enter", "estimate", "evaluate", "examine", "execute", "export", "extend",
-  "extract", "fetch", "file", "fill", "find", "finish", "fix", "follow", "forward", "gather", "generate", "get",
-  "grade", "grant", "grep", "handle", "hand", "identify", "implement", "import", "improve", "include", "index",
-  "inspect", "install", "instrument", "introduce", "investigate", "invite", "join", "label", "launch", "link",
-  "list", "locate", "log", "make", "map", "mark", "measure", "merge", "migrate", "monitor", "move", "name",
-  "open", "order", "outline", "pay", "pick", "ping", "plan", "post", "prepare", "print", "prioritize", "produce",
-  "propose", "publish", "pull", "push", "put", "query", "read", "rebase", "record", "refactor", "register",
-  "reject", "release", "remove", "rename", "reorder", "repair", "replace", "reply", "report", "request",
-  "research", "reserve", "reset", "resolve", "restart", "restore", "review", "revise", "revert", "rewrite",
-  "run", "save", "schedule", "scan", "search", "select", "send", "set", "settle", "share", "ship", "show",
-  "sign", "sketch", "sort", "split", "start", "state", "stop", "store", "submit", "summarize", "survey", "tag",
-  "take", "test", "trace", "track", "trim", "triage", "unblock", "update", "upgrade", "upload", "use",
-  "validate", "verify", "view", "visit", "wire", "write"
+export const NON_IMPERATIVE_OPENINGS: ReadonlySet<string> = new Set([
+  "the", "a", "an", "this", "that", "these", "those", "some", "any", "each", "every", "all", "no",
+  "my", "our", "your", "their", "its", "his", "her",
+  "maybe", "perhaps", "possibly", "probably", "eventually", "someday", "sometime",
+  "after", "before", "when", "whenever", "while", "once", "if", "unless", "until", "since", "because",
+  "and", "or", "but", "so", "then", "also", "to",
+  "i", "we", "you", "he", "she", "it", "they", "there", "here",
+  "what", "how", "why", "which", "who", "where", "whether",
+  "todo", "tbd", "wip", "n/a", "na"
 ]);
+
+/** Words ending in "ing" that are imperative verbs, not gerunds. */
+const ING_VERBS: ReadonlySet<string> = new Set(["bring", "ring", "sing", "swing", "sling", "sting", "cling", "fling", "wring", "spring"]);
 
 /** File extensions that mark a token as a file path even with no directory. */
 const FILE_EXTENSIONS = new Set([
@@ -202,14 +207,31 @@ function isPathToken(token: string): boolean {
   return PATH_ROOTS.has(first) || (first.startsWith(".") && first.length > 1);
 }
 
-/** Does `nextAction` open with one of the listed imperative verbs? */
+/** Does `nextAction` open acceptably (not clearly non-imperative)? See NON_IMPERATIVE_OPENINGS. */
 export function startsWithVerb(nextAction: string): boolean {
-  const first = nextAction
-    .trim()
-    .replace(/^[^a-z]+/i, "")
+  const trimmed = nextAction.trim();
+  if (!trimmed) {
+    return false;
+  }
+  // A leading backticked command is an action ("`arcadia go` in the repo").
+  if (/^`[^`]*[a-z0-9][^`]*`/i.test(trimmed)) {
+    return true;
+  }
+
+  const first = trimmed
+    .replace(/^[^a-z0-9]+/i, "")
     .split(/[\s,;:`*"']+/)[0]
     ?.toLowerCase();
-  return Boolean(first) && NEXT_ACTION_VERBS.has(first);
+  if (!first) {
+    return false;
+  }
+  if (NON_IMPERATIVE_OPENINGS.has(first)) {
+    return false;
+  }
+  if (first.length > 4 && first.endsWith("ing") && !ING_VERBS.has(first)) {
+    return false;
+  }
+  return true;
 }
 
 export function lintClarifiedVerdict(
@@ -226,7 +248,7 @@ export function lintClarifiedVerdict(
   if (!startsWithVerb(verdict.nextAction)) {
     findings.push({
       code: "not-a-verb",
-      detail: "the next action does not start with a verb (for example Add, Run, Write, Call)"
+      detail: "the next action does not open with a verb (for example Add, Run, Write, Call)"
     });
   }
 

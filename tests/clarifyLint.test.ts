@@ -79,12 +79,12 @@ describe("clarify lint rules", () => {
   });
 
   it("names every problem in one question when several are found", () => {
-    const { verdict } = enforceClarifyLint(clarified("Sync fixes in src/sync/ghost.ts", ""), { title: "Sync" });
+    const { verdict } = enforceClarifyLint(clarified("The sync fixes in src/sync/ghost.ts", ""), { title: "Sync" });
 
     expect(verdict.verdict).toBe("question_open");
     const question = (verdict as { question: string }).question;
     expect(question).toContain("done-condition");
-    expect(question).toContain("start with a verb");
+    expect(question).toContain("open with a verb");
     expect(question).toContain("src/sync/ghost.ts");
   });
 
@@ -93,13 +93,19 @@ describe("clarify lint rules", () => {
     expect(enforceClarifyLint(question, {})).toEqual({ verdict: question, findings: [] });
   });
 
-  it("uses an explicit verb list, case-insensitively, ignoring leading punctuation", () => {
-    expect(startsWithVerb("Add a retry")).toBe(true);
-    expect(startsWithVerb("  `Run` the monitor")).toBe(true);
-    expect(startsWithVerb("RUN, then stop")).toBe(true);
-    expect(startsWithVerb("Fixing the sync")).toBe(false);
-    expect(startsWithVerb("Maybe add a retry")).toBe(false);
-    expect(startsWithVerb("")).toBe(false);
+  it("accepts any opening except clearly non-imperative ones", () => {
+    for (const accepted of [
+      "Add a retry", "  `Run` the monitor", "RUN, then stop", "Harden the sync", "Reconcile both", "Prove it",
+      "Render the list", "Retire the flag", "Bring it in line", "`arcadia go` and read the brief", "Re-run the tests"
+    ]) {
+      expect(startsWithVerb(accepted), accepted).toBe(true);
+    }
+    for (const rejected of [
+      "Fixing the sync", "The sync retries", "A retry", "This is broken", "Maybe add a retry", "After the merge, add it",
+      "If it fails, retry", "We should retry", "What is the quota", "TBD", "", "   "
+    ]) {
+      expect(startsWithVerb(rejected), rejected).toBe(false);
+    }
   });
 
   it("extracts paths, Action ids, Decision ids and arcadia commands, and ignores prose", () => {

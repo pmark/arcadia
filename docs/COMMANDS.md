@@ -589,6 +589,19 @@ it:
 | **YES** — a concrete next action exists | `next_action` is replaced, `clarification_status` becomes `clarified`, `clarification_source` records what justified it, `confidence` records how far to trust it, and the rubric's `actor` sets Responsibility (`operator` → Requires Review, `coding-agent` → Codex, `external-party` → Blocked), which moves the Action to the matching queue. |
 | **NO** — something is missing | A clarification Decision is opened with the single question (exactly what `review open` does by hand), and the Action moves to `question_open` with its `gap_type`. |
 
+A YES verdict must also carry a `doneCondition`, printed as `Done when:` in the
+preview. Before a YES is recorded, a deterministic lint (`src/clarify/lint.ts`)
+checks, in preview and `--apply` alike, that the done-condition is non-empty,
+that the next action does not open with a clearly non-imperative word (an
+article, a hedge, a gerund, a pronoun), and that every file path, Action id,
+Decision id and `arcadia <subcommand>` named in the next action or
+done-condition appears in the Action's title, raw input, current next action,
+expected artifact, prior question or prior answer. A failure turns the verdict
+into one `question_open` naming what is missing (`missing-success-criteria` when
+the done-condition is absent, otherwise `missing-definition`), shown with a
+`Lint:` line. The done-condition is not yet persisted by `--apply`; a later
+slice of the grader work stores it with the grader receipt.
+
 A `missing-definition` verdict comes back with a proposed decomposition.
 **`clarify` never creates those subtasks.** They are printed and returned so you
 can act on them, and `work add-subtask` is how they become real. Decomposition

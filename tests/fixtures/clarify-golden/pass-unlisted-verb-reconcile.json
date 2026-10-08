@@ -1,0 +1,12 @@
+{
+  "name": "pass-unlisted-verb-reconcile",
+  "reason": "Any verb is accepted: reconcile.",
+  "nextAction": "Reconcile the two retention settings",
+  "doneCondition": "One retention value remains in the Action notes",
+  "source": {
+    "title": "Retention settings",
+    "rawInput": "two retention settings disagree"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

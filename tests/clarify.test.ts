@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildClarifyRequest, CLARIFY_OPERATION_ID, CLARIFY_SCHEMA_ID } from "../src/clarify/contract.js";
 import { ClarifyVerdictUnusableError, normalizeVerdict } from "../src/clarify/engine.js";
 import type { ClarifyEvaluator } from "../src/clarify/types.js";
+import { validateOutput } from "../src/intelligence/validation/validateOutput.js";
 import { runClarifyCommand, renderClarifySuccess } from "../src/commands/clarify.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -70,11 +71,12 @@ describe("clarify request contract", () => {
     const input = request.input as { instructions: string; action: Record<string, unknown> };
     expect(input.action.title).toBe("Sort out the nightly sync");
     expect(input.instructions).toContain("exactly ONE gapType");
-    // The rubric asks for the done-condition and the schema requires it.
+    // The rubric asks for the done-condition; the schema describes it but does
+    // not require it, so a reply without one reaches normalizeVerdict.
     expect(input.instructions).toContain("doneCondition");
     expect(request.outputContract.jsonSchema).toMatchObject({
       properties: { doneCondition: { type: "string" } },
-      then: { required: ["nextAction", "doneCondition"] }
+      required: ["verdict"]
     });
     // Negative guard: the rubric itself must not teach a personal name.
     expect(input.instructions).not.toMatch(/\bMark\b/);
@@ -118,6 +120,16 @@ describe("clarify verdict normalization", () => {
       expect(question).toContain("done-condition");
       expect(question.match(/\?/g)).toHaveLength(1);
     }
+  });
+
+  it("lets a reply without a done-condition through output validation, so it yields a question rather than a skip", async () => {
+    const reply = { verdict: "clarified", nextAction: "Add a retry", actor: "coding-agent", confidence: "high" };
+    const request = buildClarifyRequest(captureAction(initializedWorkspace(), "Sort out the nightly sync"));
+
+    // A reply that failed here would become a failed job the idempotency key
+    // keeps reusing: a silent skip with no question for the operator.
+    await expect(validateOutput(reply, request.outputContract)).resolves.toEqual({ passed: true });
+    expect(normalizeVerdict(reply)).toMatchObject({ verdict: "question_open", gapType: "missing-success-criteria" });
   });
 
   it("keeps a clarified verdict that states a done-condition", () => {

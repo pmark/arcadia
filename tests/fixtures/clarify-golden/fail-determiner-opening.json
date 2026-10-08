@@ -1,7 +1,7 @@
 {
-  "name": "fail-noun-phrase",
-  "reason": "A noun phrase is a label, not an action.",
-  "nextAction": "Nightly sync retries",
+  "name": "fail-determiner-opening",
+  "reason": "An opening article or determiner makes a noun phrase, a label rather than an action.",
+  "nextAction": "The nightly sync retries",
   "doneCondition": "Retries work",
   "source": {
     "title": "Nightly sync",
