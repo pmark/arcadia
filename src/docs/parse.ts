@@ -303,6 +303,7 @@ export function parseDoc(relativePath: string, absolutePath: string, content: st
           gateQuestion: gateQuestion as never,
           recommendation: optionalString(data, "recommendation"),
           options,
+          evidence: stringArray(Array.isArray(data.evidence) ? data.evidence : data.references),
           confidence: confidence as never,
           decided,
           answer,

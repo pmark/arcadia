@@ -5,6 +5,7 @@ import { listOpenDecisions, type ReadySetCandidate } from "../docs/dispatch.js";
 import {
   classifyOperatorItems,
   type OperatorGateResolution,
+  type OperatorGateEvidence,
   type PendingAgentAskGateInput,
   type PendingDecisionGateInput
 } from "../docs/operatorGate.js";
@@ -74,6 +75,27 @@ export function targetedActionIds(normalized: NormalizedAgentAsk): string[] {
  * (`listUnsettledAgentAskProposals`, open Decisions) or drifts from another's
  * classification.
  */
+/** One stored, unsettled proposal as the gate reads it: its options, gate question and evidence are the Ask's own, never filled in. */
+export function agentAskGateInput(row: ReturnType<typeof listUnsettledAgentAskProposals>[number], actionIds?: string[]): PendingAgentAskGateInput {
+  const normalized = row.proposal.normalized;
+  const evidence: OperatorGateEvidence[] = (normalized.evidence ?? []).map((entry) => ({
+    text: entry.criterion,
+    status: entry.status,
+    ...(entry.note ? { note: entry.note } : {})
+  }));
+  return {
+    proposalId: row.id,
+    requestId: row.requestId,
+    projectSlug: normalized.project,
+    desiredResult: normalized.desiredResult,
+    actionIds: actionIds ?? extractActionIds(normalized),
+    options: normalized.options ?? [],
+    gateQuestion: normalized.gateQuestion ?? null,
+    evidence,
+    createdAt: row.createdAt
+  };
+}
+
 export function resolveOperatorGate(input: {
   /** Null reads only the checked-in Decisions: the caller has no workspace database and says so itself (`arcadia todo`). */
   db: Database.Database | null;
@@ -84,15 +106,7 @@ export function resolveOperatorGate(input: {
   /** Every unfinished Action's readiness in the active plan's queue segment, when already computed. */
   readySetCandidates?: ReadySetCandidate[];
 }): OperatorGateResolution {
-  const agentAsks: PendingAgentAskGateInput[] = (input.db ? listUnsettledAgentAskProposals(input.db) : []).map((row) => ({
-    proposalId: row.id,
-    requestId: row.requestId,
-    projectSlug: row.proposal.normalized.project,
-    desiredResult: row.proposal.normalized.desiredResult,
-    actionIds: extractActionIds(row.proposal.normalized),
-    options: row.proposal.normalized.options ?? [],
-    createdAt: row.createdAt
-  }));
+  const agentAsks: PendingAgentAskGateInput[] = (input.db ? listUnsettledAgentAskProposals(input.db) : []).map((row) => agentAskGateInput(row));
 
   const decisions: PendingDecisionGateInput[] = listOpenDecisions(input.repoRoot, input.projectSlug).map((doc) => ({
     id: doc.id,
@@ -100,6 +114,8 @@ export function resolveOperatorGate(input: {
     question: doc.question,
     actionId: doc.action,
     options: doc.options,
+    gateQuestion: doc.gateQuestion,
+    evidence: doc.evidence.map((text) => ({ text })),
     updated: doc.updated,
     relativePath: doc.relativePath
   }));

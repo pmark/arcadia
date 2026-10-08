@@ -246,6 +246,8 @@ export interface DecisionDoc extends DocLocation {
   recommendation: string | null;
   /** Ordered choices the Decision is between. Empty when the Ask offered none. */
   options: DecisionOptionDoc[];
+  /** Plain-text evidence the Decision cites, from its `evidence` (else `references`) frontmatter list. Empty when it records none. */
+  evidence: string[];
   confidence: ClarificationConfidence | null;
   decided: string | null;
   answer: string | null;

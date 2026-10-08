@@ -299,6 +299,10 @@ export interface OperatorTodoItem {
   answer: string;
   answerVia?: string[];
   staleReason?: string;
+  /** decision and agent_ask only, as the source records them; absent when it records none. */
+  gateQuestion?: string;
+  options?: OpenDecisionOption[];
+  evidence?: Array<{ text: string; status?: string; note?: string }>;
 }
 
 export interface OperatorTodoData {

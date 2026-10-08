@@ -25,7 +25,7 @@ import type { ReviewItemSummary } from "../domain/types.js";
 import { ACTION_CLARIFICATION_INTENT } from "./review.js";
 import { classifyOperatorItems, type OperatorGateItem } from "../docs/operatorGate.js";
 import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
-import { resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
+import { agentAskGateInput, resolveOperatorGate, targetedActionIds } from "../ask/operatorGate.js";
 
 type UnsettledAsk = ReturnType<typeof listUnsettledAgentAskProposals>[number];
 
@@ -52,6 +52,22 @@ export interface TodoCommandOptions {
   fixtureRoots?: string[];
 }
 
+/** One option a Decision or Agent Ask records, exactly as stored. */
+export interface TodoOption {
+  label: string;
+  consequence: string;
+  /** True only where the source marks it recommended. */
+  recommended: boolean;
+}
+
+/** One piece of evidence a Decision (`evidence`/`references` line) or Agent Ask (`evidence[]` entry) records. */
+export interface TodoEvidence {
+  text: string;
+  /** Agent Ask evidence only: its recorded disposition (met, failed or skipped). */
+  status?: string;
+  note?: string;
+}
+
 export interface TodoItem {
   /** `<kind>:<project>/<source-id>`: Decision ids are per Project, so the Project is part of the identity. Stable while the item is pending. */
   key: string;
@@ -68,8 +84,14 @@ export interface TodoItem {
   origin?: string;
   /** The existing canonical command that answers it. Nothing here runs it. */
   answer: string;
-  /** review_item only: other existing ways to answer it (Discord reply, Mission Control), where one exists. */
+  /** Other existing ways to answer it (Discord reply, dashboard route), where one exists; never invented. A Decision or Agent Ask has no Discord path. */
   answerVia?: string[];
+  /** decision and agent_ask only, as the source records it (Decision `gate_question`; Agent Ask `gate_question`); omitted when absent. */
+  gateQuestion?: string;
+  /** decision and agent_ask only: every option the source records, in its order, with its consequence; omitted when it records none. */
+  options?: TodoOption[];
+  /** decision and agent_ask only: evidence the source cites; omitted when it records none. */
+  evidence?: TodoEvidence[];
   /** Present only when positive evidence says the item no longer waits on the operator. */
   staleReason?: string;
 }
@@ -104,6 +126,17 @@ export interface TodoData {
   unavailable: string[];
 }
 
+/** The dashboard route that answers a Decision or Agent Ask: the /runs To-do section, which POSTs to /api/approvals. */
+function dashboardAnswerVia(item: OperatorGateItem): string[] {
+  return item.kind === "decision"
+    ? [
+        `Dashboard: /runs, To-do section, Approve a Decision option (POST /api/approvals {"kind":"decision","id":"${item.id}","project":"${item.projectSlug}","option":"<option label>"}; no option sends the recommended one)`
+      ]
+    : [
+        `Dashboard: /runs, To-do section, Accept or Reject (POST /api/approvals {"kind":"agent_ask","id":"${item.id}","project":"${item.projectSlug}","disposition":"accepted"|"rejected"})`
+      ];
+}
+
 function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
   return {
     key: `${item.kind}:${item.projectSlug || "unknown"}/${item.id}`,
@@ -113,7 +146,13 @@ function toItem(item: OperatorGateItem, blocking: boolean): TodoItem {
     blocking,
     createdAt: item.timestamp,
     sourceRef: item.relativePath ?? `agent_ask_proposals:${item.id}`,
-    answer: item.settleCommand
+    answer: item.settleCommand,
+    answerVia: dashboardAnswerVia(item),
+    ...(item.gateQuestion ? { gateQuestion: item.gateQuestion } : {}),
+    ...(item.options.length > 0
+      ? { options: item.options.map((option) => ({ label: option.label, consequence: option.consequence, recommended: option.recommended })) }
+      : {}),
+    ...(item.evidence.length > 0 ? { evidence: item.evidence } : {})
   };
 }
 
@@ -910,15 +949,7 @@ function classifyAsksOnly(proposals: UnsettledAsk[], projectSlug: string) {
     projectSlug,
     selectedActionId: null,
     decisions: [],
-    agentAsks: proposals.map((row) => ({
-      proposalId: row.id,
-      requestId: row.requestId,
-      projectSlug: row.proposal.normalized.project,
-      desiredResult: row.proposal.normalized.desiredResult,
-      actionIds: [],
-      options: row.proposal.normalized.options ?? [],
-      createdAt: row.createdAt
-    }))
+    agentAsks: proposals.map((row) => agentAskGateInput(row, []))
   });
 }
 
@@ -978,6 +1009,9 @@ function describe(item: TodoItem): string[] {
     `${item.key} — ${item.title}`,
     `    project: ${item.project} · created: ${item.createdAt} · source: ${item.sourceRef}${item.origin ? ` · origin: ${item.origin}` : ""}`,
     ...(item.staleReason ? [`    stale: ${item.staleReason}`] : []),
+    ...(item.gateQuestion ? [`    gate question: ${item.gateQuestion}`] : []),
+    ...(item.options ?? []).map((option) => `    option${option.recommended ? " (recommended)" : ""}: ${option.label} — ${option.consequence}`),
+    ...(item.evidence ?? []).map((entry) => `    evidence: ${entry.text}${entry.status ? ` [${entry.status}]` : ""}${entry.note ? ` — ${entry.note}` : ""}`),
     `    answer: ${item.answer}`,
     ...(item.answerVia ?? []).map((via) => `    or ${via}`)
   ];

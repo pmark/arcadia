@@ -139,3 +139,33 @@ describe("buildApprovals when the to-do call fails", () => {
     expect(list.note).toContain("decision list failed");
   });
 });
+
+describe("buildApprovals uses the to-do list's gate details where the old loaders lack them", () => {
+  const gate = {
+    gateQuestion: "resists_reversal",
+    options,
+    evidence: [{ text: "docs/reports/x.json" }, { text: "Benchmarks done", status: "met", note: "see report" }]
+  };
+
+  it("a to-do-only Decision shows its options, gate question and evidence", () => {
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items: [todo("decision", "alpha", "0009", "2026-10-01", gate)], unavailable: [] } });
+    expect(list.approvals[0]).toMatchObject({
+      readOnly: true,
+      gateQuestion: "resists_reversal",
+      options,
+      evidence: ["docs/reports/x.json", "Benchmarks done [met] — see report"]
+    });
+  });
+
+  it("fills only what a matched legacy row lacks and never overrides it", () => {
+    const bare = { ...decision("0001", "alpha", "2026-10-01"), gateQuestion: null, options: [] };
+    const filled = buildApprovals({ asks: [], decisions: [bare], todo: { items: [todo("decision", "alpha", "0001", "2026-10-01", gate)], unavailable: [] } });
+    expect(filled.approvals[0]).toMatchObject({ readOnly: false, gateQuestion: "resists_reversal", options });
+
+    const full = buildApprovals({
+      asks: [], decisions: [decision("0001", "alpha", "2026-10-01")],
+      todo: { items: [todo("decision", "alpha", "0001", "2026-10-01", { ...gate, options: [options[1]] })], unavailable: [] }
+    });
+    expect(full.approvals[0]).toMatchObject({ gateQuestion: "Gate?", options });
+  });
+});
