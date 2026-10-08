@@ -3865,7 +3865,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     program
       .command("todo")
-      .description("What is waiting on the operator: open Decisions, pending Agent Asks, open review items, waiting operator tasks and production escalations, blocking first (read-only)")
+      .description("What is waiting on the operator: open Decisions, pending Agent Asks, open review items, waiting operator tasks, production escalations, unclarified captures and Plan Actions waiting on you, blocking first (read-only)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project>", "Only this Project (id or slug)")
       .option("--all", "Show every non-blocking item, and the stale ones, instead of the first five (open Decisions newest first, then the rest oldest first)")
@@ -3879,6 +3879,8 @@ Done when (the rule per kind; derived each run, never stored):
   review_item  the review item is resolved or approved (no longer open or deferred)
   operator_task  the task is closed or declined in .arcadia/operator-tasks.jsonl (no longer waiting)
   escalation:<kind>  the production tick no longer holds the Action: it clears the row once the cause is gone
+  clarify      the work item is clarified, done, or has an open review item (answer: arcadia clarify --work <id> --apply)
+  plan_action  the Action is done, its question is answered (no longer question_open), or it is no longer requires_review
 `
       )
   ).action((options: { workspace?: string; project?: string; all?: boolean; stale?: boolean; json?: boolean }) =>
