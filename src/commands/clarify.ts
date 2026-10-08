@@ -17,6 +17,7 @@ import {
   type ClarifyGrader,
   type GraderCandidate
 } from "../clarify/grader.js";
+import { draftHandoffAsk, isHandoffEligible } from "../clarify/handoff.js";
 import { enforceClarifyLint, sourceMaterialFor, type ClarifySourceMaterial } from "../clarify/lint.js";
 import type { ClarifiedVerdict, ClarifyApplication, ClarifyEvaluation, ClarifyEvaluator } from "../clarify/types.js";
 import { createId } from "../utils/id.js";
@@ -264,10 +265,16 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
         })
       );
 
+      // The file handoff. Only after the write above, so a refusal here can
+      // never undo the clarification, and it writes no Action status, pointer
+      // or queue.
+      const handoff = isHandoffEligible(workItem, verdict) ? draftHandoffAsk(workspacePath, workItem, verdict) : undefined;
+
       applications.push({
         workItemId: workItem.id,
         clarificationStatus: "clarified",
-        ...(grader ? { graderEventId: recordGraderReceipt(workspacePath, workItem, grader, null) } : {})
+        ...(grader ? { graderEventId: recordGraderReceipt(workspacePath, workItem, grader, null) } : {}),
+        ...(handoff ? { handoff } : {})
       });
       continue;
     }
@@ -318,7 +325,11 @@ function recommendationFor(
 }
 
 export function renderClarifySuccess(response: CommandSuccess<ClarifyCommandData>): string[] {
-  const { applied, evaluated, applications, skipped } = response.data;
+  return renderClarifyData(response.data);
+}
+
+export function renderClarifyData(data: ClarifyCommandData): string[] {
+  const { applied, evaluated, applications, skipped } = data;
 
   if (evaluated.length === 0 && skipped.length === 0) {
     return ["No unclarified Actions."];
@@ -351,6 +362,14 @@ export function renderClarifySuccess(response: CommandSuccess<ClarifyCommandData
         `  Actor: ${verdict.actor} -> ${RESPONSIBILITY_FOR_ACTOR[verdict.actor]}`,
         `  Source: ${verdict.source}`
       );
+      const handoff = applications.find((entry) => entry.workItemId === workItem.id)?.handoff;
+      if (handoff) {
+        lines.push(
+          handoff.status === "drafted"
+            ? `  Handoff: drafted Agent Ask ${handoff.requestId} (${handoff.path})`
+            : `  Handoff: skipped ${handoff.requestId} — ${handoff.reason}`
+        );
+      }
       continue;
     }
 

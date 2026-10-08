@@ -620,6 +620,17 @@ verdict, and the graded next action and done-condition. Preview runs the grader
 but writes nothing. The checked-in golden set in `tests/fixtures/clarify-golden/`
 is the contract any deterministic replacement grader must pass.
 
+`arcadia ask` creates its Actions `unclarified`, so they enter this pass. When a
+graded YES names a coding agent as the actor and the Action came from a captured
+Ask, `--apply` also drafts one strict v1 Agent Ask (intent `action`, request id
+`handoff-<work-item-id>-<first 12 hex of sha256(next action + done-condition)>`,
+the done-condition as its acceptance) into the Project repository's
+`.arcadia/asks/` through `agent-ask draft`, so the handoff is a file and appears
+in `arcadia todo` as a pending proposal. It is skipped, with the reason printed
+under `Handoff:`, when the Project has no `repo_path` or that request id already
+exists (proposed, settled or archived). Clarify itself writes no Action status,
+pointer or queue entry; the operator accepts or rejects the Ask.
+
 A `missing-definition` verdict comes back with a proposed decomposition.
 **`clarify` never creates those subtasks.** They are printed and returned so you
 can act on them, and `work add-subtask` is how they become real. Decomposition
@@ -682,8 +693,13 @@ authorization to do work. The answer lands in `clarification_source`, the open
 question is cleared, and the Action returns to `unclarified` rather than jumping
 to `clarified`: an answer is an *input* to clarification, not the concrete next
 action itself. At the CLI, re-clarifying remains an explicit `arcadia clarify
---apply` step. Interactive surfaces perform that same observable step
-automatically only after the answer is durable.
+--apply` step unless you opt in: add `--clarify` to `review approve <id>
+--answer <text>` or to `review resolve-reply <reply> --id <id>`, and once the
+answer is durable Arcadia runs `clarify --work <action-id> --apply` exactly once
+(only for an answered clarification; a rejected or deferred reply runs nothing).
+If clarifying cannot finish, the answer stays recorded and the output names the
+command to re-run. Interactive surfaces perform that same observable step
+automatically only after the answer is durable, and do not use the flag.
 
 The Dashboard exposes this as a **Your answer** field rather than an Approve
 button. In Discord, reply directly to the clarification notification with

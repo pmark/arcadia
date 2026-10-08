@@ -840,7 +840,10 @@ export function runAskCommand(options: AskOptions): CommandSuccess<AskCommandDat
       queue: resolved.queue,
       workClassification: resolved.workClassification,
       nextAction: resolved.nextAction,
-      expectedArtifact: resolved.expectedArtifact ?? undefined
+      expectedArtifact: resolved.expectedArtifact ?? undefined,
+      // An Action made from an Ask has only the resolver's next action, which no
+      // grader has judged. `clarify` is what makes it actionable.
+      clarificationStatus: "unclarified"
     });
     const workItem = getWorkItem(db, created.workItem.id);
     if (!workItem) {

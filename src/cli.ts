@@ -259,19 +259,16 @@ import { renderReportStatusSuccess, runReportStatusCommand } from "./commands/re
 import {
   renderReviewRequiredSuccess,
   renderReviewDecisionSuccess,
-  renderReviewResolveReplySuccess,
   renderReviewOpenSuccess,
   renderReviewFlagAgentSuccess,
   renderReviewReassessSuccess,
   renderReviewShowSuccess,
   renderReviewWeeklySuccess,
-  runReviewApproveCommand,
   runReviewDeferCommand,
   runReviewOpenCommand,
   runReviewFlagAgentCommand,
   runReviewReassessCommand,
   runReviewRejectCommand,
-  runReviewResolveReplyCommand,
   runReviewRequiredCommand,
   runReviewShowCommand,
   runReviewWeeklyCommand
@@ -384,6 +381,12 @@ import {
   runWorkerUninstallCommand
 } from "./commands/worker.js";
 import { renderClarifySuccess, runClarifyCommand } from "./commands/clarify.js";
+import {
+  renderReviewApproveWithClarifySuccess,
+  renderReviewResolveReplyWithClarifySuccess,
+  runReviewApproveWithClarify,
+  runReviewResolveReplyWithClarify
+} from "./commands/reviewClarify.js";
 import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
@@ -3345,13 +3348,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--no-execute", "Approve without executor execution and leave an execution review item")
       .option("--executor <name>", "Executor adapter to use when execution runs", "codex")
       .option("--answer <text>", "Answer to a clarification Decision (required for those; no executor runs)")
+      .option("--clarify", "After a clarification answer is recorded, run `clarify --work <id> --apply` once")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; json?: boolean }) =>
+  ).action((id: string, options: { workspace: string; execute?: boolean; executor?: string; answer?: string; clarify?: boolean; json?: boolean }) =>
     runCliAction(
       "review.approve",
       reviewOptionsFromArgv(options),
-      () => runReviewApproveCommand({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer }),
-      renderReviewDecisionSuccess
+      () => runReviewApproveWithClarify({ ...reviewOptionsFromArgv(options), id, execute: options.execute, executor: options.executor, answer: options.answer, clarify: options.clarify }),
+      renderReviewApproveWithClarifySuccess
     )
   );
   addJsonOption(
@@ -3391,13 +3395,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .argument("<reply>", "Reply text, such as 'R45 A' or 'approve'")
       .option("--id <id>", "Requires Review item id when the reply came from a known message")
       .option("--actor <id>", "Caller-asserted, untrusted provenance id for the sender (for example a Discord author id, max 128 chars); recorded in the capture envelope only")
+      .option("--clarify", "After a clarification answer is recorded, run `clarify --work <id> --apply` once")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((reply: string, options: { id?: string; actor?: string; workspace: string; json?: boolean }) =>
+  ).action((reply: string, options: { id?: string; actor?: string; clarify?: boolean; workspace: string; json?: boolean }) =>
     runCliAction(
       "review.resolve-reply",
       reviewOptionsFromArgv(options),
-      () => runReviewResolveReplyCommand({ ...reviewOptionsFromArgv(options), id: options.id, actor: options.actor, reply }),
-      renderReviewResolveReplySuccess
+      () => runReviewResolveReplyWithClarify({ ...reviewOptionsFromArgv(options), id: options.id, actor: options.actor, clarify: options.clarify, reply }),
+      renderReviewResolveReplyWithClarifySuccess
     )
   );
   addJsonOption(
