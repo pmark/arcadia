@@ -719,8 +719,9 @@ after the canonical write, so the exact words survive: `review resolve-reply`,
 approve` with a free-text answer (an offered option label is not free text).
 The request id is `<surface>:<entity-id>:<first 12 hex of sha256(text)>`, so a
 replay returns the first envelope. `review resolve-reply --actor <id>` records
-a caller-asserted, untrusted provenance id for the sender (for example the
-Discord author id; at most 128 characters) in the envelope only; CLI and
+a caller-asserted, untrusted provenance id for the sender (the Discord bot
+passes the author id; at most
+128 characters) in the envelope only; CLI and
 Dashboard replies record actor null. Capture is fail-open: a failure is logged
 to stderr and never blocks or changes the canonical write. The capture id is in
 the `operator.reply.captured` event payload; `capture_id` columns are untouched.

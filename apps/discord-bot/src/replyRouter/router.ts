@@ -142,7 +142,7 @@ async function applyAck(message: Message, ack: ReplyAck): Promise<Message | unde
   return safeReply(message, ack.reason);
 }
 
-async function safeReact(message: Message, emoji: string): Promise<void> {
+export async function safeReact(message: Message, emoji: string): Promise<void> {
   try {
     await message.react(emoji);
   } catch {

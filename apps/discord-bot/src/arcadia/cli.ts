@@ -116,12 +116,21 @@ export class ArcadiaCli {
     return this.runJson<ReviewDecisionData>(this.withWorkspace(["review", "defer", id, "--json"]), { surface: "discord" });
   }
 
-  reviewResolveReply(reply: string, id?: string | null): Promise<ArcadiaJsonSuccess<ReviewResolveReplyData>> {
+  /**
+   * `options.actor` is the authenticated Discord author id; the CLI records it
+   * in the capture envelope only. Omit it where no principal is authenticated.
+   */
+  reviewResolveReply(
+    reply: string,
+    id?: string | null,
+    options: { actor?: string | null } = {}
+  ): Promise<ArcadiaJsonSuccess<ReviewResolveReplyData>> {
     return this.runJson<ReviewResolveReplyData>(this.withWorkspace([
       "review",
       "resolve-reply",
       reply,
       ...(id ? ["--id", id] : []),
+      ...(options.actor ? ["--actor", options.actor] : []),
       "--json"
     ]), { surface: "discord" });
   }
