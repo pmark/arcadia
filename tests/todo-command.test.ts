@@ -170,19 +170,19 @@ describe("arcadia todo", () => {
       items: [
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
-          createdAt: "2026-09-03", sourceRef: "docs/decisions/0001-block.md",
+          createdAt: "2026-09-03", sourceRef: "docs/decisions/0001-block.md", origin: null,
           answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'",
           answerVia: decisionVia("0001"), options: GO_AHEAD
         },
         {
           key: "decision:demo/0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
-          createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md",
+          createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md", origin: null,
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'",
           answerVia: decisionVia("0002"), options: GO_AHEAD
         },
         {
           key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
-          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1", origin: "request:request-proposal-1 via:test",
           answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted",
           answerVia: askVia("proposal-1")
         }
@@ -521,14 +521,14 @@ describe("arcadia todo: positive-evidence staleness", () => {
       items: [
         {
           key: "decision:demo/0002", kind: "decision", title: "Was the first step wanted?", project: "demo", blocking: false,
-          createdAt: "2026-09-04", sourceRef: "docs/decisions/0002-finished.md",
+          createdAt: "2026-09-04", sourceRef: "docs/decisions/0002-finished.md", origin: "action:first-step",
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'",
           answerVia: decisionVia("0002"), options: GO_AHEAD,
           staleReason: "its Action first-step is done in plan main-plan"
         },
         {
           key: "agent_ask:demo/done-complete", kind: "agent_ask", title: "Complete first-step.", project: "demo", blocking: false,
-          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:done-complete",
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:done-complete", origin: "request:request-done-complete via:test",
           answer: "arcadia agent-ask settle --proposal done-complete --request-id <settlement-request-id> --disposition accepted",
           answerVia: askVia("done-complete"),
           staleReason: "every Action it targets is done: first-step"
@@ -701,7 +701,7 @@ describe("arcadia todo: review_items", () => {
         },
         {
           key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
-          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
+          createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1", origin: "request:request-proposal-1 via:test",
           answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted",
           answerVia: askVia("proposal-1")
         }
@@ -965,7 +965,7 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
       key: "escalation:repair_budget_exhausted:demo/second-step", kind: "escalation:repair_budget_exhausted",
       title: "Repair budget exhausted for demo/second-step after 3 failed launch attempt(s); most recent error: boom.",
       project: "demo", blocking: true, createdAt: "2026-10-08T08:00:00.000Z",
-      sourceRef: "production_operator_escalations:demo/second-step",
+      sourceRef: "production_operator_escalations:demo/second-step", origin: "action:second-step",
       answer: "Repair the underlying problem, then run `arcadia production reset-repair-budget demo/second-step`."
     });
     const text = render(data).join("\n");
@@ -1361,7 +1361,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
         },
         {
           key: `clarify:demo/${captured}`, kind: "clarify", title: "Tidy the garage", project: "demo", blocking: false,
-          createdAt: "2026-09-07T00:00:00.000Z", sourceRef: `work_items:${captured}`,
+          createdAt: "2026-09-07T00:00:00.000Z", sourceRef: `work_items:${captured}`, origin: `capture:capture-${captured} via:test`,
           answer: `arcadia clarify --work ${captured} --apply`,
           answerVia: [`dry run first (writes nothing): arcadia clarify --work ${captured}`]
         }
@@ -1571,5 +1571,42 @@ describe("arcadia todo: gate details and answer paths on Decisions and Agent Ask
     expect(old).not.toHaveProperty("options");
     expect(old).not.toHaveProperty("gateQuestion");
     expect(old).not.toHaveProperty("evidence");
+  });
+});
+
+describe("arcadia todo: origin on every item kind", () => {
+  it("takes a Decision's origin only from its own plan and action fields, else null", () => {
+    const repo = fixtureRepo(0);
+    write(repo, "docs/decisions/0003-both.md", decisionDoc("0003", "Both fields?", "2026-09-04").replace("updated:", "plan: main-plan\naction: second-step\nupdated:"));
+    write(repo, "docs/decisions/0004-plan-only.md", decisionDoc("0004", "Plan only?", "2026-09-05").replace("updated:", "plan: main-plan\nupdated:"));
+    write(repo, "docs/decisions/0005-action-only.md", decisionDoc("0005", "Action only?", "2026-09-06").replace("updated:", "action: second-step\nupdated:"));
+    const { data } = run({ workspace: fixtureWorkspace(repo), now: NOW, all: true });
+    const origins = Object.fromEntries(data.items.filter((item) => item.kind === "decision").map((item) => [item.key, item.origin]));
+    expect(origins).toEqual({
+      "decision:demo/0001": null,
+      "decision:demo/0003": "plan:main-plan action:second-step",
+      "decision:demo/0004": "plan:main-plan",
+      "decision:demo/0005": "action:second-step"
+    });
+  });
+
+  it("states an Agent Ask's request id and the ingress source of its capture envelope", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [{ id: "ask-1", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Do it." }]);
+    withDatabase(workspace, (db) => {
+      db.prepare("UPDATE ask_capture_envelopes SET ingress_source = 'ingress:discord' WHERE id = 'capture-ask-1'").run();
+    });
+    const { data } = run({ workspace, now: NOW, all: true });
+    expect(data.items.find((item) => item.key === "agent_ask:demo/ask-1")?.origin).toBe("request:request-ask-1 via:ingress:discord");
+  });
+
+  it("carries the key `origin` (a string or null) on every item and prints it when set", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(1), [{ id: "ask-1", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Do it." }]);
+    const { data } = run({ workspace, now: NOW, all: true });
+    expect(data.items.length).toBeGreaterThan(0);
+    for (const item of data.items) {
+      expect(Object.hasOwn(item, "origin")).toBe(true);
+      expect(item.origin === null || typeof item.origin === "string").toBe(true);
+    }
+    expect(render(data).join("\n")).toContain("origin: request:request-ask-1 via:test");
   });
 });

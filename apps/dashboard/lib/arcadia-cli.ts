@@ -294,7 +294,7 @@ export interface OperatorTodoItem {
   blocking: boolean;
   createdAt: string;
   sourceRef: string;
-  origin?: string;
+  origin?: string | null;
   /** The canonical command that answers it. The dashboard never runs this. */
   answer: string;
   answerVia?: string[];

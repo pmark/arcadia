@@ -102,6 +102,16 @@ describe("buildApprovals read-only rows", () => {
     expect(list.approvals[0]).toMatchObject({ kind: "decision", readOnly: true, answer: "arcadia answer 0009" });
   });
 
+  it("passes a to-do origin through as received, string or null", () => {
+    const items = [
+      todo("decision", "alpha", "0009", "2026-10-01", { origin: "plan:main-plan action:second-step" }),
+      todo("decision", "alpha", "0010", "2026-10-02", { origin: null })
+    ];
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items, unavailable: [] } });
+    expect(list.approvals.find((a) => a.id === "0009")?.origin).toBe("plan:main-plan action:second-step");
+    expect(list.approvals.find((a) => a.id === "0010")?.origin).toBeNull();
+  });
+
   it("surfaces sources the to-do list could not read", () => {
     const list = buildApprovals({ asks: [], decisions: [], todo: { items: [], unavailable: ["review items: db locked"] } });
     expect(list.note).toContain("review items: db locked");

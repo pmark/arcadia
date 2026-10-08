@@ -113,6 +113,7 @@ export function resolveOperatorGate(input: {
     projectSlug: doc.project,
     question: doc.question,
     actionId: doc.action,
+    plan: doc.plan,
     options: doc.options,
     gateQuestion: doc.gateQuestion,
     evidence: doc.evidence.map((text) => ({ text })),
