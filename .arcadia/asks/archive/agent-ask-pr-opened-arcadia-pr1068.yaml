@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr1068","project":"arcadia","intent":"log","desired_result":"Stale triage is closed out: all 52 stale Asks are rejected (#1067 merged), and #1068 records both triage Actions done. The operator to-do Plan is now at 4 of 9. https://github.com/pmark/arcadia/pull/1068"}
