@@ -27,7 +27,10 @@ import { boundedExec } from "./preservationStages.js";
  * executable path or ancestor in either tree is refused: its blob binds only
  * the link text, not the code an interpreter would follow and execute. A
  * declared path is walked as written, before `..` is removed, because the
- * shell resolves `linked/..` through the link, not lexically.
+ * shell resolves `linked/..` through the link, not lexically. Checks run in a
+ * case-insensitive macOS checkout, so every path component is compared
+ * case-insensitively too: a case-variant symlink, or any entry that differs
+ * from the written path only by case, is refused rather than guessed at.
  * It does not cover data the
  * check reads by design (the candidate content it judges), a specifier
  * computed at run time, a dotted Python package import (`import os.path`,
@@ -76,14 +79,15 @@ const PYTHON_BARE_IMPORT_SUPPORTED =
 export function bindCheckDefinitions(repository: string, baseRevision: string, candidateTree: string, commands: string[]): CheckDefinitionBinding {
   const base = blobs(repository, baseRevision);
   const candidate = blobs(repository, candidateTree);
+  const entries = foldedEntries(base, candidate);
   const bound = new Map<string, string | null>();
   const visit = (file: string) => {
     if (bound.has(file)) return;
     // Link text is not an executable definition. Refuse even unchanged base
     // links before parsing their blobs; following them would authorize code
     // outside this closure. Prefixes also catch imports through linked dirs.
-    const link = executableSymlink(file, base, candidate);
-    if (link) throw symlinkRefusal(link, file, baseRevision);
+    const hazard = executableHazard(file, entries);
+    if (hazard) throw hazardRefusal(hazard, file, baseRevision);
     const blob = base.get(file)?.blob ?? null;
     bound.set(file, blob);
     if (!blob) return;
@@ -159,13 +163,13 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (mainTarget) for (const probe of REQUIRE_PROBES) visit(mainTarget + probe);
   };
   for (const command of commands) {
-    for (const file of namedFiles(command, base, candidate, baseRevision)) visitDirectoryImport(file);
+    for (const file of namedFiles(command, base, candidate, entries, baseRevision)) visitDirectoryImport(file);
   }
   const files = [...bound].map(([file, blob]) => ({ path: file, blob })).sort((a, b) => a.path.localeCompare(b.path));
   for (const file of files) {
     const current = candidate.get(file.path)?.blob ?? null;
     if (current === file.blob) continue;
-    const command = commands.find(c => namedFiles(c, base, candidate, baseRevision).includes(file.path)) ?? commands.join(" && ");
+    const command = commands.find(c => namedFiles(c, base, candidate, entries, baseRevision).includes(file.path)) ?? commands.join(" && ");
     throw validationError(
       `Candidate changed \`${file.path}\`, which declared preservation check \`${command}\` executes; a candidate cannot rewrite the check that judges it. ` +
       "Land the check change on the base branch first, then prepare and authorize a fresh handoff.",
@@ -203,7 +207,7 @@ const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
  * unbound or every check would be refused by its own test fixtures and
  * output files. A file only the candidate has is still bound — as absent at
  * the base — so the candidate cannot supply it. */
-function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, baseRevision: string): string[] {
+function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: FoldedEntries, baseRevision: string): string[] {
   const files: string[] = [];
   for (const segment of command.split(SHELL_SEGMENT)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean).map(raw => raw.replace(/^["']|["']$/g, ""));
@@ -234,8 +238,8 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       target = executable;
     }
     if (!target) continue;
-    const link = declaredSymlink(target, base, candidate);
-    if (link) throw symlinkRefusal(link, target, baseRevision);
+    const hazard = declaredHazard(target, entries);
+    if (hazard) throw hazardRefusal(hazard, target, baseRevision);
     const file = inTree(target);
     if (file && (base.has(file) || candidate.has(file))) files.push(file);
   }
@@ -245,11 +249,11 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
 /** The shell opens a declared path component by component, so `linked/../x`
  * follows `linked` before `..` applies, while `inTree`'s lexical normalization
  * would erase `linked` and bind the unrelated root `x`. Walk the path as
- * written and return the first prefix that is a symlink in either tree. Every
- * earlier prefix is then a real directory (or absent, so the shell fails), so
- * popping `..` lexically up to that point is exact. Import specifiers keep
- * lexical normalization: Node resolves those lexically itself. */
-function declaredSymlink(target: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string | null {
+ * written and return the first hazardous prefix. Every earlier prefix is then
+ * a real directory (or absent, so the shell fails), so popping `..` lexically
+ * up to that point is exact. Import specifiers keep lexical normalization:
+ * Node resolves those lexically itself. */
+function declaredHazard(target: string, entries: FoldedEntries): PathHazard | null {
   if (path.posix.isAbsolute(target)) return null;
   const stack: string[] = [];
   for (const part of target.split("/")) {
@@ -260,17 +264,25 @@ function declaredSymlink(target: string, base: Map<string, GitBlob>, candidate: 
       continue;
     }
     stack.push(part);
-    const prefix = stack.join("/");
-    if (isSymlink(prefix, base, candidate)) return prefix;
+    const hazard = pathHazard(stack.join("/"), entries);
+    if (hazard) return hazard;
   }
   return null;
 }
 
-function symlinkRefusal(link: string, executablePath: string, baseRevision: string): ArcadiaError {
+function hazardRefusal(hazard: PathHazard, executablePath: string, baseRevision: string): ArcadiaError {
+  const details = { code: PRESERVATION_CHECK_MODIFIED_CODE, path: hazard.path, executablePath, baseRevision };
+  if (hazard.kind === "symlink") {
+    return validationError(
+      `Declared preservation checks cannot execute symlink \`${hazard.path}\` (reached through \`${executablePath}\`); a link's blob does not bind the code it executes. ` +
+      "Use regular check files and dependencies on the base branch, then prepare and authorize a fresh handoff.",
+      details
+    );
+  }
   return validationError(
-    `Declared preservation checks cannot execute symlink \`${link}\` (reached through \`${executablePath}\`); a link's blob does not bind the code it executes. ` +
-    "Use regular check files and dependencies on the base branch, then prepare and authorize a fresh handoff.",
-    { code: PRESERVATION_CHECK_MODIFIED_CODE, path: link, executablePath, baseRevision }
+    `Declared preservation checks cannot execute \`${executablePath}\`: tree entry \`${hazard.path}\` differs from \`${hazard.written}\` only by letter case, so a case-insensitive checkout may run code this binding did not check. ` +
+    "Use one exact-case path with no case-variant siblings on the base branch, then prepare and authorize a fresh handoff.",
+    details
   );
 }
 
@@ -282,17 +294,50 @@ function inTree(candidate: string): string | null {
 
 interface GitBlob { mode: string; blob: string }
 
-function executableSymlink(file: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string | null {
+function executableHazard(file: string, entries: FoldedEntries): PathHazard | null {
   const parts = file.split("/");
   for (let end = 1; end <= parts.length; end++) {
-    const prefix = parts.slice(0, end).join("/");
-    if (isSymlink(prefix, base, candidate)) return prefix;
+    const hazard = pathHazard(parts.slice(0, end).join("/"), entries);
+    if (hazard) return hazard;
   }
   return null;
 }
 
-function isSymlink(file: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): boolean {
-  return base.get(file)?.mode === "120000" || candidate.get(file)?.mode === "120000";
+/** Case-folded key -> every exact path (blob or implied directory) in either
+ * tree with that key -> whether it is a symlink in either tree. Folding is
+ * deliberately broad (NFC + lower case): a false collision only refuses. */
+type FoldedEntries = Map<string, Map<string, boolean>>;
+interface PathHazard { kind: "symlink" | "case"; path: string; written: string }
+
+const fold = (file: string) => file.normalize("NFC").toLowerCase();
+
+function foldedEntries(...trees: Map<string, GitBlob>[]): FoldedEntries {
+  const entries: FoldedEntries = new Map();
+  const add = (file: string, link: boolean) => {
+    const key = fold(file);
+    const exact = entries.get(key) ?? new Map<string, boolean>();
+    exact.set(file, (exact.get(file) ?? false) || link);
+    entries.set(key, exact);
+  };
+  for (const tree of trees) {
+    for (const [file, { mode }] of tree) {
+      const parts = file.split("/");
+      for (let end = 1; end < parts.length; end++) add(parts.slice(0, end).join("/"), false);
+      add(file, mode === "120000");
+    }
+  }
+  return entries;
+}
+
+/** A prefix is hazardous when any entry matching it case-insensitively, in
+ * either tree, is a symlink, or when any matching entry differs from the
+ * written prefix only by case (ambiguous on a case-insensitive checkout). */
+function pathHazard(written: string, entries: FoldedEntries): PathHazard | null {
+  const matches = entries.get(fold(written));
+  if (!matches) return null;
+  for (const [entry, link] of matches) if (link) return { kind: "symlink", path: entry, written };
+  for (const entry of matches.keys()) if (entry !== written) return { kind: "case", path: entry, written };
+  return null;
 }
 
 function blobs(repository: string, revision: string): Map<string, GitBlob> {

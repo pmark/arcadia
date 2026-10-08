@@ -294,3 +294,63 @@ describe("preservation check-definition binding — declared path walked before 
       }));
   });
 });
+
+describe("preservation check-definition binding — case-insensitive path components (#1041 round 3)", () => {
+  // Validation runs only on macOS, in a case-insensitive checkout, so `subdir`
+  // and `SUBDIR` name the same directory there.
+  const files = { "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n" };
+
+  it("refuses a case-variant symlinked ancestor present only in the candidate tree", () => {
+    const f = repo({ ...files, "subdir/README": "real directory\n" });
+    f.git(["rm", "-rq", "subdir"]);
+    writeFileSync(path.join(f.dir, "rules/check.sh"), "exit 0\n");
+    symlinkSync("rules/subdir", path.join(f.dir, "SUBDIR"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/cannot execute symlink `SUBDIR`/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "SUBDIR" })
+      }));
+  });
+
+  it("refuses a case-variant symlinked ancestor present only in the base tree", () => {
+    const f = repo(files, { "SUBDIR": "rules/subdir" });
+    f.git(["rm", "-q", "SUBDIR"]);
+    mkdirSync(path.join(f.dir, "subdir"));
+    writeFileSync(path.join(f.dir, "subdir/README"), "real directory\n");
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "SUBDIR" }) }));
+  });
+
+  it("keeps binding a regular mixed-case path written in its exact case", () => {
+    const f = repo({ "Tools/Check.sh": "exit 7\n", "Tools/Sub/README": "directory\n" });
+    const command = "sh Tools/Sub/../Check.sh";
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, [command]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path)).toEqual(["Tools/Check.sh"]);
+    const rewritten = candidateTree(f, { "Tools/Check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "Tools/Check.sh" }) }));
+  });
+
+  it("refuses a declared path whose tree entry differs only by case", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    const candidate = candidateTree(f, { "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh CHECK.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/only by letter case/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.sh" })
+      }));
+  });
+
+  it("refuses a candidate case-variant sibling of a bound import", () => {
+    const f = repo({ "check.mjs": "import './judge.mjs';\n", "judge.mjs": "process.exit(7);\n" });
+    const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: f.dir, input: "process.exit(0);\n", encoding: "utf8" }).trim();
+    f.git(["update-index", "--add", "--cacheinfo", `100644,${blob},JUDGE.mjs`]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "JUDGE.mjs" }) }));
+  });
+});
