@@ -1,0 +1,14 @@
+{
+  "name": "fail-missing-contact",
+  "reason": "The source says the contact is unknown, so the call cannot start; the request asks for exactly that one item.",
+  "nextAction": "Call the accountant and confirm which quarter the filing covers",
+  "doneCondition": "The quarter is written into the Action notes",
+  "actor": "operator",
+  "source": {
+    "title": "Confirm filing quarter",
+    "rawInput": "Not sure which quarter the filing covers, and I do not know who our accountant is"
+  },
+  "expected": "fail",
+  "failedCriteria": ["startable-first-step"],
+  "request": "Who is the accountant, and what is their phone number?"
+}

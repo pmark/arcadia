@@ -1,0 +1,14 @@
+{
+  "name": "fail-not-startable-in-fifteen-minutes",
+  "reason": "A whole-system rewrite has no first physical step that starts in under 15 minutes.",
+  "nextAction": "Rewrite the entire billing system",
+  "doneCondition": "All billing runs through the new system and the old one is retired",
+  "actor": "coding-agent",
+  "source": {
+    "title": "Billing is a mess",
+    "rawInput": "Billing is a mess and everyone hates it"
+  },
+  "expected": "fail",
+  "failedCriteria": ["startable-first-step"],
+  "request": "Which one billing behavior should change first?"
+}

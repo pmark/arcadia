@@ -11,7 +11,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { withDatabase } from "../src/db/connection.js";
 import { createWorkItemWithOptionalArtifact, getWorkItem, listReviewItems, listWorkItems } from "../src/db/repositories.js";
 import type { WorkItemSummary } from "../src/domain/types.js";
-import { clarifyGoldenExamples } from "./clarifyFixtures.js";
+import { clarifyGoldenExamples, passingGrader } from "./clarifyFixtures.js";
 
 const workspaces: string[] = [];
 
@@ -176,7 +176,7 @@ describe("clarify orchestrator", () => {
 
     const response = await runClarifyCommand({
       workspace,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
 
     expect(response.data.applied).toBe(false);
@@ -198,7 +198,7 @@ describe("clarify orchestrator", () => {
       const response = await runClarifyCommand({
         workspace,
         apply: true,
-        evaluator: stubEvaluator(example.rawResult)
+        grader: passingGrader, evaluator: stubEvaluator(example.rawResult)
       });
 
       expect(response.data.applied).toBe(true);
@@ -227,14 +227,14 @@ describe("clarify orchestrator", () => {
     const action = captureAction(workspace, "Sort out the nightly sync");
     const raw = { ...clarifyGoldenExamples[0].rawResult, doneCondition: undefined };
 
-    const preview = await runClarifyCommand({ workspace, evaluator: stubEvaluator(raw) });
+    const preview = await runClarifyCommand({ workspace, grader: passingGrader, evaluator: stubEvaluator(raw) });
     expect(preview.data.evaluated[0].verdict).toMatchObject({
       verdict: "question_open",
       gapType: "missing-success-criteria"
     });
     expect(withDatabase(workspace, (db) => getWorkItem(db, action.id))?.clarification_status).toBe("unclarified");
 
-    const applied = await runClarifyCommand({ workspace, apply: true, evaluator: stubEvaluator(raw) });
+    const applied = await runClarifyCommand({ workspace, apply: true, grader: passingGrader, evaluator: stubEvaluator(raw) });
     expect(applied.data.applications[0].clarificationStatus).toBe("question_open");
     const after = withDatabase(workspace, (db) => getWorkItem(db, action.id));
     expect(after?.clarification_status).toBe("question_open");
@@ -251,7 +251,7 @@ describe("clarify orchestrator", () => {
     const action = captureAction(workspace, "Sort out the nightly sync");
     const raw = { ...clarifyGoldenExamples[0].rawResult, nextAction: "Add a retry to src/sync/ghost.ts" };
 
-    const response = await runClarifyCommand({ workspace, apply: true, evaluator: stubEvaluator(raw) });
+    const response = await runClarifyCommand({ workspace, apply: true, grader: passingGrader, evaluator: stubEvaluator(raw) });
 
     expect(response.data.evaluated[0].verdict.verdict).toBe("question_open");
     expect(response.data.evaluated[0].lintFindings?.map((finding) => finding.code)).toEqual(["unsourced-reference"]);
@@ -265,7 +265,7 @@ describe("clarify orchestrator", () => {
 
     const response = await runClarifyCommand({
       workspace,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
 
     expect(response.data.evaluated[0].lintFindings).toBeUndefined();
@@ -283,7 +283,7 @@ describe("clarify orchestrator", () => {
     const response = await runClarifyCommand({
       workspace,
       apply: true,
-      evaluator: stubEvaluator(example!.rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(example!.rawResult)
     });
 
     // The decomposition is reported so the operator can act on it, and nothing
@@ -305,7 +305,7 @@ describe("clarify orchestrator", () => {
     const response = await runClarifyCommand({
       workspace,
       apply: true,
-      evaluator: stubEvaluator(clarifyGoldenExamples[1].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[1].rawResult)
     });
 
     const rendered = renderClarifySuccess(response).join("\n");
@@ -332,7 +332,7 @@ describe("clarify orchestrator", () => {
 
     const response = await runClarifyCommand({
       workspace,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
 
     const consideredIds = response.data.evaluated.map((entry) => entry.workItem.id);
@@ -355,7 +355,7 @@ describe("clarify orchestrator", () => {
     const response = await runClarifyCommand({
       workspace,
       workId: legacy.workItem.id,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
 
     expect(response.data.evaluated.map((entry) => entry.workItem.id)).toEqual([legacy.workItem.id]);
@@ -373,7 +373,7 @@ describe("clarify orchestrator", () => {
       return normalizeVerdict(call === 1 ? { verdict: "nonsense" } : clarifyGoldenExamples[0].rawResult);
     };
 
-    const response = await runClarifyCommand({ workspace, apply: true, evaluator });
+    const response = await runClarifyCommand({ workspace, apply: true, evaluator, grader: passingGrader });
 
     expect(response.data.skipped).toHaveLength(1);
     expect(response.data.evaluated).toHaveLength(1);
@@ -394,14 +394,14 @@ describe("clarify orchestrator", () => {
     const limited = await runClarifyCommand({
       workspace,
       limit: 2,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
     expect(limited.data.evaluated).toHaveLength(2);
 
     const empty = initializedWorkspace();
     const none = await runClarifyCommand({
       workspace: empty,
-      evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
+      grader: passingGrader, evaluator: stubEvaluator(clarifyGoldenExamples[0].rawResult)
     });
     expect(renderClarifySuccess(none)).toEqual(["No unclarified Actions."]);
   });

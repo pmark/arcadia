@@ -22,6 +22,13 @@ changing global configuration.
   `.agents/skills/` source; Claude Code uses the checked-in `.claude/skills/`
   symlink. Follow the [installation instructions](../.agents/skills/arcadia-github-issues/references/installation.md)
   for exact invocation and personal installation across other projects.
+- [`next-action-grader`](../.agents/skills/next-action-grader/SKILL.md):
+  the criteria a separate, local-preferred grader applies to a clarified next
+  action and its done-condition. `arcadia clarify` runs it after the
+  deterministic lint; a pass records `clarified`, a fail opens one question, and
+  an unreachable grader leaves the Action as it was. It is not invoked by hand.
+  Claude Code uses the `.claude/skills/next-action-grader` symlink to the same
+  source.
 - `arcadia-dogfood-workflow`: use only when explicitly managing the repo-local `.arcadia-workspace/` compatibility workflow.
 - `arcadia-workspace-operator`: use when inspecting or operating any Arcadia workspace.
 - `arcadia-development-loop`: use when explicitly asked to change Arcadia code while keeping the work tracked through an Arcadia workspace.

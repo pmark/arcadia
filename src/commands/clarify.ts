@@ -12,9 +12,18 @@ import {
   ClarifyEngineUnavailableError,
   ClarifyVerdictUnusableError
 } from "../clarify/engine.js";
-import { enforceClarifyLint, sourceMaterialFor } from "../clarify/lint.js";
-import type { ClarifyApplication, ClarifyEvaluation, ClarifyEvaluator } from "../clarify/types.js";
+import {
+  createIntelligenceGrader,
+  type ClarifyGrader,
+  type GraderCandidate
+} from "../clarify/grader.js";
+import { enforceClarifyLint, sourceMaterialFor, type ClarifySourceMaterial } from "../clarify/lint.js";
+import type { ClarifiedVerdict, ClarifyApplication, ClarifyEvaluation, ClarifyEvaluator } from "../clarify/types.js";
+import { createId } from "../utils/id.js";
+import { nowIso } from "../utils/time.js";
 import { runReviewOpenCommand } from "./review.js";
+
+export const GRADER_VERDICT_EVENT_TYPE = "clarify.grader.verdict";
 
 export interface ClarifyCommandOptions {
   workspace: string;
@@ -24,6 +33,8 @@ export interface ClarifyCommandOptions {
   limit?: number;
   /** Injectable for tests and a future `--engine` escape hatch. */
   evaluator?: ClarifyEvaluator;
+  /** Injectable for tests. The default is the separate local Intelligence grader. */
+  grader?: ClarifyGrader;
 }
 
 export interface ClarifySkippedAction {
@@ -86,8 +97,9 @@ export async function runClarifyCommand(
   // the pass lasts, so it cannot be built inside a `withDatabase` callback —
   // that closes the connection the moment the callback returns. This one is
   // owned by the loop below and closed in its `finally`.
-  const db = options.evaluator ? null : openDatabase(workspacePath);
+  const db = options.evaluator && options.grader ? null : openDatabase(workspacePath);
   const evaluator = options.evaluator ?? createIntelligenceEvaluator(db!, workspacePath);
+  const grader = options.grader ?? createIntelligenceGrader(db!, workspacePath);
 
   const evaluated: ClarifyEvaluation[] = [];
   const skipped: ClarifySkippedAction[] = [];
@@ -97,12 +109,33 @@ export async function runClarifyCommand(
       try {
         // The lint runs here, once, so a preview and `--apply` always agree and
         // an injected evaluator is held to the same bar as the model.
-        const linted = enforceClarifyLint(await evaluator(workItem), sourceMaterialFor(workItem));
-        evaluated.push({
+        const source = sourceMaterialFor(workItem);
+        const linted = enforceClarifyLint(await evaluator(workItem), source);
+        const evaluation: ClarifyEvaluation = {
           workItem,
           verdict: linted.verdict,
           ...(linted.findings.length > 0 ? { lintFindings: linted.findings } : {})
-        });
+        };
+
+        // Only a verdict that survived the lint reaches the grader. The grader
+        // is a separate call: the generator never marks its own work.
+        if (linted.verdict.verdict === "clarified") {
+          const graded = await gradeClarified(grader, workItem, linted.verdict, source);
+          if (graded.unavailable !== undefined) {
+            // An Action the grader could not judge is not clarified. It keeps
+            // exactly the state it had, and the reason is reported.
+            skipped.push({
+              workItemId: workItem.id,
+              title: workItem.title,
+              reason: `Grader unavailable, so the next action was not recorded: ${graded.unavailable}`
+            });
+            continue;
+          }
+          evaluation.verdict = graded.verdict;
+          evaluation.grader = graded.grader;
+        }
+
+        evaluated.push(evaluation);
       } catch (error) {
         // One unusable verdict must not abandon the rest of the pass. A skipped
         // Action keeps exactly the state it had.
@@ -138,10 +171,82 @@ export async function runClarifyCommand(
   });
 }
 
+type GradedClarification =
+  | { unavailable: string }
+  | { unavailable?: undefined; verdict: ClarifyEvaluation["verdict"]; grader: NonNullable<ClarifyEvaluation["grader"]> };
+
+/**
+ * Grade one lint-passing clarified verdict. A pass keeps the verdict; a fail
+ * becomes `question_open` carrying the grader's single information request.
+ * A grader that is unreachable or returns something unusable never escalates:
+ * it reports why, and the caller leaves the Action as it was.
+ */
+async function gradeClarified(
+  grader: ClarifyGrader,
+  workItem: WorkItemSummary,
+  verdict: ClarifiedVerdict,
+  source: ClarifySourceMaterial
+): Promise<GradedClarification> {
+  const candidate: GraderCandidate = {
+    nextAction: verdict.nextAction,
+    doneCondition: verdict.doneCondition,
+    actor: verdict.actor
+  };
+
+  try {
+    const outcome = await grader({ workItem, candidate, source });
+    const record = { receipt: outcome.receipt, candidate };
+    if (outcome.grade === "pass") {
+      return { verdict, grader: record };
+    }
+    return {
+      verdict: {
+        verdict: "question_open",
+        gapType: outcome.gapType ?? "missing-definition",
+        question: outcome.request ?? outcome.reason
+      },
+      grader: record
+    };
+  } catch (error) {
+    if (error instanceof ClarifyEngineUnavailableError || error instanceof ClarifyVerdictUnusableError) {
+      return { unavailable: error.message };
+    }
+    throw error;
+  }
+}
+
+function recordGraderReceipt(
+  workspacePath: string,
+  workItem: WorkItemSummary,
+  grader: NonNullable<ClarifyEvaluation["grader"]>,
+  reviewItemId: string | null
+): string {
+  const id = createId("event");
+  withDatabase(workspacePath, (db) =>
+    db
+      .prepare(
+        `INSERT INTO events (id, event_type, source_module, project_id, work_item_id, artifact_id, review_item_id, payload_json, created_at)
+         VALUES (@id, @event_type, 'clarify', @project_id, @work_item_id, NULL, @review_item_id, @payload_json, @created_at)`
+      )
+      .run({
+        id,
+        event_type: GRADER_VERDICT_EVENT_TYPE,
+        project_id: workItem.project_id ?? null,
+        work_item_id: workItem.id,
+        review_item_id: reviewItemId,
+        // The receipt, plus the candidate it graded: the done-condition is not
+        // a work_items column, so this is where it is kept.
+        payload_json: JSON.stringify({ receipt: grader.receipt, candidate: grader.candidate }),
+        created_at: nowIso()
+      })
+  );
+  return id;
+}
+
 function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[]): ClarifyApplication[] {
   const applications: ClarifyApplication[] = [];
 
-  for (const { workItem, verdict } of evaluated) {
+  for (const { workItem, verdict, grader } of evaluated) {
     if (verdict.verdict === "clarified") {
       const responsibility = RESPONSIBILITY_FOR_ACTOR[verdict.actor];
       withDatabase(workspacePath, (db) =>
@@ -159,7 +264,11 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
         })
       );
 
-      applications.push({ workItemId: workItem.id, clarificationStatus: "clarified" });
+      applications.push({
+        workItemId: workItem.id,
+        clarificationStatus: "clarified",
+        ...(grader ? { graderEventId: recordGraderReceipt(workspacePath, workItem, grader, null) } : {})
+      });
       continue;
     }
 
@@ -180,6 +289,7 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
       clarificationStatus: "question_open",
       decisionId: opened.data.item.id,
       decisionSlug: opened.data.item.slug,
+      ...(grader ? { graderEventId: recordGraderReceipt(workspacePath, workItem, grader, opened.data.item.id) } : {}),
       // Proposed subtasks are reported, never created. Decomposition is a
       // proposal until the operator approves it — see the plan's design
       // decisions — so `clarify` deliberately has no path that writes children.
@@ -218,10 +328,19 @@ export function renderClarifySuccess(response: CommandSuccess<ClarifyCommandData
     applied ? `Clarified ${evaluated.length} Action(s).` : `Preview of ${evaluated.length} Action(s) — nothing written.`
   ];
 
-  for (const { workItem, verdict, lintFindings } of evaluated) {
+  for (const { workItem, verdict, lintFindings, grader } of evaluated) {
     lines.push("", `${workItem.title} (${workItem.id})`);
     if (lintFindings?.length) {
       lines.push(`  Lint: clarified verdict rejected — ${lintFindings.map((finding) => finding.detail).join("; ")}`);
+    }
+
+    if (grader) {
+      lines.push(
+        `  Grader: ${grader.receipt.verdict} (${grader.receipt.grader.id}; prompt ${grader.receipt.promptSha256.slice(0, 12)}, input ${grader.receipt.inputSha256.slice(0, 12)})`
+      );
+      if (grader.receipt.verdict === "fail") {
+        lines.push(`  Grader reason: ${grader.receipt.reason}`);
+      }
     }
 
     if (verdict.verdict === "clarified") {

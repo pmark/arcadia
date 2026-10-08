@@ -1,0 +1,14 @@
+{
+  "name": "fail-restated-done-condition",
+  "reason": "The done-condition only restates the next action, so it observes nothing.",
+  "nextAction": "Update the dashboard",
+  "doneCondition": "The dashboard is updated",
+  "actor": "coding-agent",
+  "source": {
+    "title": "Dashboard",
+    "rawInput": "The dashboard needs an update"
+  },
+  "expected": "fail",
+  "failedCriteria": ["observable-done"],
+  "request": "Which change to the dashboard should be visible when this is finished?"
+}

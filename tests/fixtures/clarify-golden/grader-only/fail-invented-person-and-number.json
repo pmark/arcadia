@@ -1,0 +1,14 @@
+{
+  "name": "fail-invented-person-and-number",
+  "reason": "The lint matches paths, ids and commands only; a person and an amount that the source never mentions are still invented.",
+  "nextAction": "Email Dana in finance to confirm the invoice total of 4200",
+  "doneCondition": "Dana replies with the confirmed total",
+  "actor": "operator",
+  "source": {
+    "title": "Confirm the invoice total",
+    "rawInput": "The invoice total looks wrong"
+  },
+  "expected": "fail",
+  "failedCriteria": ["no-invented-facts"],
+  "request": "Who should confirm the invoice total, and what total does the invoice currently show?"
+}

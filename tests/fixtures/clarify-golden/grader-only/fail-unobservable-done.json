@@ -1,0 +1,14 @@
+{
+  "name": "fail-unobservable-done",
+  "reason": "The action is concrete but nobody else could check a feeling of readiness.",
+  "nextAction": "Write the onboarding email",
+  "doneCondition": "The email feels ready to send",
+  "actor": "operator",
+  "source": {
+    "title": "Onboarding email",
+    "rawInput": "New users get no welcome message"
+  },
+  "expected": "fail",
+  "failedCriteria": ["observable-done"],
+  "request": "What would a reviewer check in the finished email, for example its subject line or a link it must contain?"
+}

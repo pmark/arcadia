@@ -1,0 +1,14 @@
+{
+  "name": "fail-vague-verb",
+  "reason": "Look into names no single physical act, and the done-condition restates an intention.",
+  "nextAction": "Look into why the nightly sync loses batches",
+  "doneCondition": "The cause of the lost batches is better understood",
+  "actor": "coding-agent",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "The nightly sync loses batches"
+  },
+  "expected": "fail",
+  "failedCriteria": ["concrete-verb", "observable-done"],
+  "request": "Which single check would show where a batch is lost, for example a log line or a row count?"
+}
