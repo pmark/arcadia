@@ -1975,3 +1975,10 @@ updated: 2026-10-08
 - **Result:** PR lifecycle notification on open, per docs/agent-guidance/pull-requests.md. Signed: Claudia Atlas <claudia.atlas@agents.arcadia.local> (claude/heavy).
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1048
+
+- **Did:** A blog-style guide to Arcadia's planned harness engineering, ready to adapt into an AMC Guide page, is up for review: https://github.com/pmark/arcadia/pull/1048
+- **Result:** PR lifecycle notification on open, per docs/agent-guidance/pull-requests.md. Signed: Claudia Atlas <claudia.atlas@agents.arcadia.local> (claude/heavy).
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
