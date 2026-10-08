@@ -84,7 +84,7 @@ export interface TodoItem {
   origin?: string;
   /** The existing canonical command that answers it. Nothing here runs it. */
   answer: string;
-  /** Other existing ways to answer it (Discord reply, dashboard route), where one exists; never invented. A Decision or Agent Ask has no Discord path. */
+  /** Other existing ways to answer it (Discord reply, dashboard route), where one exists; never invented. A Decision has a Discord path only through the review item raised from its document; an Agent Ask has none. */
   answerVia?: string[];
   /** decision and agent_ask only, as the source records it (Decision `gate_question`; Agent Ask `gate_question`); omitted when absent. */
   gateQuestion?: string;
@@ -389,6 +389,31 @@ function refNamesSelected(docRef: string | null | undefined, selected: SelectedA
 function decisionSlugOfRef(docRef: string | null | undefined): string | null {
   const match = /^decision\/(.+)$/.exec(docRef?.trim() ?? "");
   return match ? match[1] : null;
+}
+
+/**
+ * A review item raised from an open Decision (`docs sync` gives it `doc_ref` `decision/<slug>`) is listed as that
+ * Decision, so its Discord reply path is carried onto the Decision item: a reply to the requires-review notification
+ * routes through `review resolve-reply --id <review id>`, which writes the answer into the Decision document
+ * (Decision 0076). Only a live (open or deferred) review item counts; with none, the Decision has no Discord path.
+ */
+function withDecisionReviewPaths(found: TodoItem[], rows: ReviewItemSummary[], projectSlug: string, evidence: ProjectEvidence | undefined): TodoItem[] {
+  if (!evidence) return found;
+  const viaOf = new Map<string, string[]>();
+  for (const row of rows) {
+    const slug = decisionSlugOfRef(row.doc_ref);
+    const decision = slug ? evidence.decisionDocs.get(slug) : undefined;
+    if (!decision || decision.status !== "open" || viaOf.has(decision.id)) continue;
+    viaOf.set(decision.id, [
+      `Discord: reply to the requires-review notification for review item ${row.id} (${row.slug ?? row.id}) with your answer; review resolve-reply writes it into the Decision document`,
+      `or: arcadia review resolve-reply "<answer>" --id ${row.id}`
+    ]);
+  }
+  if (viaOf.size === 0) return found;
+  return found.map((item) => {
+    const via = item.kind === "decision" && !item.staleReason ? viaOf.get(item.key.slice(`decision:${projectSlug || "unknown"}/`.length)) : undefined;
+    return via ? { ...item, answerVia: [...(item.answerVia ?? []), ...via] } : item;
+  });
 }
 
 function reviewAnswer(item: ReviewItemSummary): Pick<TodoItem, "answer" | "answerVia"> {
@@ -896,6 +921,7 @@ function readWithWorkspace(
       // Never blocking when no gate was resolved; Plan evidence is used when it was read.
       const evidence = context.evidence.get(project.slug.toLowerCase());
       found.push(...reviewTodoItems(db, reviewRowsOf(project.id), project.slug, evidence, selected));
+      found = withDecisionReviewPaths(found, reviewRowsOf(project.id), project.slug, evidence);
       try {
         found.push(...operatorTaskItems(repoPath, project.slug, found, evidence, selected));
       } catch (error) {
@@ -1001,7 +1027,13 @@ function readDecisionsOnly(repoRoot: string, project: string | undefined, unavai
     const mine = items.filter((item) => item.project.toLowerCase() === slug);
     items.push(...planActionItems(resolved.readySet.projectSlug ?? slug, resolved.readySet, context.evidence.get(slug), resolved.selected, mine, new Set()));
   }
-  return items;
+  // With no workspace there is no dashboard to settle anything through: no dashboard path is listed.
+  return items.map((item) => {
+    const via = item.answerVia?.filter((line) => !line.startsWith("Dashboard:"));
+    if (!via || via.length === (item.answerVia?.length ?? 0)) return item;
+    const { answerVia: _dropped, ...rest } = item;
+    return via.length > 0 ? { ...rest, answerVia: via } : rest;
+  });
 }
 
 function describe(item: TodoItem): string[] {

@@ -153,19 +153,31 @@ describe("buildApprovals uses the to-do list's gate details where the old loader
       readOnly: true,
       gateQuestion: "resists_reversal",
       options,
-      evidence: ["docs/reports/x.json", "Benchmarks done [met] — see report"]
+      sourceEvidence: ["docs/reports/x.json", "Benchmarks done [met] — see report"],
+      evidence: []
     });
   });
 
   it("fills only what a matched legacy row lacks and never overrides it", () => {
     const bare = { ...decision("0001", "alpha", "2026-10-01"), gateQuestion: null, options: [] };
     const filled = buildApprovals({ asks: [], decisions: [bare], todo: { items: [todo("decision", "alpha", "0001", "2026-10-01", gate)], unavailable: [] } });
-    expect(filled.approvals[0]).toMatchObject({ readOnly: false, gateQuestion: "resists_reversal", options });
+    expect(filled.approvals[0]).toMatchObject({
+      readOnly: false, gateQuestion: "resists_reversal", options,
+      sourceEvidence: ["docs/reports/x.json", "Benchmarks done [met] — see report"], evidence: []
+    });
 
     const full = buildApprovals({
       asks: [], decisions: [decision("0001", "alpha", "2026-10-01")],
       todo: { items: [todo("decision", "alpha", "0001", "2026-10-01", { ...gate, options: [options[1]] })], unavailable: [] }
     });
     expect(full.approvals[0]).toMatchObject({ gateQuestion: "Gate?", options });
+  });
+
+  it("never offers a read-only row a dashboard path it has no control for", () => {
+    const item = todo("decision", "alpha", "0009", "2026-10-01", {
+      answerVia: ["Dashboard: /runs, To-do section, Approve a Decision option", "Discord: reply to the requires-review notification"]
+    });
+    const list = buildApprovals({ asks: [], decisions: [], todo: { items: [item], unavailable: [] } });
+    expect(list.approvals[0].answerVia).toEqual(["Discord: reply to the requires-review notification"]);
   });
 });

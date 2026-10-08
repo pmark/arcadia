@@ -203,6 +203,14 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
                         </ul>
                       </div>
                     ) : null}
+                    {(approval.sourceEvidence ?? []).length > 0 ? (
+                      <div>
+                        <p className="font-semibold text-ink">Evidence:</p>
+                        <ul className="ml-4 list-disc">
+                          {approval.sourceEvidence.map((line, index) => <li key={index}>{line}</li>)}
+                        </ul>
+                      </div>
+                    ) : null}
                     {approval.kind === "decision" && options.length > 1 ? (
                       <div>
                         <p className="font-semibold text-ink">Alternatives</p>

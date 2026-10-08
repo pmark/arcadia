@@ -17,6 +17,8 @@ export interface Approval {
   gateQuestion: string | null;
   options: ApprovalOption[];
   evidence: string[];
+  /** Evidence the Decision or Agent Ask itself cites, from `arcadia todo`; distinct from `evidence` (what settling will change). */
+  sourceEvidence: string[];
   /** What settling this costs to run — both settlement paths are deterministic CLI writes, never a model call. */
   cost: string;
   createdAt: string;
@@ -50,6 +52,7 @@ function toAgentAskApproval(item: AgentAskPendingItem): Approval {
     gateQuestion: item.gateQuestion,
     options: item.options,
     evidence: item.effects,
+    sourceEvidence: [],
     cost: NO_MODEL_COST,
     createdAt: item.createdAt,
     readOnly: false,
@@ -71,6 +74,7 @@ function toDecisionApproval(item: OpenDecisionItem): Approval {
     gateQuestion: item.gateQuestion,
     options: item.options,
     evidence: [],
+    sourceEvidence: [],
     cost: NO_MODEL_COST,
     createdAt: item.updated,
     readOnly: false,
@@ -102,14 +106,16 @@ function toReadOnlyApproval(item: OperatorTodoItem): Approval {
     detail: null,
     gateQuestion: item.gateQuestion ?? null,
     options: item.options ?? [],
-    evidence: evidenceLines(item),
+    evidence: [],
+    sourceEvidence: evidenceLines(item),
     cost: READ_ONLY_COST,
     createdAt: item.createdAt,
     readOnly: true,
     blocking: item.blocking,
     staleReason: item.staleReason ?? null,
     answer: item.answer,
-    answerVia: item.answerVia ?? [],
+    // A read-only row has no dashboard control, so a dashboard path `arcadia todo` lists for it is not offered here.
+    answerVia: (item.answerVia ?? []).filter((line) => !line.startsWith("Dashboard:")),
     origin: item.origin ?? null
   };
 }
@@ -167,7 +173,7 @@ export function buildApprovals(sources: ApprovalSources): ApprovalList {
       // The legacy loaders win; to-do's own record only fills what they lack.
       if (row.options.length === 0 && match.options) row.options = match.options;
       if (!row.gateQuestion && match.gateQuestion) row.gateQuestion = match.gateQuestion;
-      if (row.evidence.length === 0) row.evidence = evidenceLines(match);
+      row.sourceEvidence = evidenceLines(match);
     }
     for (const item of todo.items) {
       if (!claimed.has(item.key)) legacy.push(toReadOnlyApproval(item));
