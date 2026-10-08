@@ -1975,3 +1975,10 @@ updated: 2026-10-08
 - **Result:** Required PR lifecycle notification; source delivery under approved Decision0091. No runtime or production change.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-ready-arcadia-pr1040-packet-safety-correction-2026-10-07
+
+- **Did:** PR1040 preserves the approved seven-file repair and all seven CI checks pass, but independent review reproduced a validation bypass (Issue1041). It remains draft; the original delivery approval is fulfilled. A narrow changed-packet correction is needed to reject symlinked executable checks safely: https://github.com/pmark/arcadia/pull/1040
+- **Result:** Required PR blocker notification; no original approval is reasked, no installation, production or new writer is authorized.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
