@@ -2059,3 +2059,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1073
+
+- **Did:** New arcadia ask show --coverage reports, per surface, how much operator input reached Ask or Ingress, and says plainly that direct chat is not measured. https://github.com/pmark/arcadia/pull/1073
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
