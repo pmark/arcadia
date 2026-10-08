@@ -1,0 +1,1482 @@
+{
+  "schema": "arcadia-stale-operator-items-v1",
+  "generatedAt": "2026-10-08T17:56:11.248Z",
+  "source": {
+    "command": "arcadia todo --stale --json --project arcadia",
+    "codeRevision": "origin/main e5309b4a3 (includes PR #1058 stale filter)",
+    "workspace": "martianrover",
+    "todoSchema": "arcadia-todo-v1",
+    "unavailable": []
+  },
+  "action": "arcadia/raise-stale-triage-decision",
+  "project": "arcadia",
+  "counts": {
+    "stale": 52,
+    "nonStale": 118,
+    "nonStaleClassifiable": 6,
+    "unclassifiable": 112,
+    "arcadiaTotal": 170,
+    "staleByKind": {
+      "agent_ask": 52
+    },
+    "staleByReason": {
+      "everyTargetedActionDone": 48,
+      "superseded": 4
+    },
+    "otherProjectsNotListed": {
+      "private-practice-now": 97,
+      "unknown": 1,
+      "mission-control-site": 9
+    }
+  },
+  "definitions": {
+    "stale": "Positive evidence it no longer waits on the operator: every Action it targets is done in a Plan, or an explicit Supersedes line.",
+    "nonStaleClassifiable": "Still live: the Ask names Action(s) that are not all done, or the Decision names an Action; no staleness evidence.",
+    "unclassifiable": "Cannot be judged stale from checked-in evidence: an Ask whose intent names no Action, or a Decision naming no Action. Kept out of the list.",
+    "otherProjects": "Items of other Projects need their own Project's Decision; naming that as the revival trigger for them."
+  },
+  "unclassifiableKeys": [
+    "agent_ask:arcadia/agentask_d1eb1197d01f73ee64",
+    "agent_ask:arcadia/agentask_9cc8c89355a46e3251",
+    "agent_ask:arcadia/agentask_1fbe386a7149e28979",
+    "agent_ask:arcadia/agentask_814de6a3e6e711e0cd",
+    "agent_ask:arcadia/agentask_4777d744460a9f5fc0",
+    "agent_ask:arcadia/agentask_4c063f721f79ea77fe",
+    "agent_ask:arcadia/agentask_4be2a8356f2f27e4d6",
+    "agent_ask:arcadia/agentask_a3f433a5c050d3223d",
+    "agent_ask:arcadia/agentask_49dcd2a1286e1b727b",
+    "agent_ask:arcadia/agentask_7120546fc757e0d20b",
+    "agent_ask:arcadia/agentask_b87260061c9b3f0b64",
+    "agent_ask:arcadia/agentask_052fddd450060a86a9",
+    "agent_ask:arcadia/agentask_feead103a44f7d745e",
+    "agent_ask:arcadia/agentask_b75b770bb35b6d7f27",
+    "agent_ask:arcadia/agentask_d96e922756d376e49f",
+    "agent_ask:arcadia/agentask_2c9a0d5455cffd9d95",
+    "agent_ask:arcadia/agentask_a421ce3f51288cbc88",
+    "decision:arcadia/0052",
+    "agent_ask:arcadia/agentask_2145df1d5edb10dd50",
+    "agent_ask:arcadia/agentask_3d4a1da777f4e7be05",
+    "agent_ask:arcadia/agentask_e70f0a0f5392443f25",
+    "agent_ask:arcadia/agentask_b8d773493731c443a5",
+    "agent_ask:arcadia/agentask_956f76e440cf2ce619",
+    "agent_ask:arcadia/agentask_fb1dead300fabe2143",
+    "agent_ask:arcadia/agentask_b96d6a8658974579fc",
+    "agent_ask:arcadia/agentask_6a735089ab1f9aa991",
+    "agent_ask:arcadia/agentask_81deb15974333adbe3",
+    "agent_ask:arcadia/agentask_eac5a42d17c26104ef",
+    "agent_ask:arcadia/agentask_3cd2b1317b3abee08e",
+    "agent_ask:arcadia/agentask_f5287ca935dfe70c63",
+    "agent_ask:arcadia/agentask_fabadadb695a318f77",
+    "agent_ask:arcadia/agentask_b84b4363959f9c75b0",
+    "agent_ask:arcadia/agentask_2ff6688e3d395dd8d8",
+    "agent_ask:arcadia/agentask_e2013140b1521857c1",
+    "agent_ask:arcadia/agentask_cacf838db3547e60ff",
+    "agent_ask:arcadia/agentask_bcec39dfeaa1a4177e",
+    "agent_ask:arcadia/agentask_510998c2ade51e359e",
+    "agent_ask:arcadia/agentask_87fba8a06e701607b8",
+    "agent_ask:arcadia/agentask_d90738b6caf8a988c9",
+    "agent_ask:arcadia/agentask_985c277c95d8d2762b",
+    "agent_ask:arcadia/agentask_ce5d6bcaa572e50a18",
+    "agent_ask:arcadia/agentask_177e443f183a786f46",
+    "agent_ask:arcadia/agentask_4614452949f7f641de",
+    "agent_ask:arcadia/agentask_6e6ddd655701bd93ca",
+    "agent_ask:arcadia/agentask_3445484a7f1ad37395",
+    "agent_ask:arcadia/agentask_9b22a93034605b3eed",
+    "agent_ask:arcadia/agentask_ede5f01390939f767c",
+    "agent_ask:arcadia/agentask_fff9a3587b4e83a931",
+    "agent_ask:arcadia/agentask_66ad52fbf455d181f7",
+    "agent_ask:arcadia/agentask_d6dc2774cc30b421c4",
+    "agent_ask:arcadia/agentask_26af993fc3a80b7d49",
+    "agent_ask:arcadia/agentask_65715bffa05e11a6b1",
+    "agent_ask:arcadia/agentask_54e38401d091b1af20",
+    "agent_ask:arcadia/agentask_ff68b346f0a1d08903",
+    "agent_ask:arcadia/agentask_b0736c1850017963a0",
+    "agent_ask:arcadia/agentask_6a28eeda37245365ad",
+    "agent_ask:arcadia/agentask_c27c720d45b53cedb7",
+    "agent_ask:arcadia/agentask_5563d8f80ed35239e6",
+    "agent_ask:arcadia/agentask_4b36f56db97370c710",
+    "agent_ask:arcadia/agentask_b386621722cc805876",
+    "agent_ask:arcadia/agentask_d1d66ccde397bb3481",
+    "agent_ask:arcadia/agentask_98ccf333a9d774ba0b",
+    "decision:arcadia/0079",
+    "agent_ask:arcadia/agentask_9ec053ff2a514c7140",
+    "agent_ask:arcadia/agentask_55cdc3bcf470d574fd",
+    "agent_ask:arcadia/agentask_658e0905431efe4219",
+    "agent_ask:arcadia/agentask_a75afe43552a726d75",
+    "agent_ask:arcadia/agentask_96b15e54bd7abb8b82",
+    "agent_ask:arcadia/agentask_60b2d705ddef39ed51",
+    "agent_ask:arcadia/agentask_7981643aa380307419",
+    "agent_ask:arcadia/agentask_eb6679c36226268a03",
+    "agent_ask:arcadia/agentask_416ab79138e94d8b36",
+    "agent_ask:arcadia/agentask_c8472bcfb0bdf585d5",
+    "agent_ask:arcadia/agentask_039ccb7eb02427ad0c",
+    "agent_ask:arcadia/agentask_9b04c86d6116085043",
+    "agent_ask:arcadia/agentask_64b76ae873834a95a0",
+    "agent_ask:arcadia/agentask_84b326de0af532003c",
+    "agent_ask:arcadia/agentask_c94d6b9849df2a3132",
+    "agent_ask:arcadia/agentask_d1d832adfc2c2dda5f",
+    "agent_ask:arcadia/agentask_d8db8c3d4d4f8c5b79",
+    "agent_ask:arcadia/agentask_17629b6f47d4ed7919",
+    "agent_ask:arcadia/agentask_a85d760c525282b1bd",
+    "agent_ask:arcadia/agentask_f0da0343f7202c3754",
+    "agent_ask:arcadia/agentask_5eb57063cd143bd2ac",
+    "agent_ask:arcadia/agentask_d657e31e0d89845ea8",
+    "agent_ask:arcadia/agentask_9bf59b4a2f2bdbf79f",
+    "agent_ask:arcadia/agentask_45c0ddca3abb7dfc73",
+    "agent_ask:arcadia/agentask_85b6127bc3e7c6510e",
+    "agent_ask:arcadia/agentask_39f2c6b2149b3e0f62",
+    "agent_ask:arcadia/agentask_ca0cac126480d33e85",
+    "agent_ask:arcadia/agentask_57c88403c5a33597c3",
+    "agent_ask:arcadia/agentask_5698340a6d1f8bfd7b",
+    "agent_ask:arcadia/agentask_7b75893c636f01d660",
+    "agent_ask:arcadia/agentask_d964a1870873d89696",
+    "agent_ask:arcadia/agentask_f876e12b03df6973dc",
+    "agent_ask:arcadia/agentask_7f9e55d5d6f8a59b98",
+    "agent_ask:arcadia/agentask_0fc905a709f64ea50e",
+    "agent_ask:arcadia/agentask_de7fd5c753c6b17db5",
+    "agent_ask:arcadia/agentask_b93d84c5a07c64e560",
+    "agent_ask:arcadia/agentask_1ec0e6d207fea181e8",
+    "agent_ask:arcadia/agentask_ecbec5d56a73bb5779",
+    "agent_ask:arcadia/agentask_0b2811e9de52002561",
+    "agent_ask:arcadia/agentask_1ec36bf58be3d2ee48",
+    "agent_ask:arcadia/agentask_802f7a54ae8294662c",
+    "agent_ask:arcadia/agentask_9c5e5887ef66c9f114",
+    "agent_ask:arcadia/agentask_1f0ff13e5d4056befd",
+    "agent_ask:arcadia/agentask_8ec35f38559576e870",
+    "agent_ask:arcadia/agentask_a7befe9907b0a1a4b3",
+    "agent_ask:arcadia/agentask_e764bfd21299b6a470",
+    "agent_ask:arcadia/agentask_6ba71cb27af14df4d0",
+    "agent_ask:arcadia/agentask_b5d158431bbad8eb40",
+    "agent_ask:arcadia/agentask_1f99b4a8e6cfb6e444"
+  ],
+  "items": [
+    {
+      "key": "agent_ask:arcadia/agentask_bc7418916b03d81466",
+      "kind": "agent_ask",
+      "id": "agentask_bc7418916b03d81466",
+      "requestId": "complete-define-managed-production-policy-2026-09-05",
+      "title": "Mark define-managed-production-policy done from the evidence in pull request 182 and resolve the next governed Action.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T02:38:15.940Z",
+      "sourceRef": "agent_ask_proposals:agentask_bc7418916b03d81466",
+      "staleReason": "every Action it targets is done: define-managed-production-policy",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "define-managed-production-policy",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_e543cfb483129b68b6",
+      "kind": "agent_ask",
+      "id": "agentask_e543cfb483129b68b6",
+      "requestId": "complete-prove-provider-capacity-admission-2026-09-06",
+      "title": "Mark prove-provider-capacity-admission done on real, verified evidence that both configured providers' capacity admission is proven on this host.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T07:04:36.961Z",
+      "sourceRef": "agent_ask_proposals:agentask_e543cfb483129b68b6",
+      "staleReason": "every Action it targets is done: prove-provider-capacity-admission",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "prove-provider-capacity-admission",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_212650f570e2a906d6",
+      "kind": "agent_ask",
+      "id": "agentask_212650f570e2a906d6",
+      "requestId": "complete-connect-action-to-launch-packet-2026-09-06",
+      "title": "Record the merged packet-lifecycle implementation as complete and advance to the next governed Action.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T22:01:25.631Z",
+      "sourceRef": "agent_ask_proposals:agentask_212650f570e2a906d6",
+      "staleReason": "every Action it targets is done: connect-action-to-launch-packet",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "connect-action-to-launch-packet",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_2936c670ee18b39939",
+      "kind": "agent_ask",
+      "id": "agentask_2936c670ee18b39939",
+      "requestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06",
+      "title": "Accept the implementation and proof for Codex Session launch support.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T22:33:26.356Z",
+      "sourceRef": "agent_ask_proposals:agentask_2936c670ee18b39939",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "support-selected-codex-and-claude-sessions",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_5a2ccc6bd5339e6dcc",
+      "kind": "agent_ask",
+      "id": "agentask_5a2ccc6bd5339e6dcc",
+      "requestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06-v2",
+      "title": "Accept the implementation and proof for Codex Session launch support.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T22:33:43.121Z",
+      "sourceRef": "agent_ask_proposals:agentask_5a2ccc6bd5339e6dcc",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "support-selected-codex-and-claude-sessions",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_6368491a385170bd82",
+      "kind": "agent_ask",
+      "id": "agentask_6368491a385170bd82",
+      "requestId": "complete-support-selected-codex-and-claude-sessions-2026-09-06-v3",
+      "title": "Mark the selected Codex Session launch Action complete using the merged implementation and deterministic validation evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-06T23:03:28.371Z",
+      "sourceRef": "agent_ask_proposals:agentask_6368491a385170bd82",
+      "staleReason": "every Action it targets is done: support-selected-codex-and-claude-sessions",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "support-selected-codex-and-claude-sessions",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_6bb4661624d2c7ba58",
+      "kind": "agent_ask",
+      "id": "agentask_6bb4661624d2c7ba58",
+      "requestId": "complete-make-worktree-runtime-self-contained-2026-09-07",
+      "title": "Record the completed self-contained prepared-worktree runtime proof from PR",
+      "project": "arcadia",
+      "createdAt": "2026-09-07T14:53:05.671Z",
+      "sourceRef": "agent_ask_proposals:agentask_6bb4661624d2c7ba58",
+      "staleReason": "every Action it targets is done: make-worktree-runtime-self-contained",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "make-worktree-runtime-self-contained",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_c0fecc105847da26ba",
+      "kind": "agent_ask",
+      "id": "agentask_c0fecc105847da26ba",
+      "requestId": "complete-make-worktree-runtime-self-contained-native-profile-2026-09-07",
+      "title": "Record reviewable evidence that Arcadia Go uses the supported constrained Codex permission profile for CLI and has an explicit fail-closed Desktop/iPhone handoff.",
+      "project": "arcadia",
+      "createdAt": "2026-09-07T15:26:25.945Z",
+      "sourceRef": "agent_ask_proposals:agentask_c0fecc105847da26ba",
+      "staleReason": "every Action it targets is done: make-worktree-runtime-self-contained",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "make-worktree-runtime-self-contained",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_1aa563e48bd4c0b02d",
+      "kind": "agent_ask",
+      "id": "agentask_1aa563e48bd4c0b02d",
+      "requestId": "complete-broker-candidate-preservation-2026-09-08",
+      "title": "Mark broker-candidate-preservation done: the host-controller preserve operation stages a completed candidate into one recoverable, idempotent commit and, only under an explicit policy, pushes and opens a draft PR — the sandboxed agent never writes shared Git metadata.",
+      "project": "arcadia",
+      "createdAt": "2026-09-08T04:43:39.562Z",
+      "sourceRef": "agent_ask_proposals:agentask_1aa563e48bd4c0b02d",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "broker-candidate-preservation",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_a1bfc3c2c295f0f9e1",
+      "kind": "agent_ask",
+      "id": "agentask_a1bfc3c2c295f0f9e1",
+      "requestId": "complete-arcadia-broker-candidate-preservation-7eb50a67f41a",
+      "title": "Complete arcadia/broker-candidate-preservation from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-08T05:18:38.520Z",
+      "sourceRef": "agent_ask_proposals:agentask_a1bfc3c2c295f0f9e1",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "broker-candidate-preservation",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_ceb79796f65c8e937d",
+      "kind": "agent_ask",
+      "id": "agentask_ceb79796f65c8e937d",
+      "requestId": "complete-arcadia-broker-candidate-preservation-6d922cb38fb2",
+      "title": "Complete arcadia/broker-candidate-preservation from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-08T06:14:00.787Z",
+      "sourceRef": "agent_ask_proposals:agentask_ceb79796f65c8e937d",
+      "staleReason": "every Action it targets is done: broker-candidate-preservation",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "broker-candidate-preservation",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_d9eaac1242c868b0a1",
+      "kind": "agent_ask",
+      "id": "agentask_d9eaac1242c868b0a1",
+      "requestId": "complete-arcadia-isolate-agent-asks-from-production-handoff-5a5a0360129d",
+      "title": "Complete arcadia/isolate-agent-asks-from-production-handoff from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-13T21:36:27.789Z",
+      "sourceRef": "agent_ask_proposals:agentask_d9eaac1242c868b0a1",
+      "staleReason": "every Action it targets is done: isolate-agent-asks-from-production-handoff",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "isolate-agent-asks-from-production-handoff",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_faee0408def68a70fb",
+      "kind": "agent_ask",
+      "id": "agentask_faee0408def68a70fb",
+      "requestId": "complete-design-and-build-the-mechanism-that-2026-09-14",
+      "title": "Mark design-and-build-the-mechanism-that done; delivered by PR 237.",
+      "project": "arcadia",
+      "createdAt": "2026-09-14T03:23:08.907Z",
+      "sourceRef": "agent_ask_proposals:agentask_faee0408def68a70fb",
+      "staleReason": "every Action it targets is done: design-and-build-the-mechanism-that",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "design-and-build-the-mechanism-that",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_4df907a6ceafb69bfd",
+      "kind": "agent_ask",
+      "id": "agentask_4df907a6ceafb69bfd",
+      "requestId": "complete-observe-portfolio-agent-sessions-2026-09-14",
+      "title": "Mark observe-portfolio-agent-sessions done: portfolio-wide active Session/Run observation with native reattach is implemented, tested, and its PR opened.",
+      "project": "arcadia",
+      "createdAt": "2026-09-14T13:11:00.825Z",
+      "sourceRef": "agent_ask_proposals:agentask_4df907a6ceafb69bfd",
+      "staleReason": "every Action it targets is done: observe-portfolio-agent-sessions",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "observe-portfolio-agent-sessions",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_ed85ac577a60301772",
+      "kind": "agent_ask",
+      "id": "agentask_ed85ac577a60301772",
+      "requestId": "complete-observe-portfolio-agent-sessions-2026-09-14b",
+      "title": "Mark observe-portfolio-agent-sessions done: portfolio-wide active Session/Run observation with native reattach is implemented, tested, and its PR opened.",
+      "project": "arcadia",
+      "createdAt": "2026-09-14T14:34:05.103Z",
+      "sourceRef": "agent_ask_proposals:agentask_ed85ac577a60301772",
+      "staleReason": "every Action it targets is done: observe-portfolio-agent-sessions",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "observe-portfolio-agent-sessions",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_58ac087ed6cf4e37f8",
+      "kind": "agent_ask",
+      "id": "agentask_58ac087ed6cf4e37f8",
+      "requestId": "complete-reconcile-session-exits-to-next-move-2026-09-14",
+      "title": "Mark reconcile-session-exits-to-next-move done: a dead Session's exit is reconciled into a durable receipt and the resulting canonical next move, with the quality-gate negative cases proven.",
+      "project": "arcadia",
+      "createdAt": "2026-09-14T16:44:13.094Z",
+      "sourceRef": "agent_ask_proposals:agentask_58ac087ed6cf4e37f8",
+      "staleReason": "every Action it targets is done: reconcile-session-exits-to-next-move",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "reconcile-session-exits-to-next-move",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_7f27bf1b64f5c3324a",
+      "kind": "agent_ask",
+      "id": "agentask_7f27bf1b64f5c3324a",
+      "requestId": "complete-feed-and-supervise-managed-production-2026-09-14",
+      "title": "Mark feed-and-supervise-managed-production done: merged PR #254 implements and tests every criterion the narrowed Action now declares.",
+      "project": "arcadia",
+      "createdAt": "2026-09-14T22:51:15.640Z",
+      "sourceRef": "agent_ask_proposals:agentask_7f27bf1b64f5c3324a",
+      "staleReason": "every Action it targets is done: feed-and-supervise-managed-production",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "feed-and-supervise-managed-production",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_e9ef4cbb5afec84a4f",
+      "kind": "agent_ask",
+      "id": "agentask_e9ef4cbb5afec84a4f",
+      "requestId": "complete-refresh-preservation-heartbeat-off-tick-2026-09-16",
+      "title": "Mark refresh-preservation-heartbeat-off-tick complete and resolve the next governed Action.",
+      "project": "arcadia",
+      "createdAt": "2026-09-16T18:27:23.686Z",
+      "sourceRef": "agent_ask_proposals:agentask_e9ef4cbb5afec84a4f",
+      "staleReason": "every Action it targets is done: refresh-preservation-heartbeat-off-tick",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "refresh-preservation-heartbeat-off-tick",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_7df8c44f053f7368ba",
+      "kind": "agent_ask",
+      "id": "agentask_7df8c44f053f7368ba",
+      "requestId": "complete-arcadia-let-agent-preserve-its-candidate-349b75fb0349",
+      "title": "Complete arcadia/let-agent-preserve-its-candidate from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-16T22:40:07.667Z",
+      "sourceRef": "agent_ask_proposals:agentask_7df8c44f053f7368ba",
+      "staleReason": "every Action it targets is done: let-agent-preserve-its-candidate",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "let-agent-preserve-its-candidate",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_68605185bf260015de",
+      "kind": "agent_ask",
+      "id": "agentask_68605185bf260015de",
+      "requestId": "complete-resolve-agent-handoff-model-per-provider-2026-09-17",
+      "title": "Mark resolve-agent-handoff-model-per-provider done: the handoff model is agent-agnostic, resolved from a tier registry per coding agent, with concrete-model plans preserved through a visible standard-tier fallback that fixes Issue #282.",
+      "project": "arcadia",
+      "createdAt": "2026-09-17T03:52:47.779Z",
+      "sourceRef": "agent_ask_proposals:agentask_68605185bf260015de",
+      "staleReason": "every Action it targets is done: resolve-agent-handoff-model-per-provider",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "resolve-agent-handoff-model-per-provider",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_c8b71dabc1c35f4aaa",
+      "kind": "agent_ask",
+      "id": "agentask_c8b71dabc1c35f4aaa",
+      "requestId": "complete-fix-decision-deferral-review-bugs-2026-09-18-v2",
+      "title": "Record the deferred-Decision review fixes for issues #315, #316, and #317.",
+      "project": "arcadia",
+      "createdAt": "2026-09-18T17:36:49.607Z",
+      "sourceRef": "agent_ask_proposals:agentask_c8b71dabc1c35f4aaa",
+      "staleReason": "every Action it targets is done: fix-decision-deferral-review-bugs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "fix-decision-deferral-review-bugs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_3469b8eb2f9508856d",
+      "kind": "agent_ask",
+      "id": "agentask_3469b8eb2f9508856d",
+      "requestId": "complete-fix-accepted-plan-to-build-packet-path-2026-09-19",
+      "title": "Complete arcadia/fix-accepted-plan-to-build-packet-path.",
+      "project": "arcadia",
+      "createdAt": "2026-09-19T15:56:31.004Z",
+      "sourceRef": "agent_ask_proposals:agentask_3469b8eb2f9508856d",
+      "staleReason": "every Action it targets is done: fix-accepted-plan-to-build-packet-path",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "fix-accepted-plan-to-build-packet-path",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_318ec8634de826f070",
+      "kind": "agent_ask",
+      "id": "agentask_318ec8634de826f070",
+      "requestId": "complete-fix-packet-lifecycle-latest-planning-decision-2026-09-19",
+      "title": "Record completion of the lifecycle selection fix with its regression-test evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-19T19:25:41.724Z",
+      "sourceRef": "agent_ask_proposals:agentask_318ec8634de826f070",
+      "staleReason": "every Action it targets is done: fix-packet-lifecycle-latest-planning-decision",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "fix-packet-lifecycle-latest-planning-decision",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_f2598f9357e087fae1",
+      "kind": "agent_ask",
+      "id": "agentask_f2598f9357e087fae1",
+      "requestId": "complete-approval-must-apply-or-refuse-2026-09-20",
+      "title": "Record that review approval either writes its authoritative Decision document or refuses before consuming its queue item.",
+      "project": "arcadia",
+      "createdAt": "2026-09-20T19:19:50.832Z",
+      "sourceRef": "agent_ask_proposals:agentask_f2598f9357e087fae1",
+      "staleReason": "every Action it targets is done: approval-must-apply-or-refuse",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "approval-must-apply-or-refuse",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_333197cf38b93237fe",
+      "kind": "agent_ask",
+      "id": "agentask_333197cf38b93237fe",
+      "requestId": "complete-verify-worker-recovery-before-success-2026-09-20",
+      "title": "Record completion of worker recovery truthfulness after deterministic launchd refusal and fresh route-heartbeat validation.",
+      "project": "arcadia",
+      "createdAt": "2026-09-20T20:42:57.850Z",
+      "sourceRef": "agent_ask_proposals:agentask_333197cf38b93237fe",
+      "staleReason": "every Action it targets is done: verify-worker-recovery-before-success",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "verify-worker-recovery-before-success",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_3cec860b60ee830dd1",
+      "kind": "agent_ask",
+      "id": "agentask_3cec860b60ee830dd1",
+      "requestId": "complete-verify-worker-recovery-before-success-2026-09-20-v2",
+      "title": "Record completion of verified worker recovery readiness.",
+      "project": "arcadia",
+      "createdAt": "2026-09-20T21:08:04.813Z",
+      "sourceRef": "agent_ask_proposals:agentask_3cec860b60ee830dd1",
+      "staleReason": "every Action it targets is done: verify-worker-recovery-before-success",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "verify-worker-recovery-before-success",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_e7cd2749545edaf051",
+      "kind": "agent_ask",
+      "id": "agentask_e7cd2749545edaf051",
+      "requestId": "complete-arcadia-bind-candidate-revision-in-action-settle-f5acbf42d8de",
+      "title": "Complete arcadia/bind-candidate-revision-in-action-settle from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-22T19:20:44.574Z",
+      "sourceRef": "agent_ask_proposals:agentask_e7cd2749545edaf051",
+      "staleReason": "every Action it targets is done: bind-candidate-revision-in-action-settle",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "bind-candidate-revision-in-action-settle",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_cace81b801048e42c3",
+      "kind": "agent_ask",
+      "id": "agentask_cace81b801048e42c3",
+      "requestId": "complete-arcadia-apply-answered-decision-consequences-449c90ff6de9",
+      "title": "Complete arcadia/apply-answered-decision-consequences from accepted operator evidence.",
+      "project": "arcadia",
+      "createdAt": "2026-09-22T19:52:36.035Z",
+      "sourceRef": "agent_ask_proposals:agentask_cace81b801048e42c3",
+      "staleReason": "every Action it targets is done: apply-answered-decision-consequences",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "apply-answered-decision-consequences",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_65244b5a9bf773d835",
+      "kind": "agent_ask",
+      "id": "agentask_65244b5a9bf773d835",
+      "requestId": "complete-bind-preservation-checks-to-host-owned-code-2026-09-23",
+      "title": "Mark bind-preservation-checks-to-host-owned-code done: a candidate can no longer pass preservation by rewriting the code its declared check executes.",
+      "project": "arcadia",
+      "createdAt": "2026-09-23T12:40:05.618Z",
+      "sourceRef": "agent_ask_proposals:agentask_65244b5a9bf773d835",
+      "staleReason": "every Action it targets is done: bind-preservation-checks-to-host-owned-code",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "bind-preservation-checks-to-host-owned-code",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_88a2452b6b58fa69c4",
+      "kind": "agent_ask",
+      "id": "agentask_88a2452b6b58fa69c4",
+      "requestId": "complete-give-zero-prompt-fixture-actions-a-build-packet-2026-09-23",
+      "title": "Give the Zero Prompt Rehearsal fixture Project's Actions a real build packet so the guarded session-launch path resolves them instead of reporting planning_required.",
+      "project": "arcadia",
+      "createdAt": "2026-09-23T13:11:26.313Z",
+      "sourceRef": "agent_ask_proposals:agentask_88a2452b6b58fa69c4",
+      "staleReason": "every Action it targets is done: give-zero-prompt-fixture-actions-a-build-packet",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "give-zero-prompt-fixture-actions-a-build-packet",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_711195ea7ad6ecdd71",
+      "kind": "agent_ask",
+      "id": "agentask_711195ea7ad6ecdd71",
+      "requestId": "assign-false-agent-completion-gate-2026-09-23",
+      "title": "Have prove-fault-matrix-remaining-boundaries own the false-agent-completion quality gate as well as the missing-artifact gate.",
+      "project": "arcadia",
+      "createdAt": "2026-09-23T13:14:03.299Z",
+      "sourceRef": "agent_ask_proposals:agentask_711195ea7ad6ecdd71",
+      "staleReason": "every Action it targets is done: prove-fault-matrix-remaining-boundaries",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "action",
+        "targets": [
+          {
+            "action": "prove-fault-matrix-remaining-boundaries",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_7c2f6550b217f17486",
+      "kind": "agent_ask",
+      "id": "agentask_7c2f6550b217f17486",
+      "requestId": "amend-false-agent-completion-gate-2026-09-23b",
+      "title": "Extend the seeded contract-20 fault matrix to the completion/pointer, process-health, and runtime boundaries, and close the missing-artifact and false-agent-completion quality-gate negative cases.",
+      "project": "arcadia",
+      "createdAt": "2026-09-23T13:16:46.737Z",
+      "sourceRef": "agent_ask_proposals:agentask_7c2f6550b217f17486",
+      "staleReason": "every Action it targets is done: prove-fault-matrix-remaining-boundaries",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "action",
+        "targets": [
+          {
+            "action": "prove-fault-matrix-remaining-boundaries",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_f651b8f6f707044759",
+      "kind": "agent_ask",
+      "id": "agentask_f651b8f6f707044759",
+      "requestId": "complete-preflight-provider-signin-before-launch-2026-09-23",
+      "title": "Mark preflight-provider-signin-before-launch complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-23T22:21:58.835Z",
+      "sourceRef": "agent_ask_proposals:agentask_f651b8f6f707044759",
+      "staleReason": "every Action it targets is done: preflight-provider-signin-before-launch",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "preflight-provider-signin-before-launch",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_dcfd746004ed2c6bcc",
+      "kind": "agent_ask",
+      "id": "agentask_dcfd746004ed2c6bcc",
+      "requestId": "complete-detect-duplicate-ids-and-dangling-refs-2026-09-24",
+      "title": "Mark detect-duplicate-ids-and-dangling-refs complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-24T18:33:19.311Z",
+      "sourceRef": "agent_ask_proposals:agentask_dcfd746004ed2c6bcc",
+      "staleReason": "every Action it targets is done: detect-duplicate-ids-and-dangling-refs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "detect-duplicate-ids-and-dangling-refs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_0df9e616f30bcf9b01",
+      "kind": "agent_ask",
+      "id": "agentask_0df9e616f30bcf9b01",
+      "requestId": "split-surface-terminal-operator-approvals-in-runs-2026-09-24",
+      "title": "Add the /runs approval queue's listing, recommended-option details, and canonical settlement wiring for pending Agent Asks and open Decisions.",
+      "project": "arcadia",
+      "createdAt": "2026-09-24T21:39:24.669Z",
+      "sourceRef": "agent_ask_proposals:agentask_0df9e616f30bcf9b01",
+      "staleReason": "every Action it targets is done: surface-terminal-operator-approvals-in-runs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "split",
+        "targets": [
+          {
+            "action": "surface-terminal-operator-approvals-in-runs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_22cf543a51eff903aa",
+      "kind": "agent_ask",
+      "id": "agentask_22cf543a51eff903aa",
+      "requestId": "split-surface-terminal-operator-approvals-in-runs-2026-09-24-v2",
+      "title": "Add the /runs approval queue's listing, recommended-option details, and canonical settlement wiring for pending Agent Asks and open Decisions.",
+      "project": "arcadia",
+      "createdAt": "2026-09-24T22:01:15.598Z",
+      "sourceRef": "agent_ask_proposals:agentask_22cf543a51eff903aa",
+      "staleReason": "every Action it targets is done: surface-terminal-operator-approvals-in-runs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "split",
+        "targets": [
+          {
+            "action": "surface-terminal-operator-approvals-in-runs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_ef5e46f91b0dfbf786",
+      "kind": "agent_ask",
+      "id": "agentask_ef5e46f91b0dfbf786",
+      "requestId": "complete-gate-dispatch-on-blocking-operator-items-2026-09-24",
+      "title": "Mark gate-dispatch-on-blocking-operator-items done: a shared operator gate now blocks go/advance/next dispatch on a pending Decision or Agent Ask naming the selected Action, and lists everything else as a capped alert.",
+      "project": "arcadia",
+      "createdAt": "2026-09-25T00:50:40.019Z",
+      "sourceRef": "agent_ask_proposals:agentask_ef5e46f91b0dfbf786",
+      "staleReason": "every Action it targets is done: gate-dispatch-on-blocking-operator-items",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "gate-dispatch-on-blocking-operator-items",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_b5ed3a7f59790546d3",
+      "kind": "agent_ask",
+      "id": "agentask_b5ed3a7f59790546d3",
+      "requestId": "complete-place-session-naming-screenshot-2026-09-25",
+      "title": "Mark place-session-naming-screenshot complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-25T14:32:32.507Z",
+      "sourceRef": "agent_ask_proposals:agentask_b5ed3a7f59790546d3",
+      "staleReason": "every Action it targets is done: place-session-naming-screenshot",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "place-session-naming-screenshot",
+            "plans": [
+              {
+                "plan": "give-the-mission-control-site-repository-currently-ungoverned-no-agents-md",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_59dde61c3ba63d15f2",
+      "kind": "agent_ask",
+      "id": "agentask_59dde61c3ba63d15f2",
+      "requestId": "complete-natural-ask-target-resolution-2026-09-25-v2",
+      "title": "Merged PR #637: a natural Agent Ask now resolves its free text against existing checked-in Plan/Action/Decision identifiers and proposes the concrete effect instead of always falling back to a generic interpretation Decision.",
+      "project": "arcadia",
+      "createdAt": "2026-09-25T17:17:47.570Z",
+      "sourceRef": "agent_ask_proposals:agentask_59dde61c3ba63d15f2",
+      "staleReason": "every Action it targets is done: make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "make-a-natural-language-agent-ask-propose-the-concrete-canonical-effect-when-the",
+            "plans": [
+              {
+                "plan": "agent-ask-execution-queue",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_a0fd1e16d62db4f7a2",
+      "kind": "agent_ask",
+      "id": "agentask_a0fd1e16d62db4f7a2",
+      "requestId": "complete-refuse-packets-without-validation-commands-2026-09-25",
+      "title": "Mark refuse-packets-without-validation-commands complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-25T21:52:01.819Z",
+      "sourceRef": "agent_ask_proposals:agentask_a0fd1e16d62db4f7a2",
+      "staleReason": "every Action it targets is done: refuse-packets-without-validation-commands",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "refuse-packets-without-validation-commands",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_214df04378bb325923",
+      "kind": "agent_ask",
+      "id": "agentask_214df04378bb325923",
+      "requestId": "complete-enforce-concurrency-gate-at-admission-2026-09-26",
+      "title": "Mark enforce-concurrency-gate-at-admission complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-26T19:21:33.018Z",
+      "sourceRef": "agent_ask_proposals:agentask_214df04378bb325923",
+      "staleReason": "every Action it targets is done: enforce-concurrency-gate-at-admission",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "enforce-concurrency-gate-at-admission",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_8bd0b0e360c793a99f",
+      "kind": "agent_ask",
+      "id": "agentask_8bd0b0e360c793a99f",
+      "requestId": "complete-rewire-dependents-on-split-2026-09-27",
+      "title": "A split no longer satisfies anything that depended on the narrowed Action until its remainder Actions are done too.",
+      "project": "arcadia",
+      "createdAt": "2026-09-27T02:56:56.929Z",
+      "sourceRef": "agent_ask_proposals:agentask_8bd0b0e360c793a99f",
+      "staleReason": "every Action it targets is done: rewire-dependents-on-split",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "rewire-dependents-on-split",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_b61c777de9bddf5466",
+      "kind": "agent_ask",
+      "id": "agentask_b61c777de9bddf5466",
+      "requestId": "complete-fix-action-intent-target-ref-amendments-2026-09-27",
+      "title": "Mark fix-action-intent-target-ref-amendments complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-27T05:28:48.459Z",
+      "sourceRef": "agent_ask_proposals:agentask_b61c777de9bddf5466",
+      "staleReason": "every Action it targets is done: fix-action-intent-target-ref-amendments",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "fix-action-intent-target-ref-amendments",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_0f2aa75847f5cad1f8",
+      "kind": "agent_ask",
+      "id": "agentask_0f2aa75847f5cad1f8",
+      "requestId": "complete-fix-auto-settle-eligibility-docs-2026-09-30",
+      "title": "Record corrected auto-settle eligibility and no-workspace settlement guidance.",
+      "project": "arcadia",
+      "createdAt": "2026-09-30T08:22:21.741Z",
+      "sourceRef": "agent_ask_proposals:agentask_0f2aa75847f5cad1f8",
+      "staleReason": "every Action it targets is done: fix-auto-settle-eligibility-docs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "fix-auto-settle-eligibility-docs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_50aad7ccec694309a3",
+      "kind": "agent_ask",
+      "id": "agentask_50aad7ccec694309a3",
+      "requestId": "complete-harden-tidy-quarantine-safety-and-docs-2026-09-30",
+      "title": "Mark harden-tidy-quarantine-safety-and-docs complete.",
+      "project": "arcadia",
+      "createdAt": "2026-09-30T21:16:00.276Z",
+      "sourceRef": "agent_ask_proposals:agentask_50aad7ccec694309a3",
+      "staleReason": "every Action it targets is done: harden-tidy-quarantine-safety-and-docs",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "harden-tidy-quarantine-safety-and-docs",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_21ffbefb9ccd04a252",
+      "kind": "agent_ask",
+      "id": "agentask_21ffbefb9ccd04a252",
+      "requestId": "complete-retire-legacy-operator-script-descriptors-887-2026-10-03",
+      "title": "Record that the operator-script checker retires exactly the five legacy descriptors through a hash-pinned manifest and passes on the live library.",
+      "project": "arcadia",
+      "createdAt": "2026-10-03T04:36:27.089Z",
+      "sourceRef": "agent_ask_proposals:agentask_21ffbefb9ccd04a252",
+      "staleReason": "every Action it targets is done: retire-legacy-operator-script-descriptors",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "retire-legacy-operator-script-descriptors",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_4d6c436de4f37027b1",
+      "kind": "agent_ask",
+      "id": "agentask_4d6c436de4f37027b1",
+      "requestId": "complete-reset-managed-preservation-timeout-history-896-2026-10-03",
+      "title": "Mark reset-managed-preservation-timeout-history-on-success done: the managed tick's preserve call runs through the shared timeout guard, so a success clears timeout:<session.id>, index_locked has its own budget, and malformed or live index locks refuse typed (#896).",
+      "project": "arcadia",
+      "createdAt": "2026-10-03T06:09:39.747Z",
+      "sourceRef": "agent_ask_proposals:agentask_4d6c436de4f37027b1",
+      "staleReason": "every Action it targets is done: reset-managed-preservation-timeout-history-on-success",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "complete",
+        "targets": [
+          {
+            "action": "reset-managed-preservation-timeout-history-on-success",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_32bcb7b2a78da07675",
+      "kind": "agent_ask",
+      "id": "agentask_32bcb7b2a78da07675",
+      "requestId": "split-add-operator-qa-plan-to-preserved-pr-body-2026-10-05",
+      "title": "Render a deterministic Operator QA plan into every host-preserved candidate pull request body, with tests.",
+      "project": "arcadia",
+      "createdAt": "2026-10-05T16:24:44.114Z",
+      "sourceRef": "agent_ask_proposals:agentask_32bcb7b2a78da07675",
+      "staleReason": "every Action it targets is done: add-operator-qa-plan-to-preserved-pr-body",
+      "evidence": {
+        "rule": "every Action the Ask targets is done in a checked-in Plan",
+        "intent": "split",
+        "targets": [
+          {
+            "action": "add-operator-qa-plan-to-preserved-pr-body",
+            "plans": [
+              {
+                "plan": "bootstrap-managed-production-to-build-flight-deck",
+                "status": "done"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_3b07406ec8dc13e410",
+      "kind": "agent_ask",
+      "id": "agentask_3b07406ec8dc13e410",
+      "requestId": "interim-ask-delivery-pivot-20261008-v2",
+      "title": "Deliver verified operator Issue comments into existing Asks",
+      "project": "arcadia",
+      "createdAt": "2026-10-08T05:28:10.459Z",
+      "sourceRef": "agent_ask_proposals:agentask_3b07406ec8dc13e410",
+      "staleReason": "superseded by Agent Ask agentask_c3e0e44e36415ff66d (explicit Supersedes line in its rationale)",
+      "evidence": {
+        "rule": "explicit Supersedes line in the rationale of an accepted or unsettled Agent Ask",
+        "todoNamedSuperseder": "agentask_c3e0e44e36415ff66d",
+        "alsoNamedBySettledAsk": {
+          "request_id": "operator-todo-ask-pivot-20261008-v6",
+          "proposal_id": "agentask_8f96ecd904f3115ce8",
+          "disposition": "accepted"
+        }
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_58f7a77c2a4de8eab7",
+      "kind": "agent_ask",
+      "id": "agentask_58f7a77c2a4de8eab7",
+      "requestId": "standard-harness-ask-delivery-pivot-20261008-v3",
+      "title": "Turn operator Issue comments into graded next actions with standard-harness instruction files",
+      "project": "arcadia",
+      "createdAt": "2026-10-08T06:56:18.552Z",
+      "sourceRef": "agent_ask_proposals:agentask_58f7a77c2a4de8eab7",
+      "staleReason": "superseded by Agent Ask agentask_c3e0e44e36415ff66d (explicit Supersedes line in its rationale)",
+      "evidence": {
+        "rule": "explicit Supersedes line in the rationale of an accepted or unsettled Agent Ask",
+        "todoNamedSuperseder": "agentask_c3e0e44e36415ff66d",
+        "alsoNamedBySettledAsk": {
+          "request_id": "operator-todo-ask-pivot-20261008-v6",
+          "proposal_id": "agentask_8f96ecd904f3115ce8",
+          "disposition": "accepted"
+        }
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_c3e0e44e36415ff66d",
+      "kind": "agent_ask",
+      "id": "agentask_c3e0e44e36415ff66d",
+      "requestId": "operator-todo-ask-pivot-20261008-v4",
+      "title": "Route operator input through Ask and give the operator one to-do list for everything Arcadia needs",
+      "project": "arcadia",
+      "createdAt": "2026-10-08T07:27:45.013Z",
+      "sourceRef": "agent_ask_proposals:agentask_c3e0e44e36415ff66d",
+      "staleReason": "superseded by Agent Ask agentask_ac815a0e6f60ffcbc0 (explicit Supersedes line in its rationale)",
+      "evidence": {
+        "rule": "explicit Supersedes line in the rationale of an accepted or unsettled Agent Ask",
+        "todoNamedSuperseder": "agentask_ac815a0e6f60ffcbc0",
+        "alsoNamedBySettledAsk": {
+          "request_id": "operator-todo-ask-pivot-20261008-v6",
+          "proposal_id": "agentask_8f96ecd904f3115ce8",
+          "disposition": "accepted"
+        }
+      }
+    },
+    {
+      "key": "agent_ask:arcadia/agentask_ac815a0e6f60ffcbc0",
+      "kind": "agent_ask",
+      "id": "agentask_ac815a0e6f60ffcbc0",
+      "requestId": "operator-todo-ask-pivot-20261008-v5",
+      "title": "Route operator input through Ask and give the operator one to-do list for everything Arcadia needs",
+      "project": "arcadia",
+      "createdAt": "2026-10-08T07:44:47.242Z",
+      "sourceRef": "agent_ask_proposals:agentask_ac815a0e6f60ffcbc0",
+      "staleReason": "superseded by Agent Ask agentask_8f96ecd904f3115ce8 (explicit Supersedes line in its rationale)",
+      "evidence": {
+        "rule": "explicit Supersedes line in the rationale of an accepted or unsettled Agent Ask",
+        "todoNamedSuperseder": "agentask_8f96ecd904f3115ce8",
+        "alsoNamedBySettledAsk": {
+          "request_id": "operator-todo-ask-pivot-20261008-v6",
+          "proposal_id": "agentask_8f96ecd904f3115ce8",
+          "disposition": "accepted"
+        }
+      }
+    }
+  ]
+}
