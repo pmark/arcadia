@@ -15,9 +15,13 @@ import { activateProduction, fingerprintProductionScope, normalizeProductionScop
 export const fixtureGit = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 /** Synthetic, explicitly bounded fixture authority. No real Project or provider
- * Session is activated. Used both by deterministic tests and the OS-boundary proof. */
-export function preservationFixture(root?: string, command = "node check.mjs") {
-  const fixture = buildPreservationFixture(root, command, "session");
+ * Session is activated. Used both by deterministic tests and the OS-boundary proof.
+ * `extra`, when given, runs against the freshly written baseline repository
+ * directory just before it is committed and the candidate worktree is cut from
+ * it, so anything it adds (for example a tracked baseline symlink) lands
+ * identically in both the base commit and the candidate, unchanged. */
+export function preservationFixture(root?: string, command = "node check.mjs", extra?: (repo: string) => void) {
+  const fixture = buildPreservationFixture(root, command, "session", extra);
   if (!fixture.lease) throw Error("The session fixture did not register a Session.");
   return { ...fixture, lease: fixture.lease };
 }
@@ -25,11 +29,11 @@ export function preservationFixture(root?: string, command = "node check.mjs") {
 /** The same disposable fixture with only an active worktree reservation, so
  * preservation binds through the manual `go` handoff path: no Session lease,
  * no authorized packet and no production grant. */
-export function manualPreservationFixture(root?: string, command = "node check.mjs") {
-  return buildPreservationFixture(root, command, "manual");
+export function manualPreservationFixture(root?: string, command = "node check.mjs", extra?: (repo: string) => void) {
+  return buildPreservationFixture(root, command, "manual", extra);
 }
 
-function buildPreservationFixture(root: string | undefined, command: string, mode: "session" | "manual") {
+function buildPreservationFixture(root: string | undefined, command: string, mode: "session" | "manual", extra?: (repo: string) => void) {
   root = realpathSync(root ?? mkdtempSync(path.join(tmpdir(), "arcadia-preservation-fixture-")));
   const repo = path.join(root, "repo");
   const workspace = path.join(root, "workspace");
@@ -39,6 +43,7 @@ function buildPreservationFixture(root: string | undefined, command: string, mod
   doc("PROJECT.md", { arcadia: "v1", type: "project", slug: "preservation-fixture", name: "Preservation Fixture", status: "active", goal: "Prove protected preservation.", active_plan: "proof", current_action: "write-marker", updated: "2026-09-12" });
   doc("docs/plans/proof.md", { arcadia: "v1", type: "plan", slug: "proof", project: "preservation-fixture", status: "active", milestone: "Prove preservation", current_action: "write-marker", token_impact: "none", token_budget: "Deterministic fixture only.", recommended_model: "gpt-5.6-terra", updated: "2026-09-12", actions: [{ id: "write-marker", title: "Write marker", status: "open", responsibility: "agent", effort: "session", clarification: "clarified", next_action: "Write the marker.", expected_artifact: "marker.txt", acceptance_criteria: ["Marker is ready."], depends_on: [], decisions: [], references: [] }] });
   writeFileSync(path.join(repo, "check.mjs"), "import {readFileSync} from 'node:fs'; if(readFileSync('marker.txt','utf8')!=='ready\\n') process.exit(1);\n");
+  extra?.(repo);
   fixtureGit(repo, ["init", "-q", "-b", "main"]);
   fixtureGit(repo, ["config", "user.name", "Arcadia Fixture"]); fixtureGit(repo, ["config", "user.email", "fixture@arcadia.local"]);
   fixtureGit(repo, ["add", "."]); fixtureGit(repo, ["commit", "-qm", "Fixture baseline"]);

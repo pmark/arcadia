@@ -1,5 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,7 +10,7 @@ import { bindCheckDefinitions, PRESERVATION_CHECK_MODIFIED_CODE } from "../src/s
 // exactly as bindCheckDefinitions receives base_revision and a snapshotted
 // candidate tree in production.
 const repos: string[] = [];
-function repo(files: Record<string, string>) {
+function repo(files: Record<string, string>, links: Record<string, string> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "arcadia-check-binding-"));
   repos.push(dir);
   const git = (args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -19,6 +19,10 @@ function repo(files: Record<string, string>) {
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     writeFileSync(path.join(dir, file), content);
+  }
+  for (const [file, target] of Object.entries(links)) {
+    mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    symlinkSync(target, path.join(dir, file));
   }
   git(["add", "."]); git(["commit", "-qm", "base"]);
   const baseCommit = git(["rev-parse", "HEAD"]);
@@ -161,5 +165,242 @@ describe("preservation check-definition binding — review follow-up (PR #552)",
     const rewritten = candidateTree(f, { "rules.node": "altered" });
     expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["node check.mjs"]))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules.node" }) }));
+  });
+});
+
+
+describe("preservation check-definition binding — executable symlinks (#1041)", () => {
+  it("allows an unchanged regular check and its regular dependency while binding both", () => {
+    const f = repo({ "check.mjs": "import './judge.mjs';\n", "judge.mjs": "process.exit(7);\n", "skills/README.md": "baseline skill\n" }, { "skill-link": "skills/README.md" });
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, ["node check.mjs"]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path))
+      .toEqual(["check.mjs", "judge.mjs"]);
+  });
+
+  it.each(["node check.mjs", "./check.mjs"])("refuses an unchanged declared symlink before executing its rewritten target (%s)", (command) => {
+    const f = repo({ "judge.mjs": "process.exit(7);\n" }, { "check.mjs": "judge.mjs" });
+    const candidate = candidateTree(f, { "judge.mjs": "process.exit(0);\n" });
+    expect(f.git(["ls-tree", f.base, "check.mjs"]))
+      .toBe(f.git(["ls-tree", candidate, "check.mjs"]));
+    let executed = false;
+    expect(() => {
+      bindCheckDefinitions(f.dir, f.base, candidate, [command]);
+      executed = true;
+      execFileSync(process.execPath, ["check.mjs"], { cwd: f.dir });
+    }).toThrow(expect.objectContaining({
+      message: expect.stringMatching(/cannot execute symlink/),
+      details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.mjs" })
+    }));
+    expect(executed).toBe(false);
+  });
+
+  it.each([
+    { command: "node check.mjs", source: "import './helper.mjs';\n", link: "helper.mjs", target: "judge.mjs" },
+    { command: "node check.cjs", source: "require('./helper');\n", link: "helper.js", target: "judge.mjs" },
+    { command: "python3 check.py", source: "import helper\n", link: "helper.py", target: "judge.py" },
+    { command: "node check.mjs", source: "import './linked/judge.mjs';\n", link: "linked", target: "rules" }
+  ])("refuses a symlink in the discovered executable closure ($link)", ({ command, source, link, target }) => {
+    const check = command.split(" ")[1];
+    const judge = target === "rules" ? "rules/judge.mjs" : target;
+    const f = repo({ [check]: source, [judge]: "original judge\n" }, { [link]: target });
+    const candidate = candidateTree(f, { [judge]: "rewritten judge\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, [command]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: link }) }));
+  });
+
+  it("refuses a declared check reached through a linked directory", () => {
+    const f = repo({ "rules/check.mjs": "process.exit(7);\n" }, { "linked": "rules" });
+    const candidate = candidateTree(f, { "rules/check.mjs": "process.exit(0);\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node linked/check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "linked" }) }));
+  });
+
+  it("refuses a symlink reached through a directory manifest's main entry", () => {
+    const f = repo({
+      "check.cjs": "require('./rules');\n",
+      "rules/package.json": '{"main":"helper.cjs"}',
+      "judge.cjs": "process.exit(7);\n"
+    }, { "rules/helper.cjs": "../judge.cjs" });
+    const candidate = candidateTree(f, { "judge.cjs": "process.exit(0);\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.cjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "rules/helper.cjs" }) }));
+  });
+
+  it("refuses a candidate symlink even when its link text has the authorized regular file's blob", () => {
+    const f = repo({ "check.mjs": "judge.mjs", "judge.mjs": "process.exit(0);\n" });
+    rmSync(path.join(f.dir, "check.mjs"));
+    symlinkSync("judge.mjs", path.join(f.dir, "check.mjs"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    const blob = (tree: string) => f.git(["ls-tree", tree, "check.mjs"]).split(/\s+/)[2];
+    expect(blob(candidate)).toBe(blob(f.base));
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "check.mjs" }) }));
+  });
+});
+
+describe("preservation check-definition binding — declared path walked before `..` removal (#1041 round 2)", () => {
+  // `linked` -> rules/subdir, so the shell opens `linked/../check.sh` as
+  // rules/check.sh, while lexical normalization would bind the root check.sh.
+  const linkedFixture = () => repo(
+    { "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n" },
+    { "linked": "rules/subdir" }
+  );
+
+  it.each(["sh linked/../check.sh", "./linked/../check.sh", "env sh ./linked//../check.sh"])(
+    "refuses an unchanged symlinked ancestor erased by `..` (%s)", (command) => {
+      const f = linkedFixture();
+      const candidate = candidateTree(f, { "rules/check.sh": "exit 0\n" });
+      // The hazard is real: the shell executes the rewritten rules/check.sh.
+      expect(spawnSync("sh", ["linked/../check.sh"], { cwd: f.dir }).status).toBe(0);
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, [command]))
+        .toThrow(expect.objectContaining({
+          message: expect.stringMatching(/cannot execute symlink `linked`/),
+          details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" })
+        }));
+    });
+
+  it("refuses a symlinked ancestor present only in the candidate tree", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n", "linked/README": "real directory\n" });
+    f.git(["rm", "-rq", "linked"]);
+    writeFileSync(path.join(f.dir, "rules/check.sh"), "exit 0\n");
+    symlinkSync("rules/subdir", path.join(f.dir, "linked"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh linked/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" }) }));
+  });
+
+  it("refuses a symlinked ancestor present only in the base tree", () => {
+    const f = linkedFixture();
+    f.git(["rm", "-q", "linked"]);
+    mkdirSync(path.join(f.dir, "linked"));
+    writeFileSync(path.join(f.dir, "linked/README"), "real directory\n");
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh linked/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" }) }));
+  });
+
+  it("keeps binding a regular `subdir/../check.sh` with no symlink components", () => {
+    const f = repo({ "check.sh": "exit 7\n", "subdir/README": "directory\n" });
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, ["sh subdir/../check.sh"]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path)).toEqual(["check.sh"]);
+    const rewritten = candidateTree(f, { "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/cannot rewrite the check/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.sh" })
+      }));
+  });
+});
+
+describe("preservation check-definition binding — case-insensitive path components (#1041 round 3)", () => {
+  // Validation runs only on macOS, in a case-insensitive checkout, so `subdir`
+  // and `SUBDIR` name the same directory there.
+  const files = { "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n" };
+
+  it("refuses a case-variant symlinked ancestor present only in the candidate tree", () => {
+    const f = repo({ ...files, "subdir/README": "real directory\n" });
+    f.git(["rm", "-rq", "subdir"]);
+    writeFileSync(path.join(f.dir, "rules/check.sh"), "exit 0\n");
+    symlinkSync("rules/subdir", path.join(f.dir, "SUBDIR"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/cannot execute symlink `SUBDIR`/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "SUBDIR" })
+      }));
+  });
+
+  it("refuses a case-variant symlinked ancestor present only in the base tree", () => {
+    const f = repo(files, { "SUBDIR": "rules/subdir" });
+    f.git(["rm", "-q", "SUBDIR"]);
+    mkdirSync(path.join(f.dir, "subdir"));
+    writeFileSync(path.join(f.dir, "subdir/README"), "real directory\n");
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "SUBDIR" }) }));
+  });
+
+  it("keeps binding a regular mixed-case path written in its exact case", () => {
+    const f = repo({ "Tools/Check.sh": "exit 7\n", "Tools/Sub/README": "directory\n" });
+    const command = "sh Tools/Sub/../Check.sh";
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, [command]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path)).toEqual(["Tools/Check.sh"]);
+    const rewritten = candidateTree(f, { "Tools/Check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "Tools/Check.sh" }) }));
+  });
+
+  it("refuses a declared path whose tree entry differs only by case", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    const candidate = candidateTree(f, { "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh CHECK.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/only by letter case/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.sh" })
+      }));
+  });
+
+  it("refuses a candidate case-variant sibling of a bound import", () => {
+    const f = repo({ "check.mjs": "import './judge.mjs';\n", "judge.mjs": "process.exit(7);\n" });
+    const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: f.dir, input: "process.exit(0);\n", encoding: "utf8" }).trim();
+    f.git(["update-index", "--add", "--cacheinfo", `100644,${blob},JUDGE.mjs`]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "JUDGE.mjs" }) }));
+  });
+});
+
+describe("preservation check-definition binding — non-ASCII path components (#1041 round 4)", () => {
+  // APFS folds `ſ`/`s`, `ß`/`ss`, `ﬁ`/`fi` and final sigma together, so
+  // these names cannot coexist in a working copy. Build each tree through
+  // the index instead: start from the base tree, drop and add entries.
+  function indexTree(f: ReturnType<typeof repo>, remove: string[], add: Record<string, { content: string; link?: boolean }>) {
+    f.git(["read-tree", f.base]);
+    if (remove.length) f.git(["rm", "-rq", "--cached", ...remove]);
+    for (const [file, { content, link }] of Object.entries(add)) {
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: f.dir, input: content, encoding: "utf8" }).trim();
+      f.git(["update-index", "--add", "--cacheinfo", `${link ? "120000" : "100644"},${blob},${file}`]);
+    }
+    return f.git(["write-tree"]);
+  }
+  const refusesNonAscii = (entry: string) => expect.objectContaining({
+    message: expect.stringMatching(/non-ASCII name/),
+    details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: entry })
+  });
+
+  it("refuses a long-s `ſubdir` symlink standing in for an erased `subdir` (candidate only)", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n", "subdir/README": "real directory\n" });
+    const candidate = indexTree(f, ["subdir"], {
+      "\u017fubdir": { content: "rules/subdir", link: true },
+      "rules/check.sh": { content: "exit 0\n" }
+    });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"])).toThrow(refusesNonAscii("\u017fubdir"));
+  });
+
+  it("refuses a sharp-s `claß` sibling of a declared `class` directory, in either tree", () => {
+    const f = repo({ "class/check.sh": "exit 7\n" });
+    const candidateOnly = indexTree(f, [], { "cla\u00df/check.sh": { content: "exit 0\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateOnly, ["sh class/check.sh"])).toThrow(refusesNonAscii("cla\u00df"));
+    // Base-only: the authorized tree held `claß`, the candidate drops it.
+    const baseWithSharpS = indexTree(f, [], { "cla\u00df/check.sh": { content: "exit 7\n" } });
+    expect(() => bindCheckDefinitions(f.dir, baseWithSharpS, f.base, ["sh class/check.sh"])).toThrow(refusesNonAscii("cla\u00df"));
+  });
+
+  it("refuses a ligature `ﬁxtures` sibling of a directory in the import closure", () => {
+    const f = repo({ "check.mjs": "import './fixtures/judge.mjs';\n", "fixtures/judge.mjs": "process.exit(7);\n" });
+    const candidate = indexTree(f, [], { "\ufb01xtures/judge.mjs": { content: "process.exit(0);\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"])).toThrow(refusesNonAscii("\ufb01xtures"));
+  });
+
+  it("refuses a declared path with a sigma component even when unchanged", () => {
+    const f = repo({ "\u03c3/check.sh": "exit 7\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["sh \u03c3/check.sh"])).toThrow(refusesNonAscii("\u03c3"));
+    const candidate = indexTree(f, [], { "\u03c2/check.sh": { content: "exit 0\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh \u03c3/check.sh"])).toThrow(refusesNonAscii("\u03c3"));
   });
 });

@@ -7,7 +7,7 @@ status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-06
+updated: 2026-10-07
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -4242,19 +4242,20 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: Implement protected preservation of unchanged baseline tracked symlink blobs without following candidate links, retaining the current escape and race guards.
+    next_action: Finish protected preservation of unchanged baseline symlink blobs and provide the smallest supported host-owned reviewed-packet recovery path with disposable dry proof.
     expected_artifact: Evidence satisfying Agent Ask preserve-unchanged-baseline-skill-symlinks
     clarification: clarified
     confidence: high
-    source: Agent Ask rehearsal-v1-preservation-and-neutral-prep-2026-10-06
+    source: Agent Ask amend-preservation-host-packet-recovery-1032-2026-10-07
     acceptance_criteria:
       - Protected candidate capture retains an unchanged tracked mode-120000 baseline entry from its immutable Git blob without dereferencing it; candidate-added or modified symlinks and path escapes still refuse, and normal regular-file capture retains its existing guards.
       - Focused regressions and a hermetic invocation of the literal no-argument Claude preservation launcher prove successful capture, unchanged replay, changed-tree receipt identity, and refusal of modified/new symlinks, ancestor-link escapes and unsafe or raced regular-file inputs; failed capture does not change the candidate index.
       - "The PR #1033 repair and both preservation packets remain intact; evidence distinguishes reviewed source from installed runtime and gives the exact remaining bootstrap boundary without raw commits, symlink deletion, repeated unchanged refusals, installation or completion resettlement."
       - Typecheck, lint and focused preservation tests pass; run fast-rehearsal once on final changed source before any separately authorized installation.
+      - "A single reviewed host-owned packet-recovery operation represents the approved Decision0086 envelope: exact Decision/answer, seven-file manifest, pinned base and candidate reservation; a clean isolated recovery candidate with normal hooks and resolved agent identity; drift refusal and resumable receipts; original contaminated history, fixture paths, #1033, Identity and every packet retained. Positive, refusal and interrupted/replay proofs use disposable fixtures. Preparation and dry proof do not execute recovery, publish source, install/restart, complete or activate production. Live execution remains operator-owned and requires the reviewed exact-scope Actions-page script; changing the approved seven-file publication envelope requires its own governed proposal rather than inferred authority."
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1032", "src/sessions/candidateSnapshot.ts", "docs/working-copy-safety.md", "/private/tmp/run8-ci-preservation-handoff/manifest.json"]
+    references: ["https://github.com/pmark/arcadia/issues/1032", "src/sessions/candidateSnapshot.ts", "docs/working-copy-safety.md", "/private/tmp/run8-ci-preservation-handoff/manifest.json", "decision/0086", "docs/proposals/packet-only-host-bootstrap-recovery-1032.md", "/private/tmp/arcadia-run8-asks/resume-1032-final-packet/manifest.json"]
   - id: generate-neutral-rehearsal-dry-preparation
     title: Implement one resumable deterministic preparation command that generates a fresh N-neutral fixture baseline, reviewed descriptor inputs and dry proof from one parameter file, initially N=3.
     status: open

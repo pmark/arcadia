@@ -121,7 +121,7 @@ export function assertManualPreservationBinding(db: Database.Database, binding: 
       );
     }
     const candidateHead = git(binding.worktree, ["rev-parse", "HEAD"]).trim();
-    const syntheticCommit = snapshotCandidateCommit(binding.repository, binding.worktree, candidateHead);
+    const syntheticCommit = snapshotCandidateCommit(binding.repository, binding.worktree, binding.baseRevision, candidateHead);
     if (!mergesCleanly(binding.repository, syntheticCommit, currentBaseRevision)) {
       throw validationError(
         `Manual preservation base ${binding.baseBranch} advanced from ${binding.baseRevision} to ${currentBaseRevision} and no longer merges cleanly with the candidate; reconcile the candidate onto the current base in a fresh worktree before retrying.`,
