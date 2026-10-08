@@ -415,6 +415,7 @@ import {
   runNextHistoryCommand,
   runNextReadyCommand
 } from "./commands/next.js";
+import { renderTodoSuccess, runTodoCommand } from "./commands/todo.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
 import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
@@ -3825,6 +3826,17 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     options.ready
       ? runCliAction("next.ready", options, () => runNextReadyCommand(options), renderNextReadySuccess)
       : runCliAction("next", options, () => runNextCommand(options), renderNextSuccess)
+  );
+
+  addJsonOption(
+    program
+      .command("todo")
+      .description("What is waiting on the operator: open Decisions and pending Agent Asks, blocking first (read-only)")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--project <project>", "Only this Project (id or slug)")
+      .option("--all", "Show every non-blocking item instead of the oldest five")
+  ).action((options: { workspace?: string; project?: string; all?: boolean; json?: boolean }) =>
+    runCliAction("todo", options, () => runTodoCommand(options), renderTodoSuccess)
   );
 
   addJsonOption(

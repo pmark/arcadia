@@ -377,6 +377,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "time log": ALLOWED,
   "time list": ALLOWED,
   activity: ALLOWED,
+  todo: exempt("Reads the resolved workspace database read-only and the Projects' checked-in Decisions; writes and records nothing."),
   timeline: exempt("Reads the resolved workspace database read-only and its repositories with read-only Git; writes and records nothing."),
   "mission-control overview": ALLOWED,
   "mission-control node": ALLOWED,

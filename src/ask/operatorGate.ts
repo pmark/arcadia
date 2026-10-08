@@ -55,7 +55,8 @@ function extractActionIds(normalized: NormalizedAgentAsk): string[] {
  * classification.
  */
 export function resolveOperatorGate(input: {
-  db: Database.Database;
+  /** Null reads only the checked-in Decisions: the caller has no workspace database and says so itself (`arcadia todo`). */
+  db: Database.Database | null;
   repoRoot: string;
   projectSlug: string;
   /** The Action id the current dispatch resolution would select, or null. */
@@ -63,7 +64,7 @@ export function resolveOperatorGate(input: {
   /** Every unfinished Action's readiness in the active plan's queue segment, when already computed. */
   readySetCandidates?: ReadySetCandidate[];
 }): OperatorGateResolution {
-  const agentAsks: PendingAgentAskGateInput[] = listUnsettledAgentAskProposals(input.db).map((row) => ({
+  const agentAsks: PendingAgentAskGateInput[] = (input.db ? listUnsettledAgentAskProposals(input.db) : []).map((row) => ({
     proposalId: row.id,
     requestId: row.requestId,
     projectSlug: row.proposal.normalized.project,
