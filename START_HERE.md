@@ -2656,12 +2656,14 @@ pnpm arcadia todo --json               # schema arcadia-todo-v1, under `data`
 ```
 
 `todo` is a read-only view derived on each run: nothing is stored, written or
-run. It lists five sources per Project: **open Decisions**, **pending Agent
+run. It lists seven sources per Project: **open Decisions**, **pending Agent
 Ask proposals**, **open or deferred review items** (these include
 ActionClarification questions; items an agent has flagged for agent review wait
 on the agent, not you, and are left out), **waiting operator tasks** (the
 repo-local ledger `.arcadia/operator-tasks.jsonl`) and **production
-escalations** (`production_operator_escalations` rows, read-only). An item is
+escalations** (`production_operator_escalations` rows, read-only), **unclarified
+captures** (kind `clarify`) and **Plan Actions that wait on you** (kind
+`plan_action`). An item is
 *blocking* when `arcadia next` would refuse to dispatch because of it, and
 otherwise *other*, using the same gate; a review item is blocking only when it
 is linked (by its own or its work item's `plan/<plan>#<action>` reference, Plan
@@ -2670,13 +2672,15 @@ selected, never recomputed. An operator task is blocking only when its origin is
 that Action. A production escalation is always blocking: its row says the
 production loop is stalled, even when no Decision or Ask exists. Blocking
 escalations are listed first.
-Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal-id>`, `review_item:<project>/<id>`, `operator_task:<project>/<task-id>` or `escalation:<kind>:<project>/<action>`, unique across Projects), its own
+Each item shows `key` (`decision:<project>/<id>`, `agent_ask:<project>/<proposal-id>`, `review_item:<project>/<id>`, `operator_task:<project>/<task-id>`, `escalation:<kind>:<project>/<action>`, `clarify:<project>/<work-item-id>` or `plan_action:<project>/<plan>#<action>`, unique across Projects), its own
 title, project, created date, source, and the existing command that answers it
 (a Decision's `arcadia decision approve ...`, an Agent Ask's settle preview, a
 clarification review item's `arcadia review approve <id> --answer "<answer>" --clarify`,
 an operator task's `arcadia operator-task show <id> --repo <path>`, with `close --operator` and
 `decline` listed after it (closing is the operator's own attestation), an escalation's own `remedy`; with no remedy,
-`arcadia production status`).
+`arcadia production status`; a `clarify` item's `arcadia clarify --work <id> --apply`, with the
+dry run `arcadia clarify --work <id>` listed first; a `plan_action`'s Agent Ask preview, which records the answer
+to its question or completes the Action once you have done the step).
 A review item also shows `origin` (its own `resolved_intent`) and, for a
 clarification, the Discord reply and Mission Control **Answer & continue** paths
 that answer it without `--clarify` (they re-clarify on their own). Any other
@@ -2693,10 +2697,30 @@ Decision, which is then marked blocking. A Decision merely cited elsewhere in th
 message (an Agent Ask's title, a lapsed-grant note) does not merge anything. A review item whose Project is completed or not listed appears
 under Project `unknown` rather than disappearing.
 
+A `clarify` item is a non-done `work_item` whose `clarification_status` is
+`unclarified`, which came from a capture (`capture_id`), and which has no open
+or deferred review item (that review item would already be its question). It is
+always an alert, and its title is the work item's own. A `plan_action` item is an
+unfinished Action of the Project's active Plan that `arcadia next --ready` does
+not call ready and that waits on you: its `question_open` question (`origin:
+question_open`), or `requires_review` responsibility with no unmet dependency in
+front of it (`origin: requires_review`). The readiness code is `arcadia next`'s
+own, not a copy. Actions parked by a deferral or an external block, Actions
+behind an unmet dependency, and every Action of a Project in a pause state
+(PROJECT.md or its active Plan not `active`) are left out. An Action is shown by
+the item that already represents it, not twice: an open Decision it requires or
+that names it (`action:`), a review item whose `doc_ref` (or its work item's) is
+the Action, or a waiting operator task whose origin is the Action. A `plan_action`
+is blocking only when it is the Action `arcadia next` selected; its created date
+is its Plan's `updated` date, since an Action carries no creation time.
+
 Done when (derived each run, never stored): a Decision is no longer open; an
 Agent Ask is settled; a review item is resolved or approved (no longer open or
 deferred); an operator task is closed or declined; an `escalation:<kind>` row is
-gone, because the production tick clears it once the cause is resolved.
+gone, because the production tick clears it once the cause is resolved; a
+`clarify` item's work item is clarified, done, or has an open review item; a
+`plan_action`'s Action is done, its question is answered (no longer
+`question_open`), or it is no longer `requires_review`.
 
 Blocking items come first. Among the others, open Decisions come first, newest
 first, so a freshly raised question is not buried; every other item (Agent Asks
@@ -2704,10 +2728,10 @@ and review items) follows oldest first. `--all`, `--stale` and `--json` use the 
 default view shows the first five others.
 
 The counts line shows live totals and what the view hides, for example
-`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0, operator tasks 0, escalations 0)`.
+`0 blocking · 202 other · stale hidden: 73 (decisions 8, agent asks 194, review items 0, operator tasks 0, escalations 0, clarify 0, plan actions 0)`.
 In `--json` these are `counts.byKind` (`decision`, `agent_ask`, `review_item`,
-`operator_task`, `escalation`); the schema stays `arcadia-todo-v1` and the
-change is additive.
+`operator_task`, `escalation`, `clarify`, `plan_action`); the schema stays
+`arcadia-todo-v1` and the change is additive.
 The printed answer commands omit `--workspace`: add it when you use a
 non-default workspace. The Agent Ask answer contains a
 `<settlement-request-id>` placeholder you must fill in before running it.
@@ -2726,17 +2750,22 @@ item, stale last.
 
 Projects whose slug contains `rehearsal`, or whose `repo_path` is under the OS
 temp directory or `~/tmp`, are fixtures: they appear only as one
-`Fixture Projects collapsed` line. A Project that fails to read, or whose
+`Fixture Projects collapsed` line (`counts.fixture`). A Project with no
+`repo_path` is collapsed the same way, into a `Projects with no repo_path collapsed`
+line (`counts.noRepoPath`), because nothing about it can be checked against a
+repository. A Project whose `repo_path` is set but unreadable, that fails to read, or whose
+repository has no `PROJECT.md`, or whose
 repository has no `PROJECT.md`, becomes a `project sources unavailable:` line
 and never drops the other Projects. In `--json`, `asOf.workspace` is the
 workspace name and `asOf.workspacePath` its path.
 
 When no workspace resolves, `todo` still reads the open Decisions of the
-checkout you are standing in, plus that checkout's waiting operator tasks, and
-ends with one `workspace sources unavailable: <remedy>` line, so a short list is
-never mistaken for an empty one; Agent Asks, review items and production
-escalations live in the workspace database, so they are not listed then.
-Unclarified captures are not listed yet.
+checkout you are standing in, plus that checkout's waiting operator tasks and
+Plan Actions, and ends with one `workspace sources unavailable: <remedy>` line,
+so a short list is never mistaken for an empty one; Agent Asks, review items,
+unclarified captures and production escalations live in the workspace database,
+so they are not listed then (and a Plan Action a review item represents is
+listed on its own).
 
 ## Durable planning memory
 
