@@ -105,6 +105,13 @@
       "path": "docs/agent-guidance/operator-directed-work.md",
       "read_before": "Before starting work the operator asked for directly that no queued Action holds; interim guidance that grants no authority and moves no pointer or queue.",
       "sha256": "80ed27ced7a3b37a8652ef8e4c7db92052727dbab175c4b5b2badf7696503014"
+    },
+    {
+      "id": "standard-harness",
+      "trigger": "harness, orchestration, new workflow, instruction file, session protocol, inactive work, inactivity ping, file handoff",
+      "path": "docs/agent-guidance/standard-harness.md",
+      "read_before": "Before adding a workflow, instruction file or orchestration, or when a turn would leave claimed work inactive; a standard harness runs unmodified. Grants no authority.",
+      "sha256": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f"
     }
   ]
 }
