@@ -2094,3 +2094,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1081
+
+- **Did:** arcadia todo now also surfaces Plan Actions waiting on you and unclarified captures with a ready clarify command. https://github.com/pmark/arcadia/pull/1081
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
