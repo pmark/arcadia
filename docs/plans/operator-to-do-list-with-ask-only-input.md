@@ -133,7 +133,7 @@ actions:
     references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/commands/review.ts", "src/commands/decision.ts"]
   - id: apply-approved-stale-triage
     title: Retire exactly the operator-approved stale items through the existing governed writers.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Retire exactly the operator-approved stale items through the existing governed writers.

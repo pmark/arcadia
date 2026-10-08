@@ -2017,3 +2017,10 @@ updated: 2026-10-08
 - **Result:** Every declared acceptance criterion was accepted as met: "arcadia todo --stale --json for the Arcadia Project is saved as a list Artifact with each item's staleReason evidence, its sha256, and counts of stale, non-stale and unclassifiable items (intents that name no Action, and other Projects' items, which need their own Project's Decision and are named as a revival trigger). Superseded proposals agentask_3b07406ec8dc13e410 and agentask_58f7a77c2a4de8eab7 are included through the 'Supersedes:' line in the rationale of the settled Ask operator-todo-ask-pivot-20261008-v6."; "One Decision raised through the existing Decision writer asks whether to reject or resolve exactly the listed ids bound to that sha256, with each option's consequence; it appears in arcadia todo. Nothing is settled by this Action, and no Action status, pointer or queue changes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-raise-stale-triage-decision-20261008).
+
+## 2026-10-08 — Completed arcadia/apply-approved-stale-triage
+
+- **Did:** Completed Action arcadia/apply-approved-stale-triage from accepted evidence (Candidate 0fec44bd0b06c00f792d55e64416169cae50d118).
+- **Result:** Every declared acceptance criterion was accepted as met: "Only after the triage Decision is answered approving the list: each listed Agent Ask is settled rejected with the existing two-phase agent-ask settle and each listed review_item is resolved with the existing review writer, batched and serialized against fresh main per the settlement-conflict procedure, with one receipt per item; items whose state changed since the list's sha256 are skipped and reported. If the answer declines, nothing is settled and the answer is recorded."; "The before and after arcadia todo counts are recorded; no Action status, pointer or queue changes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-apply-approved-stale-triage-20261008).
