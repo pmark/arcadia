@@ -3,6 +3,88 @@
 Read this procedure before its indexed operation. The compact bootstrap and
 CONSTITUTION.md still bind; retrieval grants no authority.
 
+## Ask freely without interrupting current work
+
+All coding-agent providers use the same Agent Ask contract. An honest request
+for help, a concern, an idea, a missing capability or a proposed authority change
+may be captured even when it is outside the current Action or cannot yet be
+executed. You do not need approval to ask, an implementation Action, or a new
+coding session merely to register a proposal. Asking is not an authority violation;
+approval and execution are judged separately. Do not claim that asking guarantees
+acceptance, immediate help, confidentiality or a failure-free transport.
+
+For capture only, use `intent: proposal` and `requested_authority: propose`.
+This preserves the request for consideration without creating executable work.
+Prefer direct inline CLI preview when the configured workspace is available: it
+registers the request without creating an untracked draft in the shared checkout.
+For example, from the requesting Project's repository (use its configured CLI;
+in Arcadia's repository the prefix is `pnpm -s arcadia`):
+
+```sh
+arcadia agent-ask preview '{"agent_ask":"v1","request_id":"request-help-<unique-id>","project":"<project-slug>","intent":"proposal","requested_authority":"propose","desired_result":"Request a bounded QA review of the current acceptance evidence.","rationale":"Capture for consideration; keep current work unchanged."}' --json
+```
+
+Use a fresh request id for each distinct request. Inspect `ok`, the proposal and
+capture ids, `conflicts`, `refused`, and `projectWritesPerformed`; preserve the
+receipt. A successful receipt establishes registration, not approval. Exact
+replay returns the same receipt; changed content under that id is refused. Preview
+also scans unprocessed `.arcadia/asks/` files in the selected repository and may
+record their proposals. Report their discovery failures separately from this
+request's result; never settle another request merely because it was discovered.
+
+### One command completes submission
+
+A successful `agent-ask preview` is the entire submission, whether its input is
+inline or a file. Arcadia stores the request content and immutable capture/proposal
+receipts in its configured workspace. No draft, settlement, Git commit, PR,
+Ingress copy or later input-file management is required just to submit it.
+Save the returned receipt id in the session evidence; later approval or execution
+belongs to the governed workflow, not to input-file custody.
+
+Inline input is simplest for a short request. For a longer request, a compact JSON
+file in `/tmp` or an ignored folder is a valid disposable input. For example,
+if `/tmp/my-ask.json` already contains the strict proposal envelope:
+
+```sh
+arcadia agent-ask preview --file /tmp/my-ask.json --dir /tmp --json
+```
+
+`--file` must resolve inside the caller's repository or the directory selected
+by `--dir`; `--dir /tmp` selects that containing directory without selecting a
+new workspace. A file in an ignored folder inside your current repository needs
+no special `--dir`. Inline input needs no file at all. Once the receipt confirms
+registration, deleting or losing the temporary input does not lose the registered
+request. Before successful registration, the file is still the only request copy
+and must be preserved if submission is blocked. These are alternatives; do not
+run `draft` first or both submission forms merely to submit the same request.
+
+There is no need to copy a file to Ingress when this CLI path succeeds. Do not
+assume that an arbitrary Ingress drop has the same proposal-only effects.
+Do not call `settle --apply`, change pointers or queue order, start agents, or
+notify anyone merely to capture the request. Continue the current authorized
+work unless the request reveals a genuine blocker.
+
+### Permission failure is a transport problem
+
+Preview needs write access to the resolved workspace to store receipts. If it
+returns `SQLITE_WORKSPACE_WRITE_DENIED`, preserve the error and use the host's
+ordinary permission-request or approved host-execution mechanism for the same
+supported CLI operation when available. For example, an API-backed agent may
+request its runtime's normal execution escalation. This is a permission request,
+not permission to bypass a refusal: proceed only if granted, and retain the same
+request id/content and configured workspace. No additional Arcadia Decision is
+needed solely to register a proposal; the host may still require approval.
+Never repeat the denied write in the unchanged sandbox, disable restrictions,
+guess a different workspace, edit SQLite, or claim an unrecorded request succeeded.
+
+If host access is unavailable or denied and no receipt was recorded, use
+`agent-ask draft` in your own isolated checkout and preserve the returned file
+through the normal Git/PR handoff. A temporary or ignored local file alone is not durable cross-host custody
+and is not registered intake. Report the exact file and remaining preview boundary;
+continue independent authorized work. No general promise of zero friction is
+possible: schema validation, permissions and unavailable services can refuse a
+request, but capture does not authorize or execute the requested change.
+
 ## Asking Arcadia to change Project state
 
 When work produces something Arcadia should govern — a new Action, a corrected
@@ -41,11 +123,12 @@ arcadia agent-ask draft '<json>'
 
 `draft` validates the Ask with no Project-database dependency at all, writes
 it to its canonical `.arcadia/asks/agent-ask-<request_id>.yaml` path —
-collision-checked, so concurrent Asks from different agents can never clobber
-each other or dirty the shared base checkout in a way that could block Arcadia
-Go's clean check — and, if a writable workspace is already resolvable here, previews it
-in the same call. A validation failure reports the exact fix needed before
-anything touches disk, so the whole ceremony is one round trip on the common
+collision-checked, so a different request cannot overwrite an existing file
+under the same id — and, if a writable workspace is already resolvable here,
+previews it in the same call. Draft files are still working-copy changes: use
+your own isolated checkout, never create them on the shared base merely for
+capture. Direct inline preview above avoids that file write entirely. A validation
+failure reports the exact fix needed before anything touches disk, so the whole ceremony is one round trip on the common
 path instead of write-then-preview-then-retry.
 
 `draft` reports `workspaceStatus: previewed` only when the preview receipt was
@@ -56,10 +139,10 @@ validated Ask file and preserve it as the handoff, exactly like a
 `docs/proposals/` file. Do not infer the workspace path from the Project slug:
 one workspace may manage several Projects. Use the configured resolver or an
 operator-confirmed workspace path, never trial-and-error sibling directories.
-If that workspace's database write is denied, do not edit SQLite directly or
-retry the same write from the same sandbox; a host with the required workspace
-access runs the preview. The file needs no workspace or network access to
-exist. That host — including a different agent, in a different session,
+If that workspace's database write is denied, follow the permission-failure
+path above; do not edit SQLite directly or repeat the same write in the unchanged
+sandbox. A host with the required workspace access runs the preview. The file
+needs no workspace or network access to exist. That host — including a different agent, in a different session,
 possibly after `git pull` — runs the same validation by hand instead:
 
 ```sh

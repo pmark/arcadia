@@ -70,24 +70,25 @@ export interface ChainParamsValidation {
   unfilled: string[];
 }
 
-const SHA = /^[0-9a-f]{40}$/;
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Exported for reuse by other parameter-file validators (for example the dry-preparation generator) so the shape primitives are defined once. */
+export const SHA = /^[0-9a-f]{40}$/;
+export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RUN_ID = /^run([0-9]{1,3})-[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 const RUN_LABEL = /^run ([0-9]{1,3})$/;
-const RECEIPT_RUN_ID = /^[0-9]{8}T[0-9]{6}Z-[0-9]+$/;
+export const RECEIPT_RUN_ID = /^[0-9]{8}T[0-9]{6}Z-[0-9]+$/;
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,200}$/;
 
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const isText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+export const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+export const isText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 export const isUnfilled = (value: unknown): boolean => typeof value === "string" && value.startsWith(UNFILLED);
 
-function exactKeys(value: Record<string, unknown>, allowed: string[], required: string[], at: string, problems: string[]): void {
+export function exactKeys(value: Record<string, unknown>, allowed: string[], required: string[], at: string, problems: string[]): void {
   for (const key of Object.keys(value)) if (!allowed.includes(key)) problems.push(`${at}.${key} is not a known parameter`);
   for (const key of required) if (!(key in value)) problems.push(`${at}.${key} is required`);
 }
 
 /** A binding is either filled (matching `pattern`) or explicitly UNFILLED; anything else is a shape problem. */
-function binding(value: unknown, pattern: RegExp, at: string, problems: string[], unfilled: string[]): void {
+export function binding(value: unknown, pattern: RegExp, at: string, problems: string[], unfilled: string[]): void {
   if (isUnfilled(value)) unfilled.push(at);
   else if (typeof value !== "string" || !pattern.test(value)) problems.push(`${at} must match ${pattern} or start with ${UNFILLED}`);
 }
