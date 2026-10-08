@@ -417,7 +417,7 @@ import {
 } from "./commands/next.js";
 import { renderDocketSuccess, runDocketCommand } from "./commands/docket.js";
 import { renderTriggersSuccess, runTriggersCommand } from "./commands/triggers.js";
-import { renderPlansSuccess, runPlansCommand } from "./commands/plans.js";
+import { renderPlanProgressSuccess, renderPlansSuccess, runPlanProgressCommand, runPlansCommand } from "./commands/plans.js";
 import {
   renderTidyListSuccess,
   renderTidySuccess,
@@ -3701,8 +3701,17 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .description("Every plan a repository holds, governed or not, and why each ungoverned one has not started")
       .option("--repo <path>", "Repository to read", resolveInvocationPath, invocationRoot())
       .option("--project <project>", "Project slug, when the repository declares more than one")
-  ).action((options: { repo: string; project?: string; json?: boolean }) =>
-    runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
+      .option("--plan <slug>", "Show one Plan's progress as a derived checklist (counts, current, next, blocked)")
+      .option("--all", "With --plan, list every Action")
+  ).action((options: { repo: string; project?: string; plan?: string; all?: boolean; json?: boolean }) =>
+    options.plan
+      ? runCliAction(
+          "plans",
+          options,
+          () => runPlanProgressCommand({ ...options, plan: options.plan! }),
+          (response) => renderPlanProgressSuccess(response, options.all)
+        )
+      : runCliAction("plans", options, () => runPlansCommand(options), renderPlansSuccess)
   );
 
   const operatorTask = program
