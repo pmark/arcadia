@@ -64,7 +64,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/clarify/contract.ts", "src/clarify/engine.ts", "src/clarify/types.ts", "src/commands/clarify.ts", "src/intelligence/types.ts", ".agents/skills/arcadia-github-issues/SKILL.md", "docs/using-arcadia-skills.md", "src/commands/ask.ts", "src/commands/review.ts", "src/ask/agentAsk.ts", "src/ask/discovery.ts"]
   - id: capture-operator-decision-replies-as-asks
     title: Give every free-text operator answer to a Decision or review an Ask envelope, and measure how much operator input passes through Ask or Ingress.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Give every free-text operator answer to a Decision or review an Ask envelope, and measure how much operator input passes through Ask or Ingress.
