@@ -29,7 +29,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/ask/operatorGate.ts", "src/docs/operatorGate.ts", "src/docs/operatorTasks.ts", "src/commands/operatorTasks.ts", "src/commands/review.ts", "src/commands/decision.ts", "src/commands/agentAsk.ts", "src/scheduling/schedule.ts", "src/db/repositories.ts", "apps/dashboard/lib/needs-you.ts", "START_HERE.md", "src/commands/next.ts", "src/ask/settlement.ts", "src/production/tick.ts"]
   - id: record-standard-harness-rule
     title: Record the standard-harness rule and this Plan's operator direction as indexed agent guidance.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Record the standard-harness rule and this Plan's operator direction as indexed agent guidance.
@@ -82,7 +82,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/ask/captureEnvelope.ts", "src/commands/review.ts", "src/commands/decision.ts", "src/commands/askTrail.ts", "apps/discord-bot/src/events/messageCreate.ts", "apps/discord-bot/src/replyRouter/router.ts", "apps/discord-bot/src/config.ts", "src/db/schema.ts"]
   - id: render-plan-progress-as-todo
     title: Show any Plan's progress in the to-do motif through the existing arcadia plans command.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Show any Plan's progress in the to-do motif through the existing arcadia plans command.
@@ -167,6 +167,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/commands/ask.ts", "src/commands/go.ts", "apps/discord-bot/src/events/messageCreate.ts"]
 questions: []
 decisions: []
+current_action: build-operator-todo-list
 ---
 
 # Operator to-do list with Ask-only input
