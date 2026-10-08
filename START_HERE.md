@@ -2686,6 +2686,20 @@ clarification, the Discord reply and Mission Control **Answer & continue** paths
 that answer it without `--clarify` (they re-clarify on their own). Any other
 review item prints `arcadia review show <id>`: look before you approve, since
 approving some kinds authorizes a Run.
+A Decision or Agent Ask item also carries what the source records, and nothing
+more: `gateQuestion` (the `gate_question`), `options` (every option in order,
+each with its `consequence` and whether it is `recommended`) and `evidence` (a
+Decision's `evidence` or `references` lines; an Agent Ask's `evidence[]`
+entries with their `status` and `note`). A field the source does not record is
+left out of the JSON. Their `answerVia` names the one existing dashboard path,
+the `/runs` To-do section, which posts to `/api/approvals` (a Decision with
+`option`, an Agent Ask with `disposition`); with no workspace there is no
+dashboard, so none is listed. A Decision also gets the Discord reply path when
+`docs sync` raised a live review item from its document (`doc_ref`
+`decision/<slug>`, which is otherwise listed only as the Decision): reply to its
+requires-review notification, or run `arcadia review resolve-reply "<answer>" --id
+<review id>`; either writes the answer into the Decision document. An Agent Ask
+has no Discord reply path, so none is listed.
 A Decision's created date is its `updated` field, since Decisions carry no
 creation time. A review item raised from a Decision document (`doc_ref`
 `decision/<slug>`) is not listed again beside that open Decision; several review

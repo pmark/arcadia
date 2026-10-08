@@ -76,6 +76,14 @@ function decisionDoc(id: string, question: string, updated: string): string {
     "---", "", "# Decision", ""].join("\n");
 }
 
+const decisionVia = (id: string): string[] => [
+  `Dashboard: /runs, To-do section, Approve a Decision option (POST /api/approvals {"kind":"decision","id":"${id}","project":"demo","option":"<option label>"}; no option sends the recommended one)`
+];
+const askVia = (id: string): string[] => [
+  `Dashboard: /runs, To-do section, Accept or Reject (POST /api/approvals {"kind":"agent_ask","id":"${id}","project":"demo","disposition":"accepted"|"rejected"})`
+];
+const GO_AHEAD = [{ label: "Go ahead", consequence: "The step proceeds.", recommended: true }];
+
 function fixtureRepo(extraAlerts = 1): string {
   const repo = temp("repo");
   write(repo, "PROJECT.md", projectDoc());
@@ -102,6 +110,11 @@ interface FixtureAsk {
   targetRef?: string | null;
   rationale?: string | null;
   actions?: Array<{ id: string | null; targetRef: string | null }>;
+  options?: Array<{ label: string; consequence: string; recommended: boolean }>;
+  gateQuestion?: string | null;
+  evidence?: Array<{ criterion: string; status: string; note: string | null }>;
+  /** Store the proposal as an older record that never had gateQuestion, evidence or options at all. */
+  legacyShape?: boolean;
   /** Insert a settlement with this disposition, so the proposal is no longer unsettled. */
   settled?: "accepted" | "rejected";
 }
@@ -120,8 +133,14 @@ function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
         .run(`capture-${ask.id}`, `request-${ask.id}`, ask.createdAt);
       const normalized = {
         project: ask.project ?? "demo", desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
-        targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: []
+        targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: ask.options ?? [],
+        gateQuestion: ask.gateQuestion ?? null, evidence: ask.evidence ?? []
       };
+      if (ask.legacyShape) {
+        delete (normalized as Partial<typeof normalized>).gateQuestion;
+        delete (normalized as Partial<typeof normalized>).evidence;
+        delete (normalized as Partial<typeof normalized>).options;
+      }
       db.prepare("INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at) VALUES (?, ?, ?, 'f', 'strict', 'amend', ?, ?, ?)")
         .run(ask.id, `request-${ask.id}`, `capture-${ask.id}`, normalized.project, JSON.stringify({ id: ask.id, normalized }), ask.createdAt);
       if (ask.settled) {
@@ -152,17 +171,20 @@ describe("arcadia todo", () => {
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
           createdAt: "2026-09-03", sourceRef: "docs/decisions/0001-block.md",
-          answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'"
+          answer: "arcadia decision approve 0001 --project demo --answer 'Go ahead'",
+          answerVia: decisionVia("0001"), options: GO_AHEAD
         },
         {
           key: "decision:demo/0002", kind: "decision", title: "Unrelated question 0002?", project: "demo", blocking: false,
           createdAt: "2026-09-10", sourceRef: "docs/decisions/0002-alert.md",
-          answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'"
+          answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'",
+          answerVia: decisionVia("0002"), options: GO_AHEAD
         },
         {
           key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
           createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
-          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
+          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted",
+          answerVia: askVia("proposal-1")
         }
       ],
       unavailable: []
@@ -501,12 +523,14 @@ describe("arcadia todo: positive-evidence staleness", () => {
           key: "decision:demo/0002", kind: "decision", title: "Was the first step wanted?", project: "demo", blocking: false,
           createdAt: "2026-09-04", sourceRef: "docs/decisions/0002-finished.md",
           answer: "arcadia decision approve 0002 --project demo --answer 'Go ahead'",
+          answerVia: decisionVia("0002"), options: GO_AHEAD,
           staleReason: "its Action first-step is done in plan main-plan"
         },
         {
           key: "agent_ask:demo/done-complete", kind: "agent_ask", title: "Complete first-step.", project: "demo", blocking: false,
           createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:done-complete",
           answer: "arcadia agent-ask settle --proposal done-complete --request-id <settlement-request-id> --disposition accepted",
+          answerVia: askVia("done-complete"),
           staleReason: "every Action it targets is done: first-step"
         }
       ],
@@ -678,7 +702,8 @@ describe("arcadia todo: review_items", () => {
         {
           key: "agent_ask:demo/proposal-1", kind: "agent_ask", title: "Amend the demo Action.", project: "demo", blocking: false,
           createdAt: "2026-09-05T00:00:00.000Z", sourceRef: "agent_ask_proposals:proposal-1",
-          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted"
+          answer: "arcadia agent-ask settle --proposal proposal-1 --request-id <settlement-request-id> --disposition accepted",
+          answerVia: askVia("proposal-1")
         }
       ],
       unavailable: []
@@ -1407,5 +1432,144 @@ describe("arcadia todo: collapsed Projects never hide a blocking item", () => {
     expect(data.counts.blocking).toBe(2);
     expect(data.counts.fixture.projects).toBe(1);
     expect(data.counts.fixture.items).toBe(1);
+  });
+});
+
+describe("arcadia todo: gate details and answer paths on Decisions and Agent Asks", () => {
+  function gatedRepo(): string {
+    const repo = temp("gated-repo");
+    write(repo, "PROJECT.md", projectDoc());
+    write(repo, "docs/plans/main-plan.md", planDoc());
+    write(repo, "docs/decisions/0001-gated.md", [
+      "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: decision-0001", "project: demo", "status: open",
+      "question: Should the second step proceed?", "gate_question: resists_reversal", "updated: 2026-09-03",
+      "options:",
+      "  - label: Go ahead", "    consequence: The step proceeds.", "    recommended: true",
+      "  - label: Hold", "    consequence: Nothing changes until you decide again.",
+      "evidence:", "  - docs/reports/example.json", "  - PR 1068 review",
+      "---", "", "# Decision", ""
+    ].join("\n"));
+    write(repo, "docs/decisions/0003-references.md", [
+      "---", "arcadia: v1", "type: decision", 'id: "0003"', "slug: decision-0003", "project: demo", "status: open",
+      "question: Does the references fallback work?", "updated: 2026-09-05",
+      "references:", "  - docs/proposals/cited.md",
+      "---", "", "# Decision", ""
+    ].join("\n"));
+    write(repo, "docs/decisions/0002-bare.md", decisionDoc("0002", "A bare question?", "2026-09-04").replace("options:\n  - label: Go ahead\n    consequence: The step proceeds.\n    recommended: true\n", ""));
+    return repo;
+  }
+
+  function addDecisionReview(workspace: string, id: string, docRef: string, status = "open"): void {
+    withDatabase(workspace, (db) => {
+      const projectId = (db.prepare("SELECT id FROM projects LIMIT 1").get() as { id: string }).id;
+      db.prepare(
+        `INSERT INTO review_items (id, slug, work_item_id, project_id, status, decision_needed, source_input, proposed_action, resolved_intent,
+           confidence_label, confidence, missing_fields, context_json, created_at, updated_at, doc_ref)
+         VALUES (?, ?, NULL, ?, ?, 'Should the second step proceed?', 's', 'p', 'ActionClarification', 'medium', 0, '[]', '{}',
+           '2026-09-06T00:00:00.000Z', '2026-09-06T00:00:00.000Z', ?)`
+      ).run(id, id.toUpperCase(), projectId, status, docRef);
+    });
+  }
+
+  const dashboardLine =
+    'Dashboard: /runs, To-do section, Approve a Decision option (POST /api/approvals {"kind":"decision","id":"0001","project":"demo","option":"<option label>"}; no option sends the recommended one)';
+
+  it("a Decision carries its gate question, options with consequences, evidence and its dashboard path", () => {
+    const { data } = run({ workspace: fixtureWorkspace(gatedRepo()), now: NOW, all: true });
+    const gated = data.items.find((item) => item.key === "decision:demo/0001");
+    expect(gated).toMatchObject({
+      gateQuestion: "resists_reversal",
+      options: [
+        { label: "Go ahead", consequence: "The step proceeds.", recommended: true },
+        { label: "Hold", consequence: "Nothing changes until you decide again.", recommended: false }
+      ],
+      evidence: [{ text: "docs/reports/example.json" }, { text: "PR 1068 review" }]
+    });
+    // No review item was raised from this Decision, so there is no Discord reply path to list.
+    expect(gated?.answerVia).toEqual([dashboardLine]);
+    expect(render(data).join("\n")).toContain("option (recommended): Go ahead — The step proceeds.");
+  });
+
+  it("carries the Discord reply path of the review item raised from an open Decision, and only then", () => {
+    const workspace = fixtureWorkspace(gatedRepo());
+    addDecisionReview(workspace, "review-of-0001", "decision/decision-0001");
+    // An answered review item adds nothing.
+    addDecisionReview(workspace, "review-answered", "decision/decision-0002", "approved");
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    // The review item is listed as the Decision, once.
+    expect(data.items.filter((item) => item.kind === "review_item")).toEqual([]);
+    const gated = data.items.find((item) => item.key === "decision:demo/0001");
+    expect(gated?.answerVia).toEqual([
+      dashboardLine,
+      "Discord: reply to the requires-review notification for review item review-of-0001 (REVIEW-OF-0001) with your answer; review resolve-reply writes it into the Decision document",
+      'or: arcadia review resolve-reply "<answer>" --id review-of-0001'
+    ]);
+    const other = data.items.find((item) => item.key === "decision:demo/0002");
+    expect(other?.answerVia?.join(" ")).not.toContain("Discord");
+  });
+
+  it("an Agent Ask has no Discord path", () => {
+    const workspace = fixtureWorkspace(gatedRepo(), [{ id: "any-ask", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Whatever." }]);
+    const ask = run({ workspace, now: NOW, all: true }).data.items.find((item) => item.key === "agent_ask:demo/any-ask");
+    expect(ask?.answerVia?.join(" ")).not.toContain("Discord");
+  });
+
+  it("lists no dashboard path when there is no workspace to settle through", () => {
+    const { data } = run({ workspace: path.join(temp("missing"), "nope"), repoRoot: gatedRepo(), now: NOW, all: true });
+    const gated = data.items.find((item) => item.key === "decision:demo/0001");
+    expect(gated).toBeDefined();
+    expect(gated).not.toHaveProperty("answerVia");
+  });
+
+  it("reads a Decision's evidence from `references` when it has no `evidence` list", () => {
+    const { data } = run({ workspace: fixtureWorkspace(gatedRepo()), now: NOW, all: true });
+    expect(data.items.find((item) => item.key === "decision:demo/0003")?.evidence).toEqual([{ text: "docs/proposals/cited.md" }]);
+  });
+
+  it("nothing is synthesized: a Decision that records no options, gate question or evidence omits those fields", () => {
+    const { data } = run({ workspace: fixtureWorkspace(gatedRepo()), now: NOW, all: true });
+    const bare = data.items.find((item) => item.key === "decision:demo/0002");
+    expect(bare).toBeDefined();
+    expect(bare).not.toHaveProperty("options");
+    expect(bare).not.toHaveProperty("gateQuestion");
+    expect(bare).not.toHaveProperty("evidence");
+  });
+
+  it("an Agent Ask carries its stored gate question, options and evidence, and its dashboard path", () => {
+    const workspace = fixtureWorkspace(gatedRepo(), [
+      {
+        id: "gated-ask", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Choose the provider.", intent: "decision",
+        gateQuestion: "reasonable_disagreement",
+        options: [{ label: "Local", consequence: "Runs on this Mac.", recommended: true }, { label: "Frontier", consequence: "Costs money.", recommended: false }],
+        evidence: [{ criterion: "Both providers benchmarked", status: "met", note: "see report" }]
+      },
+      { id: "plain-ask", createdAt: "2026-09-06T00:00:00.000Z", desiredResult: "Nothing recorded." },
+      { id: "old-ask", createdAt: "2026-09-07T00:00:00.000Z", desiredResult: "Stored before gate fields existed.", legacyShape: true }
+    ]);
+    const { data } = run({ workspace, now: NOW, all: true });
+    const gated = data.items.find((item) => item.key === "agent_ask:demo/gated-ask");
+    expect(gated).toMatchObject({
+      gateQuestion: "reasonable_disagreement",
+      options: [
+        { label: "Local", consequence: "Runs on this Mac.", recommended: true },
+        { label: "Frontier", consequence: "Costs money.", recommended: false }
+      ],
+      evidence: [{ text: "Both providers benchmarked", status: "met", note: "see report" }]
+    });
+    expect(gated?.answerVia).toEqual([
+      'Dashboard: /runs, To-do section, Accept or Reject (POST /api/approvals {"kind":"agent_ask","id":"gated-ask","project":"demo","disposition":"accepted"|"rejected"})'
+    ]);
+    const plain = data.items.find((item) => item.key === "agent_ask:demo/plain-ask");
+    expect(plain).not.toHaveProperty("options");
+    expect(plain).not.toHaveProperty("gateQuestion");
+    expect(plain).not.toHaveProperty("evidence");
+    expect(plain?.answerVia).toHaveLength(1);
+    // A stored proposal that never had gateQuestion, evidence or options still lists, with those fields omitted.
+    const old = data.items.find((item) => item.key === "agent_ask:demo/old-ask");
+    expect(old).toBeDefined();
+    expect(old).not.toHaveProperty("options");
+    expect(old).not.toHaveProperty("gateQuestion");
+    expect(old).not.toHaveProperty("evidence");
   });
 });

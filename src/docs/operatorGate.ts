@@ -7,6 +7,14 @@ export interface OperatorGateOption {
   recommended: boolean;
 }
 
+/** One piece of evidence a pending item cites: a Decision's `evidence`/`references` line, or an Agent Ask `evidence[]` entry. */
+export interface OperatorGateEvidence {
+  text: string;
+  /** Agent Ask evidence only: its recorded disposition. */
+  status?: string;
+  note?: string;
+}
+
 /** A Decision or unsettled Agent Ask proposal, reduced to what the gate needs to classify and print it. */
 export interface PendingDecisionGateInput {
   id: string;
@@ -15,6 +23,9 @@ export interface PendingDecisionGateInput {
   /** The Action this Decision governs, per its `action:` field. Null when it names none. */
   actionId: string | null;
   options: OperatorGateOption[];
+  /** Which Constitution gate question justified opening it, as recorded; null when none. */
+  gateQuestion?: string | null;
+  evidence?: OperatorGateEvidence[];
   updated: string;
   relativePath: string;
 }
@@ -27,6 +38,8 @@ export interface PendingAgentAskGateInput {
   /** Every Action id this proposal names, across its own `actions[]` and `target_ref`. */
   actionIds: string[];
   options: OperatorGateOption[];
+  gateQuestion?: string | null;
+  evidence?: OperatorGateEvidence[];
   createdAt: string;
 }
 
@@ -36,6 +49,11 @@ export interface OperatorGateItem {
   title: string;
   recommendedOption: string | null;
   consequence: string | null;
+  /** The recorded gate question, as stored; null when the source records none. */
+  gateQuestion: string | null;
+  /** Every option the source records, in its order; empty when it records none. */
+  options: OperatorGateOption[];
+  evidence: OperatorGateEvidence[];
   settleCommand: string;
   projectSlug: string;
   /** ISO timestamp used to order alerts newest-first. */
@@ -66,6 +84,9 @@ function decisionGateItem(decision: PendingDecisionGateInput): OperatorGateItem 
     title: decision.question,
     recommendedOption: recommended?.label ?? null,
     consequence: recommended?.consequence ?? null,
+    gateQuestion: decision.gateQuestion ?? null,
+    options: decision.options,
+    evidence: decision.evidence ?? [],
     settleCommand: recommended
       ? `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer ${shellQuote(recommended.label)}`
       : `arcadia decision approve ${decision.id} --project ${decision.projectSlug} --answer "<answer>"`,
@@ -83,6 +104,9 @@ function agentAskGateItem(ask: PendingAgentAskGateInput): OperatorGateItem {
     title: ask.desiredResult,
     recommendedOption: recommended?.label ?? null,
     consequence: recommended?.consequence ?? null,
+    gateQuestion: ask.gateQuestion ?? null,
+    options: ask.options,
+    evidence: ask.evidence ?? [],
     settleCommand: `arcadia agent-ask settle --proposal ${ask.proposalId} --request-id <settlement-request-id> --disposition accepted`,
     projectSlug: ask.projectSlug,
     timestamp: ask.createdAt,
