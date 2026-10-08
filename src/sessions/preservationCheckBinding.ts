@@ -31,6 +31,9 @@ import { boundedExec } from "./preservationStages.js";
  * case-insensitive macOS checkout, so every path component is compared
  * case-insensitively too: a case-variant symlink, or any entry that differs
  * from the written path only by case, is refused rather than guessed at.
+ * APFS also folds Unicode (`ſ`, `ß`, `ﬁ`, final sigma, normalization) in ways
+ * no local table reproduces, so a non-ASCII path component, or any non-ASCII
+ * entry in a directory such a path traverses, in either tree, is refused.
  * It does not cover data the
  * check reads by design (the candidate content it judges), a specifier
  * computed at run time, a dotted Python package import (`import os.path`,
@@ -79,7 +82,7 @@ const PYTHON_BARE_IMPORT_SUPPORTED =
 export function bindCheckDefinitions(repository: string, baseRevision: string, candidateTree: string, commands: string[]): CheckDefinitionBinding {
   const base = blobs(repository, baseRevision);
   const candidate = blobs(repository, candidateTree);
-  const entries = foldedEntries(base, candidate);
+  const entries = treeEntries(base, candidate);
   const bound = new Map<string, string | null>();
   const visit = (file: string) => {
     if (bound.has(file)) return;
@@ -207,7 +210,7 @@ const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
  * unbound or every check would be refused by its own test fixtures and
  * output files. A file only the candidate has is still bound — as absent at
  * the base — so the candidate cannot supply it. */
-function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: FoldedEntries, baseRevision: string): string[] {
+function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: TreeEntries, baseRevision: string): string[] {
   const files: string[] = [];
   for (const segment of command.split(SHELL_SEGMENT)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean).map(raw => raw.replace(/^["']|["']$/g, ""));
@@ -253,7 +256,7 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
  * a real directory (or absent, so the shell fails), so popping `..` lexically
  * up to that point is exact. Import specifiers keep lexical normalization:
  * Node resolves those lexically itself. */
-function declaredHazard(target: string, entries: FoldedEntries): PathHazard | null {
+function declaredHazard(target: string, entries: TreeEntries): PathHazard | null {
   if (path.posix.isAbsolute(target)) return null;
   const stack: string[] = [];
   for (const part of target.split("/")) {
@@ -272,6 +275,13 @@ function declaredHazard(target: string, entries: FoldedEntries): PathHazard | nu
 
 function hazardRefusal(hazard: PathHazard, executablePath: string, baseRevision: string): ArcadiaError {
   const details = { code: PRESERVATION_CHECK_MODIFIED_CODE, path: hazard.path, executablePath, baseRevision };
+  if (hazard.kind === "non_ascii") {
+    return validationError(
+      `Declared preservation checks cannot execute \`${executablePath}\`: \`${hazard.path}\` has a non-ASCII name on a path the check traverses, and a case- and Unicode-insensitive macOS checkout may resolve it as a different entry than this binding checked. ` +
+      "Use ASCII-only names along check paths on the base branch, then prepare and authorize a fresh handoff.",
+      details
+    );
+  }
   if (hazard.kind === "symlink") {
     return validationError(
       `Declared preservation checks cannot execute symlink \`${hazard.path}\` (reached through \`${executablePath}\`); a link's blob does not bind the code it executes. ` +
@@ -294,7 +304,7 @@ function inTree(candidate: string): string | null {
 
 interface GitBlob { mode: string; blob: string }
 
-function executableHazard(file: string, entries: FoldedEntries): PathHazard | null {
+function executableHazard(file: string, entries: TreeEntries): PathHazard | null {
   const parts = file.split("/");
   for (let end = 1; end <= parts.length; end++) {
     const hazard = pathHazard(parts.slice(0, end).join("/"), entries);
@@ -303,21 +313,27 @@ function executableHazard(file: string, entries: FoldedEntries): PathHazard | nu
   return null;
 }
 
-/** Case-folded key -> every exact path (blob or implied directory) in either
- * tree with that key -> whether it is a symlink in either tree. Folding is
- * deliberately broad (NFC + lower case): a false collision only refuses. */
-type FoldedEntries = Map<string, Map<string, boolean>>;
-interface PathHazard { kind: "symlink" | "case"; path: string; written: string }
+/** `folded`: ASCII-lower-cased key -> every exact path (blob or implied
+ * directory) in either tree with that key -> whether it is a symlink in
+ * either tree. `nonAscii`: directory ("" for the root) -> a non-ASCII entry
+ * it holds in either tree. */
+interface TreeEntries { folded: Map<string, Map<string, boolean>>; nonAscii: Map<string, string> }
+interface PathHazard { kind: "symlink" | "case" | "non_ascii"; path: string; written: string }
 
-const fold = (file: string) => file.normalize("NFC").toLowerCase();
+const NON_ASCII = /[\u0080-\uffff]/;
+const fold = (file: string) => file.toLowerCase();
 
-function foldedEntries(...trees: Map<string, GitBlob>[]): FoldedEntries {
-  const entries: FoldedEntries = new Map();
+function treeEntries(...trees: Map<string, GitBlob>[]): TreeEntries {
+  const folded = new Map<string, Map<string, boolean>>();
+  const nonAscii = new Map<string, string>();
   const add = (file: string, link: boolean) => {
     const key = fold(file);
-    const exact = entries.get(key) ?? new Map<string, boolean>();
+    const exact = folded.get(key) ?? new Map<string, boolean>();
     exact.set(file, (exact.get(file) ?? false) || link);
-    entries.set(key, exact);
+    folded.set(key, exact);
+    const slash = file.lastIndexOf("/");
+    const dir = slash < 0 ? "" : file.slice(0, slash);
+    if (NON_ASCII.test(file.slice(slash + 1)) && !nonAscii.has(dir)) nonAscii.set(dir, file);
   };
   for (const tree of trees) {
     for (const [file, { mode }] of tree) {
@@ -326,14 +342,19 @@ function foldedEntries(...trees: Map<string, GitBlob>[]): FoldedEntries {
       add(file, mode === "120000");
     }
   }
-  return entries;
+  return { folded, nonAscii };
 }
 
-/** A prefix is hazardous when any entry matching it case-insensitively, in
- * either tree, is a symlink, or when any matching entry differs from the
- * written prefix only by case (ambiguous on a case-insensitive checkout). */
-function pathHazard(written: string, entries: FoldedEntries): PathHazard | null {
-  const matches = entries.get(fold(written));
+/** A prefix is hazardous when its own last component is non-ASCII, when the
+ * directory it is looked up in holds any non-ASCII entry in either tree, when
+ * any entry matching it ASCII-case-insensitively is a symlink in either tree,
+ * or when a matching entry differs from the written prefix only by case. */
+function pathHazard(written: string, entries: TreeEntries): PathHazard | null {
+  const slash = written.lastIndexOf("/");
+  if (NON_ASCII.test(written.slice(slash + 1))) return { kind: "non_ascii", path: written, written };
+  const sibling = entries.nonAscii.get(slash < 0 ? "" : written.slice(0, slash));
+  if (sibling) return { kind: "non_ascii", path: sibling, written };
+  const matches = entries.folded.get(fold(written));
   if (!matches) return null;
   for (const [entry, link] of matches) if (link) return { kind: "symlink", path: entry, written };
   for (const entry of matches.keys()) if (entry !== written) return { kind: "case", path: entry, written };

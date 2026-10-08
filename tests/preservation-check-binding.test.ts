@@ -354,3 +354,53 @@ describe("preservation check-definition binding — case-insensitive path compon
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "JUDGE.mjs" }) }));
   });
 });
+
+describe("preservation check-definition binding — non-ASCII path components (#1041 round 4)", () => {
+  // APFS folds `ſ`/`s`, `ß`/`ss`, `ﬁ`/`fi` and final sigma together, so
+  // these names cannot coexist in a working copy. Build each tree through
+  // the index instead: start from the base tree, drop and add entries.
+  function indexTree(f: ReturnType<typeof repo>, remove: string[], add: Record<string, { content: string; link?: boolean }>) {
+    f.git(["read-tree", f.base]);
+    if (remove.length) f.git(["rm", "-rq", "--cached", ...remove]);
+    for (const [file, { content, link }] of Object.entries(add)) {
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: f.dir, input: content, encoding: "utf8" }).trim();
+      f.git(["update-index", "--add", "--cacheinfo", `${link ? "120000" : "100644"},${blob},${file}`]);
+    }
+    return f.git(["write-tree"]);
+  }
+  const refusesNonAscii = (entry: string) => expect.objectContaining({
+    message: expect.stringMatching(/non-ASCII name/),
+    details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: entry })
+  });
+
+  it("refuses a long-s `ſubdir` symlink standing in for an erased `subdir` (candidate only)", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n", "subdir/README": "real directory\n" });
+    const candidate = indexTree(f, ["subdir"], {
+      "\u017fubdir": { content: "rules/subdir", link: true },
+      "rules/check.sh": { content: "exit 0\n" }
+    });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh subdir/../check.sh"])).toThrow(refusesNonAscii("\u017fubdir"));
+  });
+
+  it("refuses a sharp-s `claß` sibling of a declared `class` directory, in either tree", () => {
+    const f = repo({ "class/check.sh": "exit 7\n" });
+    const candidateOnly = indexTree(f, [], { "cla\u00df/check.sh": { content: "exit 0\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateOnly, ["sh class/check.sh"])).toThrow(refusesNonAscii("cla\u00df"));
+    // Base-only: the authorized tree held `claß`, the candidate drops it.
+    const baseWithSharpS = indexTree(f, [], { "cla\u00df/check.sh": { content: "exit 7\n" } });
+    expect(() => bindCheckDefinitions(f.dir, baseWithSharpS, f.base, ["sh class/check.sh"])).toThrow(refusesNonAscii("cla\u00df"));
+  });
+
+  it("refuses a ligature `ﬁxtures` sibling of a directory in the import closure", () => {
+    const f = repo({ "check.mjs": "import './fixtures/judge.mjs';\n", "fixtures/judge.mjs": "process.exit(7);\n" });
+    const candidate = indexTree(f, [], { "\ufb01xtures/judge.mjs": { content: "process.exit(0);\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"])).toThrow(refusesNonAscii("\ufb01xtures"));
+  });
+
+  it("refuses a declared path with a sigma component even when unchanged", () => {
+    const f = repo({ "\u03c3/check.sh": "exit 7\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["sh \u03c3/check.sh"])).toThrow(refusesNonAscii("\u03c3"));
+    const candidate = indexTree(f, [], { "\u03c2/check.sh": { content: "exit 0\n" } });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh \u03c3/check.sh"])).toThrow(refusesNonAscii("\u03c3"));
+  });
+});
