@@ -1,0 +1,37 @@
+---
+arcadia: v1
+type: decision
+id: "0086"
+slug: decide-the-one-time-host-bootstrap-publication-boundary-for-the-independently
+project: arcadia
+status: approved
+question: "Decide the one-time host bootstrap publication boundary for the independently reviewed #1032 source packet while preserving contaminated history and all other candidates."
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Approve packet-only host bootstrap recovery
+options:
+  - label: Approve packet-only host bootstrap recovery
+    consequence: "Authorize one operator-owned packet-only host bootstrap recovery for Issue #1032: preserve the original candidate /Users/pmark/.claude/worktrees/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z/arcadia, branch claude/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z and accidental HEAD f6b96a089c730f89c0983cfa08e83e46b38c0028 including all stray fixture paths unchanged; recover only the seven reviewed files pinned by /private/tmp/arcadia-run8-asks/resume-1032-final-packet/manifest.json (SHA256 f2fba37920f78a50d8278f454ea130b4c4602c288b61e8736a390e53f7910fd5) onto an isolated clean host recovery candidate from main fdbca8d538d5c1768b98c4150fc74583e625746a, preserving the baseline tracked skill symlink; use a normal hooks-enabled semantic-agent-identity commit and publish a draft repair PR through the explicitly approved host recovery exception. Do not publish the accidental fixture history as a clean repair. Pin candidate/reservation/packet/base and checks immediately before mutation; any drift stops. This is a proposed one-time exception only: the manager currently has NO raw-commit, worktree reconstruction, install, restart or publication permission. Do not change installed launchers or services, activate production, create Grants, handle credentials, touch the Identity candidate or PR1033 repair, reset/delete preserved work, accept another Decision, repeat completion settlement or attempt live rehearsal. A published new head still needs independent exact-head review and all seven required green checks under Decisions0060/0080; installation remains separate. If this recovery cannot be represented by the existing host path after explicit operator approval, STOP and name the missing capability rather than substitute ad hoc Git operations."
+    recommended: true
+  - label: Keep the repair local and pause bootstrap
+    consequence: Retain all source packets, candidate history, fixture paths and evidence unchanged. No publication or installation occurs; revival requires an explicit safe host recovery route or a new bounded operator Decision.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-10-06
+answer: Approve packet-only host bootstrap recovery
+decided: 2026-10-06
+---
+
+# Decision 0086: Decide the one-time host bootstrap publication boundary for the independently reviewed #1032 source packet while preserving contaminated history and all other candidates.
+
+## Options
+
+- **Approve packet-only host bootstrap recovery** (recommended): Authorize one operator-owned packet-only host bootstrap recovery for Issue #1032: preserve the original candidate /Users/pmark/.claude/worktrees/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z/arcadia, branch claude/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z and accidental HEAD f6b96a089c730f89c0983cfa08e83e46b38c0028 including all stray fixture paths unchanged; recover only the seven reviewed files pinned by /private/tmp/arcadia-run8-asks/resume-1032-final-packet/manifest.json (SHA256 f2fba37920f78a50d8278f454ea130b4c4602c288b61e8736a390e53f7910fd5) onto an isolated clean host recovery candidate from main fdbca8d538d5c1768b98c4150fc74583e625746a, preserving the baseline tracked skill symlink; use a normal hooks-enabled semantic-agent-identity commit and publish a draft repair PR through the explicitly approved host recovery exception. Do not publish the accidental fixture history as a clean repair. Pin candidate/reservation/packet/base and checks immediately before mutation; any drift stops. This is a proposed one-time exception only: the manager currently has NO raw-commit, worktree reconstruction, install, restart or publication permission. Do not change installed launchers or services, activate production, create Grants, handle credentials, touch the Identity candidate or PR1033 repair, reset/delete preserved work, accept another Decision, repeat completion settlement or attempt live rehearsal. A published new head still needs independent exact-head review and all seven required green checks under Decisions0060/0080; installation remains separate. If this recovery cannot be represented by the existing host path after explicit operator approval, STOP and name the missing capability rather than substitute ad hoc Git operations.
+- **Keep the repair local and pause bootstrap**: Retain all source packets, candidate history, fixture paths and evidence unchanged. No publication or installation occurs; revival requires an explicit safe host recovery route or a new bounded operator Decision.
+
+## Rationale
+
+Authorize one operator-owned packet-only host bootstrap recovery for Issue #1032: preserve the original candidate /Users/pmark/.claude/worktrees/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z/arcadia, branch claude/preserve-unchanged-baseline-skill-symlinks-20261006T225249160Z and accidental HEAD f6b96a089c730f89c0983cfa08e83e46b38c0028 including all stray fixture paths unchanged; recover only the seven reviewed files pinned by /private/tmp/arcadia-run8-asks/resume-1032-final-packet/manifest.json (SHA256 f2fba37920f78a50d8278f454ea130b4c4602c288b61e8736a390e53f7910fd5) onto an isolated clean host recovery candidate from main fdbca8d538d5c1768b98c4150fc74583e625746a, preserving the baseline tracked skill symlink; use a normal hooks-enabled semantic-agent-identity commit and publish a draft repair PR through the explicitly approved host recovery exception. Do not publish the accidental fixture history as a clean repair. Pin candidate/reservation/packet/base and checks immediately before mutation; any drift stops. This is a proposed one-time exception only: the manager currently has NO raw-commit, worktree reconstruction, install, restart or publication permission. Do not change installed launchers or services, activate production, create Grants, handle credentials, touch the Identity candidate or PR1033 repair, reset/delete preserved work, accept another Decision, repeat completion settlement or attempt live rehearsal. A published new head still needs independent exact-head review and all seven required green checks under Decisions0060/0080; installation remains separate. If this recovery cannot be represented by the existing host path after explicit operator approval, STOP and name the missing capability rather than substitute ad hoc Git operations. Evidence: /private/tmp/arcadia-run8-asks/resume-1032-validation-evidence.json; independent Sonnet/high review PASS, literal launcher and focused tests/typecheck/lint PASS; all30 fast-rehearsal scenarios PASS once on final source with real Seatbelt and zero unexpected errors. No bootstrap operation is executable before an operator-ratified Decision. Opening this Decision grants no recovery authority. The older manual exception was consumed.
+
+Proposed by Agent Ask bootstrap-reviewed-baseline-symlink-packet-1032-2026-10-07.
