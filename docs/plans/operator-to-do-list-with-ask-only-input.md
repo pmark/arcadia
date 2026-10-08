@@ -124,13 +124,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask raise-stale-triage-decision
     clarification: clarified
     confidence: high
-    source: Agent Ask operator-todo-ask-pivot-20261008-v6
+    source: Agent Ask amend-operator-todo-plan-supersedes-ref-20261008-r2
     acceptance_criteria:
-      - "arcadia todo --stale --json for the Arcadia Project is saved as a list Artifact with each item's staleReason evidence, its sha256, and counts of stale, non-stale and unclassifiable items (intents that name no Action, and other Projects' items, which need their own Project's Decision and are named as a revival trigger). Superseded proposals agentask_3b07406ec8dc13e410 and agentask_58f7a77c2a4de8eab7 are included through the 'Supersedes:' line in the rationale of the settled Ask operator-todo-ask-pivot-20261008-v4."
+      - "arcadia todo --stale --json for the Arcadia Project is saved as a list Artifact with each item's staleReason evidence, its sha256, and counts of stale, non-stale and unclassifiable items (intents that name no Action, and other Projects' items, which need their own Project's Decision and are named as a revival trigger). Superseded proposals agentask_3b07406ec8dc13e410 and agentask_58f7a77c2a4de8eab7 are included through the 'Supersedes:' line in the rationale of the settled Ask operator-todo-ask-pivot-20261008-v6."
       - One Decision raised through the existing Decision writer asks whether to reject or resolve exactly the listed ids bound to that sha256, with each option's consequence; it appears in arcadia todo. Nothing is settled by this Action, and no Action status, pointer or queue changes.
     depends_on: [build-operator-todo-list]
     decisions: []
-    references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/commands/review.ts", "src/commands/decision.ts"]
+    references: ["src/commands/agentAsk.ts", "src/ask/settlement.ts", "src/commands/review.ts", "src/commands/decision.ts"]
   - id: apply-approved-stale-triage
     title: Retire exactly the operator-approved stale items through the existing governed writers.
     status: open
