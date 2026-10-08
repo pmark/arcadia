@@ -1604,7 +1604,9 @@ procedure is in `docs/working-copy-safety.md`.
 The Morning Packet also carries an **Operator to-do** section: the same
 counts `pnpm arcadia todo` prints, then each blocking item (at most five) with
 the command that answers it, escalation items first and marked `STOPPED:` so the
-packet states what halted production overnight, and `N more: arcadia todo` for
+packet states what halted production overnight (those lines appear once the
+todo escalation source lands; today `arcadia todo` emits only decision and
+agent ask items), and `N more: arcadia todo` for
 the rest. It is built read-only in-process when the packet composes, so it
 rides the existing scheduled delivery with no new message or schedule. If the
 to-do data cannot be built the section is the single line

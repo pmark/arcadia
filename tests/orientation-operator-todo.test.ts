@@ -87,6 +87,13 @@ describe("operator to-do lines in the morning packet", () => {
     expect(lines[1].length).toBeLessThan(160);
   });
 
+  it("clips a long answer command so the section stays bounded", () => {
+    const lines = formatOperatorTodoLines(todo([item(1, { answer: `arcadia ${"y".repeat(400)}` })]));
+    const answer = lines[1].split(" → ")[1];
+    expect(answer.length).toBe(120);
+    expect(answer.endsWith("…")).toBe(true);
+  });
+
   it("degrades to one line when no source could be read", () => {
     const lines = formatOperatorTodoLines(
       todo([], { unavailable: ["workspace sources unavailable: database locked"] })

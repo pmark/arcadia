@@ -4,6 +4,7 @@ import type { TodoData, TodoItem } from "../commands/todo.js";
 export const OPERATOR_TODO_PACKET_CAP = 5;
 const MAX_TITLE_CHARS = 80;
 const MAX_REASON_CHARS = 120;
+const MAX_ANSWER_CHARS = 120;
 
 /** The one-line degradation the packet shows when the to-do data cannot be built. */
 export function operatorTodoUnavailableLine(reason: string): string {
@@ -15,9 +16,9 @@ function isEscalation(item: TodoItem): boolean {
   return String(item.kind).startsWith("escalation:");
 }
 
-function clip(text: string): string {
+function clip(text: string, max: number = MAX_TITLE_CHARS): string {
   const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > MAX_TITLE_CHARS ? `${flat.slice(0, MAX_TITLE_CHARS - 1)}…` : flat;
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
 /**
@@ -38,7 +39,7 @@ export function formatOperatorTodoLines(todo: TodoData, cap: number = OPERATOR_T
   // Stable partition: escalations first, source order (oldest first) within each group.
   const ordered = [...blocking.filter(isEscalation), ...blocking.filter((item) => !isEscalation(item))];
   for (const item of ordered.slice(0, cap)) {
-    lines.push(`${isEscalation(item) ? "STOPPED: " : ""}${clip(item.title)} → ${item.answer}`);
+    lines.push(`${isEscalation(item) ? "STOPPED: " : ""}${clip(item.title)} → ${clip(item.answer, MAX_ANSWER_CHARS)}`);
   }
 
   const unlisted = counts.blocking - Math.min(ordered.length, cap);
