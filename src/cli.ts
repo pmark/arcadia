@@ -3843,8 +3843,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .description("What is waiting on the operator: open Decisions and pending Agent Asks, blocking first (read-only)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--project <project>", "Only this Project (id or slug)")
-      .option("--all", "Show every non-blocking item instead of the oldest five")
-  ).action((options: { workspace?: string; project?: string; all?: boolean; json?: boolean }) =>
+      .option("--all", "Show every non-blocking item, and the stale ones, instead of the oldest five")
+      .option("--stale", "List only stale items (positive evidence they no longer wait on you), with the evidence")
+  ).action((options: { workspace?: string; project?: string; all?: boolean; stale?: boolean; json?: boolean }) =>
     runCliAction("todo", options, () => runTodoCommand(options), renderTodoSuccess)
   );
 

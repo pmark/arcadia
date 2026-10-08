@@ -106,7 +106,7 @@ function invocations(): Record<string, string[][]> {
     "operator-task evidence": [["operator-task", "evidence", "no-such-task", "--note", "looks done", "--repo", repo]],
     "operator-task close": [["operator-task", "close", "no-such-task", "--operator", "--repo", repo]],
     "operator-task decline": [["operator-task", "decline", "no-such-task", "--because", "not needed", "--operator", "--repo", repo]],
-    todo: [["todo"], ["todo", "--all", "--project", "no-such-project"]],
+    todo: [["todo"], ["todo", "--stale"], ["todo", "--all", "--project", "no-such-project"]],
     timeline: [["timeline"], ["timeline", "--since", "1h", "--ndjson"], ["timeline", "--as-of", "1h"], ["timeline", "--tool", "nobody"]]
   };
 }
