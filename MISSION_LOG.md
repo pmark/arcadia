@@ -2038,3 +2038,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1070
+
+- **Did:** Discord free-text now honors DISCORD_ALLOWED_USER_IDS (fail-open with a warning when unset), and replies record the Discord author as actor. Needs a bot restart by Mark after merge. https://github.com/pmark/arcadia/pull/1070
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
