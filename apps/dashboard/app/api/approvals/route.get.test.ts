@@ -64,4 +64,23 @@ describe("GET /api/approvals", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ error: "decision list down" });
   });
+
+  it("keeps the Decision controls and shows the Ask read-only when todo succeeds but the Ask loader fails", async () => {
+    loaders.loadPendingAgentAsks.mockRejectedValue(new Error("agent-ask pending down"));
+    loaders.loadOperatorTodo.mockResolvedValue(success({
+      schema: "arcadia-todo-v1", view: "all", unavailable: [],
+      items: [
+        review,
+        { key: "agent_ask:alpha/p1", kind: "agent_ask", title: "Do a thing", project: "alpha", blocking: false, createdAt: "2026-10-02T00:00:00Z", sourceRef: "agent_ask_proposals:p1", answer: "arcadia agent-ask settle --proposal p1" },
+        { key: "decision:alpha/0001", kind: "decision", title: "Ship?", project: "alpha", blocking: false, createdAt: "2026-10-01", sourceRef: "docs/decisions/0001.md", answer: "arcadia decision approve 0001" }
+      ]
+    }));
+    const body = await (await GET()).json();
+    expect(body.source).toBe("todo");
+    expect(body.note).toContain("agent-ask pending down");
+    const byKind = Object.fromEntries(body.approvals.map((a: { kind: string }) => [a.kind, a]));
+    expect(byKind.decision).toMatchObject({ readOnly: false, options: [option] });
+    expect(byKind.agent_ask).toMatchObject({ readOnly: true, answer: "arcadia agent-ask settle --proposal p1" });
+    expect(body.approvals).toHaveLength(3);
+  });
 });

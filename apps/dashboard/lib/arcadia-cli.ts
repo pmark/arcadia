@@ -311,7 +311,8 @@ export interface OperatorTodoData {
 
 /** The one operator to-do list, every live and stale item. Read-only; nothing here settles anything. */
 export async function loadOperatorTodo(): Promise<ArcadiaJsonSuccess<OperatorTodoData>> {
-  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"]);
+  // Short timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
+  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 15_000 });
 }
 
 export interface DecisionApproveResponse {

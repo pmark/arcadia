@@ -105,31 +105,10 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
     }
   }, [refresh]);
 
-  return (
-    <section className="mb-6" aria-label="Approval queue">
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-          className="inline-flex min-h-11 items-center gap-2 uppercase tracking-[0.14em]"
-        >
-          Needs you{hasLoaded ? ` (${approvals.length})` : ""}
-          {open ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
-        </button>
-      </h2>
-      {!open ? null : !hasLoaded && !error ? (
-        <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</p>
-      ) : (
-        <>
-      {error ? <ErrorState title="Approvals unavailable" message={error} /> : null}
-      {note ? <p role="status" className="mb-3 rounded-md border border-line bg-panel p-3 text-sm text-muted">{note}</p> : null}
-      {message ? <p className="mb-3 flex items-center gap-2 text-sm text-moss"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{message}</p> : null}
-      {approvals.length === 0 && !error ? (
-        <EmptyState text="Nothing is waiting on you." />
-      ) : (
-        <div className="grid min-w-0 gap-3 md:grid-cols-2">
-          {approvals.map((approval) => {
+  const liveApprovals = approvals.filter((approval) => !approval.staleReason);
+  const staleApprovals = approvals.filter((approval) => approval.staleReason);
+
+  const renderCard = (approval: Approval) => {
             const key = cardKey(approval);
             const options = approval.options ?? [];
             // Decision options are real settlement alternatives (answering
@@ -256,8 +235,45 @@ export function ApprovalQueue({ refreshSignal = 0 }: { refreshSignal?: number } 
                 ) : null}
               </article>
             );
-          })}
-        </div>
+  };
+
+  return (
+    <section className="mb-6" aria-label="Approval queue">
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-muted">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex min-h-11 items-center gap-2 uppercase tracking-[0.14em]"
+        >
+          To-do{hasLoaded ? ` (${liveApprovals.length})` : ""}
+          {open ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+        </button>
+      </h2>
+      {!open ? null : !hasLoaded && !error ? (
+        <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</p>
+      ) : (
+        <>
+      {error ? <ErrorState title="Approvals unavailable" message={error} /> : null}
+      {note ? <p role="status" className="mb-3 rounded-md border border-line bg-panel p-3 text-sm text-muted">{note}</p> : null}
+      {message ? <p className="mb-3 flex items-center gap-2 text-sm text-moss"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{message}</p> : null}
+      {approvals.length === 0 && !error ? (
+        <EmptyState text="Nothing is waiting on you." />
+      ) : (
+        <>
+          {liveApprovals.length === 0 && !error ? <EmptyState text="Nothing is waiting on you." /> : null}
+          <div className="grid min-w-0 gap-3 md:grid-cols-2">
+            {liveApprovals.map(renderCard)}
+          </div>
+          {staleApprovals.length > 0 ? (
+            <details className="mt-4">
+              <summary className="min-h-11 cursor-pointer text-sm font-semibold uppercase tracking-[0.14em] text-muted">Stale ({staleApprovals.length})</summary>
+              <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
+                {staleApprovals.map(renderCard)}
+              </div>
+            </details>
+          ) : null}
+        </>
       )}
         </>
       )}

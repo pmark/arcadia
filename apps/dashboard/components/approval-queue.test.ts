@@ -25,4 +25,10 @@ describe("ApprovalQueue read-only rows and notes", () => {
     // Both settle control branches sit behind the readOnly guard.
     expect(source).toMatch(/\{approval\.readOnly \? null : approval\.kind === "decision" \? \(/);
   });
+
+  it("counts only live rows in the heading and folds stale rows into a collapsed group using the same card", () => {
+    expect(source).toContain("To-do{hasLoaded ? ` (${liveApprovals.length})` : \"\"}");
+    expect(source).toContain("{staleApprovals.map(renderCard)}");
+    expect(source).toMatch(/<details className="mt-4">[\s\S]*Stale \(\{staleApprovals\.length\}\)/);
+  });
 });
