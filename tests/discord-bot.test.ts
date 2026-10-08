@@ -791,6 +791,164 @@ describe("discord review reply handling", () => {
   });
 });
 
+describe("discord free-text message allowlist and actor", () => {
+  const baseEnv = {
+    ARCADIA_WORKSPACE: "./workspace",
+    DISCORD_BOT_TOKEN: "token",
+    DISCORD_CLIENT_ID: "client",
+    DISCORD_GUILD_ID: "guild",
+    DISCORD_CHANNEL_ID: "channel"
+  };
+
+  function scratchWorkspace(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "arcadia-discord-allow-"));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  function askCli(calls: string[]): ArcadiaCli {
+    return {
+      ask: async (request: string) => {
+        calls.push(request);
+        return askResponse({ workspace: "w", request, resultSummary: "ok", reviewItemId: "review_1" });
+      }
+    } as unknown as ArcadiaCli;
+  }
+
+  it("lets an allowed author through when the allowlist is set", async () => {
+    const asked: string[] = [];
+    const reactions: string[] = [];
+    await handleArcadiaMessage(
+      fakeMessage({ content: "hello", authorId: "111", react: async (e) => void reactions.push(e) }),
+      testConfig(scratchWorkspace(), ["111", "222"]),
+      askCli(asked)
+    );
+    expect(asked).toEqual(["hello"]);
+    expect(reactions).toEqual([]);
+  });
+
+  it("refuses a non-allowed author with the refusal reaction when the allowlist is set", async () => {
+    const asked: string[] = [];
+    const reactions: string[] = [];
+    const replies: string[] = [];
+    await handleArcadiaMessage(
+      fakeMessage({
+        content: "hello",
+        authorId: "999",
+        react: async (e) => void reactions.push(e),
+        reply: async (c) => void replies.push(c)
+      }),
+      testConfig(scratchWorkspace(), ["111", "222"]),
+      askCli(asked)
+    );
+    expect(asked).toEqual([]);
+    expect(replies).toEqual([]);
+    expect(reactions).toEqual(["🚫"]);
+  });
+
+  it("keeps guild and channel gating, with no reaction, when the allowlist is unset or empty", async () => {
+    for (const config of [testConfig(scratchWorkspace()), testConfig(scratchWorkspace(), [])]) {
+      const asked: string[] = [];
+      const reactions: string[] = [];
+      await handleArcadiaMessage(
+        fakeMessage({ content: "hello", authorId: "999", react: async (e) => void reactions.push(e) }),
+        config,
+        askCli(asked)
+      );
+      expect(asked).toEqual(["hello"]);
+      expect(reactions).toEqual([]);
+    }
+    const asked: string[] = [];
+    const wrongChannel = { ...(fakeMessage({ content: "hello" }) as object), channelId: "other" } as never;
+    await handleArcadiaMessage(wrongChannel, testConfig(scratchWorkspace(), ["111"]), askCli(asked));
+    expect(asked).toEqual([]);
+  });
+
+  it("logs the startup warning once per load when the allowlist is empty, and not when it is set", () => {
+    const written: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      written.push(String(chunk));
+      return true;
+    });
+    try {
+      loadConfig({ ...baseEnv });
+      loadConfig({ ...baseEnv, DISCORD_ALLOWED_USER_IDS: "  " });
+      loadConfig({ ...baseEnv, DISCORD_ALLOWED_USER_IDS: "111, 222" });
+    } finally {
+      process.stdout.write = original;
+    }
+    const warnings = written.filter((line) => line.includes("DISCORD_ALLOWED_USER_IDS is empty or unset"));
+    expect(warnings).toHaveLength(2);
+    expect(JSON.parse(warnings[0] ?? "{}").level).toBe("warn");
+    expect(loadConfig({ ...baseEnv, DISCORD_ALLOWED_USER_IDS: "111, 222" }).allowedUserIds).toEqual(["111", "222"]);
+  });
+
+  it("passes the Discord author id as --actor on review resolve-reply", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-actor-"));
+    tempDirs.push(workspace);
+    const argvPath = path.join(workspace, "argv.json");
+    const cliPath = path.join(workspace, "fake-arcadia-review.mjs");
+    writeFileSync(cliPath, fakeArcadiaReviewCliScript(argvPath));
+    chmodSync(cliPath, 0o755);
+    const cli = new ArcadiaCli({ workspace, cliPath });
+    await cli.reviewResolveReply("A", "review_1", { actor: "123456789012345678" });
+    expect(JSON.parse(readFileSync(argvPath, "utf8"))).toEqual([
+      "review",
+      "resolve-reply",
+      "A",
+      "--id",
+      "review_1",
+      "--actor",
+      "123456789012345678",
+      "--workspace",
+      workspace,
+      "--json"
+    ]);
+  });
+
+  it("handleArcadiaMessage hands the author id to reviewResolveReply as the actor", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-discord-state-"));
+    tempDirs.push(workspace);
+    await recordReviewMessage(reviewMessageStatePath(workspace), {
+      reviewId: "review_1",
+      reviewSlug: "R1",
+      channelId: "channel",
+      messageId: "message_1",
+      createdAt: "2026-06-10T12:00:00.000Z"
+    });
+    let calledWith: { reply: string; id?: string | null; actor?: string | null } | null = null;
+    const cli = {
+      reviewResolveReply: async (reply: string, id?: string | null, options?: { actor?: string | null }) => {
+        calledWith = { reply, id, actor: options?.actor };
+        return {
+          ok: true,
+          command: "review.resolve-reply",
+          workspace,
+          data: {
+            item: { ...sampleReviewItem(), id: "review_1", slug: "R1" },
+            action: "approved",
+            selectedOption: "approve",
+            feedback: null,
+            result: { status: "approved", summary: "Action approved." },
+            approval: null,
+            confirmation: "R1 approved."
+          },
+          artifacts: [],
+          warnings: []
+        };
+      }
+    } as unknown as ArcadiaCli;
+
+    await handleArcadiaMessage(
+      fakeMessage({ content: "A", referenceMessageId: "message_1", authorId: "424242" }),
+      testConfig(workspace, ["424242"]),
+      cli
+    );
+    expect(calledWith).toEqual({ reply: "A", id: "review_1", actor: "424242" });
+  });
+});
+
 describe("discord bot notifications", () => {
   it("initializes silently from existing workspace state", () => {
     const evaluation = evaluateNotifications({
@@ -994,8 +1152,9 @@ async function invokeArcadiaInteraction(
   return reply;
 }
 
-function testConfig(workspace: string) {
+function testConfig(workspace: string, allowedUserIds?: string[]) {
   return {
+    ...(allowedUserIds ? { allowedUserIds } : {}),
     arcadiaWorkspace: workspace,
     discordBotToken: "token",
     discordClientId: "client",
@@ -1010,12 +1169,15 @@ function fakeMessage(options: {
   content: string;
   referenceMessageId?: string;
   reply?: (content: string) => Promise<void>;
+  authorId?: string;
+  react?: (emoji: string) => Promise<void>;
 }) {
   return {
     content: options.content,
     guildId: "guild",
     channelId: "channel",
-    author: { bot: false },
+    author: { bot: false, id: options.authorId ?? "user_1" },
+    react: options.react ?? (async () => {}),
     reference: options.referenceMessageId ? { messageId: options.referenceMessageId } : null,
     reply: options.reply ?? (async () => {})
   } as never;

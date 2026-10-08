@@ -2,26 +2,28 @@ import type { Message } from "discord.js";
 import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
 import { formatRequest } from "../formatters/requestFormatter.js";
+import { logJson } from "../logging.js";
 import {
   discordSubmissionStatePath,
   loadReviewMessageState,
   recordDiscordSubmission,
   reviewMessageStatePath
 } from "../notifications/state.js";
+import { safeReact } from "../replyRouter/router.js";
 
 export async function handleArcadiaMessage(
   message: Message,
   config: BotConfig,
   cli: ArcadiaCli
 ): Promise<void> {
-  if (!isAllowedMessage(message, config)) {
+  if (!(await isAllowedMessage(message, config))) {
     return;
   }
 
   const replyReviewId = await reviewIdFromReply(message, config.arcadiaWorkspace);
   try {
     if (replyReviewId) {
-      const response = await cli.reviewResolveReply(message.content, replyReviewId);
+      const response = await cli.reviewResolveReply(message.content, replyReviewId, { actor: message.author.id });
       let confirmation = response.data.confirmation;
       if (
         response.data.item.resolvedIntent === "ActionClarification" &&
@@ -69,8 +71,24 @@ export async function handleArcadiaMessage(
   }
 }
 
-function isAllowedMessage(message: Message, config: BotConfig): boolean {
-  return !message.author.bot && message.guildId === config.discordGuildId && message.channelId === config.discordChannelId;
+/**
+ * Guild and channel gating always apply. When `DISCORD_ALLOWED_USER_IDS` is
+ * configured the author must also be listed; a refused author gets the reply
+ * router's refusal reaction. When it is empty the bot fails open to guild and
+ * channel gating only (loadConfig logs a startup warning), so an unset value
+ * never locks the operator out.
+ */
+async function isAllowedMessage(message: Message, config: BotConfig): Promise<boolean> {
+  if (message.author.bot || message.guildId !== config.discordGuildId || message.channelId !== config.discordChannelId) {
+    return false;
+  }
+  const allowedUserIds = config.allowedUserIds ?? [];
+  if (allowedUserIds.length === 0 || allowedUserIds.includes(message.author.id)) {
+    return true;
+  }
+  await safeReact(message, "🚫");
+  logJson("info", { msg: "discord message refused: author not in DISCORD_ALLOWED_USER_IDS", authorId: message.author.id });
+  return false;
 }
 
 async function reviewIdFromReply(message: Message, workspace: string): Promise<string | null> {
