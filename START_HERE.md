@@ -2299,6 +2299,21 @@ acceptance criteria. It takes no `--workspace`, opens no database, and says so
 on every run: it reports one repository and never the portfolio. Use `next`
 when you want the portfolio's answer, `docket` when you want the project's.
 
+To see one Plan's progress as a to-do list, ask the same repository:
+
+```sh
+pnpm arcadia plans --plan <slug> [--all] [--json]
+```
+
+It is workspace-free and derived from the Plan document on every call (no
+store): a counts line, the current Action, the next five and the blocked ones
+with their recorded reason, as `- [x]`/`- [ ]`/`- [!]` items; `--all` lists every
+Action. The current Action is PROJECT.md `current_action` for the active Plan,
+otherwise the first unfinished Action whose `depends_on` are done. "Done" is the
+recorded Action status, not re-proven acceptance, and the order is not the
+dispatch queue (`arcadia next` is). `--json` emits `arcadia-plan-progress-v1`,
+a one-way view whose statuses are the Plan document's.
+
 Below the `Authorization:` line, the brief prints **Standing constraints**: the
 repository's `CONSTITUTION.md`, verbatim. Nothing parses the Constitution, so
 printing it here is what makes a dispatched agent read the rules that bind the

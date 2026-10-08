@@ -125,7 +125,7 @@ describe("arcadia plans", () => {
     expect(plan.status).toBe("active");
     expect(plan.governed).toBe(true);
     expect(plan.isActivePlan).toBe(true);
-    expect(plan.actionCounts).toEqual({ open: 1, in_progress: 0, done: 0, blocked: 0 });
+    expect(plan.actionCounts).toEqual({ open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0 });
   });
 
   it("surfaces a proposed plan Arcadia does not govern, with its own stated trigger", () => {
