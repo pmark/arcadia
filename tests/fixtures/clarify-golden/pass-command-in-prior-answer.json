@@ -1,0 +1,14 @@
+{
+  "name": "pass-command-in-prior-answer",
+  "reason": "A command named only in the operator's earlier answer is sourced, because the prior answer is source material.",
+  "nextAction": "Run arcadia work monitor and record the output",
+  "doneCondition": "The monitor output is saved in the session notes",
+  "source": {
+    "title": "Check working copies",
+    "rawInput": "Make sure nothing is stranded",
+    "priorQuestion": "Which command should check this?",
+    "priorAnswer": "Use arcadia work monitor --no-pull-requests"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

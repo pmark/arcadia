@@ -1,11 +1,17 @@
 import type { ClarificationConfidence, GapType } from "../domain/constants.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import type { ClarifyActor } from "./contract.js";
+import type { ClarifyLintFinding } from "./lint.js";
 
 /** A YES: a concrete next action was named. */
 export interface ClarifiedVerdict {
   verdict: "clarified";
   nextAction: string;
+  /**
+   * How anyone would observe that the next action is finished. Required on a
+   * clarified verdict: a next action with no done-condition is a wish.
+   */
+  doneCondition: string;
   actor: ClarifyActor;
   source: string;
   confidence: ClarificationConfidence;
@@ -31,6 +37,11 @@ export type ClarifyVerdict = ClarifiedVerdict | QuestionOpenVerdict;
 export interface ClarifyEvaluation {
   workItem: WorkItemSummary;
   verdict: ClarifyVerdict;
+  /**
+   * Set when the deterministic lint rejected a clarified verdict and `verdict`
+   * is the question it was downgraded to. Absent when the lint passed.
+   */
+  lintFindings?: ClarifyLintFinding[];
 }
 
 /** What `--apply` actually changed, per Action. */

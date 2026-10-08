@@ -1,0 +1,14 @@
+{
+  "name": "fail-invented-command",
+  "reason": "A command the source never mentions is an invented fact.",
+  "nextAction": "Run arcadia deploy to publish the site",
+  "doneCondition": "The site is live",
+  "source": {
+    "title": "Publish the site",
+    "rawInput": "Get the site published"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "unsourced-reference"
+  ]
+}

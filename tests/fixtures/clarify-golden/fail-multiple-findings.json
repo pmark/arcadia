@@ -1,0 +1,16 @@
+{
+  "name": "fail-multiple-findings",
+  "reason": "All findings are reported together, so the operator gets one question that names everything.",
+  "nextAction": "The sync fixes in src/sync/ghost.ts",
+  "doneCondition": "",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "missing-done-condition",
+    "not-a-verb",
+    "unsourced-reference"
+  ]
+}

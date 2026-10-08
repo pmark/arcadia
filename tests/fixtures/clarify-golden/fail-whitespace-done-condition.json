@@ -1,0 +1,14 @@
+{
+  "name": "fail-whitespace-done-condition",
+  "reason": "A whitespace-only done-condition counts as empty.",
+  "nextAction": "Add a retry to the nightly sync",
+  "doneCondition": "   \n ",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "missing-done-condition"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "fail-determiner-opening",
+  "reason": "An opening article or determiner makes a noun phrase, a label rather than an action.",
+  "nextAction": "The nightly sync retries",
+  "doneCondition": "Retries work",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "not-a-verb"
+  ]
+}

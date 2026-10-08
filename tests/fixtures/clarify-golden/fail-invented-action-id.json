@@ -1,0 +1,14 @@
+{
+  "name": "fail-invented-action-id",
+  "reason": "An Action id absent from the source is an invented fact.",
+  "nextAction": "Finish Action wire-the-flux-capacitor-module and report",
+  "doneCondition": "The Action is marked done",
+  "source": {
+    "title": "Finish work",
+    "rawInput": "Finish the open work"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "unsourced-reference"
+  ]
+}

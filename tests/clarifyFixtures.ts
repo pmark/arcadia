@@ -26,6 +26,7 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     rawResult: {
       verdict: "clarified",
       nextAction: "Add a per-batch retry to the nightly sync and log partial failures",
+      doneCondition: "A forced mid-batch failure retries that batch and the partial failure appears in the log",
       actor: "coding-agent",
       source: "Action detail: 'sync dies halfway and we lose the batch'",
       confidence: "high"
@@ -33,6 +34,7 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     expected: {
       verdict: "clarified",
       nextAction: "Add a per-batch retry to the nightly sync and log partial failures",
+      doneCondition: "A forced mid-batch failure retries that batch and the partial failure appears in the log",
       actor: "coding-agent",
       source: "Action detail: 'sync dies halfway and we lose the batch'",
       confidence: "high"
@@ -49,6 +51,7 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     rawResult: {
       verdict: "clarified",
       nextAction: "Call the accountant and confirm which quarter the filing covers",
+      doneCondition: "The quarter the filing covers is written into the Action notes",
       actor: "operator",
       source: "Action title",
       confidence: "medium"
@@ -56,6 +59,7 @@ export const clarifyGoldenExamples: ClarifyGoldenExample[] = [
     expected: {
       verdict: "clarified",
       nextAction: "Call the accountant and confirm which quarter the filing covers",
+      doneCondition: "The quarter the filing covers is written into the Action notes",
       actor: "operator",
       source: "Action title",
       confidence: "medium"

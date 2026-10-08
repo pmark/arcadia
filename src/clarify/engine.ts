@@ -10,6 +10,7 @@ import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
 import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
 import type { IntelligenceJob } from "../intelligence/types.js";
 import { buildClarifyRequest, CLARIFY_ACTORS, type ClarifyActor } from "./contract.js";
+import { missingDoneConditionQuestion } from "./lint.js";
 import type { ClarifyEvaluator, ClarifyVerdict } from "./types.js";
 
 /** A local model can be slow to warm; a batch pass tolerates that better than a failure. */
@@ -92,9 +93,22 @@ export function normalizeVerdict(raw: unknown): ClarifyVerdict {
       throw new ClarifyVerdictUnusableError('A "clarified" verdict must name a next action.');
     }
 
+    // A next action nobody can recognise as finished is not actionable: ask for
+    // the done-condition rather than recording it. The existing taxonomy
+    // already names this gap, so no new gap type is introduced.
+    const doneCondition = text(value.doneCondition);
+    if (!doneCondition) {
+      return {
+        verdict: "question_open",
+        gapType: "missing-success-criteria",
+        question: missingDoneConditionQuestion(nextAction)
+      };
+    }
+
     return {
       verdict: "clarified",
       nextAction,
+      doneCondition,
       actor: normalizeActor(value.actor),
       source: text(value.source) ?? "unspecified",
       confidence: normalizeConfidence(value.confidence) ?? "low"

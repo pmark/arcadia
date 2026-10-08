@@ -1,0 +1,14 @@
+{
+  "name": "fail-invented-path-in-done-condition",
+  "reason": "The lint reads the done-condition too, not only the next action.",
+  "nextAction": "Add a retry to the nightly sync",
+  "doneCondition": "tests/sync/retry.test.ts passes",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "unsourced-reference"
+  ]
+}

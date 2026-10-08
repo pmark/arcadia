@@ -2578,6 +2578,15 @@ Arcadia separates approval Decisions from clarification Decisions:
   execution. **Get help answering** can generate advice and copy it into the
   answer box as an editable draft.
 
+A concrete next action now needs a stated **done-condition** ("Done when:").
+Before `arcadia clarify` records a next action it checks that a done-condition
+exists, that the action opens with a verb, and that every file path, Action id,
+Decision id and `arcadia` command it names appears in the Action's own text
+(title, raw input, expected artifact, the earlier question and your answer). If
+any check fails you get exactly one follow-up question naming what is missing,
+instead of an action nobody can recognise as finished. The done-condition is
+shown in the preview but not yet stored on `--apply`.
+
 In Discord, reply directly to a clarification notification with the answer in
 your own words. Arcadia confirms the Decision id, records the answer, and
 continues clarification. Use `defer` to leave the question open or `reject` to

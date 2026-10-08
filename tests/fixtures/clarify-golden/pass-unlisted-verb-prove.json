@@ -1,0 +1,12 @@
+{
+  "name": "pass-unlisted-verb-prove",
+  "reason": "Any verb is accepted: prove.",
+  "nextAction": "Prove the retry works with a forced failure",
+  "doneCondition": "The forced failure test passes",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}

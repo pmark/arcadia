@@ -1,0 +1,14 @@
+{
+  "name": "fail-hedge-opening",
+  "reason": "A hedge such as maybe is not an imperative.",
+  "nextAction": "Maybe add a retry to the nightly sync",
+  "doneCondition": "The sync retries a failed batch",
+  "source": {
+    "title": "Nightly sync",
+    "rawInput": "sync loses batches"
+  },
+  "expected": "fail",
+  "expectedFindings": [
+    "not-a-verb"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "pass-backtick-led-command",
+  "reason": "An opening backticked command is accepted as the action.",
+  "nextAction": "`arcadia go` in the main checkout and read the brief",
+  "doneCondition": "The brief is summarized in the Action notes",
+  "source": {
+    "title": "Start the day",
+    "rawInput": "run arcadia go to see the brief"
+  },
+  "expected": "pass",
+  "expectedFindings": []
+}
