@@ -2703,10 +2703,11 @@ or deferred review item (that review item would already be its question). It is
 always an alert, and its title is the work item's own. A `plan_action` item is an
 unfinished Action of the Project's active Plan that `arcadia next --ready` does
 not call ready and that waits on you: its `question_open` question (`origin:
-question_open`), or `requires_review` responsibility with no unmet dependency in
-front of it (`origin: requires_review`). The readiness code is `arcadia next`'s
-own, not a copy. Actions parked by a deferral or an external block, Actions
-behind an unmet dependency, and every Action of a Project in a pause state
+question_open`, listed even when the Action has an unmet `depends_on`, since the
+question can be answered now), or `requires_review` responsibility with no unmet
+dependency in front of it (`origin: requires_review`; only `requires_review`
+Actions are held back by unmet dependencies). The readiness code is `arcadia
+next`'s own, not a copy. Actions parked by a deferral or an external block, and every Action of a Project in a pause state
 (PROJECT.md or its active Plan not `active`) are left out. An Action is shown by
 the item that already represents it, not twice: an open Decision it requires or
 that names it (`action:`), a review item whose `doc_ref` (or its work item's) is
@@ -2749,12 +2750,13 @@ stale when its `action` is done. The default view hides stale items;
 item, stale last.
 
 Projects whose slug contains `rehearsal`, or whose `repo_path` is under the OS
-temp directory or `~/tmp`, are fixtures: they appear only as one
-`Fixture Projects collapsed` line (`counts.fixture`). A Project with no
+temp directory or `~/tmp`, are fixtures: their non-blocking items appear only as
+one `Fixture Projects collapsed` line (`counts.fixture`). A Project with no
 `repo_path` is collapsed the same way, into a `Projects with no repo_path collapsed`
 line (`counts.noRepoPath`), because nothing about it can be checked against a
-repository. A Project whose `repo_path` is set but unreadable, that fails to read, or whose
-repository has no `PROJECT.md`, or whose
+repository. A blocking item (for example a stalled production escalation) is
+always listed and counted as blocking, whichever kind of Project it belongs to.
+A Project whose `repo_path` is set but unreadable, that fails to read, or whose
 repository has no `PROJECT.md`, becomes a `project sources unavailable:` line
 and never drops the other Projects. In `--json`, `asOf.workspace` is the
 workspace name and `asOf.workspacePath` its path.

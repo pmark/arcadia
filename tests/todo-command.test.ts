@@ -566,10 +566,12 @@ describe("arcadia todo: per-Project isolation and fixture grouping", () => {
     // Default fixture roots: the OS temp directory, where every one of these repositories lives.
     const { data } = runTodoCommand({ workspace, now: NOW });
 
-    expect(data.items).toEqual([]);
-    expect(data.counts.fixture).toEqual({ projects: 5, items: 4 });
+    // The demo Project's blocking Decision is listed even though its repository is under the temp directory;
+    // only non-blocking items collapse.
+    expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001"]);
+    expect(data.counts.fixture).toEqual({ projects: 5, items: 3 });
     expect(data.unavailable).toEqual([]);
-    expect(render(data).join("\n")).toContain("Fixture Projects collapsed: 5 Projects, 4 items not listed");
+    expect(render(data).join("\n")).toContain("Fixture Projects collapsed: 5 Projects, 3 items not listed");
 
     // By slug alone, with no temp-directory rule: only the rehearsal-named Projects collapse.
     const bySlug = run({ workspace, now: NOW });
@@ -1341,5 +1343,69 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
       ],
       unavailable: []
     });
+  });
+});
+
+describe("arcadia todo: collapsed Projects never hide a blocking item", () => {
+  function addBareProject(workspace: string, name: string, repoPath?: string): string {
+    return withDatabase(workspace, (db) => {
+      const bundle = createProjectWithInitialWork(db, {
+        name, mission: `${name} mission.`, status: "active", currentMilestone: "m", nextAction: "n", workClassification: "agent"
+      });
+      if (repoPath) upsertProjectMetadata(db, { projectId: bundle.project.id, repoPath });
+      return bundle.project.id;
+    });
+  }
+
+  function escalate(workspace: string, actionKey: string): void {
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        "INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, 'repair_budget_exhausted', 'Repair budget spent.', 'arcadia production status', '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')"
+      ).run(actionKey);
+    });
+  }
+
+  it("lists a no-repo_path Project's escalation as blocking, and counts only its non-blocking Ask and review_item", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "bare-ask", createdAt: "2026-09-05T00:00:00.000Z", project: "bare", desiredResult: "Asked of the bare Project." }
+    ]);
+    const bareId = addBareProject(workspace, "Bare");
+    escalate(workspace, "bare/stalled-action");
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        `INSERT INTO review_items (id, slug, project_id, status, decision_needed, source_input, proposed_action, resolved_intent, confidence_label,
+           confidence, missing_fields, context_json, created_at, updated_at)
+         VALUES ('review-bare', 'R-BARE', ?, 'open', 'Bare question?', 's', 'p', 'ActionClarification', 'medium', 0, '[]', '{}',
+           '2026-09-02T00:00:00.000Z', '2026-09-02T00:00:00.000Z')`
+      ).run(bareId);
+    });
+
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    // The escalation is listed and counted as blocking; the Ask and the review_item are only a count.
+    expect(data.items.filter((item) => item.project === "bare").map((item) => [item.key, item.blocking])).toEqual([
+      ["escalation:repair_budget_exhausted:bare/stalled-action", true]
+    ]);
+    expect(data.counts.blocking).toBe(2);
+    expect(data.counts.byKind.escalation).toBe(1);
+    expect(data.counts.noRepoPath).toEqual({ projects: 1, items: 2 });
+    expect(render(data).join("\n")).toContain("Projects with no repo_path collapsed: 1 Projects, 2 items not listed");
+  });
+
+  it("lists a fixture Project's blocking item and collapses its non-blocking ones", () => {
+    const workspace = fixtureWorkspace(fixtureRepo(0), [
+      { id: "rehearsal-ask", createdAt: "2026-09-05T00:00:00.000Z", project: "run-rehearsal-3", desiredResult: "A rehearsal ask." }
+    ]);
+    addBareProject(workspace, "Run Rehearsal 3", fixtureRepo(0));
+    escalate(workspace, "run-rehearsal-3/stalled-action");
+
+    const { data } = run({ workspace, now: NOW });
+
+    expect(data.items.filter((item) => item.project === "run-rehearsal-3").map((item) => [item.key, item.blocking])).toEqual([
+      ["escalation:repair_budget_exhausted:run-rehearsal-3/stalled-action", true]
+    ]);
+    expect(data.counts.blocking).toBe(2);
+    expect(data.counts.fixture.projects).toBe(1);
+    expect(data.counts.fixture.items).toBe(1);
   });
 });

@@ -797,15 +797,17 @@ function readWithWorkspace(
     let fixtureItems = 0;
     const noRepoProjects = new Set<string>();
     let noRepoItems = 0;
+    // A blocking item (a stalled production loop, the selected Action's gate) is always listed, whatever the
+    // Project; only the non-blocking items of a collapsed Project become a count.
     const take = (slug: string, collapse: false | "fixture" | "noRepoPath", found: TodoItem[]): void => {
+      const collapsed = collapse ? found.filter((item) => !(item.blocking && !item.staleReason)) : [];
+      items.push(...found.filter((item) => !collapsed.includes(item)));
       if (collapse === "fixture") {
         fixtureProjects.add(slug.toLowerCase());
-        fixtureItems += found.length;
+        fixtureItems += collapsed.length;
       } else if (collapse === "noRepoPath") {
         noRepoProjects.add(slug.toLowerCase());
-        noRepoItems += found.length;
-      } else {
-        items.push(...found);
+        noRepoItems += collapsed.length;
       }
     };
 
