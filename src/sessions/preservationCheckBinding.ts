@@ -25,7 +25,9 @@ import { boundedExec } from "./preservationStages.js";
  * supported shape (a line continuation, an unsupported construct) is
  * rejected outright rather than partially bound. A symlink at any discovered
  * executable path or ancestor in either tree is refused: its blob binds only
- * the link text, not the code an interpreter would follow and execute.
+ * the link text, not the code an interpreter would follow and execute. A
+ * declared path is walked as written, before `..` is removed, because the
+ * shell resolves `linked/..` through the link, not lexically.
  * It does not cover data the
  * check reads by design (the candidate content it judges), a specifier
  * computed at run time, a dotted Python package import (`import os.path`,
@@ -81,13 +83,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     // links before parsing their blobs; following them would authorize code
     // outside this closure. Prefixes also catch imports through linked dirs.
     const link = executableSymlink(file, base, candidate);
-    if (link) {
-      throw validationError(
-        `Declared preservation checks cannot execute symlink \`${link}\` (reached through \`${file}\`); a link's blob does not bind the code it executes. ` +
-        "Use regular check files and dependencies on the base branch, then prepare and authorize a fresh handoff.",
-        { code: PRESERVATION_CHECK_MODIFIED_CODE, path: link, executablePath: file, baseRevision }
-      );
-    }
+    if (link) throw symlinkRefusal(link, file, baseRevision);
     const blob = base.get(file)?.blob ?? null;
     bound.set(file, blob);
     if (!blob) return;
@@ -163,13 +159,13 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (mainTarget) for (const probe of REQUIRE_PROBES) visit(mainTarget + probe);
   };
   for (const command of commands) {
-    for (const file of namedFiles(command, base, candidate)) visitDirectoryImport(file);
+    for (const file of namedFiles(command, base, candidate, baseRevision)) visitDirectoryImport(file);
   }
   const files = [...bound].map(([file, blob]) => ({ path: file, blob })).sort((a, b) => a.path.localeCompare(b.path));
   for (const file of files) {
     const current = candidate.get(file.path)?.blob ?? null;
     if (current === file.blob) continue;
-    const command = commands.find(c => namedFiles(c, base, candidate).includes(file.path)) ?? commands.join(" && ");
+    const command = commands.find(c => namedFiles(c, base, candidate, baseRevision).includes(file.path)) ?? commands.join(" && ");
     throw validationError(
       `Candidate changed \`${file.path}\`, which declared preservation check \`${command}\` executes; a candidate cannot rewrite the check that judges it. ` +
       "Land the check change on the base branch first, then prepare and authorize a fresh handoff.",
@@ -207,7 +203,7 @@ const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
  * unbound or every check would be refused by its own test fixtures and
  * output files. A file only the candidate has is still bound — as absent at
  * the base — so the candidate cannot supply it. */
-function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string[] {
+function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, baseRevision: string): string[] {
   const files: string[] = [];
   for (const segment of command.split(SHELL_SEGMENT)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean).map(raw => raw.replace(/^["']|["']$/g, ""));
@@ -237,10 +233,45 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
     } else {
       target = executable;
     }
-    const file = target ? inTree(target) : null;
-    if (file && (base.has(file) || candidate.has(file) || executableSymlink(file, base, candidate))) files.push(file);
+    if (!target) continue;
+    const link = declaredSymlink(target, base, candidate);
+    if (link) throw symlinkRefusal(link, target, baseRevision);
+    const file = inTree(target);
+    if (file && (base.has(file) || candidate.has(file))) files.push(file);
   }
   return files;
+}
+
+/** The shell opens a declared path component by component, so `linked/../x`
+ * follows `linked` before `..` applies, while `inTree`'s lexical normalization
+ * would erase `linked` and bind the unrelated root `x`. Walk the path as
+ * written and return the first prefix that is a symlink in either tree. Every
+ * earlier prefix is then a real directory (or absent, so the shell fails), so
+ * popping `..` lexically up to that point is exact. Import specifiers keep
+ * lexical normalization: Node resolves those lexically itself. */
+function declaredSymlink(target: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): string | null {
+  if (path.posix.isAbsolute(target)) return null;
+  const stack: string[] = [];
+  for (const part of target.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (stack.length === 0) return null;
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+    const prefix = stack.join("/");
+    if (isSymlink(prefix, base, candidate)) return prefix;
+  }
+  return null;
+}
+
+function symlinkRefusal(link: string, executablePath: string, baseRevision: string): ArcadiaError {
+  return validationError(
+    `Declared preservation checks cannot execute symlink \`${link}\` (reached through \`${executablePath}\`); a link's blob does not bind the code it executes. ` +
+    "Use regular check files and dependencies on the base branch, then prepare and authorize a fresh handoff.",
+    { code: PRESERVATION_CHECK_MODIFIED_CODE, path: link, executablePath, baseRevision }
+  );
 }
 
 function inTree(candidate: string): string | null {
@@ -255,9 +286,13 @@ function executableSymlink(file: string, base: Map<string, GitBlob>, candidate: 
   const parts = file.split("/");
   for (let end = 1; end <= parts.length; end++) {
     const prefix = parts.slice(0, end).join("/");
-    if (base.get(prefix)?.mode === "120000" || candidate.get(prefix)?.mode === "120000") return prefix;
+    if (isSymlink(prefix, base, candidate)) return prefix;
   }
   return null;
+}
+
+function isSymlink(file: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>): boolean {
+  return base.get(file)?.mode === "120000" || candidate.get(file)?.mode === "120000";
 }
 
 function blobs(repository: string, revision: string): Map<string, GitBlob> {

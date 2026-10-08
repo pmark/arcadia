@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -236,5 +236,61 @@ describe("preservation check-definition binding — executable symlinks (#1041)"
     expect(blob(candidate)).toBe(blob(f.base));
     expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["node check.mjs"]))
       .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "check.mjs" }) }));
+  });
+});
+
+describe("preservation check-definition binding — declared path walked before `..` removal (#1041 round 2)", () => {
+  // `linked` -> rules/subdir, so the shell opens `linked/../check.sh` as
+  // rules/check.sh, while lexical normalization would bind the root check.sh.
+  const linkedFixture = () => repo(
+    { "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n" },
+    { "linked": "rules/subdir" }
+  );
+
+  it.each(["sh linked/../check.sh", "./linked/../check.sh", "env sh ./linked//../check.sh"])(
+    "refuses an unchanged symlinked ancestor erased by `..` (%s)", (command) => {
+      const f = linkedFixture();
+      const candidate = candidateTree(f, { "rules/check.sh": "exit 0\n" });
+      // The hazard is real: the shell executes the rewritten rules/check.sh.
+      expect(spawnSync("sh", ["linked/../check.sh"], { cwd: f.dir }).status).toBe(0);
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, [command]))
+        .toThrow(expect.objectContaining({
+          message: expect.stringMatching(/cannot execute symlink `linked`/),
+          details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" })
+        }));
+    });
+
+  it("refuses a symlinked ancestor present only in the candidate tree", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "rules/subdir/README": "directory\n", "linked/README": "real directory\n" });
+    f.git(["rm", "-rq", "linked"]);
+    writeFileSync(path.join(f.dir, "rules/check.sh"), "exit 0\n");
+    symlinkSync("rules/subdir", path.join(f.dir, "linked"));
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh linked/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" }) }));
+  });
+
+  it("refuses a symlinked ancestor present only in the base tree", () => {
+    const f = linkedFixture();
+    f.git(["rm", "-q", "linked"]);
+    mkdirSync(path.join(f.dir, "linked"));
+    writeFileSync(path.join(f.dir, "linked/README"), "real directory\n");
+    f.git(["add", "."]);
+    const candidate = f.git(["write-tree"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh linked/../check.sh"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "linked" }) }));
+  });
+
+  it("keeps binding a regular `subdir/../check.sh` with no symlink components", () => {
+    const f = repo({ "check.sh": "exit 7\n", "subdir/README": "directory\n" });
+    const binding = bindCheckDefinitions(f.dir, f.base, f.base, ["sh subdir/../check.sh"]);
+    expect(binding.files.filter(file => file.blob !== null).map(file => file.path)).toEqual(["check.sh"]);
+    const rewritten = candidateTree(f, { "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["sh subdir/../check.sh"]))
+      .toThrow(expect.objectContaining({
+        message: expect.stringMatching(/cannot rewrite the check/),
+        details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: "check.sh" })
+      }));
   });
 });
