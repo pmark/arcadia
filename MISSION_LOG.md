@@ -2031,3 +2031,10 @@ updated: 2026-10-08
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-08 — Agent Ask pr-opened-arcadia-pr1069
+
+- **Did:** arcadia todo now surfaces open Decisions first, newest on top, so a fresh Decision never hides behind old Asks again. https://github.com/pmark/arcadia/pull/1069
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

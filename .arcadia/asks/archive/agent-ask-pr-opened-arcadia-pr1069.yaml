@@ -1,0 +1,1 @@
+{"agent_ask":"v1","request_id":"pr-opened-arcadia-pr1069","project":"arcadia","intent":"log","desired_result":"arcadia todo now surfaces open Decisions first, newest on top, so a fresh Decision never hides behind old Asks again. https://github.com/pmark/arcadia/pull/1069"}
