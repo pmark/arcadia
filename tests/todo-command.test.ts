@@ -101,6 +101,9 @@ interface FixtureAsk {
   intent?: string;
   targetRef?: string | null;
   rationale?: string | null;
+  actions?: Array<{ id: string | null; targetRef: string | null }>;
+  /** Insert a settlement with this disposition, so the proposal is no longer unsettled. */
+  settled?: "accepted" | "rejected";
 }
 
 function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
@@ -117,10 +120,14 @@ function fixtureWorkspace(repo: string, asks: FixtureAsk[] = []): string {
         .run(`capture-${ask.id}`, `request-${ask.id}`, ask.createdAt);
       const normalized = {
         project: ask.project ?? "demo", desiredResult: ask.desiredResult, intent: ask.intent ?? "amend",
-        targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: [], options: []
+        targetRef: ask.targetRef ?? null, rationale: ask.rationale ?? null, actions: ask.actions ?? [], options: []
       };
       db.prepare("INSERT INTO agent_ask_proposals (id, request_id, capture_id, fingerprint, format, intent_kind, project_ref, proposal_json, created_at) VALUES (?, ?, ?, 'f', 'strict', 'amend', ?, ?, ?)")
         .run(ask.id, `request-${ask.id}`, `capture-${ask.id}`, normalized.project, JSON.stringify({ id: ask.id, normalized }), ask.createdAt);
+      if (ask.settled) {
+        db.prepare("INSERT INTO agent_ask_settlements (id, proposal_id, request_id, operation_json, fingerprint, disposition, project_slug, effects_json, receipt_json, created_at) VALUES (?, ?, ?, '{}', 'f', ?, ?, '[]', '{}', ?)")
+          .run(`settlement-${ask.id}`, ask.id, `settle-${ask.id}`, ask.settled, normalized.project, ask.createdAt);
+      }
     }
   });
   return workspace;
@@ -399,6 +406,64 @@ describe("arcadia todo: positive-evidence staleness", () => {
     expect(staleKeys).not.toContain("agent_ask:demo/ping");
     expect(staleKeys).not.toContain("agent_ask:demo/pong");
     expect(staleKeys).not.toContain("agent_ask:demo/new");
+  });
+
+  it("finds a Supersedes clause in the middle of a single-line rationale", () => {
+    const workspace = fixtureWorkspace(staleRepo(), [
+      { id: "agentask_aaaa", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "v2.", intent: "plan" },
+      { id: "agentask_bbbb", createdAt: "2026-09-05T01:00:00.000Z", desiredResult: "v3.", intent: "plan" },
+      { id: "agentask_cccc", createdAt: "2026-09-05T02:00:00.000Z", desiredResult: "v4.", intent: "plan" },
+      {
+        id: "agentask_dddd", createdAt: "2026-09-06T00:00:00.000Z", desiredResult: "v5.",
+        rationale: "Rebuilt after review. Supersedes: agentask_aaaa, agentask_bbbb; agentask_cccc. See the Plan for why."
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, stale: true });
+
+    const reasons = Object.fromEntries(data.items.map((item) => [item.key, item.staleReason]));
+    for (const id of ["agentask_aaaa", "agentask_bbbb", "agentask_cccc"]) {
+      expect(reasons[`agent_ask:demo/${id}`]).toBe("superseded by Agent Ask agentask_dddd (explicit Supersedes line in its rationale)");
+    }
+    expect(reasons["agent_ask:demo/agentask_dddd"]).toBeUndefined();
+  });
+
+  it("counts a settled-accepted superseder but never a settled-rejected one", () => {
+    const workspace = fixtureWorkspace(staleRepo(), [
+      { id: "old-a", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Old A." },
+      { id: "old-b", createdAt: "2026-09-05T01:00:00.000Z", desiredResult: "Old B." },
+      { id: "accepted-new", createdAt: "2026-09-06T00:00:00.000Z", desiredResult: "New A.", rationale: "Done. Supersedes: old-a.", settled: "accepted" },
+      { id: "rejected-new", createdAt: "2026-09-06T01:00:00.000Z", desiredResult: "New B.", rationale: "Done. Supersedes: old-b.", settled: "rejected" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    const byKey = Object.fromEntries(data.items.map((item) => [item.key, item]));
+    expect(byKey["agent_ask:demo/old-a"].staleReason).toBe("superseded by Agent Ask accepted-new (explicit Supersedes line in its rationale)");
+    expect(byKey["agent_ask:demo/old-b"]).toBeDefined();
+    expect(byKey["agent_ask:demo/old-b"].staleReason).toBeUndefined();
+    // Settled Asks are not themselves on the to-do list.
+    expect(byKey["agent_ask:demo/accepted-new"]).toBeUndefined();
+    expect(byKey["agent_ask:demo/rejected-new"]).toBeUndefined();
+  });
+
+  it("does not call a mixed Ask stale while an Action it proposes is not in any Plan", () => {
+    const workspace = fixtureWorkspace(staleRepo(), [
+      {
+        id: "mixed-absent", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Split with a remainder.", intent: "split",
+        targetRef: "action/first-step", actions: [{ id: "remainder-not-adopted", targetRef: null }]
+      },
+      {
+        id: "mixed-adopted", createdAt: "2026-09-05T01:00:00.000Z", desiredResult: "Split with an adopted remainder.", intent: "split",
+        targetRef: "action/first-step", actions: [{ id: "second-step", targetRef: null }]
+      }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    const byKey = Object.fromEntries(data.items.map((item) => [item.key, item]));
+    expect(byKey["agent_ask:demo/mixed-absent"].staleReason).toBeUndefined();
+    expect(byKey["agent_ask:demo/mixed-adopted"].staleReason).toBe("every Action it targets is done: first-step");
   });
 
   it("golden: the stale view as JSON", () => {

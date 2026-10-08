@@ -136,21 +136,64 @@ function readProjectEvidence(repoRoot: string, projectSlug: string): ProjectEvid
 /** The Agent Ask facts staleness reads, taken from the stored proposal. */
 interface AskFacts {
   intent: string;
+  /** Actions reached through a target_ref. */
   targets: string[];
+  /** Actions the Ask proposes to create (an `actions[].id` with no target_ref). */
+  proposed: string[];
 }
 
 function askFactsOf(rows: UnsettledAsk[]): Map<string, AskFacts> {
   return new Map(
-    rows.map((row) => [row.id, { intent: row.proposal.normalized.intent, targets: targetedActionIds(row.proposal.normalized) }])
+    rows.map((row) => {
+      const normalized = row.proposal.normalized;
+      return [
+        row.id,
+        {
+          intent: normalized.intent,
+          targets: targetedActionIds(normalized),
+          proposed: normalized.actions.flatMap((action) => (action.id && !action.targetRef ? [action.id] : []))
+        }
+      ];
+    })
   );
 }
 
+/** One stored proposal, settled or not, as supersession reads it. */
+interface SupersessionSource {
+  id: string;
+  requestId: string;
+  rationale: string | null;
+  /** The settlement's disposition, or null while unsettled. */
+  disposition: string | null;
+}
+
+/** Every stored proposal with its settlement disposition: a settled Ask's Supersedes line still counts. */
+function listSupersessionSources(db: Parameters<typeof listUnsettledAgentAskProposals>[0]): SupersessionSource[] {
+  const rows = db
+    .prepare(
+      `SELECT p.id, p.request_id, p.proposal_json, s.disposition
+         FROM agent_ask_proposals p
+         LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id
+         ORDER BY p.created_at ASC, p.id ASC`
+    )
+    .all() as Array<{ id: string; request_id: string; proposal_json: string; disposition: string | null }>;
+  return rows.map((row) => {
+    const proposal = JSON.parse(row.proposal_json) as { normalized?: { rationale?: string | null } };
+    return { id: row.id, requestId: row.request_id, rationale: proposal.normalized?.rationale ?? null, disposition: row.disposition };
+  });
+}
+
+/** A `Supersedes:` clause at a line start or after sentence punctuation, up to the end of that sentence or line. */
+const SUPERSEDES = /(?:^|[.;]\s+)[ \t>*-]*Supersedes:[ \t]*([^\n]*?)(?:\.(?=\s|$)|$)/gim;
+
 /**
- * Proposal id -> the proposal that explicitly supersedes it. Only a line
- * `Supersedes: <proposal ids>` in an Ask's own stored rationale counts (ids may
- * be proposal ids or request ids); two Asks that name each other cancel out.
+ * Proposal id -> the proposal that explicitly supersedes it. Only a
+ * `Supersedes: <proposal ids>` clause in an Ask's own stored rationale counts
+ * (ids may be proposal ids or request ids), and only from an Ask that is
+ * unsettled or settled `accepted`: a rejected Ask never hides another. Two
+ * Asks that name each other cancel out.
  */
-function supersessionsOf(rows: UnsettledAsk[]): Map<string, string> {
+function supersessionsOf(rows: SupersessionSource[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const row of rows) {
     index.set(row.id, row.id);
@@ -158,8 +201,8 @@ function supersessionsOf(rows: UnsettledAsk[]): Map<string, string> {
   }
   const names = new Map<string, Set<string>>();
   for (const row of rows) {
-    const rationale = row.proposal.normalized.rationale ?? "";
-    for (const match of rationale.matchAll(/^[ \t>*-]*Supersedes:[ \t]*(.+)$/gim)) {
+    if (row.disposition !== null && row.disposition !== "accepted") continue;
+    for (const match of (row.rationale ?? "").matchAll(SUPERSEDES)) {
       for (const token of match[1].split(/[\s,;]+/).filter(Boolean)) {
         const target = index.get(token);
         if (target && target !== row.id) names.set(row.id, (names.get(row.id) ?? new Set()).add(target));
@@ -194,6 +237,8 @@ function staleReasonOf(item: OperatorGateItem, context: StaleContext): string | 
   if (superseder) return `superseded by Agent Ask ${superseder} (explicit Supersedes line in its rationale)`;
   const facts = context.askFacts.get(item.id);
   if (!facts || !["complete", "split", "action"].includes(facts.intent) || facts.targets.length === 0 || !evidence) return undefined;
+  // An Ask that also proposes new Actions is only stale once those exist in a Plan too.
+  if (facts.proposed.some((id) => !evidence.actions.has(id))) return undefined;
   if (facts.targets.every((target) => evidence.actions.get(target)?.done)) {
     return `every Action it targets is done: ${facts.targets.join(", ")}`;
   }
@@ -370,7 +415,7 @@ function readWithWorkspace(
     const proposals = listUnsettledAgentAskProposals(db);
     const context: StaleContext = {
       askFacts: askFactsOf(proposals),
-      superseded: supersessionsOf(proposals),
+      superseded: supersessionsOf(listSupersessionSources(db)),
       evidence: new Map()
     };
 
