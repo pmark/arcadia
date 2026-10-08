@@ -285,6 +285,36 @@ export async function loadOpenDecisions(): Promise<ArcadiaJsonSuccess<{ decision
   return runArcadiaCliJson<{ decisions: OpenDecisionItem[] }>(["decision", "list", "--status", "open"]);
 }
 
+/** One row of `arcadia todo --json` (schema arcadia-todo-v1): a derived, read-only view of what the operator owes an answer on. */
+export interface OperatorTodoItem {
+  key: string;
+  kind: "decision" | "agent_ask" | "review_item";
+  title: string;
+  project: string;
+  blocking: boolean;
+  createdAt: string;
+  sourceRef: string;
+  origin?: string;
+  /** The canonical command that answers it. The dashboard never runs this. */
+  answer: string;
+  answerVia?: string[];
+  staleReason?: string;
+}
+
+export interface OperatorTodoData {
+  schema: string;
+  view: "default" | "all" | "stale";
+  items: OperatorTodoItem[];
+  /** One line per source the CLI could not read; empty means every source was read. */
+  unavailable: string[];
+}
+
+/** The one operator to-do list, every live and stale item. Read-only; nothing here settles anything. */
+export async function loadOperatorTodo(): Promise<ArcadiaJsonSuccess<OperatorTodoData>> {
+  // Short timeout: the old loaders are the fallback, so a slow to-do read must not hold the page.
+  return runArcadiaCliJson<OperatorTodoData>(["todo", "--all"], { timeoutMs: 15_000 });
+}
+
 export interface DecisionApproveResponse {
   relativePath: string;
   applied: boolean;
