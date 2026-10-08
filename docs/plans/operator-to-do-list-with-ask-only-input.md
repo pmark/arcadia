@@ -46,7 +46,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "docs/agents-context.md", "docs/agent-guidance/agent-peer-watch.md", "src/agentWatch/contract.ts", "src/agentWatch/classify.ts"]
   - id: grade-next-actions-before-actionable
     title: Make a next action count as actionable only when it states a done-condition and passes a separate grader; otherwise the operator gets exactly one question in arcadia todo.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a next action count as actionable only when it states a done-condition and passes a separate grader; otherwise the operator gets exactly one question in arcadia todo.
