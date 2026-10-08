@@ -19,6 +19,7 @@ import {
   runArtifactUpdateCommand
 } from "./commands/artifact.js";
 import { renderAskSuccess, runAskCommand } from "./commands/ask.js";
+import { renderAskCoverageSuccess, runAskCoverageCommand } from "./commands/askCoverage.js";
 import { renderAskTrailSuccess, runAskShowCommand, runAskTrailCommand } from "./commands/askTrail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
@@ -874,12 +875,30 @@ export function buildProgram(): Command {
   addJsonOption(
     ask
       .command("show")
-      .description("Show the exact capture, classification, Project, and resulting records for an Ask")
-      .argument("<id>", "capture_… id from the receipt, its request id, or an ask_… id")
+      .description("Show the exact capture, classification, Project, and resulting records for an Ask; with --coverage, report how much operator input passed through Ask or Ingress (read-only)")
+      .argument("[id]", "capture_… id from the receipt, its request id, or an ask_… id (omit with --coverage)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((id: string, _options: unknown, command: Command) => {
-    const options: { workspace: string; json?: boolean } = command.optsWithGlobals();
-    return runCliAction("ask.show", options, () => runAskShowCommand({ ...options, id }), renderAskTrailSuccess);
+      .option("--coverage", "Report captured operator inputs over canonical operator writes per surface instead of tracing one Ask")
+      .option("--since <time>", "With --coverage: window start, an ISO time or a look-back (30m, 6h, 7d, 2w); default 7d")
+      .option("--ingress-root <path>", "With --coverage: Ingress root holding <source>/Done and Failed sidecars; default the iCloud ArcadiaIngress folder")
+  ).action((id: string | undefined, _options: unknown, command: Command) => {
+    const options: { workspace: string; json?: boolean; coverage?: boolean; since?: string; ingressRoot?: string } = command.optsWithGlobals();
+    if (options.coverage) {
+      return runCliAction(
+        "ask.coverage",
+        options,
+        () => {
+          if (id) throw validationError("--coverage reports across all Asks; do not pass an id.", { id });
+          return runAskCoverageCommand({ workspace: options.workspace, since: options.since, ingressRoot: options.ingressRoot });
+        },
+        renderAskCoverageSuccess
+      );
+    }
+    return runCliAction("ask.show", options, () => {
+      if (options.since || options.ingressRoot) throw validationError("--since and --ingress-root apply only with --coverage.", {});
+      if (!id) throw validationError("An id is required: arcadia ask show <capture_…|request id|ask_…>, or arcadia ask show --coverage.", {});
+      return runAskShowCommand({ ...options, id });
+    }, renderAskTrailSuccess);
   });
 
   addJsonOption(

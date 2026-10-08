@@ -30,7 +30,8 @@ DISCORD_CATEGORY_CHANNELS=alerts=345678901234567890,briefings=456789012345678901
 ```
 
 `DISCORD_ALLOWED_USER_IDS` is a comma-separated list of Discord user ids allowed
-to use the bot. When set, it gates both the reply router and free-text messages
+to send free-text messages and reply-router replies. It does not gate slash
+commands. When set, it gates both the reply router and free-text messages
 in `DISCORD_CHANNEL_ID`: a message from any other author gets a refusal reaction
 (🚫) and is ignored. When it is empty or unset, free-text messages keep guild and
 channel gating only, the reply router refuses every author, and the bot logs one
