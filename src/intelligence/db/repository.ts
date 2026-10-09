@@ -97,10 +97,13 @@ export interface IntelligenceJobRepository {
   ): Promise<IntelligenceJob>;
 
   /**
-   * Resets a failed or blocked job back to queued and increments retryCount.
+   * Resets a failed or blocked job back to queued and increments retryCount,
+   * unless `countRetry` is false (a blocked job never reached the model, so
+   * re-running it must not spend the bounded retry). Only a job that is still
+   * failed or blocked is reset; any other job is returned unchanged.
    * Eligibility (status, maxRetries) is enforced by the caller.
    */
-  retryJob(jobId: string, nowIso: string): Promise<IntelligenceJob>;
+  retryJob(jobId: string, nowIso: string, options?: { countRetry?: boolean }): Promise<IntelligenceJob>;
 
   /**
    * Returns the most recent jobs submitted by a given clientApp, newest

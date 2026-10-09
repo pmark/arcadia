@@ -14,6 +14,7 @@ import {
   submitIntelligenceRequest
 } from "../intelligence/service/jobService.js";
 import type { IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
+import { nowIso } from "../utils/time.js";
 import { buildClarifyRequest, CLARIFY_ACTORS, type ClarifyActor } from "./contract.js";
 import { missingDoneConditionQuestion } from "./lint.js";
 import type { ClarifyEvaluator, ClarifyVerdict } from "./types.js";
@@ -68,22 +69,34 @@ export function createClarifyJobRunner(
     const { job: submitted, created } = await submitIntelligenceRequest(repository, request);
 
     // The idempotency key returns the same job on every sweep, so a job that
-    // ended failed or blocked (a transient outage, say) would otherwise be
-    // reported again forever without running. Retry it once, on the same
-    // request and so the same unpaid route; once that retry is spent, say so
-    // instead of looping.
-    if (!created && (submitted.status === "failed" || submitted.status === "blocked")) {
+    // ended blocked or failed would otherwise be reported again forever without
+    // running.
+    if (!created && submitted.status === "blocked") {
+      // Blocked means the request never reached a model (the local model or its
+      // route was unavailable). Run it again, once per sweep, without spending
+      // the bounded retry: an outage must not leave the item stuck for good once
+      // the model is back. Still down, it ends blocked again and the caller
+      // reports the same unavailable error.
+      await repository.retryJob(submitted.id, nowIso(), { countRetry: false });
+    } else if (!created && submitted.status === "failed") {
+      // The model ran and errored. Retry once, on the same request and so the
+      // same unpaid route; once that retry is spent, say so instead of looping.
       try {
         await retryIntelligenceJob(repository, submitted.id, CLARIFY_MAX_JOB_RETRIES);
       } catch (error) {
-        if (error instanceof RetryNotAllowedError) {
+        if (!(error instanceof RetryNotAllowedError)) {
+          throw error;
+        }
+        // Another runner may have re-queued or finished the job since it was
+        // read; then there is nothing to retry and the job is used as it is.
+        const current = await repository.findById(submitted.id);
+        if (!current || current.status === "failed" || current.status === "blocked") {
           throw new ClarifyVerdictUnusableError(
-            `Clarify job for ${subject} ended ${submitted.status} (${submitted.error?.code ?? "UNKNOWN"}) and its retry is spent; ` +
+            `Clarify job for ${subject} ended failed (${submitted.error?.code ?? "UNKNOWN"}) and its retry is spent; ` +
               `needs operator attention (it will not be retried until the Action or the grader criteria change): ` +
               `${submitted.error?.message ?? "no detail"}`
           );
         }
-        throw error;
       }
     }
 
