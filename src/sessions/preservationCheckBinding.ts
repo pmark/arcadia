@@ -40,7 +40,15 @@ import { boundedExec } from "./preservationStages.js";
  * expands (`$PWD/x`, globs, `~`), is refused because the root-relative file
  * bound may not be the file run (#1047). A sibling `.pyc`, native extension or
  * `__pycache__` entry for an imported Python module is refused in either
- * tree, as Python would load it ahead of the bound source (#1052). Not
+ * tree, as Python would load it ahead of the bound source (#1052). Because
+ * Python resolves any import (including a stdlib module's own imports, such as
+ * `subprocess` importing `selectors`) against the script's directory first, and
+ * a package import reaches submodules this binding does not name, a Python
+ * check is also refused when base and candidate differ at all in the importable
+ * entries of the script's directory or of any imported package directory
+ * (recursively): `*.py`, `*.pyc`, `__pycache__`, native extension suffixes and
+ * package directories, added, removed or changed (#1100). This is fail-closed
+ * and deliberately broader than the files the closure binds. Not
  * covered: a literal absolute path (the host runs checks in an unguessable
  * temp checkout with the repository denied, so it cannot name candidate
  * content), and options that take a value before an interpreter's script
@@ -77,9 +85,11 @@ const RELATIVE_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bim
 // relative import (`from .x import y`) does not even work there ("attempted
 // relative import with no known parent package"), so an unqualified top-level
 // name is the only form that actually resolves against the importing file's
-// directory. `from x import y` needs only x (the names pulled from it do not
-// change which file is bound, regardless of how that line continues or
-// groups them, so it is always fully handled). A bare `import …` line is
+// directory. `from x import y` binds only x's own file (`x.py` or
+// `x/__init__.py`); the names pulled from it may be submodules (`from helper
+// import rule` loads `helper/rule.py`) that are not named here, so the importable
+// set of the package directory is compared separately and refused on any
+// difference (#1100). The line may continue or group names freely. A bare `import …` line is
 // matched in full and must be an exactly parseable comma list of dotted
 // names with optional `as` aliases — anything else (a trailing line
 // continuation, an unsupported construct) fails the full-line match and is
@@ -94,6 +104,11 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
   const candidate = blobs(repository, candidateTree);
   const entries = treeEntries(base, candidate);
   const bound = new Map<string, string | null>();
+  // Directories whose importable entries must be identical in both trees (#1100):
+  // every Python file's own directory (non-recursive; its package-like
+  // subdirectories are followed) and every imported package directory (recursive).
+  const scriptDirs = new Set<string>();
+  const packageDirs = new Set<string>();
   const allPaths = [...new Set([...base.keys(), ...candidate.keys()])];
   const visit = (file: string) => {
     if (bound.has(file)) return;
@@ -108,6 +123,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (PYTHON_EXTENSION.test(file)) {
       const source = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString();
       const dir = path.posix.dirname(file);
+      scriptDirs.add(dir);
       const visitPythonModule = (dotted: string) => {
         // A same-directory import resolves to a plain module or, when that
         // file is absent, a regular package whose __init__.py Python executes
@@ -119,6 +135,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
         const parts = dotted.split(".");
         for (let end = 1; end <= parts.length; end++) {
           const name = parts.slice(0, end).join("/");
+          packageDirs.add(path.posix.join(dir, name));
           // Python tries extension modules and bytecode before (or without) the
           // `.py` source this binding hashes, so a sibling of either kind
           // shadows the bound file and runs unbound code (#1052).
@@ -195,7 +212,73 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
       { code: PRESERVATION_CHECK_MODIFIED_CODE, path: file.path, baseRevision, authorizedBlob: file.blob, candidateBlob: current }
     );
   }
+  const importable = new ImportableSets(base, candidate);
+  for (const dir of scriptDirs) importable.refuseDifference(dir, false, baseRevision, commands);
+  for (const dir of packageDirs) importable.refuseDifference(dir, true, baseRevision, commands);
   return { baseRevision, files };
+}
+
+/** Names Python's path finders can load as a module: source, bytecode, or a
+ * native extension (including tagged forms such as `x.cpython-312-darwin.so`). */
+const PYTHON_IMPORTABLE_NAME = /\.(?:py|pyw|pyc|pyo|pyd|so|dylib)$/;
+const PYTHON_INIT_NAME = /^__init__\./;
+
+/** The importable entries of directories in both trees, compared by blob and
+ * mode, with names folded case-insensitively as the checkout is. Used only to
+ * refuse: a Python check is relied on only if nothing Python could import
+ * differs between the authorized base and the candidate (#1100). */
+class ImportableSets {
+  private readonly trees: Map<string, GitBlob>[];
+  constructor(...trees: Map<string, GitBlob>[]) { this.trees = trees; }
+
+  /** Throws when base and candidate differ in the importable entries of `dir`.
+   * A non-recursive scan still follows, in full, every package-like
+   * subdirectory: one with an `__init__` entry in either tree, or a
+   * `__pycache__`. */
+  refuseDifference(dir: string, recursive: boolean, baseRevision: string, commands: string[]): void {
+    const root = dir === "." ? "" : fold(dir);
+    const prefix = root === "" ? "" : `${root}/`;
+    const packages = new Set<string>();
+    if (!recursive) {
+      for (const tree of this.trees) {
+        for (const file of tree.keys()) {
+          const lower = fold(file);
+          if (!lower.startsWith(prefix)) continue;
+          const rest = lower.slice(prefix.length);
+          const slash = rest.indexOf("/");
+          if (slash < 0) continue;
+          const sub = rest.slice(0, slash);
+          const tail = rest.slice(slash + 1);
+          if (sub === "__pycache__" || (PYTHON_INIT_NAME.test(tail) && PYTHON_IMPORTABLE_NAME.test(tail))) packages.add(`${prefix}${sub}/`);
+        }
+      }
+    }
+    const [base, candidate] = this.trees.map(tree => {
+      const result = new Map<string, { path: string; signature: string }>();
+      for (const [file, entry] of tree) {
+        const lower = fold(file);
+        if (!lower.startsWith(prefix)) continue;
+        const rest = lower.slice(prefix.length);
+        const direct = !rest.includes("/");
+        if (!recursive && !direct && ![...packages].some(pkg => lower.startsWith(pkg))) continue;
+        if (!PYTHON_IMPORTABLE_NAME.test(lower) && !/(?:^|\/)__pycache__\//.test(lower)) continue;
+        result.set(lower, { path: file, signature: `${entry.mode}:${entry.blob}` });
+      }
+      return result;
+    });
+    for (const key of [...new Set([...base.keys(), ...candidate.keys()])].sort()) {
+      const before = base.get(key);
+      const after = candidate.get(key);
+      if (before && after && before.signature === after.signature && before.path === after.path) continue;
+      const changed = (after ?? before)!.path;
+      const kind = !before ? "added" : !after ? "removed" : "changed";
+      throw validationError(
+        `Candidate ${kind} \`${changed}\`, an importable Python entry beside or beneath code that declared preservation check \`${commands.join(" && ")}\` imports; Python may load it ahead of or instead of the bound source (for example a module that shadows one the standard library imports, or a package submodule), so the executed code would not match what this binding checked. ` +
+        "Land the change on the base branch first, then prepare and authorize a fresh handoff.",
+        { code: PRESERVATION_CHECK_MODIFIED_CODE, path: changed, baseRevision, importable: true }
+      );
+    }
+  }
 }
 
 /** Interpreters that run a script named as their next positional argument.

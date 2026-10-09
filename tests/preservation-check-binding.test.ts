@@ -538,3 +538,63 @@ describe("preservation check-definition binding \u2014 Python bytecode and exten
     expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 check.py"])).not.toThrow();
   });
 });
+
+describe("preservation check-definition binding — Python importable-set changes (#1100)", () => {
+  const run = ["python3 check.py"];
+  const refused = expect.objectContaining({
+    message: expect.stringMatching(/importable Python entry/),
+    details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, importable: true })
+  });
+
+  it("refuses indirect stdlib shadowing: a candidate selectors module beside a check importing subprocess", () => {
+    const f = repo({ "check.py": "import subprocess\nsubprocess.run(['true'])\n", "README.md": "docs\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    for (const entry of ["selectors.py", "selectors.pyc", "selectors.so", "selectors.cpython-312-darwin.so", "__pycache__/selectors.cpython-312.pyc", "selectors/__init__.py"]) {
+      const candidate = candidateTree(f, { [entry]: "print('PWNED')\n" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, run), entry).toThrow(expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: entry }) }));
+    }
+    const candidate = candidateTree(f, { "selectors.py": "print('PWNED')\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, run)).toThrow(refused);
+  });
+
+  it("refuses removal or change of an importable entry in the script directory", () => {
+    const f = repo({ "check.py": "import json\n", "unused.py": "x = 1\n", "pkg/__init__.py": "", "pkg/inner.py": "x = 1\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "unused.py": "x = 2\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "pkg/inner.py": "x = 2\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "pkg/new.so": "x" }), run)).toThrow(refused);
+    f.git(["reset", "-q", "--hard", f.baseCommit]); f.git(["rm", "-q", "unused.py"]); f.git(["commit", "-qm", "remove"]);
+    const removed = f.git(["rev-parse", "HEAD^{tree}"]);
+    expect(() => bindCheckDefinitions(f.dir, f.base, removed, run)).toThrow(expect.objectContaining({ message: expect.stringMatching(/removed `unused.py`/) }));
+  });
+
+  it("refuses an unbound package submodule rewrite under `from helper import rule`", () => {
+    const f = repo({ "check.py": "from helper import rule\nrule.verify()\n", "helper/__init__.py": "", "helper/rule.py": "def verify():\n    pass\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    const rewritten = candidateTree(f, { "helper/rule.py": "def verify():\n    print('PWNED')\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, run)).toThrow(refused);
+    const nested = repo({ "check.py": "from helper import rule\n", "helper/__init__.py": "", "helper/rule.py": "", "helper/deep/__init__.py": "", "helper/deep/x.py": "" });
+    expect(() => bindCheckDefinitions(nested.dir, nested.base, candidateTree(nested, { "helper/deep/x.py": "y = 1\n" }), run)).toThrow(refused);
+    expect(() => bindCheckDefinitions(nested.dir, nested.base, candidateTree(nested, { "helper/deep/__pycache__/x.cpython-312.pyc": "y" }), run)).toThrow(refused);
+  });
+
+  it("refuses changes for a script in a subdirectory, including a namespace package import", () => {
+    const f = repo({ "tools/check.py": "from ns import rule\nimport os\n", "tools/ns/rule.py": "x = 1\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 tools/check.py"])).not.toThrow();
+    for (const changes of [{ "tools/ns/rule.py": "x = 2\n" }, { "tools/selectors.py": "x = 2\n" }]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, changes), ["python3 tools/check.py"])).toThrow(refused);
+    }
+  });
+
+  it("still binds an unchanged directory and ignores changes outside the importable set", () => {
+    const f = repo({
+      "check.py": "import subprocess\nfrom helper import rule\nrule.verify()\n",
+      "helper/__init__.py": "", "helper/rule.py": "def verify():\n    pass\n", "README.md": "docs\n"
+    });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, run)).not.toThrow();
+    const unrelated = candidateTree(f, {
+      "README.md": "changed docs\n", "helper/README.md": "pkg docs\n", "data/fixture.json": "{}\n",
+      "other/module.py": "x = 1\n", "notes.txt": "n\n"
+    });
+    expect(() => bindCheckDefinitions(f.dir, f.base, unrelated, run)).not.toThrow();
+  });
+});
