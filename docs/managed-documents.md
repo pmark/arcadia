@@ -145,6 +145,7 @@ actions:
     expected_artifact: What existing when this is finished
     clarification: clarified # clarified | question_open | unclarified
     confidence: high         # high | medium | low
+    why: One sentence on why this Action matters. # optional
     acceptance_criteria:
       - An objective condition that decides when this is done.
     depends_on: []           # ids of Actions in this plan
@@ -190,6 +191,14 @@ decisions: []
   **verbatim to the coding agent**, ahead of Arcadia's generated guardrails.
   Write them as the conditions you would actually check at review, not as
   restatements of the title.
+
+- **`why`** is optional: one sentence on why this Action matters. `docs sync`
+  mirrors it onto the Action's work item, and `arcadia path`, the dashboard
+  Path screen and the Now screen show it as the step's reason. When it is
+  absent they derive a reason from the route itself ("Unblocks <Action>",
+  "Remainder of <Action>", or "Completes gate: <gate>") and label it derived,
+  so an author's sentence is never confused with a computed one. Agent Asks set
+  it per Action with `actions[].why`.
 
 - **`clarification: question_open`** means the Action is blocked on one
   question. It must carry a `gap_type` and a `question`, and must **not** carry

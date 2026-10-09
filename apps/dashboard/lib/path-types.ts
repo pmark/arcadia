@@ -11,8 +11,13 @@ export type PathGapReason = "operator_owned" | "missing_action" | "undefined_nex
 export interface PathStep {
   kind: "action";
   workItemId: string;
+  /** `plan/<slug>#<action-id>`; the step opens `workItemId`. */
   docRef: string | null;
   title: string;
+  /** One sentence on why this step is on the route. */
+  reason: string;
+  /** `declared` when the Action's own `why` supplied it; `derived` when the route's structure did. */
+  reasonSource: "declared" | "derived";
   state: PathStepState;
   nextAction: string | null;
   clarification: string | null;
@@ -27,6 +32,8 @@ export interface PathGap {
   detail: string;
   /** Set only for `undefined_next_move`: the Action a resolution screen needs. */
   workItemId?: string;
+  /** Set only for `missing_action`: the reference no plan carries, so there is nothing to open. */
+  missingRef?: string;
 }
 
 export type PathNode = PathStep | PathGap;

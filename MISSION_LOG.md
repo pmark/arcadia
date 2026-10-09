@@ -2166,3 +2166,17 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-09 — Agent Ask pr-opened-arcadia-pr1153
+
+- **Did:** /runs is officially retired: PR #1153 records that /production, /actions, /review and the coming /todo replace it, so no agent builds there again. https://github.com/pmark/arcadia/pull/1153
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
+
+## 2026-10-09 — Agent Ask pr-opened-arcadia-pr1157
+
+- **Did:** Every step on the path now says why it matters and links to its Action: PR #1157 adds an optional why on Actions plus derived reasons like Unblocks X. https://github.com/pmark/arcadia/pull/1157
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

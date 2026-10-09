@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { getWorkItem, listWorkItemDependencies } from "../db/repositories.js";
 import { listSplitRemainders } from "../docs/splitRemainders.js";
 import type { WorkItemSummary } from "../domain/types.js";
+import { completesGate, remainderOf, stepReason, unblocks, type StepReasonSource } from "./stepReason.js";
 import type { GateStatus, NorthStarDocument, ResolvedGate } from "./types.js";
 
 /**
@@ -33,8 +34,17 @@ export type PathGapReason =
 export interface PathStep {
   kind: "action";
   workItemId: string;
+  /**
+   * The planned work item this step is, as `plan/<slug>#<action-id>`. It is
+   * the step's link: the CLI prints it and the dashboard opens `workItemId`.
+   * Null only for an Action no plan document declares.
+   */
   docRef: string | null;
   title: string;
+  /** One sentence on why this step is on the route. */
+  reason: string;
+  /** `declared` when the Action's own `why` supplied it, `derived` when the route's structure did. */
+  reasonSource: StepReasonSource;
   state: PathStepState;
   nextAction: string | null;
   clarification: string | null;
@@ -51,6 +61,8 @@ export interface PathGap {
   detail: string;
   /** Set only for `undefined_next_move`: the Action a resolution screen needs. */
   workItemId?: string;
+  /** Set only for `missing_action`: the reference no plan document carries. There is nothing to link to. */
+  missingRef?: string;
 }
 
 export type PathNode = PathStep | PathGap;
@@ -92,8 +104,14 @@ export interface PathBrief {
   warnings: string[];
 }
 
+/** How a step came to be on the route, which is what a derived reason says. */
+type ChainOrigin =
+  | { kind: "gate" }
+  | { kind: "dependency"; dependentTitle: string }
+  | { kind: "remainder"; parentTitle: string };
+
 /** One entry of a walked chain: an Action, or a remainder no plan carries. */
-type ChainEntry = { item: WorkItemSummary; depth: number } | { missingRemainderRef: string };
+type ChainEntry = { item: WorkItemSummary; depth: number; origin: ChainOrigin } | { missingRemainderRef: string };
 
 /**
  * Walk the `depends_on` closure behind one Action, dependencies first, then
@@ -117,22 +135,29 @@ function collectChain(
   rootId: string,
   seen: Set<string>,
   depth: number,
-  out: ChainEntry[]
+  out: ChainEntry[],
+  origin: ChainOrigin
 ): void {
   if (seen.has(rootId)) return;
   seen.add(rootId);
 
+  const item = getWorkItem(db, rootId);
+
+  // The first Action to reach a prerequisite is the one it unblocks. A shared
+  // prerequisite reached again is already `seen`, so it keeps that first reason.
   for (const dependency of listWorkItemDependencies(db, rootId)) {
-    collectChain(db, dependency.workItemId, seen, depth + 1, out);
+    collectChain(db, dependency.workItemId, seen, depth + 1, out, {
+      kind: "dependency",
+      dependentTitle: item?.title ?? "a later step"
+    });
   }
 
-  const item = getWorkItem(db, rootId);
   if (!item) return;
-  out.push({ item, depth });
+  out.push({ item, depth, origin });
 
   for (const remainder of listSplitRemainders(db, item)) {
     if (remainder.item) {
-      collectChain(db, remainder.item.id, seen, depth, out);
+      collectChain(db, remainder.item.id, seen, depth, out, { kind: "remainder", parentTitle: item.title });
     } else if (!seen.has(remainder.ref)) {
       seen.add(remainder.ref);
       out.push({ missingRemainderRef: remainder.ref });
@@ -156,6 +181,17 @@ function nextMoveUndefined(item: WorkItemSummary): boolean {
   if (item.status === "done") return false;
   const clarification = item.clarification_status;
   return clarification === "unclarified" || clarification === "question_open";
+}
+
+function derivedReason(origin: ChainOrigin, gateTitle: string): string {
+  switch (origin.kind) {
+    case "gate":
+      return completesGate(gateTitle);
+    case "dependency":
+      return unblocks(origin.dependentTitle);
+    case "remainder":
+      return remainderOf(origin.parentTitle);
+  }
 }
 
 function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
@@ -182,14 +218,15 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
         : {
             kind: "gap",
             reason: "missing_action",
-            detail: `This gate tracks \`${gate.actionRef}\`, which no plan document currently carries. Either the reference is stale or the work was never written up.`
+            detail: `This gate tracks \`${gate.actionRef}\`, which no plan document currently carries. Either the reference is stale or the work was never written up. There is no Action to open.`,
+            missingRef: gate.actionRef
           };
 
     return { ...base, nodes: [gap], done: gate.status === "done" ? 1 : 0, remaining: gate.status === "done" ? 0 : 1 };
   }
 
   const collected: ChainEntry[] = [];
-  collectChain(db, gate.workItemId, new Set(), 0, collected);
+  collectChain(db, gate.workItemId, new Set(), 0, collected, { kind: "gate" });
 
   const nodes: PathNode[] = [];
   for (const entry of collected) {
@@ -197,11 +234,12 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
       nodes.push({
         kind: "gap",
         reason: "missing_action",
-        detail: `This work was split and \`${entry.missingRemainderRef}\` was named as its remainder, but no plan document currently carries it. Either the reference is stale or the remainder was never written up.`
+        detail: `This work was split and \`${entry.missingRemainderRef}\` was named as its remainder, but no plan document currently carries it. Either the reference is stale or the remainder was never written up. There is no Action to open.`,
+        missingRef: entry.missingRemainderRef
       });
       continue;
     }
-    const { item, depth } = entry;
+    const { item, depth, origin } = entry;
     if (nextMoveUndefined(item)) {
       // The exact recorded question, not a paraphrase — a generic "not decided
       // yet" is what let an operator conflate this gap with an unrelated
@@ -223,6 +261,7 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
       workItemId: item.id,
       docRef: item.doc_ref,
       title: item.title,
+      ...stepReason(item.why, derivedReason(origin, gate.title)),
       state: stateOf(item),
       nextAction: item.next_action,
       clarification: item.clarification_status,

@@ -31,7 +31,7 @@ import {
 } from "./redAlerts.js";
 import { canonicalPath, getRepositoryLease, getSession, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession } from "../sessions/launch.js";
-import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -138,6 +138,9 @@ export interface ManagedProductionTickProjectResult {
   launch: ManagedProductionLaunchAttempt | null;
 }
 
+/** Superseded terminal candidates already reported by this worker process (Issue #1158). */
+const reportedSupersededTerminalCandidates = new Set<string>();
+
 /**
  * A terminal Session no longer holds the repository lease. Rediscover its
  * unfinished handoff from the existing exit, preservation and settlement
@@ -187,7 +190,13 @@ function recoverTerminalHandoff(
     if (exit.outcome !== "accepted_completion" && !latestCandidateSettlementCommit(db, session, repoRoot)) continue;
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
-      log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      // Reported once per worker process per (Session, Action input revision):
+      // the candidate is skipped identically on every tick (Issue #1158).
+      const reportKey = `${session.id}\u0000${action ? requirementIdentity({ projectSlug: session.project_slug, planSlug: session.plan_slug, action }).inputRevision : ""}`;
+      if (!reportedSupersededTerminalCandidates.has(reportKey)) {
+        reportedSupersededTerminalCandidates.add(reportKey);
+        log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      }
       continue;
     }
     pending.push(session);
@@ -1613,7 +1622,7 @@ export function runManagedProductionTick(
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const result = reconcileSessionExit({
-          db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot,
+          db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
             : settledOnCandidate
@@ -1671,7 +1680,10 @@ export function runManagedProductionTick(
             }, options.handoff?.preserve ?? {});
             log(`Operator launch authorization ${conclusion.authorizationId} used for Session ${lease.id}: ${conclusion.outcome}; `
               + `commit ${preservation.kind === "preserved" ? `${preservation.state} ${preservation.commitSha.slice(0, 12)}` : `${preservation.kind} (${preservation.kind === "refused" ? preservation.reason : "no changes"})`}; `
-              + `draft PR ${conclusion.pullRequestUrl ?? (conclusion.publishState === "none" ? "not opened (no accepted completion)" : `not opened yet (${conclusion.publishState})`)}.`);
+              + `draft PR ${conclusion.pullRequestUrl ?? (conclusion.publishState === "none" ? "not opened (no accepted completion)" : `not opened yet (${conclusion.publishState})`)}.`
+              + (result.receipt.reason.startsWith(PROVIDER_SIGN_IN_FAILURE_PREFIX)
+                ? " The provider was not signed in and no work was done, but Decision 0096 makes the authorization one-shot: sign in, then a fresh confirmed Launch is needed."
+                : ""));
           } catch (error) {
             log(`Operator launch authorization for Session ${lease.id} could not be concluded: ${error instanceof Error ? error.message : String(error)}`);
           }

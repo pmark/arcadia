@@ -33,6 +33,13 @@ export interface NormalizedAgentAskAction {
   dependencies: string[];
   references: string[];
   targetRef: string | null;
+  /**
+   * One sentence on why this Action matters, carried onto the Plan Action's
+   * `why`. Present only when the Ask declared one: the key is left off
+   * otherwise so the fingerprint of every Ask recorded before it existed is
+   * unchanged. An amendment that omits it leaves the checked-in `why` alone.
+   */
+  why?: string;
   /** Lists the Ask left out entirely; always present on new proposals (empty when none), absent only on proposals recorded before #1079/#1092. */
   omittedLists?: AgentAskListField[];
 }
@@ -47,7 +54,10 @@ export interface NormalizedAgentAskOption { label: string; consequence: string; 
  */
 export type AgentAskEvidenceStatus = "met" | "failed" | "skipped";
 export interface NormalizedAgentAskEvidence { criterion: string; status: AgentAskEvidenceStatus; note: string | null; }
-export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[];
+  /** The single Action's `why` for an `action` Ask with no `actions` list; absent otherwise (bundles carry `actions[].why`). */
+  why?: string;
+  actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -60,9 +70,10 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
   sourcePath: string | null;
 }
 
-export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question"]);
+export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question", "why"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
-export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref"]);
+export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
+export const ACTION_WHY_MAX_LENGTH = 300;
 export const STRICT_EVIDENCE_FIELDS = new Set(["criterion", "status", "note"]);
 export const AGENT_ASK_EVIDENCE_STATUSES = ["met", "failed", "skipped"] as const;
 export const CANDIDATE_REVISION_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -138,12 +149,21 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (evidence.length > 0 && !(["complete", "split"] as string[]).includes(intent)) {
     throw validationError("Agent Ask evidence is only supported for complete or split intent.");
   }
+  if (intent === "complete" && evidenceHasPlaceholder(evidence)) {
+    throw validationError(
+      `A complete Agent Ask's evidence still contains the placeholder ${EVIDENCE_PLACEHOLDER_MARKER} ... >. Replace each note with the command you ran and what you observed, then run the command again.`
+    );
+  }
   if ((intent === "complete" || intent === "split") && evidence.length === 0) {
     throw validationError(`A ${intent} Agent Ask requires at least one evidence entry.`);
   }
   const acceptance = stringList(data.acceptance, "acceptance");
   if (intent === "split" && acceptance.length === 0) {
     throw validationError("A split Agent Ask requires acceptance naming the narrowed criteria the finished slice actually met.");
+  }
+  const topLevelWhy = actionWhyField(data.why, null);
+  if (topLevelWhy.why !== undefined && (intent !== "action" || actions.length > 0)) {
+    throw validationError("Agent Ask top-level why is only supported for an action Ask without an actions list; put the reason on each actions[].why.");
   }
   const gateQuestion = optionalText(data.gate_question);
   if (gateQuestion !== null && intent !== "decision") {
@@ -152,7 +172,7 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), ...topLevelWhy, actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
 /**
@@ -276,11 +296,12 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?
   }
   if (normalized.requestedAuthority === "apply_if_approved") requiredDecisions.push("Accept the exact preview before apply.");
   const targetKind = normalized.intent === "auto" ? (resolved?.kind ?? "interpretation") : normalized.intent;
-  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null }];
+  const proposedItems = normalized.actions.length > 0 ? normalized.actions : [{ desiredResult: normalized.desiredResult, acceptance: normalized.acceptance, dependencies: normalized.dependencies, references: normalized.references, targetRef: null, ...(normalized.why ? { why: normalized.why } : {}) }];
   const effects = proposedItems.map((item) => {
     const itemTargetRef = resolved ? resolved.targetRef : (item.targetRef ?? normalized.targetRef);
     const operation = resolved ? "update" : normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
     const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies, references: item.references };
+    if ("why" in item && item.why) fields.why = item.why;
     if (normalized.intent === "decision") { fields.status = "open"; fields.options = normalized.options; }
     if (resolved) { fields.resolvedIdentifier = resolved.targetRef; fields.resolvedLabel = resolved.label; }
     return { operation, targetKind, targetRef: itemTargetRef, fields, status: "proposed", authority: "operator_acceptance_required" } satisfies AgentAskEffect;
@@ -306,9 +327,20 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
       dependencies: stringList(item.dependencies, `actions[${index}].dependencies`),
       references: stringList(item.references, `actions[${index}].references`),
       targetRef: optionalText(item.target_ref),
+      ...actionWhyField(item.why, index),
       ...omittedListsField(item)
     };
   });
+}
+/** `{ why }` when the Ask declared a non-empty one, `{}` otherwise; one sentence, so never multi-line. */
+function actionWhyField(value: unknown, index: number | null): { why?: string } {
+  const why = optionalText(value);
+  if (why === null) return {};
+  if (/[\r\n]/.test(why) || why.length > ACTION_WHY_MAX_LENGTH) {
+    const where = index === null ? "why" : `actions[${index}].why`;
+    throw validationError(`Agent Ask ${where} must be one sentence on a single line of at most ${ACTION_WHY_MAX_LENGTH} characters.`, { index, length: why.length });
+  }
+  return { why };
 }
 function optionList(value: unknown): NormalizedAgentAskOption[] {
   if (value === undefined || value === null) return [];
@@ -329,6 +361,15 @@ function optionList(value: unknown): NormalizedAgentAskOption[] {
   });
   if (recommendedCount > 1) throw validationError("At most one Agent Ask option may be marked recommended.");
   return options;
+}
+/**
+ * The marker a prefilled evidence note starts with until the agent replaces it
+ * (the Action brief's draft-only completion recipe). A `complete` Ask whose
+ * evidence still carries it was never filled in and must not draft or settle.
+ */
+export const EVIDENCE_PLACEHOLDER_MARKER = "<REPLACE:";
+export function evidenceHasPlaceholder(evidence: ReadonlyArray<{ note: string | null }>): boolean {
+  return evidence.some((entry) => entry.note?.includes(EVIDENCE_PLACEHOLDER_MARKER) === true);
 }
 function evidenceList(value: unknown): NormalizedAgentAskEvidence[] {
   if (value === undefined || value === null) return [];

@@ -61,6 +61,31 @@ describe("Agent Ask split", () => {
     expect(replay.data.receipt).toEqual(applied.data.receipt);
   });
 
+  it("carries a remainder's why onto the remainder Action", () => {
+    const { workspace, repo, head } = fixture();
+    const request = splitAsk("split-why", head).replace(
+      '  - id: first-remainder',
+      '  - id: first-remainder\n    why: The first slice proved nothing without the second.'
+    );
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-why", disposition: "accepted"
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-split-why", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+
+    const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(plan).toMatchObject({
+      actions: [
+        expect.objectContaining({ id: "first", why: null }),
+        expect.objectContaining({ id: "second", why: null }),
+        expect.objectContaining({ id: "first-remainder", why: "The first slice proved nothing without the second." })
+      ]
+    });
+  });
+
   it("places the remainder right after the narrowed Action even when other Actions are queued between them", () => {
     const { workspace, repo, head } = fixture({ queueOrder: ["demo/second", "demo/first"] });
     const proposal = runAgentAskPreviewCommand({ workspace, request: splitAsk("split-order", head) });

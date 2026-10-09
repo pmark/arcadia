@@ -481,6 +481,7 @@ function parseActions(problems: Problems, raw: unknown, currentAction: string | 
       question: question ?? null,
       confidence: (confidence ?? null) as never,
       source: optionalString(value, "source"),
+      why: optionalString(value, "why"),
       milestone: optionalString(value, "milestone"),
       dependsOn: stringArray(value.depends_on),
       splitInto: stringArray(value.split_into),

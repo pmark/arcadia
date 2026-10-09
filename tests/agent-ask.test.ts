@@ -197,6 +197,50 @@ describe("Agent Ask v1", () => {
     })).toThrow("action contains unknown fields");
   });
 
+  it("accepts a per-Action why, trimmed, and leaves the key off an Action that declares none", () => {
+    const workspace = initializedWorkspace();
+    const request = `${strictAsk("why-1", "action")}actions:\n  - desired_result: Build proof\n    why: "  Everything else is judged against it.  "\n    acceptance:\n      - Proof exists\n  - desired_result: Publish guide\n    acceptance:\n      - Guide exists\n`;
+    const result = runAgentAskPreviewCommand({ workspace, request });
+    const [first, second] = result.data.proposal.normalized.actions;
+    expect(first.why).toBe("Everything else is judged against it.");
+    expect(second).not.toHaveProperty("why");
+    expect(result.data.proposal.effects[0].fields).toMatchObject({ why: "Everything else is judged against it." });
+    expect(result.data.proposal.effects[1].fields).not.toHaveProperty("why");
+
+    // The why round-trips through the stored proposal, which settlement reads.
+    const stored = withDatabase(workspace, (db) =>
+      (db.prepare("SELECT proposal_json FROM agent_ask_proposals").get() as { proposal_json: string }).proposal_json
+    );
+    expect(JSON.parse(stored).normalized.actions[0].why).toBe("Everything else is judged against it.");
+  });
+
+  it("refuses a why that is not a string, spans lines, or runs past 300 characters", () => {
+    const workspace = initializedWorkspace();
+    const ask = (why: string): string =>
+      `${strictAsk("why-bad", "action")}actions:\n  - desired_result: Build proof\n    why: ${why}\n    acceptance:\n      - Proof exists\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request: ask("[a, b]") })).toThrow("must be strings");
+    expect(() => runAgentAskPreviewCommand({ workspace, request: ask('"Line one.\\nLine two."') })).toThrow("single line");
+    expect(() => runAgentAskPreviewCommand({ workspace, request: ask(`"${"x".repeat(301)}"`) })).toThrow("at most 300");
+  });
+
+  it("accepts a top-level why only for a single-Action action Ask, and lists it in the preview", () => {
+    const workspace = initializedWorkspace();
+    const result = runAgentAskPreviewCommand({ workspace, request: `${strictAsk("why-top", "action")}why: Because the release depends on it.\n` });
+    expect(result.data.proposal.normalized.why).toBe("Because the release depends on it.");
+    expect(result.data.proposal.effects[0].fields).toMatchObject({ why: "Because the release depends on it." });
+
+    // With an actions list the reason belongs on each Action, and elsewhere it belongs to nothing.
+    const bundle = `${strictAsk("why-top-bundle", "action")}why: Because.\nactions:\n  - desired_result: Build proof\n    acceptance:\n      - Proof exists\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request: bundle })).toThrow("top-level why is only supported");
+    expect(() => runAgentAskPreviewCommand({ workspace, request: `${strictAsk("why-top-log", "log")}why: Because.\n` })).toThrow("top-level why is only supported");
+  });
+
+  it("refuses a top-level target_ref Ask that also lists actions, so a per-Action why can never be previewed and then dropped", () => {
+    const workspace = initializedWorkspace();
+    const request = `${strictAsk("why-target-bundle", "action")}target_ref: action/existing\nactions:\n  - desired_result: Build proof\n    why: Because.\n    acceptance:\n      - Proof exists\n`;
+    expect(() => runAgentAskPreviewCommand({ workspace, request })).toThrow("cannot also amend one Action target_ref");
+  });
+
   it("accepts Plan-shaped Actions with shared references and per-Action amendment targets", () => {
     const workspace = initializedWorkspace();
     const request = [

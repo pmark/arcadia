@@ -388,12 +388,12 @@ export function settleAgentAsk(db: Database.Database, input: {
             path: activePlanPath,
             before: planBefore,
             after: withPlanUpdated(amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
-              amendedDependencies, amendedReferences, proposal.normalized.requestId, input.responsibility))
+              amendedDependencies, amendedReferences, proposal.normalized.requestId, input.responsibility, proposal.normalized.why))
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
           effects.push(`Field changes for ${queueActionKey}: ${describeActionAmendment(plan.actions.find((action) => action.id === actionId)!, {
             desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
-            dependencies: amendedDependencies, references: amendedReferences
+            dependencies: amendedDependencies, references: amendedReferences, why: proposal.normalized.why
           })}.`);
           if (legacyListFallback) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
           if (input.responsibility) {
@@ -406,7 +406,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             ? proposal.normalized.actions
             : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
               dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null,
-              omittedLists: proposal.normalized.omittedLists ?? [] }];
+              omittedLists: proposal.normalized.omittedLists ?? [],
+              ...(proposal.normalized.why ? { why: proposal.normalized.why } : {}) }];
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
@@ -468,18 +469,19 @@ export function settleAgentAsk(db: Database.Database, input: {
               const amendedDependencies = (action.omittedLists ?? []).includes("dependencies") ? null : action.dependencies;
               const amendedReferences = (action.omittedLists ?? []).includes("references") ? null : action.references;
               planAfter = amendAction(planAfter, action.id, action.desiredResult, action.acceptance, amendedDependencies,
-                amendedReferences, proposal.normalized.requestId);
+                amendedReferences, proposal.normalized.requestId, undefined, action.why);
               effects.push(`Amended Action ${project.slug}/${action.id} in active Plan ${plan.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(plan.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
-                dependencies: amendedDependencies, references: amendedReferences
+                dependencies: amendedDependencies, references: amendedReferences, why: action.why
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
             } else {
               planAfter = appendPlanAction(planAfter, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
                 acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
-                source: `Agent Ask ${proposal.normalized.requestId}`
+                source: `Agent Ask ${proposal.normalized.requestId}`,
+                why: action.why
               });
               effects.push(`Created Action ${project.slug}/${action.id} in active Plan ${plan.slug} with Responsibility ${input.responsibility}.`);
             }
@@ -693,11 +695,11 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             if (action.existing) {
               after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
-                action.amendedReferences, proposal.normalized.requestId);
+                action.amendedReferences, proposal.normalized.requestId, undefined, action.why);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
-                dependencies: action.amendedDependencies, references: action.amendedReferences
+                dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
               actionIdsToValidate.push(action.id);
@@ -705,7 +707,8 @@ export function settleAgentAsk(db: Database.Database, input: {
               after = appendPlanAction(after, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
                 acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
-                source: `Agent Ask ${proposal.normalized.requestId}`
+                source: `Agent Ask ${proposal.normalized.requestId}`,
+                why: action.why
               });
               effects.push(`Created Action ${project.slug}/${action.id} in Plan ${target.slug} with Responsibility ${input.responsibility}.`);
               actionIdsToValidate.push(action.id);
@@ -1269,7 +1272,8 @@ export function settleAgentAsk(db: Database.Database, input: {
             next = appendPlanAction(next, {
               id: remainderAction.id, title: remainderAction.desiredResult, responsibility: action.responsibility,
               acceptance: remainderAction.acceptance, dependencies: remainderAction.dependencies, references: remainderAction.references,
-              source: `Agent Ask ${proposal.normalized.requestId}`
+              source: `Agent Ask ${proposal.normalized.requestId}`,
+              why: remainderAction.why
             });
           }
           // The narrowed Action's own `split_into` names the remainder for any
@@ -2131,9 +2135,21 @@ export function markAgentAskNotificationSent(db: Database.Database, settlementId
   }
 }
 
+/**
+ * `why` is prose, so it is always written as a double-quoted scalar. A bare
+ * `yamlScalar` leaves `[x] done`, `{a}`, `true`, `null` or `123` unquoted, and
+ * those re-parse as a list, mapping, boolean, null or number, so the settled
+ * `why` would silently disappear.
+ */
+function quotedWhy(why: string): string {
+  return JSON.stringify(why.trim());
+}
+
 /** Append one Action block to a managed Plan's block-form `actions:` list. Shared with production scheduling's discovery path. */
 export function appendPlanAction(content: string, action: {
   id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; references: string[]; source: string;
+  /** One sentence on why the Action matters; omitted from the block when absent. */
+  why?: string | null;
 }): string {
   const end = content.indexOf("\n---", 4);
   if (end < 0) throw validationError("Managed Plan has no closing frontmatter marker.");
@@ -2158,6 +2174,7 @@ export function appendPlanAction(content: string, action: {
     "    clarification: clarified",
     "    confidence: high",
     `    source: ${yamlScalar(action.source)}`,
+    ...(action.why ? [`    why: ${quotedWhy(action.why)}`] : []),
     "    acceptance_criteria:",
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
@@ -2503,6 +2520,7 @@ function newDraftPlan(
     "    clarification: clarified",
     "    confidence: high",
     `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`,
+    ...(action.why ? [`    why: ${quotedWhy(action.why)}`] : []),
     "    acceptance_criteria:",
     ...action.acceptance.map((criterion) => `      - ${yamlScalar(criterion)}`),
     `    depends_on: [${action.dependencies.join(", ")}]`,
@@ -2526,7 +2544,7 @@ function newDraftPlan(
  */
 function describeActionAmendment(
   existing: PlanActionDoc,
-  next: { desiredResult: string; acceptance: string[]; dependencies: string[] | null; references: string[] | null }
+  next: { desiredResult: string; acceptance: string[]; dependencies: string[] | null; references: string[] | null; why?: string | null }
 ): string {
   const fields: string[] = [];
   const list = (items: string[]): string => `[${items.join(", ")}]`;
@@ -2542,6 +2560,7 @@ function describeActionAmendment(
   else if (JSON.stringify(next.references) === JSON.stringify(existing.references)) fields.push("references unchanged");
   else if (next.references.length === 0) fields.push("references cleared");
   else fields.push(`references: ${list(existing.references)} \u2192 ${list(next.references)}`);
+  if (next.why && next.why !== existing.why) fields.push("why changed");
   return fields.join("; ");
 }
 
@@ -2596,7 +2615,8 @@ function amendAction(
   dependencies: string[] | null,
   references: string[] | null,
   requestId: string,
-  responsibility?: AgentAskResponsibility
+  responsibility?: AgentAskResponsibility,
+  why?: string | null
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
@@ -2624,6 +2644,14 @@ function amendAction(
   if (references !== null) {
     block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
       references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
+  }
+  // An amendment that declares a `why` sets it; one that omits it leaves the
+  // checked-in value alone. Function replacers keep `$` in prose literal.
+  if (why) {
+    const whyLine = `    why: ${quotedWhy(why)}`;
+    block = /^ {4}why:/m.test(block)
+      ? block.replace(/^ {4}why:.*$/m, () => whyLine)
+      : block.replace(/^ {4}clarification:.*$/m, (line) => `${line}\n${whyLine}`);
   }
   block = /^ {4}source:/m.test(block)
     ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)

@@ -13,14 +13,14 @@
       "trigger": "ask, request help, concern, idea, proposal capture, governance, complete, split, draft, preview, settle, workspace, database denied",
       "path": "docs/agent-guidance/agent-asks.md",
       "read_before": "Before submitting a request or changing Project state; direct proposal capture needs no implementation Action; use ordinary host permission recovery or preserve a blocked validated Ask.",
-      "sha256": "852850db14eaec44dc5ced90ee400d37eca9c16c1ffaa9abb5f04501d6c848e2"
+      "sha256": "47497a87dcb9edb06135027e7837b4097cb7c5e9dc90540c1939cd2913a027fb"
     },
     {
       "id": "operator-actions",
       "trigger": "operator, picker, runs, grant, approval, script, publish, ping, nudge, notify operator, look at this",
       "path": "docs/agent-guidance/operator-actions.md",
       "read_before": "Before preparing any operator step; generating a button never grants execution authority.",
-      "sha256": "35920c9d971e5998b8b0344e7b34db30717048e0b806c1d4ee57923c0917c457"
+      "sha256": "0326303502812d7cd7142ddf6964427eb8778bfa52600b0ceeddb980be8485ce"
     },
     {
       "id": "proposals",
@@ -62,7 +62,7 @@
       "trigger": "Project, Plan, Action, Decision, status, acceptance",
       "path": "docs/managed-documents.md",
       "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "3c598ee001c089ab5d706de824bf83686ee2f273119d7bafeedf20f3b95c9252"
+      "sha256": "40a0b99dcad5948c70670c664cd0ac6b7b8cc312b3d3c516186aadff40fdfb2a"
     },
     {
       "id": "planning",

@@ -29,6 +29,7 @@ export interface OpenRemainder {
   workItemId: string | null;
   title: string | null;
   status: string | null;
+  why: string | null;
 }
 
 export interface TheOneThing {
@@ -39,6 +40,8 @@ export interface TheOneThing {
   unlocks: string;
   projectName: string | null;
   onTarget: boolean;
+  /** Set when this names a step: why it matters and its plan reference. Null otherwise. */
+  step: { reason: string; reasonSource: "declared" | "derived"; docRef: string | null } | null;
 }
 
 export interface AttentionSlice {

@@ -65,6 +65,9 @@ function checkCodexSignIn(env?: NodeJS.ProcessEnv): ProviderSignInStatus | null 
   return { signedIn: result.status === 0, remedy };
 }
 
+/** The one-sentence Claude Code sign-in remedy shared by the launch preflight and the exit receipt. */
+export const CLAUDE_CODE_SIGN_IN_REMEDY = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
+
 /**
  * `claude auth status --json` reads the same credential sources a launched
  * Session would (the `CLAUDE_CODE_OAUTH_TOKEN` environment variable, the
@@ -85,7 +88,7 @@ function checkClaudeCodeSignIn(workspace?: string, env?: NodeJS.ProcessEnv): Pro
   // instead of relying on this default.
   if (process.env.VITEST && !env) return null;
 
-  const remedy = 'Sign in to Claude Code on this worker host: run "claude auth login" interactively, or for an unattended worker run "claude setup-token" and write its printed token to the workspace\'s documented Claude Code token file (setup-token only prints the token; it does not save it), then retry.';
+  const remedy = CLAUDE_CODE_SIGN_IN_REMEDY;
 
   if (workspace) {
     const paths = getWorkspacePaths(workspace);

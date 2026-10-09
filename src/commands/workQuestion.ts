@@ -39,6 +39,9 @@ export interface WorkQuestionContextData {
     gapType: string | null;
     openQuestion: string | null;
     expectedArtifact: string | null;
+    nextAction: string;
+    /** The Action's declared `why`; null when its plan wrote none. */
+    why: string | null;
   };
   /** False when there is nothing here for an answer to resolve. */
   resolvable: boolean;
@@ -93,7 +96,9 @@ export function runWorkShowQuestionCommand(options: {
         clarificationStatus: workItem.clarification_status,
         gapType: workItem.gap_type,
         openQuestion: workItem.open_question,
-        expectedArtifact: workItem.expected_artifact
+        expectedArtifact: workItem.expected_artifact,
+        nextAction: workItem.next_action,
+        why: workItem.why
       },
       resolvable: workItem.clarification_status === "question_open" && Boolean(workItem.open_question?.trim()),
       reviewItem: reviewItem ? reviewPacketForReviewItem(reviewItem) : null,

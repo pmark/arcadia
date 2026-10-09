@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
+import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
@@ -175,6 +177,119 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("After you settle, `git status` must be clean: settlement archives the drafted Ask file into");
     expect(brief).toContain(".arcadia/asks/archive/ in its own commit, so never commit the draft or keep a copy of it.");
     expect(brief).toContain("If a draft of the Ask you just settled still remains in .arcadia/asks/, delete it.");
+  });
+
+  describe("draft-only completion recipe for Sessions that cannot commit", () => {
+    const headless = (repo: string, agent: "claude" | "codex" | "opencode", isHeadless = true) => renderActionBrief({
+      repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+      worktreePath: repo, branch: `${agent}/define-contract`, agent, baseRevision: head(repo), headless: isHeadless
+    });
+    const draftCommand = (text: string): { dir: string; json: string } => {
+      const match = /^ {5}arcadia agent-ask draft --dir '([^']*)' '(.*)'$/m.exec(text);
+      if (!match) throw new Error(`no draft command in brief:\n${text}`);
+      return { dir: match[1], json: match[2].replaceAll("'\\''", "'") };
+    };
+
+    it("replaces the generic steps 2-3 for headless Claude with the host-owned statement and one exact draft command", () => {
+      const repo = briefRepo();
+      const brief = headless(repo, "claude");
+      const protocol = brief.slice(brief.indexOf("Completion protocol"));
+      expect(protocol).toContain("git add, git commit, git push and arcadia-preserve-broker-claude are host-owned in this Session and");
+      expect(protocol).toContain("will be refused. Do not run them or try to change permissions");
+      expect(protocol).toContain("do not write Ask files by hand");
+      expect(protocol).not.toContain("If your sandbox cannot commit");
+      expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
+      const { dir, json } = draftCommand(protocol);
+      expect(dir).toBe(repo);
+      const ask = JSON.parse(json);
+      expect(ask).toMatchObject({
+        agent_ask: "v1", request_id: `complete-define-contract-${head(repo).slice(0, 12)}`, project: "test-project",
+        intent: "complete", target_ref: "action/define-contract", candidate_revision: head(repo)
+      });
+      expect(ask.evidence.map((entry: { criterion: string; status: string }) => [entry.criterion, entry.status])).toEqual([
+        ["The contract exists.", "met"], ["The contract is published.", "met"]
+      ]);
+      expect(ask.evidence[0].note).toContain("<REPLACE");
+    });
+
+    it("keeps Codex's broker step first, then the draft recipe when the broker refuses; skips interactive and opencode", () => {
+      const repo = briefRepo();
+      const codex = headless(repo, "codex");
+      expect(codex).toContain("existing fixed launcher: arcadia-preserve-broker-codex");
+      expect(codex).toContain("Do not run raw git add, git commit or git push");
+      expect(codex).toContain("If the broker\n     refuses");
+      expect(codex).not.toContain("host-owned in this Session");
+      expect(codex.indexOf("arcadia-preserve-broker-codex")).toBeLessThan(codex.indexOf("arcadia agent-ask draft --dir"));
+      expect(headless(repo, "claude", false)).toContain("arcadia-preserve-broker-claude");
+      expect(headless(repo, "opencode")).toContain("arcadia-preserve-broker-opencode");
+      expect(headless(repo, "opencode")).not.toContain("host-owned in this Session");
+    });
+
+    it("uses the completion request id the Action text names", () => {
+      const repo = briefRepo();
+      const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace(
+        "next_action: Define the bounded contract.",
+        "next_action: Define the bounded contract; record completion under the unused Agent Ask request id complete-define-contract-run7 and stop."
+      ));
+      expect(JSON.parse(draftCommand(headless(repo, "claude")).json).request_id).toBe("complete-define-contract-run7");
+    });
+
+    it("refuses the rendered command run verbatim, with its placeholders unfilled, and writes nothing", () => {
+      const repo = briefRepo();
+      const { dir, json } = draftCommand(headless(repo, "claude"));
+      expect(() => runAgentAskDraftCommand({ request: json, dir, workspace: path.join(repo, "no-workspace") }))
+        .toThrowError(/still contains the placeholder <REPLACE:.*Replace each note/);
+      expect(existsSync(path.join(repo, ".arcadia", "asks"))).toBe(false);
+    });
+
+    it("takes only a canonical-charset id from the Action text: no trailing period, no uppercase or underscore", () => {
+      const planPath = (repo: string) => path.join(repo, "docs", "plans", "copy-proof.md");
+      const withText = (text: string) => {
+        const repo = briefRepo();
+        writeFileSync(planPath(repo), readFileSync(planPath(repo), "utf8").replace("next_action: Define the bounded contract.", `next_action: ${text}`));
+        return JSON.parse(draftCommand(headless(repo, "claude")).json).request_id as string;
+      };
+      expect(withText("Record under the Agent Ask request id complete-x-run7.")).toBe("complete-x-run7");
+      for (const bad of ["complete-X-run7", "complete-x_run7"]) {
+        expect(withText(`Record under the Agent Ask request id ${bad} now.`)).toMatch(/^complete-define-contract-[0-9a-f]{12}$/);
+      }
+    });
+
+    it("quotes a single quote in a criterion and in the worktree path so a POSIX shell parses the exact arguments back", () => {
+      const repo = briefRepo();
+      const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", "The contract doesn't exist yet."));
+      const tricky = "/tmp/it's a 'worktree'";
+      const brief = renderActionBrief({
+        repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+        worktreePath: tricky, branch: "claude/define-contract", agent: "claude", baseRevision: head(repo), headless: true
+      });
+      const line = /^ {5}arcadia agent-ask draft .*$/m.exec(brief)?.[0].trim();
+      if (!line) throw new Error("no draft command");
+      const out = execFileSync("sh", ["-c", `arcadia() { for a in "$@"; do printf '%s\\0' "$a"; done; }; ${line}`], { encoding: "utf8" });
+      const args = out.split("\0").slice(0, -1);
+      expect(args.slice(0, 3)).toEqual(["agent-ask", "draft", "--dir"]);
+      expect(args[3]).toBe(tricky);
+      expect(JSON.parse(args[4]).evidence[0].criterion).toBe("The contract doesn't exist yet.");
+      expect(args).toHaveLength(5);
+    });
+
+    it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
+      const repo = briefRepo();
+      const { dir, json } = draftCommand(headless(repo, "claude"));
+      const filled = json.replaceAll("<REPLACE: the command you ran and what you observed for this criterion>", "ran the validation; it passed");
+      const drafted = runAgentAskDraftCommand({ request: filled, dir, workspace: path.join(repo, "no-workspace") });
+      const canonical = path.join(repo, ".arcadia", "asks", `agent-ask-complete-define-contract-${head(repo).slice(0, 12)}.yaml`);
+      expect(drafted.data.path).toBe(canonical);
+      expect(drafted.data.written).toBe("created");
+      expect(existsSync(canonical)).toBe(true);
+      const normalized = normalizeAgentAsk({ request: readFileSync(canonical, "utf8") });
+      expect(normalized.intent).toBe("complete");
+      expect(normalized.evidence.map((entry) => [entry.criterion, entry.status])).toEqual([
+        ["The contract exists.", "met"], ["The contract is published.", "met"]
+      ]);
+    });
   });
 
   it("names the provider's own fixed preservation launcher for every configured provider", () => {

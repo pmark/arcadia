@@ -264,7 +264,12 @@ An amendment to an existing Plan — children with `target_ref` amend the named
 Action, children without it create new ones. For an amendment `dependencies`
 and `references` are replacement lists when present: an explicit empty list
 clears stale values, while an omitted list leaves the existing value unchanged.
-The settle preview's Effects list each amended Action's field-level changes:
+The settle preview's Effects list each amended Action's field-level changes.
+Each child may also carry `why`, one single-line sentence (at most 300
+characters) on why that Action matters; it is written to the Plan Action's
+`why`, and an amendment that omits it leaves the existing value alone. A
+single-Action `action` Ask with no `actions` list may carry one top-level `why`
+instead; it is refused beside an `actions` list or on any other intent:
 
 ```yaml
 agent_ask: v1
