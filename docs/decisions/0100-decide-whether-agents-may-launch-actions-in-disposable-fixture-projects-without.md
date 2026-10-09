@@ -4,7 +4,7 @@ type: decision
 id: "0100"
 slug: decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without
 project: arcadia
-status: open
+status: approved
 question: Decide whether agents may launch Actions in disposable fixture Projects without a per-launch operator confirmation, and merge those fixture pull requests on green, so the single-Action loop can be debugged without the operator present.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: Standing fixture launch, with merge on green
+decided: 2026-10-09
 ---
 
 # Decision 0100: Decide whether agents may launch Actions in disposable fixture Projects without a per-launch operator confirmation, and merge those fixture pull requests on green, so the single-Action loop can be debugged without the operator present.
