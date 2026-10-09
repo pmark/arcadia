@@ -9,7 +9,7 @@ import { guardPreservationRefusal, guardPreservationTimeouts } from "../sessions
 import { countCommits, git, isAncestor, isPatchEquivalent, refExists, resolveBaseBranch, SAFE_TASK_BRANCH, tryGit } from "../git/worktrees.js";
 import { policyAuthorizesRemotePreservation, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
-import { operatorLaunchAuthorityFor } from "../sessions/operatorLaunch.js";
+import { findOperatorLaunchAuthorization, operatorLaunchAuthorityFor } from "../sessions/operatorLaunch.js";
 
 /**
  * The A-to-B seam the plan's critical path leaves open: a managed-production
@@ -384,6 +384,17 @@ export function integrateSessionCandidate(
   const checkedOut = tryGit(session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
   if (checkedOut === null || checkedOut.trim() !== branch) {
     return refusal(`The Session worktree is no longer on its own branch ${branch}.`, merge);
+  }
+
+  // A candidate preserved under an operator Launch's authorization (Decision
+  // 0096) was never delegated to production's validation, so a production grant
+  // that merely names integration must not carry it into the base branch. Only
+  // production itself delegating validation for this Action lifts that.
+  if (findOperatorLaunchAuthorization(db, session.id)) {
+    const policyRead = readProductionPolicySafely(db);
+    if (policyRead.status !== "ok" || !productionAuthorizesValidation(policyRead.policy, session)) {
+      return refusal("The candidate was preserved under an operator Launch authorization (Decision 0096), which never authorizes integration; merge it through its pull request.", merge);
+    }
   }
 
   const authorized = integrationAuthority(db, session, now);

@@ -42,7 +42,7 @@ import {
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
-import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, type OperatorLaunchSource } from "./operatorLaunch.js";
+import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
 export interface GuardedLaunchInput {
   db: Database.Database;
@@ -90,6 +90,12 @@ export interface GuardedLaunchInput {
    * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
    */
   reuseOwnLeaseOnly?: boolean;
+  /**
+   * Per-launch wall-clock limit override in ms for this Session; omitted
+   * defers to the policy scope's `sessionTimeLimitMs`, then the default. See
+   * `src/production/sessionLifetime.ts`.
+   */
+  timeLimitMs?: number;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
@@ -148,6 +154,9 @@ export interface GuardedLaunchResult {
  * Action while this repository already holds a lease is refused.
  */
 export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaunchResult {
+  if (input.timeLimitMs !== undefined && (!Number.isInteger(input.timeLimitMs) || input.timeLimitMs < 1)) {
+    throw validationError("The Session time limit must be a positive whole number of milliseconds.", { timeLimitMs: input.timeLimitMs });
+  }
   if (input.standingPolicy && input.previewFingerprint) {
     throw validationError(
       "A launch may not carry both an operator-approved preview fingerprint and a standing production policy grant."
@@ -579,6 +588,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       effort,
       baseRevision: sessionBaseRevision,
       launchRevision: sessionLaunchRevision,
+      timeLimitMs: input.timeLimitMs,
       branch: nextWorktree.branch,
       worktreePath: nextWorktree.path,
       now,
@@ -748,7 +758,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   } catch (error) {
     // A Session that never started carries no authorization.
     if (input.operatorLaunch) {
-      input.db.prepare("DELETE FROM operator_launch_authorizations WHERE session_id = ?").run(prepared.id);
+      voidOperatorLaunchAuthorization(input.db, prepared.id, `the Session never started: ${error instanceof Error ? error.message : String(error)}`, now);
     }
     // A spawn that fails outright releases the lease (`failPreparedSession`),
     // and the claim has to go with it: otherwise the Action stays claimed by a
@@ -829,6 +839,11 @@ function reusedLease(
       throw lineageRefusal(error);
     }
   };
+  // A per-launch time limit applies to a reused lease too, before it may start.
+  if (input.timeLimitMs !== undefined && lease.time_limit_ms !== input.timeLimitMs) {
+    input.db.prepare("UPDATE agent_sessions SET time_limit_ms = ? WHERE id = ?").run(input.timeLimitMs, lease.id);
+    lease = { ...lease, time_limit_ms: input.timeLimitMs };
+  }
   const session = reuseOrRefuseLease(input.db, lease, preview, tmux, registry, providerSignIn, input.workspace, input.onProviderSignInConfirmed, ensureAttempt);
   if (session.status === "running") {
     markAttemptRunning(input.db, liveMutationOwner(input.db, requirementIdFor(session.project_slug, session.plan_slug, session.action_id)), now);

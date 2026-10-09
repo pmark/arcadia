@@ -8,7 +8,7 @@ import {
   type OperatorLaunchAuthorization,
   type OperatorLaunchPublishState
 } from "../sessions/operatorLaunch.js";
-import { productionAuthorizesValidation, preserveSessionCandidate, type PreservationStep, type PreserveSessionDeps } from "./sessionHandoff.js";
+import { preserveSessionCandidate, productionAuthorizesValidation, type PreservationStep, type PreserveSessionDeps } from "./sessionHandoff.js";
 import { readProductionPolicySafely } from "./policy.js";
 
 /**
@@ -152,11 +152,30 @@ export function retryOperatorLaunchPublications(
   for (const authorization of listPendingOperatorLaunchPublications(db, canonicalPath(repoRoot))) {
     const session = getSession(db, authorization.session_id);
     if (!session) continue;
+    const live = session.status === "prepared" || session.status === "running";
+    const close = (outcome: string, why: string) => {
+      recordOperatorLaunchUse(db, authorization.id, { outcome, publishState: "none", detail: { closed: why } }, now);
+      log(`Operator launch authorization ${authorization.id} for Session ${session.id} closed: ${why}`);
+    };
+    // Production now delegates validation for this Action itself: its own path
+    // owns the exit, and the operator authorization has nothing left to do.
+    const policyRead = readProductionPolicySafely(db);
+    if (!live && policyRead.status === "ok" && productionAuthorizesValidation(policyRead.policy, session)) {
+      close("superseded_by_production", "production authorizes this Action itself");
+      continue;
+    }
     if (authorization.used_at === null) {
       // Not yet handled by an exit tick: only a Session that has been reconciled
-      // as an accepted completion is owed anything here (a live one, or one that
-      // ended unfinished, keeps its authorization for its own exit).
-      if (session.status === "prepared" || session.status === "running" || !findAcceptedTerminalCompletion(db, session)) continue;
+      // as an accepted completion is owed anything here (a live one keeps its
+      // authorization for its own exit).
+      if (live) continue;
+      if (!findAcceptedTerminalCompletion(db, session)) {
+        // Reconciled without the worker's exit handling (an operator ran
+        // `arcadia session reconcile`, or it did not end accepted): nothing was
+        // committed or pushed under this authorization and none will be.
+        close("not_applicable", `the Session ended ${session.status} outside the worker's exit handling; nothing was committed, pushed or opened`);
+        continue;
+      }
     }
     const authority = operatorLaunchAuthorityFor(db, session, now, authorization.id);
     if (!authority.ok) {

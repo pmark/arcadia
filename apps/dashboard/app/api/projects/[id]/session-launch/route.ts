@@ -59,14 +59,28 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "requestId and previewFingerprint are required.", details: null }, { status: 400 });
     }
 
-    const continuation = await loadProjectContinuation(id);
     // Decision 0096: `confirmOperatorLaunch: true` is the operator's explicit
     // confirmation, after seeing that this Launch also authorizes the host to
     // validate, commit, push and open a DRAFT PR for this one Action when the
-    // Session exits (never a merge). Without it the Launch carries no such
-    // authorization.
+    // Session exits (never a merge). It is a browser-UI action: only a browser
+    // sends `Sec-Fetch-Site: same-origin`, and `isSameOriginRequest` alone also
+    // passes a header-less local request (an agent's curl, in a Session or a
+    // non-interactive shell). Such a request is refused outright: nothing is
+    // launched and nothing is minted.
+    const confirmed = body.confirmOperatorLaunch === true;
+    if (confirmed && request.headers.get("sec-fetch-site") !== "same-origin") {
+      return NextResponse.json(
+        {
+          error: "An operator launch authorization can only be confirmed from the dashboard in a browser; this request did not come from one, so nothing was launched.",
+          details: { conflict: true, code: "operator_launch_not_from_browser" }
+        },
+        { status: 403 }
+      );
+    }
+
+    const continuation = await loadProjectContinuation(id);
     const launch = await launchGuardedSession(continuation.data.repoRoot, requestId, previewFingerprint, {
-      operatorLaunch: body.confirmOperatorLaunch === true
+      operatorLaunch: confirmed
     });
 
     return NextResponse.json({

@@ -253,6 +253,8 @@ export function runSessionLaunchCommand(options: {
    * Mints the one-shot post-exit authorization for the new Session.
    */
   operatorLaunch?: { source: OperatorLaunchSource; env?: NodeJS.ProcessEnv };
+  /** Per-launch wall-clock limit override in minutes (bounded Session lifetime). */
+  timeLimitMinutes?: number;
 }): CommandSuccess<SessionLaunchCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
@@ -296,6 +298,7 @@ export function runSessionLaunchCommand(options: {
       previewFingerprint: options.previewFingerprint,
       standingPolicy: options.standingPolicy,
       ...(options.operatorLaunch ? { operatorLaunch: options.operatorLaunch } : {}),
+      ...(options.timeLimitMinutes !== undefined ? { timeLimitMs: Math.round(options.timeLimitMinutes * 60_000) } : {}),
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
     });

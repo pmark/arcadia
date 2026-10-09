@@ -35,6 +35,8 @@ import { findAcceptedTerminalCompletion, findCandidateSettledCompletion, getSess
 import type { CandidatePreservationReceipt } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
+import { enforceSessionLifetime } from "./sessionLifetime.js";
+import { sessionLogPath } from "../sessions/sessionRecording.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
 import { handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
@@ -1515,7 +1517,64 @@ export function runManagedProductionTick(
     let alertLease: ReturnType<typeof getRepositoryLease> = null;
     try {
       const lease = getRepositoryLease(db, repoRoot);
-      if (lease && !tmux.hasSession(lease.tmux_session_name)) {
+      // A Session stopped this tick is preserved and reconciled on the next
+      // one, so SIGHUP'd children can finish writing first.
+      let stoppedThisTick = false;
+      if (lease && tmux.hasSession(lease.tmux_session_name)) {
+        // tmux is alive; check whether it is actually moving. Neither branch
+        // here touches `lease`/`status`, so the repository lease this Session
+        // holds is untouched either way -- a suspected stall is surfaced, not
+        // reconciled. The flag write and its event are one transaction: if the
+        // event insert failed after the flag alone committed, a later tick
+        // would see `stall_flagged_at` already set and never retry the event.
+        const activity = writeTransaction(db, () => {
+          const observed = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
+          if (observed.newlyStalled) {
+            recordEvent(db, {
+              eventType: "managed_production.session_stalled",
+              projectId: project.id,
+              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
+              at: now.toISOString()
+            });
+          }
+          return observed;
+        });
+        safelyRaiseRedAlerts(log, "stall", () => observeStall(alertCtx, { session: lease, stalled: activity.stalled, tmux }));
+        if (activity.newlyStalled) {
+          log(
+            `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
+              `${PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs}ms; flagged stalled. It is ended at its time limit, or sooner if its pane shows a blocking condition; the exit receipt then records why.`
+          );
+        } else if (activity.recovered) {
+          log(`Session ${lease.id} for ${project.slug} resumed activity; its stalled flag is cleared.`);
+        }
+        // Bounded lifetime: end a Session past its wall-clock limit, or one
+        // whose pane shows a blocking condition that persisted past the stall
+        // deadline. Only `tmux kill-session`; the dead-session branch below
+        // then preserves, reconciles (writing the receipt with this reason)
+        // and releases the lease on the next tick. The kill must be confirmed
+        // (tmux no longer reports the Session) before it counts as a stop.
+        {
+          const { stopped, failed } = enforceSessionLifetime(db, {
+            session: lease, tmux, now, stalled: activity.stalled,
+            stallDeadlineMs: PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs,
+            headless: existsSync(sessionLogPath(workspace, lease.id))
+          });
+          if (stopped) {
+            stoppedThisTick = true;
+            recordEvent(db, {
+              eventType: "managed_production.session_stopped",
+              projectId: project.id,
+              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name, kind: stopped.kind, reason: stopped.reason },
+              at: now.toISOString()
+            });
+            log(`Stopped Session ${lease.id} for ${project.slug}: ${stopped.reason} Its exit is preserved and reconciled next tick.`);
+          } else if (failed) {
+            log(`Could not stop Session ${lease.id} for ${project.slug} (${failed.reason}): tmux still reports it alive; retrying next tick.`);
+          }
+        }
+      }
+      if (lease && !stoppedThisTick && !tmux.hasSession(lease.tmux_session_name)) {
         alertLease = lease;
         // Preserve the dead Session's candidate before reconciliation marks it
         // terminal (validation runs against the still-active lease), then
@@ -1586,12 +1645,14 @@ export function runManagedProductionTick(
         // Action, and the next tick would re-admit it. An unfinished or failed
         // Session is preserved and reported, never merged.
         const completed = result.receipt.outcome === "accepted_completion";
-        const integration = preservation.kind === "preserved" && completed
+        const integration = preservation.kind === "preserved" && completed && !operatorAuthorization
           ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now, clock,
               verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, options.handoff?.integrate ?? {})
           : {
               kind: "refused" as const,
-              reason: preservation.kind === "preserved"
+              reason: operatorAuthorization
+                ? "Preserved under an operator Launch authorization (Decision 0096), which never authorizes integration; merge it through its pull request."
+                : preservation.kind === "preserved"
                 ? `Integration waits on a governed completion; reconciliation outcome was ${result.receipt.outcome}.`
                 : `Integration waits on a preserved candidate: ${preservation.reason}`,
               operatorMergeCommand: preservation.kind === "preserved"
@@ -1623,35 +1684,7 @@ export function runManagedProductionTick(
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
         }
-      } else if (lease) {
-        // tmux is alive; check whether it is actually moving. Neither branch
-        // here touches `lease`/`status`, so the repository lease this Session
-        // holds is untouched either way -- a suspected stall is surfaced, not
-        // reconciled. The flag write and its event are one transaction: if the
-        // event insert failed after the flag alone committed, a later tick
-        // would see `stall_flagged_at` already set and never retry the event.
-        const activity = writeTransaction(db, () => {
-          const observed = observeSessionActivity(db, lease, tmux, now, PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs);
-          if (observed.newlyStalled) {
-            recordEvent(db, {
-              eventType: "managed_production.session_stalled",
-              projectId: project.id,
-              payload: { projectSlug: project.slug, sessionId: lease.id, actionId: lease.action_id, tmuxSessionName: lease.tmux_session_name },
-              at: now.toISOString()
-            });
-          }
-          return observed;
-        });
-        safelyRaiseRedAlerts(log, "stall", () => observeStall(alertCtx, { session: lease, stalled: activity.stalled, tmux }));
-        if (activity.newlyStalled) {
-          log(
-            `Session ${lease.id} for ${project.slug} has shown no new tmux pane output and no new Run/receipt activity for ` +
-              `${PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs}ms; flagged stalled. Its repository lease is preserved, pending operator review or bounded repair.`
-          );
-        } else if (activity.recovered) {
-          log(`Session ${lease.id} for ${project.slug} resumed activity; its stalled flag is cleared.`);
-        }
-      } else {
+      } else if (!lease) {
         safelyRaiseRedAlerts(log, "stall clear", () => {
           observeStall(alertCtx, { session: null, stalled: false, tmux });
           observeReconcileSuccess(alertCtx);

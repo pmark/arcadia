@@ -197,6 +197,16 @@ export function mintOperatorLaunchAuthorization(
   return row;
 }
 
+/** A Session that never started carries no authorization: remove its row and leave an `authorization_voided` event. */
+export function voidOperatorLaunchAuthorization(db: Database.Database, sessionId: string, reason: string, now: Date = new Date()): void {
+  const row = findOperatorLaunchAuthorization(db, sessionId);
+  if (!row) return;
+  db.prepare("DELETE FROM operator_launch_authorizations WHERE id = ?").run(row.id);
+  recordEvent(db, "operator_launch.authorization_voided", {
+    authorizationId: row.id, sessionId, actionKey: `${row.project_slug}/${row.action_id}`, source: row.source, reason
+  }, now);
+}
+
 export function findOperatorLaunchAuthorization(db: Database.Database, sessionId: string): OperatorLaunchAuthorization | null {
   if (!hasTable(db)) return null;
   return (db.prepare("SELECT * FROM operator_launch_authorizations WHERE session_id = ?").get(sessionId) as OperatorLaunchAuthorization | undefined) ?? null;

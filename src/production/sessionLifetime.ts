@@ -1,0 +1,135 @@
+import type Database from "better-sqlite3";
+import type { AgentSession, TmuxAdapter } from "../sessions/index.js";
+import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "./policy.js";
+import { scanPane, type PaneSignalClass } from "./sessionSignals.js";
+
+/**
+ * Bounded Session lifetime: a Session can never hold the repository lease
+ * indefinitely.
+ *
+ * Arcadia ends a live Session's tmux session when either
+ *  1. its wall-clock limit has passed (per-launch `time_limit_ms`, else the
+ *     active policy scope's `sessionTimeLimitMs`, else the built-in default --
+ *     so an unreadable or Inactive policy still bounds it), or
+ *  2. the pane classifier reports a blocking condition (permission prompt, auth
+ *     failure, provider limit) that persisted past the stall deadline. Persisting
+ *     is read from `observeSessionActivity`'s `stalled` flag: it is set only
+ *     once neither the pane nor the Run has changed for the whole deadline, so a
+ *     stale limit message above live, progressing output never trips it.
+ *
+ * Stopping is exactly `tmux kill-session`. The worktree and branch are never
+ * touched. The tick's existing dead-session branch then preserves, reconciles
+ * and releases the lease exactly as for any other exit; the reason recorded in
+ * `agent_sessions.stop_reason` before the kill is copied onto the Session exit
+ * receipt by `reconcileSessionExit`.
+ */
+
+/** Pane classes that a Session cannot resolve by itself or by waiting. */
+export const BLOCKING_PANE_CLASSES: readonly PaneSignalClass[] = ["permission_prompt", "auth_failure", "provider_limit"];
+
+/** How many trailing non-blank pane lines may carry a blocking message. */
+export const BLOCKING_TAIL_LINES = 6;
+
+function lastLines(text: string, count: number): string {
+  return text.split(/\r?\n/).filter((line) => line.trim() !== "").slice(-count).join("\n");
+}
+
+export type SessionStopKind = "time_limit" | "blocking_signal";
+
+export interface SessionStopDecision {
+  kind: SessionStopKind;
+  /** Human-readable reason, stored as `stop_reason` and shown on the exit receipt. */
+  reason: string;
+}
+
+/** Per-launch override, else the active policy scope's value, else the default. Never throws. */
+export function resolveSessionTimeLimitMs(db: Database.Database, session: Pick<AgentSession, "time_limit_ms">): number {
+  if (session.time_limit_ms !== null && session.time_limit_ms !== undefined && session.time_limit_ms > 0) return session.time_limit_ms;
+  const read = readProductionPolicySafely(db);
+  const fromPolicy = read.status === "ok" ? read.policy.scope?.sessionTimeLimitMs : undefined;
+  return fromPolicy && fromPolicy > 0 ? fromPolicy : PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs;
+}
+
+/**
+ * Pure decision: should this live Session be ended now, and why. Time is
+ * measured from `prepared_at`: that is when the repository lease is taken, and
+ * it is stamped from the same injected clock as the tick (`started_at` is not).
+ */
+export function decideSessionStop(input: {
+  session: Pick<AgentSession, "prepared_at">;
+  now: Date;
+  limitMs: number;
+  /** `observeSessionActivity(...).stalled` this tick. */
+  stalled: boolean;
+  paneText: string | null;
+  stallDeadlineMs?: number;
+  /**
+   * A headless Session (one with a recorded log) has no interactive prompt to
+   * wait on, and its pane shows tool output: an agent reading code that
+   * contains "Do you want to proceed" must not look blocked. Permission
+   * prompts are ignored for it.
+   */
+  headless?: boolean;
+}): SessionStopDecision | null {
+  const startedMs = new Date(input.session.prepared_at).getTime();
+  const runningMs = input.now.getTime() - startedMs;
+  if (Number.isFinite(runningMs) && runningMs >= input.limitMs) {
+    return { kind: "time_limit", reason: `Session time limit of ${Math.round(input.limitMs / 60_000)} minutes reached (running ${Math.round(runningMs / 60_000)} minutes).` };
+  }
+  if (!input.stalled) return null;
+  // Only the last few lines: a blocking Session is silent and sits on its
+  // message, so the message is at the very end; older output is not evidence.
+  const scan = scanPane(input.paneText === null ? null : lastLines(input.paneText, BLOCKING_TAIL_LINES));
+  const blocking = scan.classes.find(
+    (paneClass) => BLOCKING_PANE_CLASSES.includes(paneClass) && !(input.headless && paneClass === "permission_prompt")
+  );
+  if (!blocking) return null;
+  const deadline = input.stallDeadlineMs ?? PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs;
+  return {
+    kind: "blocking_signal",
+    reason: `Pane showed a ${blocking.replace("_", " ")} (${scan.matched.join(", ")}) with no progress for more than ${Math.round(deadline / 60_000)} minutes.`
+  };
+}
+
+/**
+ * Decide and, when warranted, end the Session: record `stop_reason`, then kill
+ * its tmux session. Returns the decision when a stop was carried out, or null
+ * (nothing to stop, or the adapter cannot kill). The caller records the event;
+ * the next reconcile writes the receipt and releases the lease.
+ */
+export function enforceSessionLifetime(
+  db: Database.Database,
+  input: {
+    session: AgentSession;
+    tmux: Pick<TmuxAdapter, "hasSession" | "capturePane" | "killSession">;
+    now: Date;
+    stalled: boolean;
+    stallDeadlineMs?: number;
+    headless?: boolean;
+  }
+): { stopped: SessionStopDecision | null; failed: SessionStopDecision | null } {
+  const none = { stopped: null, failed: null };
+  if (!input.tmux.killSession) return none;
+  const paneText = input.tmux.capturePane ? input.tmux.capturePane(input.session.tmux_session_name) : null;
+  const decision = decideSessionStop({
+    session: input.session,
+    now: input.now,
+    limitMs: resolveSessionTimeLimitMs(db, input.session),
+    stalled: input.stalled,
+    paneText,
+    stallDeadlineMs: input.stallDeadlineMs,
+    headless: input.headless
+  });
+  if (!decision) return none;
+  // Written first: if the tick dies between here and the reconcile, the next
+  // tick still finds the reason on the Session row.
+  db.prepare("UPDATE agent_sessions SET stop_reason = ?, updated_at = ? WHERE id = ?").run(decision.reason, input.now.toISOString(), input.session.id);
+  input.tmux.killSession(input.session.tmux_session_name);
+  if (input.tmux.hasSession(input.session.tmux_session_name)) {
+    // The kill did not take: this is not a stop. Withdraw the reason so a
+    // later, unrelated exit is not mislabelled; the next tick retries.
+    db.prepare("UPDATE agent_sessions SET stop_reason = NULL, updated_at = ? WHERE id = ?").run(input.now.toISOString(), input.session.id);
+    return { stopped: null, failed: decision };
+  }
+  return { stopped: decision, failed: null };
+}

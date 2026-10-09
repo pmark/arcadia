@@ -821,10 +821,10 @@ function shellWord(value: string): string {
 
 export function toDashboardAgentSession(db: Database.Database, session: AgentSession, now: Date = new Date(), tmux: Pick<TmuxAdapter, "hasSession"> = systemTmux): DashboardAgentSession {
   const view = sessionView(session, tmux);
-  const exitedAt = Date.parse(session.updated_at);
+  const exitedAt = Date.parse(session.ended_at ?? session.updated_at);
   const unreconciled = session.status === "running" && view.observedStatus === "exited" && !Number.isNaN(exitedAt) && now.getTime() - exitedAt >= UNRECONCILED_EXIT_BOUND_MS
     ? {
-        since: session.updated_at,
+        since: session.ended_at ?? session.updated_at,
         exitStatus: session.exit_status ?? null,
         reconcileCommand: `arcadia session reconcile ${session.id} --repo ${shellWord(session.repository_path)}`
       }

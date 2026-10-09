@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -364,6 +364,39 @@ describe("launchGuardedHostSession", () => {
     expect(second.reused).toBe(true);
     expect(second.session.id).toBe(first.session.id);
     expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("records a per-launch time limit with the lease on a fresh launch, and applies it on the reused-lease path", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const launchWith = (timeLimitMs: number | undefined, requestId: string) =>
+      withDatabase(fixture.workspace, (db) =>
+        launchGuardedHostSession({
+          db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
+          previewFingerprint: preview.previewFingerprint, profiles, adapters, now: fixture.now, tmux,
+          agentWorktreeRoot: path.join(fixture.root, "limit-wt"), timeLimitMs
+        })
+      );
+    const first = launchWith(90_000, "req-1");
+    expect(first.session.time_limit_ms).toBe(90_000);
+    const stored = (id: string) => withReadOnlyDatabase(fixture.workspace, (db) => (db.prepare("SELECT time_limit_ms FROM agent_sessions WHERE id = ?").get(id) as { time_limit_ms: number | null }).time_limit_ms);
+    expect(stored(first.session.id)).toBe(90_000);
+
+    // A retry of the same request reuses the lease and carries the new override.
+    const second = launchWith(45_000, "req-1");
+    expect(second.reused).toBe(true);
+    expect(second.session.id).toBe(first.session.id);
+    expect(stored(first.session.id)).toBe(45_000);
+    expect(() => launchWith(0, "req-1")).toThrow(/positive whole number/);
+  });
+
+  it("exposes --time-limit-minutes on `session launch` and refuses a non-positive value", () => {
+    const run = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", path.resolve(import.meta.dirname, "../src/cli.ts"), ...args], { encoding: "utf8" });
+    expect(run(["session", "launch", "--help"]).stdout).toContain("--time-limit-minutes");
+    const bad = run(["session", "launch", "--request-id", "x", "--time-limit-minutes", "0"]);
+    expect(bad.status).not.toBe(0);
+    expect(`${bad.stdout}${bad.stderr}`).toContain("--time-limit-minutes must be a positive number");
   });
 
   it("refuses a different Action while this repository already holds a lease", () => {

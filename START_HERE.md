@@ -316,8 +316,6 @@ system light or dark theme. From top to bottom:
   names the agent and the consequences, and nothing starts until you press
   **Launch Session**. A preview that names a different Action, or is not
   ready, withholds the button.
-- **To-do**: the same list as `arcadia todo --all`, with its Approve, Accept
-  and Reject controls.
 
 The page reads `arcadia production status`, `dashboard runs --sessions 8`,
 `advance queue` and `schedule status`, and writes only through the existing
@@ -2097,10 +2095,11 @@ for that one Action, to validate, commit and push the Session's branch when it
 exits and, only if the work is reconciled `accepted_completion`, open a DRAFT
 pull request. It never merges, readies a PR, integrates or turns production on;
 review, repair and merge are a separate step. Only a confirmed Launch carries
-this: the dashboard's Launch confirmation (the request's
-`confirmOperatorLaunch: true`, after the preview's `operatorLaunchConsequence`
-is shown), or `arcadia session launch --operator-launch --preview-fingerprint
-<hash>` typed `y` at an interactive terminal. A launch without it, from inside an
+this: the dashboard's Launch confirmation, which is a browser-UI action (the
+console's Launch Session dialog lists the consequence above its button; the
+route refuses the confirmation from anything that is not a browser), or
+`arcadia session launch --operator-launch --preview-fingerprint <hash>` typed
+`y` at an interactive terminal. A launch without it, from inside an
 Arcadia Session (`ARCADIA_SESSION_ID` is set in every Session) or from a
 non-interactive shell, carries none and behaves as before (the exit is reconciled
 `incomplete_resumable`, nothing is committed or pushed). The authorization is a
@@ -2114,7 +2113,33 @@ uses. A draft PR that fails (GitHub down) is retried on later ticks, at most
 three attempts. An incomplete exit keeps its work committed and pushed with no
 PR. If the worker is down, a Session that has exited and stays unreconciled for
 five minutes is flagged on the dashboard's Session card with the command to run
-by hand: `arcadia session reconcile <session-id> --repo <repo>`.
+by hand: `arcadia session reconcile <session-id> --repo <repo>`. That command
+only records the exit; it does not commit, push or open a PR (the worker's tick
+does), so an authorization whose Session was reconciled that way is closed
+unused-and-not-applicable on the next tick and the work stays in its worktree.
+Merging is never part of this: even if production is Active with an integration
+grant, a candidate preserved under this authorization is not integrated unless
+production itself delegates validation for that Action.
+
+**A Session cannot hold the repository lease forever.** The worker tick ends a
+live Session's tmux session (only `tmux kill-session`; its worktree and branch
+stay) when (1) its wall-clock limit passes — `arcadia session launch
+--time-limit-minutes N` for one launch, else the active production scope's
+`sessionTimeLimitMs`, else 120 minutes (the default also applies when no policy
+is readable or production is Inactive) — or (2) its pane shows a permission
+prompt, auth failure or provider limit in its last few pane lines that did not
+change for the 20-minute stall deadline (a headless Session's pane is tool
+output, so a permission-prompt match is ignored for it). A stop counts only when
+tmux confirms the Session is gone; a kill that did not take is logged and retried
+next tick. The tick then preserves and reconciles it on the following tick like
+any other exit: the Session exit receipt's reason starts `Stopped by Arcadia:`
+with the cause, and the lease is released. A Session that is still producing output or Run activity is never
+stopped before its limit; a silent Session with no blocking message is only
+flagged stalled until the limit. Look at the exit receipt for what to do next
+(`arcadia session reconcile <id>` shows it).
+
+**Rollout:** on the first deploy of this build, any live Session older than the
+120-minute default (and with no longer override) is stopped on the first tick.
 
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance

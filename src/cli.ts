@@ -2037,7 +2037,12 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         "Also authorize this one Session's exit: validate, commit, push and (on accepted completion only) open a DRAFT pull request, once, within 24 hours (Decision 0096). Needs --preview-fingerprint, an interactive terminal and a typed confirmation; refused inside an Arcadia Session. Never merges."
       )
       .addOption(new Option("--operator-launch-dashboard", "Set only by the dashboard's confirmed Launch").hideHelp())
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; json?: boolean }) =>
+      .option("--time-limit-minutes <n>", "Wall-clock limit for this Session in minutes (overrides policy and the 120-minute default); Arcadia ends the tmux session past it", (value: string) => {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("--time-limit-minutes must be a positive number.");
+        return minutes;
+      })
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; timeLimitMinutes?: number; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
@@ -2067,6 +2072,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           requestId: options.requestId,
           previewFingerprint: options.previewFingerprint,
           standingPolicy: options.standingPolicy,
+          timeLimitMinutes: options.timeLimitMinutes,
           ...(operatorLaunch ? { operatorLaunch } : {})
         });
       },

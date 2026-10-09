@@ -49,6 +49,32 @@ describe("POST /api/projects/[id]/session-launch and the operator launch authori
     expect(launchGuardedSession).toHaveBeenCalledWith("/repo", "req-1", "abc", { operatorLaunch: false });
   });
 
+  it.each([
+    ["no Sec-Fetch-Site header (an agent's curl)", {}],
+    ["Sec-Fetch-Site: none", { "sec-fetch-site": "none" }],
+    ["only a same-host Origin header", { origin: "http://127.0.0.1:3000", host: "127.0.0.1:3000" }]
+  ])("a confirmed POST with %s is refused: nothing is launched and nothing is minted", async (_label, headers) => {
+    const request = new Request("http://127.0.0.1:3000/api/projects/proj-1/session-launch", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ requestId: "req-1", previewFingerprint: "abc", confirmOperatorLaunch: true })
+    });
+    const response = await POST(request, params);
+    expect(response.status).toBe(403);
+    expect((await response.json()).details).toMatchObject({ code: "operator_launch_not_from_browser" });
+    expect(launchGuardedSession).not.toHaveBeenCalled();
+  });
+
+  it("an unconfirmed header-less POST still launches, carrying no authorization", async () => {
+    const request = new Request("http://127.0.0.1:3000/api/projects/proj-1/session-launch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requestId: "req-1", previewFingerprint: "abc" })
+    });
+    expect((await POST(request, params)).status).toBe(200);
+    expect(launchGuardedSession).toHaveBeenCalledWith("/repo", "req-1", "abc", { operatorLaunch: false });
+  });
+
   it("a cross-origin request never reaches the launcher, confirmed or not", async () => {
     const request = new Request("http://127.0.0.1:3000/api/projects/proj-1/session-launch", {
       method: "POST",

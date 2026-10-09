@@ -3,7 +3,6 @@
 import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApprovalQueue } from "../../components/approval-queue";
 import { GlobalStrip, QueueSection, SessionsSection } from "../../components/production-console";
 import { Sidebar } from "../../components/sidebar";
 import { assembleQueue, type ConsoleCoreData, type ConsoleQueuePart } from "../../lib/production-console";
@@ -18,9 +17,10 @@ const QUEUE_POLL_MS = 30_000;
  * Production — drive and monitor production from one page.
  *
  * It consolidates what /runs, /work-queue, /flight-deck and Mission Control's
- * agent queue each show part of: production state and its switch, the one
- * to-do list, the queue grouped into batches that can run side by side, a
- * Launch for each ready Action, and every live or recent Session with its log.
+ * agent queue each show part of: production state and its switch, the queue
+ * grouped into batches that can run side by side, a Launch for each ready
+ * Action, and every live or recent Session with its log. Operator to-dos live
+ * on their own pages (/runs, /review), not here: this page is production only.
  * It reads only what Arcadia already records, and every state change goes
  * through an existing preview-then-confirm route.
  */
@@ -30,7 +30,6 @@ export default function ProductionPage() {
   const [queuePart, setQueuePart] = useState<ConsoleQueuePart | null>(null);
   const [queueFetchError, setQueueFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [todoSignal, setTodoSignal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const liveRef = useRef(false);
   // Polls, focus and post-toggle refreshes overlap; only the newest request may update the page.
@@ -68,7 +67,6 @@ export default function ProductionPage() {
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    setTodoSignal((value) => value + 1);
     await Promise.all([loadCore(), loadQueue()]);
     setRefreshing(false);
   }, [loadCore, loadQueue]);
@@ -139,17 +137,9 @@ export default function ProductionPage() {
       </header>
       <main className="mx-auto grid w-full min-w-0 max-w-6xl gap-6 px-4 pb-16 pt-4">
         <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore()} />
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="grid min-w-0 content-start gap-6">
-            <SessionsSection core={core} now={now} />
-            <QueueSection part={queueView} assembled={assembled} onLaunched={() => void refreshAll()} />
-          </div>
-          <div className="min-w-0 content-start">
-            <ApprovalQueue refreshSignal={todoSignal} />
-            <p className="text-xs text-muted">
-              Same list as <code>arcadia todo --all</code>. Decisions also open on <Link className="text-steel underline" href="/review">Decisions</Link>.
-            </p>
-          </div>
+        <div className="grid min-w-0 content-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <SessionsSection core={core} now={now} />
+          <QueueSection part={queueView} assembled={assembled} onLaunched={() => void refreshAll()} />
         </div>
         <nav aria-label="Related pages" className="border-t border-line pt-4 text-xs text-muted">
           Older partial views, kept while this page settles in:{" "}

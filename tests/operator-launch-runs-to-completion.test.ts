@@ -5,9 +5,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { toDashboardAgentSession, UNRECONCILED_EXIT_BOUND_MS } from "../src/dashboard/snapshot.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { runProductionActivateCommand, runProductionPreviewCommand } from "../src/commands/production.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
 import { preserveSessionCandidate } from "../src/production/sessionHandoff.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
+import { reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import {
@@ -325,7 +327,7 @@ describe("the exit of an operator-launched Session with production Off", () => {
     expect(rehearsal.github.prs).toHaveLength(1);
   });
 
-  it("retries a draft PR that could not be opened, bounded, without a second push", () => {
+  it("retries a draft PR that could not be opened on the next tick (the branch is already on the remote)", () => {
     const rehearsal = fixture();
     const session = launch(rehearsal, { source: "dashboard" });
     agentExits(rehearsal, session, "settled");
@@ -366,6 +368,39 @@ describe("the exit of an operator-launched Session with production Off", () => {
     expect(authorization(rehearsal, session)!.used_at).not.toBeNull();
   });
 
+  it("closes an authorization whose Session was reconciled outside the worker, once, so it is not re-listed every tick", () => {
+    const rehearsal = fixture();
+    const session = launch(rehearsal, { source: "dashboard" });
+    agentExits(rehearsal, session, "settled");
+    // The operator's manual fallback records the exit but commits and pushes nothing.
+    withDatabase(rehearsal.workspace, (db) => {
+      reconcileSessionExit({ db, sessionId: session.id, requestId: "manual-reconcile", repoRoot: rehearsal.repo });
+    });
+    expect(rehearsal.github.pushes).toEqual([]);
+
+    rehearsal.tick();
+
+    expect(authorization(rehearsal, session)).toMatchObject({ outcome: "not_applicable", publish_state: "none" });
+    expect(authorization(rehearsal, session)!.used_at).not.toBeNull();
+    expect(events(rehearsal, "operator_launch.authorization_used")).toHaveLength(1);
+    rehearsal.tick();
+    expect(events(rehearsal, "operator_launch.authorization_used")).toHaveLength(1);
+    expect(rehearsal.github.pushes).toEqual([]);
+    expect(rehearsal.github.prs).toEqual([]);
+  });
+
+  it("a Session that never started leaves an authorization_voided event and no row", () => {
+    const rehearsal = fixture();
+    rehearsal.tmux.launch = () => { throw new Error("synthetic spawn failure"); };
+    expect(() => launch(rehearsal, { source: "dashboard" })).toThrow(/tmux could not start/);
+
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM operator_launch_authorizations").get())).toEqual({ n: 0 });
+    expect(events(rehearsal, "operator_launch.authorization_minted")).toHaveLength(1);
+    expect(events(rehearsal, "operator_launch.authorization_voided")).toEqual([
+      expect.objectContaining({ reason: expect.stringContaining("the Session never started") })
+    ]);
+  });
+
   it("gives up after the bounded number of attempts", () => {
     const rehearsal = fixture();
     const session = launch(rehearsal, { source: "dashboard" });
@@ -376,6 +411,60 @@ describe("the exit of an operator-launched Session with production Off", () => {
 
     expect(rehearsal.github.prs).toEqual([]);
     expect(authorization(rehearsal, session)).toMatchObject({ publish_state: "failed", publish_attempts: 3 });
+  });
+});
+
+/** Activate production with the given delegated transitions and a Decision 0058 integration grant, for the Action's Plan. */
+function activateProduction(rehearsal: Rehearsal, transitions: string): void {
+  const grantExpiresAt = new Date(rehearsal.now.getTime() + 12 * 3_600_000).toISOString();
+  const base = {
+    workspace: rehearsal.workspace, project: [rehearsal.projectSlug], plan: [`${rehearsal.projectSlug}/${rehearsal.planSlug}`],
+    provider: [rehearsal.provider], concurrency: "1", transitions, intent: "Prove an operator grant never integrates.",
+    remotePreservation: true, integrationGrantDecision: "0058", integrationGrantExpiresAt: grantExpiresAt
+  };
+  const preview = runProductionPreviewCommand(base);
+  runProductionActivateCommand({
+    ...base, requestId: "activate-without-validation", grantedBy: "test", expectedRevision: String(preview.data.preview.expectedRevision)
+  });
+}
+
+describe("production's integration grant never carries an operator-launched candidate into the base", () => {
+  it("Active with an integration grant but no validation delegation: preserved and draft PR under the operator grant, never fast-forwarded", () => {
+    const rehearsal = fixture();
+    activateProduction(rehearsal, "acceptance,pointer");
+    const session = launch(rehearsal, { source: "dashboard" });
+    agentExits(rehearsal, session, "settled");
+    const mainBefore = git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim();
+
+    const exited = rehearsal.tick();
+
+    expect(exited.reconciled.map((entry) => entry.outcome)).toEqual(["accepted_completion"]);
+    expect(exited.handoff?.preservation).toMatchObject({ kind: "preserved", state: "PUSHED" });
+    expect(exited.handoff?.integration).toMatchObject({ kind: "refused", reason: expect.stringMatching(/never authorizes integration/) });
+    expect(rehearsal.github.prs).toHaveLength(1);
+    // Later ticks (the terminal-recovery path, readiness and reviewers) integrate nothing either.
+    for (let i = 0; i < 6; i += 1) {
+      const result = rehearsal.tick();
+      expect(result.handoff?.integration.kind ?? "refused").not.toBe("integrated");
+    }
+    expect(git(rehearsal.repo, ["rev-parse", "refs/heads/main"]).trim()).toBe(mainBefore);
+    expect(rehearsal.github.readyCalls).toEqual([]);
+    expect(rehearsal.github.reviewerCalls).toEqual([]);
+    expect(rehearsal.github.ghCalls.some((call) => / merge\b/.test(call))).toBe(false);
+  });
+
+  it("when production delegates validation for the Action itself, the operator row is superseded rather than failed", () => {
+    const rehearsal = fixture();
+    activateProduction(rehearsal, "validation,acceptance,pointer");
+    const session = launch(rehearsal, { source: "dashboard" });
+    agentExits(rehearsal, session, "settled");
+
+    rehearsal.tick();
+    rehearsal.tick();
+
+    // Production's own path preserved it; the operator authorization stood aside.
+    expect(authorization(rehearsal, session)).toMatchObject({ outcome: "superseded_by_production", publish_state: "none" });
+    expect(rehearsal.github.prs).toHaveLength(1);
   });
 });
 

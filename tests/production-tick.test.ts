@@ -50,6 +50,9 @@ import {
   observeReconcileSuccess,
   safelyRaiseRedAlerts
 } from "../src/production/redAlerts.js";
+import BetterSqlite3 from "better-sqlite3";
+import { sessionLogPath } from "../src/sessions/sessionRecording.js";
+import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
 import { getRepositoryLease, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -86,6 +89,14 @@ class FakeTmux implements TmuxAdapter {
   capturePane(name: string) {
     if (this.failCapture) return null;
     return this.paneOutput.get(name) ?? "";
+  }
+  /** Sessions ended through `killSession` (the bounded-lifetime guard), in order. */
+  killed: string[] = [];
+  /** When true, killSession is a no-op that leaves the Session alive (a failed kill). */
+  failKill = false;
+  killSession(name: string) {
+    this.killed.push(name);
+    if (!this.failKill) this.live.delete(name);
   }
 }
 
@@ -1971,6 +1982,210 @@ describe("runManagedProductionTick", () => {
     const stillFlagged = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
     expect(stillFlagged.stall_flagged_at).not.toBeNull();
     expect(stillFlagged.last_pane_signature).not.toBeNull();
+  });
+});
+
+describe("bounded session lifetime", () => {
+  function activateScope(fixture: ReturnType<typeof preparedFixture>, extra: Partial<ProductionScope> = {}) {
+    const scope = normalizeProductionScope({ ...productionScope, ...extra });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, { requestId: "policy-grant-lifetime", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" })
+    );
+  }
+  function tickAtMs(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, offsetMs: number, capacity = false) {
+    return withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: capacity ? fixtureCapacityObservation() : undefined,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+  }
+  function launched(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux) {
+    tickAtMs(fixture, tmux, 0, true);
+    return withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+  }
+  const lease = (fixture: ReturnType<typeof preparedFixture>) => withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo));
+  const receiptOf = (fixture: ReturnType<typeof preparedFixture>, id: string) => withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, id));
+  const MIN = 60_000;
+
+  it("ends a still-progressing Session at the policy time limit, writes a receipt with the reason, releases the lease and keeps the worktree", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activateScope(fixture, { sessionTimeLimitMs: 30 * MIN });
+    const session = launched(fixture, tmux);
+
+    // Fresh output every tick: progressing, within its limit -- never killed.
+    tmux.paneOutput.set(session.tmux_session_name, "$ step 1\n");
+    tickAtMs(fixture, tmux, 10 * MIN);
+    tmux.paneOutput.set(session.tmux_session_name, "$ step 2\n");
+    tickAtMs(fixture, tmux, 29 * MIN);
+    expect(tmux.killed).toEqual([]);
+    expect(lease(fixture)?.id).toBe(session.id);
+
+    tmux.paneOutput.set(session.tmux_session_name, "$ step 3\n");
+    tickAtMs(fixture, tmux, 31 * MIN);
+
+    // The stop tick only ends tmux; preserve and reconcile wait for the next
+    // tick so the killed process tree can finish writing.
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+    expect(lease(fixture)?.id).toBe(session.id);
+    expect(receiptOf(fixture, session.id)).toBeNull();
+    tickAtMs(fixture, tmux, 32 * MIN);
+    expect(lease(fixture)).toBeNull();
+    const receipt = receiptOf(fixture, session.id)!;
+    expect(receipt.reason).toContain("Stopped by Arcadia");
+    expect(receipt.reason).toContain("time limit of 30 minutes");
+    expect(JSON.parse(receipt.evidence_json!).stopReason).toContain("time limit");
+    // Only tmux was ended: the worktree and its branch are still there.
+    expect(existsSync(session.worktree_path)).toBe(true);
+    expect(execFileSync("git", ["rev-parse", "--verify", session.branch], { cwd: fixture.repo, encoding: "utf8" }).trim()).not.toBe("");
+    const events = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT payload_json FROM events WHERE event_type = 'managed_production.session_stopped'").all()
+    ) as Array<{ payload_json: string }>;
+    expect(events).toHaveLength(1);
+    expect(JSON.parse(events[0].payload_json).kind).toBe("time_limit");
+  });
+
+  it("a per-launch time_limit_ms overrides the policy and the default", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activateScope(fixture, { sessionTimeLimitMs: 90 * MIN });
+    const session = launched(fixture, tmux);
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET time_limit_ms = ? WHERE id = ?").run(5 * MIN, session.id));
+
+    tmux.paneOutput.set(session.tmux_session_name, "$ step 1\n");
+    tickAtMs(fixture, tmux, 6 * MIN);
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+    tickAtMs(fixture, tmux, 7 * MIN);
+    expect(receiptOf(fixture, session.id)!.reason).toContain("time limit of 5 minutes");
+  });
+
+  it.each([
+    ["permission_prompt", "Do you want to proceed?\n 1. Yes\n 2. No\n"],
+    ["auth_failure", "API Error: 401 authentication_error. Please run /login\n"],
+    ["provider_limit", "Claude usage limit reached. Your limit will reset at 5pm.\n"]
+  ])("ends a Session whose pane shows a %s that persisted past the stall deadline, and not before", (paneClass, pane) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launched(fixture, tmux);
+    tmux.paneOutput.set(session.tmux_session_name, pane);
+
+    tickAtMs(fixture, tmux, MIN); // baseline
+    tickAtMs(fixture, tmux, 10 * MIN); // blocked, but inside the stall deadline
+    expect(tmux.killed).toEqual([]);
+    expect(lease(fixture)?.id).toBe(session.id);
+
+    const stopAt = MIN + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1;
+    tickAtMs(fixture, tmux, stopAt);
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+    tickAtMs(fixture, tmux, stopAt + MIN);
+    expect(lease(fixture)).toBeNull();
+    const receipt = receiptOf(fixture, session.id)!;
+    expect(receipt.reason).toContain("Stopped by Arcadia");
+    expect(receipt.reason).toContain(paneClass.replace("_", " "));
+    expect(existsSync(session.worktree_path)).toBe(true);
+  });
+
+  it("ignores a permission prompt in a headless Session's tool output, but still stops it for an auth failure", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launched(fixture, tmux);
+    // A headless Session has a recorded log; its pane is tool output.
+    mkdirSync(path.dirname(sessionLogPath(fixture.workspace, session.id)), { recursive: true });
+    writeFileSync(sessionLogPath(fixture.workspace, session.id), "");
+    tmux.paneOutput.set(session.tmux_session_name, "tool_result: if (confirm) { ask('Do you want to proceed?') }\n");
+    tickAtMs(fixture, tmux, MIN);
+    const late = MIN + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1;
+    tickAtMs(fixture, tmux, late);
+    expect(tmux.killed).toEqual([]);
+    expect(lease(fixture)?.id).toBe(session.id);
+
+    // An auth failure is still blocking for a headless Session.
+    tmux.paneOutput.set(session.tmux_session_name, "API Error: 401 authentication_error. Please run /login\n");
+    tickAtMs(fixture, tmux, late + MIN);
+    tickAtMs(fixture, tmux, late + MIN + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1);
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+  });
+
+  it("scans only the last few pane lines: a blocking message buried under later output does not stop a silent Session", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launched(fixture, tmux);
+    const buried = "Claude usage limit reached.\n" + Array.from({ length: 12 }, (_, i) => `$ later line ${i}`).join("\n") + "\n";
+    tmux.paneOutput.set(session.tmux_session_name, buried);
+    tickAtMs(fixture, tmux, MIN);
+    tickAtMs(fixture, tmux, MIN + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1);
+    expect(tmux.killed).toEqual([]);
+  });
+
+  it("treats a kill that did not take as no stop: no event, no stop reason, lease held, retried next tick", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activateScope(fixture, { sessionTimeLimitMs: 30 * MIN });
+    const session = launched(fixture, tmux);
+    tmux.failKill = true;
+
+    tickAtMs(fixture, tmux, 31 * MIN);
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+    expect(lease(fixture)?.stop_reason).toBeNull();
+    expect(receiptOf(fixture, session.id)).toBeNull();
+    const stoppedEvents = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT 1 FROM events WHERE event_type = 'managed_production.session_stopped'").all());
+    expect(stoppedEvents()).toHaveLength(0);
+
+    // The next tick retries; now the kill takes and the stop is recorded.
+    tmux.failKill = false;
+    tickAtMs(fixture, tmux, 32 * MIN);
+    expect(tmux.killed).toHaveLength(2);
+    expect(stoppedEvents()).toHaveLength(1);
+    expect(lease(fixture)?.stop_reason).toContain("time limit");
+    tickAtMs(fixture, tmux, 33 * MIN);
+    expect(lease(fixture)).toBeNull();
+    expect(receiptOf(fixture, session.id)!.reason).toContain("Stopped by Arcadia");
+  });
+
+  it("never ends a progressing Session whose pane tail still carries an old blocking message", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launched(fixture, tmux);
+    const stale = "Claude usage limit reached. Your limit will reset at 5pm.\nDo you want to proceed?\n";
+    for (let i = 1; i <= 6; i++) {
+      tmux.paneOutput.set(session.tmux_session_name, `${stale}$ still working, step ${i}\n`);
+      tickAtMs(fixture, tmux, i * 10 * MIN);
+    }
+    expect(tmux.killed).toEqual([]);
+    expect(lease(fixture)?.id).toBe(session.id);
+    expect(receiptOf(fixture, session.id)).toBeNull();
+  });
+
+  it("leaves a stalled Session with no blocking signal alone until its time limit", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const session = launched(fixture, tmux);
+    tmux.paneOutput.set(session.tmux_session_name, "$ claude is thinking...\n");
+    tickAtMs(fixture, tmux, MIN);
+    tickAtMs(fixture, tmux, MIN + PRODUCTION_CONTROL_DEADLINES.stalledSessionDeadlineMs + 1);
+    expect(lease(fixture)?.stall_flagged_at).not.toBeNull();
+    expect(tmux.killed).toEqual([]);
+
+    tickAtMs(fixture, tmux, PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs + MIN);
+    expect(tmux.killed).toEqual([session.tmux_session_name]);
+    tickAtMs(fixture, tmux, PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs + 2 * MIN);
+    expect(lease(fixture)).toBeNull();
+    expect(receiptOf(fixture, session.id)!.reason).toContain("time limit of 120 minutes");
+  });
+
+  it("falls back to the default limit when no policy is readable", () => {
+    const db = new BetterSqlite3(":memory:");
+    expect(resolveSessionTimeLimitMs(db, { time_limit_ms: null })).toBe(PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs);
+    expect(resolveSessionTimeLimitMs(db, { time_limit_ms: 7 * MIN })).toBe(7 * MIN);
+    db.close();
   });
 });
 
