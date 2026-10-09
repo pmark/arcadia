@@ -40,15 +40,23 @@ import { boundedExec } from "./preservationStages.js";
  * expands (`$PWD/x`, globs, `~`), is refused because the root-relative file
  * bound may not be the file run (#1047). A sibling `.pyc`, native extension or
  * `__pycache__` entry for an imported Python module is refused in either
- * tree, as Python would load it ahead of the bound source (#1052). Because
- * Python resolves any import (including a stdlib module's own imports, such as
- * `subprocess` importing `selectors`) against the script's directory first, and
- * a package import reaches submodules this binding does not name, a Python
- * check is also refused when base and candidate differ at all in the importable
- * entries of the script's directory or of any imported package directory
- * (recursively): `*.py`, `*.pyc`, `__pycache__`, native extension suffixes and
- * package directories, added, removed or changed (#1100). This is fail-closed
- * and deliberately broader than the files the closure binds. Not
+ * tree, as Python would load it ahead of the bound source (#1052). Python
+ * resolves any import (including a stdlib module's own imports, such as
+ * `subprocess` importing `selectors` or an optional `msvcrt`) against the
+ * script's directory first, and a package import reaches submodules this
+ * binding does not name. A Python check is therefore also refused when base and
+ * candidate differ at all, anywhere under the script's directory or any
+ * imported package directory (recursively), in: `*.py`/`*.pyc`/`__pycache__`
+ * entries, native extension suffixes, any directory (a namespace package), any
+ * symlink, or a gitlink (#1100). A symlink that resolves outside the scanned
+ * directory is refused even when unchanged. A script counts as Python when it
+ * is run by a python interpreter or its shebang names python, whatever its
+ * extension. A Python check command that sets a `PYTHON*=` variable or uses
+ * `-m`/`-c`, and a bound Python source that mentions `sys.path`, `importlib`,
+ * `__import__` or `runpy`, are refused because they redirect imports in ways
+ * this binding cannot enumerate. This is fail-closed and deliberately broader
+ * than the files the closure binds: keep a Python check and its helpers in an
+ * isolated directory (for example `checks/`) so unrelated work cannot trip it. Not
  * covered: a literal absolute path (the host runs checks in an unguessable
  * temp checkout with the repository denied, so it cannot name candidate
  * content), and options that take a value before an interpreter's script
@@ -100,15 +108,19 @@ const PYTHON_BARE_IMPORT_SUPPORTED =
   /^\s*import\s+(\w+(?:\.\w+)*(?:\s+as\s+\w+)?(?:\s*,\s*\w+(?:\.\w+)*(?:\s+as\s+\w+)?)*)\s*(?:#.*)?$/;
 
 export function bindCheckDefinitions(repository: string, baseRevision: string, candidateTree: string, commands: string[]): CheckDefinitionBinding {
-  const base = blobs(repository, baseRevision);
-  const candidate = blobs(repository, candidateTree);
+  const baseTree = readTree(repository, baseRevision);
+  const candidateSnapshot = readTree(repository, candidateTree);
+  const base = baseTree.blobs;
+  const candidate = candidateSnapshot.blobs;
   const entries = treeEntries(base, candidate);
   const bound = new Map<string, string | null>();
-  // Directories whose importable entries must be identical in both trees (#1100):
-  // every Python file's own directory (non-recursive; its package-like
-  // subdirectories are followed) and every imported package directory (recursive).
-  const scriptDirs = new Set<string>();
-  const packageDirs = new Set<string>();
+  // Directories whose importable entries must be identical in both trees
+  // (#1100): every Python file's own directory and every imported package
+  // directory, each scanned recursively.
+  const scanDirs = new Set<string>();
+  // Files known to be Python scripts although their name does not say so: run by
+  // a python interpreter, or with a python shebang.
+  const pythonScripts = new Set<string>();
   const allPaths = [...new Set([...base.keys(), ...candidate.keys()])];
   const visit = (file: string) => {
     if (bound.has(file)) return;
@@ -120,10 +132,17 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     const blob = base.get(file)?.blob ?? null;
     bound.set(file, blob);
     if (!blob) return;
-    if (PYTHON_EXTENSION.test(file)) {
+    if (PYTHON_EXTENSION.test(file) || pythonScripts.has(file)) {
       const source = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString();
       const dir = path.posix.dirname(file);
-      scriptDirs.add(dir);
+      scanDirs.add(dir);
+      if (PYTHON_DYNAMIC_IMPORT.test(source)) {
+        throw validationError(
+          `Cannot establish the Python import closure for \`${file}\`: it mentions \`sys.path\`, \`importlib\`, \`__import__\` or \`runpy\`, which can load code this binding does not see. ` +
+          `Declare a check that uses only plain imports, ${ISOLATION_ADVICE}`,
+          { code: PRESERVATION_CHECK_MODIFIED_CODE, path: file }
+        );
+      }
       const visitPythonModule = (dotted: string) => {
         // A same-directory import resolves to a plain module or, when that
         // file is absent, a regular package whose __init__.py Python executes
@@ -135,7 +154,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
         const parts = dotted.split(".");
         for (let end = 1; end <= parts.length; end++) {
           const name = parts.slice(0, end).join("/");
-          packageDirs.add(path.posix.join(dir, name));
+          scanDirs.add(path.posix.join(dir, name));
           // Python tries extension modules and bytecode before (or without) the
           // `.py` source this binding hashes, so a sibling of either kind
           // shadows the bound file and runs unbound code (#1052).
@@ -199,91 +218,147 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
     if (mainTarget) for (const probe of REQUIRE_PROBES) visit(mainTarget + probe);
   };
   for (const command of commands) {
-    for (const file of namedFiles(command, base, candidate, entries, baseRevision)) visitDirectoryImport(file);
+    const named = namedFiles(command, base, candidate, entries, baseRevision, pythonScripts);
+    let pythonCommand = named.some(file => pythonScripts.has(file) || PYTHON_EXTENSION.test(file));
+    for (const file of named) {
+      if (!pythonScripts.has(file) && !PYTHON_EXTENSION.test(file) && !SCRIPT_EXTENSIONS.test(file) && hasPythonShebang(repository, base.get(file)?.blob)) {
+        pythonScripts.add(file);
+        pythonCommand = true;
+      }
+    }
+    if (pythonCommand && PYTHON_ENVIRONMENT.test(command)) {
+      throw validationError(
+        `Declared preservation check \`${command}\` runs Python with a \`PYTHON*=\` environment variable, which redirects imports (\`PYTHONPATH\`, \`PYTHONHOME\`, \`PYTHONSTARTUP\`, \`PYTHONPYCACHEPREFIX\`, ...) outside what this binding checks. ` +
+        `Remove the variable from the command, ${ISOLATION_ADVICE}`,
+        { code: PRESERVATION_CHECK_MODIFIED_CODE, baseRevision, command }
+      );
+    }
+    for (const file of named) visitDirectoryImport(file);
   }
   const files = [...bound].map(([file, blob]) => ({ path: file, blob })).sort((a, b) => a.path.localeCompare(b.path));
   for (const file of files) {
     const current = candidate.get(file.path)?.blob ?? null;
     if (current === file.blob) continue;
-    const command = commands.find(c => namedFiles(c, base, candidate, entries, baseRevision).includes(file.path)) ?? commands.join(" && ");
+    const command = commands.find(c => namedFiles(c, base, candidate, entries, baseRevision, new Set()).includes(file.path)) ?? commands.join(" && ");
     throw validationError(
       `Candidate changed \`${file.path}\`, which declared preservation check \`${command}\` executes; a candidate cannot rewrite the check that judges it. ` +
-      "Land the check change on the base branch first, then prepare and authorize a fresh handoff.",
+      `Land the check change on the base branch first, then prepare and authorize a fresh handoff. ${PYTHON_ISOLATION_NOTE}`,
       { code: PRESERVATION_CHECK_MODIFIED_CODE, path: file.path, baseRevision, authorizedBlob: file.blob, candidateBlob: current }
     );
   }
-  const importable = new ImportableSets(base, candidate);
-  for (const dir of scriptDirs) importable.refuseDifference(dir, false, baseRevision, commands);
-  for (const dir of packageDirs) importable.refuseDifference(dir, true, baseRevision, commands);
+  const importable = new ImportableSets(repository, baseTree, candidateSnapshot);
+  for (const dir of scanDirs) importable.refuseDifference(dir, baseRevision, commands);
   return { baseRevision, files };
 }
 
 /** Names Python's path finders can load as a module: source, bytecode, or a
  * native extension (including tagged forms such as `x.cpython-312-darwin.so`). */
 const PYTHON_IMPORTABLE_NAME = /\.(?:py|pyw|pyc|pyo|pyd|so|dylib)$/;
-const PYTHON_INIT_NAME = /^__init__\./;
+/** Code that edits the import path or loads modules by computed name, so the
+ * statically bound closure no longer describes what runs. */
+const PYTHON_DYNAMIC_IMPORT = /\bsys\s*\.\s*path\b|\bfrom\s+sys\s+import\b[^\n]*\bpath\b|\bimportlib\b|\b__import__\b|\brunpy\b/;
+/** A `PYTHON*=` assignment (also after `export`/`env`) anywhere in a command. */
+const PYTHON_ENVIRONMENT = /(?:^|[\s;&|(])PYTHON[A-Za-z0-9_]*=/;
+const ISOLATION_ADVICE = "or land the change on the base branch first and prepare a fresh authorization. For Python checks, keep the check and its helpers in an isolated directory (for example `checks/`) so unrelated changes cannot trip this refusal.";
+const PYTHON_ISOLATION_NOTE = "For Python checks, keep the check and its helpers in an isolated directory (for example `checks/`).";
 
-/** The importable entries of directories in both trees, compared by blob and
- * mode, with names folded case-insensitively as the checkout is. Used only to
- * refuse: a Python check is relied on only if nothing Python could import
- * differs between the authorized base and the candidate (#1100). */
+/** Whether a blob starts with a `#!` line naming python. */
+function hasPythonShebang(repository: string, blob: string | undefined): boolean {
+  if (!blob) return false;
+  let head: string;
+  try {
+    head = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString().slice(0, 512);
+  } catch (error) {
+    if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
+    return false;
+  }
+  const first = head.split("\n", 1)[0];
+  return first.startsWith("#!") && /\b(?:python|pypy)/i.test(first);
+}
+
+interface ScannedEntry { path: string; signature: string; link: boolean; blob: string }
+
+/** The entries Python could import from, or be redirected by, under a scanned
+ * directory in both trees, compared by blob and mode, names folded
+ * case-insensitively as the checkout is: importable files and `__pycache__`
+ * contents, every directory (any may be a namespace package, such as `msvcrt/`
+ * that `subprocess` optionally imports), every symlink, and gitlinks. Used
+ * only to refuse: a Python check is relied on only if nothing Python could
+ * import differs between the authorized base and the candidate (#1100). */
 class ImportableSets {
-  private readonly trees: Map<string, GitBlob>[];
-  constructor(...trees: Map<string, GitBlob>[]) { this.trees = trees; }
+  constructor(private readonly repository: string, private readonly base: TreeSnapshot, private readonly candidate: TreeSnapshot) {}
 
-  /** Throws when base and candidate differ in the importable entries of `dir`.
-   * A non-recursive scan still follows, in full, every package-like
-   * subdirectory: one with an `__init__` entry in either tree, or a
-   * `__pycache__`. */
-  refuseDifference(dir: string, recursive: boolean, baseRevision: string, commands: string[]): void {
+  refuseDifference(dir: string, baseRevision: string, commands: string[]): void {
     const root = dir === "." ? "" : fold(dir);
     const prefix = root === "" ? "" : `${root}/`;
-    const packages = new Set<string>();
-    if (!recursive) {
-      for (const tree of this.trees) {
-        for (const file of tree.keys()) {
-          const lower = fold(file);
-          if (!lower.startsWith(prefix)) continue;
-          const rest = lower.slice(prefix.length);
-          const slash = rest.indexOf("/");
-          if (slash < 0) continue;
-          const sub = rest.slice(0, slash);
-          const tail = rest.slice(slash + 1);
-          if (sub === "__pycache__" || (PYTHON_INIT_NAME.test(tail) && PYTHON_IMPORTABLE_NAME.test(tail))) packages.add(`${prefix}${sub}/`);
-        }
-      }
-    }
-    const [base, candidate] = this.trees.map(tree => {
-      const result = new Map<string, { path: string; signature: string }>();
-      for (const [file, entry] of tree) {
-        const lower = fold(file);
-        if (!lower.startsWith(prefix)) continue;
-        const rest = lower.slice(prefix.length);
-        const direct = !rest.includes("/");
-        if (!recursive && !direct && ![...packages].some(pkg => lower.startsWith(pkg))) continue;
-        if (!PYTHON_IMPORTABLE_NAME.test(lower) && !/(?:^|\/)__pycache__\//.test(lower)) continue;
-        result.set(lower, { path: file, signature: `${entry.mode}:${entry.blob}` });
-      }
-      return result;
-    });
-    for (const key of [...new Set([...base.keys(), ...candidate.keys()])].sort()) {
-      const before = base.get(key);
-      const after = candidate.get(key);
-      if (before && after && before.signature === after.signature && before.path === after.path) continue;
-      const changed = (after ?? before)!.path;
-      const kind = !before ? "added" : !after ? "removed" : "changed";
+    const [before, after] = [this.base, this.candidate].map(tree => this.scan(tree, prefix));
+    for (const key of [...new Set([...before.keys(), ...after.keys()])].sort()) {
+      const was = before.get(key);
+      const now = after.get(key);
+      if (was && now && was.signature === now.signature && was.path === now.path) continue;
+      const changed = (now ?? was)!.path;
+      const kind = !was ? "added" : !now ? "removed" : "changed";
       throw validationError(
-        `Candidate ${kind} \`${changed}\`, an importable Python entry beside or beneath code that declared preservation check \`${commands.join(" && ")}\` imports; Python may load it ahead of or instead of the bound source (for example a module that shadows one the standard library imports, or a package submodule), so the executed code would not match what this binding checked. ` +
-        "Land the change on the base branch first, then prepare and authorize a fresh handoff.",
+        `Candidate ${kind} \`${changed}\`, an importable Python entry (module, bytecode, native extension, package or namespace directory, symlink or submodule) beneath code that declared preservation check \`${commands.join(" && ")}\` imports; Python may load it ahead of or instead of the bound source (for example a module that shadows one the standard library imports, or a package submodule), so the executed code would not match what this binding checked. ` +
+        `Land the change on the base branch first, then prepare and authorize a fresh handoff. ${PYTHON_ISOLATION_NOTE}`,
         { code: PRESERVATION_CHECK_MODIFIED_CODE, path: changed, baseRevision, importable: true }
       );
     }
+    // A symlink whose target leaves the scanned directory can be repointed by
+    // changes this scan never sees, so it is refused even when unchanged.
+    for (const entries of [before, after]) {
+      for (const [key, entry] of entries) {
+        if (!entry.link) continue;
+        const target = this.linkTarget(entry.blob).trim();
+        const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(key), target)).toLowerCase();
+        const inside = !path.posix.isAbsolute(target) && !resolved.startsWith("../") && resolved !== ".." && (prefix === "" || resolved.startsWith(prefix));
+        if (inside) continue;
+        throw validationError(
+          `Symlink \`${entry.path}\` beneath code that declared preservation check \`${commands.join(" && ")}\` imports points outside the scanned directory, where changes cannot be bound; Python may follow it to code this binding did not check. ` +
+          `Remove the symlink on the base branch, then prepare and authorize a fresh handoff. ${PYTHON_ISOLATION_NOTE}`,
+          { code: PRESERVATION_CHECK_MODIFIED_CODE, path: entry.path, baseRevision, importable: true }
+        );
+      }
+    }
+  }
+
+  private linkTarget(blob: string): string {
+    return boundedExec("git", ["cat-file", "blob", blob], { cwd: this.repository, encoding: "utf8", maxBuffer: 1024 * 1024 }).toString();
+  }
+
+  private scan(tree: TreeSnapshot, prefix: string): Map<string, ScannedEntry> {
+    const result = new Map<string, ScannedEntry>();
+    const depth = prefix === "" ? 1 : prefix.split("/").length;
+    const directories = (file: string, lower: string) => {
+      const parts = lower.split("/");
+      const exact = file.split("/");
+      for (let end = depth; end < parts.length; end++) {
+        const key = `${parts.slice(0, end).join("/")}/`;
+        if (!result.has(key)) result.set(key, { path: exact.slice(0, end).join("/"), signature: "dir", link: false, blob: "" });
+      }
+    };
+    for (const [file, entry] of tree.blobs) {
+      const lower = fold(file);
+      if (!lower.startsWith(prefix)) continue;
+      directories(file, lower);
+      const link = entry.mode === "120000";
+      if (!link && !PYTHON_IMPORTABLE_NAME.test(lower) && !/(?:^|\/)__pycache__\//.test(lower)) continue;
+      result.set(lower, { path: file, signature: `${entry.mode}:${entry.blob}`, link, blob: entry.blob });
+    }
+    for (const [file, commit] of tree.gitlinks) {
+      const lower = fold(file);
+      if (!lower.startsWith(prefix)) continue;
+      directories(file, lower);
+      result.set(lower, { path: file, signature: `160000:${commit}`, link: false, blob: "" });
+    }
+    return result;
   }
 }
 
 /** Interpreters that run a script named as their next positional argument.
  * Mirrors the self-contained tools `preservationChecks.ts` allows through the
  * sandbox: only these, plus a directly executed script, name a *check file*. */
+const PYTHON_INTERPRETER = /^(?:python|pypy)\d*(?:\.\d+)*$/;
 const SCRIPT_INTERPRETERS = new Set(["node", "nodejs", "python3", "python", "sh", "bash", "zsh", "ruby", "deno", "bun", "source", "."]);
 
 /** Builtins that move the shell, so later root-relative paths resolve elsewhere. */
@@ -325,7 +400,7 @@ const LAUNCHER_CHDIR_OPTION: Record<string, RegExp> = {
  * unbound or every check would be refused by its own test fixtures and
  * output files. A file only the candidate has is still bound — as absent at
  * the base — so the candidate cannot supply it. */
-function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: TreeEntries, baseRevision: string): string[] {
+function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: TreeEntries, baseRevision: string, pythonScripts: Set<string>): string[] {
   const files: string[] = [];
   // Segments run in command order, so a `cd` in one affects every later one.
   let changedDirectory = false;
@@ -356,10 +431,22 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
     const executableName = executable.split("/").pop() ?? executable;
     if (CWD_COMMANDS.has(executableName)) { changedDirectory = true; continue; }
     let target: string | null = null;
-    const interpreted = SCRIPT_INTERPRETERS.has(executableName);
+    const python = PYTHON_INTERPRETER.test(executableName);
+    const interpreted = python || SCRIPT_INTERPRETERS.has(executableName);
     if (interpreted) {
       for (let i = index + 1; i < tokens.length; i += 1) {
-        if (tokens[i].startsWith("-")) continue;
+        if (python && /^-[A-Za-z]*[cm]/.test(tokens[i])) {
+          throw validationError(
+            `Declared preservation check \`${command}\` runs Python with \`${tokens[i]}\` (inline code or a module by name), which this binding cannot resolve to a bound script file. ` +
+            `Run a plain script file instead, ${ISOLATION_ADVICE}`,
+            { code: PRESERVATION_CHECK_MODIFIED_CODE, baseRevision, command }
+          );
+        }
+        if (tokens[i].startsWith("-")) {
+          // Options that take the next token as their value must not be mistaken for the script.
+          if (python && (tokens[i] === "-W" || tokens[i] === "-X" || tokens[i] === "--check-hash-based-pycs")) i += 1;
+          continue;
+        }
         target = tokens[i];
         break;
       }
@@ -383,7 +470,10 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       if (hazard) throw hazardRefusal(hazard, target, baseRevision);
     }
     const file = inTree(target);
-    if (file && (base.has(file) || candidate.has(file))) files.push(file);
+    if (file && (base.has(file) || candidate.has(file))) {
+      files.push(file);
+      if (python) pythonScripts.add(file);
+    }
   }
   return files;
 }
@@ -538,12 +628,17 @@ function pathHazard(written: string, entries: TreeEntries): PathHazard | null {
   return null;
 }
 
-function blobs(repository: string, revision: string): Map<string, GitBlob> {
+interface TreeSnapshot { blobs: Map<string, GitBlob>; gitlinks: Map<string, string> }
+
+function readTree(repository: string, revision: string): TreeSnapshot {
   const entries = boundedExec("git", ["ls-tree", "-rz", revision], { cwd: repository, maxBuffer: 64 * 1024 * 1024 }).toString().split("\0");
   const map = new Map<string, GitBlob>();
+  const gitlinks = new Map<string, string>();
   for (const entry of entries) {
     const match = /^(\d+) blob ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
-    if (match) map.set(match[3], { mode: match[1], blob: match[2] });
+    if (match) { map.set(match[3], { mode: match[1], blob: match[2] }); continue; }
+    const link = /^160000 commit ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
+    if (link) gitlinks.set(link[2], link[1]);
   }
-  return map;
+  return { blobs: map, gitlinks };
 }
