@@ -8,7 +8,7 @@ export type AskHeardType = "work" | "idea" | "answer" | "status" | "unclear" | "
 export const ASK_CORRECTION_TYPES = ["work", "idea", "answer", "status"] as const;
 export type AskCorrectionType = (typeof ASK_CORRECTION_TYPES)[number];
 
-/** How the type was decided. Only deterministic rules exist today; `memo` and `model` are reserved by later Actions. */
+/** How the type was decided: a deterministic rule, or `memo` (an operator's earlier correction of these exact words). `model` is reserved by a later Action. */
 export type AskHeardSource = "rule" | "memo" | "model";
 
 export interface AskHeard {
@@ -39,7 +39,7 @@ type HeardInput = Pick<
   | "reviewItemId"
   | "decisionId"
   | "backBurnerItemId"
-> & { decisionSlug?: string | null; suppressed?: AskCommandData["suppressed"] };
+> & { decisionSlug?: string | null; suppressed?: AskCommandData["suppressed"]; memo?: AskCommandData["memo"] };
 
 /**
  * The one line that opens every `arcadia ask` result. It says what the Ask was heard as and where the result went, and
@@ -86,6 +86,16 @@ export function buildAskHeard(data: HeardInput): AskHeard {
     created = "nothing created";
   }
 
+  // A memo is the operator's own earlier correction of these exact words, not a guess: it says so and gives its date.
+  if (data.memo) {
+    return {
+      type,
+      confidence: "memo",
+      source: "memo",
+      created,
+      line: `Heard: ${type} (memo ${data.memo.date}) -> ${created} . ${ASK_HEARD_HINT}`
+    };
+  }
   const confidence = data.intake.confidenceLabel;
   const source: AskHeardSource = "rule";
   return {

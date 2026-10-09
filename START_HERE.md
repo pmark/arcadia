@@ -2727,6 +2727,27 @@ an execution approval or a follow-up Decision such as "Execute approved work" is
 refused, and you decide it with `arcadia review approve`. The `task` type arrives with
 a later Action.
 
+Corrections stick. Each correction, and each approval of an Ask question, is
+remembered in the workspace database (never in a repository). The next time you send
+the identical words (compared after trimming, collapsing spaces and ignoring case;
+never by similarity), Arcadia skips its patterns and routes them as you corrected,
+with no model call and no new question, and the receipt says so:
+
+```
+Heard: work (memo 2026-10-08) -> Action work_2 in Living Songbook . wrong? reply type: work|idea|answer|status
+```
+
+A memo can only route to work, idea or status. It never answers a Decision, never
+applies to an agent-written Ask or to a reply that names a Decision, and never runs
+anything. An explicit `--project` on the repeat wins over the remembered Project.
+Correct it again and the newest correction wins, including a newer correction to a
+type a memo cannot apply, which retires the older memo. A memo also stands down when
+the ordinary route for those words is Requires Review or Blocked, so it can replace a
+question or a shelved idea but never skip a review. Any process able to run the
+`ask correct` CLI creates an operator-sourced memo, so that command carries the same
+trust as the rest of the CLI. The routing flag below turns memos off together with
+the rest of the routing.
+
 To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in the
 workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot
 be read never loses an Ask: the default is used and the receipt carries a warning.

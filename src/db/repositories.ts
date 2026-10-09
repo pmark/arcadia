@@ -1508,19 +1508,21 @@ export function createAskRequest(db: Database.Database, input: CreateAskRequestI
     updated_at: timestamp,
     recurrence_flag: input.recurrenceFlag ? 1 : 0,
     planning_flag: input.planningFlag ? 1 : 0,
-    suppressed_reason: nullable(input.suppressedReason)
+    suppressed_reason: nullable(input.suppressedReason),
+    confidence: nullable(input.confidence),
+    corrected_type: null
   };
 
   db.prepare(
     `INSERT INTO ask_requests (
       id, raw_request, resolved_intent, registry_version, output_kind, stewardship_json, work_item_id,
       capture_id, plan_id, prompt_packet_path, status, created_at, updated_at,
-      recurrence_flag, planning_flag, suppressed_reason
+      recurrence_flag, planning_flag, suppressed_reason, confidence, corrected_type
     ) VALUES (
       @id, @raw_request, @resolved_intent, @registry_version, @output_kind, @stewardship_json, @work_item_id,
       @capture_id,
       @plan_id, @prompt_packet_path, @status, @created_at, @updated_at,
-      @recurrence_flag, @planning_flag, @suppressed_reason
+      @recurrence_flag, @planning_flag, @suppressed_reason, @confidence, @corrected_type
     )`
   ).run(askRequest);
 

@@ -257,6 +257,10 @@ export interface AskRequest {
   planning_flag: number;
   /** Why this Ask created no new question (`acknowledgement` or `duplicate:<review id>`); null for every other Ask. */
   suppressed_reason: string | null;
+  /** The confidence label the rules gave this Ask when routed (`high`, `medium`, `low`); null on older rows. */
+  confidence: string | null;
+  /** What the operator corrected this Ask to (`work`, `idea`, `answer`, `status`, `reroute`); null when never corrected. */
+  corrected_type: string | null;
 }
 
 export type ReviewItemStatus = "open" | "approved" | "rejected" | "deferred";
@@ -746,6 +750,7 @@ export interface CreateAskRequestInput {
   recurrenceFlag?: boolean;
   planningFlag?: boolean;
   suppressedReason?: string | null;
+  confidence?: string | null;
 }
 
 export interface CreateReviewItemInput {

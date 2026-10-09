@@ -59,6 +59,9 @@ export function applyMigrations(db: Database.Database): void {
   ensureAskRoutingColumns(db);
   ensureAskSupersessionsTable(db);
   ensureOperatorAgnosticSchema(db);
+  // After the legacy rebuilds above, which recreate ask_requests from its original columns.
+  ensureAskClassificationColumns(db);
+  ensureAskCorrectionsTable(db);
   ensureExecutionRunWorkerColumns(db);
   ensureDecisionGatedPlanningColumns(db);
   ensureAskFeedbackTable(db);
@@ -1577,6 +1580,47 @@ CREATE TABLE IF NOT EXISTS ask_supersessions (
 
 CREATE INDEX IF NOT EXISTS idx_ask_supersessions_old ON ask_supersessions(old_ask_request_id);
 CREATE INDEX IF NOT EXISTS idx_ask_supersessions_new ON ask_supersessions(new_ask_request_id);
+  `);
+}
+
+/**
+ * `confidence` is the label the deterministic rules gave an Ask when it was routed; `corrected_type` is what the
+ * operator later said it was. Both nullable and additive: old rows read NULL, and nothing reads them to route.
+ */
+function ensureAskClassificationColumns(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(ask_requests)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("confidence")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN confidence TEXT").run();
+  }
+  if (!columns.has("corrected_type")) {
+    db.prepare("ALTER TABLE ask_requests ADD COLUMN corrected_type TEXT").run();
+  }
+}
+
+/**
+ * One row per operator correction of an Ask (`arcadia ask correct`, or an answer to an Ask question). The normalized
+ * Ask text lives here, in the workspace database only, so an exact repeat of that text can be routed the same way
+ * without a model. Additive, and deliberately no foreign keys or cascades: deleting or rebuilding an Ask never
+ * removes what the operator taught Arcadia.
+ */
+function ensureAskCorrectionsTable(db: Database.Database): void {
+  db.exec(`
+CREATE TABLE IF NOT EXISTS ask_corrections (
+  id TEXT PRIMARY KEY,
+  ask_request_id TEXT NOT NULL,
+  normalized_text TEXT NOT NULL,
+  text_hash TEXT NOT NULL,
+  predicted_type TEXT NOT NULL,
+  corrected_type TEXT NOT NULL,
+  corrected_project TEXT,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ask_corrections_hash ON ask_corrections(text_hash);
+CREATE INDEX IF NOT EXISTS idx_ask_corrections_ask ON ask_corrections(ask_request_id);
   `);
 }
 
