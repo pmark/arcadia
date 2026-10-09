@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import { askQuestionOrigin } from "./askQuestion.js";
+import { ingressSourceKind } from "./replyCapture.js";
 
 /**
  * Operator corrections of an Ask, remembered so an exact repeat of the same words routes the same way next time
@@ -65,56 +67,85 @@ export function recordAskCorrection(db: Database.Database, input: AskCorrectionI
   const normalized = normalizeAskText(input.text);
   const id = `correction_${randomUUID()}`;
   const createdAt = input.createdAt ?? new Date().toISOString();
-  db.prepare(
-    `INSERT INTO ask_corrections
-       (id, ask_request_id, normalized_text, text_hash, predicted_type, corrected_type, corrected_project, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    input.askRequestId,
-    normalized,
-    askTextHash(normalized),
-    input.predictedType,
-    input.correctedType,
-    input.correctedProject,
-    input.source,
-    createdAt
-  );
-  db.prepare("UPDATE ask_requests SET corrected_type = ? WHERE id = ?").run(input.correctedType, input.askRequestId);
+  // The row and the mark on the Ask commit together, or neither does. Inside a caller's transaction this is a savepoint.
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO ask_corrections
+         (id, ask_request_id, normalized_text, text_hash, predicted_type, corrected_type, corrected_project, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      input.askRequestId,
+      normalized,
+      askTextHash(normalized),
+      input.predictedType,
+      input.correctedType,
+      input.correctedProject,
+      input.source,
+      createdAt
+    );
+    db.prepare("UPDATE ask_requests SET corrected_type = ? WHERE id = ?").run(input.correctedType, input.askRequestId);
+  })();
   return { id, createdAt };
 }
 
 /**
- * The operator memo for exactly this text, or null. The newest operator correction that names a routable type wins,
- * so correcting a correction replaces it. Rows from a model, and rows whose type a memo may not apply, are invisible.
+ * An operator answer that approves an Ask question creates the Action the question was about: a correction of the Ask
+ * the question came from (heard as unclear, it is work). Call it inside the transaction that approves the question, so
+ * the answer and its memo commit together. Nothing is recorded for a Decision that is not an Ask question, or one an
+ * agent's Ask raised.
+ */
+export function recordAnswerCorrection(
+  db: Database.Database,
+  item: { id: string; ask_request_id: string | null; context_json: string; resolved_intent: string; source_input: string; project_id: string | null },
+  resultingAskId: string
+): void {
+  const origin = askQuestionOrigin(db, item);
+  if (!origin || ingressSourceKind(origin.via ?? "ask") === "agent") return;
+  const work = db
+    .prepare("SELECT wi.project_id FROM ask_requests ar JOIN work_items wi ON wi.id = ar.work_item_id WHERE ar.id = ?")
+    .get(resultingAskId) as { project_id: string | null } | undefined;
+  recordAskCorrection(db, {
+    askRequestId: origin.askId,
+    text: item.source_input,
+    predictedType: "unclear",
+    correctedType: "work",
+    correctedProject: work?.project_id ?? item.project_id,
+    source: "answer"
+  });
+}
+
+/**
+ * The operator memo for exactly this text, or null. The newest operator correction decides, whatever its type: if it
+ * names something a memo may not apply (an `answer`, a Project-only `reroute`), the memo stands down, so a newer
+ * correction retires an older one. Rows from a model are invisible.
  */
 export function findAskMemo(db: Database.Database, text: string): AskMemo | null {
   if (!hasAskCorrectionsTable(db)) return null;
   const normalized = normalizeAskText(text);
   if (!normalized) return null;
   const sources = OPERATOR_CORRECTION_SOURCES.map(() => "?").join(", ");
-  const types = MEMO_ROUTE_TYPES.map(() => "?").join(", ");
   const row = db
     .prepare(
       `SELECT id, ask_request_id, corrected_type, corrected_project, source, created_at FROM ask_corrections
-        WHERE text_hash = ? AND normalized_text = ? AND source IN (${sources}) AND corrected_type IN (${types})
+        WHERE text_hash = ? AND normalized_text = ? AND source IN (${sources})
         ORDER BY created_at DESC, id DESC LIMIT 1`
     )
-    .get(askTextHash(normalized), normalized, ...OPERATOR_CORRECTION_SOURCES, ...MEMO_ROUTE_TYPES) as
+    .get(askTextHash(normalized), normalized, ...OPERATOR_CORRECTION_SOURCES) as
     | {
         id: string;
         ask_request_id: string;
-        corrected_type: MemoRouteType;
+        corrected_type: string;
         corrected_project: string | null;
         source: OperatorCorrectionSource;
         created_at: string;
       }
     | undefined;
-  if (!row) return null;
+  if (!row || !(MEMO_ROUTE_TYPES as readonly string[]).includes(row.corrected_type)) return null;
   return {
     id: row.id,
     askRequestId: row.ask_request_id,
-    type: row.corrected_type,
+    type: row.corrected_type as MemoRouteType,
     projectId: row.corrected_project,
     source: row.source,
     createdAt: row.created_at,

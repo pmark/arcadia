@@ -60,6 +60,7 @@ import {
 } from "../projects/planningPromotion.js";
 import { runAskCommand, type AskCommandData } from "./ask.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
+import { recordAnswerCorrection } from "../ask/corrections.js";
 
 export interface RequiresReviewPacket {
   id: string;
@@ -1140,17 +1141,36 @@ export function runReviewApproveCommand(
     });
   }
 
-  const approval = runAskCommand({
-    workspace: workspacePath,
-    request: reviewItem.source_input,
-    approvedReviewItemId: reviewItem.id
-  });
-  if (!approval.data.ask) {
+  // An earlier attempt may have created the Action and then failed before the approval below committed (the Decision
+  // stayed open). Its Ask is linked on the Decision, so reuse it: a retry never creates a second Action.
+  const earlierAskId = reviewItem.resulting_ask_request_id;
+  const earlierAsk = earlierAskId
+    ? withDatabase(workspacePath, (db) =>
+        db.prepare("SELECT id, work_item_id FROM ask_requests WHERE id = ?").get(earlierAskId) as
+          | { id: string; work_item_id: string | null }
+          | undefined
+      )
+    : undefined;
+  const reusedAskId = earlierAsk?.work_item_id ? earlierAsk.id : null;
+  const approval = reusedAskId
+    ? null
+    : runAskCommand({
+        workspace: workspacePath,
+        request: reviewItem.source_input,
+        approvedReviewItemId: reviewItem.id
+      });
+  if (approval && !approval.data.ask) {
     throw validationError("Approved Requires Review Decision did not produce an ask request.", { id: reviewItem.id });
   }
-  const approvalAskId = approval.data.ask.id;
+  const approvalAskId = reusedAskId ?? (approval?.data.ask?.id as string);
 
-  const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => {
+  // The approval, the memo of an answered Ask question and the pending-execution marker commit together. The status is
+  // re-read under the write lock, as for a build packet above.
+  const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
+    const current = getReviewItem(db, reviewItem.id);
+    if (!current || (current.status !== "open" && current.status !== "deferred")) {
+      throw validationError("Requires Review Decision is already decided.", { id: reviewItem.id, status: current?.status ?? null });
+    }
     const item = updateReviewItemStatus(db, reviewItem.id, {
       status: "approved",
       decisionNote: "Approved from Requires Review. Execution pending.",
@@ -1159,11 +1179,12 @@ export function runReviewApproveCommand(
     if (!item) {
       throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
     }
+    recordAnswerCorrection(db, item, approvalAskId);
     return {
       updated: item,
       pendingExecutionReview: createPendingExecutionReviewItem(db, item)
     };
-  });
+  }));
 
   return createSuccess({
     command: "review.approve",
@@ -1172,13 +1193,13 @@ export function runReviewApproveCommand(
       item: reviewPacketForReviewItem(updated),
       result: {
         status: "approved",
-        summary: `${approval.data.result.summary} Run pending as Requires Review Decision ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
+        summary: `${approval?.data.result.summary ?? "Action already created by an earlier attempt."} Run pending as Requires Review Decision ${pendingExecutionReview.slug ?? pendingExecutionReview.id}.`
       },
-      approval: approval.data,
+      approval: approval?.data ?? null,
       execution: null,
       run: null
     },
-    artifacts: approval.artifacts,
+    artifacts: approval?.artifacts ?? [],
     warnings: [`Execution was not run. Approve ${pendingExecutionReview.slug ?? pendingExecutionReview.id} to execute the approved work.`]
   });
 }

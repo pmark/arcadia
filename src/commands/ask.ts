@@ -18,9 +18,9 @@ import {
   SUPPRESSED_DUPLICATE_PREFIX,
   isTrivialAcknowledgement
 } from "../ask/suppression.js";
-import { ASK_QUESTION_CONTEXT_KEY, askQuestionOrigin, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
+import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
 import { buildAskHeard, type AskHeard } from "../ask/heard.js";
-import { findAskMemo, recordAskCorrection, type AskMemo } from "../ask/corrections.js";
+import { findAskMemo, type AskMemo } from "../ask/corrections.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
@@ -245,10 +245,54 @@ function runAskCommandWithRouting(
   // ask.routing.v2: an agent-written Ask (agent.ask, codex.*) keeps the earlier routing, as does a workspace that turned the flag off.
   const routingV2 = ingressSourceKind(options.sourceIngress?.trim() || "ask") !== "agent" && flagEnabled;
   const parsedReviewResponse = parseReviewResponse(request, reviewResponseContextFromAskOptions(options));
+  const { intake, workspaceContext } = withDatabase(workspacePath, (db) => {
+    const workspaceContext = buildIntakeContext(db);
+    return { intake: resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 }), workspaceContext };
+  });
+  const selectProject = (reference: string | undefined) =>
+    withDatabase(workspacePath, (db) => {
+      const selected = resolveProjectReference(db, reference) ?? ruleMatch?.rule.destination ?? null;
+      return selected ? { id: selected.id, name: selected.name } : null;
+    });
+  const registryResolved = resolveIntent(request, registries);
+  const usingRegistryFallback = intake.resolvedIntent === "CaptureThought" && registryResolved.matched;
+  // The ordinary stewardship for this text: what the patterns decide, given whether an approved Decision is being applied.
+  const deriveStewardship = (approved: boolean, selectedProject: { id: string; name: string } | null) => {
+    const preliminaryResolved = usingRegistryFallback ? registryResolved : resolvedIntentFromIntake(intake, approved);
+    const resolved = usingRegistryFallback
+      ? registryResolved
+      : resolvedIntentForStewardship(
+          intake,
+          stewardIntent({
+            rawInput: request,
+            intake,
+            resolved: preliminaryResolved,
+            workspaceContext,
+            approvedFromReview: approved,
+            reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
+            reviewResponseHasResponse: parsedReviewResponse.hasResponse,
+            selectedProject,
+            routingV2
+          }),
+          approved
+        );
+    const computedStewardship = stewardIntent({
+      rawInput: request,
+      intake,
+      resolved,
+      workspaceContext,
+      approvedFromReview: approved,
+      reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
+      reviewResponseHasResponse: parsedReviewResponse.hasResponse,
+      selectedProject,
+      routingV2
+    });
+    return { resolved, computedStewardship };
+  };
   // The memo stage runs before every intake pattern: an operator already corrected these exact words, so route them as
   // that correction did. Never for a reply to a Decision, a rule-routed or explicit idea Ask, a correction itself, an
   // agent Ask or a workspace with the flag off. It can only pick work, idea or status, so it can never answer a Decision.
-  const memo =
+  let memo =
     routingV2 &&
     options.correctionRoute === undefined &&
     !options.approvedReviewItemId &&
@@ -257,10 +301,17 @@ function runAskCommandWithRouting(
     !parsedReviewResponse.hasReviewReference
       ? withDatabase(workspacePath, (db) => {
           const found = findAskMemo(db, request);
-          // A Project that no longer exists would make the Ask fail; the memo stands down and ordinary routing runs.
-          return found && found.projectId && !getProject(db, found.projectId) ? null : found;
+          // A Project routing would not resolve (deleted, or paused) would make the Ask fail; the memo stands down
+          // and ordinary routing runs. This is the resolver routing itself uses.
+          return found && found.projectId && !resolveProjectReference(db, found.projectId) ? null : found;
         })
       : null;
+  // A memo may replace the Clarify First and Back Burner outcomes, and the pattern outcome otherwise. It never lets an
+  // Ask skip Requires Review or Blocked: if the ordinary route for these words is one of those, the memo stands down.
+  if (memo) {
+    const ordinary = deriveStewardship(false, selectProject(options.project)).computedStewardship.recommendedExecutionPath;
+    if (ordinary === "Requires Review" || ordinary === "Blocked") memo = null;
+  }
   if (memo) trace.memo = memo;
   const route: AskRoute | undefined = options.correctionRoute ?? memo?.type;
   // An explicit Project from the operator wins over the one the memo remembers.
@@ -271,49 +322,8 @@ function runAskCommandWithRouting(
   // Work, idea and status corrections (and memos) never take a direct answer route (project create/update, listings).
   const skipDirectRoutes = route === "work" || route === "idea" || route === "status";
   const approvedFromReview = Boolean(options.approvedReviewItemId) || forceWork;
-  const { intake, workspaceContext, selectedProject } = withDatabase(workspacePath, (db) => {
-    const workspaceContext = buildIntakeContext(db);
-    const selected = resolveProjectReference(db, projectRef) ?? ruleMatch?.rule.destination ?? null;
-    return {
-      intake: resolveIntake(request, workspaceContext, { operatorPhrasings: routingV2 }),
-      workspaceContext,
-      selectedProject: selected ? { id: selected.id, name: selected.name } : null
-    };
-  });
-  const registryResolved = resolveIntent(request, registries);
-  const usingRegistryFallback = intake.resolvedIntent === "CaptureThought" && registryResolved.matched;
-  const preliminaryResolved =
-    usingRegistryFallback
-      ? registryResolved
-      : resolvedIntentFromIntake(intake, approvedFromReview);
-  const resolved = usingRegistryFallback
-    ? registryResolved
-    : resolvedIntentForStewardship(
-    intake,
-    stewardIntent({
-      rawInput: request,
-      intake,
-      resolved: preliminaryResolved,
-      workspaceContext,
-      approvedFromReview,
-      reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
-      reviewResponseHasResponse: parsedReviewResponse.hasResponse,
-      selectedProject,
-      routingV2
-    }),
-    approvedFromReview
-  );
-  const computedStewardship = stewardIntent({
-    rawInput: request,
-    intake,
-    resolved,
-    workspaceContext,
-    approvedFromReview,
-    reviewResponseHasReference: parsedReviewResponse.hasReviewReference,
-    reviewResponseHasResponse: parsedReviewResponse.hasResponse,
-    selectedProject,
-    routingV2
-  });
+  const selectedProject = selectProject(projectRef);
+  const { resolved, computedStewardship } = deriveStewardship(approvedFromReview, selectedProject);
   const stewardship: GoalStewardshipResult = options.captureAsIdea || route === "idea"
     ? {
         ...computedStewardship,
@@ -1110,7 +1120,7 @@ function runAskCommandWithRouting(
         planId: initial.plan.id,
         reviewItemId: reviewItem.id
       });
-      recordAnswerCorrection(db, options.approvedReviewItemId, initial.projectContext?.project.id ?? null);
+      linkApprovedDecisionToAsk(db, options.approvedReviewItemId, ask.id);
 
       return {
         ask,
@@ -1234,7 +1244,7 @@ function runAskCommandWithRouting(
       planId: initial.plan.id,
       reviewItemId: planningDecision?.id
     });
-    recordAnswerCorrection(db, options.approvedReviewItemId, initial.workItem.project_id ?? null);
+    linkApprovedDecisionToAsk(db, options.approvedReviewItemId, ask.id);
 
     return {
       ask,
@@ -1298,24 +1308,16 @@ function runAskCommandWithRouting(
 }
 
 /**
- * An operator answer that approves an Ask question creates the Action the question was about. That is a correction of
- * the Ask the question came from (it was heard as unclear, it is work), so remember it as one, in the transaction that
- * creates the Action. Nothing is recorded for a Decision that is not an Ask question, or one an agent's Ask raised.
+ * Records, in the transaction that creates the Action, which Ask an approval of a Decision produced. The approval
+ * itself (status, answer correction, pending execution) commits later in `review approve`; if that fails the Decision
+ * stays open, and the retry finds this link and reuses the Action instead of creating a second one.
  */
-function recordAnswerCorrection(db: Database.Database, reviewItemId: string | undefined, projectId: string | null): void {
+function linkApprovedDecisionToAsk(db: Database.Database, reviewItemId: string | undefined, askId: string): void {
   if (!reviewItemId) return;
-  const item = getReviewItem(db, reviewItemId);
-  const origin = item ? askQuestionOrigin(db, item) : null;
-  if (!item || !origin) return;
-  if (ingressSourceKind(origin.via ?? "ask") === "agent") return;
-  recordAskCorrection(db, {
-    askRequestId: origin.askId,
-    text: item.source_input,
-    predictedType: "unclear",
-    correctedType: "work",
-    correctedProject: projectId ?? item.project_id,
-    source: "answer"
-  });
+  db.prepare(
+    `UPDATE review_items SET resulting_ask_request_id = ?
+      WHERE id = ? AND status IN ('open', 'deferred') AND resulting_ask_request_id IS NULL`
+  ).run(askId, reviewItemId);
 }
 
 function actedProjectUpdate(input: {

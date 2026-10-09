@@ -16,6 +16,7 @@ import {
 } from "../db/repositories.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
 import { recordAskCorrection } from "../ask/corrections.js";
+import { normalizeAskInput } from "../intake/normalization.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { ASK_CORRECTION_TYPES, ASK_HEARD_HINT, buildAskHeard, type AskCorrectionType, type AskHeard } from "../ask/heard.js";
 import {
@@ -163,7 +164,8 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
       });
       recordAskCorrection(db, {
         askRequestId: context.askId,
-        text: context.originalText,
+        // The key a later Ask is looked up by: the text after the same unwrapping `arcadia ask` applies.
+        text: normalizeAskInput(context.originalText).askText,
         predictedType: predictedTypeFor(previous),
         correctedType: effectiveType,
         // The Project the Ask now lives in: the one the operator named, else where routing put the replacement.

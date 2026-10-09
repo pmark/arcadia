@@ -439,7 +439,7 @@ describe("what is never a memo", () => {
 });
 
 describe("an answer to an Ask question writes a correction row", () => {
-  it("records it as source answer in the transaction that creates the Action, and the next identical Ask is a memo", () => {
+  it("records it as source answer, in the transaction that approves the question, and the next identical Ask is a memo", () => {
     const { workspace } = workspaceWithProjects();
     const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
     expect(asked.data.stewardship.recommendedExecutionPath).toBe("Clarify First");
@@ -484,6 +484,143 @@ describe("an answer to an Ask question writes a correction row", () => {
       })
     );
     runReviewApproveCommand({ workspace, id: decision.id, execute: false });
+    expect(count(workspace, "ask_corrections")).toBe(0);
+  });
+});
+
+describe("review round 1: a stale or unsafe memo stands down", () => {
+  it("a memo whose Project is paused stands down instead of failing the Ask", () => {
+    const { workspace, songbookId } = workspaceWithProjects();
+    sendAndCorrect(workspace, UNCLEAR_TEXT, "work", songbookId);
+    withDatabase(workspace, (db) => db.prepare("UPDATE projects SET status = 'paused' WHERE id = ?").run(songbookId));
+
+    const repeat = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+
+    expect(repeat.data.memo).toBeUndefined();
+    expect(repeat.data.heard?.source).toBe("rule");
+  });
+
+  it("the newest operator correction retires an older memo, even when it names a type no memo applies", () => {
+    const { workspace } = workspaceWithProjects();
+    const { corrected } = sendAndCorrect(workspace, UNCLEAR_TEXT, "work");
+    withDatabase(workspace, (db) => {
+      expect(findAskMemo(db, UNCLEAR_TEXT)).toMatchObject({ type: "work" });
+      recordAskCorrection(db, {
+        askRequestId: corrected.data.newAskId,
+        text: UNCLEAR_TEXT,
+        predictedType: "work",
+        correctedType: "answer",
+        correctedProject: null,
+        source: "cli",
+        createdAt: new Date(Date.now() + 1000).toISOString()
+      });
+      expect(findAskMemo(db, UNCLEAR_TEXT)).toBeNull();
+    });
+    expect(runAskCommand({ workspace, request: UNCLEAR_TEXT }).data.memo).toBeUndefined();
+  });
+
+  it("a correction of a wrapped original is keyed by the unwrapped text, so the plain repeat hits it", () => {
+    const { workspace } = workspaceWithProjects();
+    sendAndCorrect(workspace, `arcadia ask "${UNCLEAR_TEXT}"`, "idea");
+    expect(row<{ normalized_text: string }>(workspace, "SELECT normalized_text FROM ask_corrections").normalized_text)
+      .toBe(normalizeAskText(UNCLEAR_TEXT));
+    const repeat = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    expect(repeat.data.heard?.line).toMatch(/^Heard: idea \(memo /);
+  });
+
+  it("never lets an Ask skip Requires Review: a memo whose ordinary route is Requires Review stands down", () => {
+    const { workspace } = workspaceWithProjects();
+    const text = "Create a MartianRover Field Notes blog site";
+    // Any Ask stands in for the one that was corrected; only the text and the row matter.
+    const earlier = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    withDatabase(workspace, (db) =>
+      recordAskCorrection(db, {
+        askRequestId: earlier.data.ask?.id as string,
+        text,
+        predictedType: "work",
+        correctedType: "idea",
+        correctedProject: null,
+        source: "cli"
+      })
+    );
+    const workItems = count(workspace, "back_burner_items");
+
+    const repeat = runAskCommand({ workspace, request: text });
+
+    expect(repeat.data.memo).toBeUndefined();
+    expect(repeat.data.heard?.source).toBe("rule");
+    expect(repeat.data.stewardship.recommendedExecutionPath).toBe("Requires Review");
+    expect(count(workspace, "back_burner_items")).toBe(workItems);
+  });
+});
+
+describe("review round 1: approving an Ask question is atomic with its memo", () => {
+  it("a refused memo leaves the question open, adds no pending execution, and a retry reuses the Action", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const questionId = asked.data.reviewItemId as string;
+    const actionsBefore = count(workspace, "work_items");
+    withDatabase(workspace, (db) =>
+      db.exec("CREATE TRIGGER no_memo BEFORE INSERT ON ask_corrections BEGIN SELECT RAISE(ABORT, 'memo refused'); END")
+    );
+
+    expect(() => runReviewApproveCommand({ workspace, id: questionId, execute: false })).toThrow(/memo refused/);
+
+    // The approval did not half-commit: the question is still open, with no answer memo and no pending execution.
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", questionId)).toEqual({ status: "open" });
+    expect(count(workspace, "ask_corrections")).toBe(0);
+    expect(count(workspace, "review_items", "resolved_intent = 'ReviewExecutionPending'")).toBe(0);
+    // The Action was created once, before the approval, and the Decision is linked to it.
+    expect(count(workspace, "work_items")).toBe(actionsBefore + 1);
+    const link = row<{ resulting_ask_request_id: string | null }>(workspace, "SELECT resulting_ask_request_id FROM review_items WHERE id = ?", questionId);
+    expect(link.resulting_ask_request_id).toBeTruthy();
+
+    withDatabase(workspace, (db) => db.exec("DROP TRIGGER no_memo"));
+    const retried = runReviewApproveCommand({ workspace, id: questionId, execute: false });
+
+    // Idempotent: the retry reuses that Action, so there is still exactly one, and now the approval and memo exist.
+    expect(retried.data.item.status).toBe("approved");
+    expect(count(workspace, "work_items")).toBe(actionsBefore + 1);
+    expect(count(workspace, "ask_corrections", "source = 'answer'")).toBe(1);
+    expect(count(workspace, "review_items", "resolved_intent = 'ReviewExecutionPending'")).toBe(1);
+    expect(runAskCommand({ workspace, request: UNCLEAR_TEXT }).data.heard?.line).toMatch(MEMO_LINE);
+  });
+
+  it("a refused pending-execution marker rolls the memo and the approval back", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    const questionId = asked.data.reviewItemId as string;
+    withDatabase(workspace, (db) =>
+      db.exec(
+        `CREATE TRIGGER no_pending BEFORE INSERT ON review_items WHEN NEW.resolved_intent = 'ReviewExecutionPending'
+         BEGIN SELECT RAISE(ABORT, 'pending refused'); END`
+      )
+    );
+
+    expect(() => runReviewApproveCommand({ workspace, id: questionId, execute: false })).toThrow(/pending refused/);
+
+    expect(row<{ status: string }>(workspace, "SELECT status FROM review_items WHERE id = ?", questionId)).toEqual({ status: "open" });
+    expect(count(workspace, "ask_corrections")).toBe(0);
+    expect(row<{ corrected_type: string | null }>(workspace, "SELECT corrected_type FROM ask_requests WHERE id = ?", asked.data.ask?.id))
+      .toEqual({ corrected_type: null });
+  });
+
+  it("recordAskCorrection is atomic on its own: a failed mark on the Ask leaves no correction row", () => {
+    const { workspace } = workspaceWithProjects();
+    const asked = runAskCommand({ workspace, request: UNCLEAR_TEXT });
+    withDatabase(workspace, (db) => {
+      db.exec("CREATE TRIGGER no_mark BEFORE UPDATE OF corrected_type ON ask_requests BEGIN SELECT RAISE(ABORT, 'mark refused'); END");
+      expect(() =>
+        recordAskCorrection(db, {
+          askRequestId: asked.data.ask?.id as string,
+          text: UNCLEAR_TEXT,
+          predictedType: "unclear",
+          correctedType: "work",
+          correctedProject: null,
+          source: "cli"
+        })
+      ).toThrow(/mark refused/);
+    });
     expect(count(workspace, "ask_corrections")).toBe(0);
   });
 });
