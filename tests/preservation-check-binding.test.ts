@@ -725,8 +725,8 @@ describe("preservation check-definition binding — Python review follow-ups to 
     }
   });
 
-  it("still binds a clean checks/ Python check that uses sys, os.path and re.compile (#1103)", () => {
-    const f = repo({ "checks/check.py": "import os\nimport re\nimport sys\nPATTERN = re.compile('x')\nprint(os.path.join('a', 'b'))\nsys.exit(0)\n" });
+  it("still binds a clean checks/ Python check that uses os.path and re.compile, without sys (#1103, #1108)", () => {
+    const f = repo({ "checks/check.py": "import os\nimport re\nPATTERN = re.compile('x')\nprint(os.path.join('a', 'b'))\nraise SystemExit(0)\n" });
     const bound = bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]);
     expect(bound.files.map(file => file.path)).toContain("checks/check.py");
   });
@@ -745,5 +745,108 @@ describe("preservation check-definition binding — Python review follow-ups to 
     const f = repo({ "check.py": "import json\n" });
     expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "selectors.py": "x = 1\n" }), ["python3 check.py"]))
       .toThrow(expect.objectContaining({ message: expect.stringMatching(/isolated directory \(for example `checks\/`\)/) }));
+  });
+});
+
+describe("preservation check-definition binding \u2014 residual fail-closed forms (#1108, #1047)", () => {
+  const refused = expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) });
+  const modifiedFile = (file: string) => expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: file }) });
+  const fixture = () => repo({
+    "checks/check.py": "import json\n", "checks/check.sh": "exit 0\n", "checks/check.mjs": "process.exit(0);\n",
+    "checks/check.pl": "print 1;\n", "checks/check.awk": "BEGIN { exit 0 }\n", "tools/node": "#!/bin/sh\n", "sh": "#!/bin/sh\n", "check.sh": "exit 0\n"
+  });
+  const refuses = (commands: string[], message?: RegExp) => {
+    const f = fixture();
+    for (const command of commands) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(message ? expect.objectContaining({ message: expect.stringMatching(message), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }) : refused);
+    }
+  };
+
+  it("keeps binding a clean isolated checks/ script, however it is run", () => {
+    const f = fixture();
+    const rewritten = candidateTree(f, { "checks/check.sh": "exit 1\n", "checks/check.py": "import os\n" });
+    for (const [command, file] of [["sh checks/check.sh", "checks/check.sh"], ["python3 checks/check.py > out.txt", "checks/check.py"], ["sh checks/check.sh 2>&1", "checks/check.sh"],
+      ["sh -o errexit checks/check.sh", "checks/check.sh"], ["bash -eu checks/check.sh", "checks/check.sh"]]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modifiedFile(file));
+    }
+  });
+
+  it("#1108 P4b: refuses here-strings and here-docs on interpreter commands", () => {
+    refuses(["python3 <<< 'import evil'", "sh <<EOF", "node <<< 'x'", "bash checks/check.sh <<< data", "python3 checks/check.py <<-EOF"], /here-document or here-string/);
+  });
+
+  it("#1108 P8: binds a script whose name has a redirect glued to it, for every interpreter", () => {
+    const f = fixture();
+    const rewritten = candidateTree(f, { "checks/check.sh": "exit 1\n", "checks/check.py": "import os\n", "checks/check.mjs": "process.exit(1);\n" });
+    for (const [command, file] of [["python3 checks/check.py>out.txt", "checks/check.py"], ["sh checks/check.sh>out.txt", "checks/check.sh"],
+      ["node checks/check.mjs>>out.txt", "checks/check.mjs"], ["sh >out.txt checks/check.sh", "checks/check.sh"], ["sh checks/check.sh 2>err.txt", "checks/check.sh"]]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modifiedFile(file));
+    }
+    refuses(["sh 2>&1 checks/check.sh", "python3 2>&1 checks/check.py"]);
+  });
+
+  it("#1108 N1-N4: refuses a bound Python source that mentions sys in any form, zipimport, os.sys, __loader__ or importlib", () => {
+    for (const body of [
+      "import sys as os\nos.path.insert(0, '/tmp')\n", "import os\nos = sys\n", "import os\ns = os.sys\ns.path.insert(0, '/tmp')\n",
+      "import zipimport\nzipimport.zipimporter('x.zip').load_module('m')\n", "print(__loader__)\n", "import importlib\n", "import sys\nsys.exit(0)\n",
+      "import os\ngetattr(os, 'sy' + 's')\n"
+    ]) {
+      const f = repo({ "checks/check.py": body });
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]), body)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/cannot establish the python import closure/i), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));
+    }
+  });
+
+  it("#1047: binds a relative-path executable named like an interpreter, not just its argument", () => {
+    const f = fixture();
+    const rewritten = candidateTree(f, { "tools/node": "#!/bin/sh\nexit 0\n", "sh": "#!/bin/sh\nexit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["tools/node checks/check.mjs"])).toThrow(modifiedFile("tools/node"));
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["./sh check.sh"])).toThrow(modifiedFile("sh"));
+    // A literal absolute path is left alone: the host runs checks in an unguessable temp checkout, so the candidate cannot name content there.
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["/bin/sh checks/check.sh", "/usr/bin/env node checks/check.mjs"])).not.toThrow();
+  });
+
+  it("#1047: refuses `builtin cd`, `\\cd` and `eval`", () => {
+    refuses(["builtin cd checks && sh check.sh", "\\cd checks && sh check.sh", "c\\d checks && sh check.sh", "eval cd checks && sh check.sh", "eval 'sh checks/check.sh'"]);
+  });
+
+  it("#1047: refuses env flags that change directory, including combined clusters, and `env -S`", () => {
+    refuses(["env -iC checks sh check.sh", "env -C checks sh check.sh", "env -iCchecks sh check.sh", "sudo -ED checks sh check.sh"], /changes directory/);
+    refuses(["env -S 'sh check.sh'", "env -iS 'sh check.sh'", "env --split-string='sh check.sh' x"], /splits a string/);
+    const f = fixture();
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["env -iu FOO sh checks/check.sh"])).not.toThrow();
+  });
+
+  it("#1047: refuses a quoted or escaped script path", () => {
+    refuses(["sh 'check'.sh", "sh che\\ck.sh", "sh \"check\".sh", "./che\\ck.sh"], /quoted or escaped/);
+    const f = fixture();
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["sh 'checks/check.sh'"])).not.toThrow();
+  });
+
+  it("#1047: refuses `sh < check.sh` as stdin to an interpreter", () => {
+    refuses(["sh < checks/check.sh", "bash <checks/check.sh", "node < checks/check.mjs", "cat checks/check.sh | sh", "perl"], /standard input/);
+  });
+
+  it("#1047: binds the script of perl, awk -f, dash, ksh, bash and zsh, and refuses their inline or preload forms", () => {
+    const f = fixture();
+    const rewritten = candidateTree(f, { "checks/check.pl": "print 2;\n", "checks/check.awk": "BEGIN { exit 1 }\n", "checks/check.sh": "exit 1\n" });
+    for (const [command, file] of [["perl checks/check.pl", "checks/check.pl"], ["awk -f checks/check.awk data.txt", "checks/check.awk"], ["gawk -v x=1 -f checks/check.awk", "checks/check.awk"],
+      ["dash checks/check.sh", "checks/check.sh"], ["ksh checks/check.sh", "checks/check.sh"], ["bash checks/check.sh", "checks/check.sh"], ["zsh checks/check.sh", "checks/check.sh"]]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modifiedFile(file));
+    }
+    refuses(["perl -e 'print 1'", "perl -I lib checks/check.pl", "perl -MFoo checks/check.pl", "awk -f checks/check.awk -f checks/check.awk", "awk -i inc checks/check.awk", "sh --rcfile x checks/check.sh"]);
+  });
+
+  it("#1047: handles interpreter options that take a value", () => {
+    const f = fixture();
+    const rewritten = candidateTree(f, { "checks/check.sh": "exit 1\n", "checks/check.py": "import os\n", "checks/check.mjs": "process.exit(1);\n" });
+    for (const [command, file] of [["sh -o errexit checks/check.sh", "checks/check.sh"], ["bash -eo pipefail checks/check.sh", "checks/check.sh"],
+      ["python3 -W ignore checks/check.py", "checks/check.py"], ["node --input-type module checks/check.mjs", "checks/check.mjs"]]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modifiedFile(file));
+    }
+    refuses(["node -r x checks/check.mjs", "node --require x checks/check.mjs", "node --import=x checks/check.mjs"], /preloads a module/);
   });
 });
