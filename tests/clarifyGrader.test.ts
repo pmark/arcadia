@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildClarifyRequest } from "../src/clarify/contract.js";
+import type { ClarifyJobRunner } from "../src/clarify/engine.js";
 import { ClarifyEngineUnavailableError, ClarifyVerdictUnusableError, normalizeVerdict } from "../src/clarify/engine.js";
 import {
   buildGraderRequest,
@@ -12,6 +13,7 @@ import {
   GRADER_OPERATION_ID,
   GRADER_PROFILE,
   GRADER_RECEIPT_SCHEMA,
+  graderPromptSha256,
   normalizeGrade,
   renderGraderCriteria,
   sha256Hex,
@@ -157,6 +159,13 @@ describe("grader request", () => {
     expect(buildGraderRequest(input).idempotencyKey).toBe(buildGraderRequest(input).idempotencyKey);
     expect(buildGraderRequest(input).idempotencyKey).not.toBe(buildGraderRequest(other).idempotencyKey);
   });
+
+  it("puts the prompt hash in the key, and a retry attempt under its own suffix", () => {
+    const key = buildGraderRequest(input).idempotencyKey;
+    expect(key).toContain(graderPromptSha256().slice(0, 8));
+    expect(key).toMatch(/^grade-.+-[0-9a-f]{8}-[0-9a-f]{16}$/);
+    expect(buildGraderRequest(input, 1).idempotencyKey).toBe(`${key}-retry1`);
+  });
 });
 
 describe("normalizeGrade", () => {
@@ -191,6 +200,77 @@ describe("normalizeGrade", () => {
     expect(() => normalizeGrade({ grade: "fail", reason: "r" }, context)).toThrow(ClarifyVerdictUnusableError);
     expect(() => normalizeGrade({ grade: "maybe" }, context)).toThrow(ClarifyVerdictUnusableError);
     expect(() => normalizeGrade(undefined, context)).toThrow(ClarifyVerdictUnusableError);
+  });
+});
+
+describe("createIntelligenceGrader with a completed job whose result is unusable", () => {
+  // The workspace is per test: the suite's afterEach removes it.
+  function setup(): { workspace: string; input: GraderInput } {
+    const workspace = initializedWorkspace();
+    const workItem = captureAction(workspace, "Sort out the nightly sync");
+    return {
+      workspace,
+      input: {
+        workItem,
+        candidate: { nextAction: "Add a retry", doneCondition: "A forced failure retries", actor: "coding-agent" },
+        source: { title: workItem.title }
+      }
+    };
+  }
+  const UNUSABLE = { grade: "fail", reason: "no request given" };
+
+  function fakeRunner(resultFor: (key: string) => unknown, keys: string[]): ClarifyJobRunner {
+    return async (request) => {
+      keys.push(request.idempotencyKey);
+      return { id: request.idempotencyKey, status: "completed", result: resultFor(request.idempotencyKey) } as never;
+    };
+  }
+
+  it("retries once under a retry-suffixed key instead of re-reading the stuck result forever", async () => {
+    const { workspace, input } = setup();
+    const keys: string[] = [];
+    const base = buildGraderRequest(input).idempotencyKey;
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(
+        db,
+        workspace,
+        fakeRunner((key) => (key === base ? UNUSABLE : { grade: "pass", reason: "ok" }), keys)
+      );
+      const outcome = await grader(input);
+      expect(outcome.grade).toBe("pass");
+      expect(keys).toEqual([base, `${base}-retry1`]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("reports the item as needing operator attention when the retry is unusable too", async () => {
+    const { workspace, input } = setup();
+    const keys: string[] = [];
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(db, workspace, fakeRunner(() => UNUSABLE, keys));
+      const failure = await grader(input).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(ClarifyVerdictUnusableError);
+      expect((failure as Error).message).toContain("needs operator attention");
+      expect(keys).toHaveLength(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("does not retry a usable result", async () => {
+    const { workspace, input } = setup();
+    const keys: string[] = [];
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(db, workspace, fakeRunner(() => ({ grade: "pass" }), keys));
+      await grader(input);
+      expect(keys).toHaveLength(1);
+    } finally {
+      db.close();
+    }
   });
 });
 
@@ -305,6 +385,24 @@ describe("clarify with the separate grader", () => {
       expect(graderEvents(workspace)).toHaveLength(0);
       expect(withDatabase(workspace, (db) => listReviewItems(db, "open"))).toHaveLength(0);
     }
+  });
+
+  it("writes the clarification and its receipt atomically: a failed receipt write rolls the update back", async () => {
+    const workspace = initializedWorkspace();
+    const action = captureAction(workspace, "Sort out the nightly sync");
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const grader: ClarifyGrader = async (input) => {
+      const outcome = await passingGrader(input);
+      return { ...outcome, receipt: { ...outcome.receipt, reason: circular as never } };
+    };
+
+    await expect(runClarifyCommand({ workspace, apply: true, evaluator: stubEvaluator(YES), grader })).rejects.toThrow();
+
+    const after = withDatabase(workspace, (db) => getWorkItem(db, action.id));
+    expect(after?.clarification_status).toBe("unclarified");
+    expect(after?.next_action).toBe(action.next_action);
+    expect(graderEvents(workspace)).toHaveLength(0);
   });
 
   it("does not let an unexpected grader error pass as a verdict", async () => {
