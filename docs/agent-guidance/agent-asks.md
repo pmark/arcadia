@@ -262,8 +262,9 @@ actions:
 
 An amendment to an existing Plan — children with `target_ref` amend the named
 Action, children without it create new ones. For an amendment `dependencies`
-and `references` are replacement lists, so an explicit empty list clears stale
-values:
+and `references` are replacement lists when present: an explicit empty list
+clears stale values, while an omitted list leaves the existing value unchanged.
+The settle preview's Effects list each amended Action's field-level changes:
 
 ```yaml
 agent_ask: v1

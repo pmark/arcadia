@@ -252,6 +252,9 @@ export function settleAgentAsk(db: Database.Database, input: {
     WHERE id = ? OR request_id = ?`).get(input.proposalRef, input.proposalRef) as { proposal_json: string } | undefined;
   if (!proposalRow) throw validationError("Agent Ask proposal was not found.", { proposal: input.proposalRef });
   const proposal = JSON.parse(proposalRow.proposal_json) as AgentAskProposal;
+  // A proposal recorded before `omittedLists` existed cannot say which lists
+  // its Ask left out, so recover that from the stored request text (Issue #1079).
+  const legacyListFallback = hydrateOmittedLists(db, proposal);
   assertOperatorSettlementContract(proposal.normalized);
   const existingByRequest = db.prepare("SELECT operation_json, receipt_json FROM agent_ask_settlements WHERE request_id = ?")
     .get(input.settlementRequestId) as { operation_json: string; receipt_json: string } | undefined;
@@ -378,13 +381,21 @@ export function settleAgentAsk(db: Database.Database, input: {
           queueActionKey = `${project.slug}/${actionId}`;
           queueActionKeys = [queueActionKey];
           actionIdsToValidate.push(actionId);
+          const omitted = proposal.normalized.omittedLists ?? [];
+          const amendedDependencies = omitted.includes("dependencies") ? null : dependencies;
+          const amendedReferences = omitted.includes("references") ? null : proposal.normalized.references;
           fileMutations.push({
             path: activePlanPath,
             before: planBefore,
             after: withPlanUpdated(amendAction(planBefore, actionId, proposal.normalized.desiredResult, proposal.normalized.acceptance,
-              dependencies, proposal.normalized.references, proposal.normalized.requestId, input.responsibility))
+              amendedDependencies, amendedReferences, proposal.normalized.requestId, input.responsibility))
           });
           effects.push(`Amended Action ${queueActionKey} in active Plan ${plan.slug}.`);
+          effects.push(`Field changes for ${queueActionKey}: ${describeActionAmendment(plan.actions.find((action) => action.id === actionId)!, {
+            desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
+            dependencies: amendedDependencies, references: amendedReferences
+          })}.`);
+          if (legacyListFallback) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
           if (input.responsibility) {
             effects.push(`Set Responsibility to ${input.responsibility} on the operator's explicit direction, per Decision 0045.`);
           } else {
@@ -394,7 +405,8 @@ export function settleAgentAsk(db: Database.Database, input: {
           const proposedActions = (proposal.normalized.actions ?? []).length > 0
             ? proposal.normalized.actions
             : [{ id: null, desiredResult: proposal.normalized.desiredResult, acceptance: proposal.normalized.acceptance,
-              dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null }];
+              dependencies: proposal.normalized.dependencies, references: proposal.normalized.references, targetRef: null,
+              omittedLists: proposal.normalized.omittedLists ?? [] }];
           if (proposedActions.some((action) => action.acceptance.length === 0)) {
             throw validationError("Every accepted Action requires at least one observable acceptance criterion in the proposal.");
           }
@@ -423,7 +435,12 @@ export function settleAgentAsk(db: Database.Database, input: {
                 action: id, dependencies: unknownDependencies
               });
             }
-            return { ...action, id, existing, dependencies };
+            // An omitted list keeps the Action's existing edges, which the
+            // cycle check below must still see.
+            const effectiveDependencies = existing && (action.omittedLists ?? []).includes("dependencies")
+              ? plan.actions.find((candidate) => candidate.id === id)!.dependsOn
+              : dependencies;
+            return { ...action, id, existing, dependencies, effectiveDependencies };
           });
           const createsActions = normalizedActions.some((action) => !action.existing);
           if (createsActions && !input.responsibility) throw validationError("Accepted Action settlement requires --responsibility autonomous or agent.");
@@ -437,16 +454,27 @@ export function settleAgentAsk(db: Database.Database, input: {
           // A cycle inside the bundle would leave every Action in it waiting on
           // another forever — permanently ineligible, with no event that could
           // ever free them. The Plan paths already refuse one; so does this.
-          dependencyOrderedActionIds(normalizedActions.map((action) => ({ id: action.id, dependencies: action.dependencies })));
+          dependencyOrderedActionIds(normalizedActions.map((action) => ({ id: action.id, dependencies: action.effectiveDependencies })));
+          assertNoDependencyCycleThrough([
+            ...plan.actions.filter((action) => !actionIds.includes(action.id)).map((action) => ({ id: action.id, dependencies: action.dependsOn })),
+            ...normalizedActions.map((action) => ({ id: action.id, dependencies: action.effectiveDependencies }))
+          ], actionIds);
           queueActionKeys = actionIds.map((actionId) => `${project.slug}/${actionId}`);
           queueActionKey = queueActionKeys[0]!;
           actionIdsToValidate.push(...actionIds);
           let planAfter = planBefore;
           for (const action of normalizedActions) {
             if (action.existing) {
-              planAfter = amendAction(planAfter, action.id, action.desiredResult, action.acceptance, action.dependencies,
-                action.references, proposal.normalized.requestId);
+              const amendedDependencies = (action.omittedLists ?? []).includes("dependencies") ? null : action.dependencies;
+              const amendedReferences = (action.omittedLists ?? []).includes("references") ? null : action.references;
+              planAfter = amendAction(planAfter, action.id, action.desiredResult, action.acceptance, amendedDependencies,
+                amendedReferences, proposal.normalized.requestId);
               effects.push(`Amended Action ${project.slug}/${action.id} in active Plan ${plan.slug}.`);
+              effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(plan.actions.find((candidate) => candidate.id === action.id)!, {
+                desiredResult: action.desiredResult, acceptance: action.acceptance,
+                dependencies: amendedDependencies, references: amendedReferences
+              })}.`);
+              if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
             } else {
               planAfter = appendPlanAction(planAfter, {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
@@ -626,11 +654,28 @@ export function settleAgentAsk(db: Database.Database, input: {
             if (unknownDependencies.length > 0) {
               throw validationError("Agent Ask names dependencies outside the target Plan or proposed Action set.", { action: id, dependencies: unknownDependencies });
             }
-            return { ...action, id, existing, dependencies, references: uniqueStrings([...proposal.normalized.references, ...action.references]) };
+            // The Ask-level references apply to every child; they only count as
+            // a statement about an amended child when they name something.
+            const references = uniqueStrings([...proposal.normalized.references, ...action.references]);
+            const omitted = action.omittedLists ?? [];
+            const omitsDependencies = existing && omitted.includes("dependencies");
+            return {
+              ...action, id, existing, dependencies, references,
+              effectiveDependencies: omitsDependencies ? target.actions.find((candidate) => candidate.id === id)!.dependsOn : dependencies,
+              amendedDependencies: omitted.includes("dependencies") ? null : dependencies,
+              amendedReferences: omitted.includes("references") && proposal.normalized.references.length === 0 ? null : references
+            };
           });
           const createsActions = normalizedActions.some((action) => !action.existing);
           if (createsActions && !input.responsibility) throw validationError("Creating Actions in a Plan requires --responsibility autonomous or agent.");
           if (!createsActions && input.responsibility) throw validationError("Plan Action amendments preserve existing Responsibilities.");
+
+          // Retained edges of an Action whose dependencies were omitted still
+          // count: a cycle through them would strand every Action in it.
+          assertNoDependencyCycleThrough([
+            ...target.actions.filter((action) => !newActionIds.includes(action.id)).map((action) => ({ id: action.id, dependencies: action.dependsOn })),
+            ...normalizedActions.map((action) => ({ id: action.id, dependencies: action.effectiveDependencies }))
+          ], newActionIds);
 
           const isActivePlan = target.status === "active" && target.slug === plan.slug;
           if (!isActivePlan && input.placement) {
@@ -647,9 +692,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           let after = before;
           for (const action of normalizedActions) {
             if (action.existing) {
-              after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.dependencies,
-                action.references, proposal.normalized.requestId);
+              after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
+                action.amendedReferences, proposal.normalized.requestId);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
+              effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
+                desiredResult: action.desiredResult, acceptance: action.acceptance,
+                dependencies: action.amendedDependencies, references: action.amendedReferences
+              })}.`);
+              if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
               actionIdsToValidate.push(action.id);
             } else {
               after = appendPlanAction(after, {
@@ -664,14 +714,14 @@ export function settleAgentAsk(db: Database.Database, input: {
           fileMutations.push({ path: targetPath, before, after: withPlanUpdated(after) });
 
           if (input.placement) {
-            const changes = new Map(normalizedActions.map((action) => [action.id, action.dependencies]));
+            const changes = new Map(normalizedActions.map((action) => [action.id, action.effectiveDependencies] as const));
             const finalActions = target.actions.map((action) => ({
               id: action.id,
               dependencies: changes.get(action.id) ?? action.dependsOn,
               status: action.status
             }));
             for (const action of normalizedActions.filter((candidate) => !candidate.existing)) {
-              finalActions.push({ id: action.id, dependencies: action.dependencies, status: "open" });
+              finalActions.push({ id: action.id, dependencies: action.effectiveDependencies, status: "open" });
             }
             queueActionKeys = dependencyOrderedActionIds(finalActions
               .filter((action) => action.status !== "done")
@@ -2457,13 +2507,84 @@ function newDraftPlan(
   ].join("\n");
 }
 
+/**
+ * Field-level account of what amending an existing Action will change, so a
+ * destructive amendment is visible in the settle preview before it is applied
+ * (Issue #1079). A `null` list was omitted by the Ask and is left unchanged.
+ */
+function describeActionAmendment(
+  existing: PlanActionDoc,
+  next: { desiredResult: string; acceptance: string[]; dependencies: string[] | null; references: string[] | null }
+): string {
+  const fields: string[] = [];
+  const list = (items: string[]): string => `[${items.join(", ")}]`;
+  if (next.desiredResult !== (existing.nextAction ?? existing.title)) fields.push("next_action changed");
+  if (next.acceptance.length === 0) fields.push("acceptance unchanged");
+  else if (JSON.stringify(next.acceptance) !== JSON.stringify(existing.acceptanceCriteria)) {
+    fields.push(`acceptance changed (${next.acceptance.length} criteri${next.acceptance.length === 1 ? "on" : "a"})`);
+  } else fields.push("acceptance unchanged");
+  if (next.dependencies === null) fields.push("depends_on unchanged (omitted)");
+  else if (JSON.stringify(next.dependencies) === JSON.stringify(existing.dependsOn)) fields.push("depends_on unchanged");
+  else fields.push(`depends_on: ${list(existing.dependsOn)} \u2192 ${list(next.dependencies)}`);
+  if (next.references === null) fields.push("references unchanged (omitted)");
+  else if (JSON.stringify(next.references) === JSON.stringify(existing.references)) fields.push("references unchanged");
+  else if (next.references.length === 0) fields.push("references cleared");
+  else fields.push(`references: ${list(existing.references)} \u2192 ${list(next.references)}`);
+  return fields.join("; ");
+}
+
+const LEGACY_LIST_FALLBACK_EFFECT =
+  "The Ask's original request text is unavailable, so omitted dependencies/references could not be told from explicit empty lists and are treated as explicit empty lists (legacy replace behavior).";
+
+/**
+ * Fill in `omittedLists` on a stored proposal that predates it by re-parsing
+ * the request text captured with it, exactly as normalization does. Returns
+ * true only when the text could not be used, so settlement falls back to the
+ * old replace behavior and says so in the preview Effects.
+ */
+function hydrateOmittedLists(db: Database.Database, proposal: AgentAskProposal): boolean {
+  const normalized = proposal.normalized;
+  if (normalized.format !== "strict" || Object.hasOwn(normalized, "omittedLists")) return false;
+  const row = db.prepare("SELECT original_text FROM ask_capture_envelopes WHERE id = ?")
+    .get(proposal.captureId) as { original_text: string } | undefined;
+  if (!row) return true;
+  let parsed: NormalizedAgentAsk;
+  try {
+    parsed = normalizeAgentAsk({ request: row.original_text, requestId: normalized.requestId, project: normalized.project });
+  } catch {
+    return true;
+  }
+  if (parsed.format !== "strict" || parsed.requestId !== normalized.requestId || parsed.actions.length !== normalized.actions.length) return true;
+  if (parsed.omittedLists) normalized.omittedLists = parsed.omittedLists;
+  parsed.actions.forEach((action, index) => {
+    if (action.omittedLists) normalized.actions[index].omittedLists = action.omittedLists;
+  });
+  return false;
+}
+
+/** Refuse a dependency cycle that runs through any touched Action, retained edges included. */
+function assertNoDependencyCycleThrough(actions: Array<{ id: string; dependencies: string[] }>, touched: string[]): void {
+  const graph = new Map(actions.map((action) => [action.id, action.dependencies]));
+  for (const start of touched) {
+    const seen = new Set<string>();
+    const stack = [...(graph.get(start) ?? [])];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current === start) throw validationError("Agent Ask Plan Actions contain a dependency cycle.", { actions: [start] });
+      if (seen.has(current)) continue;
+      seen.add(current);
+      stack.push(...(graph.get(current) ?? []));
+    }
+  }
+}
+
 function amendAction(
   content: string,
   actionId: string,
   nextAction: string,
   acceptance: string[],
-  dependencies: string[],
-  references: string[],
+  dependencies: string[] | null,
+  references: string[] | null,
   requestId: string,
   responsibility?: AgentAskResponsibility
 ): string {
@@ -2484,11 +2605,16 @@ function amendAction(
   // depends_on/references may already be written as a multi-line block list
   // (each item on its own "      - " line) rather than an inline [a, b]; the
   // continuation lines must be consumed too, or they survive as an orphaned
-  // sequence the YAML parser rejects.
-  block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
-    dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
-  block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
-    references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
+  // sequence the YAML parser rejects. A `null` list was omitted by the Ask and
+  // leaves the existing value alone; only an explicit `[]` clears (Issue #1079).
+  if (dependencies !== null) {
+    block = block.replace(/^ {4}depends_on:.*(?:\r?\n {6}- .*)*/m,
+      dependencies.length > 0 ? `    depends_on: [${dependencies.join(", ")}]` : "    depends_on: []");
+  }
+  if (references !== null) {
+    block = block.replace(/^ {4}references:.*(?:\r?\n {6}- .*)*/m,
+      references.length > 0 ? `    references: [${references.map((reference) => JSON.stringify(reference)).join(", ")}]` : "    references: []");
+  }
   block = /^ {4}source:/m.test(block)
     ? block.replace(/^ {4}source:.*$/m, `    source: ${yamlScalar(`Agent Ask ${requestId}`)}`)
     : block.replace(/^ {4}clarification:.*$/m, `$&\n    source: ${yamlScalar(`Agent Ask ${requestId}`)}`);

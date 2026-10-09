@@ -18,6 +18,14 @@ export const AGENT_ASK_AUTHORITIES = ["propose", "apply_if_approved"] as const;
  */
 export const AGENT_ASK_GATE_QUESTIONS = ["reasonable_disagreement", "resists_reversal"] as const;
 export type AgentAskGateQuestion = (typeof AGENT_ASK_GATE_QUESTIONS)[number];
+/**
+ * The replaceable list fields of an Ask or of one of its Actions. Omitting one
+ * is not the same as writing `[]`: when amending an existing Action an omitted
+ * list leaves the checked-in value untouched and only an explicit `[]` clears
+ * it (Issue #1079). The normalized lists themselves are `[]` either way, so
+ * the omission is recorded separately.
+ */
+export type AgentAskListField = "dependencies" | "references";
 export interface NormalizedAgentAskAction {
   id: string | null;
   desiredResult: string;
@@ -25,6 +33,8 @@ export interface NormalizedAgentAskAction {
   dependencies: string[];
   references: string[];
   targetRef: string | null;
+  /** Lists the Ask left out entirely. Absent on proposals recorded before #1079; treated as "none omitted". */
+  omittedLists?: AgentAskListField[];
 }
 /** A choice a filed `decision` Ask offers, carried through to the Decision document's own `options` list. */
 export interface NormalizedAgentAskOption { label: string; consequence: string; recommended: boolean; }
@@ -37,7 +47,7 @@ export interface NormalizedAgentAskOption { label: string; consequence: string; 
  */
 export type AgentAskEvidenceStatus = "met" | "failed" | "skipped";
 export interface NormalizedAgentAskEvidence { criterion: string; status: AgentAskEvidenceStatus; note: string | null; }
-export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
+export interface NormalizedAgentAsk { version: "v1"; format: "strict" | "natural"; requestId: string; project: string; intent: AgentAskIntent; desiredResult: string; rationale: string | null; acceptance: string[]; dependencies: string[]; references: string[]; omittedLists?: AgentAskListField[]; actions: NormalizedAgentAskAction[]; targetRef: string | null; requestedAuthority: AgentAskAuthority; options: NormalizedAgentAskOption[]; candidateRevision: string | null; evidence: NormalizedAgentAskEvidence[]; gateQuestion: AgentAskGateQuestion | null; }
 export interface AgentAskEffect { operation: "interpret" | "create" | "update"; targetKind: Exclude<AgentAskIntent, "auto"> | "interpretation"; targetRef: string | null; fields: Record<string, unknown>; status: "proposed"; authority: "operator_acceptance_required"; }
 export interface AgentAskProposal { id: string; captureId: string; normalized: NormalizedAgentAsk; effects: AgentAskEffect[]; requiredDecisions: string[]; unchanged: string[]; conflicts: string[]; refused: string[]; managedDocumentTransition: { required: boolean; status: "withheld_until_acceptance"; authority: "checked_in_documents" }; queueConsequence: "none_until_accepted"; writes: { captureReceipt: true; proposalReceipt: true; projectChanges: false }; nonActions: string[]; fingerprint: string; createdAt: string;
   /**
@@ -142,10 +152,23 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (gateQuestion !== null && !(AGENT_ASK_GATE_QUESTIONS as readonly string[]).includes(gateQuestion)) {
     throw validationError("Agent Ask gate_question must be reasonable_disagreement or resists_reversal.", { gateQuestion, allowed: AGENT_ASK_GATE_QUESTIONS });
   }
-  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
+  return { version: "v1", format: "strict", requestId: requiredText(data.request_id, "Agent Ask request_id is required."), project: optionalText(data.project) ?? "unknown", intent, desiredResult: requiredText(data.desired_result, "Agent Ask desired_result is required."), rationale: optionalText(data.rationale), acceptance, dependencies: stringList(data.dependencies, "dependencies"), references: stringList(data.references, "references"), ...omittedListsField(data), actions, targetRef, requestedAuthority: authority, options, candidateRevision, evidence, gateQuestion: gateQuestion as AgentAskGateQuestion | null };
 }
 
-export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string { return createHash("sha256").update(JSON.stringify({ request, normalized })).digest("hex"); }
+/**
+ * `omittedLists` is derived from the request text, which the fingerprint
+ * already hashes, so it is left out of the hash: adding it must not change the
+ * fingerprint of any Ask recorded before it existed.
+ */
+export function agentAskFingerprint(request: string, normalized: NormalizedAgentAsk): string {
+  const serialized = JSON.stringify({ request, normalized }, (key, value) => (key === "omittedLists" ? undefined : value));
+  return createHash("sha256").update(serialized).digest("hex");
+}
+/** `{ omittedLists }` only when something was omitted, so a fully explicit Ask keeps its recorded shape. */
+function omittedListsField(data: Record<string, unknown>): { omittedLists?: AgentAskListField[] } {
+  const omitted = (["dependencies", "references"] as const).filter((field) => data[field] === undefined || data[field] === null);
+  return omitted.length > 0 ? { omittedLists: omitted } : {};
+}
 /** The Project fields a `project_update` Ask can actually apply. */
 const PROJECT_UPDATE_TARGETS = new Set(["outcome", "milestone", "status"]);
 
@@ -279,7 +302,8 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
       acceptance: stringList(item.acceptance, `actions[${index}].acceptance`),
       dependencies: stringList(item.dependencies, `actions[${index}].dependencies`),
       references: stringList(item.references, `actions[${index}].references`),
-      targetRef: optionalText(item.target_ref)
+      targetRef: optionalText(item.target_ref),
+      ...omittedListsField(item)
     };
   });
 }
