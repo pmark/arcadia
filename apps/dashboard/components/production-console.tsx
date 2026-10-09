@@ -614,15 +614,21 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
 type QueueView = "batches" | "order";
 type QueueFilter = "all" | "launchable" | "active" | "waiting" | "attention";
 
+/** The first queue read after a dashboard restart is cold (about 15 s); past this, say so plainly. */
+const QUEUE_SLOW_MS = 60_000;
+
 export function QueueSection({
   part,
   assembled,
+  now,
   onLaunched
 }: {
   part: ConsoleQueuePart | null;
   assembled: AssembledQueue | null;
+  now: Date;
   onLaunched: () => void;
 }) {
+  const [mountedAt] = useState(() => Date.now());
   const [view, setView] = useState<QueueView>("batches");
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [launching, setLaunching] = useState<ConsoleAction | null>(null);
@@ -645,11 +651,7 @@ export function QueueSection({
         </p>
       ) : null}
       {!part ? (
-        <div className="grid gap-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-12 w-full" />
-          ))}
-        </div>
+        <QueueLoading waitedMs={now.getTime() - mountedAt} />
       ) : part.queueError || !part.queue || !assembled ? (
         <PartError title="Queue unavailable" message={part.queueError ?? "The work queue could not be read."} />
       ) : (
@@ -708,6 +710,26 @@ export function QueueSection({
         />
       ) : null}
     </section>
+  );
+}
+
+function QueueLoading({ waitedMs }: { waitedMs: number }) {
+  const seconds = Math.max(0, Math.floor(waitedMs / 1000));
+  // The live region's text stays put; only the visual counter ticks, so a screen reader is not told every second.
+  if (waitedMs > QUEUE_SLOW_MS) {
+    return (
+      <p role="status" className="rounded-md border border-gold/50 bg-gold/10 p-3 text-sm text-ink">
+        Still reading the queue after more than a minute. Arcadia may be busy; it keeps trying, and Refresh at the top asks again now.
+      </p>
+    );
+  }
+  return (
+    <p role="status" className="flex items-center gap-2 rounded-md border border-line bg-panel p-3 text-sm text-muted">
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+      <span>
+        Reading the queue…<span aria-hidden="true"> {seconds} s.</span> The first read after a restart can take about 15 s.
+      </span>
+    </p>
   );
 }
 

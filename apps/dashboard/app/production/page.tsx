@@ -36,10 +36,11 @@ export default function ProductionPage() {
   const coreSeq = useRef(0);
   const queueSeq = useRef(0);
 
-  const loadCore = useCallback(async () => {
+  // `fresh` skips the server's short cache: after a state change or a manual Refresh.
+  const loadCore = useCallback(async (fresh = false) => {
     const sequence = ++coreSeq.current;
     try {
-      const response = await fetch("/api/production-console?part=core", { cache: "no-store" });
+      const response = await fetch(`/api/production-console?part=core${fresh ? "&fresh=1" : ""}`, { cache: "no-store" });
       const body = (await response.json()) as ConsoleCoreData & { error?: string };
       if (sequence !== coreSeq.current) return;
       if (!response.ok) throw new Error(body.error ?? "Could not read production state.");
@@ -51,10 +52,10 @@ export default function ProductionPage() {
     }
   }, []);
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (fresh = false) => {
     const sequence = ++queueSeq.current;
     try {
-      const response = await fetch("/api/production-console?part=queue", { cache: "no-store" });
+      const response = await fetch(`/api/production-console?part=queue${fresh ? "&fresh=1" : ""}`, { cache: "no-store" });
       const body = (await response.json()) as ConsoleQueuePart & { error?: string };
       if (sequence !== queueSeq.current) return;
       if (!response.ok) throw new Error(body.error ?? "Could not read the queue.");
@@ -67,7 +68,7 @@ export default function ProductionPage() {
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadCore(), loadQueue()]);
+    await Promise.all([loadCore(true), loadQueue(true)]);
     setRefreshing(false);
   }, [loadCore, loadQueue]);
 
@@ -136,10 +137,10 @@ export default function ProductionPage() {
         </div>
       </header>
       <main className="mx-auto grid w-full min-w-0 max-w-6xl gap-6 px-4 pb-16 pt-4">
-        <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore()} />
+        <GlobalStrip core={core} error={coreError} now={now} onChanged={() => void loadCore(true)} />
         <div className="grid min-w-0 content-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <SessionsSection core={core} now={now} />
-          <QueueSection part={queueView} assembled={assembled} onLaunched={() => void refreshAll()} />
+          <QueueSection part={queueView} assembled={assembled} now={now} onLaunched={() => void refreshAll()} />
         </div>
         <nav aria-label="Related pages" className="border-t border-line pt-4 text-xs text-muted">
           Older partial views, kept while this page settles in:{" "}
