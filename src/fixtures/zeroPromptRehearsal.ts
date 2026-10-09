@@ -68,20 +68,33 @@ export function seedZeroPromptRehearsalBuildPackets(
     );
   }
 
-  return ZERO_PROMPT_REHEARSAL_ACTION_IDS.map((actionId) => seedOne(db, workspacePath, project.id, actionId));
+  return ZERO_PROMPT_REHEARSAL_ACTION_IDS.map((actionId) =>
+    seedFixtureActionBuildPacket(db, workspacePath, {
+      projectId: project.id,
+      projectSlug: ZERO_PROMPT_REHEARSAL_PROJECT_SLUG,
+      planSlug: ZERO_PROMPT_REHEARSAL_PLAN_SLUG,
+      actionId
+    })
+  );
 }
 
-function seedOne(
+/**
+ * Seed one immutable build packet for one named fixture Action. The Zero
+ * Prompt Rehearsal uses it for its two Actions; the headless-provider test
+ * (`src/operatorActions/headlessProviderTest.ts`) uses it for its single
+ * experiment-workspace Action. Idempotent, and never calls a model.
+ */
+export function seedFixtureActionBuildPacket(
   db: Database.Database,
   workspacePath: string,
-  projectId: string,
-  actionId: string
+  target: { projectId: string; projectSlug: string; planSlug: string; actionId: string }
 ): ZeroPromptRehearsalPacketResult {
-  const docRef = `plan/${ZERO_PROMPT_REHEARSAL_PLAN_SLUG}#${actionId}`;
+  const { projectId, actionId } = target;
+  const docRef = `plan/${target.planSlug}#${actionId}`;
   const workItem = getWorkItemByDocRef(db, docRef);
   if (!workItem || workItem.project_id !== projectId) {
     throw validationError(
-      `Action "${docRef}" was not found in Project "${ZERO_PROMPT_REHEARSAL_PROJECT_SLUG}".`,
+      `Action "${docRef}" was not found in Project "${target.projectSlug}".`,
       { actionDocRef: docRef }
     );
   }

@@ -1284,7 +1284,7 @@ const SESSION_OPERATOR_CONTEXT_RESET = [
  * never has to choose an identity and the operator's global Git configuration
  * is never touched.
  */
-function buildSessionLaunch(db: Database.Database, session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
+export function buildSessionLaunch(db: Database.Database, session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
   // The fixture provider is not a real coding agent: it never needs an Action
   // brief prompt, and the Git identity it commits under is fixed and always
   // visibly non-attributable to any real platform/tier -- resolving through
