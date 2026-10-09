@@ -1,11 +1,11 @@
 # Governed agent roles: design note for the draft Plan
 
 This note gives the rationale behind the draft Plan Ask
-`plan-governed-agent-roles-2026-10-09-r2` and its eleven Decision Asks. It is a
+`plan-governed-agent-roles-2026-10-09-r3` and its thirteen Decision Asks. It is a
 proposal only. It activates nothing, answers no Decision and grants no
 authority. The raw input is the operator's direction of 2026-10-09. The
 operator was not available for a live interview, so that text stands in for
-one. Revision r2 addresses the round-1 adversarial plan review.
+one. Revisions r2 and r3 address the round-1 and round-2 adversarial reviews.
 
 ## Outcome and Milestone
 
@@ -24,7 +24,7 @@ one. Revision r2 addresses the round-1 adversarial plan review.
   receipts. It relays to its supervisor, never touches the reserve, and
   appears on `/agents`.
 
-All eleven Decisions must be answered before the draft is activated.
+All thirteen Decisions must be answered before the draft is activated.
 
 ## What already exists, verified on `origin/main` 060f7fd5f
 
@@ -38,7 +38,7 @@ All eleven Decisions must be answered before the draft is activated.
 | Per-Action `execution` vocabulary | `src/execution/profiles.ts` | The selector's task input |
 | Capacity admission with a fixed 5% reserve margin | `src/codingAgents/capacity.ts:164`, inside `CAPACITY_ADMISSION_LIMITS` at `:160` | Wrapped behind a `CapacityAdmission` interface, then made reserve-aware |
 | Operator attestation `production capacity attest` | `src/commands/capacity.ts` | Not accepted as proof of the operator: an agent can run it |
-| `/runs` one-shot `kind: "grant"` operator scripts | `docs/agent-guidance/operator-actions.md` | The only route that can release or shrink the reserve |
+| Operator-script library entries (`kind: grant`) on the governed operator-script path | `docs/agent-guidance/operator-actions.md`, `apps/dashboard/app/api/operator-script/route.ts` | The surface for reserve release and lowering. On its own it is not proof of the operator |
 | Native-session adoption | `src/sessions/hostEnrollment.ts` | One option for interactive sessions |
 
 ## Writer gaps found
@@ -49,8 +49,24 @@ All eleven Decisions must be answered before the draft is activated.
   `add-action-role-field` adds the field.
 - **A `plan` Ask cannot set `token_impact`, `token_budget` or
   `recommended_model`.** Settlement writes `medium`, but the true exposure is
-  `large` (15 bounded Sessions). The proposal Ask
-  `propose-plan-ask-token-fields-2026-10-09` records this so it is not lost.
+  `large` (18 bounded Sessions). The proposal Ask
+  `propose-plan-ask-token-fields-2026-10-09-r3` records this so it is not lost.
+- **No operator-only proof exists.** Verified on main:
+  - The dashboard says it has no auth or identity layer; its guard only
+    rejects cross-origin browser requests (`apps/dashboard/lib/originGuard.ts`).
+  - Operator-script receipts and run records are plain workspace files, and
+    the scripts can be run from any shell.
+  - `ARCADIA_OPERATOR_SCRIPT_ID` is an environment variable.
+  - The preservation and go-broker transports carry nonces, not identity.
+  - The Discord bot authorizes by guild and channel only.
+
+  Hence `decide-operator-presence-proof-2026-10-09` and the
+  `build-operator-presence-proof` Action. The recommended proof is a Discord
+  message from the operator's pinned user id that quotes a one-time challenge.
+  The verifier fetches it live and re-verifies it at each use. That proof needs
+  no host secret: the verifier reads only public identity and the bot token,
+  which cannot post as the operator. The threat model excludes an agent that
+  edits Arcadia's installed code, which review and operator merge cover.
 - **Capacity observations are not stored as history.** `project-token-burn-rate`
   adds an append-only history store.
 - **Name collisions:** `dispatch`, `steward` (`src/stewardship`) and
@@ -65,29 +81,65 @@ All eleven Decisions must be answered before the draft is activated.
    from the first day.
 4. `add-action-role-field`, then `teach-planners-divide-and-conquer-roles`.
 5. `select-model-for-delegated-task`, which reads capacity through
-   `CapacityAdmission`, then `enforce-smallest-model-session-start`.
-6. `broker-delegation-requests`, then `route-subagent-spawns-through-broker`.
-7. `reserve-operator-emergency-capacity`, which needs only the selector. It
-   supplies the reserve-aware implementation that the broker picks up through
-   the same interface, so there is no broker-reserve dependency cycle. Then
-   `project-token-burn-rate`.
-8. `assign-supervisors-and-relay`.
-9. `build-agents-overview-read-model` (CLI), then `build-agents-page`.
-10. `prove-governed-role-team-end-to-end`, run by an independent QA role. Its
-    interactive leg is an operator step.
+   `CapacityAdmission`.
+6. Start-tier enforcement, one launch path at a time:
+   `enforce-start-tier-interactive-sessions`, then
+   `enforce-start-tier-dispatch-launches`, then
+   `enforce-start-tier-managed-production`. The managed-production step waits
+   on `decide-managed-production-start-tier-2026-10-09`.
+7. `broker-delegation-requests`, then `route-subagent-spawns-through-broker`.
+8. `build-operator-presence-proof`. Then `reserve-operator-emergency-capacity`,
+   which depends on the selector, the broker and the proof. It supplies the
+   reserve-aware implementation behind the same interface, so there is no
+   dependency cycle. Then `project-token-burn-rate`.
+9. `assign-supervisors-and-relay`.
+10. `build-agents-overview-read-model` (CLI), then `build-agents-page`.
+11. `prove-governed-role-team-end-to-end`, run by an independent QA role. Its
+    interactive leg and its live reserve check are operator steps.
+
+## Reserve rules in brief
+
+- **Floor.** The bundled default is pinned by a test at the answered size.
+  Lowering the default is therefore a visible authority change whose PR waits
+  for the operator.
+- **Missing or out-of-range values.** A missing key falls back to the floor,
+  never 0. Values are clamped from the floor up to 100%, and 100% stops all
+  unattended work.
+- **Workspace overrides** may only raise the reserve.
+- **Proof-backed changes.** A lowering or release is a `reserve_changes` row
+  that carries its proof reference. It takes effect only while that proof
+  re-verifies.
+- **Grant entries.** `release-operator-reserve` (repeatable, with a fresh
+  challenge on every run) and `lower-operator-reserve` (one-shot) are
+  operator-script library entries (`kind: grant`), run through the governed
+  operator-script path. The reserve Action prepares them in advance, never an
+  agent during an emergency. After merge, the end-to-end proof Action live-verifies that
+  they are listed.
+- **Press surface (open).** For now the operator presses these entries wherever
+  the governed path lists library entries. Whether they move to `/production`
+  or `/todo` is decided when `/todo` ships.
 
 ## Broker semantics in brief
 
-- **Admitted:** the request gets a model, an effort and a lease (default 60
-  minutes, renewable). A lease that expires frees its capacity.
-- **Queued:** the request is re-evaluated in FIFO order whenever a delegation
-  finishes, a lease expires, or the waiting requester polls. When its bounded
-  wait (default 30 minutes) ends, it is declined as `queue_timeout`.
+- **Expired leases.** Every broker command first sweeps them.
+- **Admitted:** the request gets a model id, an advisory effort and a lease
+  (60 minutes, at most two renewals). The Agent tool has no effort parameter,
+  so effort is never enforced.
+- **Queued:** requests wait in strict first-in, first-out order per provider,
+  and no later request on that provider overtakes an earlier one. A request is
+  promoted only on its own requester's `poll`, and is declined as
+  `poll_lapsed` if the requester does not poll for 5 minutes, or as
+  `queue_timeout` after 30 minutes.
 - **Declined:** the request carries a reason code.
 - **Failing closed:** an unavailable broker admits nothing, and the parent
   continues alone.
-- **Headless Claude hook:** it permits one spawn per admitted receipt, at the
-  admitted model, and the per-Session allow list widens as stated.
+- **Headless Claude hook.** It applies only if an integration test proves that
+  a `--settings` hook fires under `--setting-sources ""`. When it applies:
+  - it allows one spawn per admitted receipt;
+  - it compares normalised model ids, and an omitted model counts as the
+    parent's;
+  - only the receipt's own depth-0 caller can spend the receipt;
+  - the per-Session allow list widens by the delegation commands and the hook.
 
 ## Deterministic pieces and the crutch each replaces
 
@@ -99,7 +151,7 @@ All eleven Decisions must be answered before the draft is activated.
 | `selectDelegateModel` and start-tier enforcement | The agent picking a model from prose; one model per Plan |
 | Delegation broker, leases and receipts | Unrecorded in-process spawns (`Agent`, `spawn_agent`) |
 | PreToolUse hook (if chosen) | Convention, for headless Claude only |
-| Operator-verified reserve and burn-rate throttle | The fixed 5% margin and watching usage by eye |
+| Proof-gated reserve, operator presence proof and burn-rate throttle | The fixed 5% margin, plain-file receipts and watching usage by eye |
 | `supervisorFor` and relay | Ad hoc pings, with the operator supervising everyone |
 | Interactive role receipts | Nothing: interactive sessions leave no Session row today |
 | `arcadia agents overview` and `/agents` | Reading three native tools' session lists |
@@ -132,5 +184,5 @@ Crutches that remain after this Plan:
 Selection, admission, queueing, leases, the reserve and the burn rate are all
 deterministic and make zero model calls. Models are spent only by each Action's
 Session and by admitted delegates, and never from the operator reserve without
-an operator-verified receipt. Each Action is one Session, and any repair needs
+a re-verified operator presence proof. Each Action is one Session, and any repair needs
 a named failure.
