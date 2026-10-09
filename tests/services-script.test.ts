@@ -96,11 +96,12 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart dashboa
     expect(result.status).toBe(0);
     // The warm-up is detached; give it a moment to finish.
     let lines: string[] = [];
-    for (let i = 0; i < 50 && lines.length < 3; i += 1) {
+    for (let i = 0; i < 50 && lines.length < 4; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
       lines = existsSync(warmed) ? readFileSync(warmed, "utf8").trim().split("\n") : [];
     }
     expect(lines).toEqual([
+      "http://dash.test/",
       "http://dash.test/production",
       "http://dash.test/api/production-console?part=core",
       "http://dash.test/api/production-console?part=queue"

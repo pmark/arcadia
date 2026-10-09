@@ -149,6 +149,11 @@ done
 if [[ "${ARCADIA_DASHBOARD_WARM:-1}" != "0" ]]; then
   DASHBOARD_URL="${ARCADIA_DASHBOARD_URL:-http://127.0.0.1:3020}"
   (
+    # The dashboard may still be coming up; wait for it (up to about a minute) before warming.
+    for _ in $(seq 1 30); do
+      curl -fsS -o /dev/null --max-time 5 "$DASHBOARD_URL/" && break
+      sleep 2
+    done
     for path in /production "/api/production-console?part=core" "/api/production-console?part=queue"; do
       curl -fsS -o /dev/null --max-time 90 "$DASHBOARD_URL$path" || true
     done

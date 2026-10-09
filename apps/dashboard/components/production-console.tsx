@@ -715,10 +715,11 @@ export function QueueSection({
 
 function QueueLoading({ waitedMs }: { waitedMs: number }) {
   const seconds = Math.max(0, Math.floor(waitedMs / 1000));
+  // The live region's text stays put; only the visual counter ticks, so a screen reader is not told every second.
   if (waitedMs > QUEUE_SLOW_MS) {
     return (
       <p role="status" className="rounded-md border border-gold/50 bg-gold/10 p-3 text-sm text-ink">
-        Still reading the queue after {seconds} s. Arcadia may be busy; it keeps trying, and Refresh at the top asks again now.
+        Still reading the queue after more than a minute. Arcadia may be busy; it keeps trying, and Refresh at the top asks again now.
       </p>
     );
   }
@@ -726,7 +727,7 @@ function QueueLoading({ waitedMs }: { waitedMs: number }) {
     <p role="status" className="flex items-center gap-2 rounded-md border border-line bg-panel p-3 text-sm text-muted">
       <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
       <span>
-        Reading the queue… {seconds} s. The first read after a restart can take about 15 s.
+        Reading the queue…<span aria-hidden="true"> {seconds} s.</span> The first read after a restart can take about 15 s.
       </span>
     </p>
   );

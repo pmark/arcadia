@@ -54,7 +54,7 @@ export async function cachedStale<T>(
     return start();
   }
   const age = Date.now() - entry.at;
-  if (entry.hasValue &&(options.maxStaleMs === undefined || age <= options.maxStaleMs)) {
+  if (entry.hasValue && (options.maxStaleMs === undefined || age <= options.maxStaleMs)) {
     if (age > ttlMs) void start().catch(() => undefined);
     return entry.value as T;
   }
