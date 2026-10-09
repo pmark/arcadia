@@ -1082,7 +1082,9 @@ the Action brief's "Calling in help" section tells the Session how to call in th
 plan's tier (a Claude subagent, Codex `spawn_agent`) or, if it cannot, to draft a
 proposal Agent Ask for a relaunch at that tier. Change the start tier per
 workspace with `{ "sessionStartTier": "standard" }` (or `"plan"` for the old
-behavior) in `config/coding-agent-models.json`. See `docs/model-selection.md`.
+behavior) in `config/coding-agent-models.json`. Light starts run at low effort
+even for a deep Action, which can cost more repair attempts; overriding the start
+tier toward heavy raises cost. See `docs/model-selection.md`.
 
 To mark a governed Action done, preview a `complete` Ask targeting
 `action/<id>` with `candidate_revision` (the Candidate's exact git sha) and

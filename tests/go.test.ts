@@ -1735,7 +1735,7 @@ describe("arcadia go — next-session model resolution", () => {
     // Smallest model first: the plan's opus becomes the escalation target.
     expect(result.data.nextWorktree?.model).toBe("haiku");
     expect(result.data.nextWorktree?.effort).toBe("e1_brief");
-    expect(result.data.nextWorktree?.command).toContain('claude --model "haiku" --effort "e1_brief" "arcadia advance"');
+    expect(result.data.nextWorktree?.command).toContain('claude --model "haiku" --effort "low" "arcadia advance"');
     expect(result.data.modelResolution).toMatchObject({ tier: "light", escalation: { model: "opus" } });
     expect(renderGoSuccess(result).join("\n")).toContain("Starts on haiku; escalation model for hard sub-problems: opus");
   });
@@ -1782,11 +1782,11 @@ describe("arcadia go — next-session model resolution", () => {
     );
     commitFeature(fixture.feature, "proof.txt", "proof\n");
 
-    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace, effort: "high" });
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
 
     expect(result.data.nextWorktree?.model).toBe("gpt-6-luna");
     expect(result.data.nextWorktree?.command).toContain('-m "gpt-6-luna"');
-    expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
+    expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="low"');
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
 

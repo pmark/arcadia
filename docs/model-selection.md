@@ -51,7 +51,12 @@ the escalation target written into the Action brief.
   names the plan's tier as the escalation target when it differs.
 - **Effort** starts at the light tier's own default (`e1_brief`) unless
   `--effort` is given; the plan's effort belongs to the plan's model and is not
-  applied to the smaller one.
+  applied to the smaller one. Consequence: light starts run at low effort even
+  for an `e3_deep` Action, which can cost more repair attempts; a
+  `sessionStartTier` override toward heavy raises cost per Session.
+- The escalation section is omitted when the start tier is at or above the
+  plan's. Operator-approved previews (`session preview-launch`) and host
+  enrollment state the start model and the escalation target.
 - `arcadia go` prints the start model and the escalation model.
 - The managed-production packet still binds the plan's tier model; a Session may
   start on the start-tier model for the same provider (nothing else is accepted

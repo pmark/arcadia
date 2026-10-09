@@ -192,8 +192,8 @@ function pinnedConstitution(input: ActionBriefInput): ConstitutionReference | nu
 }
 
 /**
- * "Calling in help": a Session starts on the smallest model of its provider and
- * names the plan's tier as the escalation target. What a Session can safely do
+ * "Calling in help": a Session starts on the registry's start-tier model (the
+ * smallest by default) and names the plan's tier as the escalation target. What a Session can safely do
  * with that depends on the provider: Claude spawns a subagent on the bigger
  * model (the Agent tool), Codex uses its built-in `spawn_agent` tool with a
  * `model` override, and opencode (and any Session whose in-session path fails)
@@ -207,13 +207,15 @@ export function renderCallingInHelp(input: {
   const target = `${input.escalation.model}${input.escalation.tier ? ` (${input.escalation.tier} tier)` : ""}`;
   const lines = [
     "",
-    "Calling in help — you started on the smallest model for this agent; the plan is sized for a bigger one.",
+    `Calling in help — you started on ${input.model}, a smaller model than the one the plan is sized for.`,
     `Started on: ${input.model}. Escalation target: ${target}.`,
     "Do the routine work yourself. Escalate only a sub-problem you cannot settle (a design choice, a stubborn bug,",
     "a review of your own work), and give the helper a self-contained prompt; never hand over the whole Action."
   ];
   if (input.agent === "claude") {
-    lines.push(`In session: spawn a subagent with the Agent tool and \`model: "${input.escalation.model}"\`.`);
+    // The Agent tool takes the sonnet/opus/haiku aliases; a concrete Claude ID maps to its family.
+    const alias = /opus|sonnet|haiku/i.exec(input.escalation.model)?.[0].toLowerCase() ?? input.escalation.model;
+    lines.push(`In session: spawn a subagent with the Agent tool and \`model: "${alias}"\`.`);
   } else if (input.agent === "codex") {
     lines.push(
       `In session: call \`spawn_agent\` with \`model: "${input.escalation.model}"\` (this brief is the explicit instruction to delegate).`,
@@ -222,7 +224,7 @@ export function renderCallingInHelp(input: {
   }
   lines.push(
     "If there is no working in-session path, or the whole Action is beyond you: stop, run `arcadia agent-ask draft`",
-    `(or \`preview\`) with \`intent: proposal\`, \`requested_authority: propose\`, asking for a relaunch at ${target}, then exit.`,
+    `with \`intent: proposal\`, \`requested_authority: propose\`, asking for a relaunch at ${target}, then exit.`,
     "Do not guess past what you can verify."
   );
   return lines;

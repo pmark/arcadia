@@ -31,7 +31,7 @@ import { launchGuardedHostSession, type GuardedLaunchInput } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { requirementIdentity } from "./roleLineage.js";
 import { readProjectPartners, renderDispatchIdentityBlock } from "./partners.js";
-import { loadModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { TIER_AGENTS, describeSessionStart, loadModelTierRegistry, sessionStartBinding, type TierAgent } from "../codingAgents/modelTiers.js";
 
 export interface HostEnrollmentInput {
   source: string;
@@ -154,19 +154,26 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
           capacityAvailable = false;
         }
       }
+      // Smallest model first: the launched Session starts on the start-tier
+      // model for its provider; the packet-bound selection is its escalation target.
+      const tierRegistry = (() => { try { return loadModelTierRegistry(workspace); } catch { return undefined; } })();
+      const selectedAgent = selection ? sessionAgentForProvider(selection.provider) : null;
+      const tierAgent = selectedAgent && (TIER_AGENTS as readonly string[]).includes(selectedAgent) ? (selectedAgent as TierAgent) : null;
+      const startBinding = tierAgent ? sessionStartBinding(tierAgent, tierRegistry) : null;
+      const startNote = selection && tierAgent ? describeSessionStart(tierAgent, selection.model, tierRegistry) : null;
       return {
         projectSlug: dispatch.projectSlug,
         planSlug: dispatch.activePlan,
         actionId: dispatch.action.id,
         // The dispatch brief, then the enrolling agent's Identity block for the
-        // model this enrollment selected (or the Plan's recommendation).
-        canonicalBrief: [...renderNextSuccess(next), "", ...renderDispatchIdentityBlock({
-          agent: (selection ? sessionAgentForProvider(selection.provider) : null) ?? agent,
-          model: selection?.model ?? null,
-          effort: selection?.effort ?? null,
+        // model the launched Session starts on (or the Plan's recommendation).
+        canonicalBrief: [...renderNextSuccess(next), "", ...(startNote ? [startNote, ""] : []), ...renderDispatchIdentityBlock({
+          agent: selectedAgent ?? agent,
+          model: startBinding?.model ?? selection?.model ?? null,
+          effort: startBinding ? startBinding.effort : (selection?.effort ?? null),
           recommendedModel: dispatch.planRecommendedModel ?? null,
           recommendedEffort: dispatch.planRecommendedReasoningEffort ?? null,
-          registry: (() => { try { return loadModelTierRegistry(workspace); } catch { return undefined; } })(),
+          registry: tierRegistry,
           partners: readProjectPartners(db, { projectSlug: dispatch.projectSlug, excludeWorktree: source })
         })].join("\n"),
         operatorGates: next.data.operatorAlerts.map(item => `${item.kind}:${item.id}`),

@@ -210,6 +210,28 @@ export function resolveHandoffModel(input: HandoffModelInput): HandoffModelResol
   };
 }
 
+function tierOfModel(agent: TierAgent, model: string, registry: ModelTierRegistry): ModelTier | null {
+  return MODEL_TIERS.find((tier) => registry.tiers[tier][agent]?.model === model) ?? null;
+}
+
+/**
+ * The plan's model as an escalation target for a Session running `current`:
+ * null when it is the same model or, where both tiers are known, not larger
+ * (a workspace may start sessions on a tier at or above the plan's).
+ */
+function escalationIfLarger(
+  agent: TierAgent,
+  current: string,
+  planned: HandoffModelResolution,
+  registry: ModelTierRegistry
+): { model: string; effort: string | null; tier: ModelTier | null } | null {
+  if (planned.model === current) return null;
+  const target = planned.tier ?? tierOfModel(agent, planned.model, registry);
+  const started = tierOfModel(agent, current, registry);
+  if (target && started && MODEL_TIERS.indexOf(started) >= MODEL_TIERS.indexOf(target)) return null;
+  return { model: planned.model, effort: planned.effort, tier: planned.tier };
+}
+
 /**
  * Resolve the model a Session STARTS on. The plan's recommendation (resolved
  * exactly as `resolveHandoffModel` does, including its refusals) becomes the
@@ -230,7 +252,7 @@ export function resolveSessionStart(input: HandoffModelInput): HandoffModelResol
     tier: registry.sessionStartTier,
     source: "tier",
     note: planned.note,
-    escalation: planned.model === binding.model ? null : { model: planned.model, effort: planned.effort, tier: planned.tier }
+    escalation: escalationIfLarger(input.agent, binding.model, planned, registry)
   };
 }
 
@@ -240,6 +262,18 @@ export function resolveSessionStart(input: HandoffModelInput): HandoffModelResol
  */
 export function sessionStartBinding(agent: TierAgent, registry: ModelTierRegistry = BUNDLED_MODEL_TIERS): TierModelBinding | null {
   return registry.sessionStartTier === "plan" ? null : registry.tiers[registry.sessionStartTier][agent];
+}
+
+/**
+ * One operator-facing sentence for a Session whose model was bound elsewhere (a
+ * packet-bound selection): the model it will START on and the bound model it
+ * can escalate to. Null when the Session starts on the bound model itself.
+ */
+export function describeSessionStart(agent: TierAgent, boundModel: string, registry: ModelTierRegistry = BUNDLED_MODEL_TIERS): string | null {
+  const binding = sessionStartBinding(agent, registry);
+  if (!binding || binding.model === boundModel) return null;
+  return `The Session will start on ${binding.model} (${registry.sessionStartTier} tier, effort ${binding.effort ?? "default"}); ` +
+    `${boundModel} is its escalation target.`;
 }
 
 /**
@@ -256,7 +290,7 @@ export function resolveEscalationTarget(input: {
   if (!input.recommendedModel) return null;
   try {
     const planned = resolveHandoffModel({ agent: input.agent, recommendedModel: input.recommendedModel, registry: input.registry });
-    return planned.model === input.currentModel ? null : { model: planned.model, effort: planned.effort, tier: planned.tier };
+    return escalationIfLarger(input.agent, input.currentModel, planned, input.registry ?? BUNDLED_MODEL_TIERS);
   } catch {
     return null;
   }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { renderActionBrief } from "../src/sessions/actionBrief.js";
+import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -75,6 +75,14 @@ describe("renderActionBrief", () => {
       expect(brief).not.toContain("In session:");
       expect(brief).toContain("asking for a relaunch at opencode-go/deepseek-v4.1-flash (standard tier)");
       expect(brief).toContain("`requested_authority: propose`");
+    });
+
+    it("maps a concrete Claude plan model to its Agent-tool alias and only offers the draft fallback", () => {
+      const brief = render("claude", "haiku");
+      expect(brief).not.toContain("`preview`");
+      expect(brief).toContain("you started on haiku, a smaller model");
+      const mapped = renderCallingInHelp({ agent: "claude", model: "haiku", escalation: { model: "claude-opus-4-7", tier: null } });
+      expect(mapped.join("\n")).toContain('`model: "opus"`');
     });
 
     it("is absent when the Session already runs the plan's model or no model is given", () => {

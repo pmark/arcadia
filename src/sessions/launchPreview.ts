@@ -28,7 +28,8 @@ import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { readProductionPolicySafely } from "../production/policy.js";
-import { resolveProjectTransition, type TmuxAdapter } from "./index.js";
+import { resolveProjectTransition, sessionAgentForProvider, type TmuxAdapter } from "./index.js";
+import { TIER_AGENTS, describeSessionStart, loadModelTierRegistry, type TierAgent } from "../codingAgents/modelTiers.js";
 import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
 
 export interface LaunchPreviewPacket {
@@ -248,6 +249,19 @@ export function buildLaunchPreview(input: {
             }
           }
         }
+      }
+    }
+  }
+
+  if (selection) {
+    // Smallest model first: say what the Session will actually start on.
+    const agent = sessionAgentForProvider(selection.provider);
+    if (agent && (TIER_AGENTS as readonly string[]).includes(agent)) {
+      try {
+        const startNote = describeSessionStart(agent as TierAgent,selection.model, loadModelTierRegistry(input.workspace));
+        if (startNote) selectionRationale = selectionRationale ? `${selectionRationale} ${startNote}` : startNote;
+      } catch {
+        // An unreadable workspace override is reported by the launch itself.
       }
     }
   }

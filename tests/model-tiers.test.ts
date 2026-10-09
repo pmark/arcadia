@@ -11,6 +11,7 @@ import {
   isPlausibleAgentModel,
   loadModelTierRegistry,
   mergeModelTiers,
+  describeSessionStart,
   resolveEscalationTarget,
   resolveHandoffModel,
   resolveSessionStart,
@@ -171,6 +172,25 @@ describe("session start tier (smallest model first)", () => {
     mkdirSync(path.join(workspace, "config"), { recursive: true });
     writeFileSync(path.join(workspace, "config", "coding-agent-models.json"), JSON.stringify({ sessionStartTier: "plan" }));
     expect(loadModelTierRegistry(workspace).sessionStartTier).toBe("plan");
+  });
+
+  it("omits escalation when the workspace starts at or above the plan's tier", () => {
+    const heavyStart = mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "heavy" });
+    expect(resolveSessionStart({ agent: "claude", recommendedModel: "standard", registry: heavyStart })).toMatchObject({
+      model: "opus",
+      escalation: null
+    });
+    expect(
+      resolveEscalationTarget({ agent: "claude", recommendedModel: "light", currentModel: "sonnet" })
+    ).toBeNull();
+  });
+
+  it("describes the start model for a packet-bound selection", () => {
+    expect(describeSessionStart("claude", "sonnet")).toBe(
+      "The Session will start on haiku (light tier, effort e1_brief); sonnet is its escalation target."
+    );
+    expect(describeSessionStart("claude", "haiku")).toBeNull();
+    expect(describeSessionStart("claude", "sonnet", mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "plan" }))).toBeNull();
   });
 
   it("names no escalation target when the Session already runs the plan's model", () => {
