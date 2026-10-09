@@ -404,3 +404,137 @@ describe("preservation check-definition binding — non-ASCII path components (#
     expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["sh \u03c3/check.sh"])).toThrow(refusesNonAscii("\u03c3"));
   });
 });
+
+describe("preservation check-definition binding \u2014 bare PATH commands and non-ASCII root entries (#1053)", () => {
+  it("does not refuse a bare PATH command because the root holds a non-ASCII entry, in either tree", () => {
+    const f = repo({ "caf\u00e9.md": "notes\n", "check.sh": "exit 0\n" });
+    for (const command of ["echo hi", "pnpm test", "env FOO=1 echo hi", "true && echo hi"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+    }
+    const candidateOnly = repo({ "check.sh": "exit 0\n" });
+    const withAccent = candidateTree(candidateOnly, { "caf\u00e9.md": "notes\n" });
+    expect(() => bindCheckDefinitions(candidateOnly.dir, candidateOnly.base, withAccent, ["echo hi"])).not.toThrow();
+  });
+
+  it("still refuses a script target beside a non-ASCII root entry", () => {
+    const f = repo({ "caf\u00e9.md": "notes\n", "check.sh": "exit 0\n" });
+    for (const command of ["sh check.sh", "./check.sh", "env sh check.sh"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/non-ASCII name/) }));
+    }
+  });
+
+  it("still binds a root file that shares a bare command's name", () => {
+    const f = repo({ "echo": "#!/bin/sh\n" });
+    const rewritten = candidateTree(f, { "echo": "#!/bin/sh\nexit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["echo hi"]))
+      .toThrow(expect.objectContaining({ details: expect.objectContaining({ path: "echo" }) }));
+  });
+});
+
+describe("preservation check-definition binding \u2014 executable-path gaps (#1047)", () => {
+  const modified = (file: string) => expect.objectContaining({ details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: file }) });
+
+  it("refuses a case-mismatched declared script (CHECK.sh vs check.sh)", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["sh CHECK.sh"]))
+      .toThrow(expect.objectContaining({ message: expect.stringMatching(/only by letter case/) }));
+  });
+
+  it("refuses a script run after `cd`, however the cd is spelled", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n", "linked/README": "x\n" });
+    for (const command of [
+      "cd rules && sh check.sh",
+      "cd linked && sh ../check.sh",
+      "(cd rules; sh check.sh)",
+      "pushd rules; sh check.sh",
+      "if true; then cd rules; fi; sh check.sh",
+      "{ cd rules; sh check.sh; }"
+    ]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/changes directory/), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));
+    }
+  });
+
+  it("refuses a launcher-level directory change (env -C, env --chdir, sudo -D)", () => {
+    const f = repo({ "check.sh": "exit 7\n", "rules/check.sh": "exit 7\n" });
+    for (const command of ["env -C rules sh check.sh", "env --chdir=rules sh check.sh", "sudo -D rules sh check.sh"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/changes directory/) }));
+    }
+  });
+
+  it("allows a `cd` that precedes only bare PATH commands", () => {
+    const f = repo({ "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["cd /tmp && echo hi"])).not.toThrow();
+  });
+
+  it("binds the script through chained launchers", () => {
+    const f = repo({ "rules/check.sh": "exit 7\n" });
+    const rewritten = candidateTree(f, { "rules/check.sh": "exit 0\n" });
+    for (const command of ["nohup nice -n 5 sh rules/check.sh", "env nice time sh rules/check.sh", "env FOO=1 nice -n 5 sh rules/check.sh", "sudo -u root nohup sh rules/check.sh"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command).not.toThrow();
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modified("rules/check.sh"));
+    }
+  });
+
+  it("binds the script after a leading shell keyword and through `source`", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    const rewritten = candidateTree(f, { "check.sh": "exit 0\n" });
+    for (const command of ["if true; then sh check.sh; fi", "source check.sh", ". ./check.sh"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, [command]), command).toThrow(modified("check.sh"));
+    }
+  });
+
+  it("refuses a declared script path the shell expands at run time", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    for (const command of ["sh $PWD/check.sh", "sh ${PWD}/check.sh", "sh ch*.sh", "sh ~/check.sh", "$PWD/check.sh", "sh check.{sh,x}"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/expanded by the shell/) }));
+    }
+  });
+
+  it("does not refuse an absolute interpreter path, and keeps binding the script", () => {
+    const f = repo({ "check.sh": "exit 7\n" });
+    const rewritten = candidateTree(f, { "check.sh": "exit 0\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["/bin/sh check.sh"])).not.toThrow();
+    expect(() => bindCheckDefinitions(f.dir, f.base, rewritten, ["/bin/sh check.sh"])).toThrow(modified("check.sh"));
+  });
+});
+
+describe("preservation check-definition binding \u2014 Python bytecode and extension shadowing (#1052)", () => {
+  const shadowed = (entry: string) => expect.objectContaining({
+    message: expect.stringMatching(/compiled Python/),
+    details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE, path: entry })
+  });
+
+  it("refuses a candidate `json.pyc` beside a check that imports the absent stdlib `json`", () => {
+    const f = repo({ "check.py": "import json\nprint(json.dumps(1))\n" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 check.py"])).not.toThrow();
+    const candidate = candidateTree(f, { "json.pyc": "REWRITTEN" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["python3 check.py"])).toThrow(shadowed("json.pyc"));
+  });
+
+  it("refuses native-extension and bytecode siblings of a bound module, in either tree", () => {
+    const f = repo({ "check.py": "from helper import run\nrun()\n", "helper.py": "def run():\n    pass\n" });
+    for (const entry of ["helper.so", "helper.cpython-312-darwin.so", "helper.abi3.so", "helper.pyd", "helper.pyc", "HELPER.so", "__pycache__/helper.cpython-312.pyc"]) {
+      const candidate = candidateTree(f, { [entry]: "x" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["python3 check.py"]), entry).toThrow(shadowed(entry));
+    }
+    const baseWithShadow = repo({ "check.py": "import helper\n", "helper.py": "x = 1\n", "helper.so": "x" });
+    expect(() => bindCheckDefinitions(baseWithShadow.dir, baseWithShadow.base, baseWithShadow.base, ["python3 check.py"])).toThrow(shadowed("helper.so"));
+  });
+
+  it("refuses shadowing of a package initializer and of each dotted prefix", () => {
+    const f = repo({ "check.py": "import pkg.sub\n", "pkg/__init__.py": "", "pkg/sub.py": "x = 1\n" });
+    for (const entry of ["pkg/__init__.pyc", "pkg/__init__.cpython-312-darwin.so", "pkg/__pycache__/__init__.cpython-312.pyc", "pkg/sub.so", "pkg/__pycache__/sub.cpython-312.pyc", "pkg.so"]) {
+      const candidate = candidateTree(f, { [entry]: "x" });
+      expect(() => bindCheckDefinitions(f.dir, f.base, candidate, ["python3 check.py"]), entry).toThrow(shadowed(entry));
+    }
+  });
+
+  it("does not refuse compiled files that cannot shadow a bound module", () => {
+    const f = repo({ "check.py": "import helper\n", "helper.py": "x = 1\n", "other.pyc": "x", "helper_extra.so": "x", "sub/helper.so": "x", "helper.pyi": "x" });
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 check.py"])).not.toThrow();
+  });
+});
