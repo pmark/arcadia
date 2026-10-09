@@ -34,7 +34,17 @@ import { boundedExec } from "./preservationStages.js";
  * APFS also folds Unicode (`ſ`, `ß`, `ﬁ`, final sigma, normalization) in ways
  * no local table reproduces, so a non-ASCII path component, or any non-ASCII
  * entry in a directory such a path traverses, in either tree, is refused.
- * It does not cover data the
+ * A bare command (no slash, not an interpreter's script target) is resolved
+ * on PATH and never walked for these hazards (#1053). Launchers may chain, a
+ * `cd`/`pushd`/`env -C`/`sudo -D` before a script, or a script path the shell
+ * expands (`$PWD/x`, globs, `~`), is refused because the root-relative file
+ * bound may not be the file run (#1047). A sibling `.pyc`, native extension or
+ * `__pycache__` entry for an imported Python module is refused in either
+ * tree, as Python would load it ahead of the bound source (#1052). Not
+ * covered: a literal absolute path (the host runs checks in an unguessable
+ * temp checkout with the repository denied, so it cannot name candidate
+ * content), and options that take a value before an interpreter's script
+ * (`node --require x.js check.js`). It does not cover data the
  * check reads by design (the candidate content it judges), a specifier
  * computed at run time, a dotted Python package import (`import os.path`,
  * resolved by its own stdlib/installed leading segment, not a same-directory
@@ -84,6 +94,7 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
   const candidate = blobs(repository, candidateTree);
   const entries = treeEntries(base, candidate);
   const bound = new Map<string, string | null>();
+  const allPaths = [...new Set([...base.keys(), ...candidate.keys()])];
   const visit = (file: string) => {
     if (bound.has(file)) return;
     // Link text is not an executable definition. Refuse even unchanged base
@@ -108,6 +119,11 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
         const parts = dotted.split(".");
         for (let end = 1; end <= parts.length; end++) {
           const name = parts.slice(0, end).join("/");
+          // Python tries extension modules and bytecode before (or without) the
+          // `.py` source this binding hashes, so a sibling of either kind
+          // shadows the bound file and runs unbound code (#1052).
+          const shadow = pythonShadow(path.posix.join(dir, name), allPaths);
+          if (shadow) throw shadowRefusal(shadow, `${path.posix.join(dir, name)}.py`, baseRevision);
           visit(path.posix.join(dir, `${name}.py`));
           visit(path.posix.join(dir, name, "__init__.py"));
         }
@@ -185,7 +201,17 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
 /** Interpreters that run a script named as their next positional argument.
  * Mirrors the self-contained tools `preservationChecks.ts` allows through the
  * sandbox: only these, plus a directly executed script, name a *check file*. */
-const SCRIPT_INTERPRETERS = new Set(["node", "nodejs", "python3", "python", "sh", "bash", "zsh", "ruby", "deno", "bun"]);
+const SCRIPT_INTERPRETERS = new Set(["node", "nodejs", "python3", "python", "sh", "bash", "zsh", "ruby", "deno", "bun", "source", "."]);
+
+/** Builtins that move the shell, so later root-relative paths resolve elsewhere. */
+const CWD_COMMANDS = new Set(["cd", "pushd", "popd", "chdir"]);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+/** Compound-command words that can precede the real command in a segment
+ * (`then cd x`, `{ sh check.sh`). */
+const SHELL_KEYWORDS = new Set(["if", "then", "elif", "else", "do", "while", "until", "!", "{"]);
+/** Parameter, tilde and glob expansion all make the executed path differ from
+ * the written one. */
+const SHELL_EXPANSION = /[$*?[{~]/;
 
 /** Tokens that wrap another executable, so the real command follows them
  * (`env node check.mjs`). Mirrors `preservationChecks.ts`'s own launcher
@@ -197,9 +223,15 @@ const LAUNCHER_TOKENS = new Set(["env", "sudo", "command", "nohup", "time", "exe
 const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
   env: new Set(["-u", "--unset", "-C", "--chdir", "-S", "--split-string"]),
   sudo: new Set(["-u", "--user", "-g", "--group", "-p", "--prompt", "-C", "--close-from",
-    "-h", "--host", "-r", "--role", "-t", "--type", "-U", "--other-user"]),
+    "-h", "--host", "-r", "--role", "-t", "--type", "-U", "--other-user", "-D", "--chdir"]),
   nice: new Set(["-n", "--adjustment"]),
   stdbuf: new Set(["-i", "--input", "-o", "--output", "-e", "--error"])
+};
+
+/** Launcher options that change the working directory of the wrapped command. */
+const LAUNCHER_CHDIR_OPTION: Record<string, RegExp> = {
+  env: /^(?:--chdir(?:=.*)?|-C.*)$/,
+  sudo: /^(?:--chdir(?:=.*)?|-D.*)$/
 };
 
 /** The script file each shell segment actually executes — its own path if run
@@ -212,16 +244,25 @@ const LAUNCHER_VALUE_OPTIONS: Record<string, Set<string>> = {
  * the base — so the candidate cannot supply it. */
 function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<string, GitBlob>, entries: TreeEntries, baseRevision: string): string[] {
   const files: string[] = [];
+  // Segments run in command order, so a `cd` in one affects every later one.
+  let changedDirectory = false;
   for (const segment of command.split(SHELL_SEGMENT)) {
     const tokens = segment.trim().split(/\s+/).filter(Boolean).map(raw => raw.replace(/^["']|["']$/g, ""));
     let index = 0;
-    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index])) index += 1;
     let launcher: string | null = null;
+    // A launcher that itself changes directory (`env -C dir`, `sudo -D dir`)
+    // moves the wrapped executable out from under the root-relative path.
+    let segmentChdir = false;
+    // Launchers chain (`nohup nice -n 5 sh check.sh`), and assignments or shell
+    // keywords may precede or sit between them; skip all of them to reach the
+    // command that actually runs. Without that, the check silently binds nothing.
     while (index < tokens.length) {
       const token = tokens[index];
-      if (!launcher && LAUNCHER_TOKENS.has(token)) { launcher = token; index += 1; continue; }
+      if (ASSIGNMENT.test(token) || SHELL_KEYWORDS.has(token)) { index += 1; continue; }
+      if (LAUNCHER_TOKENS.has(token)) { launcher = token; index += 1; continue; }
       if (launcher && token.startsWith("-")) {
         index += 1;
+        if (LAUNCHER_CHDIR_OPTION[launcher]?.test(token)) segmentChdir = true;
         if (LAUNCHER_VALUE_OPTIONS[launcher]?.has(token) && index < tokens.length) index += 1;
         continue;
       }
@@ -230,8 +271,10 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
     const executable = tokens[index];
     if (!executable) continue;
     const executableName = executable.split("/").pop() ?? executable;
+    if (CWD_COMMANDS.has(executableName)) { changedDirectory = true; continue; }
     let target: string | null = null;
-    if (SCRIPT_INTERPRETERS.has(executableName)) {
+    const interpreted = SCRIPT_INTERPRETERS.has(executableName);
+    if (interpreted) {
       for (let i = index + 1; i < tokens.length; i += 1) {
         if (tokens[i].startsWith("-")) continue;
         target = tokens[i];
@@ -241,8 +284,21 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
       target = executable;
     }
     if (!target) continue;
-    const hazard = declaredHazard(target, entries);
-    if (hazard) throw hazardRefusal(hazard, target, baseRevision);
+    // A bare command (`pnpm`, `echo`) is looked up on PATH by the shell and
+    // never read from the repository root, so walking the root for hazards on
+    // its behalf only produces false refusals (#1053). An interpreter's script
+    // target is always a file, bare or not, and keeps the full walk.
+    const scriptShaped = interpreted || executable.includes("/");
+    if (scriptShaped) {
+      // The binding resolves every declared path against the checkout root. If
+      // an earlier `cd` (or `env -C`) moved the shell, or the path is expanded
+      // by the shell at run time, the file bound is not the file executed
+      // (#1047). Fail closed rather than guess.
+      if (changedDirectory || segmentChdir) throw unresolvableRefusal("changes directory before it runs", target, baseRevision);
+      if (SHELL_EXPANSION.test(target)) throw unresolvableRefusal("is expanded by the shell at run time", target, baseRevision);
+      const hazard = declaredHazard(target, entries);
+      if (hazard) throw hazardRefusal(hazard, target, baseRevision);
+    }
     const file = inTree(target);
     if (file && (base.has(file) || candidate.has(file))) files.push(file);
   }
@@ -271,6 +327,44 @@ function declaredHazard(target: string, entries: TreeEntries): PathHazard | null
     if (hazard) return hazard;
   }
   return null;
+}
+
+const PYTHON_SHADOW_SUFFIX = /^(?:pyc|pyd|so|dylib|[^/]*\.(?:so|pyd|dylib))$/;
+
+/** An entry in either tree that Python's import system could load in place of
+ * (or without) the bound `module.py` / `module/__init__.py`: compiled bytecode
+ * (`.pyc`, including `__pycache__` variants, which an unchecked-hash pyc loads
+ * without validating source) and native extensions (`.so`, `.pyd`, `.dylib`,
+ * tagged forms such as `.cpython-312-darwin.so`). Compared case-insensitively,
+ * as the checkout is. */
+function pythonShadow(module: string, paths: string[]): string | null {
+  const key = module.toLowerCase();
+  const slash = key.lastIndexOf("/");
+  const cache = `${slash < 0 ? "" : key.slice(0, slash + 1)}__pycache__/${key.slice(slash + 1)}.`;
+  const packageCache = `${key}/__pycache__/__init__.`;
+  for (const entry of paths) {
+    const lower = entry.toLowerCase();
+    if (lower.startsWith(`${key}.`) && PYTHON_SHADOW_SUFFIX.test(lower.slice(key.length + 1))) return entry;
+    if (lower.startsWith(`${key}/__init__.`) && PYTHON_SHADOW_SUFFIX.test(lower.slice(key.length + 10))) return entry;
+    if ((lower.startsWith(cache) || lower.startsWith(packageCache)) && lower.endsWith(".pyc")) return entry;
+  }
+  return null;
+}
+
+function shadowRefusal(shadow: string, boundPath: string, baseRevision: string): ArcadiaError {
+  return validationError(
+    `Declared preservation checks cannot bind \`${boundPath}\`: \`${shadow}\` is compiled Python (bytecode or a native extension) that Python may load instead of the bound source, so the executed code would not match what this binding checked. ` +
+    "Remove compiled Python from the check's import directories on the base branch and the candidate, then prepare and authorize a fresh handoff.",
+    { code: PRESERVATION_CHECK_MODIFIED_CODE, path: shadow, executablePath: boundPath, baseRevision }
+  );
+}
+
+function unresolvableRefusal(reason: string, executablePath: string, baseRevision: string): ArcadiaError {
+  return validationError(
+    `Declared preservation checks cannot execute \`${executablePath}\`: the command ${reason}, so this binding cannot resolve it to exactly one in-tree file and would bind a different file than the one it runs. ` +
+    "Declare the check as a plain root-relative path with no `cd` or shell expansion on the base branch, then prepare and authorize a fresh handoff.",
+    { code: PRESERVATION_CHECK_MODIFIED_CODE, path: executablePath, executablePath, baseRevision }
+  );
 }
 
 function hazardRefusal(hazard: PathHazard, executablePath: string, baseRevision: string): ArcadiaError {
