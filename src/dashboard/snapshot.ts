@@ -120,6 +120,15 @@ export interface DashboardAgentSession {
   resumeCommand: string | null;
   resumeNotice: string | null;
   phoneLimitationNotice: string;
+  /** When the provider process ended; null while it runs or before any exit was recorded. */
+  endedAt: string | null;
+  /** The provider process's exit code, as `agent_sessions.exit_status` records it; null until an exit is recorded. */
+  exitStatus: number | null;
+  /** The reconciled exit outcome from `session_exit_receipts`; null until the exit is reconciled. */
+  exitOutcome: string | null;
+  exitReason: string | null;
+  /** The pull request the Session's preserved candidate opened, from its newest preservation receipt; null when none. */
+  pullRequestUrl: string | null;
 }
 
 export interface DashboardManagedAction {
@@ -588,6 +597,8 @@ export interface DashboardRunsSnapshot {
   activeAgentSessions: DashboardAgentSession[];
   activeExecutionRuns: DashboardRun[];
   recentRuns: DashboardRun[];
+  /** Finished Sessions, newest first; empty unless `recentSessionLimit` asks for them. */
+  recentAgentSessions: DashboardAgentSession[];
 }
 
 /**
@@ -595,8 +606,9 @@ export interface DashboardRunsSnapshot {
  * attention and review items, and is hundreds of KB; this reads only what the
  * Runs page renders. `recentLimit` of 0 skips history entirely.
  */
-export function buildRunsSnapshot(options: { workspace: string; recentLimit?: number }): DashboardRunsSnapshot {
+export function buildRunsSnapshot(options: { workspace: string; recentLimit?: number; recentSessionLimit?: number }): DashboardRunsSnapshot {
   const recentLimit = options.recentLimit ?? 0;
+  const recentSessionLimit = options.recentSessionLimit ?? 0;
   return withReadOnlyDatabase(options.workspace, (db) => {
     const active = listActiveExecutionRuns(db);
     const activeIds = new Set(active.map((run) => run.id));
@@ -612,9 +624,52 @@ export function buildRunsSnapshot(options: { workspace: string; recentLimit?: nu
       generatedAt: new Date().toISOString(),
       activeAgentSessions: listActiveAgentSessions(db).map((session) => toDashboardAgentSession(db, session)),
       activeExecutionRuns: active.map(toDashboardRun),
-      recentRuns: recent.map(toDashboardRun)
+      recentRuns: recent.map(toDashboardRun),
+      recentAgentSessions:
+        recentSessionLimit > 0 ? listFinishedAgentSessions(db, recentSessionLimit).map((session) => toDashboardAgentSession(db, session)) : []
     };
   });
+}
+
+function hasTable(db: Database.Database, name: string): boolean {
+  return !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+}
+
+/** Sessions that hold no lease any more, newest first: the history `listActiveAgentSessions` leaves out. */
+function listFinishedAgentSessions(db: Database.Database, limit: number): AgentSession[] {
+  if (!hasTable(db, "agent_sessions")) return [];
+  return db
+    .prepare(
+      `SELECT * FROM agent_sessions WHERE status NOT IN ('prepared', 'running')
+       ORDER BY COALESCE(ended_at, updated_at) DESC, id DESC LIMIT ?`
+    )
+    .all(limit) as AgentSession[];
+}
+
+/** What a Session's exit left behind: its reconciled outcome and the pull request its preserved candidate opened. */
+function sessionExitFacts(db: Database.Database, session: AgentSession): {
+  exitOutcome: string | null;
+  exitReason: string | null;
+  pullRequestUrl: string | null;
+} {
+  const receipt = hasTable(db, "session_exit_receipts")
+    ? (db.prepare("SELECT outcome, reason FROM session_exit_receipts WHERE session_id = ?").get(session.id) as
+        | { outcome: string; reason: string }
+        | undefined)
+    : undefined;
+  const preservation = hasTable(db, "candidate_preservation_receipts")
+    ? (db
+        .prepare(
+          `SELECT pull_request_url FROM candidate_preservation_receipts
+           WHERE branch = ? AND pull_request_url IS NOT NULL ORDER BY created_at DESC LIMIT 1`
+        )
+        .get(session.branch) as { pull_request_url: string } | undefined)
+    : undefined;
+  return {
+    exitOutcome: receipt?.outcome ?? null,
+    exitReason: receipt?.reason ?? null,
+    pullRequestUrl: preservation?.pull_request_url ?? null
+  };
 }
 
 function toDashboardBackBurnerItem(item: BackBurnerItemSummary): DashboardBackBurnerItem {
@@ -776,7 +831,10 @@ function toDashboardAgentSession(db: Database.Database, session: AgentSession): 
     reattachCommand: view.reattachCommand,
     resumeCommand: view.resumeCommand,
     resumeNotice: view.resumeNotice,
-    phoneLimitationNotice: view.phoneLimitationNotice
+    phoneLimitationNotice: view.phoneLimitationNotice,
+    endedAt: session.ended_at,
+    exitStatus: session.exit_status,
+    ...sessionExitFacts(db, session)
   };
 }
 

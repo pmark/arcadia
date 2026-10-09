@@ -25,7 +25,7 @@ vi.mock("../../../lib/arcadia-cli", () => ({
 }));
 vi.mock("../../../lib/system-status", () => ({ readManagedRunWorker: vi.fn() }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 function toggle(action: string, extra: Record<string, unknown> = {}): Request {
   return new Request("http://arcadia.test/api/production-control", {
@@ -143,5 +143,41 @@ describe("POST /api/production-control On", () => {
     );
     expect(response.status).toBe(403);
     expect(cli.previewProductionReactivation).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/production-control On bound to the preview the operator saw", () => {
+  it("applies when the confirmed preview still matches", async () => {
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview: { ready: true, refusals: [], expected } } });
+    cli.reactivateProduction.mockResolvedValue({ data: {} });
+
+    const response = await POST(toggle("activate", { expected }));
+
+    expect(response.status).toBe(200);
+    expect(cli.reactivateProduction.mock.calls[0][0].expected).toEqual(expected);
+  });
+
+  it("refuses with 409 and activates nothing when the configuration moved after the operator saw it", async () => {
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview: { ready: true, refusals: [], expected } } });
+
+    const response = await POST(toggle("activate", { expected: { ...expected, configurationRevision: 1 } }));
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).details.code).toBe("preview_changed");
+    expect(cli.reactivateProduction).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/production-control?part=reactivate-preview", () => {
+  it("returns what On would replay for the confirmation step, and changes nothing", async () => {
+    const preview = { ready: true, refusals: [], expected, configuration: null };
+    cli.previewProductionReactivation.mockResolvedValue({ data: { preview } });
+
+    const response = await GET(new Request("http://arcadia.test/api/production-control?part=reactivate-preview"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ preview });
+    expect(cli.reactivateProduction).not.toHaveBeenCalled();
+    expect(cli.deactivateProduction).not.toHaveBeenCalled();
   });
 });

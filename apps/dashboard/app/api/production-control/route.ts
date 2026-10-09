@@ -18,7 +18,7 @@ import { readManagedRunWorker } from "../../../lib/system-status";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type Part = "core" | "queue" | "alerts";
+type Part = "core" | "queue" | "alerts" | "reactivate-preview";
 
 // Queue and capacity projections take seconds to compute; serve the last result
 // immediately and refresh behind it.
@@ -29,6 +29,13 @@ const SLOW_TTL_MS = 15_000;
 export async function GET(request: Request) {
   try {
     const part = (new URL(request.url).searchParams.get("part") ?? "core") as Part;
+
+    // What On would replay, for the confirmation step. Writes nothing. A POST
+    // that sends back this preview's `expected` is refused (409) if it moved.
+    if (part === "reactivate-preview") {
+      const { data } = await previewProductionReactivation();
+      return NextResponse.json(data);
+    }
 
     if (part === "queue") {
       const schedule = await cachedStale("production-control:queue", SLOW_TTL_MS, () => loadScheduleSummary()).catch(
@@ -73,6 +80,21 @@ export async function GET(request: Request) {
 
 interface ToggleRequest {
   action?: unknown;
+  /** Optional: the reactivation preview the operator confirmed (On only). */
+  expected?: unknown;
+}
+
+function sameExpectation(
+  shown: unknown,
+  fresh: { policyRevision: number; configurationRevision: number; fingerprint: string }
+): boolean {
+  if (!shown || typeof shown !== "object") return false;
+  const value = shown as Record<string, unknown>;
+  return (
+    value.policyRevision === fresh.policyRevision &&
+    value.configurationRevision === fresh.configurationRevision &&
+    value.fingerprint === fresh.fingerprint
+  );
 }
 
 export async function POST(request: Request) {
@@ -110,6 +132,18 @@ export async function POST(request: Request) {
         {
           error: first ? `${first.reason} ${first.remedy}` : "The saved production configuration cannot be reactivated.",
           details: { conflict: true, code: first?.code ?? null, remedy: first?.remedy ?? null, refusals: preview.refusals }
+        },
+        { status: 409 }
+      );
+    }
+
+    // A caller that showed the operator a preview (the Production console)
+    // sends what it showed; anything that moved since is refused, never applied.
+    if (body.expected !== undefined && !sameExpectation(body.expected, preview.expected)) {
+      return NextResponse.json(
+        {
+          error: "The saved production configuration changed after you saw it. Review the new preview before turning production On.",
+          details: { conflict: true, code: "preview_changed", remedy: "Open Turn production On… again.", refusals: [] }
         },
         { status: 409 }
       );

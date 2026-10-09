@@ -33,14 +33,25 @@ export function runDashboardSnapshotCommand(options: { workspace: string }): Com
 export function runDashboardRunsCommand(options: {
   workspace: string;
   limit?: string;
+  sessions?: string;
 }): CommandSuccess<{ runs: DashboardRunsSnapshot }> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const limit = options.limit === undefined ? 0 : Number(options.limit);
-  if (options.limit?.trim() === "" || !Number.isInteger(limit) || limit < 0) {
-    throw validationError("--limit must be a whole number of 0 or more.", { field: "limit", value: options.limit });
-  }
-  const runs = buildRunsSnapshot({ workspace: workspacePath, recentLimit: Math.min(limit, 100) });
+  const limit = wholeNumberOption(options.limit, "limit");
+  const sessions = wholeNumberOption(options.sessions, "sessions");
+  const runs = buildRunsSnapshot({
+    workspace: workspacePath,
+    recentLimit: Math.min(limit, 100),
+    recentSessionLimit: Math.min(sessions, 50)
+  });
   return createSuccess({ command: "dashboard.runs", workspace: workspacePath, data: { runs } });
+}
+
+function wholeNumberOption(value: string | undefined, field: "limit" | "sessions"): number {
+  const parsed = value === undefined ? 0 : Number(value);
+  if (value?.trim() === "" || !Number.isInteger(parsed) || parsed < 0) {
+    throw validationError(`--${field} must be a whole number of 0 or more.`, { field, value });
+  }
+  return parsed;
 }
 
 export function renderDashboardRunsSuccess(response: CommandSuccess<{ runs: DashboardRunsSnapshot }>): string[] {
@@ -48,7 +59,8 @@ export function renderDashboardRunsSuccess(response: CommandSuccess<{ runs: Dash
   return [
     `Active agent Sessions: ${runs.activeAgentSessions.length}`,
     `Active execution Runs: ${runs.activeExecutionRuns.length}`,
-    `Recent runs: ${runs.recentRuns.length}`
+    `Recent runs: ${runs.recentRuns.length}`,
+    ...(runs.recentAgentSessions.length > 0 ? [`Recent agent Sessions: ${runs.recentAgentSessions.length}`] : [])
   ];
 }
 

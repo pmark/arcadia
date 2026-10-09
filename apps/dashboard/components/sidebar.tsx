@@ -5,6 +5,7 @@ import {
   Clock,
   Eye,
   FolderOpen,
+  Gauge,
   GitPullRequest,
   LayoutGrid,
   ListChecks,
@@ -27,6 +28,7 @@ import type { MissionControlOverview } from "../lib/mission-control-types";
 
 const PRIMARY_NAV = [
   { href: "/now", label: "Now", icon: Target },
+  { href: "/production", label: "Production", icon: Gauge },
   { href: "/flight-deck", label: "Flight Deck", icon: LayoutGrid },
   { href: "/path", label: "Path", icon: Route },
   { href: "/mission-control", label: "Mission Control", icon: Radar },

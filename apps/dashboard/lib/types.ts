@@ -397,6 +397,12 @@ export interface DashboardAgentSession {
   resumeCommand: string | null;
   resumeNotice: string | null;
   phoneLimitationNotice: string;
+  /** Exit facts; optional because a CLI older than `dashboard runs --sessions` omits them. */
+  endedAt?: string | null;
+  exitStatus?: number | null;
+  exitOutcome?: string | null;
+  exitReason?: string | null;
+  pullRequestUrl?: string | null;
 }
 
 export interface DashboardReviewFocus {
