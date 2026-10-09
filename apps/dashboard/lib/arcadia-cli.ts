@@ -1362,8 +1362,20 @@ async function runArcadiaCliJson<TData>(
   const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
   const builtCli = path.join(repoRoot, "dist", "src", "cli.js");
 
-  const command = existsSync(sourceCli) ? (existsSync(tsxBin) ? tsxBin : "tsx") : process.execPath;
-  const cliArgs = existsSync(sourceCli)
+  // Every dashboard read spawns one CLI process. Through tsx each spawn
+  // re-transpiles the CLI (~1.5s of CPU), so several parallel page loads
+  // starve each other. A harness that builds the CLI first (the e2e suite)
+  // sets ARCADIA_DASHBOARD_CLI=built to spawn the compiled entry instead.
+  const useBuilt = process.env.ARCADIA_DASHBOARD_CLI === "built";
+  if (useBuilt && !existsSync(builtCli)) {
+    throw new ArcadiaCliError(
+      `ARCADIA_DASHBOARD_CLI=built but ${builtCli} does not exist. Run \`pnpm build\` first.`,
+      500
+    );
+  }
+  const useSource = !useBuilt && existsSync(sourceCli);
+  const command = useSource ? (existsSync(tsxBin) ? tsxBin : "tsx") : process.execPath;
+  const cliArgs = useSource
     ? [sourceCli, ...args, "--json"]
     : [builtCli, ...args, "--json"];
 
