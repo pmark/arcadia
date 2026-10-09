@@ -193,6 +193,21 @@ describe("document parsing", () => {
     expect(plan.questions).toHaveLength(1);
   });
 
+  it("parses an Action's optional why, and reads an absent one as null", () => {
+    const withWhy = PLAN.replace(
+      "    source: conversation",
+      ["    source: conversation", "    why: Staging has to pass before any tenant moves."].join("\n")
+    );
+    const { doc, errors } = parseDoc("docs/plans/sample-plan.md", "/abs/sample-plan.md", withWhy);
+
+    expect(errors).toEqual([]);
+    const plan = doc as never as { actions: Array<{ id: string; why: string | null }> };
+    expect(plan.actions.find((action) => action.id === "do-the-thing")?.why).toBe(
+      "Staging has to pass before any tenant moves."
+    );
+    expect(plan.actions.find((action) => action.id === "blocked-thing")?.why).toBeNull();
+  });
+
   it("parses and resolves vendor-neutral execution metadata", () => {
     const profiled = PLAN.replace(
       "    depends_on: []",
@@ -478,6 +493,54 @@ describe("docs sync", () => {
     expect(second.data.totals.update).toBeGreaterThan(0);
     const item = withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing"));
     expect(JSON.parse(item!.acceptance_criteria_json!)).toEqual(["The new bar is cleared."]);
+  });
+
+  it("mirrors an Action's why onto its work item, and leaves an Action without one null", () => {
+    const repo = scratch();
+    writeDoc(
+      repo,
+      "docs/plans/sample-plan.md",
+      PLAN.replace(
+        "    source: conversation",
+        ["    source: conversation", "    why: Staging has to pass before any tenant moves."].join("\n")
+      )
+    );
+    const workspace = workspaceWithProject(repo);
+
+    runDocsSyncCommand({ workspace, apply: true });
+
+    withDatabase(workspace, (db) => {
+      expect(getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing")!.why).toBe(
+        "Staging has to pass before any tenant moves."
+      );
+      expect(getWorkItemByDocRef(db, "plan/sample-plan#blocked-thing")!.why).toBeNull();
+    });
+
+    // A second sync of the same document is a no-op, so a mirrored why is not drift.
+    expect(runDocsSyncCommand({ workspace, apply: true }).data.totals.update).toBe(0);
+  });
+
+  it("updates the work item when the plan's why changes or is removed", () => {
+    const repo = scratch();
+    const withWhy = (why: string | null, updated: string): string =>
+      PLAN.replace(
+        "    source: conversation",
+        ["    source: conversation", ...(why ? [`    why: ${why}`] : [])].join("\n")
+      ).replace("updated: 2026-07-25", `updated: ${updated}`);
+
+    writeDoc(repo, "docs/plans/sample-plan.md", withWhy("The first reason.", "2026-07-25"));
+    const workspace = workspaceWithProject(repo);
+    runDocsSyncCommand({ workspace, apply: true });
+
+    writeDoc(repo, "docs/plans/sample-plan.md", withWhy("The better reason.", NEWER_THAN_NOW));
+    expect(runDocsSyncCommand({ workspace, apply: true }).data.totals.update).toBeGreaterThan(0);
+    expect(withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing")!.why)).toBe(
+      "The better reason."
+    );
+
+    writeDoc(repo, "docs/plans/sample-plan.md", withWhy(null, NEWER_THAN_NOW));
+    runDocsSyncCommand({ workspace, apply: true });
+    expect(withDatabase(workspace, (db) => getWorkItemByDocRef(db, "plan/sample-plan#do-the-thing")!.why)).toBeNull();
   });
 
   it("creates rows, then re-runs as a no-op", () => {

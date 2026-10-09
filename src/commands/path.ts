@@ -83,6 +83,10 @@ function renderLeg(leg: PathLeg): string[] {
       continue;
     }
     lines.push(`      ${MARK[node.state]} ${node.title}${node.projectName ? ` · ${node.projectName}` : ""}`);
+    // The reason says why this step is on the route; the reference is the
+    // planned work item itself, so the step can be opened rather than guessed at.
+    lines.push(`          ${node.reasonSource === "declared" ? "why" : "why (derived)"}: ${node.reason}`);
+    lines.push(`          ${node.docRef ?? "no plan reference"}`);
   }
   return lines;
 }

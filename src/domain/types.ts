@@ -133,6 +133,8 @@ export interface WorkItem {
    * as a JSON string array. `null` for an Action that was never split.
    */
   split_into_json: string | null;
+  /** One sentence on why this Action matters, mirrored from a plan's optional `why`; `null` when none is declared. */
+  why: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -680,6 +682,8 @@ export interface CreateWorkItemInput {
 export interface UpdateWorkItemInput {
   /** Remainder Action doc refs this Action was split into, as a JSON string array; `null` clears it. */
   splitIntoJson?: string | null;
+  /** The Action's declared reason, mirrored from a plan's `why`; `null` clears it. */
+  why?: string | null;
   queue?: string;
   workClassification?: string;
   nextAction?: string;

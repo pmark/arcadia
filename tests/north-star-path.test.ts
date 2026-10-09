@@ -163,6 +163,86 @@ describe("a gate whose Action was split", () => {
   });
 });
 
+describe("each step's reason and link", () => {
+  it("uses the Action's declared why and says it was declared", () => {
+    const workspace = seededWorkspace({ secondWhy: "The pilot cannot start until this is real." });
+    const leg = trackedLeg(workspace);
+    const second = steps(leg.nodes).find((step) => step.title === "Second")!;
+
+    expect(second.reason).toBe("The pilot cannot start until this is real.");
+    expect(second.reasonSource).toBe("declared");
+  });
+
+  it("derives what the step unblocks, or the gate it completes, when no why is declared", () => {
+    const workspace = seededWorkspace();
+    const leg = trackedLeg(workspace);
+    const byTitle = Object.fromEntries(steps(leg.nodes).map((step) => [step.title, step]));
+
+    expect(byTitle["First"]).toMatchObject({ reason: "Unblocks The gate action", reasonSource: "derived" });
+    expect(byTitle["Second"]).toMatchObject({ reason: "Unblocks The gate action", reasonSource: "derived" });
+    expect(byTitle["The gate action"]).toMatchObject({ reason: "Completes gate: The tracked gate", reasonSource: "derived" });
+  });
+
+  it("treats a blank why as undeclared rather than showing an empty reason", () => {
+    const workspace = seededWorkspace({ secondWhy: "   " });
+    const second = steps(trackedLeg(workspace).nodes).find((step) => step.title === "Second")!;
+    expect(second.reasonSource).toBe("derived");
+    expect(second.reason).not.toBe("");
+  });
+
+  it("derives a split remainder's reason from the Action it continues", () => {
+    const { leg } = splitLeg(splitWorkspace({ remainderStatus: "open" }));
+    const byTitle = Object.fromEntries(steps(leg.nodes).map((step) => [step.title, step]));
+
+    expect(byTitle["Narrowed proof"]).toMatchObject({ reason: "Completes gate: The proof", reasonSource: "derived" });
+    expect(byTitle["Remainder one"]).toMatchObject({ reason: "Remainder of Narrowed proof", reasonSource: "derived" });
+    expect(byTitle["Remainder two"]).toMatchObject({ reason: "Remainder of Remainder one", reasonSource: "derived" });
+  });
+
+  it("gives every step the planned work item it links to", () => {
+    const workspace = seededWorkspace();
+    const found = steps(trackedLeg(workspace).nodes);
+
+    expect(found.map((step) => step.docRef)).toEqual([
+      "plan/some-plan#first",
+      "plan/some-plan#second",
+      "plan/some-plan#gate-action"
+    ]);
+    for (const step of found) expect(step.workItemId).toBeTruthy();
+  });
+
+  it("gives a gap whose Action no plan carries nothing to link to, and says so", () => {
+    const workspace = seededWorkspace();
+    appendGate(workspace, ["  - id: stale", "    title: Tracks nothing", "    action: plan/gone#missing"]);
+    const brief = withDatabase(workspace, (db) => {
+      const northStar = loadNorthStar(workspace);
+      return computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    });
+
+    const gap = brief.legs.find((entry) => entry.gateId === "stale")!.nodes[0];
+    expect(gap).toMatchObject({ kind: "gap", reason: "missing_action", missingRef: "plan/gone#missing" });
+    expect(gap).not.toHaveProperty("workItemId");
+    expect((gap as { detail: string }).detail).toMatch(/no Action to open/);
+  });
+
+  it("prints the reason and the plan reference under each step in `arcadia path`", () => {
+    const workspace = seededWorkspace({ secondWhy: "The pilot cannot start until this is real." });
+    appendGate(workspace, ["  - id: stale", "    title: Tracks nothing", "    action: plan/gone#missing"]);
+    const brief = withDatabase(workspace, (db) => {
+      const northStar = loadNorthStar(workspace);
+      return computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    });
+
+    const text = renderPathSuccess(createSuccess({ command: "path", workspace, data: brief })).join("\n");
+    expect(text).toContain("why: The pilot cannot start until this is real.");
+    expect(text).toContain("why (derived): Unblocks The gate action");
+    expect(text).toContain("why (derived): Completes gate: The tracked gate");
+    expect(text).toContain("plan/some-plan#first");
+    expect(text).toContain("plan/some-plan#gate-action");
+    expect(text).toContain("no Action to open");
+  });
+});
+
 describe("the target's reason", () => {
   it("is carried on the path brief", () => {
     const workspace = seededWorkspace();
@@ -207,6 +287,14 @@ describe("the legacy `dependencies` spelling", () => {
     expect(plan.actions.find((action) => action.id === "second")?.dependsOn).toEqual([]);
   });
 });
+
+function trackedLeg(workspace: string) {
+  return withDatabase(workspace, (db) => {
+    const northStar = loadNorthStar(workspace);
+    const brief = computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    return brief.legs.find((entry) => entry.gateId === "tracked")!;
+  });
+}
 
 function steps(nodes: Array<{ kind: string }>): PathStep[] {
   return nodes.filter((node): node is PathStep => node.kind === "action");
@@ -257,7 +345,7 @@ function planSource(secondActionExtra: string[]): string {
   ].join("\n");
 }
 
-function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion?: string } = {}): string {
+function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion?: string; secondWhy?: string } = {}): string {
   const workspace = initializedWorkspace();
   writeFileSync(
     northStarPath(workspace),
@@ -295,7 +383,12 @@ function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion
     });
 
     seedAction(db, project.id, { title: "First", docRef: "plan/some-plan#first", status: "done" });
-    seedAction(db, project.id, { title: "Second", docRef: "plan/some-plan#second", status: "done" });
+    seedAction(db, project.id, {
+      title: "Second",
+      docRef: "plan/some-plan#second",
+      status: "done",
+      why: options.secondWhy
+    });
     seedAction(db, project.id, {
       title: "The gate action",
       docRef: "plan/some-plan#gate-action",
@@ -407,6 +500,7 @@ function seedAction(
     clarification?: string;
     openQuestion?: string;
     splitInto?: string[];
+    why?: string;
   }
 ): void {
   const { workItem } = createWorkItemWithOptionalArtifact(db, {
@@ -426,6 +520,9 @@ function seedAction(
   );
   if (input.splitInto) {
     db.prepare("UPDATE work_items SET split_into_json = ? WHERE id = ?").run(JSON.stringify(input.splitInto), workItem.id);
+  }
+  if (input.why !== undefined) {
+    db.prepare("UPDATE work_items SET why = ? WHERE id = ?").run(input.why, workItem.id);
   }
 }
 

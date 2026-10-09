@@ -13,7 +13,7 @@
       "trigger": "ask, request help, concern, idea, proposal capture, governance, complete, split, draft, preview, settle, workspace, database denied",
       "path": "docs/agent-guidance/agent-asks.md",
       "read_before": "Before submitting a request or changing Project state; direct proposal capture needs no implementation Action; use ordinary host permission recovery or preserve a blocked validated Ask.",
-      "sha256": "852850db14eaec44dc5ced90ee400d37eca9c16c1ffaa9abb5f04501d6c848e2"
+      "sha256": "a487014dd6201947815b0c76b97bdffba73bfe48b21059706bf40d31fc65006b"
     },
     {
       "id": "operator-actions",
@@ -62,7 +62,7 @@
       "trigger": "Project, Plan, Action, Decision, status, acceptance",
       "path": "docs/managed-documents.md",
       "read_before": "Before preparing a managed-document change; state changes require an Agent Ask.",
-      "sha256": "3c598ee001c089ab5d706de824bf83686ee2f273119d7bafeedf20f3b95c9252"
+      "sha256": "40a0b99dcad5948c70670c664cd0ac6b7b8cc312b3d3c516186aadff40fdfb2a"
     },
     {
       "id": "planning",

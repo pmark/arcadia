@@ -112,6 +112,11 @@ export function renderNowSuccess(response: CommandSuccess<NowCommandData>): stri
   lines.push(brief.theOneThing.kind === "target_paused" ? "TARGET PAUSED" : "DO THIS NOW");
   lines.push(`  ${wrap(brief.theOneThing.doThis, 2)}`.trimEnd());
   lines.push(`  → ${brief.theOneThing.unlocks}`);
+  if (brief.theOneThing.step) {
+    const { reason, reasonSource, docRef } = brief.theOneThing.step;
+    lines.push(`  ${reasonSource === "declared" ? "why" : "why (derived)"}: ${reason}`);
+    if (docRef) lines.push(`  ${docRef}`);
+  }
 
   if (brief.fifteenMinutes) {
     lines.push("");

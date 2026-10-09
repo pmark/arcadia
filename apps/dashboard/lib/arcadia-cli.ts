@@ -1270,6 +1270,8 @@ export interface WorkQuestionContext {
     gapType: string | null;
     openQuestion: string | null;
     expectedArtifact: string | null;
+    nextAction: string;
+    why: string | null;
   };
   resolvable: boolean;
   reviewItem: { slug: string; status: string } | null;

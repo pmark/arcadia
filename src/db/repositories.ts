@@ -403,6 +403,7 @@ function insertWorkItem(db: Database.Database, input: CreateWorkItemInput, times
     execution_requirement_json: input.executionRequirementJson ?? null,
     acceptance_criteria_json: input.acceptanceCriteriaJson ?? null,
     split_into_json: null,
+    why: null,
     created_at: timestamp,
     updated_at: timestamp
   };
@@ -1132,6 +1133,11 @@ export function updateWorkItem(
   if (input.splitIntoJson !== undefined) {
     parameters.split_into_json = nullable(input.splitIntoJson);
     updates.push("split_into_json = @split_into_json");
+  }
+
+  if (input.why !== undefined) {
+    parameters.why = nullable(input.why);
+    updates.push("why = @why");
   }
 
   if (updates.length === 0) {

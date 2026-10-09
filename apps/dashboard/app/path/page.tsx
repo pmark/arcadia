@@ -182,7 +182,20 @@ function StepRow({ step }: { step: PathStep }) {
         {mark.glyph}
       </span>
       <div className="min-w-0 flex-1">
-        <p className={`text-sm leading-5 ${mark.text}`}>{step.title}</p>
+        {/* The title opens the planned Action itself. Path stays read-only:
+            the link goes to the Action's page, never to an edit surface. */}
+        <Link
+          href={`/path/resolve/${encodeURIComponent(step.workItemId)}`}
+          className={`text-sm leading-5 underline-offset-2 hover:underline ${mark.text}`}
+        >
+          {step.title}
+        </Link>
+        {/* A derived reason is the route's own structure talking, not an
+            author, and says so — the two must never read as the same claim. */}
+        <p className="mt-0.5 text-xs leading-4 text-muted">
+          <span className="font-semibold">{step.reasonSource === "declared" ? "Why" : "Why (derived)"}:</span> {step.reason}
+        </p>
+        {step.docRef ? <p className="mt-0.5 font-mono text-[10px] leading-4 text-muted">{step.docRef}</p> : null}
         {/* The next move is shown only where it can be acted on. Printing it
             under finished work turns the path back into a wall of text. */}
         {step.state !== "done" && step.nextAction ? (
@@ -208,7 +221,12 @@ function GapRow({ gap }: { gap: PathGap }) {
         <span className="mt-0.5 shrink-0 text-clay">
           {operatorOwned ? <HelpCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
         </span>
-        <p className="text-xs leading-4 text-clay">{gap.detail}</p>
+        <div className="min-w-0">
+          <p className="text-xs leading-4 text-clay">{gap.detail}</p>
+          {gap.reason === "missing_action" && gap.missingRef ? (
+            <p className="mt-1 font-mono text-[10px] leading-4 text-clay/80">{gap.missingRef} · no Action to open</p>
+          ) : null}
+        </div>
       </div>
       {gap.reason === "undefined_next_move" && gap.workItemId ? (
         <Link

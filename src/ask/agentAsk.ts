@@ -33,6 +33,13 @@ export interface NormalizedAgentAskAction {
   dependencies: string[];
   references: string[];
   targetRef: string | null;
+  /**
+   * One sentence on why this Action matters, carried onto the Plan Action's
+   * `why`. Present only when the Ask declared one: the key is left off
+   * otherwise so the fingerprint of every Ask recorded before it existed is
+   * unchanged. An amendment that omits it leaves the checked-in `why` alone.
+   */
+  why?: string;
   /** Lists the Ask left out entirely; always present on new proposals (empty when none), absent only on proposals recorded before #1079/#1092. */
   omittedLists?: AgentAskListField[];
 }
@@ -62,7 +69,8 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
 
 export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "requested_authority", "candidate_revision", "evidence", "gate_question"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
-export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref"]);
+export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
+export const ACTION_WHY_MAX_LENGTH = 300;
 export const STRICT_EVIDENCE_FIELDS = new Set(["criterion", "status", "note"]);
 export const AGENT_ASK_EVIDENCE_STATUSES = ["met", "failed", "skipped"] as const;
 export const CANDIDATE_REVISION_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -281,6 +289,7 @@ export function buildAgentAskEffects(normalized: NormalizedAgentAsk, resolution?
     const itemTargetRef = resolved ? resolved.targetRef : (item.targetRef ?? normalized.targetRef);
     const operation = resolved ? "update" : normalized.intent === "auto" ? "interpret" : itemTargetRef || ["outcome", "project_update"].includes(normalized.intent) ? "update" : "create";
     const fields: Record<string, unknown> = { project: normalized.project, desiredResult: item.desiredResult, rationale: normalized.rationale, acceptance: item.acceptance, dependencies: item.dependencies, references: item.references };
+    if ("why" in item && item.why) fields.why = item.why;
     if (normalized.intent === "decision") { fields.status = "open"; fields.options = normalized.options; }
     if (resolved) { fields.resolvedIdentifier = resolved.targetRef; fields.resolvedLabel = resolved.label; }
     return { operation, targetKind, targetRef: itemTargetRef, fields, status: "proposed", authority: "operator_acceptance_required" } satisfies AgentAskEffect;
@@ -306,9 +315,19 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
       dependencies: stringList(item.dependencies, `actions[${index}].dependencies`),
       references: stringList(item.references, `actions[${index}].references`),
       targetRef: optionalText(item.target_ref),
+      ...actionWhyField(item.why, index),
       ...omittedListsField(item)
     };
   });
+}
+/** `{ why }` when the Ask declared a non-empty one, `{}` otherwise; one sentence, so never multi-line. */
+function actionWhyField(value: unknown, index: number): { why?: string } {
+  const why = optionalText(value);
+  if (why === null) return {};
+  if (/[\r\n]/.test(why) || why.length > ACTION_WHY_MAX_LENGTH) {
+    throw validationError(`Agent Ask actions[${index}].why must be one sentence on a single line of at most ${ACTION_WHY_MAX_LENGTH} characters.`, { index, length: why.length });
+  }
+  return { why };
 }
 function optionList(value: unknown): NormalizedAgentAskOption[] {
   if (value === undefined || value === null) return [];

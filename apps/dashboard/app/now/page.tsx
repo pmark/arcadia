@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { MobileShell } from "../../components/mobile-shell";
 import { ErrorState } from "../../components/dashboard-ui";
@@ -273,6 +274,23 @@ function OneThing({ one }: { one: TheOneThing }) {
       <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60">Do this now</span>
       <p className="text-[22px] font-semibold leading-[1.25]">{one.doThis}</p>
       <p className="text-sm leading-snug text-white/70">→ {one.unlocks}</p>
+      {one.step ? (
+        <p className="text-sm leading-snug text-white/70">
+          <span className="font-semibold">{one.step.reasonSource === "declared" ? "Why" : "Why (derived)"}:</span>{" "}
+          {one.step.reason}
+          {one.id ? (
+            <>
+              {" · "}
+              <Link
+                href={`/path/resolve/${encodeURIComponent(one.id)}`}
+                className="font-mono text-xs text-white underline underline-offset-2"
+              >
+                {one.step.docRef ?? "open the Action"}
+              </Link>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {one.projectName ? (
         <span className="justify-self-start rounded-full border border-white/25 px-2 py-0.5 text-[11px] font-medium text-white/70">
           {one.projectName}

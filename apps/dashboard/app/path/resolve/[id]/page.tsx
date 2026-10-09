@@ -107,9 +107,18 @@ export default function ResolveQuestionPage() {
       </header>
 
       {!context.resolvable ? (
-        <div className="rounded-md border border-line bg-panel p-4 text-sm text-muted shadow-soft">
-          Nothing here is waiting on an answer. This Action's clarification status is{" "}
-          <span className="font-mono">{workItem.clarificationStatus ?? "none"}</span>.
+        <div className="grid gap-2 rounded-md border border-line bg-panel p-4 text-sm shadow-soft">
+          {workItem.docRef ? <p className="font-mono text-xs text-muted">{workItem.docRef}</p> : null}
+          <p className="text-xs text-muted">Status: {workItem.status}</p>
+          {workItem.why ? (
+            <p className="text-ink"><span className="font-semibold">Why:</span> {workItem.why}</p>
+          ) : null}
+          <p className="text-ink"><span className="font-semibold">Next:</span> {workItem.nextAction}</p>
+          {workItem.expectedArtifact ? <p className="text-xs text-muted">Expected artifact: {workItem.expectedArtifact}</p> : null}
+          <p className="text-muted">
+            Nothing here is waiting on an answer. This Action's clarification status is{" "}
+            <span className="font-mono">{workItem.clarificationStatus ?? "none"}</span>.
+          </p>
         </div>
       ) : outcome ? (
         <div className="rounded-md border border-moss/30 bg-moss/10 p-4 shadow-soft">

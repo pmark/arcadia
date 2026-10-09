@@ -20,6 +20,7 @@ import { resolveDispatch, isDispatchable } from "../src/docs/dispatch.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { createExecutionPlan, createExecutionRun, createWorkItemRecord, getProjectBySlug, upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { reserveAgentWorktree } from "../src/sessions/index.js";
+import type { PlanDoc } from "../src/docs/types.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -931,6 +932,95 @@ describe("Agent Ask settlement", () => {
     });
     const message = agentAskSettlementMessage(runAgentAskNotificationsCommand({ workspace }).data.notifications[0]);
     expect(message).toContain("demo/build-release-proof, demo/publish-release-guide starting at position 1");
+  });
+
+  it("writes a per-Action why on created Actions and leaves an Action without one unannotated", () => {
+    const { workspace, repo } = fixture();
+    const request = [
+      "agent_ask: v1", "request_id: ask-why-bundle", "project: demo", "intent: action",
+      "desired_result: Ship proof with reasons", "actions:",
+      "  - id: proof-with-why", "    desired_result: Build the proof",
+      "    why: The release cannot be trusted without it.", "    acceptance:", "      - Proof exists.",
+      "  - id: proof-without-why", "    desired_result: Build the other proof", "    acceptance:", "      - Other proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-why-bundle",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-why-bundle",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+
+    const planText = readFileSync(path.join(repo, "docs/plans/demo-plan.md"), "utf8");
+    expect(planText).toContain("why: The release cannot be trusted without it.");
+    const docs = discoverDocs(repo);
+    expect(docs.errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
+    const plan = docs.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "proof-with-why")?.why).toBe("The release cannot be trusted without it.");
+    expect(plan.actions.find((action) => action.id === "proof-without-why")?.why).toBeNull();
+  });
+
+  it("sets a why when amending an Action, shows it in the preview, and keeps it when a later amendment omits it", () => {
+    const { workspace, repo } = fixture();
+    const amend = (requestId: string, why: string | null): string => [
+      "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: action",
+      "desired_result: Tighten existing proof", "actions:", "  - target_ref: action/existing",
+      "    desired_result: Keep existing work moving, with sharper proof.",
+      ...(why ? [`    why: ${why}`] : []),
+      "    acceptance:", "      - Sharper proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const existingWhy = (): string | null | undefined =>
+      discoverDocs(repo).docs
+        .find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")
+        ?.actions.find((action) => action.id === "existing")?.why;
+
+    const first = runAgentAskPreviewCommand({ workspace, request: amend("ask-why-amend-1", "Nothing downstream can start until this is sharper.") });
+    const firstPreview = runAgentAskSettleCommand({
+      workspace, proposal: first.data.proposal.id, requestId: "settle-why-amend-1", disposition: "accepted", revision: 1
+    });
+    expect(firstPreview.data.receipt.effects.join(" ")).toContain("why changed");
+    runAgentAskSettleCommand({
+      workspace, proposal: first.data.proposal.id, requestId: "settle-why-amend-1", disposition: "accepted", revision: 1,
+      preview: firstPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(existingWhy()).toBe("Nothing downstream can start until this is sharper.");
+
+    const second = runAgentAskPreviewCommand({ workspace, request: amend("ask-why-amend-2", null).replace("sharper proof.", "sharper proof, twice.") });
+    const secondPreview = runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-why-amend-2", disposition: "accepted", revision: 1
+    });
+    expect(secondPreview.data.receipt.effects.join(" ")).not.toContain("why changed");
+    runAgentAskSettleCommand({
+      workspace, proposal: second.data.proposal.id, requestId: "settle-why-amend-2", disposition: "accepted", revision: 1,
+      preview: secondPreview.data.receipt.previewFingerprint, apply: true
+    });
+    expect(existingWhy()).toBe("Nothing downstream can start until this is sharper.");
+  });
+
+  it("writes a per-Action why into a new draft Plan", () => {
+    const { workspace, repo } = fixture();
+    const request = draftPlanAsk("ask-draft-plan-why").replace(
+      "  - desired_result: Build release proof",
+      "  - desired_result: Build release proof\n    why: Everything after it is judged against this proof."
+    );
+    expect(request).toContain("why: Everything after it");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-why",
+      disposition: "accepted", responsibility: "agent", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-why",
+      disposition: "accepted", responsibility: "agent", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "deliver-release-readiness")!;
+    expect(plan.actions.find((action) => action.id === "build-release-proof")?.why).toBe("Everything after it is judged against this proof.");
   });
 
   it("creates a complete inactive draft Plan from one plan-shaped Ask", () => {
