@@ -29,7 +29,15 @@ const BASH = existsSync("/bin/bash") ? "/bin/bash" : "bash";
 
 afterEach(() => {
   // retries: a detached `git gc --auto` can still be writing under the root.
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  // Cleanup is best-effort: a straggling writer (ENOTEMPTY on CI, main d090ecf1e)
+  // must not fail a test whose assertions already passed.
+  for (const root of roots.splice(0)) {
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      console.warn(`release-script test: could not remove ${root}: ${(error as Error).message}`);
+    }
+  }
 });
 
 const GIT_ENV = {
