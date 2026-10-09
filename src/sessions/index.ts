@@ -15,7 +15,10 @@ import { readClaudeCodeTokenFile } from "../codingAgents/claudeCodeToken.js";
 import type { ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { writeTransaction } from "../db/connection.js";
-import { getProjectBySlug, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
+import { decodeStringArray } from "../projects/setup.js";
+import { writeHeadlessClaudeSettings } from "./headlessPermissions.js";
+import { sessionRecordingFor, wrapRecordedLaunch, type SessionRecording } from "./sessionRecording.js";
 import { isDispatchable, resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { OperatorGateResolution } from "../docs/operatorGate.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
@@ -163,6 +166,11 @@ const SESSION_AGENT: Record<string, SessionAgent> = Object.fromEntries(
   (Object.entries(SESSION_PROVIDER) as Array<[SessionAgent, string]>).map(([agent, provider]) => [provider, agent])
 );
 
+/** The provider id a Session launched for `agent` records (`claude` is `claude-code-cli`). */
+export function providerForSessionAgent(agent: SessionAgent): string {
+  return SESSION_PROVIDER[agent];
+}
+
 /** The Session agent that launches `provider` (including the fixture), or null when no adapter exists. */
 export function sessionAgentForProvider(provider: string): LaunchAgent | null {
   if (provider === FIXTURE_PROVIDER) return FIXTURE_AGENT;
@@ -219,7 +227,15 @@ export const AGENT_WORKTREE_RESERVATION_MS = 24 * 60 * 60 * 1000;
 export interface TmuxAdapter {
   available(): boolean;
   hasSession(name: string): boolean;
-  launch(input: { name: string; cwd: string; command: string; args: string[] }): void;
+  /**
+   * `record`, present on every headless launch, tells the adapter to run
+   * `command` through the recording wrapper (`wrapRecordedLaunch`): combined
+   * output appended to the Session's log under the workspace and the provider's
+   * exit code written to `agent_sessions.exit_status`. An adapter that ignores
+   * it (a test double) simply runs the command; an interactive TUI launch
+   * carries none, because piping a TUI's output would break it.
+   */
+  launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }): void;
   /**
    * The pane's full scrollback (not just the currently visible screen), used
    * only as a progress signal (see `src/production/stallDetection.ts`) --
@@ -273,7 +289,8 @@ export const systemTmux: TmuxAdapter = {
     try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
   },
   launch(input) {
-    execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, input.command, ...input.args], {
+    const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
+    execFileSync("tmux", ["new-session", "-d", "-s", input.name, "-c", input.cwd, run.command, ...run.args], {
       stdio: "ignore",
       env: tmuxQueryEnv()
     });
@@ -675,11 +692,28 @@ export function launchPreparedSession(
   /**
    * The Arcadia workspace this Session's launch was requested from, so a
    * claude-code-cli launch can read the operator's documented token file.
-   * Omitted callers get the pre-existing untouched behavior (no token file
-   * lookup, no injected `CLAUDE_CODE_OAUTH_TOKEN`).
+   * Required for a headless launch (the default), which records the Session's
+   * log and exit status under it; an interactive launch without it gets no
+   * token file lookup and no injected `CLAUDE_CODE_OAUTH_TOKEN`.
    */
-  workspace?: string
+  workspace?: string,
+  options: {
+    /**
+     * Launch the provider's interactive TUI instead of the default headless
+     * run. Only an operator at the terminal opts in (`arcadia go --launch
+     * --interactive`); it is never recorded to a log or exit status, because
+     * piping a TUI's output would break it. The fixture provider ignores it.
+     */
+    interactive?: boolean;
+  } = {}
 ): AgentSession {
+  const headless = session.provider === FIXTURE_PROVIDER || !options.interactive;
+  if (headless && !workspace) {
+    failPreparedSession(db, session.id);
+    throw validationError("A headless Session launch needs its workspace to record the Session's log and exit status.", {
+      sessionId: session.id
+    });
+  }
   // `launch_revision` (falling back to `base_revision` for a row from before
   // that column existed) is the worktree HEAD this exact launch expects --
   // distinct from `base_revision` itself, which `reconcileSessionExit` and
@@ -718,7 +752,7 @@ export function launchPreparedSession(
   }
   let launch: { command: string; args: string[] };
   try {
-    launch = buildSessionLaunch(db, session, registry, workspace);
+    launch = buildSessionLaunch(db, session, registry, workspace, headless);
   } catch (error) {
     // An unresolvable agent identity is a launch refusal, not a silent fall
     // back to the operator's Git identity: mark the prepared Session failed so
@@ -727,7 +761,12 @@ export function launchPreparedSession(
     throw error;
   }
   try {
-    tmux.launch({ name: session.tmux_session_name, cwd: session.worktree_path, ...launch });
+    tmux.launch({
+      name: session.tmux_session_name,
+      cwd: session.worktree_path,
+      ...launch,
+      ...(headless ? { record: sessionRecordingFor(workspace!, session.id) } : {})
+    });
   } catch (error) {
     failPreparedSession(db, session.id);
     throw validationError(`tmux could not start the ${providerLabel(session.provider)} Session.`, {
@@ -1284,7 +1323,7 @@ const SESSION_OPERATOR_CONTEXT_RESET = [
  * never has to choose an identity and the operator's global Git configuration
  * is never touched.
  */
-function buildSessionLaunch(db: Database.Database, session: AgentSession, registry?: ModelTierRegistry, workspace?: string): { command: string; args: string[] } {
+function buildSessionLaunch(db: Database.Database, session: AgentSession, registry: ModelTierRegistry | undefined, workspace: string | undefined, headless: boolean): { command: string; args: string[] } {
   // The fixture provider is not a real coding agent: it never needs an Action
   // brief prompt, and the Git identity it commits under is fixed and always
   // visibly non-attributable to any real platform/tier -- resolving through
@@ -1303,7 +1342,7 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
     effort: session.effort,
     registry
   });
-  const inner = buildProviderLaunch(db, session, agent, workspace, identity, registry);
+  const inner = buildProviderLaunch(db, session, agent, workspace, identity, headless, registry);
   // A newly admitted Session has its own governed authority. Its candidate
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
@@ -1317,6 +1356,7 @@ function buildProviderLaunch(
   agent: SessionAgent,
   workspace: string | undefined,
   identity: AgentGitIdentity,
+  headless: boolean,
   registry?: ModelTierRegistry
 ): { command: string; args: string[] } {
   const continuation = getSessionContinuation(db, session);
@@ -1341,19 +1381,18 @@ function buildProviderLaunch(
     })
   });
   if (session.provider === "codex-cli") {
-    // A Session launched under a standing-policy admission has no operator at
-    // its terminal. The interactive TUI never exits after its turn, so the
-    // tick would never see it end, never reconcile it, and never admit the
-    // next Action. `codex exec` is Codex's non-interactive entry point: it
-    // runs the brief and exits. It gets the same `workspace-write` sandbox an
-    // interactive trusted Session runs in (exec would otherwise fall back to
-    // read-only on a never-trusted fresh worktree) and never asks for
-    // approval, so an escalation is refused back to the agent rather than
-    // waiting on nobody. Operator-attended launches stay interactive.
-    const unattended = Boolean(session.admission_request_id);
-    const args = unattended ? ["exec", "--model", session.model] : ["--model", session.model];
+    // A headless Session has no operator at its terminal. The interactive TUI
+    // never exits after its turn, so nothing would see it end, reconcile it,
+    // or admit the next Action. `codex exec` is Codex's non-interactive entry
+    // point: it runs the brief and exits, streaming JSON events (`--json`). It
+    // gets the same `workspace-write` sandbox an interactive trusted Session
+    // runs in (exec would otherwise fall back to read-only on a never-trusted
+    // fresh worktree) and never asks for approval, so an escalation is refused
+    // back to the agent rather than waiting on nobody. Only an explicit
+    // `arcadia go --launch --interactive` stays interactive.
+    const args = headless ? ["exec", "--json", "--model", session.model] : ["--model", session.model];
     if (session.effort) args.push("--config", `model_reasoning_effort=${JSON.stringify(codexReasoningEffort(session.effort))}`);
-    if (unattended) args.push("--sandbox", "workspace-write");
+    if (headless) args.push("--sandbox", "workspace-write");
     args.push("--cd", session.worktree_path, prompt);
     return { command: "codex", args };
   }
@@ -1361,8 +1400,10 @@ function buildProviderLaunch(
   if (session.provider === "opencode-cli") {
     // `opencode run` is the headless entry point: it executes the prompt
     // non-interactively in the prepared worktree (tmux already sets cwd) and
-    // exits when the turn is done. Permission posture comes from the ambient
-    // opencode configuration, exactly as Codex's and Claude's do there.
+    // exits when the turn is done. Its permission posture is whatever the
+    // operator's own opencode configuration says: Arcadia manages none for it
+    // (Claude's is the per-Session allow list in `headlessPermissions.ts`,
+    // Codex's the `workspace-write` sandbox), and `run` never waits on a prompt.
     const args = ["run", "--model", session.model];
     const variant = opencodeVariant(session.effort);
     if (variant) args.push("--variant", variant);
@@ -1370,17 +1411,41 @@ function buildProviderLaunch(
     return { command: "opencode", args };
   }
 
-  // A Session launched under a standing-policy admission has no operator at its
-  // terminal, and the interactive TUI would stop at the workspace trust dialog,
-  // prompt for every edit, and never exit after its turn (pmark/arcadia#727,
-  // #698). `--print` is Claude's non-interactive entry point: it skips the trust
-  // dialog, runs the brief, and exits. `acceptEdits` lets it edit the candidate
-  // without prompting; it is not a bypass, so any other tool call outside the
-  // ambient allow rules is refused back to the agent rather than waiting on
-  // nobody, as Codex's unattended `workspace-write` sandbox does. Operator-
-  // attended launches stay interactive.
-  const unattended = Boolean(session.admission_request_id);
-  const args = unattended ? ["--print", "--permission-mode", "acceptEdits", "--model", session.model] : ["--model", session.model];
+  // A headless Session has no operator at its terminal, and the interactive TUI
+  // would stop at the workspace trust dialog, prompt for every edit, and never
+  // exit after its turn (pmark/arcadia#727, #698). `--print` is Claude's
+  // non-interactive entry point: it skips the trust dialog, runs the brief, and
+  // exits, streaming JSON events (`--output-format stream-json`, which Claude
+  // rejects in print mode without `--verbose`). `acceptEdits` lets it edit the
+  // candidate without prompting; it is not a bypass, so any tool call outside
+  // the allow list is refused back to the agent rather than waiting on nobody.
+  // That allow list is Arcadia's own checked-in one (`headlessPermissions.ts`),
+  // written per Session and passed with `--settings`. `--setting-sources ""`
+  // stops Claude merging the operator's user settings and the worktree's own
+  // (agent-editable) project settings into it, leaving only this file and managed
+  // policy. `acceptEdits` also auto-approves mkdir/rm/mv/cp/sed in the working
+  // directory, and the list is not a security boundary (validation commands run
+  // code the agent can edit). Only an explicit `arcadia go --launch --interactive`
+  // stays interactive.
+  let args: string[];
+  if (headless) {
+    if (!workspace) {
+      throw validationError("A headless Claude Session needs its workspace to write its permission settings.", { sessionId: session.id });
+    }
+    const metadata = getProjectMetadata(db, session.project_id);
+    const settingsFile = writeHeadlessClaudeSettings({
+      workspace,
+      sessionId: session.id,
+      validationCommands: decodeStringArray(metadata?.validation_commands)
+    });
+    args = [
+      "--print", "--output-format", "stream-json", "--verbose",
+      "--permission-mode", "acceptEdits", "--settings", settingsFile, "--setting-sources", "",
+      "--model", session.model
+    ];
+  } else {
+    args = ["--model", session.model];
+  }
   if (session.effort) args.push("--effort", claudeReasoningEffort(session.effort));
   args.push("--session-id", session.provider_session_id, "--name", session.display_name, prompt);
   const inner = { command: "claude", args };
@@ -1480,9 +1545,13 @@ function buildFixtureSessionLaunch(session: AgentSession, workspace?: string): {
  * self-report can never touch anything but a Session already marked
  * `is_simulated` under the fixture provider -- the one exception to "an agent
  * never reports its own outcome" (see `classifyExitOutcome`), narrowly scoped
- * to the deterministic test double that exists specifically to make this
- * outcome reachable without inventing a generic, spoofable self-attestation
- * channel for real providers.
+ * to the deterministic test double.
+ *
+ * Since headless launches, the recording wrapper (`wrapRecordedLaunch`) writes
+ * the real provider exit code to `agent_sessions.exit_status` for EVERY
+ * provider, the fixture included, so this self-report is redundant for a
+ * launched fixture (both write the same value). It remains for callers that
+ * apply a fixture outcome without running the process.
  */
 export function applyFixtureExitStatus(db: Database.Database, sessionId: string, exitStatus: number): void {
   const now = new Date().toISOString();

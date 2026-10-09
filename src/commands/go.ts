@@ -44,6 +44,7 @@ import {
   isHeldByUnmergedCandidate,
   getRepositoryLease,
   launchPreparedSession,
+  providerForSessionAgent,
   prepareSession,
   releaseActionClaim,
   releaseLandedActionClaim,
@@ -58,6 +59,8 @@ import {
 
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { getResumableLeaseHandoff } from "../sessions/reconciliation.js";
+import { checkLaunchPrerequisites, refuseUnlessSignedIn } from "../sessions/launchPreflight.js";
+import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
 import {
   loadModelTierRegistry,
@@ -103,6 +106,14 @@ export interface GoCommandOptions {
   workspace?: string;
   /** The only option that authorizes process creation. */
   launch?: boolean;
+  /**
+   * With `launch`: start the provider's interactive TUI (reattach with tmux)
+   * instead of the default headless run, which streams to a Session log and
+   * records the provider's exit code. Never recorded to a log or exit status.
+   */
+  interactive?: boolean;
+  /** Test-only: the environment (a stubbed PATH) the launch preflight runs against; skipped under Vitest when omitted. */
+  preflightEnv?: NodeJS.ProcessEnv;
   /** Host enrollment must never walk away from the exact requested Action. */
   strictAction?: boolean;
   /**
@@ -225,6 +236,9 @@ export interface GoCommandData {
 export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoCommandData> {
   if (options.launch && (!options.apply || !options.agent)) {
     throw validationError("--launch requires --apply and an explicit Session adapter; it is the only authority to start a process.");
+  }
+  if (options.interactive && !options.launch) {
+    throw validationError("--interactive only applies to --launch.");
   }
   if (options.apply && process.env.CODEX_SANDBOX) {
     throw validationError("Arcadia go mutation must run in the protected host controller.", {
@@ -627,6 +641,14 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
 
     const tmux = options.tmux ?? systemTmux;
     if (options.launch && workspacePath) {
+      // Before any worktree, claim or Session exists: a missing provider binary,
+      // sign-in or headless permission posture refuses with its named reason and
+      // leaves nothing behind. An interactive launch has an operator at the
+      // terminal, so it checks the binary only.
+      const headless = !options.interactive;
+      const provider = providerForSessionAgent(options.agent);
+      checkLaunchPrerequisites({ provider, headless, env: options.preflightEnv });
+      if (headless) refuseUnlessSignedIn(provider, checkProviderSignIn(provider, workspacePath, options.preflightEnv));
       const transition = withDatabase(workspacePath, (db) => resolveProjectTransition({
         repoRoot: dispatchRoot,
         projectSlug,
@@ -932,7 +954,7 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
           now: options.now ?? new Date(),
           tmux: options.tmux
         }));
-        session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath), workspacePath));
+        session = withDatabase(workspacePath, (db) => launchPreparedSession(db, prepared, options.tmux, loadModelTierRegistry(workspacePath), workspacePath, { interactive: options.interactive }));
       } catch (error) {
         // Session preparation failed outright after the claim had committed.
         // Release it here, fenced on the generation this call made, rather than

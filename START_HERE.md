@@ -2025,6 +2025,34 @@ the worktree itself and wraps Claude Code in tmux—it does not use Claude Code'
 worktree-owning tmux mode. A separately admitted repository may hold its own
 Session.
 
+**Launches are headless and recorded.** `go --launch`, `arcadia session launch`
+and the dashboard's session launch run the provider non-interactively, exactly
+as a standing-policy launch does: `claude --print --output-format stream-json
+--verbose --permission-mode acceptEdits --settings <per-Session file>
+--setting-sources ""`,
+`codex exec --json --sandbox workspace-write`, and `opencode run` (which takes
+its permissions from your own opencode configuration; Arcadia manages none).
+The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
+its log: your Project's declared validation commands, exactly as declared, and
+`arcadia agent-ask draft`, nothing else. `--setting-sources ""` stops Claude
+merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
+`.claude/settings.json`) into it, so a headless Claude Session loads no user or
+project settings or hooks. Two limits: `acceptEdits` also auto-approves
+mkdir/rm/mv/cp/sed in the working directory, and the allow list is not a security
+boundary, because validation commands run project code the agent can edit.
+Combined output is appended to `<workspace>/.arcadia/sessions/<session-id>.log`,
+and the provider's exit code is written to `agent_sessions.exit_status` (visible
+as `exit N` in the Session timeline), so a crash is distinguishable from a clean
+exit after tmux is gone. The tmux pane streams the same output; the printed
+reattach command attaches to it (you can watch, but there is no TUI to type
+into). A launch refuses before it reserves anything, naming the reason, when the
+provider binary is not on PATH (`provider_binary_missing`), the provider is not
+signed in (`provider_not_signed_in`: Claude Code token file or login, `codex
+login`), or the installed provider lacks the headless flags
+(`permission_posture_missing`). To work in the provider's TUI instead, add
+`--interactive` to `go --launch`; that Session is not logged and records no
+exit code.
+
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance
 criterion verbatim and in the plan's own order, the candidate worktree and
