@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0106"
+slug: decide-which-channel-agents-use-to-relay-information-and-requests-to-their
+project: arcadia
+status: open
+question: Decide which channel agents use to relay information and requests to their supervisors and teammates.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Reuse what exists. A delegate returns its result in-process to its lead, a relay to a supervisor is an Agent Ask (intent proposal) citing the delegation or Session id, and the delegation receipt carries the request and verdict. No new channel
+options:
+  - label: Reuse what exists. A delegate returns its result in-process to its lead, a relay to a supervisor is an Agent Ask (intent proposal) citing the delegation or Session id, and the delegation receipt carries the request and verdict. No new channel
+    consequence: No new transport or schema. Relays are durable, cannot approve anything, and show on /agents. A delegate can reach only its own lead, and a new channel comes back only on that trigger.
+    recommended: true
+  - label: A new typed agent-message log in the workspace (an agent_messages store and an arcadia agents message command), bound to sender role, recipient and Action
+    consequence: A real channel that is easy to audit and show. It needs a schema migration and a rule that messages stay signals, so they never become a second store of decisions.
+    recommended: false
+  - label: GitHub coordination Issues, the Comms pattern, for every relay
+    consequence: Already proven across platforms. But each round needs a posting Decision because it is outward messaging, it is public, and it is slow for relays inside one Session.
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-10-09
+---
+
+# Decision 0106: Decide which channel agents use to relay information and requests to their supervisors and teammates.
+
+## Options
+
+- **Reuse what exists. A delegate returns its result in-process to its lead, a relay to a supervisor is an Agent Ask (intent proposal) citing the delegation or Session id, and the delegation receipt carries the request and verdict. No new channel** (recommended): No new transport or schema. Relays are durable, cannot approve anything, and show on /agents. A delegate can reach only its own lead, and a new channel comes back only on that trigger.
+- **A new typed agent-message log in the workspace (an agent_messages store and an arcadia agents message command), bound to sender role, recipient and Action**: A real channel that is easy to audit and show. It needs a schema migration and a rule that messages stay signals, so they never become a second store of decisions.
+- **GitHub coordination Issues, the Comms pattern, for every relay**: Already proven across platforms. But each round needs a posting Decision because it is outward messaging, it is public, and it is slow for relays inside one Session.
+
+## Rationale
+
+The operator wants inter-agent communication facilitated. Existing channels are Agent Asks, file handoffs, delegation return values, pings and GitHub coordination Issues (Comms). Operator direction 2026-10-09 (governed subagent roles), recorded verbatim in the planning brief; the operator was unavailable for a live interview, so that text stands in for one. Recommended option is listed first; the operator decides.
+
+Proposed by Agent Ask decide-inter-agent-channel-2026-10-09.
