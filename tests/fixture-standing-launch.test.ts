@@ -8,7 +8,7 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { loadPhase3Registries } from "../src/intent/registries.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { createSystemPreservationRemote } from "../src/sessions/candidatePreservation.js";
-import { checkFixtureRemotes, githubRepositoryOf, verifyFixtureStandingLaunch } from "../src/sessions/fixtureStandingLaunch.js";
+import { checkFixtureRemotes, githubRepositoryOf, verifyFixtureStandingLaunch, type FetchDecisionFile } from "../src/sessions/fixtureStandingLaunch.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { ensureOperatorLaunchSchema, findOperatorLaunchAuthorization, SESSION_ENV_MARKER } from "../src/sessions/operatorLaunch.js";
@@ -46,41 +46,47 @@ function decisionDoc(status: string, answer: string | null): string {
   ].join("\n");
 }
 
-interface SeedOptions {
-  /** Arcadia's origin URL; omitted means no origin, so Decision 0100 is read from `main`. */
-  origin?: string | null;
-  /** Written to the working tree AFTER the commit, uncommitted. */
-  workingTree?: { status: string; answer: string | null };
+/** What GitHub's main holds for Decision 0100, per rehearsal; absent means GitHub answers with an error. */
+const githubDecisions = new WeakMap<Rehearsal, { status: string; answer: string | null } | "error">();
+const GITHUB_BLOB_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+
+function fetchFor(rehearsal: Rehearsal): FetchDecisionFile {
+  return () => {
+    const state = githubDecisions.get(rehearsal);
+    if (!state || state === "error") throw new Error("gh api failed (exit 1): HTTP 404");
+    return { content: Buffer.from(decisionDoc(state.status, state.answer)).toString("base64").replace(/(.{60})/g, "$1\n"), sha: GITHUB_BLOB_SHA };
+  };
 }
 
-/** A registered `arcadia` Project whose Git repository COMMITS Decision 0100 in the given state. */
-function seedDecision(rehearsal: Rehearsal, status: string, answer: string | null, options: SeedOptions = {}): void {
-  const repo = path.join(rehearsal.root, "arcadia-checkout");
+/** Decision 0100 as the (injected) GitHub main holds it. */
+function seedDecision(rehearsal: Rehearsal, status: string, answer: string | null): void {
+  githubDecisions.set(rehearsal, { status, answer });
+}
+
+/**
+ * Everything a forger controls locally: an `arcadia` Project in a scratch workspace db whose repository COMMITS an
+ * approved Decision 0100 on main and origin/main, plus a user config (ARCADIA_CONFIG_PATH) naming that workspace as live.
+ */
+function forgeLocally(rehearsal: Rehearsal): NodeJS.ProcessEnv {
+  const repo = path.join(rehearsal.root, "forged-arcadia");
   const file = path.join(repo, "docs", "decisions", "0100-decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without.md");
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, decisionDoc(status, answer));
+  writeFileSync(file, decisionDoc("approved", ANSWER_MERGE));
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.name", "T"]);
   git(repo, ["config", "user.email", "t@example.test"]);
   git(repo, ["add", "-A"]);
-  git(repo, ["commit", "-q", "-m", "decision"]);
-  if (options.origin) {
-    git(repo, ["remote", "add", "origin", options.origin]);
-    git(repo, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
-  }
-  if (options.workingTree) writeFileSync(file, decisionDoc(options.workingTree.status, options.workingTree.answer));
+  git(repo, ["commit", "-q", "-m", "forged"]);
+  git(repo, ["remote", "add", "origin", "https://github.com/pmark/arcadia.git"]);
+  git(repo, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
   const imported = runProjectImportCommand({
-    workspace: rehearsal.workspace, name: "Arcadia", mission: "Test stand-in for the Arcadia Project.", status: "active",
+    workspace: rehearsal.workspace, name: "Arcadia", mission: "Forged stand-in.", status: "active",
     milestone: "m", nextAction: "n", classification: "agent"
   });
   runProjectMetadataCommand({ workspace: rehearsal.workspace, projectId: imported.data.project.id, repoPath: repo });
-}
-
-/** An environment whose user config names `workspace` as the live (default) workspace. */
-function liveEnv(rehearsal: Rehearsal, workspace = rehearsal.workspace): NodeJS.ProcessEnv {
-  const config = path.join(rehearsal.root, `user-config-${path.basename(workspace)}.json`);
-  writeFileSync(config, JSON.stringify({ defaultWorkspace: workspace }));
-  return { ARCADIA_CONFIG_PATH: config };
+  const config = path.join(rehearsal.root, "forged-user-config.json");
+  writeFileSync(config, JSON.stringify({ defaultWorkspace: rehearsal.workspace }));
+  return { ARCADIA_CONFIG_PATH: config, XDG_CONFIG_HOME: rehearsal.root };
 }
 
 /** A fixture whose origin is the registered GitHub fixture (the fake GitHub in the harness pushes to its own bare repository). */
@@ -95,7 +101,7 @@ function fixture(remote: string | null = FIXTURE_REMOTE): Rehearsal {
 }
 
 type Standing = { agentIdentity: string };
-function launch(rehearsal: Rehearsal, standing: Standing | null = { agentIdentity: "claude-test" }, env: NodeJS.ProcessEnv = liveEnv(rehearsal)): AgentSession {
+function launch(rehearsal: Rehearsal, standing: Standing | null = { agentIdentity: "claude-test" }, env?: NodeJS.ProcessEnv, fetchDecision: FetchDecisionFile = fetchFor(rehearsal)): AgentSession {
   const registries = loadPhase3Registries(rehearsal.workspace);
   const requestId = "fixture-standing-1";
   return withDatabase(rehearsal.workspace, (db) => {
@@ -106,7 +112,7 @@ function launch(rehearsal: Rehearsal, standing: Standing | null = { agentIdentit
     return launchGuardedHostSession({
       db, workspace: rehearsal.workspace, repoRoot: rehearsal.repo, projectSlug: rehearsal.projectSlug, requestId,
       previewFingerprint: preview.previewFingerprint,
-      operatorLaunch: { source: "fixture_standing", ...(standing ? { standing } : {}), env },
+      operatorLaunch: { source: "fixture_standing", ...(standing ? { standing } : {}), ...(env ? { env } : {}), fetchDecision },
       profiles: registries.codingAgents.profiles, adapters: registries.providerAdapters, tmux: rehearsal.tmux, now: rehearsal.now,
       capacityObservation: capacity(rehearsal.provider), agentWorktreeRoot: rehearsal.worktrees,
       providerSignIn: () => ({ signedIn: true, remedy: "" })
@@ -193,16 +199,20 @@ describe("--fixture-standing refusals (each before anything is launched)", () =>
     expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unanswered");
   });
 
-  it("refuses when the workspace has no Decision 0100 to read", () => {
+  it("fails closed when GitHub cannot be read (network, auth, 404)", () => {
     const rehearsal = fixture();
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unanswered");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unverifiable");
+    githubDecisions.set(rehearsal, "error");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unverifiable");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, () => ({ content: "!!not-yaml", sha: GITHUB_BLOB_SHA })), "fixture_standing_decision_unverifiable");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, undefined, undefined, () => ({ content: "", sha: "" })), "fixture_standing_decision_unverifiable");
   });
 
   it("refuses after 2026-10-18 (UTC) and accepts the last day", () => {
     const rehearsal = fixture();
     seedDecision(rehearsal, "approved", ANSWER_MERGE);
     const verify = (now: string) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
-      verifyFixtureStandingLaunch(db, { workspace: rehearsal.workspace, repoRoot: rehearsal.repo, projectSlug: rehearsal.projectSlug, agentIdentity: "a", env: liveEnv(rehearsal), now: new Date(now) }));
+      verifyFixtureStandingLaunch(db, { workspace: rehearsal.workspace, repoRoot: rehearsal.repo, projectSlug: rehearsal.projectSlug, agentIdentity: "a", fetchDecision: fetchFor(rehearsal), now: new Date(now) }));
     expect(verify("2026-10-18T23:59:59.000Z").fixtureBasis).toBe("registered_fixture_remote");
     expect(() => verify("2026-10-19T00:00:00.000Z")).toThrow(/fixture_standing_expired/);
     rehearsal.now = new Date("2026-10-19T00:00:00.000Z");
@@ -244,7 +254,7 @@ describe("--fixture-standing refusals (each before anything is launched)", () =>
   it("is still refused inside an Arcadia Session, exactly as every other mint", () => {
     const rehearsal = fixture();
     seedDecision(rehearsal, "approved", ANSWER_MERGE);
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, { agentIdentity: "a" }, { ...liveEnv(rehearsal), [SESSION_ENV_MARKER]: "session_inside" }), "operator_launch_inside_session");
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, { agentIdentity: "a" }, { [SESSION_ENV_MARKER]: "session_inside" }), "operator_launch_inside_session");
   });
 
   it("is never combined with the standing production policy grant", () => {
@@ -264,7 +274,7 @@ describe("--fixture-standing refusals (each before anything is launched)", () =>
     mkdirSync(path.join(root, "config"), { recursive: true });
     writeFileSync(path.join(root, "config", "arcadia.json"), JSON.stringify({ experiment: { enabled: true, allowedRepoRoot: "projects" } }));
     const verify = (repoRoot: string) => withReadOnlyDatabase(rehearsal.workspace, (db) =>
-      verifyFixtureStandingLaunch(db, { workspace: root, repoRoot, projectSlug: "some-fixture", agentIdentity: "a", env: liveEnv(rehearsal), now: rehearsal.now }));
+      verifyFixtureStandingLaunch(db, { workspace: root, repoRoot, projectSlug: "some-fixture", agentIdentity: "a", fetchDecision: fetchFor(rehearsal), now: rehearsal.now }));
     mkdirSync(path.join(root, "projects", "fx"), { recursive: true });
     git(path.join(root, "projects", "fx"), ["init", "-q", "-b", "main"]);
     expect(verify(path.join(root, "projects", "fx")).fixtureBasis).toBe("experiment_workspace");
@@ -313,39 +323,28 @@ describe("arcadia session launch --fixture-standing (the real CLI)", () => {
   });
 });
 
-describe("B1: Decision 0100 is read only from the committed record of the live workspace", () => {
-  it("refuses a scratch workspace that is neither the live workspace nor an experiment, even with a forged approved Decision", () => {
+describe("B1: Decision 0100 is verified only against GitHub's main", () => {
+  it("refuses a forged local Decision and scratch config when GitHub says the Decision is open", () => {
+    const rehearsal = fixture();
+    seedDecision(rehearsal, "open", null);
+    const forged = forgeLocally(rehearsal);
+    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, { agentIdentity: "a" }, forged), "fixture_standing_decision_unanswered");
+  });
+
+  it("mints on approved GitHub content regardless of any local state, recording the blob sha GitHub returned", () => {
     const rehearsal = fixture();
     seedDecision(rehearsal, "approved", ANSWER_MERGE);
-    const elsewhere = path.join(rehearsal.root, "not-live");
-    mkdirSync(elsewhere);
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, { agentIdentity: "a" }, liveEnv(rehearsal, elsewhere)), "fixture_standing_workspace_not_live");
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal, { agentIdentity: "a" }, {}), "fixture_standing_workspace_not_live");
+    const session = launch(rehearsal, { agentIdentity: "a" }, {});
+    expect(JSON.parse(authorization(rehearsal, session)!.standing_json!)).toMatchObject({
+      decisionSource: "github.com/pmark/arcadia@main", decisionBlobSha: GITHUB_BLOB_SHA, decisionAnswer: ANSWER_MERGE
+    });
   });
 
-  it("an uncommitted approved edit does not count while the committed file says open", () => {
-    const rehearsal = fixture();
-    seedDecision(rehearsal, "open", null, { workingTree: { status: "approved", answer: ANSWER_MERGE } });
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unanswered");
-  });
-
-  it("prefers origin/main, requires origin to be pmark/arcadia, and the receipt names the ref and commit", () => {
-    const rehearsal = fixture();
-    seedDecision(rehearsal, "approved", ANSWER_MERGE, { origin: "https://github.com/pmark/arcadia.git" });
-    const session = launch(rehearsal);
-    expect(JSON.parse(authorization(rehearsal, session)!.standing_json!)).toMatchObject({ decisionRef: "origin/main", decisionCommit: expect.stringMatching(/^[0-9a-f]{40}$/) });
-  });
-
-  it("falls back to main when there is no origin and says so in the receipt", () => {
-    const rehearsal = fixture();
-    seedDecision(rehearsal, "approved", ANSWER_MERGE);
-    expect(JSON.parse(authorization(rehearsal, launch(rehearsal))!.standing_json!)).toMatchObject({ decisionRef: "main" });
-  });
-
-  it("refuses an origin that is not pmark/arcadia", () => {
-    const rehearsal = fixture();
-    seedDecision(rehearsal, "approved", ANSWER_MERGE, { origin: "https://github.com/someone/arcadia.git" });
-    expectRefusedBeforeLaunch(rehearsal, () => launch(rehearsal), "fixture_standing_decision_unanswered");
+  it("never reads ARCADIA_CONFIG_PATH, XDG config or a workspace db for this gate", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "..", "src", "sessions", "fixtureStandingLaunch.ts"), "utf8");
+    for (const forbidden of ["ARCADIA_CONFIG_PATH", "XDG_CONFIG_HOME", "loadUserConfig", "userConfigPath", "withReadOnlyDatabase", "getProjectMetadata", "refs/remotes", "refs/heads"]) {
+      expect(source, forbidden).not.toContain(forbidden);
+    }
   });
 });
 
@@ -435,7 +434,7 @@ describe("B3: an experiment workspace's fixture still needs clean remotes", () =
     mkdirSync(fx, { recursive: true });
     git(fx, ["init", "-q", "-b", "main"]);
     const verify = () => withReadOnlyDatabase(rehearsal.workspace, (db) =>
-      verifyFixtureStandingLaunch(db, { workspace: root, repoRoot: fx, projectSlug: "some-fixture", agentIdentity: "a", env: liveEnv(rehearsal), now: rehearsal.now }));
+      verifyFixtureStandingLaunch(db, { workspace: root, repoRoot: fx, projectSlug: "some-fixture", agentIdentity: "a", fetchDecision: fetchFor(rehearsal), now: rehearsal.now }));
     expect(verify().fixtureBasis).toBe("experiment_workspace");
     git(fx, ["remote", "add", "origin", "https://github.com/pmark/arcadia.git"]);
     expect(() => verify()).toThrow(/fixture_standing_not_a_fixture/);

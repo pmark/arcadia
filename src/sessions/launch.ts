@@ -42,7 +42,7 @@ import {
 } from "./draftOnlyCandidate.js";
 import { getResumableLeaseHandoff, restoreLeaseHandoffIfSupersededBy } from "./reconciliation.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
-import { verifyFixtureStandingLaunch, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
+import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
 export interface GuardedLaunchInput {
@@ -78,6 +78,8 @@ export interface GuardedLaunchInput {
     source: OperatorLaunchSource;
     /** Required with, and only with, `source: "fixture_standing"` (Decision 0100): the invoking agent, recorded in the receipt. */
     standing?: { agentIdentity: string };
+    /** Test-only: replaces the GitHub fetch of Decision 0100. Never set by the CLI or the environment. */
+    fetchDecision?: FetchDecisionFile;
     env?: NodeJS.ProcessEnv;
   };
   /**
@@ -187,7 +189,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   if (input.operatorLaunch?.source === "fixture_standing") {
     standingBasis = verifyFixtureStandingLaunch(input.db, {
       workspace: input.workspace, repoRoot: path.resolve(input.repoRoot), projectSlug: input.projectSlug,
-      agentIdentity: input.operatorLaunch.standing?.agentIdentity, env: input.operatorLaunch.env, now: input.now ?? new Date()
+      agentIdentity: input.operatorLaunch.standing?.agentIdentity, env: input.operatorLaunch.env, now: input.now ?? new Date(),
+      fetchDecision: input.operatorLaunch.fetchDecision
     });
   } else if (input.operatorLaunch?.standing) {
     throw validationError("Only a --fixture-standing launch carries a standing basis.", { code: "operator_launch_standing_mismatch" });

@@ -334,13 +334,12 @@ one-shot authorization without the terminal confirmation. It refuses with a name
 code (nothing launched, nothing minted) unless all hold:
 
 - Decision 0100 is answered "Standing fixture launch, with merge on green" or
-  "Standing fixture launch, you merge" in the COMMITTED `origin/main` (only
-  `main` when origin has no such ref; the receipt names which, plus the commit)
-  of the `arcadia` Project registered in the LIVE workspace (the user-config
-  default). The working tree and any workspace the caller passes are never
-  trusted (`fixture_standing_decision_unanswered`,
-  `fixture_standing_workspace_not_live`; the launch workspace must be the live
-  one or an experiment workspace);
+  "Standing fixture launch, you merge" on `main` of github.com/pmark/arcadia
+  itself, fetched with `gh api` (hardcoded host, repository and path, sanitized
+  environment) and recorded with the blob sha GitHub returned. No local ref,
+  working tree, workspace database or user config is consulted, and any
+  fetch/parse failure refuses (`fixture_standing_decision_unanswered`,
+  `fixture_standing_decision_unverifiable`);
 - today (UTC) is on or before 2026-10-18 (`fixture_standing_expired`);
 - every Git remote's effective fetch and push target is in
   `FIXTURE_REMOTE_ALLOWLIST` (`src/sessions/fixtureStandingLaunch.ts`, today

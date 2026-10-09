@@ -2,10 +2,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { withReadOnlyDatabase } from "../db/connection.js";
-import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { parseDoc } from "../docs/parse.js";
-import { loadUserConfig, readExperimentWorkspace } from "../workspace/config.js";
+import { readExperimentWorkspace } from "../workspace/config.js";
 import { canonicalPath, isInside } from "../workspace/experimentGuard.js";
 import { refuseInsideArcadiaSession } from "./operatorLaunch.js";
 
@@ -17,10 +15,10 @@ import { refuseInsideArcadiaSession } from "./operatorLaunch.js";
  * one draft pull request, and never merges.
  *
  * 1. Decision 0100 is ANSWERED with one of {@link FIXTURE_STANDING_ANSWERS}. It
- *    is read from the COMMITTED `origin/main` (else `main`, and the receipt says
- *    which) of the `arcadia` Project registered in the LIVE workspace (the user
- *    config default), never from a working tree or from the workspace the caller
- *    happened to pass, so neither can forge it.
+ *    is fetched from `main` of github.com/pmark/arcadia itself (hardcoded host,
+ *    repository and path; sanitized environment) and the blob sha is recorded.
+ *    No local ref, working tree, workspace database or user config is consulted,
+ *    and any fetch failure refuses.
  * 2. Today (UTC) is on or before {@link FIXTURE_STANDING_LAST_DAY}; the exit
  *    re-checks this.
  * 3. The launch target is a disposable fixture: the effective fetch and push
@@ -46,9 +44,10 @@ export const FIXTURE_REMOTE_ALLOWLIST: readonly string[] = ["pmark/arcadia-three
 export interface FixtureStandingBasis {
   decisionId: string;
   decisionAnswer: string;
-  /** Where Decision 0100 was read: the committed `origin/main` or, only when origin has none, `main`. */
-  decisionRef: "origin/main" | "main";
-  decisionCommit: string;
+  /** Where Decision 0100 was verified: always GitHub's main. */
+  decisionSource: string;
+  /** The blob sha GitHub returned for the Decision file. */
+  decisionBlobSha: string;
   agentIdentity: string;
   /** Why the target counted as a disposable fixture. */
   fixtureBasis: "registered_fixture_remote" | "experiment_workspace";
@@ -59,7 +58,7 @@ type RefusalCode =
   | "fixture_standing_agent_identity_required"
   | "fixture_standing_expired"
   | "fixture_standing_decision_unanswered"
-  | "fixture_standing_workspace_not_live"
+  | "fixture_standing_decision_unverifiable"
   | "fixture_standing_not_a_fixture";
 
 function refuse(code: RefusalCode, reason: string, details: Record<string, unknown> = {}): never {
@@ -113,42 +112,69 @@ export function checkFixtureRemotes(repo: string, options: { allowNone: boolean 
   return { ok: true, remotes: unique, repository: repositories[0] };
 }
 
-interface CommittedDecision { answer: string; ref: "origin/main" | "main"; commit: string }
+/** What GitHub's contents API returns for the Decision file. */
+export interface GithubDecisionFile { content: string; sha: string }
+export type FetchDecisionFile = () => GithubDecisionFile;
 
-/** Decision 0100 as COMMITTED on origin/main (else main) of the Arcadia repository; the working tree is never read. */
-function readCommittedDecision(arcadiaRepo: string): CommittedDecision {
-  const unanswered = (reason: string, details: Record<string, unknown> = {}): never => refuse("fixture_standing_decision_unanswered", reason, details);
-  const hasOrigin = gitOut(arcadiaRepo, ["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"]).status === 0;
-  if (hasOrigin) {
-    const origin = githubRepositoryOf(gitOut(arcadiaRepo, ["config", "--get", "remote.origin.url"]).stdout);
-    if (origin !== FIXTURE_STANDING_ARCADIA_REPOSITORY) {
-      unanswered(`the Arcadia repository's origin (${origin ?? "not GitHub"}) is not ${FIXTURE_STANDING_ARCADIA_REPOSITORY}, so its origin/main is not the committed record.`);
-    }
+/** The Decision 0100 file, hardcoded: no caller input chooses the repository, ref or path. */
+export const FIXTURE_STANDING_DECISION_FILE = "docs/decisions/0100-decide-whether-agents-may-launch-actions-in-disposable-fixture-projects-without.md";
+export const FIXTURE_STANDING_DECISION_SOURCE = "github.com/pmark/arcadia@main";
+
+/**
+ * The real fetch: `gh api` against github.com with a sanitized environment, so
+ * GH_HOST, GH_REPO, GH_CONFIG_DIR, proxy variables and the like cannot redirect
+ * it. Only PATH, HOME, TMPDIR and a GitHub token (which authenticates to the
+ * hardcoded host only) pass through.
+ */
+export const fetchDecisionFromGithub: FetchDecisionFile = () => {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "GH_TOKEN", "GITHUB_TOKEN"]) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
   }
-  const ref = hasOrigin ? "origin/main" : "main";
-  const commit = gitOut(arcadiaRepo, ["rev-parse", "--verify", "--quiet", `${hasOrigin ? "refs/remotes/origin/main" : "refs/heads/main"}^{commit}`]);
-  if (commit.status !== 0) unanswered(`Decision ${FIXTURE_STANDING_DECISION_ID} cannot be read: the Arcadia repository has neither origin/main nor main.`);
-  const names = gitOut(arcadiaRepo, ["ls-tree", "--name-only", commit.stdout, "docs/decisions/"]).stdout.split("\n");
-  const file = names.find((name) => path.posix.basename(name).startsWith(`${FIXTURE_STANDING_DECISION_ID}-${FIXTURE_STANDING_DECISION_SLUG_PREFIX}`));
-  if (!file) unanswered(`Decision ${FIXTURE_STANDING_DECISION_ID} is not committed on ${ref} of the Arcadia repository.`);
-  const content = spawnSync("git", ["-C", arcadiaRepo, "show", `${commit.stdout}:${file}`], { encoding: "utf8" });
-  const { doc } = parseDoc(file!, path.join(arcadiaRepo, file!), content.stdout ?? "");
+  const result = spawnSync(
+    "gh",
+    ["api", "--hostname", "github.com", `repos/${FIXTURE_STANDING_ARCADIA_REPOSITORY}/contents/${FIXTURE_STANDING_DECISION_FILE}?ref=main`],
+    { encoding: "utf8", env, timeout: 30_000 }
+  );
+  if (result.error || result.status !== 0) {
+    throw new Error(`gh api failed (${result.error?.message ?? `exit ${String(result.status)}`}): ${(result.stderr ?? "").trim().slice(0, 300)}`);
+  }
+  const parsed = JSON.parse(result.stdout) as { content?: unknown; sha?: unknown; encoding?: unknown; path?: unknown };
+  if (typeof parsed.content !== "string" || typeof parsed.sha !== "string" || parsed.encoding !== "base64" || parsed.path !== FIXTURE_STANDING_DECISION_FILE) {
+    throw new Error("GitHub returned an unexpected contents response.");
+  }
+  return { content: parsed.content, sha: parsed.sha };
+};
+
+interface VerifiedDecision { answer: string; blobSha: string }
+
+/**
+ * Decision 0100 as `main` of github.com/pmark/arcadia holds it right now: the
+ * only authoritative record. No local ref, working tree or workspace database
+ * is consulted, and every failure (network, auth, 404, parse) fails closed.
+ */
+function readAuthoritativeDecision(fetchDecision: FetchDecisionFile): VerifiedDecision {
+  const unverifiable = (reason: string): never => refuse("fixture_standing_decision_unverifiable", `Decision ${FIXTURE_STANDING_DECISION_ID} could not be verified on ${FIXTURE_STANDING_DECISION_SOURCE}: ${reason}.`);
+  let file: GithubDecisionFile;
+  try {
+    file = fetchDecision();
+  } catch (error) {
+    return unverifiable(error instanceof Error ? error.message : String(error));
+  }
+  if (typeof file.content !== "string" || typeof file.sha !== "string" || !file.sha) return unverifiable("the response carried no content or blob sha");
+  const text = Buffer.from(file.content.replace(/\s/g, ""), "base64").toString("utf8");
+  const { doc } = parseDoc(FIXTURE_STANDING_DECISION_FILE, FIXTURE_STANDING_DECISION_FILE, text);
   if (!doc || doc.type !== "decision" || doc.id !== FIXTURE_STANDING_DECISION_ID || doc.project.toLowerCase() !== FIXTURE_STANDING_DECISION_PROJECT) {
-    return unanswered(`Decision ${FIXTURE_STANDING_DECISION_ID} on ${ref} does not parse as the ${FIXTURE_STANDING_DECISION_PROJECT} Project's Decision.`);
+    return unverifiable("it does not parse as the arcadia Project's Decision 0100");
   }
   if (doc.status !== "approved" || doc.answer === null || !(FIXTURE_STANDING_ANSWERS as readonly string[]).includes(doc.answer)) {
-    return unanswered(
-      `Decision ${FIXTURE_STANDING_DECISION_ID} on ${ref} is ${doc.status} with answer ${JSON.stringify(doc.answer)}; it must be committed answered "${FIXTURE_STANDING_ANSWERS[0]}" or "${FIXTURE_STANDING_ANSWERS[1]}".`,
+    return refuse(
+      "fixture_standing_decision_unanswered",
+      `Decision ${FIXTURE_STANDING_DECISION_ID} on ${FIXTURE_STANDING_DECISION_SOURCE} is ${doc.status} with answer ${JSON.stringify(doc.answer)}; it must be answered "${FIXTURE_STANDING_ANSWERS[0]}" or "${FIXTURE_STANDING_ANSWERS[1]}".`,
       { status: doc.status, answer: doc.answer }
     );
   }
-  return { answer: doc.answer, ref, commit: commit.stdout };
-}
-
-function arcadiaRepositoryIn(db: Database.Database): string | null {
-  const project = getProjectBySlug(db, FIXTURE_STANDING_DECISION_PROJECT);
-  const repoPath = project ? getProjectMetadata(db, project.id)?.repo_path?.trim() : null;
-  return repoPath ? path.resolve(repoPath) : null;
+  return { answer: doc.answer, blobSha: file.sha };
 }
 
 /** True once `now` (UTC) is past the last day of Decision 0100's window. */
@@ -162,7 +188,7 @@ export function fixtureStandingExpired(now: Date): boolean {
  */
 export function verifyFixtureStandingLaunch(
   db: Database.Database,
-  input: { workspace: string; repoRoot: string; projectSlug: string; agentIdentity: string | undefined; env?: NodeJS.ProcessEnv; now: Date }
+  input: { workspace: string; repoRoot: string; projectSlug: string; agentIdentity: string | undefined; env?: NodeJS.ProcessEnv; now: Date; fetchDecision?: FetchDecisionFile }
 ): FixtureStandingBasis {
   refuseInsideArcadiaSession(input.env);
   const agentIdentity = input.agentIdentity?.trim();
@@ -172,27 +198,16 @@ export function verifyFixtureStandingLaunch(
     refuse("fixture_standing_expired", `The standing fixture launch ended after ${FIXTURE_STANDING_LAST_DAY} (UTC); today is ${today}.`, { today });
   }
 
-  // The Decision is always read from the LIVE workspace's Arcadia repository.
-  const configured = loadUserConfig(input.env ?? process.env).defaultWorkspace;
-  if (!configured) refuse("fixture_standing_workspace_not_live", "No live (default) workspace is configured, so Decision 0100 cannot be read from the live record.");
-  const live = canonicalPath(path.resolve(configured));
-  const workspace = canonicalPath(path.resolve(input.workspace));
+  // The authoritative record is GitHub's main, not anything local or caller-steered.
+  const decision = readAuthoritativeDecision(input.fetchDecision ?? fetchDecisionFromGithub);
   const experiment = readExperimentWorkspace(input.workspace);
-  if (workspace !== live && !experiment) {
-    refuse("fixture_standing_workspace_not_live", `Workspace ${workspace} is neither the live workspace (${live}) nor an experiment workspace (Decision 0082).`, { workspace, live });
-  }
-  const arcadiaRepo = workspace === live && !experiment ? arcadiaRepositoryIn(db) : withReadOnlyDatabase(live, arcadiaRepositoryIn);
-  if (!arcadiaRepo) {
-    refuse("fixture_standing_decision_unanswered", `Decision ${FIXTURE_STANDING_DECISION_ID} cannot be read: the live workspace has no "${FIXTURE_STANDING_DECISION_PROJECT}" Project with a registered repository.`);
-  }
-  const decision = readCommittedDecision(arcadiaRepo);
-
   const repo = canonicalPath(path.resolve(input.repoRoot));
-  if (input.projectSlug.toLowerCase() === FIXTURE_STANDING_DECISION_PROJECT || canonicalPath(arcadiaRepo) === repo) {
+  if (input.projectSlug.toLowerCase() === FIXTURE_STANDING_DECISION_PROJECT) {
     refuse("fixture_standing_not_a_fixture", "Arcadia's own Project is never a disposable fixture.", { project: input.projectSlug });
   }
   const basisBase = {
-    decisionId: FIXTURE_STANDING_DECISION_ID, decisionAnswer: decision.answer, decisionRef: decision.ref, decisionCommit: decision.commit, agentIdentity
+    decisionId: FIXTURE_STANDING_DECISION_ID, decisionAnswer: decision.answer, decisionSource: FIXTURE_STANDING_DECISION_SOURCE,
+    decisionBlobSha: decision.blobSha, agentIdentity
   };
   const inExperiment = Boolean(experiment) && isInside(experiment!.allowedRepoRoot, repo);
   const remotes = checkFixtureRemotes(repo, { allowNone: inExperiment });
