@@ -2152,3 +2152,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Every declared acceptance criterion was accepted as met: "An additive migration creates ask_corrections with columns ask_request_id, normalized_text, text_hash, predicted_type, corrected_type, corrected_project, source and created_at, with no cascade delete. It also adds nullable confidence and corrected_type columns to ask_requests. Each correction row is written in the same transaction as the re-route, so a correction cannot exist without its memo."; "A memo stage runs before the intake patterns. An operator Ask whose normalized text exactly matches a stored correction routes to the corrected type and Project, and its receipt says '(memo <date>)'. There is no fuzzy matching. An answer to an ask-origin clarification question also writes a correction row. Only operator corrections (source cli, discord or answer) are used as memos. Rows recorded from a model re-route are never used as memos. Raw Ask text stays in the workspace database and is never written to any repository."; "Tests cover the transactional write, a memo hit on the identical Ask, a miss on different text, and the no-cascade guarantee. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.".
 - **Next:** Next ready Action in this inactive Plan: prove-operator-request-to-started-work.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-ask-corrections-stick-20261009).
+
+## 2026-10-09 — Agent Ask pr-opened-arcadia-pr1120
+
+- **Did:** The North Star stops claiming production is live: PR #1120 makes gates follow split remainders (now 3/4, with the open proof step named) and shows the target's why on /now and /path. https://github.com/pmark/arcadia/pull/1120
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
