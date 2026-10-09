@@ -202,7 +202,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "apps/discord-bot/src/events/messageCreate.ts", "src/commands/askTrail.ts"]
   - id: ask-corrections-stick
     title: Make a corrected Ask route correctly the next time it is sent, instantly and with no model call.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make a corrected Ask route correctly the next time it is sent, instantly and with no model call.
