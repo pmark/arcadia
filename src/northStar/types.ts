@@ -66,6 +66,23 @@ export interface ResolvedGate extends NorthStarGate {
   clarification: string | null;
   /** True when the gate's status came from a record rather than the document. */
   derived: boolean;
+  /**
+   * The first unfinished remainder of a `done` Action that was split. Set only
+   * then, and when set `status` is `in_progress` and `nextAction` is the
+   * remainder's, because a narrowed Action reads `done` while the rest of the
+   * scope it was declared for is still open.
+   */
+  openRemainder: OpenRemainder | null;
+}
+
+export interface OpenRemainder {
+  /** The remainder's `doc_ref`, e.g. `plan/slug#action-id`. */
+  ref: string;
+  /** The remainder's Action id within its plan. */
+  actionId: string;
+  /** Null when no plan document carries the remainder. */
+  workItemId: string | null;
+  title: string | null;
 }
 
 /**

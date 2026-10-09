@@ -19,6 +19,15 @@ export interface ResolvedGate {
   nextAction: string | null;
   clarification: string | null;
   derived: boolean;
+  /** Set when a `done` Action was split and a remainder is still open. */
+  openRemainder: OpenRemainder | null;
+}
+
+export interface OpenRemainder {
+  ref: string;
+  actionId: string;
+  workItemId: string | null;
+  title: string | null;
 }
 
 export interface TheOneThing {

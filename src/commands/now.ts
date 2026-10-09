@@ -79,7 +79,13 @@ export function renderNowSuccess(response: CommandSuccess<NowCommandData>): stri
     return lines;
   }
 
-  lines.push(brief.target.text.toUpperCase());
+  // Labelled as a target. The bare, shouted text read as a claim about the
+  // present ("AUTOMATED PRODUCTION IS LIVE") directly above a gate count.
+  lines.push(`Target: ${brief.target.text}`);
+  // The reason is part of what defines the target, so it travels with it.
+  if (brief.target.why) {
+    lines.push(`Why:       ${wrap(brief.target.why, 11)}`);
+  }
   if (brief.target.looksLike) {
     lines.push(`Done when: ${brief.target.looksLike}`);
   }
@@ -134,6 +140,9 @@ export function renderNowSuccess(response: CommandSuccess<NowCommandData>): stri
   lines.push("Gates:");
   for (const gate of brief.gates) {
     lines.push(`  ${gateMark(gate.status)} ${gate.title}`);
+    if (gate.openRemainder) {
+      lines.push(`      split, remainder open: ${gate.openRemainder.actionId}${gate.nextAction ? ` — ${truncate(gate.nextAction, 80)}` : ""}`);
+    }
   }
 
   if (brief.warnings.length > 0) {

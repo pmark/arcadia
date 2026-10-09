@@ -31,6 +31,8 @@ pnpm arcadia now --narrate
 
 Drop `--narrate` for the deterministic pass, which makes no model calls and returns immediately.
 
+The headline is a **Target**, not a claim that it is already true, and the `why:` from `NORTH_STAR.md` is printed with it: the reason defines the target. A gate whose Action is `done` but was split stays *in progress* until every remainder in its `split_into` chain is done, and the next move names the first open remainder.
+
 Open **Flight Deck** at <http://arcadia-1.alpine-rattlesnake.ts.net:3020/flight-deck> (on this Mac: <http://127.0.0.1:3020/flight-deck>) for a read-only portfolio board. It groups the existing Work Queue and dashboard snapshot into Project and Plan lanes, with the same five dispatch gates: Needs You, Ready to dispatch, Running, Proving, and Landed. An object whose Plan cannot be derived is shown in that Project's **Unattached** lane rather than being hidden. Refreshing and browsing this board never changes Arcadia state.
 
 For the bounded v6 production trial, use the existing **Grant v6 remaining-stage
@@ -377,6 +379,10 @@ no plan carries any more, and an Action whose next move is still undecided each
 render as a marked gap. That unplanned stretch is usually the real distance to
 the target, and every surface that showed it as empty space taught you to read a
 short list as a short distance.
+
+The path also follows splits: an Action that was narrowed and marked `done`
+brings its open `split_into` remainders onto the path as steps, so a split never
+shortens the distance. The target's `why` is shown at the top of the screen.
 
 Nothing can be added on this screen. It is a projection of `NORTH_STAR.md` and
 the plans behind it — to change the path, change those documents. The same view

@@ -5,6 +5,7 @@ import { validationError } from "../cli/errors.js";
 import type { CapacityAdmissionDecision } from "../codingAgents/capacity.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { getProjectContext, getWorkItemByDocRef, listWorkItemDependencies } from "../db/repositories.js";
+import { findUnfinishedSplitRemainder } from "../docs/splitRemainders.js";
 import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
@@ -1154,15 +1155,18 @@ function isActionRefDone(db: Database.Database, actionRef: string, seen: Set<str
   seen.add(actionRef);
   const item = getWorkItemByDocRef(db, actionRef);
   if (!item || item.status !== "done") return false;
-  if (item.split_into_json) {
-    const remainderRefs = JSON.parse(item.split_into_json) as string[];
-    const remaindersDone = remainderRefs.every((remainderId) => {
-      const parsed = parseActionDocRef(actionRef);
-      const remainderRef = parsed ? actionDocRef(parsed.planSlug, remainderId) : remainderId;
-      return isActionRefDone(db, remainderRef, seen);
-    });
-    if (!remaindersDone) return false;
-  }
+  const remainderOpen = findUnfinishedSplitRemainder(
+    db,
+    item,
+    (remainder) =>
+      remainder.status === "done" &&
+      listWorkItemDependencies(db, remainder.id).every((dependency) =>
+        dependency.docRef
+          ? isActionRefDone(db, dependency.docRef, seen)
+          : isWorkItemChainDone(db, dependency.workItemId, dependency.status, seen)
+      )
+  );
+  if (remainderOpen) return false;
   return listWorkItemDependencies(db, item.id).every((dependency) =>
     dependency.docRef
       ? isActionRefDone(db, dependency.docRef, seen)

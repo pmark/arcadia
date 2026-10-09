@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { getWorkItem, listWorkItemDependencies } from "../db/repositories.js";
+import { listSplitRemainders } from "../docs/splitRemainders.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import type { GateStatus, NorthStarDocument, ResolvedGate } from "./types.js";
 
@@ -74,6 +75,8 @@ export interface PathBrief {
     declared: boolean;
     text: string;
     looksLike: string;
+    /** Why this outranks everything else, in the operator's words. Empty when undeclared. */
+    why: string;
     projectSlug: string | null;
     documentPath: string | null;
   };
@@ -89,21 +92,32 @@ export interface PathBrief {
   warnings: string[];
 }
 
+/** One entry of a walked chain: an Action, or a remainder no plan carries. */
+type ChainEntry = { item: WorkItemSummary; depth: number } | { missingRemainderRef: string };
+
 /**
- * Walk the `depends_on` closure behind one Action, dependencies first.
+ * Walk the `depends_on` closure behind one Action, dependencies first, then
+ * the Action, then the remainders of any split it names in `split_into`.
  *
  * Depth-first post-order is what puts a prerequisite ahead of the thing that
  * waits on it, which is the only ordering a path can honestly claim — plan
  * documents declare dependency, never dates. Cycles are possible in principle
  * because two documents can each declare the other, so visited ids terminate
  * the walk rather than trusting the data to be acyclic.
+ *
+ * A split Action is marked `done` for the slice it was narrowed to, and the
+ * rest of its scope lives in its `split_into` remainders. That is not a
+ * `depends_on` edge (see the comment in `src/ask/settlement.ts` on why), so
+ * the walk follows it as its own edge and a remainder that is still open
+ * shows up as a step instead of vanishing behind a `done` parent. A remainder
+ * commonly depends on the Action it was split from, which `seen` already holds.
  */
 function collectChain(
   db: Database.Database,
   rootId: string,
   seen: Set<string>,
   depth: number,
-  out: Array<{ item: WorkItemSummary; depth: number }>
+  out: ChainEntry[]
 ): void {
   if (seen.has(rootId)) return;
   seen.add(rootId);
@@ -113,7 +127,17 @@ function collectChain(
   }
 
   const item = getWorkItem(db, rootId);
-  if (item) out.push({ item, depth });
+  if (!item) return;
+  out.push({ item, depth });
+
+  for (const remainder of listSplitRemainders(db, item)) {
+    if (remainder.item) {
+      collectChain(db, remainder.item.id, seen, depth, out);
+    } else if (!seen.has(remainder.ref)) {
+      seen.add(remainder.ref);
+      out.push({ missingRemainderRef: remainder.ref });
+    }
+  }
 }
 
 function stateOf(item: WorkItemSummary): PathStepState {
@@ -164,11 +188,20 @@ function legFor(db: Database.Database, gate: ResolvedGate): PathLeg {
     return { ...base, nodes: [gap], done: gate.status === "done" ? 1 : 0, remaining: gate.status === "done" ? 0 : 1 };
   }
 
-  const collected: Array<{ item: WorkItemSummary; depth: number }> = [];
+  const collected: ChainEntry[] = [];
   collectChain(db, gate.workItemId, new Set(), 0, collected);
 
   const nodes: PathNode[] = [];
-  for (const { item, depth } of collected) {
+  for (const entry of collected) {
+    if ("missingRemainderRef" in entry) {
+      nodes.push({
+        kind: "gap",
+        reason: "missing_action",
+        detail: `This work was split and \`${entry.missingRemainderRef}\` was named as its remainder, but no plan document currently carries it. Either the reference is stale or the remainder was never written up.`
+      });
+      continue;
+    }
+    const { item, depth } = entry;
     if (nextMoveUndefined(item)) {
       // The exact recorded question, not a paraphrase — a generic "not decided
       // yet" is what let an operator conflate this gap with an unrelated
@@ -215,7 +248,7 @@ export function computePathBrief(
   if (!northStar) {
     return {
       generatedAt,
-      target: { declared: false, text: "No target declared", looksLike: "", projectSlug: null, documentPath: null },
+      target: { declared: false, text: "No target declared", looksLike: "", why: "", projectSlug: null, documentPath: null },
       legs: [],
       totals: { gates: 0, gatesDone: 0, steps: 0, stepsDone: 0, remaining: 0, gaps: 0 },
       warnings: ["No NORTH_STAR.md in this workspace, so there is no declared finish line to path toward."]
@@ -236,6 +269,7 @@ export function computePathBrief(
       declared: true,
       text: northStar.target,
       looksLike: northStar.looksLike,
+      why: northStar.why,
       projectSlug: northStar.projectSlug,
       documentPath: northStar.path
     },

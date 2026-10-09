@@ -6,6 +6,8 @@ import {
   listProjects,
   listReviewItems
 } from "../db/repositories.js";
+import { findUnfinishedSplitRemainder } from "../docs/splitRemainders.js";
+import { parseActionDocRef } from "../docs/types.js";
 import type { ReviewItemSummary, WorkItemSummary } from "../domain/types.js";
 import { daysSinceLastCommit, readRepositoryActivity } from "./attention.js";
 import type {
@@ -132,7 +134,8 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
         workItemId: null,
         nextAction: null,
         clarification: null,
-        derived: false
+        derived: false,
+        openRemainder: null
       };
     }
 
@@ -145,7 +148,33 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
         workItemId: null,
         nextAction: null,
         clarification: null,
-        derived: false
+        derived: false,
+        openRemainder: null
+      };
+    }
+
+    // A `done` Action that was split is finished only for the slice it was
+    // narrowed to. The rest of its scope lives in its `split_into` remainders,
+    // and a gate that read `done` while one is open is how `arcadia now` once
+    // announced a target as reached with the proof unfinished.
+    const remainder = item.status === "done" ? findUnfinishedSplitRemainder(db, item) : null;
+    if (remainder) {
+      const remainderItem = remainder.item;
+      return {
+        ...gate,
+        status: "in_progress" as const,
+        workItemId: item.id,
+        nextAction: remainderItem
+          ? remainderItem.next_action
+          : `Restore remainder \`${remainder.ref}\`: \`${gate.actionRef}\` was split into it, but no plan carries it.`,
+        clarification: remainderItem?.clarification_status ?? null,
+        derived: true,
+        openRemainder: {
+          ref: remainder.ref,
+          actionId: parseActionDocRef(remainder.ref)?.actionId ?? remainder.ref,
+          workItemId: remainderItem?.id ?? null,
+          title: remainderItem?.title ?? null
+        }
       };
     }
 
@@ -155,7 +184,8 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
       workItemId: item.id,
       nextAction: item.next_action,
       clarification: item.clarification_status,
-      derived: true
+      derived: true,
+      openRemainder: null
     };
   });
 }
@@ -300,11 +330,15 @@ function gateAsOneThing(
   projectName: string | null,
   prefix: string | null
 ): TheOneThing {
+  // A split gate's next move belongs to its open remainder, so name that
+  // Action: "do the next thing" is not actionable without saying which one.
+  const remainder = gate.openRemainder;
+  const doThis = gate.nextAction ?? gate.title;
   return {
     kind: "action",
-    id: gate.workItemId,
+    id: remainder?.workItemId ?? gate.workItemId,
     title: gate.title,
-    doThis: gate.nextAction ?? gate.title,
+    doThis: remainder?.workItemId ? `${remainder.actionId}: ${doThis}` : doThis,
     unlocks: prefix ? `${prefix} ${remainingLine(open)}.` : `${remainingLine(open)}.`,
     projectName,
     onTarget: true
