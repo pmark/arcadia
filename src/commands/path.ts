@@ -53,7 +53,9 @@ export function renderPathSuccess(response: CommandSuccess<PathCommandData>): st
   const data = response.data;
   if (!data.target.declared) return data.warnings;
 
-  const lines: string[] = [data.target.text.toUpperCase(), `Done when: ${data.target.looksLike}`, ""];
+  const lines: string[] = [`Target: ${data.target.text}`];
+  if (data.target.why) lines.push(`Why: ${data.target.why}`);
+  lines.push(`Done when: ${data.target.looksLike}`, "");
   lines.push(
     `${data.totals.remaining} step${data.totals.remaining === 1 ? "" : "s"} left across ${data.totals.gates} gates` +
       (data.totals.gaps > 0 ? `  ·  ${data.totals.gaps} unplanned` : "")

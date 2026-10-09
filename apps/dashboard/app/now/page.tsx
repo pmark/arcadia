@@ -154,10 +154,12 @@ export default function NowPage() {
       <div className="grid min-w-0 gap-7 pb-4">
         <header className="grid min-w-0 gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">North Star</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Target</span>
             <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${drift.chip}`}>{drift.label}</span>
           </div>
           <h1 className="text-[34px] font-bold leading-[1.05] tracking-tight text-ink">{brief.target.text}</h1>
+          {/* The reason is part of what defines the target, so it sits with it. */}
+          {brief.target.why ? <p className="text-sm leading-snug text-ink/80">Why: {brief.target.why}</p> : null}
           {brief.target.looksLike ? (
             <p className="text-sm leading-snug text-muted">Done when {lowerFirst(brief.target.looksLike)}</p>
           ) : null}
@@ -373,10 +375,17 @@ function Gates({
               >
                 {busy ? "…" : mark.glyph}
               </span>
-              <span
-                className={`text-sm leading-snug ${gate.status === "done" ? "text-muted line-through" : "text-ink"}`}
-              >
-                {gate.title}
+              <span className="min-w-0">
+                <span
+                  className={`text-sm leading-snug ${gate.status === "done" ? "text-muted line-through" : "text-ink"}`}
+                >
+                  {gate.title}
+                </span>
+                {gate.openRemainder ? (
+                  <span className="mt-0.5 block text-xs leading-snug text-muted">
+                    Split, remainder open: {gate.openRemainder.actionId}
+                  </span>
+                ) : null}
               </span>
             </>
           );

@@ -10,6 +10,8 @@ import {
   replaceDocumentWorkItemDependencies,
   setWorkItemDocRef
 } from "../src/db/repositories.js";
+import { createSuccess } from "../src/cli/response.js";
+import { renderPathSuccess } from "../src/commands/path.js";
 import { parseDoc } from "../src/docs/parse.js";
 import { computeNowBrief } from "../src/northStar/compute.js";
 import { loadNorthStar, northStarPath } from "../src/northStar/document.js";
@@ -117,6 +119,73 @@ describe("the path to the target", () => {
     expect(brief.target.declared).toBe(false);
     expect(brief.legs).toEqual([]);
     expect(brief.warnings[0]).toMatch(/no declared finish line/);
+  });
+});
+
+describe("a gate whose Action was split", () => {
+  it("shows an open remainder as a step that counts as remaining, and holds the gate open", () => {
+    const workspace = splitWorkspace({ remainderStatus: "open" });
+    const { leg, brief } = splitLeg(workspace);
+
+    // The remainder depends on the Action it was split from, so the walk must
+    // not loop back through that edge.
+    expect(steps(leg.nodes).map((step) => step.title)).toEqual(["Narrowed proof", "Remainder one", "Remainder two"]);
+    expect(steps(leg.nodes).map((step) => step.state)).toEqual(["done", "done", "planned"]);
+    expect(leg.gateStatus).toBe("in_progress");
+    expect(leg.done).toBe(2);
+    expect(leg.remaining).toBe(1);
+    expect(brief.totals.gatesDone).toBe(0);
+    expect(brief.totals.remaining).toBe(1);
+  });
+
+  it("reads done with every step done once the whole split chain is done", () => {
+    const workspace = splitWorkspace({ remainderStatus: "done" });
+    const { leg, brief } = splitLeg(workspace);
+
+    expect(steps(leg.nodes).map((step) => step.state)).toEqual(["done", "done", "done"]);
+    expect(leg.gateStatus).toBe("done");
+    expect(leg.remaining).toBe(0);
+    expect(brief.totals.gatesDone).toBe(1);
+  });
+
+  it("terminates on a split cycle", () => {
+    const workspace = splitWorkspace({ remainderStatus: "done", cycle: true });
+    const { leg } = splitLeg(workspace);
+    expect(steps(leg.nodes)).toHaveLength(3);
+  });
+
+  it("names a remainder no plan carries as a gap rather than dropping it", () => {
+    const workspace = splitWorkspace({ remainderStatus: "done", ghostRemainder: true });
+    const { leg } = splitLeg(workspace);
+
+    expect(leg.gateStatus).toBe("in_progress");
+    expect(leg.nodes.some((node) => node.kind === "gap" && node.reason === "missing_action")).toBe(true);
+  });
+});
+
+describe("the target's reason", () => {
+  it("is carried on the path brief", () => {
+    const workspace = seededWorkspace();
+    const brief = withDatabase(workspace, (db) => {
+      const northStar = loadNorthStar(workspace);
+      return computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    });
+    expect(brief.target.why).toBe("Nothing else is real until this happens.");
+  });
+
+  it("renders in `arcadia path` as a labelled target with its reason", () => {
+    const workspace = seededWorkspace();
+    const brief = withDatabase(workspace, (db) => {
+      const northStar = loadNorthStar(workspace);
+      return computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    });
+
+    const lines = renderPathSuccess(createSuccess({ command: "path", workspace, data: brief }));
+    expect(lines.slice(0, 3)).toEqual([
+      "Target: Launch the thing",
+      "Why: Nothing else is real until this happens.",
+      "Done when: A stranger uses it and says something about it."
+    ]);
   });
 });
 
@@ -245,6 +314,82 @@ function seededWorkspace(options: { gateClarification?: string; gateOpenQuestion
   return workspace;
 }
 
+/**
+ * A gate tracking `plan/split#proof`, which was narrowed to a finished slice
+ * (`done`) and split into `remainder-one` then `remainder-two`. Each remainder
+ * depends on the Action it was split from, as settlement writes them.
+ */
+function splitWorkspace(options: { remainderStatus: "open" | "done"; cycle?: boolean; ghostRemainder?: boolean }): string {
+  const workspace = initializedWorkspace();
+  writeFileSync(
+    northStarPath(workspace),
+    [
+      "---",
+      "arcadia: v1",
+      "type: north_star",
+      "target: Launch the thing",
+      "project: the-thing",
+      "why: Nothing else is real until this happens.",
+      "looks_like: A stranger uses it.",
+      "gates:",
+      "  - id: proof",
+      "    title: The proof",
+      "    action: plan/split#proof",
+      "---",
+      "",
+      "# North Star",
+      ""
+    ].join("\n"),
+    "utf8"
+  );
+
+  withDatabase(workspace, (db) => {
+    const { project } = createProjectWithInitialWork(db, {
+      name: "The Thing",
+      mission: "Prove the thing works.",
+      status: "active",
+      currentMilestone: "First milestone",
+      nextAction: "Do the first thing.",
+      workClassification: "agent"
+    });
+
+    seedAction(db, project.id, {
+      title: "Narrowed proof",
+      docRef: "plan/split#proof",
+      status: "done",
+      splitInto: options.ghostRemainder ? ["remainder-one", "ghost"] : ["remainder-one"]
+    });
+    seedAction(db, project.id, {
+      title: "Remainder one",
+      docRef: "plan/split#remainder-one",
+      status: "done",
+      splitInto: ["remainder-two"]
+    });
+    seedAction(db, project.id, {
+      title: "Remainder two",
+      docRef: "plan/split#remainder-two",
+      status: options.remainderStatus,
+      splitInto: options.cycle ? ["proof"] : undefined
+    });
+
+    const proof = getWorkItemByDocRef(db, "plan/split#proof")!;
+    const one = getWorkItemByDocRef(db, "plan/split#remainder-one")!;
+    const two = getWorkItemByDocRef(db, "plan/split#remainder-two")!;
+    replaceDocumentWorkItemDependencies(db, one.id, "plan/split#remainder-one", [proof.id]);
+    replaceDocumentWorkItemDependencies(db, two.id, "plan/split#remainder-two", [proof.id]);
+  });
+
+  return workspace;
+}
+
+function splitLeg(workspace: string) {
+  return withDatabase(workspace, (db) => {
+    const northStar = loadNorthStar(workspace);
+    const brief = computePathBrief(db, northStar, computeNowBrief(db, northStar, {}).gates);
+    return { brief, leg: brief.legs.find((entry) => entry.gateId === "proof")! };
+  });
+}
+
 function appendGate(workspace: string, lines: string[]): void {
   const file = northStarPath(workspace);
   const source = readFileSync(file, "utf8");
@@ -255,7 +400,14 @@ function appendGate(workspace: string, lines: string[]): void {
 function seedAction(
   db: Parameters<typeof createWorkItemWithOptionalArtifact>[0],
   projectId: string,
-  input: { title: string; docRef: string; status: string; clarification?: string; openQuestion?: string }
+  input: {
+    title: string;
+    docRef: string;
+    status: string;
+    clarification?: string;
+    openQuestion?: string;
+    splitInto?: string[];
+  }
 ): void {
   const { workItem } = createWorkItemWithOptionalArtifact(db, {
     projectId,
@@ -272,6 +424,9 @@ function seedAction(
     input.openQuestion ?? null,
     workItem.id
   );
+  if (input.splitInto) {
+    db.prepare("UPDATE work_items SET split_into_json = ? WHERE id = ?").run(JSON.stringify(input.splitInto), workItem.id);
+  }
 }
 
 function initializedWorkspace(): string {

@@ -9,6 +9,8 @@ import {
   createWorkItemWithOptionalArtifact,
   setWorkItemDocRef
 } from "../src/db/repositories.js";
+import { createSuccess } from "../src/cli/response.js";
+import { renderNowSuccess } from "../src/commands/now.js";
 import { computeNowBrief } from "../src/northStar/compute.js";
 import { collectNarrativeEvidence } from "../src/northStar/narrative.js";
 import {
@@ -364,6 +366,199 @@ describe("the Now brief", () => {
   });
 });
 
+describe("a gate whose Action was split", () => {
+  it("reads in_progress, not done, while a remainder is open, and names that remainder", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, {
+        title: "Narrowed proof",
+        docRef: "plan/p#done-one",
+        status: "done",
+        nextAction: "Already did this slice.",
+        splitInto: ["done-one-rest"]
+      });
+      seedAction(db, project.id, {
+        title: "Rest of the proof",
+        docRef: "plan/p#done-one-rest",
+        status: "open",
+        clarification: "clarified",
+        nextAction: "Run the second Action to completion."
+      });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+    expect(gate.status).toBe("in_progress");
+    expect(gate.nextAction).toBe("Run the second Action to completion.");
+    expect(gate.openRemainder).toMatchObject({ ref: "plan/p#done-one-rest", actionId: "done-one-rest", title: "Rest of the proof" });
+    expect(brief.distance.done).toBe(0);
+    expect(brief.distance.remaining).toBe(3);
+    // The one thing names the remainder, not the already-finished parent step.
+    expect(brief.theOneThing.doThis).toBe("done-one-rest: Run the second Action to completion.");
+  });
+
+  it("follows a remainder that was itself split, transitively", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "A", docRef: "plan/p#done-one", status: "done", splitInto: ["b"] });
+      seedAction(db, project.id, { title: "B", docRef: "plan/p#b", status: "done", splitInto: ["c"] });
+      seedAction(db, project.id, {
+        title: "C",
+        docRef: "plan/p#c",
+        status: "open",
+        clarification: "clarified",
+        nextAction: "Do the deepest remainder."
+      });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+    expect(gate.status).toBe("in_progress");
+    expect(gate.openRemainder?.actionId).toBe("c");
+    expect(gate.nextAction).toBe("Do the deepest remainder.");
+  });
+
+  it("reads done once every remainder in the chain is done", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "A", docRef: "plan/p#done-one", status: "done", splitInto: ["b"] });
+      seedAction(db, project.id, { title: "B", docRef: "plan/p#b", status: "done", splitInto: ["c"] });
+      seedAction(db, project.id, { title: "C", docRef: "plan/p#c", status: "done" });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+    expect(gate.status).toBe("done");
+    expect(gate.openRemainder).toBeNull();
+    expect(brief.distance.done).toBe(1);
+  });
+
+  it("terminates on a split cycle instead of looping", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "A", docRef: "plan/p#done-one", status: "done", splitInto: ["b"] });
+      seedAction(db, project.id, { title: "B", docRef: "plan/p#b", status: "done", splitInto: ["done-one"] });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    expect(brief.gates.find((entry) => entry.id === "done-one")?.status).toBe("done");
+  });
+
+  it("does not call an untouched open remainder underway, but does when the remainder itself is in progress", () => {
+    const oneThingFor = (remainderStatus: string) => {
+      const workspace = initializedWorkspace();
+      writeNorthStar(workspace, GATE_DOC);
+      return withDatabase(workspace, (db) => {
+        const { project } = seedProject(db);
+        seedAction(db, project.id, { title: "Narrowed proof", docRef: "plan/p#done-one", status: "done", splitInto: ["rest"] });
+        seedAction(db, project.id, {
+          title: "Rest of the proof",
+          docRef: "plan/p#rest",
+          status: remainderStatus,
+          clarification: "clarified",
+          nextAction: "Run the second Action."
+        });
+        return computeNowBrief(db, loadNorthStar(workspace)).theOneThing;
+      });
+    };
+
+    const untouched = oneThingFor("open");
+    expect(untouched.doThis).toBe("rest: Run the second Action.");
+    expect(untouched.unlocks).not.toContain("Already underway");
+
+    const underway = oneThingFor("in_progress");
+    expect(underway.doThis).toBe("rest: Run the second Action.");
+    expect(underway.unlocks).toContain("Already underway");
+  });
+
+  it("asks to clarify the open remainder, by its id and title, not the finished parent gate", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const { one, remainderId, parentId } = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "Narrowed proof", docRef: "plan/p#done-one", status: "done", splitInto: ["rest"] });
+      seedAction(db, project.id, {
+        title: "Rest of the proof",
+        docRef: "plan/p#rest",
+        status: "open",
+        clarification: "unclarified",
+        nextAction: "Something vague."
+      });
+      const brief = computeNowBrief(db, loadNorthStar(workspace));
+      const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+      return { one: brief.theOneThing, remainderId: gate.openRemainder?.workItemId, parentId: gate.workItemId };
+    });
+
+    expect(one.kind).toBe("clarify");
+    expect(remainderId).toBeTruthy();
+    expect(remainderId).not.toBe(parentId);
+    expect(one.id).toBe(remainderId);
+    expect(one.title).toBe("Rest of the proof");
+    expect(one.doThis).toBe('Clarify "Rest of the proof" until it names one concrete next move.');
+    expect(one.doThis).not.toContain("First gate");
+  });
+
+  it("keeps a gate in_progress, and says why, when the remainder is named but no plan carries it", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const brief = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "A", docRef: "plan/p#done-one", status: "done", splitInto: ["ghost"] });
+      return computeNowBrief(db, loadNorthStar(workspace));
+    });
+
+    const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+    expect(gate.status).toBe("in_progress");
+    expect(gate.openRemainder).toMatchObject({ ref: "plan/p#ghost", workItemId: null });
+    expect(gate.nextAction).toContain("plan/p#ghost");
+  });
+});
+
+describe("the target's reason", () => {
+  const WHY = "Nothing else is real until this happens.";
+
+  it("is carried on the brief", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, [`why: ${WHY}`, ...GATE_DOC]);
+    const brief = withDatabase(workspace, (db) => computeNowBrief(db, loadNorthStar(workspace)));
+    expect(brief.target.why).toBe(WHY);
+  });
+
+  it("renders in `arcadia now` as a labelled target with its reason, not shouted text", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, [`why: ${WHY}`, ...GATE_DOC]);
+    const brief = withDatabase(workspace, (db) => computeNowBrief(db, loadNorthStar(workspace)));
+
+    const lines = renderNowSuccess(createSuccess({ command: "now", workspace, data: brief }));
+    expect(lines[0]).toBe("Target: Launch the thing");
+    expect(lines.join("\n")).not.toContain("LAUNCH THE THING");
+    expect(lines.find((line) => line.startsWith("Why:"))).toContain(WHY);
+  });
+
+  it("omits the reason line when the document declares none", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+    const brief = withDatabase(workspace, (db) => computeNowBrief(db, loadNorthStar(workspace)));
+
+    const lines = renderNowSuccess(createSuccess({ command: "now", workspace, data: brief }));
+    expect(lines.some((line) => line.startsWith("Why:"))).toBe(false);
+  });
+});
+
 const GATE_DOC = [
   "target: Launch the thing",
   "project: the-thing",
@@ -426,7 +621,14 @@ function pausedProject(db: Parameters<typeof createProjectWithInitialWork>[0], n
 function seedAction(
   db: Parameters<typeof createWorkItemWithOptionalArtifact>[0],
   projectId: string,
-  input: { title: string; docRef: string; status: string; clarification?: string; nextAction?: string }
+  input: {
+    title: string;
+    docRef: string;
+    status: string;
+    clarification?: string;
+    nextAction?: string;
+    splitInto?: string[];
+  }
 ): void {
   const { workItem } = createWorkItemWithOptionalArtifact(db, {
     projectId,
@@ -442,6 +644,9 @@ function seedAction(
     input.clarification ?? null,
     workItem.id
   );
+  if (input.splitInto) {
+    db.prepare("UPDATE work_items SET split_into_json = ? WHERE id = ?").run(JSON.stringify(input.splitInto), workItem.id);
+  }
 }
 
 function initializedWorkspace(): string {

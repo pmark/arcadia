@@ -87,8 +87,9 @@ export default function PathPage() {
   return (
     <MobileShell>
       <header className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">The path to</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Target</p>
         <h1 className="mt-1 text-2xl font-bold leading-7">{brief.target.text}</h1>
+        {brief.target.why ? <p className="mt-2 text-sm text-ink/80">Why: {brief.target.why}</p> : null}
         <p className="mt-2 text-sm text-muted">{brief.target.looksLike}</p>
       </header>
 
