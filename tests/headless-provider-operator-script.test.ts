@@ -418,7 +418,8 @@ esac
     expect(outcome.outcome).toBe("failed");
     expect(outcome.stage).toBe("interrupted");
     expect(outcome.reason).toBe("interrupted by SIGTERM");
-    expect(outcome.providers.map((entry) => entry.provider)).toEqual(["codex"]);
+    expect(outcome.providers.map((entry) => [entry.provider, entry.outcome])).toEqual([["codex", "FAIL"], ["opencode", "SKIPPED"], ["claude", "SKIPPED"]]);
+    expect(outcome.providers[1].reason).toBe("interrupted by SIGTERM before this provider started");
     expect(outcome.providers[0].timedOut).toBe(false);
     expect(calls(callLog).some((call) => headlessRun(call) && call.name !== "codex")).toBe(false);
     expect(readFileSync(path.join(runDirectory, "codex.log"), "utf8")).toContain("SIGTERM received by the test");

@@ -124,7 +124,7 @@ export function describeClaudeResult(summary: ClaudeStreamSummary): string {
  */
 export function claudePreservationDenied(log: string): string | null {
   const summary = parseClaudeStream(log);
-  const denied = [...summary.permissionDenials, ...summary.toolErrors.filter((error) => /permission|haven't granted|requested/i.test(error.message))];
+  const denied = [...summary.permissionDenials, ...summary.toolErrors.filter((error) => /haven't granted|requested permissions|permission to use/i.test(error.message))];
   for (const entry of denied) {
     const command = entry.command ?? "";
     if (/arcadia-preserve-broker|\bgit\s+(-\S+\s+)*(commit|add)\b/.test(command)) return clip(command, 120);

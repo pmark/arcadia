@@ -707,7 +707,7 @@ function evaluateAgentPart(context: Context, result: ProviderResult, input: {
   const add = (id: string, label: string, pass: boolean, detail: string) => criteria.push({ id, label, pass, detail });
   // Claude's stream-json ends with a result event that can say is_error even when the process exits 0.
   const claudeStream = result.provider === "claude" ? parseClaudeStream(readLog(result.logPath)) : null;
-  const claudeErrored = claudeStream?.result?.isError === true;
+  const claudeErrored = claudeStream?.result != null && (claudeStream.result.isError || (claudeStream.result.subtype !== null && claudeStream.result.subtype !== "success"));
   add("exit", `provider exited 0 within the ${formatCap(input.timeoutMs)} cap`,
     input.run.exitCode === 0 && !input.run.timedOut && !claudeErrored,
     (input.run.timedOut ? `timed out after ${Math.round(input.run.durationMs / 1000)}s` : `exit ${input.run.exitCode ?? "none"}${input.run.signal ? ` (${input.run.signal})` : ""} after ${Math.round(input.run.durationMs / 1000)}s`)
@@ -1260,6 +1260,15 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
       }
     } finally {
       for (const [signal, handler] of handlers) source.off(signal, handler);
+    }
+    // A signal that arrived mid-run leaves later providers unstarted: they still appear in the receipt, as SKIPPED.
+    for (const provider of runnable) {
+      if (!providers.some((result) => result.provider === provider)) {
+        const unstarted = newResult(provider);
+        unstarted.outcome = "SKIPPED";
+        unstarted.reason = `interrupted by ${context.interrupted ?? "a signal"} before this provider started`;
+        providers.push(unstarted);
+      }
     }
     providers.sort((a, b) => order.indexOf(a.provider) - order.indexOf(b.provider));
 
