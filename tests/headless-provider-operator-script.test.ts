@@ -8,6 +8,8 @@ import {
   FIXTURE_ACTION,
   brokerRefusalInLog,
   classifyLeakChanges,
+  leakCheckChangedFields,
+  parseCliJson,
   codexTrustOverrideArgs,
   commitState,
   withCodexTrustOverrides,
@@ -797,5 +799,19 @@ setInterval(() => {}, 1000);
     const [runDir] = runDirs(fixture) as [string];
     expect(JSON.parse(readFileSync(path.join(runDir, "receipt.json"), "utf8")).outcome).toBe("succeeded");
     expect(existsSync(path.join(runDir, "failure-handoff.md"))).toBe(false);
+  });
+});
+
+describe("leak-check error JSON", () => {
+  it("reads the failure JSON from stderr, where the CLI writes it, and attributes the Codex trust entry", () => {
+    const failure = JSON.stringify({ ok: false, error: { code: "WORKSPACE_LEAK_DETECTED", message: "changed", details: { changes: [{ field: "hashes.codexConfig" }] } } }, null, 2);
+    const fields = leakCheckChangedFields(parseCliJson("", failure + "\n"));
+    expect(fields).toEqual(["hashes.codexConfig"]);
+    expect(classifyLeakChanges(true, fields)).toEqual({ codexTrustEntry: true, otherChanges: [] });
+  });
+
+  it("prefers stdout JSON and yields null fields when neither stream is JSON", () => {
+    expect(parseCliJson('{"ok":true}', "noise")).toEqual({ ok: true });
+    expect(leakCheckChangedFields(parseCliJson("plain", "Error [X]: y"))).toBeNull();
   });
 });
