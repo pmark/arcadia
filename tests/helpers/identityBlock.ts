@@ -8,10 +8,15 @@ import { resolveAgentIdentity } from "../../src/codingAgents/agentIdentity.js";
  */
 export function expectIdentityBlock(prompt: string, agent: string, tier: string, role: string = "builder"): void {
   expect(prompt.match(/^Identity:$/gm) ?? [], "prompt must carry exactly one Identity block").toHaveLength(1);
-  const self = /^You are (.+?) <([^>]+)> \(([a-z]+), ([a-z]+), ([a-z]+)\);/m.exec(prompt);
+  const sessionSelf = /^You are .+? \(Git identity: (.+?) <([^>]+)>; effort tier ([a-z]+); ([a-z]+), ([a-z]+)\);/m.exec(prompt);
+  const legacySelf = /^You are (.+?) <([^>]+)> \(([a-z]+), ([a-z]+), ([a-z]+)\);/m.exec(prompt);
+  const self = sessionSelf ?? legacySelf;
   expect(self, "Identity block must name its self identity").not.toBeNull();
   const expected = resolveAgentIdentity(agent, tier, role);
-  expect({ name: self![1], email: self![2], agent: self![3], tier: self![4], role: self![5] }).toEqual({
+  const actual = sessionSelf
+    ? { name: sessionSelf[1], email: sessionSelf[2], tier: sessionSelf[3], agent: sessionSelf[4], role: sessionSelf[5] }
+    : { name: legacySelf![1], email: legacySelf![2], agent: legacySelf![3], tier: legacySelf![4], role: legacySelf![5] };
+  expect(actual).toEqual({
     name: expected.name,
     email: expected.email,
     agent: expected.agent,

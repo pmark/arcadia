@@ -69,21 +69,23 @@ describe("arcadia identity resolve", () => {
   it("renders a fully executable, copy-pasteable env-prefixed git commit", () => {
     const response = runIdentityResolveCommand({ agent: "claude", tier: "standard" });
     const lines = renderIdentityResolveSuccess(response);
-    expect(lines[0]).toBe("Claudia Mason <claudia.mason@agents.arcadia.local>");
-    expect(lines[1]).toBe(
+    expect(lines[0]).toBe("Agent: Claudia Mason (effort tier standard)");
+    expect(lines[1]).toBe("Git identity: Claudia Mason <claudia.mason@agents.arcadia.local>");
+    expect(lines[2]).toBe(
       'GIT_AUTHOR_NAME="Claudia Mason" GIT_AUTHOR_EMAIL="claudia.mason@agents.arcadia.local" ' +
         'GIT_COMMITTER_NAME="Claudia Mason" GIT_COMMITTER_EMAIL="claudia.mason@agents.arcadia.local" git commit'
     );
     // No dangling placeholder token: this is a real command Git will run as-is.
-    expect(lines[1].endsWith("...")).toBe(false);
-    expect(lines[2]).toBe("Comment signature: — Claudia Mason <claudia.mason@agents.arcadia.local>");
+    expect(lines[2].endsWith("...")).toBe(false);
+    expect(lines[3]).toBe("Comment signature: — Claudia Mason <claudia.mason@agents.arcadia.local>");
   });
 
   it("prints its own signature and its teammates after the commit prefix", () => {
     const lines = renderIdentityResolveSuccess(runIdentityResolveCommand({ agent: "codex", tier: "heavy", role: "critic" }));
     const text = lines.join("\n");
     expect(text).toContain(
-      "You are Critic Cody Atlas <critic.cody.atlas@agents.arcadia.local> (codex, heavy, critic); sign every comment and commit exactly so"
+      "You are Critic Cody Atlas <critic.cody.atlas@agents.arcadia.local> (codex, heavy, critic); " +
+        "sign every comment and commit exactly as the Git identity shown"
     );
     expect(text).toContain("Your teammates are Claudia Swift/Mason/Atlas (claude) and Owen Swift/Mason/Atlas (opencode)");
     expect(text).toContain("never sign as the operator");

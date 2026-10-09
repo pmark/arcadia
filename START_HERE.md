@@ -2050,14 +2050,19 @@ spend, or use credentials; repository reconciliation is a separate governed
 transition.
 
 Sessions Arcadia launches commit under a **semantic agent Git identity**, so
-`git log` names the platform and model tier instead of you. The name is the
-platform plus the tier: Codex is `Cody Swift` / `Cody Mason` / `Cody Atlas`,
+`git log` names the platform and reasoning-effort tier instead of you. The name is the
+platform plus the effort tier: Codex is `Cody Swift` / `Cody Mason` / `Cody Atlas`,
 Claude is `Claudia Swift` / `Claudia Mason` / `Claudia Atlas`, and OpenCode is
 `Owen Swift` / `Owen Mason` / `Owen Atlas`, for light / standard / heavy, each
-with a matching local address on `agents.arcadia.local`. Arcadia sets only
+with a matching local address on `agents.arcadia.local`. A human-facing
+session designation shows the platform, exact selected model ID, and reasoning
+effort, for example `Cody · gpt-6.1-astra · High reasoning`; `Atlas` is only
+the effort-based Git name suffix, never a model designation. `arcadia identity
+resolve` prints this session designation separately from the stable Git name.
+Arcadia sets only
 `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and
 `GIT_COMMITTER_EMAIL` on that one execution — it never reads or writes your
-global Git configuration — and a model whose tier cannot be resolved refuses
+global Git configuration — and a session whose reasoning-effort tier cannot be resolved refuses
 the launch rather than committing under your name. The same environment
 propagates to commits Arcadia itself makes from inside the Session.
 

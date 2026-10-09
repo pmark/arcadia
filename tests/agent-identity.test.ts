@@ -124,7 +124,7 @@ describe("agent Git identity role", () => {
 });
 
 describe("tier resolution", () => {
-  it("reverse-maps each agent's bound models to their tier", () => {
+  it("reverse-maps each agent's bound models to their model-selection tier", () => {
     expect(tierForAgentModel("codex", "gpt-5.6-luna")).toBe("light");
     expect(tierForAgentModel("codex", "gpt-5.6-terra")).toBe("standard");
     expect(tierForAgentModel("codex", "gpt-6.1-sol")).toBe("heavy");
@@ -155,10 +155,12 @@ describe("tier resolution", () => {
 });
 
 describe("session identity resolution", () => {
-  it("prefers the model's tier over the effort", () => {
+  it("uses reasoning effort for identity and preserves model selection separately", () => {
     expect(resolveSessionAgentIdentity({ agent: "claude", model: "sonnet", effort: "e3_deep" })).toMatchObject({
-      tier: "standard",
-      name: "Claudia Mason"
+      tier: "heavy",
+      name: "Claudia Atlas",
+      model: "sonnet",
+      effort: "e3_deep"
     });
   });
 
@@ -171,7 +173,7 @@ describe("session identity resolution", () => {
 
   it("refuses a model and effort that resolve to no tier", () => {
     expect(() => resolveSessionAgentIdentity({ agent: "opencode", model: "mystery-model", effort: "e9_unknown" })).toThrow(
-      /cannot determine the model tier/i
+      /cannot determine the reasoning-effort tier/i
     );
     expect(() => resolveSessionAgentIdentity({ agent: "opencode", model: "mystery-model" })).toThrow(ArcadiaError);
   });
