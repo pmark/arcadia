@@ -244,6 +244,8 @@ export function runSessionLaunchCommand(options: {
   requestId: string;
   previewFingerprint?: string;
   standingPolicy?: boolean;
+  /** Per-launch wall-clock limit override in minutes (bounded Session lifetime). */
+  timeLimitMinutes?: number;
 }): CommandSuccess<SessionLaunchCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
@@ -286,6 +288,7 @@ export function runSessionLaunchCommand(options: {
       requestId: options.requestId,
       previewFingerprint: options.previewFingerprint,
       standingPolicy: options.standingPolicy,
+      ...(options.timeLimitMinutes !== undefined ? { timeLimitMs: Math.round(options.timeLimitMinutes * 60_000) } : {}),
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
     });

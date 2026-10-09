@@ -2047,6 +2047,20 @@ login`), or the installed provider lacks the headless flags
 `--interactive` to `go --launch`; that Session is not logged and records no
 exit code.
 
+**A Session cannot hold the repository lease forever.** The worker tick ends a
+live Session's tmux session (only `tmux kill-session`; its worktree and branch
+stay) when (1) its wall-clock limit passes — `arcadia session launch
+--time-limit-minutes N` for one launch, else the active production scope's
+`sessionTimeLimitMs`, else 120 minutes (the default also applies when no policy
+is readable or production is Inactive) — or (2) its pane shows a permission
+prompt, auth failure or provider limit that did not change for the 20-minute
+stall deadline. The tick then reconciles it like any other exit: the Session
+exit receipt's reason starts `Stopped by Arcadia:` with the cause, and the lease
+is released. A Session that is still producing output or Run activity is never
+stopped before its limit; a silent Session with no blocking message is only
+flagged stalled until the limit. Look at the exit receipt for what to do next
+(`arcadia session reconcile <id>` shows it).
+
 Every provider is launched with an actionable **Action brief** as its prompt,
 not session metadata: the Action title and `next_action`, every acceptance
 criterion verbatim and in the plan's own order, the candidate worktree and

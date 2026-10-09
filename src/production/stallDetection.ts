@@ -35,13 +35,16 @@ function hashOf(text: string): string {
  * own. A confirmed stall or confirmed activity always requires the Run/receipt
  * signal to agree, or the pane signal to agree, on their own separate terms.
  *
- * This never touches `agent_sessions.status`, and therefore never releases
- * the repository lease that status holds (`getRepositoryLease` only reads
- * `status IN ('prepared', 'running')`) -- a suspected stall is exactly the
- * case where the lease must survive untouched, pending operator judgment or a
- * separately bounded repair, per this Action's own acceptance criteria. Only
- * a confirmed-dead tmux (the caller's other branch, `!tmux.hasSession(...)`)
- * goes through `reconcileSessionExit`.
+ * This never touches `agent_sessions.status` itself, and so never releases
+ * the repository lease by itself. A suspected stall no longer keeps the lease
+ * indefinitely, though: `src/production/sessionLifetime.ts` ends the tmux
+ * session when the Session's wall-clock limit passes, or when this function's
+ * `stalled` flag coincides with a blocking pane signal (permission prompt,
+ * auth failure, provider limit). The tick's ordinary dead-session branch then
+ * writes the exit receipt (carrying the stop reason) and releases the lease.
+ * Operator judgment on a stalled Session happens on that receipt. A stalled
+ * Session with no blocking signal is still only flagged here, until its time
+ * limit.
  *
  * The very first observation of a Session establishes a baseline rather than
  * flagging it: a Session already mid-work when this check first runs against

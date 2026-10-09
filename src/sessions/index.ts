@@ -119,6 +119,10 @@ export interface AgentSession {
   stall_flagged_at: string | null;
   /** The standing-policy production admission this Session's launch committed against, if any. */
   admission_request_id: string | null;
+  /** Per-launch wall-clock limit override in ms; null defers to policy, then the default. See `src/production/sessionLifetime.ts`. */
+  time_limit_ms: number | null;
+  /** Why Arcadia itself ended this Session (time limit or persistent blocking signal); copied onto its exit receipt. */
+  stop_reason: string | null;
   /** 1 only for a Session launched under the deterministic fixture provider (`fixture-cli`); see `FIXTURE_PROVIDER`. */
   is_simulated: number;
 }
@@ -250,6 +254,13 @@ export interface TmuxAdapter {
    * capability.
    */
   capturePane?(name: string): string | null;
+  /**
+   * End the tmux session and nothing else: the Session's worktree and branch
+   * are never touched. Used only by the bounded-lifetime guard
+   * (`src/production/sessionLifetime.ts`). Optional for the same reason as
+   * `capturePane`: test doubles predate it.
+   */
+  killSession?(name: string): void;
 }
 
 /**
@@ -294,6 +305,12 @@ export const systemTmux: TmuxAdapter = {
       stdio: "ignore",
       env: tmuxQueryEnv()
     });
+  },
+  killSession(name) {
+    // `kill-session` only; never the worktree or branch. A session that is
+    // already gone is the goal state, so a failure is swallowed -- the caller
+    // re-checks `hasSession`.
+    try { execFileSync("tmux", ["kill-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); } catch { /* already gone */ }
   },
   capturePane(name) {
     // The trailing colon matters: `capture-pane` takes a *pane* target, and
@@ -611,7 +628,7 @@ export function prepareSession(input: {
       status: "prepared", prepared_at: timestamp, started_at: null, ended_at: null, exit_status: null,
       created_at: timestamp, updated_at: timestamp,
       last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null,
-      admission_request_id: null,
+      admission_request_id: null, time_limit_ms: null, stop_reason: null,
       is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);

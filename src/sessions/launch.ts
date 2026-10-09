@@ -79,6 +79,12 @@ export interface GuardedLaunchInput {
    * `expectedPolicyEpoch`. Other callers keep the unchanged reuse semantics.
    */
   reuseOwnLeaseOnly?: boolean;
+  /**
+   * Per-launch wall-clock limit override in ms for this Session; omitted
+   * defers to the policy scope's `sessionTimeLimitMs`, then the default. See
+   * `src/production/sessionLifetime.ts`.
+   */
+  timeLimitMs?: number;
   profiles: CodingAgentProfile[];
   adapters: ProviderAdapterRegistry;
   /** Test-only override for where the new agent worktree is created. */
@@ -137,6 +143,9 @@ export interface GuardedLaunchResult {
  * Action while this repository already holds a lease is refused.
  */
 export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaunchResult {
+  if (input.timeLimitMs !== undefined && (!Number.isInteger(input.timeLimitMs) || input.timeLimitMs < 1)) {
+    throw validationError("The Session time limit must be a positive whole number of milliseconds.", { timeLimitMs: input.timeLimitMs });
+  }
   if (input.standingPolicy && input.previewFingerprint) {
     throw validationError(
       "A launch may not carry both an operator-approved preview fingerprint and a standing production policy grant."
@@ -566,6 +575,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       tmux,
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert }
     });
+    if (input.timeLimitMs !== undefined) {
+      input.db.prepare("UPDATE agent_sessions SET time_limit_ms = ? WHERE id = ?").run(input.timeLimitMs, prepared.id);
+      prepared = { ...prepared, time_limit_ms: input.timeLimitMs };
+    }
     if (input.reuseOwnLeaseOnly && admission) {
       // Enrollment only: bind the lease to this request's admission at once,
       // so a crash before the commit below still leaves positive evidence the

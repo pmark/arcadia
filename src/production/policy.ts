@@ -102,6 +102,15 @@ export const PRODUCTION_CONTROL_DEADLINES = {
    */
   stalledSessionDeadlineMs: 20 * 60 * 1000,
   /**
+   * The wall-clock limit on a managed Session when no per-launch override or
+   * `scope.sessionTimeLimitMs` applies (including when no policy is readable).
+   * Past it the bounded-lifetime guard ends the tmux session and releases the
+   * repository lease through the exit receipt. Generous on purpose: it bounds a
+   * wedged Session, not a slow one; a progressing Session inside it is never
+   * touched. See `src/production/sessionLifetime.ts`.
+   */
+  defaultSessionTimeLimitMs: 2 * 60 * 60 * 1000,
+  /**
    * The worker tick's unattended review of a preserved candidate PR: GitHub is
    * read at most once per poll interval per candidate, required checks get
    * this long after the PR is first seen ready before the wait escalates, and
@@ -197,6 +206,12 @@ export interface ProductionScope {
    * grant, so it must never outlive its own expiry. Off revokes it sooner.
    */
   packetApprovalExpiresAt?: string;
+  /**
+   * Wall-clock limit, in ms, for each managed Session launched under this
+   * scope. Absent means `PRODUCTION_CONTROL_DEADLINES.defaultSessionTimeLimitMs`.
+   * A per-launch `agent_sessions.time_limit_ms` override wins over it.
+   */
+  sessionTimeLimitMs?: number;
 }
 
 export interface ProductionAuthorityReceipt {
@@ -321,7 +336,9 @@ const REVIEWED_SCOPE_FIELDS = [
   // Granted only by `production activate --remote-preservation` and bound into
   // the fingerprint, so a reactivation replays exactly what was reviewed; it is
   // never added by Off, reactivation or the dashboard toggle.
-  "remotePreservation"
+  "remotePreservation",
+  // A reviewed bound on how long a Session may run; carried like the others.
+  "sessionTimeLimitMs"
 ] as const satisfies ReadonlyArray<keyof ProductionScope>;
 
 /** The names of scope fields an Off dropped (grants, exceptions, delegation expiry). */
@@ -570,6 +587,15 @@ export function normalizeProductionScope(input: Partial<ProductionScope>): Produ
   if (input.rehearsalException !== undefined) normalized.rehearsalException = normalizeRehearsalException(input.rehearsalException);
   const packetApprovalExpiresAt = normalizePacketApprovalExpiry(mechanicalTransitions, input.packetApprovalExpiresAt);
   if (packetApprovalExpiresAt) normalized.packetApprovalExpiresAt = packetApprovalExpiresAt;
+  if (input.sessionTimeLimitMs !== undefined) {
+    if (!Number.isInteger(input.sessionTimeLimitMs) || input.sessionTimeLimitMs < 1) {
+      throw validationError("The Session time limit must be a positive whole number of milliseconds.", {
+        field: "sessionTimeLimitMs",
+        value: input.sessionTimeLimitMs
+      });
+    }
+    normalized.sessionTimeLimitMs = input.sessionTimeLimitMs;
+  }
   return normalized;
 }
 
@@ -702,7 +728,9 @@ export function fingerprintProductionScope(scope: ProductionScope): string {
       ? { rehearsalException: { actionRef: scope.rehearsalException.actionRef, expiresAt: scope.rehearsalException.expiresAt } }
       : {}),
     // And for the packet-approval expiry.
-    ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {})
+    ...(scope.packetApprovalExpiresAt ? { packetApprovalExpiresAt: scope.packetApprovalExpiresAt } : {}),
+    // And for the Session time limit.
+    ...(scope.sessionTimeLimitMs ? { sessionTimeLimitMs: scope.sessionTimeLimitMs } : {})
   });
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
