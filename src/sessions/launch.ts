@@ -5,7 +5,7 @@ import { observeProviderCapacity, type ProviderCapacityObservation } from "../co
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { loadModelTierRegistry, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { TIER_AGENTS, loadModelTierRegistry, sessionStartBinding, type ModelTierRegistry, type TierAgent } from "../codingAgents/modelTiers.js";
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { writeTransaction } from "../db/connection.js";
 import { isDispatchable, resolveDispatch } from "../docs/dispatch.js";
@@ -330,8 +330,12 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     throw lineageRefusal(error);
   }
 
-  const model = preview.selection.model;
-  const effort = preview.selection.effort ?? null;
+  // The Session starts on the registry's start tier (light by default) for its
+  // provider; the packet-bound selection stays the plan's tier, which the brief
+  // names as the escalation target. The fixture provider has no tier.
+  const startBinding = (TIER_AGENTS as readonly string[]).includes(agent) ? sessionStartBinding(agent as TierAgent, registry) : null;
+  const model = startBinding?.model ?? preview.selection.model;
+  const effort = startBinding ? startBinding.effort : (preview.selection.effort ?? null);
 
   let admission: AdmissionReceipt | null = null;
   if (input.standingPolicy) {

@@ -1732,9 +1732,25 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace });
 
+    // Smallest model first: the plan's opus becomes the escalation target.
+    expect(result.data.nextWorktree?.model).toBe("haiku");
+    expect(result.data.nextWorktree?.effort).toBe("e1_brief");
+    expect(result.data.nextWorktree?.command).toContain('claude --model "haiku" --effort "low" "arcadia advance"');
+    expect(result.data.modelResolution).toMatchObject({ tier: "light", escalation: { model: "opus" } });
+    expect(renderGoSuccess(result).join("\n")).toContain("Starts on haiku; escalation model for hard sub-problems: opus");
+  });
+
+  it("starts on the plan's own model when the workspace sets sessionStartTier to plan", () => {
+    const fixture = createFixture("codex/plan-start-tier", planDocumentWithModel);
+    commitFeature(fixture.feature, "proof.txt", "proof\n");
+    mkdirSync(path.join(fixture.workspace, "config"), { recursive: true });
+    writeFileSync(path.join(fixture.workspace, "config", "coding-agent-models.json"), JSON.stringify({ sessionStartTier: "plan" }));
+
+    const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace });
+
     expect(result.data.nextWorktree?.model).toBe("opus");
     expect(result.data.nextWorktree?.effort).toBe("high");
-    expect(result.data.nextWorktree?.command).toContain('claude --model "opus" --effort "high" "arcadia advance"');
+    expect(result.data.modelResolution?.escalation ?? null).toBeNull();
   });
 
   it("an explicit --model/--effort overrides the plan's recommendation", () => {
@@ -1753,6 +1769,7 @@ describe("arcadia go — next-session model resolution", () => {
 
     expect(result.data.nextWorktree?.model).toBe("claude-haiku-4-5");
     expect(result.data.nextWorktree?.effort).toBe("low");
+    expect(result.data.modelResolution).toMatchObject({ source: "explicit", escalation: { model: "opus" } });
   });
 
   it("builds the codex launch command with -m and the reasoning-effort TOML override", () => {
@@ -1767,9 +1784,9 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
 
-    expect(result.data.nextWorktree?.model).toBe("gpt-5.6-terra");
-    expect(result.data.nextWorktree?.command).toContain('-m "gpt-5.6-terra"');
-    expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="high"');
+    expect(result.data.nextWorktree?.model).toBe("gpt-6-luna");
+    expect(result.data.nextWorktree?.command).toContain('-m "gpt-6-luna"');
+    expect(result.data.nextWorktree?.command).toContain('-c model_reasoning_effort="low"');
     expect(result.data.nextWorktree?.command).not.toContain("--effort");
   });
 
@@ -1792,10 +1809,10 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "claude", workspace: fixture.workspace });
 
-    expect(result.data.nextWorktree?.model).toBe("sonnet");
-    expect(result.data.modelResolution).toMatchObject({ source: "fallback", tier: "standard" });
+    expect(result.data.nextWorktree?.model).toBe("haiku");
+    expect(result.data.modelResolution).toMatchObject({ source: "tier", tier: "light", escalation: { model: "sonnet", tier: "standard" } });
     expect(result.data.modelResolution?.note).toContain("gpt-5.6-terra");
-    expect(result.data.nextWorktree?.command).toContain('claude --model "sonnet"');
+    expect(result.data.nextWorktree?.command).toContain('claude --model "haiku"');
     // The Git reconciliation (fast-forward and source retirement) still ran.
     expect(existsSync(path.join(fixture.main, "proof.txt"))).toBe(true);
     expect(() => git(fixture.main, ["show-ref", "--verify", "refs/heads/codex/wrong-provider-model"])).toThrow();
@@ -1803,13 +1820,14 @@ describe("arcadia go — next-session model resolution", () => {
 
   it("resolves a logical tier for every agent from the bundled registry", () => {
     const tieredPlan = planDocument.replace("recommended_model: gpt-5.6-terra\n", "recommended_model: heavy\n");
-    const expected = { codex: "gpt-6.1-sol", claude: "opus", opencode: "opencode-go/gpt-5.6-luna" } as const;
+    const expected = { codex: "gpt-6-luna", claude: "haiku", opencode: "opencode-go/glm-5.3-flash" } as const;
+    const escalation = { codex: "gpt-6.1-sol", claude: "opus", opencode: "opencode-go/gpt-5.6-luna" } as const;
     for (const agent of ["codex", "claude", "opencode"] as const) {
       const fixture = createFixture(`codex/tier-${agent}`, tieredPlan);
       commitFeature(fixture.feature, "proof.txt", "proof\n");
       const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent, workspace: fixture.workspace });
       expect(result.data.nextWorktree?.model).toBe(expected[agent]);
-      expect(result.data.modelResolution).toMatchObject({ tier: "heavy", source: "tier" });
+      expect(result.data.modelResolution).toMatchObject({ tier: "light", source: "tier", escalation: { model: escalation[agent], tier: "heavy" } });
     }
   });
 
@@ -1819,10 +1837,10 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "opencode", workspace: fixture.workspace, effort: "high" });
 
-    expect(result.data.nextWorktree?.model).toBe("opencode-go/deepseek-v4.1-flash");
-    expect(result.data.modelResolution).toMatchObject({ source: "fallback", tier: "standard" });
+    expect(result.data.nextWorktree?.model).toBe("opencode-go/glm-5.3-flash");
+    expect(result.data.modelResolution).toMatchObject({ source: "tier", tier: "light", escalation: { model: "opencode-go/deepseek-v4.1-flash" } });
     expect(result.data.nextWorktree?.command).toContain(
-      'opencode run --model "opencode-go/deepseek-v4.1-flash" --variant "high" "arcadia advance"'
+      'opencode run --model "opencode-go/glm-5.3-flash" --variant "high" "arcadia advance"'
     );
   });
 
@@ -1848,7 +1866,7 @@ describe("arcadia go — next-session model resolution", () => {
 
     const result = runGoCommand({ repo: fixture.main, source: fixture.feature, apply: true, agent: "codex", workspace: fixture.workspace });
 
-    expect(result.data.nextWorktree?.model).toBe("gpt-5.6-terra");
+    expect(result.data.nextWorktree?.model).toBe("gpt-6-luna");
   });
 });
 

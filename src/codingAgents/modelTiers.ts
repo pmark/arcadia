@@ -27,6 +27,14 @@ export interface TierModelBinding {
 
 export interface ModelTierRegistry {
   version: number;
+  /**
+   * The tier every coding-agent Session STARTS on, whatever the plan's
+   * `recommended_model` says (operator direction 2026-10-09: the smallest model
+   * initiates each session and calls in help). `"plan"` restores the earlier
+   * behavior of starting on the plan's own tier. Overridable per workspace
+   * through `config/coding-agent-models.json` (`sessionStartTier`).
+   */
+  sessionStartTier: ModelTier | "plan";
   /** Each tier binds one concrete model per agent. */
   tiers: Record<ModelTier, Record<TierAgent, TierModelBinding | null>>;
 }
@@ -41,9 +49,10 @@ export const MODEL_TIER_REGISTRY_VERSION = 1;
  */
 export const BUNDLED_MODEL_TIERS: ModelTierRegistry = {
   version: MODEL_TIER_REGISTRY_VERSION,
+  sessionStartTier: "light",
   tiers: {
     light: {
-      codex: { model: "gpt-5.6-luna", effort: "e1_brief" },
+      codex: { model: "gpt-6-luna", effort: "e1_brief" },
       claude: { model: "haiku", effort: "e1_brief" },
       opencode: { model: "opencode-go/glm-5.3-flash", effort: "e1_brief" }
     },
@@ -94,6 +103,12 @@ export interface HandoffModelInput {
 
 export interface HandoffModelResolution {
   model: string;
+  /**
+   * The model a Session that started smaller should call in for hard
+   * sub-problems: the plan's resolved tier. Null/absent when the Session
+   * already runs the plan's model.
+   */
+  escalation?: { model: string; effort: string | null; tier: ModelTier | null } | null;
   effort: string | null;
   tier: ModelTier | null;
   source: "explicit" | "tier" | "concrete" | "fallback";
@@ -195,6 +210,92 @@ export function resolveHandoffModel(input: HandoffModelInput): HandoffModelResol
   };
 }
 
+function tierOfModel(agent: TierAgent, model: string, registry: ModelTierRegistry): ModelTier | null {
+  return MODEL_TIERS.find((tier) => registry.tiers[tier][agent]?.model === model) ?? null;
+}
+
+/**
+ * The plan's model as an escalation target for a Session running `current`:
+ * null when it is the same model or, where both tiers are known, not larger
+ * (a workspace may start sessions on a tier at or above the plan's).
+ */
+function escalationIfLarger(
+  agent: TierAgent,
+  current: string,
+  planned: HandoffModelResolution,
+  registry: ModelTierRegistry
+): { model: string; effort: string | null; tier: ModelTier | null } | null {
+  if (planned.model === current) return null;
+  const target = planned.tier ?? tierOfModel(agent, planned.model, registry);
+  const started = tierOfModel(agent, current, registry);
+  if (target && started && MODEL_TIERS.indexOf(started) >= MODEL_TIERS.indexOf(target)) return null;
+  return { model: planned.model, effort: planned.effort, tier: planned.tier };
+}
+
+/**
+ * Resolve the model a Session STARTS on. The plan's recommendation (resolved
+ * exactly as `resolveHandoffModel` does, including its refusals) becomes the
+ * escalation target; the start model is the registry's `sessionStartTier`
+ * binding for the agent. An explicit `--model` wins and is never re-resolved;
+ * `sessionStartTier: "plan"` starts on the plan's own model.
+ */
+export function resolveSessionStart(input: HandoffModelInput): HandoffModelResolution {
+  const registry = input.registry ?? BUNDLED_MODEL_TIERS;
+  const planned = resolveHandoffModel(input);
+  if (planned.source === "explicit" || registry.sessionStartTier === "plan") return { ...planned, escalation: null };
+  const binding = registry.tiers[registry.sessionStartTier][input.agent];
+  if (!binding) return { ...planned, escalation: null };
+  return {
+    model: binding.model,
+    // The plan's effort was written for the plan's model; the smallest model starts at its own default.
+    effort: input.explicitEffort ?? binding.effort ?? null,
+    tier: registry.sessionStartTier,
+    source: "tier",
+    note: planned.note,
+    escalation: escalationIfLarger(input.agent, binding.model, planned, registry)
+  };
+}
+
+/**
+ * The start binding for a Session whose model was chosen elsewhere (the
+ * managed-production launch), or null when the registry starts on the plan.
+ */
+export function sessionStartBinding(agent: TierAgent, registry: ModelTierRegistry = BUNDLED_MODEL_TIERS): TierModelBinding | null {
+  return registry.sessionStartTier === "plan" ? null : registry.tiers[registry.sessionStartTier][agent];
+}
+
+/**
+ * One operator-facing sentence for a Session whose model was bound elsewhere (a
+ * packet-bound selection): the model it will START on and the bound model it
+ * can escalate to. Null when the Session starts on the bound model itself.
+ */
+export function describeSessionStart(agent: TierAgent, boundModel: string, registry: ModelTierRegistry = BUNDLED_MODEL_TIERS): string | null {
+  const binding = sessionStartBinding(agent, registry);
+  if (!binding || binding.model === boundModel) return null;
+  return `The Session will start on ${binding.model} (${registry.sessionStartTier} tier, effort ${binding.effort ?? "default"}); ` +
+    `${boundModel} is its escalation target.`;
+}
+
+/**
+ * The escalation target for a Session already running `currentModel`: the
+ * plan's recommendation resolved for the agent, or null when it is the same
+ * model or cannot be resolved.
+ */
+export function resolveEscalationTarget(input: {
+  agent: TierAgent;
+  recommendedModel: string | null;
+  currentModel: string;
+  registry?: ModelTierRegistry;
+}): { model: string; effort: string | null; tier: ModelTier | null } | null {
+  if (!input.recommendedModel) return null;
+  try {
+    const planned = resolveHandoffModel({ agent: input.agent, recommendedModel: input.recommendedModel, registry: input.registry });
+    return escalationIfLarger(input.agent, input.currentModel, planned, input.registry ?? BUNDLED_MODEL_TIERS);
+  } catch {
+    return null;
+  }
+}
+
 /** The workspace override file, when the workspace has one. */
 export function modelTierOverridePath(workspace: string): string {
   return path.join(getWorkspacePaths(path.resolve(workspace)).config, "coding-agent-models.json");
@@ -229,6 +330,16 @@ export function mergeModelTiers(
   if (override === null || typeof override !== "object" || Array.isArray(override)) {
     throw validationError("The coding-agent-models override must be a JSON object.", { source });
   }
+  const startTier = (override as { sessionStartTier?: unknown }).sessionStartTier;
+  if (startTier !== undefined) {
+    if (typeof startTier !== "string" || !(isModelTier(startTier) || startTier === "plan")) {
+      throw validationError("The coding-agent-models override `sessionStartTier` must be light, standard, heavy or plan.", {
+        sessionStartTier: startTier,
+        source
+      });
+    }
+    base = { ...base, sessionStartTier: startTier };
+  }
   const tiers = (override as { tiers?: unknown }).tiers;
   if (tiers === undefined) return base;
   if (tiers === null || typeof tiers !== "object" || Array.isArray(tiers)) {
@@ -236,6 +347,7 @@ export function mergeModelTiers(
   }
   const merged: ModelTierRegistry = {
     version: base.version,
+    sessionStartTier: base.sessionStartTier,
     tiers: {
       light: { ...base.tiers.light },
       standard: { ...base.tiers.standard },

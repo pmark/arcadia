@@ -11,7 +11,10 @@ import {
   isPlausibleAgentModel,
   loadModelTierRegistry,
   mergeModelTiers,
+  describeSessionStart,
+  resolveEscalationTarget,
   resolveHandoffModel,
+  resolveSessionStart,
   type ModelTierRegistry
 } from "../src/codingAgents/modelTiers.js";
 
@@ -21,7 +24,7 @@ afterEach(() => {
 });
 
 const EXPECTED: Record<string, string> = {
-  "light:codex": "gpt-5.6-luna",
+  "light:codex": "gpt-6-luna",
   "light:claude": "haiku",
   "light:opencode": "opencode-go/glm-5.3-flash",
   "standard:codex": "gpt-5.6-terra",
@@ -75,6 +78,7 @@ describe("model tier resolution", () => {
   it("refuses legibly when the registry has no binding for the agent", () => {
     const empty: ModelTierRegistry = {
       version: 1,
+      sessionStartTier: "light",
       tiers: {
         light: { codex: null, claude: null, opencode: null },
         standard: { codex: null, claude: null, opencode: null },
@@ -113,6 +117,85 @@ describe("model tier resolution", () => {
     expect(isPlausibleAgentModel("claude-sonnet-5", "codex")).toBe(false);
     expect(isPlausibleAgentModel("opencode-go/deepseek-v4.1-flash", "opencode")).toBe(true);
     expect(isPlausibleAgentModel("deepseek-v4.1-flash", "opencode")).toBe(false);
+  });
+});
+
+describe("session start tier (smallest model first)", () => {
+  const START: Record<string, string> = { codex: "gpt-6-luna", claude: "haiku", opencode: "opencode-go/glm-5.3-flash" };
+
+  it("starts every agent on its light model whatever the plan tier, naming the plan tier as escalation", () => {
+    for (const agent of TIER_AGENTS) {
+      for (const tier of ["standard", "heavy"] as const) {
+        const resolved = resolveSessionStart({ agent, recommendedModel: tier });
+        expect(resolved).toMatchObject({ model: START[agent], tier: "light", source: "tier", effort: "e1_brief" });
+        expect(resolved.escalation).toEqual({ model: EXPECTED[`${tier}:${agent}`], effort: tier === "heavy" ? "e3_deep" : "e2_standard", tier });
+      }
+      const light = resolveSessionStart({ agent, recommendedModel: "light" });
+      expect(light.model).toBe(START[agent]);
+      expect(light.escalation).toBeNull();
+    }
+  });
+
+  it("lets an explicit --model win and never re-resolves it", () => {
+    const resolved = resolveSessionStart({ agent: "claude", recommendedModel: "heavy", explicitModel: "opus", explicitEffort: "high" });
+    expect(resolved).toMatchObject({ model: "opus", source: "explicit", effort: "high", escalation: null });
+  });
+
+  it("keeps resolving a concrete plan model as the escalation target", () => {
+    expect(resolveSessionStart({ agent: "codex", recommendedModel: "gpt-5.6-terra" })).toMatchObject({
+      model: "gpt-6-luna",
+      escalation: { model: "gpt-5.6-terra", tier: null }
+    });
+  });
+
+  it("still refuses an unpinned or unrecognizable plan model", () => {
+    expectValidation(() => resolveSessionStart({ agent: "claude", recommendedModel: null }), "will not launch one unpinned");
+    expectValidation(() => resolveSessionStart({ agent: "claude", recommendedModel: "medium" }), "neither a known tier");
+  });
+
+  it("is a checked-in setting a workspace can change through config/coding-agent-models.json", () => {
+    expect(BUNDLED_MODEL_TIERS.sessionStartTier).toBe("light");
+    const standardStart = mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "standard" });
+    expect(resolveSessionStart({ agent: "claude", recommendedModel: "heavy", registry: standardStart })).toMatchObject({
+      model: "sonnet",
+      escalation: { model: "opus" }
+    });
+    const planStart = mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "plan" });
+    expect(resolveSessionStart({ agent: "claude", recommendedModel: "heavy", registry: planStart })).toMatchObject({
+      model: "opus",
+      escalation: null
+    });
+    expectValidation(() => mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "tiny" }), "sessionStartTier");
+
+    const workspace = mkdtempSync(path.join(tmpdir(), "arcadia-model-tiers-"));
+    roots.push(workspace);
+    mkdirSync(path.join(workspace, "config"), { recursive: true });
+    writeFileSync(path.join(workspace, "config", "coding-agent-models.json"), JSON.stringify({ sessionStartTier: "plan" }));
+    expect(loadModelTierRegistry(workspace).sessionStartTier).toBe("plan");
+  });
+
+  it("omits escalation when the workspace starts at or above the plan's tier", () => {
+    const heavyStart = mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "heavy" });
+    expect(resolveSessionStart({ agent: "claude", recommendedModel: "standard", registry: heavyStart })).toMatchObject({
+      model: "opus",
+      escalation: null
+    });
+    expect(
+      resolveEscalationTarget({ agent: "claude", recommendedModel: "light", currentModel: "sonnet" })
+    ).toBeNull();
+  });
+
+  it("describes the start model for a packet-bound selection", () => {
+    expect(describeSessionStart("claude", "sonnet")).toBe(
+      "The Session will start on haiku (light tier, effort e1_brief); sonnet is its escalation target."
+    );
+    expect(describeSessionStart("claude", "haiku")).toBeNull();
+    expect(describeSessionStart("claude", "sonnet", mergeModelTiers(BUNDLED_MODEL_TIERS, { sessionStartTier: "plan" }))).toBeNull();
+  });
+
+  it("names no escalation target when the Session already runs the plan's model", () => {
+    expect(resolveEscalationTarget({ agent: "claude", recommendedModel: "standard", currentModel: "sonnet" })).toBeNull();
+    expect(resolveEscalationTarget({ agent: "claude", recommendedModel: "standard", currentModel: "haiku" })).toMatchObject({ model: "sonnet" });
   });
 });
 

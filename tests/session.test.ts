@@ -97,7 +97,7 @@ describe("tmux-backed Sessions", () => {
       now: fixture.now,
       tmux
     });
-    expect(manual.data.nextWorktree?.command).toContain('claude --model "sonnet" --effort "high" "arcadia advance"');
+    expect(manual.data.nextWorktree?.command).toContain('claude --model "haiku" --effort "low" "arcadia advance"');
     expect(manual.data.session).toBeNull();
     expect(tmux.launches).toHaveLength(0);
   });

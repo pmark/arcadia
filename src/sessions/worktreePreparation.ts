@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
+import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { git, tryGit } from "../git/worktrees.js";
 import { resolveMiseExecutable } from "../runtime/mise.js";
 
@@ -181,7 +182,7 @@ export function buildAgentLaunchCommand(agent: PreparedAgentWorktree["agent"], w
     return `cd ${quotedPath} && node scripts/fixture-coding-agent.mjs --worktree ${quotedPath} --outcome ${quotedModel.replace(/^"fixture-/, '"')}${effortFlag}`;
   }
   if (agent === "claude") {
-    const effortFlag = effort ? ` --effort ${JSON.stringify(effort)}` : "";
+    const effortFlag = effort ? ` --effort ${JSON.stringify(claudeReasoningEffort(effort))}` : "";
     return `cd ${quotedPath} && claude --model ${quotedModel}${effortFlag} "arcadia advance"`;
   }
   if (agent === "opencode") {
@@ -189,7 +190,7 @@ export function buildAgentLaunchCommand(agent: PreparedAgentWorktree["agent"], w
     const variantFlag = variant ? ` --variant ${JSON.stringify(variant)}` : "";
     return `cd ${quotedPath} && opencode run --model ${quotedModel}${variantFlag} "arcadia advance"`;
   }
-  const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(effort)}` : "";
+  const effortFlag = effort ? ` -c model_reasoning_effort=${JSON.stringify(codexReasoningEffort(effort))}` : "";
   return `codex -c default_permissions="arcadia-unattended" --ask-for-approval never -C ${quotedPath} -m ${quotedModel}${effortFlag} "arcadia advance"`;
 }
 

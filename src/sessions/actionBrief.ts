@@ -5,6 +5,7 @@ import { loadConstitution, readConstitution, type ConstitutionReference } from "
 import type { PlanDoc } from "../docs/types.js";
 import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
+import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
 
 /**
@@ -46,6 +47,13 @@ export interface ActionBriefInput {
   identity?: AgentGitIdentity | null;
   /** Other agents live on this Project; null when unreadable (the sentence is omitted). */
   partners?: AgentPartner[] | null;
+  /**
+   * The model this Session started on. With it, the brief adds a "Calling in
+   * help" section naming the plan's tier as the escalation target (omitted
+   * when the Session already runs the plan's model).
+   */
+  model?: string | null;
+  registry?: ModelTierRegistry;
 }
 
 /**
@@ -123,6 +131,10 @@ export function renderActionBrief(input: ActionBriefInput): string {
   if (pinned) {
     lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }
+  const escalation = input.model
+    ? resolveEscalationTarget({ agent: input.agent, recommendedModel: plan.recommendedModel, currentModel: input.model, registry: input.registry })
+    : null;
+  if (input.model && escalation) lines.push(...renderCallingInHelp({ agent: input.agent, model: input.model, escalation }));
   lines.push(...renderGuidanceRetrieval(input.repoRoot, input.agent, `${action.title} ${action.nextAction ?? ""} ${action.references.join(" ")}`));
   lines.push(
     "",
@@ -177,6 +189,45 @@ function pinnedConstitution(input: ActionBriefInput): ConstitutionReference | nu
       "Restore the committed Constitution, or land the change through review before launching.");
   }
   return current.reference;
+}
+
+/**
+ * "Calling in help": a Session starts on the registry's start-tier model (the
+ * smallest by default) and names the plan's tier as the escalation target. What a Session can safely do
+ * with that depends on the provider: Claude spawns a subagent on the bigger
+ * model (the Agent tool), Codex uses its built-in `spawn_agent` tool with a
+ * `model` override, and opencode (and any Session whose in-session path fails)
+ * stops and asks for a relaunch at the plan's tier instead of guessing.
+ */
+export function renderCallingInHelp(input: {
+  agent: SessionAgent;
+  model: string;
+  escalation: { model: string; tier: string | null };
+}): string[] {
+  const target = `${input.escalation.model}${input.escalation.tier ? ` (${input.escalation.tier} tier)` : ""}`;
+  const lines = [
+    "",
+    `Calling in help — you started on ${input.model}, a smaller model than the one the plan is sized for.`,
+    `Started on: ${input.model}. Escalation target: ${target}.`,
+    "Do the routine work yourself. Escalate only a sub-problem you cannot settle (a design choice, a stubborn bug,",
+    "a review of your own work), and give the helper a self-contained prompt; never hand over the whole Action."
+  ];
+  if (input.agent === "claude") {
+    // The Agent tool takes the sonnet/opus/haiku aliases; a concrete Claude ID maps to its family.
+    const alias = /opus|sonnet|haiku/i.exec(input.escalation.model)?.[0].toLowerCase() ?? input.escalation.model;
+    lines.push(`In session: spawn a subagent with the Agent tool and \`model: "${alias}"\`.`);
+  } else if (input.agent === "codex") {
+    lines.push(
+      `In session: call \`spawn_agent\` with \`model: "${input.escalation.model}"\` (this brief is the explicit instruction to delegate).`,
+      "Do not run a nested `codex exec`: the workspace-write sandbox has no network for child processes."
+    );
+  }
+  lines.push(
+    "If there is no working in-session path, or the whole Action is beyond you: stop, run `arcadia agent-ask draft`",
+    `with \`intent: proposal\`, \`requested_authority: propose\`, asking for a relaunch at ${target}, then exit.`,
+    "Do not guess past what you can verify."
+  );
+  return lines;
 }
 
 function numbered(values: string[]): string[] {

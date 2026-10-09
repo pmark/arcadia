@@ -102,7 +102,8 @@ It names the two places a model gets chosen — the coding-agent Action
 handoff and the Intelligence route registry — with pinned model IDs, default
 effort, and the boundary each tier is for. Spend in ascending order per the
 Constitution's Economy section; this document is the reference that check
-resolves against instead of being re-decided per Action.
+resolves against instead of being re-decided per Action. Sessions start on the
+light tier (`sessionStartTier`) and the plan's tier is the escalation target.
 
 ## Agent Git Identity
 

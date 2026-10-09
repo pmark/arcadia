@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
-import { renderActionBrief } from "../src/sessions/actionBrief.js";
+import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 
@@ -35,6 +35,60 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("Candidate worktree: /worktrees/define-contract");
     expect(brief).toContain("Branch: opencode/define-contract");
     expect(brief).toContain("Define the bounded contract.");
+  });
+
+  describe("Calling in help", () => {
+    const base = (agent: "codex" | "claude" | "opencode", model: string | null) => ({
+      repoRoot: briefRepo(),
+      projectSlug: "test-project",
+      planSlug: "copy-proof",
+      actionId: "define-contract",
+      worktreePath: "/worktrees/define-contract",
+      branch: `${agent}/define-contract`,
+      agent,
+      baseRevision: "unused",
+      model
+    });
+    const render = (agent: "codex" | "claude" | "opencode", model: string | null) => {
+      const input = base(agent, model);
+      return renderActionBrief({ ...input, baseRevision: head(input.repoRoot) });
+    };
+
+    it("tells Claude to spawn a subagent on the plan's model", () => {
+      const brief = render("claude", "haiku");
+      expect(brief).toContain("Calling in help");
+      expect(brief).toContain("Started on: haiku. Escalation target: sonnet.");
+      expect(brief).toContain('spawn a subagent with the Agent tool and `model: "sonnet"`');
+      expect(brief).toContain("arcadia agent-ask draft");
+    });
+
+    it("tells Codex to use spawn_agent with the resolved model and never a nested codex exec", () => {
+      const brief = render("codex", "gpt-6-luna");
+      expect(brief).toContain("Escalation target: gpt-5.6-terra (standard tier).");
+      expect(brief).toContain('`spawn_agent` with `model: "gpt-5.6-terra"`');
+      expect(brief).toContain("Do not run a nested `codex exec`");
+    });
+
+    it("gives opencode only the honest stop-and-ask fallback", () => {
+      const brief = render("opencode", "opencode-go/glm-5.3-flash");
+      expect(brief).toContain("Escalation target: opencode-go/deepseek-v4.1-flash (standard tier).");
+      expect(brief).not.toContain("In session:");
+      expect(brief).toContain("asking for a relaunch at opencode-go/deepseek-v4.1-flash (standard tier)");
+      expect(brief).toContain("`requested_authority: propose`");
+    });
+
+    it("maps a concrete Claude plan model to its Agent-tool alias and only offers the draft fallback", () => {
+      const brief = render("claude", "haiku");
+      expect(brief).not.toContain("`preview`");
+      expect(brief).toContain("you started on haiku, a smaller model");
+      const mapped = renderCallingInHelp({ agent: "claude", model: "haiku", escalation: { model: "claude-opus-4-7", tier: null } });
+      expect(mapped.join("\n")).toContain('`model: "opus"`');
+    });
+
+    it("is absent when the Session already runs the plan's model or no model is given", () => {
+      expect(render("claude", "sonnet")).not.toContain("Calling in help");
+      expect(render("claude", null)).not.toContain("Calling in help");
+    });
   });
 
   it.each([
