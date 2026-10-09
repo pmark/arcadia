@@ -104,12 +104,27 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     })),
     desired_result: `Mark ${action.id} complete.`
   };
+  // Claude's headless allow list omits the broker, so it is refused; Codex's
+  // broker can preserve when the worker heartbeat is fresh, so Codex tries it first.
+  const preservation = input.agent === "codex"
+    ? [
+        `  2. Request protected preservation through the existing fixed launcher: arcadia-preserve-broker-${input.agent}`,
+        "     Do not run raw git add, git commit or git push, and do not try to change permissions. If the broker",
+        "     refuses (for example a stale preservation heartbeat), do not retry or work around it: the host",
+        "     commits and preserves your candidate when you exit.",
+        "  3. Record completion with exactly this one command, with each `note` placeholder replaced by real",
+        "     evidence (keep every `criterion` and `status` as given; change nothing else). If the broker",
+        "     preserved your work, HEAD moved: set `candidate_revision` to the output of `git rev-parse HEAD` first:"
+      ]
+    : [
+        `  2. git add, git commit, git push and arcadia-preserve-broker-${input.agent} are host-owned in this Session and`,
+        "     will be refused. Do not run them or try to change permissions; the host commits and preserves your",
+        "     candidate when you exit.",
+        "  3. Record completion by running exactly this one command, with each `note` placeholder replaced by real",
+        "     evidence (keep every `criterion` and `status` as given; change nothing else):"
+      ];
   return [
-    "  2. git add, git commit, git push and the preservation broker are host-owned in this Session and will be",
-    "     refused. Do not attempt them or try to change permissions; the host commits and preserves your",
-    "     candidate when you exit.",
-    "  3. Record completion by running exactly this one command, with each `note` placeholder replaced by real",
-    "     evidence (keep every `criterion` and `status` as given; change nothing else):",
+    ...preservation,
     "",
     `     arcadia agent-ask draft --dir ${shellSingleQuote(input.worktreePath)} ${shellSingleQuote(JSON.stringify(ask))}`,
     "",

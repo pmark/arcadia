@@ -194,10 +194,9 @@ describe("renderActionBrief", () => {
       const repo = briefRepo();
       const brief = headless(repo, "claude");
       const protocol = brief.slice(brief.indexOf("Completion protocol"));
-      expect(protocol).toContain("git add, git commit, git push and the preservation broker are host-owned in this Session and will be");
-      expect(protocol).toContain("refused. Do not attempt them or try to change permissions");
+      expect(protocol).toContain("git add, git commit, git push and arcadia-preserve-broker-claude are host-owned in this Session and");
+      expect(protocol).toContain("will be refused. Do not run them or try to change permissions");
       expect(protocol).toContain("do not write Ask files by hand");
-      expect(protocol).not.toContain("arcadia-preserve-broker");
       expect(protocol).not.toContain("If your sandbox cannot commit");
       expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
       const { dir, json } = draftCommand(protocol);
@@ -213,9 +212,14 @@ describe("renderActionBrief", () => {
       expect(ask.evidence[0].note).toContain("<REPLACE");
     });
 
-    it("applies to headless Codex (workspace-write cannot commit) but not to interactive or opencode Sessions", () => {
+    it("keeps Codex's broker step first, then the draft recipe when the broker refuses; skips interactive and opencode", () => {
       const repo = briefRepo();
-      expect(headless(repo, "codex")).toContain("host-owned in this Session");
+      const codex = headless(repo, "codex");
+      expect(codex).toContain("existing fixed launcher: arcadia-preserve-broker-codex");
+      expect(codex).toContain("Do not run raw git add, git commit or git push");
+      expect(codex).toContain("If the broker\n     refuses");
+      expect(codex).not.toContain("host-owned in this Session");
+      expect(codex.indexOf("arcadia-preserve-broker-codex")).toBeLessThan(codex.indexOf("arcadia agent-ask draft --dir"));
       expect(headless(repo, "claude", false)).toContain("arcadia-preserve-broker-claude");
       expect(headless(repo, "opencode")).toContain("arcadia-preserve-broker-opencode");
       expect(headless(repo, "opencode")).not.toContain("host-owned in this Session");
