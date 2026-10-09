@@ -117,6 +117,12 @@ export interface IngressActivityItem {
   runManifestPath: string | null;
   artifactCount: number;
   failureReason: string | null;
+  /**
+   * Ids shared with the Ask capture envelope this file produced: the envelope's request id and
+   * capture id when the sidecar records the Ask response, else the request id Ingress derives for
+   * the file. Set only on sidecars; empty when the sidecar names neither a response nor a source file.
+   */
+  captureIds?: string[];
 }
 
 export interface IngressActivityRun {
@@ -620,10 +626,23 @@ function listIngressSidecars(directory: string, location: "done" | "failed"): In
       runId,
       runManifestPath: stringValue(run?.runManifestPath),
       artifactCount: files.length,
-      failureReason
+      failureReason,
+      captureIds: sidecarCaptureIds(record)
     });
   }
   return sidecars;
+}
+
+function sidecarCaptureIds(record: Record<string, unknown> | null): string[] {
+  const ids = new Set<string>();
+  const response = isRecord(record?.response) ? record.response : null;
+  const data = isRecord(response?.data) ? response.data : null;
+  const envelope = isRecord(data?.captureEnvelope) ? data.captureEnvelope : null;
+  for (const id of [stringValue(envelope?.requestId), stringValue(envelope?.id)]) if (id) ids.add(id);
+  const source = stringValue(record?.source);
+  const sourcePath = stringValue(record?.sourcePath);
+  if (source && sourcePath) ids.add(ingressCaptureRequestId(source, path.basename(sourcePath)));
+  return [...ids];
 }
 
 /**

@@ -720,8 +720,8 @@ approve` with a free-text answer (an offered option label is not free text).
 The request id is `<surface>:<entity-id>:<first 12 hex of sha256(text)>`, so a
 replay returns the first envelope. `review resolve-reply --actor <id>` records
 a caller-asserted, untrusted provenance id for the sender (the Discord bot
-passes the author id; at most 128
-characters) in the envelope only; CLI and Dashboard replies record actor null. Capture is fail-open: a failure is logged
+passes the author id, at most 128 characters) in the envelope only; CLI and
+Dashboard replies record actor null. Capture is fail-open: a failure is logged
 to stderr and never blocks or changes the canonical write. The capture id is in
 the `operator.reply.captured` event payload; `capture_id` columns are untouched.
 
@@ -737,9 +737,32 @@ replies (`operator.reply.decision` envelopes over free-text-answered Decision
 documents). Only sources classified as operator intake (`ingress:*`,
 `discord.message`, `discord.request`) feed the intake total; the reply sources are
 provenance-only, shown per surface and never added to it. Discord messages are
-reported as captured N with denominator unknown. `agent.ask` and `codex.*`
+reported as captured N with denominator unknown, and that count is marked not
+comparable to the Ingress percentage (`comparableToIntakeCoverage: false`;
+`intake.capturedDenominatorUnknownComparable: false`). `agent.ask` and `codex.*`
 envelopes are excluded and counted separately, and unclassified sources (`ask`,
 `cli.ask`) are listed but not counted.
+
+Ingress files are matched to envelopes by shared id: a sidecar's Ask response
+capture id or request id, else the request id Ingress derives from its source and
+file name. When every counted sidecar names one, the numerator is the number of
+sidecars with a matching envelope (`matched`), so coverage cannot exceed 100%;
+envelopes with no processed file yet are noted. Otherwise the report compares
+counts and says a captured but unprocessed file raises captured above canonical.
+The database is opened read-only. A `--since` later than the window end (now) is
+rejected with a validation error.
+
+JSON (`--json`, command `ask.coverage`), schema `arcadia-ask-coverage-v1`:
+
+| Field | Meaning |
+| --- | --- |
+| `schema` | `arcadia-ask-coverage-v1` |
+| `headline`, `directChat` | The "direct chat: not measured" statement |
+| `window` | `{ since, until }` ISO times |
+| `intake` | `{ surfaces, captured, canonical, coverage, capturedDenominatorUnknown, capturedDenominatorUnknownComparable }`; the total over measured intake surfaces only |
+| `surfaces[]` | `id`, `label`, `kind` (`intake` or `provenance`), `countsAsIntake`, `sources` (envelope count per ingress source), `captured`, `canonical` (null when unknown or unavailable), `denominator` (`known`, `unknown` or `unavailable`), `matched` (Ingress only; null when counts were compared), `comparableToIntakeCoverage`, `coverage` (null when unknown or zero), `canonicalRecord`, `note` |
+| `excludedAgent`, `unclassified` | `{ total, bySource }` |
+| `notes` | Explanatory strings |
 
 `review reject R1` withdraws a question that turned out to be wrong — the
 Decision keeps the history, and the Action drops back to `unclarified` so it

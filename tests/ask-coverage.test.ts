@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +23,7 @@ import {
   upsertProjectMetadata
 } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 const roots: string[] = [];
 const NOW = new Date();
@@ -200,6 +202,95 @@ describe("ask show --coverage", () => {
     expect(() => runAskCoverageCommand({ workspace, ingressRoot, since: "last week", now: NOW })).toThrow(/--since/);
   });
 
+  it("rejects a --since in the future, which would be later than the window end", () => {
+    const { workspace, ingressRoot } = fixture();
+    const future = new Date(NOW.getTime() + DAY).toISOString();
+    expect(() => runAskCoverageCommand({ workspace, ingressRoot, since: future, now: NOW })).toThrow(/--since is in the future/);
+    expect(() => runAskCoverageCommand({ workspace, ingressRoot, since: "0m", now: NOW })).not.toThrow();
+  });
+
+  it("marks Discord's captured count as not comparable to the Ingress percentage", () => {
+    const { workspace, ingressRoot } = fixture();
+    capture(workspace, "discord.message", 2);
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "a.response.json", { processedAt: NOW.toISOString() });
+    capture(workspace, "ingress:iCloudIdeas", 1);
+
+    const response = runAskCoverageCommand({ workspace, ingressRoot, now: new Date(NOW.getTime() + 1000) });
+    expect(surface(response.data, "discord").comparableToIntakeCoverage).toBe(false);
+    expect(surface(response.data, "ingress-files").comparableToIntakeCoverage).toBe(true);
+    expect(response.data.intake.capturedDenominatorUnknownComparable).toBe(false);
+    const text = renderAskCoverageSuccess(response).join("\n");
+    expect(text).toContain("captured 2, denominator unknown (not comparable to the Ingress percentage)");
+    expect(text).toContain("2 captured (not comparable to the percentage above)");
+  });
+
+  it("matches envelopes to sidecars by shared id so Ingress coverage cannot exceed 100%", () => {
+    const { workspace, ingressRoot } = fixture();
+    // Three envelopes captured, but only one processed file: a count comparison would read 300%.
+    withDatabase(workspace, (db) => {
+      for (const name of ["one", "two", "three"]) {
+        captureAskEnvelope(db, { requestId: `ingress:iCloudIdeas:${name}`, originalText: name, ingressSource: "ingress:iCloudIdeas" });
+      }
+      // An ask made with --source-ingress also lands as an ingress envelope but has no file.
+      captureAskEnvelope(db, { requestId: "ask:from-source-ingress", originalText: "x", ingressSource: "ingress:iCloudIdeas" });
+    });
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "one.response.json", {
+      status: "processed", source: "iCloudIdeas", sourcePath: "/in/one.txt", processedAt: NOW.toISOString()
+    });
+
+    const { data } = runAskCoverageCommand({ workspace, ingressRoot, now: new Date(Date.now() + 1000) });
+    const ingress = surface(data, "ingress-files");
+    expect(ingress).toMatchObject({ captured: 4, canonical: 1, matched: 1, coverage: 1 });
+    expect(ingress.note).toContain("matched to Ask capture envelopes by shared id");
+    expect(ingress.note).toContain("3 captured envelopes in the window have no processed file yet");
+    expect(data.intake).toMatchObject({ captured: 1, canonical: 1, coverage: 1 });
+  });
+
+  it("matches a sidecar by the envelope id recorded in its Ask response", () => {
+    const { workspace, ingressRoot } = fixture();
+    const envelope = withDatabase(workspace, (db) =>
+      captureAskEnvelope(db, { requestId: "custom-request-id", originalText: "x", ingressSource: "ingress:iCloudIdeas" })
+    );
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "renamed.response.json", {
+      status: "processed", processedAt: NOW.toISOString(), response: { data: { captureEnvelope: { id: envelope.id, requestId: envelope.requestId } } }
+    });
+    sidecar(ingressRoot, "iCloudIdeas", "Failed", "unmatched.error.json", {
+      status: "failed", source: "iCloudIdeas", sourcePath: "/in/never-captured.txt", processedAt: NOW.toISOString()
+    });
+
+    const { data } = runAskCoverageCommand({ workspace, ingressRoot, now: new Date(Date.now() + 1000) });
+    expect(surface(data, "ingress-files")).toMatchObject({ captured: 1, canonical: 2, matched: 1, coverage: 0.5 });
+  });
+
+  it("falls back to comparing counts when a sidecar names no id", () => {
+    const { workspace, ingressRoot } = fixture();
+    capture(workspace, "ingress:iCloudIdeas", 1);
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "a.response.json", { processedAt: NOW.toISOString() });
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "b.response.json", { source: "iCloudIdeas", sourcePath: "/in/b.txt", processedAt: NOW.toISOString() });
+
+    const { data } = runAskCoverageCommand({ workspace, ingressRoot, now: new Date(NOW.getTime() + 1000) });
+    const ingress = surface(data, "ingress-files");
+    expect(ingress).toMatchObject({ captured: 1, canonical: 2, matched: null, coverage: 0.5 });
+    expect(ingress.note).toContain("A file captured but not yet processed raises captured above canonical");
+  });
+
+  it("opens the database read-only: neither the DB file nor the Ingress tree changes", () => {
+    const { workspace, ingressRoot } = fixture();
+    capture(workspace, "ingress:iCloudIdeas", 1);
+    capture(workspace, "discord.message", 1);
+    sidecar(ingressRoot, "iCloudIdeas", "Done", "a.response.json", { source: "iCloudIdeas", sourcePath: "/in/a.txt", processedAt: NOW.toISOString() });
+    withDatabase(workspace, (db) => db.pragma("wal_checkpoint(TRUNCATE)"));
+
+    const databaseFile = getWorkspacePaths(workspace).databaseFile;
+    const snapshot = (): { database: string; tree: string[] } => ({
+      database: createHash("sha256").update(readFileSync(databaseFile)).digest("hex"),
+      tree: listTree(ingressRoot)
+    });
+    const before = snapshot();
+    runAskCoverageCommand({ workspace, ingressRoot, now: new Date(NOW.getTime() + 1000) });
+    expect(snapshot()).toEqual(before);
+  });
+
   it("leads with the 'direct chat: not measured' headline in the data and the rendering", () => {
     const { workspace, ingressRoot } = fixture();
     capture(workspace, "discord.message", 1);
@@ -247,9 +338,14 @@ describe("ask show --coverage", () => {
     expect(ok.data.directChat).toBe("direct chat: not measured");
     expect(ok.data.surfaces.map((entry: AskCoverageSurface) => entry.id)).toEqual(["ingress-files", "discord", "review-replies", "decision-replies"]);
     expect(Object.keys(ok.data.surfaces[0]).sort()).toEqual([
-      "canonical", "canonicalRecord", "captured", "countsAsIntake", "coverage", "denominator", "id", "kind", "label", "note", "sources"
+      "canonical", "canonicalRecord", "captured", "comparableToIntakeCoverage", "countsAsIntake", "coverage", "denominator", "id", "kind", "label", "matched", "note", "sources"
     ]);
     expect(ok.data.excludedAgent).toEqual({ total: 1, bySource: { "agent.ask": 1 } });
+    expect(Object.keys(ok.data.intake).sort()).toEqual([
+      "canonical", "captured", "capturedDenominatorUnknown", "capturedDenominatorUnknownComparable", "coverage", "surfaces"
+    ]);
+    expect(ok.data.intake.capturedDenominatorUnknownComparable).toBe(false);
+    expect(ok.data.surfaces.find((entry: AskCoverageSurface) => entry.id === "discord").comparableToIntakeCoverage).toBe(false);
 
     const withId = await run(["capture_x", "--coverage"]);
     expect(withId.ok).toBe(false);
@@ -268,3 +364,16 @@ describe("ask show --coverage", () => {
     expect(ingressSourceKind("hasOwnProperty")).toBeNull();
   });
 });
+
+function listTree(root: string): string[] {
+  const entries: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else entries.push(`${path.relative(root, full)}:${statSync(full).size}:${statSync(full).mtimeMs}`);
+    }
+  };
+  walk(root);
+  return entries;
+}
