@@ -3018,6 +3018,68 @@ Arcadia pins Node in `mise.toml`, and Corepack activates the pnpm version in
 writes every managed LaunchAgent to start through `mise exec`; login-shell PATH
 state cannot select a different Node ABI.
 
+## Stable demo deployment
+
+The development dashboard (port 3020) runs `next dev` from the primary checkout,
+so every restart cold-compiles each page and every merge changes the code under
+it. For a demo that must work at any moment there is a second, separate
+dashboard: a pre-built release of a **git tag**, served by `next start` on port
+**3030**, reading the same `martianrover` workspace. `scripts/services.sh restart`
+never touches it.
+
+- **URL:** `http://arcadia-1.alpine-rattlesnake.ts.net:3030` (or
+  `http://127.0.0.1:3030` on the Mac). Optionally
+  `https://arcadia-1.alpine-rattlesnake.ts.net/` with no port, through
+  `tailscale serve`.
+- **What serves it:** the `com.arcadia.demo.dashboard` LaunchAgent (KeepAlive)
+  runs `next start` from `/Users/pmark/Dev/MR/Arcadia/releases/current`, a
+  symlink to the active tag. It sets `ARCADIA_DASHBOARD_CLI=built`, so every
+  page shells out to that release's own compiled CLI, never to the moving
+  checkout. Demo actions are real writes to the shared workspace.
+- **Release tags:** a tag starting with a version number (`v1.2.0`), `rel-` or
+  `release-`, case-insensitive; the newest by creation date wins. Cut one with
+  `git tag v1.2.0 && git push origin v1.2.0`.
+- **Nightly:** the `com.arcadia.demo.nightly` LaunchAgent runs
+  `scripts/release.sh nightly` at 04:00. It fetches tags, deploys the newest
+  release tag if it is not already current, and pings you with the outcome.
+
+```sh
+scripts/release.sh list              # built releases and available tags
+scripts/release.sh status            # current tag, is :3030 answering, last receipt
+scripts/release.sh deploy v1.2.0     # build, smoke-test on :3031, then swap and restart
+scripts/release.sh build v1.2.0      # build only, without promoting
+scripts/release.sh use v1.1.0        # failover: instant switch to a built tag
+scripts/release.sh nightly           # what the 04:00 job runs
+scripts/release.sh prune             # keep the newest 3 builds plus current
+scripts/release.sh install-plan      # print (never run) the install commands
+```
+
+`deploy` builds the tag in its own detached worktree (frozen-lockfile install,
+`pnpm build`, `next build`), starts that build on staging port 3031, and
+requires `/now`, `/actions`, `/review`, `/projects` and `/api/snapshot` to
+answer HTTP 200 within the budget (`ARCADIA_DEMO_SMOKE_BUDGET`, 90 seconds).
+Only then does it swap `current` and restart the agent, which takes about two
+seconds. A failed build, a failed smoke check, a failed restart or a swapped
+demo that does not answer leaves the previous release serving, exits non-zero
+and writes a receipt to `releases/receipts.jsonl`.
+
+**Failover.** If the demo misbehaves, `scripts/release.sh use <tag>` switches to
+any tag listed as `built` at once, with no build and no smoke test, and
+`scripts/release.sh status` confirms it. `use` refuses a tag that is not built.
+
+**Limits.** A release is older code than the database's newest migration:
+additive migrations are harmless, but a destructive migration must ship with a
+new release tag. The demo shares the live worker, Intelligence service and
+Discord bot, and `/runs` still reads the operator-script library of the primary
+checkout.
+
+**Installing needs an operator Decision.** Loading the LaunchAgents, the nightly
+job and the Tailscale entry, and cutting a release tag, is a deployment that
+CONSTITUTION.md reserves for an explicit Decision. Until it is answered nothing
+is installed; `scripts/release.sh install-plan` prints the exact plists and the
+`launchctl` and `tailscale` commands for you to run, followed by the undo
+commands.
+
 ## Compact agent instructions
 
 `arcadia project setup-context --repo <repository>` installs the compact Way
