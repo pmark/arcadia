@@ -91,7 +91,7 @@ describe("go broker agent setup", () => {
     expect(first.backups.length).toBeGreaterThanOrEqual(4);
     const codexConfig = readFileSync(paths.codexConfig, "utf8");
     expect(codexConfig).toContain('approval_policy = "on-request"');
-    expect(codexConfig).not.toMatch(/^default_permissions\s*=/m);
+    expect(codexConfig).toMatch(/^default_permissions = ":workspace"$/m);
     expect(codexConfig).not.toContain('sandbox_mode = "workspace-write"');
     expect(codexConfig).toContain("[permissions.arcadia-unattended]");
     expect(codexConfig).toContain('".env" = "deny"');
@@ -187,8 +187,9 @@ describe("go broker agent setup", () => {
       };
       expect(configureGoBrokerAgents(options).status.ready).toBe(true);
       const config = readFileSync(paths.codexConfig, "utf8");
-      if (defaultProfile === null) expect(config).not.toMatch(/^default_permissions\s*=/m);
+      if (defaultProfile === null) expect(config).toMatch(/^default_permissions = ":workspace"$/m);
       else expect(config).toContain(selection.trim());
+      expect(config.match(/^default_permissions\s*=/gm)).toHaveLength(1);
       expect(config).toContain("[permissions.arcadia-unattended]");
       expect(config).toContain("[permissions.arcadia-unattended.network]\nenabled = false");
       expect(inspectGoBrokerAgentSetup(options).checks.codexNativeProfile).toBe(true);
@@ -211,9 +212,75 @@ describe("go broker agent setup", () => {
     expect(result.status.ready).toBe(true);
     const config = readFileSync(resolveAgentSetupPaths(fixture.home).codexConfig, "utf8");
     expect(config).toContain('approval_policy = "on-request"');
-    expect(config).not.toMatch(/^default_permissions\s*=/m);
+    expect(config).toMatch(/^default_permissions = ":workspace"$/m);
     expect(config).toContain("[permissions.arcadia-unattended]");
     expect(readFileSync(profile, "utf8")).toContain("Retired by `arcadia go-broker install`");
+  });
+
+  it.each([
+    ['sandbox_mode = "workspace-write"', ":workspace"],
+    ['sandbox_mode = "read-only"', ":read-only"],
+    ['sandbox_mode = "danger-full-access"', ":danger-full-access"],
+    ["sandbox_mode = 'read-only'", ":read-only"],
+    ['sandbox_mode = "unrecognized"', ":workspace"]
+  ])("maps the removed %s to default_permissions %s so Codex still loads", (legacy, expected) => {
+    const fixture = createFixture();
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, `model = "gpt-test"\n${legacy}\n\n[sandbox_workspace_write]\nnetwork_access = false\n`);
+    const options = {
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    };
+
+    expect(configureGoBrokerAgents(options).status.ready).toBe(true);
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(config).not.toMatch(/^\s*sandbox_mode\s*=/m);
+    expect(config).not.toContain("[sandbox_workspace_write]");
+    expect(config).toContain(`default_permissions = "${expected}"`);
+    expect(config.match(/^default_permissions\s*=/gm)).toHaveLength(1);
+    expect(config.indexOf("default_permissions")).toBeLessThan(config.indexOf("["));
+    expect(configureGoBrokerAgents(options)).toMatchObject({ changed: [], backups: [], status: { ready: true } });
+  });
+
+  it("never overwrites an existing default_permissions when stripping sandbox_mode", () => {
+    const fixture = createFixture();
+    const paths = resolveAgentSetupPaths(fixture.home);
+    write(paths.codexConfig, 'default_permissions = "personal"\nsandbox_mode = "danger-full-access"\n');
+
+    expect(configureGoBrokerAgents({
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    }).status.ready).toBe(true);
+    const config = readFileSync(paths.codexConfig, "utf8");
+    expect(config).toContain('default_permissions = "personal"');
+    expect(config.match(/^default_permissions\s*=/gm)).toHaveLength(1);
+    expect(config).not.toMatch(/^\s*sandbox_mode\s*=/m);
+  });
+
+  it("is not ready when [permissions.*] profiles exist without a top-level default_permissions", () => {
+    const fixture = createFixture();
+    const options = {
+      home: fixture.home,
+      executables: fixture.executables,
+      skillTemplate: template,
+      agentAskSkillTemplate: agentAskTemplate
+    };
+    configureGoBrokerAgents(options);
+    const config = resolveAgentSetupPaths(fixture.home).codexConfig;
+    expect(inspectGoBrokerAgentSetup(options).checks.codexDefaultPermissions).toBe(true);
+    write(config, readFileSync(config, "utf8").replace(/^default_permissions\s*=.*\n/m, ""));
+
+    const status = inspectGoBrokerAgentSetup(options);
+
+    expect(status.ready).toBe(false);
+    expect(status.checks.codexDefaultPermissions).toBe(false);
+    expect(status.issues).toContain("codexDefaultPermissions");
+    expect(configureGoBrokerAgents(options).status.ready).toBe(true);
+    expect(readFileSync(config, "utf8")).toMatch(/^default_permissions = ":workspace"$/m);
   });
 
   it("reports the named profile when its required roots are missing", () => {
