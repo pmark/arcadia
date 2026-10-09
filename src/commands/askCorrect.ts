@@ -15,6 +15,7 @@ import {
   updateWorkItem
 } from "../db/repositories.js";
 import { askQuestionOrigin } from "../ask/askQuestion.js";
+import { recordAskCorrection } from "../ask/corrections.js";
 import { resolveProjectReference } from "../ask/rules.js";
 import { ASK_CORRECTION_TYPES, ASK_HEARD_HINT, buildAskHeard, type AskCorrectionType, type AskHeard } from "../ask/heard.js";
 import {
@@ -142,7 +143,8 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
   // The replacement is made by writers that each own their connection and files (the Ask pipeline, Back Burner
   // promote, review resolve-reply), so it cannot join a transaction. Everything this command owns after that, the
   // supersession link and the closing of the old record, commits together or not at all: the trail never shows a
-  // link with the old record still open, or a closed record with no link.
+  // link with the old record still open, or a closed record with no link. The correction memo (what a later identical
+  // Ask will route to) commits in that same transaction: no memo without its re-route, no re-route without its memo.
   const { supersession, disposition } = withDatabase(workspacePath, (db) =>
     writeTransaction(db, () => {
       const retired = created.promotedOld ? "promoted" : retireOldRecord(db, previous, context, created.newAskId, effectiveType);
@@ -158,6 +160,15 @@ export function runAskCorrectCommand(options: AskCorrectOptions): CommandSuccess
         oldDisposition: retired,
         source,
         actor: options.actor?.trim() || null
+      });
+      recordAskCorrection(db, {
+        askRequestId: context.askId,
+        text: context.originalText,
+        predictedType: predictedTypeFor(previous),
+        correctedType: effectiveType,
+        // The Project the Ask now lives in: the one the operator named, else where routing put the replacement.
+        correctedProject: project?.id ?? describeAskRecord(db, created.newAskId).projectId,
+        source
       });
       return { supersession: link, disposition: retired };
     })
@@ -282,6 +293,11 @@ function assertCorrectable(record: AskRecord, type: AskCorrectionType | null, pr
   if (type === "status" && projectId) {
     throw validationError("--project does not apply to type status.", {});
   }
+}
+
+/** What the Ask was heard as before the correction, in the vocabulary of the Heard line. */
+function predictedTypeFor(record: AskRecord): string {
+  return record.kind === "question" ? "unclear" : record.kind;
 }
 
 function rerouteTypeFor(record: AskRecord): AskCorrectionType | "reroute" {
