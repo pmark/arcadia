@@ -456,6 +456,61 @@ describe("a gate whose Action was split", () => {
     expect(brief.gates.find((entry) => entry.id === "done-one")?.status).toBe("done");
   });
 
+  it("does not call an untouched open remainder underway, but does when the remainder itself is in progress", () => {
+    const oneThingFor = (remainderStatus: string) => {
+      const workspace = initializedWorkspace();
+      writeNorthStar(workspace, GATE_DOC);
+      return withDatabase(workspace, (db) => {
+        const { project } = seedProject(db);
+        seedAction(db, project.id, { title: "Narrowed proof", docRef: "plan/p#done-one", status: "done", splitInto: ["rest"] });
+        seedAction(db, project.id, {
+          title: "Rest of the proof",
+          docRef: "plan/p#rest",
+          status: remainderStatus,
+          clarification: "clarified",
+          nextAction: "Run the second Action."
+        });
+        return computeNowBrief(db, loadNorthStar(workspace)).theOneThing;
+      });
+    };
+
+    const untouched = oneThingFor("open");
+    expect(untouched.doThis).toBe("rest: Run the second Action.");
+    expect(untouched.unlocks).not.toContain("Already underway");
+
+    const underway = oneThingFor("in_progress");
+    expect(underway.doThis).toBe("rest: Run the second Action.");
+    expect(underway.unlocks).toContain("Already underway");
+  });
+
+  it("asks to clarify the open remainder, by its id and title, not the finished parent gate", () => {
+    const workspace = initializedWorkspace();
+    writeNorthStar(workspace, GATE_DOC);
+
+    const { one, remainderId, parentId } = withDatabase(workspace, (db) => {
+      const { project } = seedProject(db);
+      seedAction(db, project.id, { title: "Narrowed proof", docRef: "plan/p#done-one", status: "done", splitInto: ["rest"] });
+      seedAction(db, project.id, {
+        title: "Rest of the proof",
+        docRef: "plan/p#rest",
+        status: "open",
+        clarification: "unclarified",
+        nextAction: "Something vague."
+      });
+      const brief = computeNowBrief(db, loadNorthStar(workspace));
+      const gate = brief.gates.find((entry) => entry.id === "done-one")!;
+      return { one: brief.theOneThing, remainderId: gate.openRemainder?.workItemId, parentId: gate.workItemId };
+    });
+
+    expect(one.kind).toBe("clarify");
+    expect(remainderId).toBeTruthy();
+    expect(remainderId).not.toBe(parentId);
+    expect(one.id).toBe(remainderId);
+    expect(one.title).toBe("Rest of the proof");
+    expect(one.doThis).toBe('Clarify "Rest of the proof" until it names one concrete next move.');
+    expect(one.doThis).not.toContain("First gate");
+  });
+
   it("keeps a gate in_progress, and says why, when the remainder is named but no plan carries it", () => {
     const workspace = initializedWorkspace();
     writeNorthStar(workspace, GATE_DOC);

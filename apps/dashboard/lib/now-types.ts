@@ -28,6 +28,7 @@ export interface OpenRemainder {
   actionId: string;
   workItemId: string | null;
   title: string | null;
+  status: string | null;
 }
 
 export interface TheOneThing {

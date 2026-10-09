@@ -83,6 +83,8 @@ export interface OpenRemainder {
   /** Null when no plan document carries the remainder. */
   workItemId: string | null;
   title: string | null;
+  /** The remainder's own work-item status; null when no plan carries it. */
+  status: string | null;
 }
 
 /**

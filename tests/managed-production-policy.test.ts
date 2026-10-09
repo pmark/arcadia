@@ -482,6 +482,81 @@ describe("concurrency gate", () => {
     expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
   });
 
+  describe("split remainders that are not simply open (shared split walk)", () => {
+    const PLAN = "plan/bootstrap-managed-production-to-build-flight-deck";
+
+    function seedSplitAction(
+      db: Parameters<typeof createWorkItemRecord>[0],
+      id: string,
+      status: "open" | "done",
+      splitInto?: string[]
+    ): string {
+      const ref = `${PLAN}#${id}`;
+      const item = createWorkItemRecord(db, {
+        title: ref,
+        rawInput: ref,
+        queue: "work_queue",
+        workClassification: "agent",
+        nextAction: `Do ${id}.`,
+        status
+      });
+      setWorkItemDocRef(db, item.id, ref);
+      if (splitInto) updateWorkItem(db, item.id, { splitIntoJson: JSON.stringify(splitInto) });
+      return item.id;
+    }
+
+    function expectClosed(target: string, label: string): void {
+      expect(admit(target, `adm-${label}-first`).admitted).toBe(true);
+      const second = admit(target, `adm-${label}-second`, { actionKey: "demo/ship-it" });
+      expect(second).toMatchObject({ admitted: false, code: "concurrency_limit" });
+      expect(second.reason).toContain(CONCURRENT_READY_SET_ADMISSION_PROOF_REF);
+    }
+
+    it("stays closed when a done remainder was itself split and its nested remainder is open", () => {
+      const target = workspace();
+      markConcurrencyProofsDone(target);
+      activate(target, "grant-gate-nested-split", { maxConcurrentSessions: 2 });
+
+      withDatabase(target, (db) => {
+        const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+        updateWorkItem(db, proof.id, { splitIntoJson: JSON.stringify(["nested-remainder-one"]) });
+        seedSplitAction(db, "nested-remainder-one", "done", ["nested-remainder-two"]);
+        seedSplitAction(db, "nested-remainder-two", "open");
+      });
+
+      expectClosed(target, "nested");
+    });
+
+    it("stays closed when a done remainder's own depends_on prerequisite is not done", () => {
+      const target = workspace();
+      markConcurrencyProofsDone(target);
+      activate(target, "grant-gate-remainder-prereq", { maxConcurrentSessions: 2 });
+
+      withDatabase(target, (db) => {
+        const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+        updateWorkItem(db, proof.id, { splitIntoJson: JSON.stringify(["done-remainder"]) });
+        const remainderId = seedSplitAction(db, "done-remainder", "done");
+        const prereqId = seedSplitAction(db, "remainder-prereq", "open");
+        replaceDocumentWorkItemDependencies(db, remainderId, `${PLAN}#done-remainder`, [prereqId]);
+      });
+
+      expectClosed(target, "remainder-prereq");
+    });
+
+    it("stays closed when a split_into entry names an Action no work item carries", () => {
+      const target = workspace();
+      markConcurrencyProofsDone(target);
+      activate(target, "grant-gate-ghost-remainder", { maxConcurrentSessions: 2 });
+
+      withDatabase(target, (db) => {
+        const proof = getWorkItemByDocRef(db, CONCURRENT_READY_SET_ADMISSION_PROOF_REF)!;
+        updateWorkItem(db, proof.id, { splitIntoJson: JSON.stringify(["never-ingested-remainder"]) });
+      });
+
+      expectClosed(target, "ghost");
+    });
+  });
+
   it("stays closed when a done proof Action's own depends_on prerequisite reopens, with no split involved (Issue #720)", () => {
     const target = workspace();
     markConcurrencyProofsDone(target);

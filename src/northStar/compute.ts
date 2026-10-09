@@ -167,13 +167,15 @@ function resolveGates(db: Database.Database, northStar: NorthStarDocument, warni
         nextAction: remainderItem
           ? remainderItem.next_action
           : `Restore remainder \`${remainder.ref}\`: \`${gate.actionRef}\` was split into it, but no plan carries it.`,
-        clarification: remainderItem?.clarification_status ?? null,
+        // A remainder no plan carries already has a concrete next move: restore it.
+        clarification: remainderItem ? remainderItem.clarification_status : "clarified",
         derived: true,
         openRemainder: {
           ref: remainder.ref,
           actionId: parseActionDocRef(remainder.ref)?.actionId ?? remainder.ref,
           workItemId: remainderItem?.id ?? null,
-          title: remainderItem?.title ?? null
+          title: remainderItem?.title ?? null,
+          status: remainderItem?.status ?? null
         }
       };
     }
@@ -267,13 +269,18 @@ function selectTheOneThing(input: {
 
   const open = gates.filter((gate) => gate.status !== "done");
 
-  const inProgress = open.find((gate) => gate.status === "in_progress" && gate.nextAction);
+  // For a split gate the work to do is its open remainder's, so "underway" and
+  // "ready" are judged by the remainder's own status: an untouched remainder
+  // is not underway just because its parent reads in_progress.
+  const inProgress = open.find(
+    (gate) => gate.status === "in_progress" && actionableStatus(gate) === "in_progress" && gate.nextAction
+  );
   if (inProgress) {
     return gateAsOneThing(inProgress, open, targetProjectName, "Already underway — finish it before starting anything else.");
   }
 
   const ready = open.find(
-    (gate) => gate.status === "open" && gate.clarification === "clarified" && gate.nextAction
+    (gate) => actionableStatus(gate) === "open" && gate.clarification === "clarified" && gate.nextAction
   );
   if (ready) {
     return gateAsOneThing(ready, open, targetProjectName, null);
@@ -297,11 +304,13 @@ function selectTheOneThing(input: {
 
   const needsClarity = open.find((gate) => gate.clarification !== "clarified");
   if (needsClarity) {
+    // A split gate is clarified through its open remainder, not the finished parent.
+    const subject = needsClarity.openRemainder?.title ?? needsClarity.title;
     return {
       kind: "clarify",
-      id: needsClarity.workItemId,
-      title: needsClarity.title,
-      doThis: `Clarify "${needsClarity.title}" until it names one concrete next move.`,
+      id: needsClarity.openRemainder?.workItemId ?? needsClarity.workItemId,
+      title: subject,
+      doThis: `Clarify "${subject}" until it names one concrete next move.`,
       unlocks: `${remainingLine(open)} — this one has no defined next step, which is why it keeps getting skipped.`,
       projectName: targetProjectName,
       onTarget: true
@@ -322,6 +331,24 @@ function selectTheOneThing(input: {
     projectName: targetProjectName,
     onTarget: true
   };
+}
+
+/**
+ * The status of the work a gate is waiting on: the open remainder's when the
+ * gate's Action was split (a remainder no plan carries counts as not started),
+ * otherwise the gate's own.
+ */
+function actionableStatus(gate: ResolvedGate): GateStatus {
+  if (!gate.openRemainder) return gate.status;
+  switch (gate.openRemainder.status) {
+    case "in_progress":
+      return "in_progress";
+    case "blocked":
+    case "deferred":
+      return "blocked";
+    default:
+      return "open";
+  }
 }
 
 function gateAsOneThing(
