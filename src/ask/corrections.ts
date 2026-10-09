@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
+import type { StewardshipExecutionPath } from "../stewardship/index.js";
 import { askQuestionOrigin } from "./askQuestion.js";
 import { ingressSourceKind } from "./replyCapture.js";
 
@@ -151,4 +152,13 @@ export function findAskMemo(db: Database.Database, text: string): AskMemo | null
     createdAt: row.created_at,
     date: row.created_at.slice(0, 10)
   };
+}
+
+/**
+ * Whether a memo must stand down for an Ask whose ordinary route (what the patterns decide with no memo) is
+ * `ordinaryPath`. A memo may replace the Clarify First and Back Burner outcomes, and the pattern outcome otherwise, but it
+ * never lets an Ask skip Requires Review or Blocked. Pure, so the golden-set replay and `arcadia ask` share one rule.
+ */
+export function memoStandsDown(ordinaryPath: StewardshipExecutionPath): boolean {
+  return ordinaryPath === "Requires Review" || ordinaryPath === "Blocked";
 }

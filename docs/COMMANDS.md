@@ -743,6 +743,21 @@ comparable to the Ingress percentage (`comparableToIntakeCoverage: false`;
 envelopes are excluded and counted separately, and unclassified sources (`ask`,
 `cli.ask`) are listed but not counted.
 
+`arcadia ask report [--since <ISO|Nd>] [--json]` is a read-only report (default
+window 7d) of whether Ask routing is improving, per operator source (agent-written
+and reply-provenance envelopes excluded). The unit is an operator Ask with an Ask
+record; a correction re-routes the same Ask. It prints the **vanish rate** (target
+zero: classified Asks at least an hour old with no open record listed by `arcadia
+todo`, decided by running todo's own projection, and no acted, answered or
+on-purpose Idea outcome; suppressed Asks are counted apart), corrected ÷ classified,
+questions ÷ Asks, Back Burner arrivals (filed on purpose versus shelved as a
+fallback), memo hits, Asks flagged `recurrence` (the Schedule revival trigger is 3 or
+more) and `planning`, and the operator memos no golden case backs (all time, read
+from `tests/fixtures/ask-golden.jsonl` in the current checkout). When 3 or more
+memos share a corrected type and the same first three words, it says so as a hint
+for a reviewed rule and golden case; no rule is ever generated. Vanished Asks are
+named by id only. `--json` schema: `arcadia-ask-report-v1`.
+
 Ingress files are matched to envelopes by shared id: a sidecar's Ask response
 capture id or request id, else the request id Ingress derives from its source and
 file name. When every counted sidecar names one, the numerator is the number of

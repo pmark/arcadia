@@ -2752,6 +2752,37 @@ To restore the earlier routing, set `"ask": { "routing": { "v2": false } }` in t
 workspace's `config/arcadia.json`; the flag defaults to on. A config file that cannot
 be read never loses an Ask: the default is used and the receipt carries a warning.
 
+### Is Ask routing getting better? `arcadia ask report` and the golden set
+
+```
+pnpm arcadia ask report [--since 7d] [--json]
+```
+
+Read-only. Per operator source (agent-written Asks and replies that only record
+words behind another write are left out) it prints: the **vanish rate** (target
+zero: Asks at least an hour old with no open record that `arcadia todo` lists and no
+acted, answered or on-purpose Idea outcome; suppressed Asks are counted apart);
+corrected ÷ classified; questions ÷ Asks; Back Burner arrivals (filed on purpose
+versus shelved as a fallback); memo hits; Asks flagged `recurrence` (three or more
+revive the deferred Schedule capability) and `planning`; and how many corrections
+no golden case backs. Vanished Asks are listed by `ask_…` id only; trace one with
+`arcadia ask show <id>`. Run it from an Arcadia checkout so it can read the golden
+set. When three or more memos share a corrected type and the same first three words,
+the report says so: that is a hint for an agent to propose a deterministic rule and
+a golden case in a reviewed PR. Nothing is ever generated automatically.
+
+The golden set is `tests/fixtures/ask-golden.jsonl`: one JSON object per line with
+`id`, a paraphrased or synthetic `text` (never real Ask text), `expected_type`
+(`work`, `idea`, `status`, `unclear` for the Clarify First question, or `answer`),
+and optionally `expected_path` (the stewardship's execution path, for example
+`Requires Review`), `expected_memo` and seeded `corrections` for memo hit and miss
+cases. To add a case, append a line, run `pnpm vitest run tests/ask-golden.test.ts`
+and open a PR; the reviewed merge is the approval. The test replays every case
+through the pure intake, memo and stewardship functions and also through the real
+`arcadia ask`, so CI fails when either routes a known Ask differently. A golden case
+backs a correction when it has the same type and opens with the same first three
+words, so start a case for a flagged pattern with those words.
+
 `todo` is a read-only view derived on each run: nothing is stored, written or
 run. It lists seven sources per Project: **open Decisions**, **pending Agent
 Ask proposals**, **open or deferred review items** (these include

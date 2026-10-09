@@ -20,7 +20,7 @@ import {
 } from "../ask/suppression.js";
 import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
 import { buildAskHeard, type AskHeard } from "../ask/heard.js";
-import { findAskMemo, type AskMemo } from "../ask/corrections.js";
+import { findAskMemo, memoStandsDown, type AskMemo } from "../ask/corrections.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
@@ -310,7 +310,7 @@ function runAskCommandWithRouting(
   // Ask skip Requires Review or Blocked: if the ordinary route for these words is one of those, the memo stands down.
   if (memo) {
     const ordinary = deriveStewardship(false, selectProject(options.project)).computedStewardship.recommendedExecutionPath;
-    if (ordinary === "Requires Review" || ordinary === "Blocked") memo = null;
+    if (memoStandsDown(ordinary)) memo = null;
   }
   if (memo) trace.memo = memo;
   const route: AskRoute | undefined = options.correctionRoute ?? memo?.type;
@@ -1578,7 +1578,7 @@ export function buildIntakeContext(db: Parameters<typeof listProjects>[0]): Inta
   return { projects, recentActivity };
 }
 
-function resolvedIntentForStewardship(
+export function resolvedIntentForStewardship(
   intake: IntakeResult,
   stewardship: GoalStewardshipResult,
   approvedFromReview = false
@@ -1618,7 +1618,7 @@ function resolvedIntentForStewardship(
   return resolvedIntentFromIntake(intake, approvedFromReview);
 }
 
-function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
+export function resolvedIntentFromIntake(intake: IntakeResult, approvedFromReview = false): ResolvedIntent {
   if ((!approvedFromReview && intake.confidenceLabel !== "high") || intake.resolvedIntent === "CaptureThought") {
     return {
       intentId: intake.resolvedIntent,
