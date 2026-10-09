@@ -346,7 +346,13 @@ export function queueApprovedPlanningRun(
     });
     return { decision, run, duplicate: false };
   });
-  return transaction();
+  // IMMEDIATE, not the default deferred BEGIN: this transaction reads the
+  // Decision and then writes the Run. Under a deferred BEGIN, a commit by the
+  // worker (or any other connection) between the read and the first write makes
+  // SQLite fail the upgrade at once with SQLITE_BUSY_SNAPSHOT, which
+  // `busy_timeout` cannot wait out. Taking the write lock first turns that race
+  // into an ordinary wait (see `writeTransaction` in db/connection.ts).
+  return transaction.immediate();
 }
 
 export function isPlanningApprovalDecision(decision: Pick<ReviewItemSummary, "resolved_intent">): boolean {
