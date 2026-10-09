@@ -369,6 +369,21 @@ changed field, and the exact recovery step with a durable receipt. If settlement
 committed but publication failed, retrying that same action verifies and publishes
 the existing commit without settling twice. It never changes a queue or pointer. The [shared runner contract](docs/operator-plan-amendments.md) documents pinned inputs and safe recovery.
 
+**Test headless Codex, OpenCode and Claude single-Action runs (experiment
+fixture)** (`test-headless-provider-single-action`, from `/runs` or the terminal)
+tries each coding agent independently, in that order, on its own disposable
+experiment-workspace fixture and the light-tier start model, then reports all
+three in one receipt: PASS, FAIL or SKIPPED (a missing binary, sign-in or
+headless flag skips only that provider, with the reason), the model each used,
+the agent part and the host part separately, and, for every failed criterion,
+the first error lines from that provider's log (`failureDetails`), so a failure
+is diagnosable from `receipt.json` alone. It exits 0 when at least one provider
+passes. From a terminal, `--providers codex,claude` picks a subset and
+`--model-codex`, `--model-opencode` and `--model-claude` override a model. The
+leak check still compares the live workspace before and after; a changed Codex
+trust entry is recorded as ruled not a stop condition (2026-10-09), and any
+other change is a possible Decision 0082 stop condition to attribute.
+
 Inside Sessions and runs, **Active now** lists every prepared or running agent
 Session and every pending or running execution Run across the whole portfolio,
 independent of any recent-history limit — a Session that has been running far

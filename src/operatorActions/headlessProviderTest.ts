@@ -10,14 +10,18 @@ import { runPreserveCommand } from "../commands/preserve.js";
 import { withDatabase } from "../db/connection.js";
 import { getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { seedFixtureActionBuildPacket } from "../fixtures/zeroPromptRehearsal.js";
+import { loadModelTierRegistry, modelTierOverridePath, sessionStartBinding } from "../codingAgents/modelTiers.js";
 import { getSession, type AgentSession, type TmuxAdapter } from "../sessions/index.js";
+import { checkLaunchPrerequisites } from "../sessions/launchPreflight.js";
+import { claudePreservationDenied, describeClaudeResult, extractDiagnosis, parseClaudeStream } from "./headlessProviderDiagnosis.js";
 import { recordExitScriptPath, type SessionRecording } from "../sessions/sessionRecording.js";
 
 /**
  * The headless-provider test behind the operator action
  * `test-headless-provider-single-action`. The operator presses it to learn
- * whether a coding-agent CLI (Codex, then OpenCode) can complete one trivial
- * governed Action with no human input.
+ * whether each coding-agent CLI (Codex, OpenCode and Claude Code), tried
+ * independently on its own fresh fixture, can complete one trivial governed
+ * Action with no human input.
  *
  * Everything happens inside a fresh Decision 0082 experiment workspace and a
  * one-Action fixture repository with no remote, both under a temporary
@@ -31,8 +35,9 @@ import { recordExitScriptPath, type SessionRecording } from "../sessions/session
  * (`buildSessionLaunch`), not a hand copy: `go --apply --launch` runs through a
  * recording process boundary that starts nothing, and the recorded Session is
  * rebuilt with an admission marker so the builder returns the headless argv
- * (`codex exec ... --sandbox workspace-write`, `opencode run ...`) that a
- * standing-policy launch would use.
+ * (`codex exec ... --sandbox workspace-write`, `opencode run ...`,
+ * `claude --print --output-format stream-json ... --settings <file>
+ * --setting-sources ""`) that a standing-policy launch would use.
  */
 
 /** Decision 0082 lets experiment workspaces exist until this UTC date (inclusive). */
@@ -48,9 +53,21 @@ const HEARTBEAT_SCHEMA = "arcadia-preservation-transport-v1";
 /** Stripped from every child: an operator-script context must not leak into Arcadia commands or the provider. */
 const OPERATOR_CONTEXT_PREFIX = "ARCADIA_OPERATOR_SCRIPT_";
 
-export type ProviderName = "codex" | "opencode";
-export const PROVIDER_ORDER: ProviderName[] = ["codex", "opencode"];
-const PROVIDER_PROFILE: Record<ProviderName, string> = { codex: "codex_build", opencode: "opencode_build" };
+export type ProviderName = "codex" | "opencode" | "claude";
+/** Every provider is tried, in this order, each on its own fresh fixture; a failure never stops the next. */
+export const PROVIDER_ORDER: ProviderName[] = ["codex", "opencode", "claude"];
+const PROVIDER_PROFILE: Record<ProviderName, string> = { codex: "codex_build", opencode: "opencode_build", claude: "claude_build" };
+const PROVIDER_ADAPTER: Record<ProviderName, string> = { codex: "codex-cli", opencode: "opencode-cli", claude: "claude-code-cli" };
+
+/** Parse `codex,opencode,claude` (any non-empty subset, no duplicates) or throw a usage error naming the problem. */
+export function parseProviderList(text: string): ProviderName[] {
+  const names = text.split(",").map((name) => name.trim()).filter((name) => name.length > 0);
+  if (names.length === 0) throw new Error("--providers needs at least one of codex, opencode, claude");
+  const unknown = names.filter((name) => !(PROVIDER_ORDER as string[]).includes(name));
+  if (unknown.length > 0) throw new Error(`unknown provider ${unknown.join(", ")}; choose from ${PROVIDER_ORDER.join(", ")}`);
+  if (new Set(names).size !== names.length) throw new Error("--providers lists a provider twice");
+  return names as ProviderName[];
+}
 
 export interface CriterionResult {
   id: string;
@@ -59,9 +76,18 @@ export interface CriterionResult {
   detail: string;
 }
 
+/** One failed criterion with the first relevant error lines of that provider's log, so a failure is diagnosable from the receipt alone. */
+export interface FailureDetail {
+  criterion: string;
+  label: string;
+  detail: string;
+  logLines: string[];
+}
+
 export interface ProviderResult {
   provider: ProviderName;
-  outcome: "PASS" | "FAIL" | "REFUSED";
+  /** SKIPPED: a precondition (binary, sign-in, posture flags) was missing, so this provider was not run; `reason` says which. */
+  outcome: "PASS" | "FAIL" | "SKIPPED";
   reason: string | null;
   model: string | null;
   effort: string | null;
@@ -74,6 +100,12 @@ export interface ProviderResult {
   candidateBranch: string | null;
   candidateWorktree: string | null;
   criteria: CriterionResult[];
+  /** Every failed criterion (or the setup failure) with the first relevant error lines from this provider's log. */
+  failureDetails: FailureDetail[];
+  /** How the model was chosen: the registry's start tier, or an operator override. */
+  modelSource: "start-tier" | "override" | null;
+  /** Claude only: the allow rules written to the per-session settings file the launch passes with --settings. */
+  permissionAllowList: string[] | null;
   /** Information only; never a criterion. */
   gitdir: GitdirReport | null;
   sessionReconcile: { exitCode: number | null; summary: string } | null;
@@ -117,8 +149,10 @@ export interface HeadlessTestOptions {
   scriptId: string;
   keep: boolean;
   providerTimeoutMs?: number;
-  /** Test seam; the operator action runs both in order. */
+  /** The providers to try, in order (default: all three). Each runs independently on its own fresh fixture. */
   providers?: ProviderName[];
+  /** Per-provider model overrides (default: each provider's start-tier model). */
+  models?: Partial<Record<ProviderName, string>>;
   /** Test seam: where temporary roots are made (default: the OS temp directory). */
   tempBase?: string;
   /** Test seam: skip the read-only live-workspace snapshot comparison. */
@@ -350,33 +384,62 @@ function mustArcadia(context: Context, workspace: string | null, args: string[],
 // Preconditions
 // ---------------------------------------------------------------------------
 
-const PROVIDER_BINARY: Record<ProviderName, string> = { codex: "codex", opencode: "opencode" };
+const PROVIDER_BINARY: Record<ProviderName, string> = { codex: "codex", opencode: "opencode", claude: "claude" };
 
 export interface ProviderPrecondition { ok: boolean; message: string; binary: string | null; warning?: string }
 
+/** The environment a provider (and Arcadia's own launch preflight on its behalf) runs in. */
+function providerEnvironment(context: Pick<Context, "searchPath" | "env">): NodeJS.ProcessEnv {
+  return { ...sanitizedEnv(context.env), PATH: context.searchPath };
+}
+
+/**
+ * Whether one provider can be tried at all: its binary is on PATH, it is signed in, and the installed CLI carries the flags its
+ * headless posture needs (the same launch preflight `go --launch` runs). A failure here marks only this provider SKIPPED.
+ */
 export function checkProviderPrecondition(context: Pick<Context, "searchPath" | "env">, provider: ProviderName): ProviderPrecondition {
   const name = PROVIDER_BINARY[provider];
   const binary = findExecutable(name, context.searchPath);
   if (!binary) return { ok: false, binary: null, message: `${name} was not found on PATH (searched ${context.searchPath}); install it and sign in as the operator, then rerun` };
-  const args = provider === "codex" ? ["login", "status"] : ["auth", "list"];
-  const probe = spawnSync(binary, args, { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"], env: { ...sanitizedEnv(context.env), PATH: context.searchPath } });
+  const env = providerEnvironment(context);
+  const args = provider === "codex" ? ["login", "status"] : provider === "claude" ? ["auth", "status", "--json"] : ["auth", "list"];
+  const probe = spawnSync(binary, args, { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"], env });
   const output = `${probe.stdout ?? ""}${probe.stderr ?? ""}`.replace(ANSI, "").trim();
   const command = `${name} ${args.join(" ")}`;
   const failure = probe.error ? probe.error.message : probe.status !== 0 ? `exit ${probe.status}` : null;
+  let result: ProviderPrecondition;
   if (provider === "codex") {
-    if (failure) return { ok: false, binary, message: `${command} failed (${failure}): ${output.slice(0, 200) || "no output"}; sign in as the operator (codex login) and rerun` };
-    return { ok: true, binary, message: `${command} succeeded` };
-  }
-  // OpenCode's credential listing is not a documented contract. Refuse only on its one clear signal, "0 credentials";
-  // anything else uncertain (an unknown subcommand, a changed format) warns and lets the attempt itself decide.
-  if (!failure && /\b0 credentials\b/i.test(output)) {
-    return { ok: false, binary, message: `${command} lists no credentials; sign in with opencode auth login and rerun` };
-  }
-  if (failure) {
+    result = failure
+      ? { ok: false, binary, message: `${command} failed (${failure}): ${output.slice(0, 200) || "no output"}; sign in as the operator (codex login) and rerun` }
+      : { ok: true, binary, message: `${command} succeeded` };
+  } else if (provider === "claude") {
+    // `claude auth status --json` reports loggedIn (it reads CLAUDE_CODE_OAUTH_TOKEN, the credentials file and the keychain); a
+    // token in the environment is itself a credential. The workspace token file is not read here: it belongs to the live workspace.
+    let loggedIn: boolean | null = null;
+    try { const parsed = JSON.parse(probe.stdout ?? ""); if (typeof parsed.loggedIn === "boolean") loggedIn = parsed.loggedIn; } catch { /* unparsable */ }
+    if (loggedIn === true) result = { ok: true, binary, message: `${command} reports loggedIn` };
+    else if (context.env.CLAUDE_CODE_OAUTH_TOKEN) result = { ok: true, binary, message: `${command} did not confirm a login, but CLAUDE_CODE_OAUTH_TOKEN is set in the environment` };
+    else result = { ok: false, binary, message: loggedIn === false
+      ? `${command} reports not logged in; sign in as the operator (claude auth login, or claude setup-token with CLAUDE_CODE_OAUTH_TOKEN set) and rerun`
+      : `${command} could not confirm a sign-in (${failure ?? "unparsable output"}: ${output.slice(0, 160) || "no output"}); sign in as the operator (claude auth login) and rerun` };
+  } else if (!failure && /\b0 credentials\b/i.test(output)) {
+    // OpenCode's credential listing is not a documented contract. Refuse only on its one clear signal, "0 credentials";
+    // anything else uncertain (an unknown subcommand, a changed format) warns and lets the attempt itself decide.
+    result = { ok: false, binary, message: `${command} lists no credentials; sign in with opencode auth login and rerun` };
+  } else if (failure) {
     const warning = `${command} could not confirm a sign-in (${failure}: ${output.slice(0, 120) || "no output"}); proceeding, the attempt itself will show whether OpenCode is signed in`;
-    return { ok: true, binary, message: warning, warning };
+    result = { ok: true, binary, message: warning, warning };
+  } else {
+    result = { ok: true, binary, message: `${command} succeeded` };
   }
-  return { ok: true, binary, message: `${command} succeeded` };
+  if (!result.ok) return result;
+  // Posture flags: the installed CLI must know the headless flags the launch passes (Arcadia's own launch preflight, run against this environment).
+  try {
+    checkLaunchPrerequisites({ provider: PROVIDER_ADAPTER[provider], headless: true, env });
+  } catch (error) {
+    return { ok: false, binary, message: (error instanceof Error ? error.message : String(error)).slice(0, 400) };
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -386,7 +449,8 @@ export function checkProviderPrecondition(context: Pick<Context, "searchPath" | 
 function newResult(provider: ProviderName): ProviderResult {
   return {
     provider, outcome: "FAIL", reason: null, model: null, effort: null, command: null, exitCode: null, signal: null, timedOut: false,
-    durationMs: null, logPath: null, candidateBranch: null, candidateWorktree: null, criteria: [], gitdir: null, sessionReconcile: null,
+    durationMs: null, logPath: null, candidateBranch: null, candidateWorktree: null, criteria: [], failureDetails: [], modelSource: null,
+    permissionAllowList: null, gitdir: null, sessionReconcile: null,
     askFile: null, workspaceKept: null, agentPart: null, hostPart: null, passKind: null
   };
 }
@@ -424,6 +488,27 @@ function setBuildProfile(workspace: string, profile: string): void {
   const config = JSON.parse(readFileSync(file, "utf8"));
   config.defaults = { ...config.defaults, build: profile };
   writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+}
+
+/**
+ * An operator's `--model-<provider>` override, written to the experiment workspace's own `config/coding-agent-models.json` (the
+ * documented per-workspace override) so the Session starts on that model through the normal start-tier resolution. A model the
+ * registry already binds in a tier is chosen by starting on that tier (a model bound in two tiers makes the agent's identity
+ * ambiguous, which the launch refuses); any other model replaces the light-tier binding. Each provider has its own workspace, so
+ * the start tier is this one agent's. The live workspace's config is never read or written.
+ */
+function setStartModelOverride(workspace: string, provider: ProviderName, model: string): void {
+  const file = modelTierOverridePath(workspace);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const existing = (() => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return {}; } })();
+  const registry = loadModelTierRegistry(workspace);
+  const tier = (["light", "standard", "heavy"] as const).find((candidate) => registry.tiers[candidate][provider]?.model === model);
+  if (tier) {
+    writeFileSync(file, JSON.stringify({ ...existing, sessionStartTier: tier }, null, 2) + "\n");
+    return;
+  }
+  const light = { ...(existing.tiers?.light ?? {}), [provider]: { model, effort: "e1_brief" } };
+  writeFileSync(file, JSON.stringify({ ...existing, tiers: { ...(existing.tiers ?? {}), light } }, null, 2) + "\n");
 }
 
 function fixtureGitEnv(): NodeJS.ProcessEnv {
@@ -620,9 +705,13 @@ function evaluateAgentPart(context: Context, result: ProviderResult, input: {
   const { worktree } = input;
   const criteria: CriterionResult[] = [];
   const add = (id: string, label: string, pass: boolean, detail: string) => criteria.push({ id, label, pass, detail });
+  // Claude's stream-json ends with a result event that can say is_error even when the process exits 0.
+  const claudeStream = result.provider === "claude" ? parseClaudeStream(readLog(result.logPath)) : null;
+  const claudeErrored = claudeStream?.result != null && (claudeStream.result.isError || (claudeStream.result.subtype !== null && claudeStream.result.subtype !== "success"));
   add("exit", `provider exited 0 within the ${formatCap(input.timeoutMs)} cap`,
-    input.run.exitCode === 0 && !input.run.timedOut,
-    input.run.timedOut ? `timed out after ${Math.round(input.run.durationMs / 1000)}s` : `exit ${input.run.exitCode ?? "none"}${input.run.signal ? ` (${input.run.signal})` : ""} after ${Math.round(input.run.durationMs / 1000)}s`);
+    input.run.exitCode === 0 && !input.run.timedOut && !claudeErrored,
+    (input.run.timedOut ? `timed out after ${Math.round(input.run.durationMs / 1000)}s` : `exit ${input.run.exitCode ?? "none"}${input.run.signal ? ` (${input.run.signal})` : ""} after ${Math.round(input.run.durationMs / 1000)}s`)
+      + (claudeStream ? `; ${describeClaudeResult(claudeStream)}` : ""));
 
   let marker: string | null = null;
   try { marker = readFileSync(path.join(worktree, "MARKER.md"), "utf8"); } catch { /* absent */ }
@@ -720,6 +809,25 @@ export function brokerRefusalInLog(log: string): boolean {
   return false;
 }
 
+function readLog(logPath: string | null): string {
+  if (!logPath) return "";
+  try { return readFileSync(logPath, "utf8"); } catch { return ""; }
+}
+
+/**
+ * Why the agent itself could not commit, as evidence from its own log, or null: the broker's exact refusal (Codex, OpenCode), or for
+ * Claude a permission denial of `git commit`/`git add`/the broker (its headless allow list carries only the validation commands and
+ * `agent-ask draft`, so the agent drafts the Ask and the host preserves).
+ */
+export function preservationBlockedEvidence(provider: ProviderName, log: string): string | null {
+  if (brokerRefusalInLog(log)) return "the agent's own broker call was refused because an experiment workspace has no worker";
+  if (provider === "claude") {
+    const denied = claudePreservationDenied(log);
+    if (denied) return `the agent's own commit/broker call was refused by the headless permission posture (\`${denied}\`), which allows only the validation commands and the Ask draft`;
+  }
+  return null;
+}
+
 /**
  * The host's turn: the same preservation the worker runs for a Session that exited with an uncommitted candidate.
  * `ran` is false when the step could not run in this environment at all (no Seatbelt host, validation skipped, no production
@@ -786,13 +894,14 @@ function finishEvaluation(context: Context, result: ProviderResult, agent: Agent
   if (host.outcome === "preserved") {
     detail = `committed by host preservation, not by the agent: ${commit.detail}; ${host.detail}`;
   } else if (!commit.pass && host.needed && agent.askPass && agent.draftedAsk && agent.markerExact && commit.uncommittedOnly
-    && brokerRefusalInLog(readFileSync(result.logPath!, "utf8"))) {
+    && preservationBlockedEvidence(result.provider, readLog(result.logPath))) {
     // Host preservation could not complete in an experiment workspace, but the agent did its whole part: an uncommitted exact candidate,
-    // a criterion-complete drafted Ask and the broker refusal the missing worker explains. Say which way the host step went.
+    // a criterion-complete drafted Ask and the evidence of why it could not commit itself (the broker refusal the missing worker explains,
+    // or Claude's headless allow list refusing the commit and the broker). Say which way the host step went.
     pass = true;
     const refused = host.outcome === "host_failed";
     label = `a commit exists on the candidate branch (agent part; host preservation ${refused ? "attempted and refused" : "not exercised"})`;
-    detail = `PASS (agent); host preservation ${refused ? "attempted and refused" : "not exercised"}: ${host.detail}; the agent's own broker call was refused because an experiment workspace has no worker; ${commit.detail}`;
+    detail = `PASS (agent); host preservation ${refused ? "attempted and refused" : "not exercised"}: ${host.detail}; ${preservationBlockedEvidence(result.provider, readLog(result.logPath))}; ${commit.detail}`;
   }
   const criteria = [...agent.criteria];
   criteria.splice(3, 0, { id: "commit", label, pass, detail });
@@ -807,6 +916,44 @@ function finishEvaluation(context: Context, result: ProviderResult, agent: Agent
     : "agent_only";
 }
 
+/**
+ * The Claude launch must carry the exact headless posture `buildSessionLaunch` writes: a per-session `--settings` file and an empty
+ * `--setting-sources`, with an allow list that covers the fixture's validation command (the Project's declared validation command,
+ * registered in the fixture) and `arcadia agent-ask draft`. Returns the allow list, or refuses naming what is missing.
+ */
+function verifyClaudePosture(context: Context, args: string[]): string[] {
+  const flagValue = (flag: string): string | undefined => { const index = args.indexOf(flag); return index >= 0 ? args[index + 1] : undefined; };
+  const settingsFile = flagValue("--settings");
+  if (!settingsFile || flagValue("--setting-sources") !== "") {
+    throw new Refusal("prepare", "the Claude launch does not carry --settings <per-session file> with --setting-sources \"\"; refusing to run Claude with the operator's ambient settings");
+  }
+  let allow: string[];
+  try {
+    allow = JSON.parse(readFileSync(settingsFile, "utf8"))?.permissions?.allow ?? [];
+  } catch (error) {
+    throw new Refusal("prepare", `the per-session Claude settings file ${settingsFile} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const required = [`Bash(${FIXTURE_VALIDATION})`, "Bash(arcadia agent-ask draft:*)"];
+  const missing = required.filter((rule) => !allow.includes(rule));
+  if (missing.length > 0) {
+    throw new Refusal("prepare", `the per-session Claude settings allow list (${settingsFile}) lacks ${missing.join(" and ")}; the headless agent could not run the fixture check or draft its completion Ask`);
+  }
+  context.log(`claude (claude): per-session settings ${settingsFile} allow ${allow.join(", ")}; --setting-sources "" (no user or project settings)`);
+  return allow;
+}
+
+/** Fill `failureDetails`: each failed criterion (or the setup failure) with the first relevant error lines from this provider's log. */
+function attachFailureDetails(result: ProviderResult): void {
+  if (result.outcome !== "FAIL") return;
+  const log = readLog(result.logPath);
+  const lines = extractDiagnosis(log);
+  const logLines = lines.length > 0 ? lines : [log.trim() === "" ? "(the provider log is empty: the provider never produced output)" : `(no error-like lines found; read ${result.logPath} from the top)`];
+  const failed = result.criteria.filter((criterion) => !criterion.pass);
+  result.failureDetails = failed.length > 0
+    ? failed.map((criterion) => ({ criterion: criterion.id, label: criterion.label, detail: criterion.detail, logLines }))
+    : [{ criterion: "setup", label: "the attempt did not reach a judged result", detail: result.reason ?? "unknown", logLines }];
+}
+
 async function runProviderAttempt(context: Context, provider: ProviderName, tempRoot: string, date: string): Promise<ProviderResult> {
   const result = newResult(provider);
   const timeoutMs = context.options.providerTimeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
@@ -816,13 +963,12 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
   result.logPath = logPath;
   writeFileSync(logPath, "");
   mkdirSync(attemptRoot, { recursive: true });
-  const precondition = checkProviderPrecondition(context, provider);
-  context.log(`precondition (${provider}): ${precondition.message}`);
-  if (!precondition.ok) { result.outcome = "REFUSED"; result.reason = precondition.message; return result; }
 
   try {
     mustArcadia(context, null, ["init", "--profile", "experiment", workspace, "--json"], "experiment workspace init");
     setBuildProfile(workspace, PROVIDER_PROFILE[provider]);
+    const override = context.options.models?.[provider]?.trim() || null;
+    if (override) setStartModelOverride(workspace, provider, override);
     const fixture = createFixture(context, workspace, date, bindingModelFor(workspace, PROVIDER_PROFILE[provider]));
 
     const imported = mustArcadia(context, workspace, ["project", "import", "--name", "Headless Fixture", "--mission", "Disposable headless-provider test fixture.",
@@ -835,23 +981,29 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     if (sync.json?.data?.errorCount !== 0) throw new Refusal("setup", `docs sync reported ${sync.json?.data?.errorCount} error(s) for the fixture: ${JSON.stringify((sync.json?.data?.projects ?? []).flatMap((project: any) => project.errors ?? [])).slice(0, 400)}`);
 
     const packet = withDatabase(workspace, (db) => seedFixtureActionBuildPacket(db, workspace, { projectId, projectSlug: FIXTURE_PROJECT, planSlug: FIXTURE_PLAN, actionId: FIXTURE_ACTION }));
-    const model = withDatabase(workspace, (db) => {
+    const packetModel = withDatabase(workspace, (db) => {
       const item = getWorkItemByDocRef(db, `plan/${FIXTURE_PLAN}#${FIXTURE_ACTION}`);
       const invocation = item ? listCodexInvocationsForWorkItem(db, item.id).filter((c) => c.purpose === "build" && c.status === "packet_created").at(-1) : null;
       if (!invocation) return null;
       const metadata = JSON.parse(readFileSync(path.join(path.dirname(path.join(workspace, invocation.prompt_path)), "metadata.json"), "utf8"));
       return (metadata.providerSelection?.model as string | undefined) ?? null;
     });
-    if (!model) throw new Refusal("setup", "the seeded build packet names no provider model");
-    result.model = model;
-    context.log(`prepare (${provider}): build packet ${packet.invocationId} seeded; pinned model ${model}`);
+    if (!packetModel) throw new Refusal("setup", "the seeded build packet names no provider model");
+    // No --model: the Session starts on the registry's start-tier model for this agent (light by default), exactly as a production
+    // launch does, with the packet's model as its escalation target. An operator override replaces the start-tier binding in the
+    // experiment workspace's own coding-agent-models config.
+    const startModel = sessionStartBinding(provider, loadModelTierRegistry(workspace))?.model ?? packetModel;
+    result.modelSource = override ? "override" : "start-tier";
+    context.log(`prepare (${provider}): build packet ${packet.invocationId} seeded (plan model ${packetModel}); Session starts on ${startModel} (${override ? "operator override" : "start tier"})`);
 
     // `go --apply` needs a fresh worker heartbeat; the experiment guard forbids starting a worker.
     writeHeartbeat(workspace, Date.now());
     const recording = new RecordingTmux();
     const go = runGoCommand({
-      repo: fixture, apply: true, agent: provider, launch: true, model, workspace,
-      agentWorktreeRoot: path.join(workspace, "projects", "worktrees"), tmux: recording
+      repo: fixture, apply: true, agent: provider, launch: true, workspace,
+      agentWorktreeRoot: path.join(workspace, "projects", "worktrees"), tmux: recording,
+      // The launch preflight (binary, sign-in, headless flags) runs against the provider's own environment, not this process's.
+      preflightEnv: providerEnvironment(context)
     });
     const session: AgentSession | null = go.data.session;
     if (!session) throw new Refusal("prepare", "go --apply prepared no Session for the fixture Action");
@@ -859,6 +1011,9 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     result.candidateBranch = session.branch;
     result.candidateWorktree = worktree;
     result.effort = session.effort;
+    result.model = session.model;
+    if (session.model !== startModel) throw new Refusal("prepare", `the Session was prepared on ${session.model}, not the expected start model ${startModel}`);
+    context.log(`model (${provider}): ${session.model}, effort ${session.effort ?? "default"} (${override ? "operator override" : "start tier"})`);
     context.log(`prepare (${provider}): candidate ${session.branch} at ${worktree} (go --apply --agent ${provider} --launch; process boundary recorded, nothing started yet)`);
 
     // `go --launch` is headless by default: the recorded launch is the shipped builder's unattended argv
@@ -867,6 +1022,7 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     if (!launched) throw new Refusal("prepare", "go --launch recorded no launch for the Session");
     result.command = [launched.command, ...(provider === "codex" ? withCodexTrustOverrides(launched.args, [fixture, worktree]) : launched.args).map((arg) => (arg.length > 120 && (arg.includes("\n") || arg.length > 400) ? `${arg.slice(0, 40).replaceAll("\n", " ")}...[${arg.length} chars]` : arg))].join(" ");
     context.log(`launch (${provider}): ${result.command}`);
+    if (provider === "claude") result.permissionAllowList = verifyClaudePosture(context, launched.args);
     // Run the argv directly rather than through tmux's recording wrapper: this test waits on the provider process itself, and a
     // descendant that keeps the wrapper's pipe open must not look like a hang. The wrapper's one durable effect, the provider's
     // exit code in agent_sessions.exit_status, is recorded below with the shipped script, so reconcile sees what it sees in production.
@@ -923,6 +1079,7 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     if (error instanceof Refusal) result.reason = `${error.stage}: ${error.message}`;
     context.log(`error (${provider}): ${result.reason}`);
   }
+  attachFailureDetails(result);
   return result;
 }
 
@@ -930,25 +1087,52 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
 // Orchestration, table and receipt
 // ---------------------------------------------------------------------------
 
+/** How many of a failed criterion's log lines the printed table shows (the receipt keeps them all). */
+const TABLE_DIAGNOSIS_LINES = 3;
+
 export function formatTable(results: ProviderResult[]): string {
   const lines: string[] = [];
   for (const result of results) {
+    if (result.outcome === "SKIPPED") {
+      lines.push(`${result.provider}: SKIPPED - ${result.reason ?? "a precondition was missing"}`);
+      continue;
+    }
     const kind = result.outcome !== "PASS" ? ""
       : result.passKind === "agent_only" ? " (agent); host preservation not exercised"
       : result.passKind === "agent_host_failed" ? " (agent); host preservation attempted and refused"
       : result.passKind === "agent_and_host" ? " (agent + host preservation)" : "";
-    lines.push(`${result.provider}${result.model ? ` (${result.model})` : ""}: ${result.outcome}${kind}${result.reason ? ` - ${result.reason}` : ""}`);
+    const model = result.model ? ` (${result.model}${result.modelSource === "override" ? ", operator override" : ""})` : "";
+    lines.push(`${result.provider}${model}: ${result.outcome}${kind}${result.reason ? ` - ${result.reason}` : ""}`);
     if (result.agentPart && result.hostPart) {
       lines.push(`  agent part: ${result.agentPart.pass ? "PASS" : "FAIL"}   host part: ${result.hostPart.outcome === "not_needed" ? "not needed (the agent committed)" : result.hostPart.outcome === "preserved" ? `preserved ${result.hostPart.commit?.slice(0, 12) ?? ""} (${result.hostPart.detail})` : `${result.hostPart.outcome.replace("_", " ")}: ${result.hostPart.detail}`}`);
     }
-    for (const criterion of result.criteria) lines.push(`  ${criterion.pass ? "PASS" : "FAIL"}  ${criterion.label}  [${criterion.detail}]`);
+    // The provider's log lines are the same for every failed criterion, so the table shows them once, under the first failed one
+    // (the receipt's failureDetails carries them for each).
+    let shownLogLines = false;
+    for (const criterion of result.criteria) {
+      lines.push(`  ${criterion.pass ? "PASS" : "FAIL"}  ${criterion.label}  [${criterion.detail}]`);
+      if (!criterion.pass && !shownLogLines) {
+        shownLogLines = true;
+        const detail = result.failureDetails.find((entry) => entry.criterion === criterion.id);
+        for (const logLine of (detail?.logLines ?? []).slice(0, TABLE_DIAGNOSIS_LINES)) lines.push(`        log> ${logLine}`);
+      }
+    }
+    if (result.criteria.length === 0) {
+      for (const detail of result.failureDetails) for (const logLine of detail.logLines.slice(0, TABLE_DIAGNOSIS_LINES)) lines.push(`        log> ${logLine}`);
+    }
     if (result.gitdir) {
       lines.push(`  info  worktree gitdir inside sandbox-writable roots: ${result.gitdir.worktreeGitDirInsideWritableRoots} (${result.gitdir.worktreeGitDir}); common gitdir inside: ${result.gitdir.commonGitDirInsideWritableRoots}`);
     }
+    if (result.permissionAllowList) lines.push(`  info  claude allow list: ${result.permissionAllowList.join(", ")}`);
     if (result.sessionReconcile) lines.push(`  info  session reconcile exit ${result.sessionReconcile.exitCode}: ${result.sessionReconcile.summary}`);
     if (result.logPath) lines.push(`  info  provider log ${result.logPath}`);
   }
   return lines.join("\n");
+}
+
+/** One line per provider: outcome and the model it ran on. */
+export function formatOverview(results: ProviderResult[]): string {
+  return results.map((result) => `${result.provider}: ${result.outcome}${result.outcome === "PASS" && result.passKind && result.passKind !== "agent" ? ` (${result.passKind})` : ""}, model ${result.model ?? "none (not run)"}`).join("; ");
 }
 
 function jsonReceipt(options: HeadlessTestOptions, startedAt: string, outcome: HeadlessTestOutcome, extra: Record<string, unknown>): string {
@@ -965,6 +1149,7 @@ function jsonReceipt(options: HeadlessTestOptions, startedAt: string, outcome: H
     runLog: path.join(options.runDirectory, "run.log"),
     liveWorkspaceAddressed: false,
     providers: outcome.providers,
+    models: Object.fromEntries(outcome.providers.map((result) => [result.provider, result.model])),
     ...extra
   }, null, 2) + "\n");
   return receiptPath;
@@ -978,18 +1163,34 @@ function writeFailureHandoff(options: HeadlessTestOptions, outcome: HeadlessTest
     "No provider completed the fixture Action headlessly, or the test could not start. The live workspace, production, services, GitHub and provider configuration were not touched.",
     "", "## Results", "", "```", formatTable(outcome.providers) || "(no provider was attempted)", "```", "",
     "## Next step", "",
-    "Give this handoff, the run log and the provider logs listed above to a coding agent and ask it to diagnose the first failing criterion. " +
+    "Give this handoff, the run log and the provider logs listed above to a coding agent and ask it to diagnose the first failing criterion of each provider " +
+      "(the `log>` lines and the receipt's failureDetails carry the first relevant error lines from that provider's log). " +
       "A provider that exits non-zero, writes nothing or never drafts the completion Ask is a finding about that provider's unattended launch, not a reason to rerun blindly. " +
-      "Rerun with --keep to inspect the fixture workspace and candidate worktree afterwards."
+      "A SKIPPED provider names the missing precondition. Rerun with --keep to inspect the fixture workspace and candidate worktree afterwards, and --providers <name> to rerun just one."
   ];
   writeFileSync(path.join(options.runDirectory, "failure-handoff.md"), lines.join("\n") + "\n");
 }
 
-function liveSnapshot(context: Context, args: string[]): { ok: boolean; changed: boolean | null; detail: string } {
-  if (context.options.liveLeakCheck === false) return { ok: false, changed: null, detail: "skipped" };
+interface LiveSnapshot { ok: boolean; changed: boolean | null; changedFields: string[] | null; detail: string }
+
+function liveSnapshot(context: Context, args: string[]): LiveSnapshot {
+  if (context.options.liveLeakCheck === false) return { ok: false, changed: null, changedFields: null, detail: "skipped" };
   const run = arcadia(context, null, ["workspace", "leak-check", ...args, "--json"]);
-  if (run.status === null) return { ok: false, changed: null, detail: "leak-check did not run" };
-  return { ok: run.status === 0, changed: args.includes("--baseline") ? run.status !== 0 : null, detail: (run.stdout.trim() || run.stderr.trim()).slice(0, 6000) };
+  if (run.status === null) return { ok: false, changed: null, changedFields: null, detail: "leak-check did not run" };
+  const changes = run.json?.error?.details?.changes;
+  const changedFields = Array.isArray(changes) ? changes.map((change: { field?: unknown }) => String(change?.field ?? "?")) : null;
+  return { ok: run.status === 0, changed: args.includes("--baseline") ? run.status !== 0 : null, changedFields, detail: (run.stdout.trim() || run.stderr.trim()).slice(0, 6000) };
+}
+
+/** The one leak-check field the operator ruled (2026-10-09) is not a Decision 0082 stop condition: Codex's project-trust entry. */
+export const CODEX_TRUST_FIELD = "hashes.codexConfig";
+export const CODEX_TRUST_NOTE = "Codex trust entry (operator ruled 2026-10-09: not a stop condition)";
+
+/** Split a leak-check difference into the ruled-on Codex trust entry and everything else (still a possible stop condition). */
+export function classifyLeakChanges(changed: boolean | null, fields: string[] | null): { codexTrustEntry: boolean; otherChanges: string[] } {
+  if (!changed) return { codexTrustEntry: false, otherChanges: [] };
+  if (!fields || fields.length === 0) return { codexTrustEntry: false, otherChanges: ["(the leak check reported a change but its fields could not be read)"] };
+  return { codexTrustEntry: fields.includes(CODEX_TRUST_FIELD), otherChanges: fields.filter((field) => field !== CODEX_TRUST_FIELD) };
 }
 
 export async function runHeadlessProviderTest(options: HeadlessTestOptions): Promise<HeadlessTestOutcome> {
@@ -1012,9 +1213,21 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
       throw new Refusal("preconditions", `Decision 0082's experiment window ended ${EXPERIMENT_WINDOW_LAST_DAY}; it is ${date}. No experiment workspace may be created until a new Decision extends it`);
     }
     const order = options.providers ?? PROVIDER_ORDER;
-    // Refuse before creating anything when the first provider cannot run at all.
-    const first = checkProviderPrecondition(context, order[0]);
-    if (!first.ok) throw new Refusal("preconditions", first.message);
+    // Each provider's preconditions (binary, sign-in, posture flags) are its own: a missing one skips only that provider.
+    const runnable: ProviderName[] = [];
+    for (const provider of order) {
+      const precondition = checkProviderPrecondition(context, provider);
+      context.log(`precondition (${provider}): ${precondition.ok ? "ok" : "SKIPPED"}: ${precondition.message}`);
+      if (precondition.ok) { runnable.push(provider); continue; }
+      const skipped = newResult(provider);
+      skipped.outcome = "SKIPPED";
+      skipped.reason = precondition.message;
+      providers.push(skipped);
+    }
+    // Refuse before creating anything when no provider can run at all.
+    if (runnable.length === 0) {
+      throw new Refusal("preconditions", `no selected provider can run: ${providers.map((result) => `${result.provider}: ${result.reason}`).join("; ")}`);
+    }
 
     const base = options.tempBase ?? options.env?.TMPDIR ?? tmpdir();
     mkdirSync(base, { recursive: true });
@@ -1024,7 +1237,7 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
     const snapshot = liveSnapshot(context, ["--record", before]);
     context.log(`live workspace snapshot (read-only): ${snapshot.ok ? "recorded" : snapshot.detail}`);
 
-    // SIGINT/SIGTERM (a /runs stop, a closed terminal) stop the provider's whole process group, skip any fallback and still write the receipt.
+    // SIGINT/SIGTERM (a /runs stop, a closed terminal) stop the provider's whole process group, start no later provider and still write the receipt.
     const live = context;
     const onSignal = (signal: NodeJS.Signals) => () => {
       live.interrupted = signal;
@@ -1035,7 +1248,8 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
     const handlers: Array<[NodeJS.Signals, () => void]> = (["SIGINT", "SIGTERM"] as const).map((signal) => [signal, onSignal(signal)]);
     for (const [signal, handler] of handlers) source.on(signal, handler);
     try {
-      for (const provider of order) {
+      // Every runnable provider is tried, in order, each on its own fresh fixture; a pass or a failure never changes whether the next runs.
+      for (const provider of runnable) {
         if (context.interrupted) break;
         const result = await runProviderAttempt(context, provider, tempRoot, date);
         if (options.keep) result.workspaceKept = path.join(tempRoot, provider);
@@ -1043,34 +1257,52 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
         context.log("");
         context.log(formatTable([result]));
         context.log("");
-        if (result.outcome === "PASS") break;
-        if (provider !== order[order.length - 1] && !context.interrupted) context.log(`${provider} did not pass; trying ${order[order.indexOf(provider) + 1]} on a fresh fixture.`);
       }
     } finally {
       for (const [signal, handler] of handlers) source.off(signal, handler);
     }
+    // A signal that arrived mid-run leaves later providers unstarted: they still appear in the receipt, as SKIPPED.
+    for (const provider of runnable) {
+      if (!providers.some((result) => result.provider === provider)) {
+        const unstarted = newResult(provider);
+        unstarted.outcome = "SKIPPED";
+        unstarted.reason = `interrupted by ${context.interrupted ?? "a signal"} before this provider started`;
+        providers.push(unstarted);
+      }
+    }
+    providers.sort((a, b) => order.indexOf(a.provider) - order.indexOf(b.provider));
 
     const after = snapshot.ok ? liveSnapshot(context, ["--baseline", before]) : snapshot;
     // Decision 0082's stop condition is any change to the live workspace attributable to an experiment, so a difference is
     // never waved through: other sessions legitimately write there, but each change must be attributed before the next experiment.
+    // The operator ruled (2026-10-09) that Codex's project-trust entry in ~/.codex/config.toml is not a stop condition; any other change still is.
     const liveChanged = snapshot.ok ? after.changed : null;
+    const leak = classifyLeakChanges(liveChanged, after.changedFields);
     context.log(snapshot.ok
-      ? liveChanged
-        ? "LIVE WORKSPACE CHANGED during this run: attribute every change (other sessions or services, versus this experiment) before any further experiment; an experiment-caused write is a Decision 0082 stop condition. See live-workspace-before.json and the receipt."
-        : "live workspace comparison: unchanged"
+      ? !liveChanged
+        ? "live workspace comparison: unchanged"
+        : leak.otherChanges.length > 0
+          ? `LIVE WORKSPACE CHANGED during this run (${leak.otherChanges.join(", ")}): attribute every change (other sessions or services, versus this experiment) before any further experiment; an experiment-caused write is a possible Decision 0082 stop condition. See live-workspace-before.json and the receipt.`
+          : "live workspace comparison: only the Codex trust entry changed"
       : "live workspace comparison: skipped");
-    // Codex persists project-trust entries in ~/.codex/config.toml; Decision 0082 names that file in its stop condition.
-    const codexConfigChanged = Boolean(liveChanged) && /hashes\.codexConfig/.test(after.detail);
-    if (codexConfigChanged) {
-      context.log("POSSIBLE Decision 0082 STOP CONDITION: the leak check reports hashes.codexConfig changed. Codex persists a project-trust entry for a new directory in ~/.codex/config.toml. This is not attributed here; the operator attributes it before any further experiment.");
-    }
+    if (leak.codexTrustEntry) context.log(`${CODEX_TRUST_NOTE}: ${CODEX_TRUST_FIELD} changed (Codex persists a project-trust entry for a new directory in ~/.codex/config.toml). Recorded, not acted on.`);
     context.log("== Summary ==");
     context.log(formatTable(providers));
-    const passed = providers.find((result) => result.outcome === "PASS");
-    const outcome = context.interrupted ? "failed" : passed ? "succeeded" : "failed";
-    const reason = context.interrupted ? `interrupted by ${context.interrupted}` : passed ? `${passed.provider} completed the fixture Action headlessly` : "no provider passed every criterion";
+    context.log(`models: ${formatOverview(providers)}`);
+    const passed = providers.filter((result) => result.outcome === "PASS");
+    const outcome = context.interrupted ? "failed" : passed.length > 0 ? "succeeded" : "failed";
+    const tally = (name: ProviderResult["outcome"]) => providers.filter((result) => result.outcome === name).map((result) => result.provider);
+    const reason = context.interrupted ? `interrupted by ${context.interrupted}`
+      : passed.length > 0 ? `${tally("PASS").join(", ")} completed the fixture Action headlessly${tally("FAIL").length ? `; ${tally("FAIL").join(", ")} failed` : ""}${tally("SKIPPED").length ? `; ${tally("SKIPPED").join(", ")} skipped` : ""}`
+      : "no provider passed every criterion";
     return finish(outcome, context.interrupted ? "interrupted" : "complete", reason, {
-      liveWorkspaceSnapshot: { recorded: snapshot.ok, changedDuringRun: liveChanged, actionRequired: liveChanged ? "attribute before any further experiment (Decision 0082 stop condition)" : null, codexConfigChanged, detail: after.detail.slice(0, 1500) },
+      liveWorkspaceSnapshot: {
+        recorded: snapshot.ok, changedDuringRun: liveChanged, changedFields: after.changedFields,
+        codexTrustEntry: leak.codexTrustEntry ? CODEX_TRUST_NOTE : null,
+        otherChanges: leak.otherChanges,
+        actionRequired: leak.otherChanges.length > 0 ? "attribute before any further experiment (possible Decision 0082 stop condition)" : null,
+        detail: after.detail.slice(0, 1500)
+      },
       tempRoot: options.keep ? tempRoot : null
     });
   } catch (error) {
