@@ -115,6 +115,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   status: ALLOWED,
   ask: ALLOWED,
   "ask show": ALLOWED,
+  "ask correct": ALLOWED,
   "ask-trail": ALLOWED,
   "ask-rule test": ALLOWED,
   "agent-ask preview": ALLOWED,
