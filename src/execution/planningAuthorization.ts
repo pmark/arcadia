@@ -18,6 +18,7 @@ import {
   listApprovalGatesForWorkItem,
   updateWorkItem
 } from "../db/repositories.js";
+import { writeTransaction } from "../db/connection.js";
 import { resolveActionReadiness, type DispatchBlocker } from "../docs/dispatch.js";
 import { recordDispatchEvent } from "../docs/journal.js";
 import { parseActionDocRef } from "../docs/types.js";
@@ -238,7 +239,13 @@ export function queueApprovedPlanningRun(
     }
   }
 
-  const transaction = db.transaction(() => {
+  // IMMEDIATE, not the default deferred BEGIN: this transaction reads the
+  // Decision and then writes the Run. Under a deferred BEGIN, a commit by the
+  // worker (or any other connection) between the read and the first write makes
+  // SQLite fail the upgrade at once with SQLITE_BUSY_SNAPSHOT, which
+  // `busy_timeout` cannot wait out. Taking the write lock first turns that race
+  // into an ordinary wait (see `writeTransaction` in db/connection.ts).
+  return writeTransaction(db, () => {
     let decision = getReviewItem(db, input.decisionId) ?? getReviewItemBySlug(db, input.decisionId);
     if (!decision || !isPlanningApprovalDecision(decision)) {
       throw new Error("Planning approval Decision was not found.");
@@ -346,13 +353,6 @@ export function queueApprovedPlanningRun(
     });
     return { decision, run, duplicate: false };
   });
-  // IMMEDIATE, not the default deferred BEGIN: this transaction reads the
-  // Decision and then writes the Run. Under a deferred BEGIN, a commit by the
-  // worker (or any other connection) between the read and the first write makes
-  // SQLite fail the upgrade at once with SQLITE_BUSY_SNAPSHOT, which
-  // `busy_timeout` cannot wait out. Taking the write lock first turns that race
-  // into an ordinary wait (see `writeTransaction` in db/connection.ts).
-  return transaction.immediate();
 }
 
 export function isPlanningApprovalDecision(decision: Pick<ReviewItemSummary, "resolved_intent">): boolean {

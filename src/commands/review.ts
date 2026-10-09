@@ -7,7 +7,7 @@ import { prepareDecisionAnswer } from "./decision.js";
 import { projectNotFound, validationError } from "../cli/errors.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { captureOperatorReply } from "../ask/replyCapture.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, writeTransaction } from "../db/connection.js";
 import { discoverDocs } from "../docs/discover.js";
 import {
   buildWeeklyReviewData,
@@ -307,7 +307,7 @@ export function runReviewOpenCommand(
       throw validationError("Action was not found.", { workId: options.workId });
     }
 
-    return db.transaction(() => {
+    return writeTransaction(db, () => {
       const item = createReviewItem(db, {
         workItemId: workItem.id,
         projectId: workItem.project_id,
@@ -336,7 +336,7 @@ export function runReviewOpenCommand(
       });
 
       return { item, workItem: updatedWorkItem as WorkItemSummary };
-    })();
+    });
   });
 
   return createSuccess({
@@ -489,7 +489,7 @@ export function runReviewReassessCommand(
           ? `Withdrawn: source plan ${resolved.planSlug} is ${sourcePlan.status}, not active.`
           : `Withdrawn: ${resolved.planSlug} is not the Project's active plan${activePlan ? ` (${activePlan})` : ""}.`;
 
-  const updated = withDatabase(workspacePath, (db) => db.transaction(() => {
+  const updated = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
     mergeReviewItemContext(db, resolved.item.id, {
       reassessment: {
         checkedAt,
@@ -504,7 +504,7 @@ export function runReviewReassessCommand(
       updateReviewItemStatus(db, resolved.item.id, { status: "rejected", decisionNote: summary });
     }
     return getReviewItem(db, resolved.item.id);
-  })());
+  }));
   if (!updated) {
     throw validationError("Requires Review Decision was not found after reassessment.", { id: resolved.item.id });
   }
@@ -547,7 +547,7 @@ export function runReviewFlagAgentCommand(
 
   const flaggedAt = nowIso();
   const summary = `Flagged ${reassessed.data.item.slug} for coding-agent review because active plan ${reassessed.data.sourcePlan} still declares it. No Run started.`;
-  const updated = withDatabase(workspacePath, (db) => db.transaction(() => {
+  const updated = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
     mergeReviewItemContext(db, reassessed.data.item.id, {
       agentReview: {
         status: "flagged",
@@ -557,7 +557,7 @@ export function runReviewFlagAgentCommand(
     });
     updateReviewItemStatus(db, reassessed.data.item.id, { status: "deferred", decisionNote: summary });
     return getReviewItem(db, reassessed.data.item.id);
-  })());
+  }));
   if (!updated) {
     throw validationError("Requires Review Decision was not found after agent-review flagging.", {
       id: reassessed.data.item.id
@@ -791,7 +791,7 @@ export function runReviewApproveCommand(
     }
   }
   if (specialized?.resolved_intent === "ProjectProposalApproval") {
-    const queued = withDatabase(workspacePath, (db) => db.transaction(() => {
+    const queued = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
       const current = getReviewItem(db, specialized.id);
       if (!current) {
         throw validationError("Project proposal Decision was not found.", { id: specialized.id });
@@ -843,7 +843,7 @@ export function runReviewApproveCommand(
         summary: `Approved Project scaffold and staging deployment queued with ${executorName}.`
       });
       return { decision, run, duplicate: false };
-    })());
+    }));
     return createSuccess({
       command: "review.approve",
       workspace: workspacePath,
@@ -909,7 +909,7 @@ export function runReviewApproveCommand(
         ? writeProjectIdeaPromotionDocuments(promotionPreparation)
         : null;
 
-      const accept = db.transaction(() => {
+      const accept = () => writeTransaction(db, () => {
         if (promotionPreparation && promotionDocuments) {
           const promotion = persistProjectIdeaPromotion(
             db,
@@ -1107,7 +1107,7 @@ export function runReviewApproveCommand(
   if (reviewItem.resolved_intent === "CodexBuildPacketApproval") {
     // One transaction, so the Decision is never left approved without its
     // pending-execution marker (which would make a retry refuse as decided).
-    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => db.transaction(() => {
+    const { updated, pendingExecutionReview } = withDatabase(workspacePath, (db) => writeTransaction(db, () => {
       // Re-read under the write lock: a concurrent approval that won the race
       // must not be approved again or get a second pending-execution marker.
       const current = getReviewItem(db, reviewItem.id);
@@ -1122,7 +1122,7 @@ export function runReviewApproveCommand(
         throw validationError("Requires Review Decision was not found.", { id: reviewItem.id });
       }
       return { updated: item, pendingExecutionReview: createPendingExecutionReviewItem(db, item) };
-    }).immediate());
+    }));
     return createSuccess({
       command: "review.approve",
       workspace: workspacePath,
@@ -1308,7 +1308,7 @@ function resolveClarificationDecision(
   let updated: ReviewItemSummary;
   try {
     updated = withDatabase(workspacePath, (db) =>
-      db.transaction(() => {
+      writeTransaction(db, () => {
         const next = updateReviewItemStatus(db, decision.id, {
           status: "approved",
           decisionNote: recordedAnswer
@@ -1334,7 +1334,7 @@ function resolveClarificationDecision(
         }
 
         return next;
-      })()
+      })
     );
   } catch (error) {
     if (prepared && decisionFileWriteStarted) {

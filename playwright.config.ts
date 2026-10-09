@@ -2,6 +2,8 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The fixture runs the built CLI; refuse a missing or stale dist (#1106).
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   // Every test builds a fully isolated workspace (own temp dir, database,
