@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0104"
+slug: decide-how-a-subagent-request-is-admitted-queued-or-declined-and-how-strongly
+project: arcadia
+status: open
+question: Decide how a subagent request is admitted, queued or declined, and how strongly Arcadia enforces it.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: Deterministic broker, plus a hook where the provider has one. Admitted means a model, an advisory effort and a lease (60 minutes, at most two renewals). Queued means it waits in strict first-in, first-out order per provider, so a later request on the same provider is never admitted ahead of an earlier queued one. It is promoted only when its own requester runs arcadia delegation poll. A requester that does not poll within 5 minutes loses the request (poll_lapsed), and one still not admissible after its bounded wait (default 30 minutes) is declined as queue_timeout. Declined carries a reason code. For headless Claude, Arcadia's per-Session settings allow the delegation commands, plus a PreToolUse hook on Agent that permits exactly one spawn per admitted receipt. The hook checks the normalised model, counting an omitted model as the parent's, and only lets the receipt's own caller spend it. This applies only if an integration test proves such hooks fire under --setting-sources empty. Codex and opencode follow by convention. A broker that cannot answer admits nothing
+options:
+  - label: Deterministic broker, plus a hook where the provider has one. Admitted means a model, an advisory effort and a lease (60 minutes, at most two renewals). Queued means it waits in strict first-in, first-out order per provider, so a later request on the same provider is never admitted ahead of an earlier queued one. It is promoted only when its own requester runs arcadia delegation poll. A requester that does not poll within 5 minutes loses the request (poll_lapsed), and one still not admissible after its bounded wait (default 30 minutes) is declined as queue_timeout. Declined carries a reason code. For headless Claude, Arcadia's per-Session settings allow the delegation commands, plus a PreToolUse hook on Agent that permits exactly one spawn per admitted receipt. The hook checks the normalised model, counting an omitted model as the parent's, and only lets the receipt's own caller spend it. This applies only if an integration test proves such hooks fire under --setting-sources empty. Codex and opencode follow by convention. A broker that cannot answer admits nothing
+    consequence: Headless Claude gets real enforcement without changing the harness itself, if the hook proof passes; otherwise it falls back to convention, and the brief says so. The per-Session allow list widens by the delegation commands and the hook. Effort is never enforced. Codex and opencode spawns outside the broker are neither prevented nor detected afterwards. A lead that does not poll loses its queued request. If the broker is down, no delegate is spawned and the parent continues alone.
+    recommended: true
+  - label: "Deterministic broker, convention only: agents run arcadia delegation request and obey its verdict. No hook and no allow-list change beyond the commands"
+    consequence: The cheapest, and it leaves Claude settings almost untouched. Any agent that ignores the brief can spawn unrecorded subagents, and nothing detects it.
+    recommended: false
+  - label: Arcadia launches every delegate itself as a separate Session; in-process subagents are retired
+    consequence: "The strongest control and full visibility for every provider. Each delegate pays Session launch and cold-context cost, and the in-process Calling in help path from PR #1145 goes away."
+    recommended: false
+confidence: high
+plan: bootstrap-managed-production-to-build-flight-deck
+updated: 2026-10-09
+---
+
+# Decision 0104: Decide how a subagent request is admitted, queued or declined, and how strongly Arcadia enforces it.
+
+## Options
+
+- **Deterministic broker, plus a hook where the provider has one. Admitted means a model, an advisory effort and a lease (60 minutes, at most two renewals). Queued means it waits in strict first-in, first-out order per provider, so a later request on the same provider is never admitted ahead of an earlier queued one. It is promoted only when its own requester runs arcadia delegation poll. A requester that does not poll within 5 minutes loses the request (poll_lapsed), and one still not admissible after its bounded wait (default 30 minutes) is declined as queue_timeout. Declined carries a reason code. For headless Claude, Arcadia's per-Session settings allow the delegation commands, plus a PreToolUse hook on Agent that permits exactly one spawn per admitted receipt. The hook checks the normalised model, counting an omitted model as the parent's, and only lets the receipt's own caller spend it. This applies only if an integration test proves such hooks fire under --setting-sources empty. Codex and opencode follow by convention. A broker that cannot answer admits nothing** (recommended): Headless Claude gets real enforcement without changing the harness itself, if the hook proof passes; otherwise it falls back to convention, and the brief says so. The per-Session allow list widens by the delegation commands and the hook. Effort is never enforced. Codex and opencode spawns outside the broker are neither prevented nor detected afterwards. A lead that does not poll loses its queued request. If the broker is down, no delegate is spawned and the parent continues alone.
+- **Deterministic broker, convention only: agents run arcadia delegation request and obey its verdict. No hook and no allow-list change beyond the commands**: The cheapest, and it leaves Claude settings almost untouched. Any agent that ignores the brief can spawn unrecorded subagents, and nothing detects it.
+- **Arcadia launches every delegate itself as a separate Session; in-process subagents are retired**: The strongest control and full visibility for every provider. Each delegate pays Session launch and cold-context cost, and the in-process Calling in help path from PR #1145 goes away.
+
+## Rationale
+
+The operator wants delegation strictly controlled by Arcadia: agents request subagents, and requests may be declined or queued. Today headless Claude Sessions may spawn Agent freely, and Codex uses spawn_agent at its own discretion. The Claude Agent tool takes a model but no effort, so effort can only be advisory. Operator direction 2026-10-09 (governed subagent roles), recorded verbatim in the planning brief; the operator was unavailable for a live interview, so that text stands in for one. Recommended option is listed first; the operator decides.
+
+Proposed by Agent Ask decide-delegation-admission-semantics-2026-10-09-r3.
