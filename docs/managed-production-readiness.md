@@ -567,6 +567,60 @@ installed-service evidence. Prepare/pass the hermetic three-Action rehearsal
 before requesting its fresh exact Grant. No installed-host autonomous rehearsal
 has run here, and the older literal split/browser/ledger Action stays open.
 
+## Single-Action path: operating tips for agents — 2026-10-09
+
+These are field notes from making one Action run headless from a confirmed Launch to a draft PR (#1131, #1138, #1141, #1145). The rest of this document has not yet been re-derived against them; refresh it under the contract below.
+
+**The path.**
+1. A confirmed Launch, from `/production` or `arcadia session launch --operator-launch` at a TTY, mints a one-shot authorization (Decision 0096).
+2. A headless session runs.
+3. On exit, the worker tick validates on the host, commits, pushes and reconciles, and opens one draft PR only on `accepted_completion`.
+
+It never merges. Integration is refused for operator-launched candidates unless production itself delegates validation. Manual `arcadia session reconcile` records the exit only; it does not commit or push.
+
+**Launch and observe.**
+- Fingerprint launches are headless by default. `arcadia go --launch --interactive` keeps the old TUI.
+- Every session writes `<workspace>/.arcadia/sessions/<id>.log` and records its exit code in `agent_sessions.exit_status`, with 128+n for a signal.
+- Watch live sessions with `arcadia dashboard runs --sessions 8 --json`, the `/production` log tail, and `.arcadia/worker.log`.
+- A preflight refuses a launch before reserving anything when the provider binary is missing (`provider_binary_missing`), the provider is not signed in (`provider_not_signed_in`), or the required headless flags are missing (`permission_posture_missing`).
+
+**Models.**
+- Every session starts on the light tier (`sessionStartTier`): Codex `gpt-6-luna`, Claude `haiku`. The brief names the plan's tier as the escalation target.
+  - Claude escalates through an Agent-tool subagent.
+  - Codex escalates through `spawn_agent` with a model override.
+  - OpenCode drafts a relaunch proposal instead.
+- An explicit `--model` wins, and a workspace can override the start tier in `config/coding-agent-models.json`.
+- Light starts run at low effort even for `e3_deep` Actions. Expect more repair attempts.
+
+**Provider quirks seen live.**
+- **Codex** (`exec --json --sandbox workspace-write`):
+  - Its sandbox keeps `.git` read-only, so a real repository's worktree usually cannot be committed by the agent. The host commits on exit; this is expected, not a failure.
+  - If the worker's preservation heartbeat is stale (over 15s, or no worker at all), `arcadia-preserve-broker-codex` refuses. The agent then correctly drafts its completion Ask and leaves the candidate for the host.
+  - Codex persists a project-trust entry for each new directory in `~/.codex/config.toml`. Decision 0099 rules that for experiment temp folders this is not a Decision 0082 stop condition.
+- **Claude** (`--print --output-format stream-json --verbose --settings <per-session> --setting-sources ""`):
+  - Only the per-session allow list (the Project's declared validation commands plus `arcadia agent-ask draft`) and managed policy apply.
+  - It loads no user or project settings and no `CLAUDE.md`/`AGENTS.md`, and runs without the operator's OS sandbox (#1139).
+- **OpenCode** (`opencode run`):
+  - It auto-rejects any permission that would prompt.
+  - The operator's config allowlists `~/.opencode/**`, where real worktrees live. A worktree elsewhere, such as a macOS temp folder, needs a per-process `OPENCODE_CONFIG_CONTENT` grant.
+
+**Bounded lifetime.**
+- The default limit is 120 minutes; override it per launch with `--time-limit-minutes`.
+- A stuck session is stopped when the limit passes, or when an auth or provider-limit signal persists past the 20-minute stall deadline. Permission-prompt text is ignored for headless sessions.
+- The stop only ends tmux. The worktree survives, and reconcile runs on the next tick.
+
+**Prove cheaply before going live.**
+1. Run the fast-rehearsal harness offline.
+2. Press the `/runs` "Test headless Codex single-Action run, OpenCode on failure (experiment fixture)". It reports the agent part and the host part separately and diagnoses from the receipt.
+3. Then launch one small real Action from `/production`.
+
+Each live defect should be reproduced offline before it is fixed.
+
+**Services.**
+- The dev dashboard (:3020) runs `next dev`, so pre-load the pages after every restart.
+- The stable demo (:3030, https://arcadia-1.alpine-rattlesnake.ts.net/) serves a prebuilt `rel-*` release, and dev restarts never touch it.
+- Under heavy load, a restart can stop every service (#1129). Recover as `docs/agent-guidance/pull-requests.md` describes.
+
 ## Refresh contract
 
 Refresh whenever a critical-path Action completes, a live run occurs, a Grant or Plan changes, or a new blocker is found. Read canonical Project/Plan state, policy, queue, relevant Decisions, Session receipts and retained run evidence. Run the applicable read-only checks, then revise the executive summary, gates, critical path, live-state table and Plan Action scoreboard from their results. For every live failure the replay could have predicted, add a hermetic replay scenario that reproduces the failure and passes after repair. Run the hermetic rehearsal before every live rehearsal, including rehearsals under an existing Grant, and before each new live Grant. Separate observed stages from unperformed criteria and preserve earlier failures.

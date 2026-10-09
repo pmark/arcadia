@@ -150,6 +150,20 @@ repository, worktree, branch, dirty paths, and recovery action; never silently
 leave uncommitted work on `main` or a detached HEAD. These rules do not broaden
 approval authority. See `docs/working-copy-safety.md`.
 
+`arcadia decision approve` (and the other `decision` writers) commit to the
+Project's configured repository, the primary checkout, not the worktree they
+are run from (#1122). Until that is fixed, and only for this bug, this is a
+narrow exception to AGENTS.md Preservation:
+1. Run `git fetch` and confirm the primary checkout is clean and on `main`.
+2. Run the writer, then confirm `git log origin/main..main` shows only the
+   decision commit.
+3. Push it with `git push origin HEAD:refs/heads/<branch>` and open its PR.
+4. Once the push is confirmed, return the primary checkout with
+   `git reset --keep origin/main`.
+
+Never do this when the primary checkout holds any other unpushed commit or
+dirty file.
+
 ### Automatic production conflict recovery
 
 Production-managed work must not stop merely because its pull request becomes
@@ -195,7 +209,10 @@ the bound is Decision 0082's: the trial window runs 14 days from 2026-10-04,
 **until 2026-10-18**, and stops earlier at the stop condition — any leak-check
 change, or any write to `martianrover` attributable to the experiment. After
 either, create no experiment workspace and use none until a new Decision
-extends it.
+extends it. Decision 0099 narrows the stop condition: a coding provider's own
+trust entry for the experiment's temporary folder (Codex persists
+`[projects."<path>"] trust_level = "trusted"` in `~/.codex/config.toml`) is
+reported, not a stop. Every other leak-check change still stops experiments.
 `martianrover` stays the sole authority for every real Project; findings return
 through ordinary Agent Asks there, and no experiment result changes governed state.
 
@@ -316,6 +333,10 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   here. Do not move shared rules into this file — Codex would never see them.
 - Prefer the dedicated file and search tools over shell equivalents, and run
   independent tool calls in one batch.
+- In the sandboxed shell, `gh` (TLS/keychain) and `git push` (credential
+  store) fail. Run them unsandboxed on the first attempt rather than
+  re-diagnosing; a sandboxed `$TMPDIR` also differs from the unsandboxed one,
+  so pass scratch files by absolute path.
 - AGENTS.md's session-naming rule applies here through the
   `set_session_title` tool (Claude Code Remote's session-title MCP call):
   call it with the brief broker's `data.sessionTitles.working` instead of
