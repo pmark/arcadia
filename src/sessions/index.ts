@@ -1420,8 +1420,12 @@ function buildProviderLaunch(
   // candidate without prompting; it is not a bypass, so any tool call outside
   // the allow list is refused back to the agent rather than waiting on nobody.
   // That allow list is Arcadia's own checked-in one (`headlessPermissions.ts`),
-  // written per Session and passed with `--settings`; no shared settings file is
-  // read or edited for it. Only an explicit `arcadia go --launch --interactive`
+  // written per Session and passed with `--settings`. `--setting-sources ""`
+  // stops Claude merging the operator's user settings and the worktree's own
+  // (agent-editable) project settings into it, leaving only this file and managed
+  // policy. `acceptEdits` also auto-approves mkdir/rm/mv/cp/sed in the working
+  // directory, and the list is not a security boundary (validation commands run
+  // code the agent can edit). Only an explicit `arcadia go --launch --interactive`
   // stays interactive.
   let args: string[];
   if (headless) {
@@ -1436,7 +1440,7 @@ function buildProviderLaunch(
     });
     args = [
       "--print", "--output-format", "stream-json", "--verbose",
-      "--permission-mode", "acceptEdits", "--settings", settingsFile,
+      "--permission-mode", "acceptEdits", "--settings", settingsFile, "--setting-sources", "",
       "--model", session.model
     ];
   } else {
@@ -1541,9 +1545,13 @@ function buildFixtureSessionLaunch(session: AgentSession, workspace?: string): {
  * self-report can never touch anything but a Session already marked
  * `is_simulated` under the fixture provider -- the one exception to "an agent
  * never reports its own outcome" (see `classifyExitOutcome`), narrowly scoped
- * to the deterministic test double that exists specifically to make this
- * outcome reachable without inventing a generic, spoofable self-attestation
- * channel for real providers.
+ * to the deterministic test double.
+ *
+ * Since headless launches, the recording wrapper (`wrapRecordedLaunch`) writes
+ * the real provider exit code to `agent_sessions.exit_status` for EVERY
+ * provider, the fixture included, so this self-report is redundant for a
+ * launched fixture (both write the same value). It remains for callers that
+ * apply a fixture outcome without running the process.
  */
 export function applyFixtureExitStatus(db: Database.Database, sessionId: string, exitStatus: number): void {
   const now = new Date().toISOString();

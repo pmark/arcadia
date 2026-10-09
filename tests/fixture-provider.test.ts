@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -345,6 +345,8 @@ describe("headless fixture-cli launch records its output and exit through the re
     expect(log.startsWith(fixture.repo + path.sep)).toBe(false);
     expect(log.startsWith(session.worktree_path + path.sep)).toBe(false);
     expect(existsSync(`${log}.status`)).toBe(false);
+    // The log can hold briefs and tool output: owner-only.
+    expect(statSync(log).mode & 0o777).toBe(0o600);
   });
 
   it("a non-zero exit records the provider's exit code, and stdout and stderr both reach the log", () => {

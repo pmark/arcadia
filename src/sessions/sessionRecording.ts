@@ -62,7 +62,8 @@ export function recordExitScriptPath(): string {
 /**
  * The POSIX `sh` program that runs a provider command, tees its combined
  * output to the Session log and the tmux pane, and records the provider's own
- * exit code. It uses only POSIX features (no pipefail, PIPESTATUS, process
+ * exit code. The log is created 0600 (in a subshell, so the provider keeps its own
+ * umask). It uses only POSIX features (no pipefail, PIPESTATUS, process
  * substitution or arrays), so it runs under macOS's /bin/sh (bash 3.2 in
  * POSIX mode), dash and zsh's sh emulation alike.
  *
@@ -75,7 +76,7 @@ export function recordExitScriptPath(): string {
 const RECORDING_SCRIPT = [
   'log=$1; db=$2; sid=$3; node=$4; rec=$5; shift 5',
   'statusfile="$log.status"',
-  'if mkdir -p "$(dirname "$log")" && : >> "$log"; then',
+  'if ( umask 077; mkdir -p "$(dirname "$log")" && : >> "$log" ); then',
   '  rm -f "$statusfile"',
   '  ( "$@" 2>&1; echo "$?" > "$statusfile" ) | tee -a "$log"',
   '  rc=$(cat "$statusfile" 2>/dev/null)',

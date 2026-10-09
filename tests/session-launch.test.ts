@@ -30,6 +30,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
+import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
@@ -1690,7 +1691,7 @@ function stubProviders(options: {
 }): NodeJS.ProcessEnv {
   const bin = mkdtempSync(path.join(tmpdir(), "arcadia-stub-providers-"));
   roots.push(bin);
-  const claudeHelp = "--print --output-format <format> --permission-mode <mode> --settings <file-or-json> --verbose";
+  const claudeHelp = "--print --output-format <format> --permission-mode <mode> --settings <file-or-json> --setting-sources <sources> --verbose";
   const codexHelp = "--json --sandbox <SANDBOX_MODE>";
   if (options.claude !== false) {
     const claude = options.claude ?? {};
@@ -1748,7 +1749,7 @@ describe("launch preflight and headless permission posture", () => {
     const preview = preview1(fixture);
     const env = stubProviders({ claude: { help: "--print --output-format --permission-mode --verbose" } });
     const error = refusal(() => doLaunch(fixture, tmux, preview.previewFingerprint, "req-1", undefined, undefined, env));
-    expect(error.details).toMatchObject({ code: "permission_posture_missing", conflict: true, unsupportedFlags: ["--settings"] });
+    expect(error.details).toMatchObject({ code: "permission_posture_missing", conflict: true, unsupportedFlags: ["--settings", "--setting-sources"] });
     expectNothingReserved(fixture, tmux);
   });
 
@@ -1807,9 +1808,11 @@ describe("launch preflight and headless permission posture", () => {
     const args = tmux.launches[0].args;
     const claude = args.indexOf("claude");
     const settingsFile = sessionSettingsPath(fixture.workspace, result.session.id);
-    expect(args.slice(claude, claude + 10)).toEqual([
+    // `--setting-sources ""` keeps the operator's user settings and the worktree's own
+    // (agent-editable) project settings from widening the per-Session allow list.
+    expect(args.slice(claude, claude + 12)).toEqual([
       "claude", "--print", "--output-format", "stream-json", "--verbose",
-      "--permission-mode", "acceptEdits", "--settings", settingsFile, "--model"
+      "--permission-mode", "acceptEdits", "--settings", settingsFile, "--setting-sources", "", "--model"
     ]);
     // Every headless launch is recorded; the pane keeps streaming the same output.
     expect(tmux.launches[0].record).toEqual({
@@ -1850,6 +1853,16 @@ describe("launch preflight and headless permission posture", () => {
       }
     });
     // Exactly that list: no commit, push, settle, broker or arbitrary shell.
+  });
+
+  it("escapes a literal star in a declared validation command so it can never become a wildcard or a :* prefix rule", () => {
+    expect(headlessClaudeAllowList(["pnpm test:*", "node scripts/*.mjs", "echo (a)"])).toEqual([
+      "Bash(pnpm test:\\*)",
+      "Bash(node scripts/\\*.mjs)",
+      "Bash(echo \\(a\\))",
+      "Bash(arcadia agent-ask draft:*)",
+      "Bash(pnpm arcadia agent-ask draft:*)"
+    ]);
   });
 
   it("go --launch is headless by default and the explicit --interactive opt-in keeps the TUI, unrecorded", () => {
