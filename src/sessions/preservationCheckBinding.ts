@@ -136,9 +136,9 @@ export function bindCheckDefinitions(repository: string, baseRevision: string, c
       const source = boundedExec("git", ["cat-file", "blob", blob], { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).toString();
       const dir = path.posix.dirname(file);
       scanDirs.add(dir);
-      if (PYTHON_DYNAMIC_IMPORT.test(source)) {
+      if (pythonDynamicImport(source)) {
         throw validationError(
-          `Cannot establish the Python import closure for \`${file}\`: it mentions \`sys.path\`, \`importlib\`, \`__import__\` or \`runpy\`, which can load code this binding does not see. ` +
+          `Cannot establish the Python import closure for \`${file}\`: it mentions \`sys.path\`, \`importlib\`, \`__import__\` or \`runpy\`, or uses \`site\`, \`exec\`/\`eval\`/\`compile\`, \`builtins\`, or \`sys\` with path or attribute manipulation, which can load code this binding does not see. ` +
           `Declare a check that uses only plain imports, ${ISOLATION_ADVICE}`,
           { code: PRESERVATION_CHECK_MODIFIED_CODE, path: file }
         );
@@ -257,6 +257,26 @@ const PYTHON_IMPORTABLE_NAME = /\.(?:py|pyw|pyc|pyo|pyd|so|dylib)$/;
 /** Code that edits the import path or loads modules by computed name, so the
  * statically bound closure no longer describes what runs. */
 const PYTHON_DYNAMIC_IMPORT = /\bsys\s*\.\s*path\b|\bfrom\s+sys\s+import\b[^\n]*\bpath\b|\bimportlib\b|\b__import__\b|\brunpy\b/;
+/** The `site` module (`site.addsitedir` adds import roots and runs `.pth` files). */
+const PYTHON_SITE = /\bimport\s+[^\n]*\bsite\b|\bfrom\s+site\b/;
+/** Runs or builds code from a string or the builtins table. `re.compile(` and
+ * other attribute calls are not matched, but `builtins.exec(` is caught by the
+ * `builtins` term. */
+const PYTHON_CODE_EXECUTION = /(?<![.\w])(?:exec|eval|compile)\s*\(|\b__builtins__\b|\bbuiltins\b/;
+/** `sys` imported under any name (`import sys as s`, `from sys import x`). */
+const PYTHON_SYS_IMPORT = /\bimport\s+[^\n]*\bsys\b|\bfrom\s+sys\b/;
+/** Import-machinery attributes (`.path`, `.meta_path`, `.path_hooks`, `.modules`)
+ * reachable through an alias, or computed attribute access that can build them. */
+const PYTHON_SYS_MACHINERY = /\.\s*(?:path|path_hooks|path_importer_cache|meta_path|modules)\b|\bfrom\s+sys\s+import\b[^\n]*\b(?:path_hooks|path_importer_cache|meta_path|modules)\b|\b(?:getattr|setattr|vars|globals|locals)\s*\(|\b__dict__\b/;
+/** Fail closed on a bound Python source whose import closure cannot be read
+ * statically (#1103). With `sys` imported, any non-`os.path` `.path` mention or
+ * computed attribute access is refused; this over-refuses (a `sys` user that
+ * aliases `os` under another name) on purpose. */
+function pythonDynamicImport(source: string): boolean {
+  if (PYTHON_DYNAMIC_IMPORT.test(source) || PYTHON_SITE.test(source) || PYTHON_CODE_EXECUTION.test(source)) return true;
+  if (!PYTHON_SYS_IMPORT.test(source)) return false;
+  return PYTHON_SYS_MACHINERY.test(source.replace(/\b(?:os|posixpath|ntpath)\s*\.\s*path\b/g, ""));
+}
 /** A `PYTHON*=` assignment (also after `export`/`env`) anywhere in a command. */
 const PYTHON_ENVIRONMENT = /(?:^|[\s;&|(])PYTHON[A-Za-z0-9_]*=/;
 const ISOLATION_ADVICE = "or land the change on the base branch first and prepare a fresh authorization. For Python checks, keep the check and its helpers in an isolated directory (for example `checks/`) so unrelated changes cannot trip this refusal.";
@@ -358,7 +378,9 @@ class ImportableSets {
 /** Interpreters that run a script named as their next positional argument.
  * Mirrors the self-contained tools `preservationChecks.ts` allows through the
  * sandbox: only these, plus a directly executed script, name a *check file*. */
-const PYTHON_INTERPRETER = /^(?:python|pypy)\d*(?:\.\d+)*$/;
+// Versioned and flavoured binaries too: `python3.12`, `pypy3.10`, free-threaded
+// `python3.13t`, debug `python3.13d`, `python3.13td`, `pythonw` (#1103).
+const PYTHON_INTERPRETER = /^(?:python|pypy)w?\d*(?:\.\d+)*[dmtu]*$/;
 const SCRIPT_INTERPRETERS = new Set(["node", "nodejs", "python3", "python", "sh", "bash", "zsh", "ruby", "deno", "bun", "source", "."]);
 
 /** Builtins that move the shell, so later root-relative paths resolve elsewhere. */
@@ -434,6 +456,8 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
     const python = PYTHON_INTERPRETER.test(executableName);
     const interpreted = python || SCRIPT_INTERPRETERS.has(executableName);
     if (interpreted) {
+      let redirected = false;
+      let informational = false;
       for (let i = index + 1; i < tokens.length; i += 1) {
         if (python && /^-[A-Za-z]*[cm]/.test(tokens[i])) {
           throw validationError(
@@ -442,13 +466,35 @@ function namedFiles(command: string, base: Map<string, GitBlob>, candidate: Map<
             { code: PRESERVATION_CHECK_MODIFIED_CODE, baseRevision, command }
           );
         }
+        // Redirections are not the script: `python3 check.py < data` still
+        // names check.py, while `python3 < check.py` reads the script itself
+        // from stdin (#1103). Skip the operator's separate operand.
+        if (python && /^\d*[<>]/.test(tokens[i])) {
+          redirected = true;
+          if (/^\d*(?:<<<|<<-?|<>|>>|>\||[<>])&?$/.test(tokens[i])) i += 1;
+          continue;
+        }
+        if (python && tokens[i] === "-") break;
         if (tokens[i].startsWith("-")) {
+          // Only a real option token before any redirection counts as informational;
+          // a redirect operand such as `2> -h` never does.
+          if (python && !redirected && /^(?:-V+|--version|-h|--help|-\?)$/.test(tokens[i])) informational = true;
           // Options that take the next token as their value must not be mistaken for the script.
           if (python && (tokens[i] === "-W" || tokens[i] === "-X" || tokens[i] === "--check-hash-based-pycs")) i += 1;
           continue;
         }
         target = tokens[i];
         break;
+      }
+      // A Python interpreter with no script argument reads its program from
+      // stdin (`python3 -`, `cat f | python3`, `python3 < f`), which no bound
+      // file describes. Informational flags run nothing and are allowed.
+      if (python && !target && !informational) {
+        throw validationError(
+          `Declared preservation check \`${command}\` runs Python with no script file argument, so the program comes from standard input, which this binding cannot resolve to a bound script file. ` +
+          `Run a plain script file instead, ${ISOLATION_ADVICE}`,
+          { code: PRESERVATION_CHECK_MODIFIED_CODE, baseRevision, command }
+        );
       }
     } else {
       target = executable;

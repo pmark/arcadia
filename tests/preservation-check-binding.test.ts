@@ -696,6 +696,51 @@ describe("preservation check-definition binding — Python review follow-ups to 
     expect(() => bindCheckDefinitions(helper.dir, helper.base, helper.base, ["python3 checks/check.py"])).toThrow(refusedCode);
   });
 
+  it("refuses a Python interpreter with no script argument (program read from stdin) (#1103)", () => {
+    const f = repo({ "checks/check.py": "import json\n" });
+    for (const command of [
+      "python3 - < checks/check.py", "cat checks/check.py | python3", "python3 < checks/check.py", "python3 <checks/check.py",
+      "python3 -u - < checks/check.py", "env python3.13t - < checks/check.py", "python3 -",
+      // A redirect operand that looks like an informational flag is not one.
+      "cat checks/check.py | python3 2> -h", "python3 < checks/check.py > --version", "python3 2> --help < checks/check.py"
+    ]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [command]), command)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/no script file argument/), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));
+    }
+    // A script argument with stdin data redirected is still a plain script check.
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py < checks/check.py"])).not.toThrow();
+    expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 --version"])).not.toThrow();
+  });
+
+  it("refuses site, exec/eval/compile and aliased sys path mutation in a bound Python source (#1103)", () => {
+    for (const body of [
+      "import site\nsite.addsitedir('/tmp')\n", "from site import addsitedir\n", "import os, site\n",
+      "exec(open('x').read())\n", "eval('1+1')\n", "code = compile('1', 'f', 'exec')\n", "import builtins\n",
+      "import sys as s\ns.path.insert(0, '/tmp')\n", "import sys\ngetattr(sys, 'pa' + 'th').append('/tmp')\n",
+      "from sys import modules\n", "import sys\nsys.meta_path.append(x)\n"
+    ]) {
+      const f = repo({ "checks/check.py": body });
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]), body)
+        .toThrow(expect.objectContaining({ message: expect.stringMatching(/cannot establish the python import closure/i), details: expect.objectContaining({ code: PRESERVATION_CHECK_MODIFIED_CODE }) }));
+    }
+  });
+
+  it("still binds a clean checks/ Python check that uses sys, os.path and re.compile (#1103)", () => {
+    const f = repo({ "checks/check.py": "import os\nimport re\nimport sys\nPATTERN = re.compile('x')\nprint(os.path.join('a', 'b'))\nsys.exit(0)\n" });
+    const bound = bindCheckDefinitions(f.dir, f.base, f.base, ["python3 checks/check.py"]);
+    expect(bound.files.map(file => file.path)).toContain("checks/check.py");
+  });
+
+  it("recognises free-threaded and versioned Python binaries as interpreters (#1103)", () => {
+    const f = repo({ "checks/check": "import json\n", "checks/check.py": "import json\n" });
+    for (const binary of ["python3.13t", "python3.13d", "python3.13td", "pypy3.10", "python3.12", "pythonw"]) {
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [`${binary} -c 'import json'`]), binary).toThrow(refusedCode);
+      expect(() => bindCheckDefinitions(f.dir, f.base, f.base, [`${binary} -`]), binary).toThrow(refusedCode);
+      const bound = bindCheckDefinitions(f.dir, f.base, f.base, [`${binary} checks/check`]);
+      expect(bound.files.map(file => file.path), binary).toContain("checks/check");
+    }
+  });
+
   it("advises an isolated checks/ directory in the refusal text", () => {
     const f = repo({ "check.py": "import json\n" });
     expect(() => bindCheckDefinitions(f.dir, f.base, candidateTree(f, { "selectors.py": "x = 1\n" }), ["python3 check.py"]))
