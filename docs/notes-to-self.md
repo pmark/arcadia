@@ -312,17 +312,14 @@ G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is
 
 ## Reproduce a rehearsal defect offline before a live run
 
-keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, long chain, nine-Action, Grant expiry
+keys: fast rehearsal, fast-rehearsal, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, long chain, nine-Action, Grant expiry, operator launch, olauth, Launch, /production, preview-launch, planning_required, build_packet_approval_pending, work plan, haiku, light tier, OAuth expired, failed_execution, incomplete_resumable, agent-ask draft, completion recipe, fixture reset, request id used, run 8, services restart, ARCADIA_WORKSPACE, self-approval, approval queue
 
 Run `mise exec -- pnpm fast-rehearsal` unsandboxed before any live run and after changing the tick, preservation, review steps or settlement (a few minutes; the nine-Action chain files dominate): the real worker tick and settlement with only tmux, GitHub, the reviewer models and the agent faked; it prints per-phase timings and every error and writes `report.json` to a temporary directory. Reproduce a live defect there first (`tests/fast-rehearsal/README.md`, "Add a scenario").
 Its `it.fails` tests are open defects: the fix that flips one changes it to `it`.
 A long serial chain's likely stop is the Grant's 12-hour expiry: an Action finishing after it is preserved but never readied, reviewed or integrated, now shown as `terminal_candidate_not_integrable` "The integration grant expired at ..." (it showed nothing before); see `long-chain-grant-expiry.test.ts`.
 A zero-finding non-pass reviewer verdict ("variance", Issue #1018) is rerun by the tick up to 3 attempts per kind per head (`MAX_VARIANCE_REVIEW_ATTEMPTS`, counted from lineage receipts' `variance`); `world.github.verdict` returns `"variance"` to simulate it (`serial-verdict-variance.test.ts`); the gate's own "code-review: failed; qa: none" wait line during a rerun needs `world.expectError`.
 
-## Live single-Action run on a fixture (operator Launch, 2026-10-09)
-
-keys: operator launch, olauth, Launch, /production, preview-launch, planning_required, build_packet_approval_pending, work plan, haiku, light tier, OAuth expired, failed_execution, incomplete_resumable, agent-ask draft, completion recipe, fixture reset, request id used, run 8, services restart, ARCADIA_WORKSPACE, self-approval, approval queue
-
+Live single-Action run on a fixture (operator Launch, 2026-10-09):
 - Prove the path on a one-line fixture Action first. The Plan's current Action can be large (`preserve-unchanged-baseline-skill-symlinks` has five security-sensitive criteria); count its criteria before offering it for a live proof.
 - A fresh Action's preview is `planning_required` until `arcadia work plan <work-id>` prepares its packet (the tick does this automatically), and then `build_packet_approval_pending` until the operator approves the packet. Only then does Launch work.
 - `claude auth status --json` reports `loggedIn: true` while a dead OAuth refresh token is still in the keychain; the session then fails in under a second with "OAuth session expired and could not be refreshed" and uses up the one-shot authorization (Decision 0096). Since #1159 the exit reason says "Provider sign-in failure". The preflight half is #1155. `claude setup-token` into the workspace token file outlives `claude auth login`.
