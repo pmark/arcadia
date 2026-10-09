@@ -36,7 +36,7 @@ const PROVIDER_REQUIREMENTS: Record<string, ProviderRequirements> = {
   "claude-code-cli": {
     executable: "claude",
     helpArgs: ["--help"],
-    headlessFlags: ["--print", "--output-format", "--permission-mode", "--settings", "--verbose"]
+    headlessFlags: ["--print", "--output-format", "--permission-mode", "--settings", "--setting-sources", "--verbose"]
   },
   "codex-cli": {
     executable: "codex",

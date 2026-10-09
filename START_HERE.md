@@ -2028,12 +2028,18 @@ Session.
 **Launches are headless and recorded.** `go --launch`, `arcadia session launch`
 and the dashboard's session launch run the provider non-interactively, exactly
 as a standing-policy launch does: `claude --print --output-format stream-json
---verbose --permission-mode acceptEdits --settings <per-Session file>`,
+--verbose --permission-mode acceptEdits --settings <per-Session file>
+--setting-sources ""`,
 `codex exec --json --sandbox workspace-write`, and `opencode run` (which takes
 its permissions from your own opencode configuration; Arcadia manages none).
-The Claude allow list is Arcadia's own, written per Session next to its log and
-never merged into `~/.claude/settings.json`: your Project's declared validation
-commands, exactly as declared, and `arcadia agent-ask draft`, nothing else.
+The Claude allow list is Arcadia's own, written per Session (mode 0600) next to
+its log: your Project's declared validation commands, exactly as declared, and
+`arcadia agent-ask draft`, nothing else. `--setting-sources ""` stops Claude
+merging your `~/.claude/settings.json` (and the worktree's own, agent-editable
+`.claude/settings.json`) into it, so a headless Claude Session loads no user or
+project settings or hooks. Two limits: `acceptEdits` also auto-approves
+mkdir/rm/mv/cp/sed in the working directory, and the allow list is not a security
+boundary, because validation commands run project code the agent can edit.
 Combined output is appended to `<workspace>/.arcadia/sessions/<session-id>.log`,
 and the provider's exit code is written to `agent_sessions.exit_status` (visible
 as `exit N` in the Session timeline), so a crash is distinguishable from a clean

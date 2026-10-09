@@ -19,9 +19,19 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *
  * Nothing else is added: no commit, push, settle, broker or arbitrary shell.
  * The list is written to a per-Session settings file under the workspace and
- * passed with `--settings`, so no shared settings file is read for it or
- * edited by it. Read-only inspection (`git status`, `git diff`, file reads)
- * stays on Claude's built-in read-only allowance.
+ * passed with `--settings`, together with `--setting-sources ""`. Without that
+ * second flag Claude UNIONS `permissions.allow` across every source it loads,
+ * so the operator's `~/.claude/settings.json` (broker binaries and all) and the
+ * worktree's own `.claude/settings.json` (which the agent can edit) would widen
+ * this list; with it only this file and managed policy apply. The cost is that
+ * a headless Session loads no user or project settings or hooks. Read-only
+ * inspection (`git status`, `git diff`, file reads) stays on Claude's built-in
+ * read-only allowance.
+ *
+ * Two honest limits. `acceptEdits` also auto-approves file-system commands
+ * (mkdir, rm, mv, cp, sed) inside the working directory, and the allow list is
+ * not a security boundary: validation commands run project code the agent can
+ * edit, so it narrows what the agent is asked to do, not what it can reach.
  *
  * Codex's equivalent is the `workspace-write` sandbox with no approval
  * prompts (see `buildProviderLaunch`). opencode's permissions come from its
@@ -40,7 +50,9 @@ function simpleCommands(command: string): string[] {
 
 /** A Claude `Bash(...)` rule matching exactly one simple command. */
 function exactBashRule(command: string): string {
-  return `Bash(${command.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)")})`;
+  // `*` is Claude's wildcard (and `:*` its legacy prefix match), so a literal
+  // star is escaped: a declared command ending in `:*` stays one exact command.
+  return `Bash(${command.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)").replaceAll("*", "\\*")})`;
 }
 
 /** The complete allow list for a Session whose Project declares `validationCommands`. */

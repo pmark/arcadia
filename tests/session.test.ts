@@ -266,7 +266,7 @@ describe("tmux-backed Sessions", () => {
     const result = launch(fixture, tmux);
 
     const args = tmux.launches[0].args;
-    expect(args).toEqual(expect.arrayContaining(["--print", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--settings"]));
+    expect(args).toEqual(expect.arrayContaining(["--print", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits", "--settings", "--setting-sources", ""]));
     expect(args.indexOf("--verbose")).toBeGreaterThan(args.indexOf("stream-json"));
     expect(tmux.launches[0].record).toMatchObject({ sessionId: result.data.session!.id });
     // The tmux pane streams the same output the log records, so reattaching still shows the run.
