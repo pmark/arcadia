@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   FIXTURE_ACTION,
   brokerRefusalInLog,
+  codexTrustOverrideArgs,
+  commitState,
+  withCodexTrustOverrides,
   buildPath,
   formatTable,
   opencodeSessionConfig,
@@ -72,14 +75,18 @@ function harness(extra: Record<string, string> = {}) {
 }
 
 /** A host that cannot preserve (an experiment workspace holds no production validation authority; CI is not macOS). */
-const hostRefuses: HostPreserve = () => ({ ok: false, commit: null, detail: "Preservation validation requires current scoped production validation authority." });
+const hostRefuses: HostPreserve = () => ({ ok: false, ran: true, commit: null, detail: "Declared preservation validation failed or was skipped." });
+/** A host step that cannot run here at all (no Seatbelt host, no production authority). */
+const hostCannotRun: HostPreserve = () => ({ ok: false, ran: false, commit: null, detail: "Preservation validation requires current scoped production validation authority." });
 /** A host that commits the candidate the way a successful preservation would. */
 const hostCommits: HostPreserve = ({ worktree }) => {
   const identity = { ...process.env, GIT_AUTHOR_NAME: "Host", GIT_AUTHOR_EMAIL: "host@example.invalid", GIT_COMMITTER_NAME: "Host", GIT_COMMITTER_EMAIL: "host@example.invalid" };
   execFileSync("git", ["-C", worktree, "add", "MARKER.md"], { env: identity });
   execFileSync("git", ["-C", worktree, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "Preserve candidate"], { env: identity });
-  return { ok: true, commit: execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), detail: "fake host preserved the candidate" };
+  return { ok: true, ran: true, commit: execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), detail: "fake host preserved the candidate" };
 };
+/** A host that commits the candidate and then reports an error (a crash after the commit, e.g. while writing its receipt). */
+const hostCommitsThenFails: HostPreserve = (input) => ({ ...hostCommits(input), ok: false, detail: "receipt write failed after the commit" });
 
 const leftoverRoots = (base: string) => readdirSync(base).filter((entry) => entry.startsWith("arcadia-headless-provider-test-"));
 const criterion = (result: ProviderResult, id: string) => result.criteria.find((entry) => entry.id === id)!;
@@ -94,9 +101,11 @@ describe("test-headless-provider-single-action library entry", () => {
     const text = JSON.stringify(descriptor);
     for (const required of ["experiment workspace", "never_does", "15 minutes", "existing Codex", "live martianrover workspace", "provider global configuration",
       "account/rateLimits/read", "~/.arcadia/telemetry", "OpenCode runs unsandboxed", "own normal session and state directories",
-      "$TMPDIR, not workspaces/exp-*", "attribute before any further experiment"]) {
+      "$TMPDIR, not workspaces/exp-*", "attribute before any further experiment",
+      "POSSIBLE Decision 0082 stop condition", "never pre-attributed", "per-invocation --config trust override"]) {
       expect(text).toContain(required);
     }
+    expect(text).not.toContain("provider's own write");
     expect(descriptor.preconditions.join(" ")).toContain("codex login status");
     expect(descriptor.expected_duration).toMatch(/minutes/);
     expect(descriptor.cost_note).toMatch(/existing/);
@@ -174,6 +183,14 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(exec.author).toBeTruthy();
     expect(exec.args).toEqual(expect.arrayContaining(["--model", "gpt-5.6-terra", "--sandbox", "workspace-write", "--cd"]));
     expect(exec.cwd).toBe(codex.candidateWorktree);
+    // The experiment tries not to touch ~/.codex/config.toml: trust for exactly this fixture's paths is declared per invocation.
+    const overrides = exec.args.filter((arg) => arg.startsWith("projects."));
+    expect(overrides).toHaveLength(2);
+    expect(overrides.every((arg) => arg.endsWith('.trust_level="trusted"'))).toBe(true);
+    expect(overrides.some((arg) => arg.includes(`"${codex.candidateWorktree}"`))).toBe(true);
+    expect(overrides.some((arg) => arg.includes("/projects/headless-fixture\""))).toBe(true);
+    expect(exec.args.at(-1)).toMatch(/^Arcadia managed-production Action brief/);
+    expect(codex.command).toContain("trust_level");
     // A stub never acts outside the temporary directory (Arcadia's own `codex app-server` probe once ran one in the checkout).
     expect(made.filter((call) => ["exec", "run"].includes(call.args[0])).every((call) => call.cwd.startsWith(base))).toBe(true);
 
@@ -279,7 +296,10 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(outcome.outcome).toBe("failed");
     const [codex, opencode] = outcome.providers as [ProviderResult, ProviderResult];
     expect(codex.outcome).toBe("FAIL");
-    for (const id of ["exit", "file", "validation", "commit"]) expect(criterion(codex, id).pass).toBe(true);
+    for (const id of ["exit", "file", "validation"]) expect(criterion(codex, id).pass).toBe(true);
+    // The agent committed, but its unaccepted draft is still an untracked file: only an accepted Ask may sit there.
+    expect(criterion(codex, "commit").pass).toBe(false);
+    expect(criterion(codex, "commit").detail).toContain(".arcadia/asks/agent-ask-complete-write-headless-marker-fake.yaml");
     expect(criterion(codex, "ask").pass).toBe(false);
     expect(criterion(codex, "ask").detail).toMatch(/does not match the 2 declared criteria/);
     expect(opencode.outcome).toBe("FAIL");
@@ -304,17 +324,19 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     // No broker refusal in its log: an uncommitted candidate alone is not the sandboxed-agent case.
     expect(criterion(uncommitted, "commit").pass).toBe(false);
     expect(criterion(uncommitted, "commit").detail).toMatch(/0 commit\(s\) beyond the base.*uncommitted changes/);
-    expect(uncommitted.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "failed" });
+    expect(uncommitted.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "host_failed" });
     expect(uncommitted.passKind).toBeNull();
   }, 300_000);
 
   it("plays the host's role when the sandboxed agent cannot commit: agent part and host part are reported separately", async () => {
     // Codex's workspace-write sandbox denied Git's index.lock on the operator's run; the agent drafted the Ask and its broker call was refused.
     const { run } = harness({ FAKE_PROVIDER_MODE_codex: "sandboxed" });
-    const outcome = await run({ providers: ["codex"], hostPreserve: hostCommits });
+    // The fake host commits and then reports an error: what is on the branch decides, so passKind reflects the commit.
+    const outcome = await run({ providers: ["codex"], hostPreserve: hostCommitsThenFails });
     expect(outcome.outcome).toBe("succeeded");
     const [codex] = outcome.providers as [ProviderResult];
     expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_and_host" });
+    expect(codex.hostPart!.detail).toContain("the candidate was committed but the step then reported: receipt write failed after the commit");
     expect(codex.agentPart).toEqual({ pass: true });
     expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "preserved" });
     expect(codex.hostPart!.commit).toMatch(/^[0-9a-f]{40}$/);
@@ -325,11 +347,11 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(receipt.providers[0]).toMatchObject({ passKind: "agent_and_host", hostPart: { outcome: "preserved" }, agentPart: { pass: true } });
   }, 300_000);
 
-  it("scores an agent-only pass visibly when host preservation cannot run in an experiment workspace", async () => {
+  it("keeps a host step that could not run distinct from one that ran and refused", async () => {
     const { run } = harness({ FAKE_PROVIDER_MODE_codex: "sandboxed" });
-    const outcome = await run({ providers: ["codex"], hostPreserve: hostRefuses });
-    expect(outcome.outcome).toBe("succeeded");
-    const [codex] = outcome.providers as [ProviderResult];
+    const cannot = await run({ providers: ["codex"], hostPreserve: hostCannotRun });
+    expect(cannot.outcome).toBe("succeeded");
+    const [codex] = cannot.providers as [ProviderResult];
     expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_only" });
     expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "not_exercised" });
     expect(criterion(codex, "commit")).toMatchObject({ pass: true });
@@ -339,13 +361,67 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(table).toContain("codex (gpt-5.6-terra): PASS (agent); host preservation not exercised");
     expect(table).toContain("agent part: PASS   host part: not exercised");
   }, 300_000);
+
+  it("reports a host step that ran and refused as host_failed, not as unexercised", async () => {
+    const { run } = harness({ FAKE_PROVIDER_MODE_codex: "sandboxed" });
+    const outcome = await run({ providers: ["codex"], hostPreserve: hostRefuses });
+    expect(outcome.outcome).toBe("succeeded");
+    const [codex] = outcome.providers as [ProviderResult];
+    expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_host_failed" });
+    expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "host_failed" });
+    expect(criterion(codex, "commit").label).toContain("host preservation attempted and refused");
+    expect(formatTable([codex])).toContain("codex (gpt-5.6-terra): PASS (agent); host preservation attempted and refused");
+    expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8")).providers[0]).toMatchObject({ passKind: "agent_host_failed", hostPart: { outcome: "host_failed" } });
+  }, 300_000);
 });
 
 describe("pure helpers for the host step and the OpenCode grant", () => {
-  it("recognises the broker refusal an experiment workspace produces, and nothing else", () => {
-    expect(brokerRefusalInLog('{"command":"arcadia-preserve-broker-codex","output":"Protected preservation request path is unavailable. heartbeat stale"}')).toBe(true);
-    expect(brokerRefusalInLog("the agent never called the broker; heartbeat is a word here")).toBe(false);
-    expect(brokerRefusalInLog("arcadia-preserve-broker-codex was not found")).toBe(false);
+  it("recognises the broker's exact refusal only as command output, never as wording", () => {
+    const refusal = "Protected preservation request path is unavailable. The preservation route heartbeat is stale";
+    const event = (item: Record<string, unknown>) => JSON.stringify({ type: "item.completed", item });
+    expect(brokerRefusalInLog(event({ type: "command_execution", command: "/bin/zsh -lc /x/arcadia-preserve-broker-codex", aggregated_output: refusal }))).toBe(true);
+    // The agent merely talking about it, or the brief's own wording, is not command output.
+    expect(brokerRefusalInLog(event({ type: "agent_message", text: `The broker said: ${refusal}` }))).toBe(false);
+    expect(brokerRefusalInLog(event({ type: "command_execution", command: "echo hi", aggregated_output: refusal }))).toBe(false);
+    // Case-sensitive, exact text.
+    expect(brokerRefusalInLog(event({ type: "command_execution", command: "arcadia-preserve-broker-codex", aggregated_output: refusal.toLowerCase() }))).toBe(false);
+    expect(brokerRefusalInLog(event({ type: "command_execution", command: "arcadia-preserve-broker-codex", aggregated_output: "heartbeat is a word here" }))).toBe(false);
+    // OpenCode's plain log: the broker's name and the exact text on one line.
+    expect(brokerRefusalInLog(`arcadia-preserve-broker-opencode: ${refusal}`)).toBe(true);
+    expect(brokerRefusalInLog(refusal)).toBe(false);
+  });
+
+  it("allows only the accepted drafted Ask to be untracked", () => {
+    const repo = temp("headless-commitstate-");
+    const identity = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid" };
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { env: identity, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README.md"), "x\n");
+    git("add", "-A");
+    git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "base");
+    const base = git("rev-parse", "HEAD").trim();
+    writeFileSync(path.join(repo, "MARKER.md"), "headless provider marker\n");
+    git("add", "MARKER.md");
+    git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "marker");
+    mkdirSync(path.join(repo, ".arcadia", "asks"), { recursive: true });
+    writeFileSync(path.join(repo, ".arcadia", "asks", "agent-ask-accepted.yaml"), "a\n");
+    expect(commitState(repo, base, "main", ".arcadia/asks/agent-ask-accepted.yaml").pass).toBe(true);
+    expect(commitState(repo, base, "main", null).pass).toBe(false);
+    // A second, unaccepted file under the same directory is not tolerated.
+    writeFileSync(path.join(repo, ".arcadia", "asks", "agent-ask-other.yaml"), "b\n");
+    const state = commitState(repo, base, "main", ".arcadia/asks/agent-ask-accepted.yaml");
+    expect(state.pass).toBe(false);
+    expect(state.detail).toContain("agent-ask-other.yaml");
+  });
+
+  it("adds the per-invocation Codex trust override for exactly the named paths, before the brief", () => {
+    const args = ["exec", "--json", "--model", "m", "--cd", "/w", "the brief"];
+    const next = withCodexTrustOverrides(args, ["/private/var/x/fixture", "/private/var/x/worktree", "/private/var/x/fixture"]);
+    expect(next).toEqual(["exec", "--json", "--model", "m", "--cd", "/w",
+      "--config", 'projects."/private/var/x/fixture".trust_level="trusted"',
+      "--config", 'projects."/private/var/x/worktree".trust_level="trusted"',
+      "the brief"]);
+    expect(codexTrustOverrideArgs([])).toEqual([]);
   });
 
   it("grants OpenCode both spellings of the temporary tree, nothing broader", () => {

@@ -82,15 +82,19 @@ export interface ProviderResult {
   /** What the agent itself delivered, separate from what the host's preservation step added. */
   agentPart: { pass: boolean } | null;
   hostPart: HostPart | null;
-  /** "agent": the agent committed everything itself; "agent_and_host": the host step committed; "agent_only": host preservation not exercised. */
-  passKind: "agent" | "agent_and_host" | "agent_only" | null;
+  /**
+   * "agent": the agent committed everything itself. "agent_and_host": the host step's commit is there. "agent_host_failed": the host
+   * step ran and refused, and the agent's own part is complete. "agent_only": the host step could not run in an experiment workspace.
+   */
+  passKind: "agent" | "agent_and_host" | "agent_host_failed" | "agent_only" | null;
 }
 
 export interface HostPart {
   /** The candidate was left uncommitted, so the host's turn matters. */
   needed: boolean;
   attempted: boolean;
-  outcome: "not_needed" | "preserved" | "failed" | "not_exercised";
+  /** "host_failed": attempted and refused (or errored) without leaving a commit. "not_exercised": the step could not run here at all. */
+  outcome: "not_needed" | "preserved" | "host_failed" | "not_exercised";
   detail: string;
   commit: string | null;
 }
@@ -468,6 +472,15 @@ export function opencodeSessionConfig(root: string, worktree: string): string {
   return JSON.stringify({ permission: { external_directory: external } });
 }
 
+/** `--config projects."<path>".trust_level="trusted"` for each path, placed before the final argument (the brief). */
+export function codexTrustOverrideArgs(paths: string[]): string[] {
+  return [...new Set(paths)].flatMap((p) => ["--config", `projects.${JSON.stringify(p)}.trust_level="trusted"`]);
+}
+
+export function withCodexTrustOverrides(args: string[], paths: string[]): string[] {
+  return [...args.slice(0, -1), ...codexTrustOverrideArgs(paths), ...args.slice(-1)];
+}
+
 function computeGitdirReport(context: Context, worktree: string): GitdirReport {
   const worktreeGitDir = realOrSelf(git(worktree, ["rev-parse", "--absolute-git-dir"]));
   const commonRaw = git(worktree, ["rev-parse", "--git-common-dir"]);
@@ -596,6 +609,8 @@ interface AgentPart {
   draftedAsk: boolean;
   askPass: boolean;
   markerExact: boolean;
+  /** Worktree-relative path of the one drafted Ask this part accepted; the only untracked file the commit criterion tolerates. */
+  acceptedDraftPath: string | null;
 }
 
 function evaluateAgentPart(context: Context, result: ProviderResult, input: {
@@ -628,6 +643,7 @@ function evaluateAgentPart(context: Context, result: ProviderResult, input: {
   let askDetail = "no Agent Ask file under .arcadia/asks/";
   let askPass = false;
   let draftedAsk = false;
+  let acceptedDraftPath: string | null = null;
   for (const file of findDraftedAsks(worktree)) {
     const relative = path.relative(worktree, file);
     const ask = readAsk(file);
@@ -658,15 +674,15 @@ function evaluateAgentPart(context: Context, result: ProviderResult, input: {
         `candidate_revision ${ancestor ? "is an ancestor of HEAD" : "is not an ancestor of HEAD"} and ${atRevision === EXPECTED_MARKER ? "holds the exact MARKER.md" : "does not hold the exact MARKER.md"}; ` +
         `Action status in the experiment database: ${actionStatus ?? "unknown"}; tree ${clean ? "clean" : "not clean"}`;
     }
-    if (askPass) break;
+    if (askPass) { acceptedDraftPath = settled ? null : relative; break; }
   }
   add("ask", "a criterion-complete completion Agent Ask was drafted (preview accepts it) or settled (Action complete)", askPass, askDetail);
-  return { criteria, draftedAsk, askPass, markerExact: marker === EXPECTED_MARKER };
+  return { criteria, draftedAsk, askPass, markerExact: marker === EXPECTED_MARKER, acceptedDraftPath };
 }
 
-function commitState(worktree: string, baseRevision: string, expectedBranch: string) {
-  // A drafted completion Ask legitimately sits untracked under .arcadia/asks/ until the host settles it; nothing else may be dirty.
-  const dirty = rawGit(worktree, ["status", "--porcelain", "--", ".", ":(exclude).arcadia/asks"]);
+export function commitState(worktree: string, baseRevision: string, expectedBranch: string, acceptedDraftPath: string | null) {
+  // The one drafted completion Ask this run accepted legitimately sits untracked until the host settles it; nothing else may be dirty.
+  const dirty = rawGit(worktree, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...(acceptedDraftPath ? [`:(exclude,literal)${acceptedDraftPath}`] : [])]);
   const commits = rawGit(worktree, ["rev-list", "--count", `${baseRevision}..HEAD`]);
   const committedMarker = rawGit(worktree, ["show", "HEAD:MARKER.md"]);
   const branch = rawGit(worktree, ["branch", "--show-current"])?.trim() ?? null;
@@ -680,21 +696,52 @@ function commitState(worktree: string, baseRevision: string, expectedBranch: str
   return { pass, detail, commitCount, uncommittedOnly: commitCount === 0 && dirty !== null && dirty.trim() === "?? MARKER.md" };
 }
 
-/** The agent's own attempt at host preservation (the brief's step 2) was refused because no worker exists in an experiment workspace. */
+/** The exact refusal the worker-less broker prints (src/sessions/preservationTransport.ts); case-sensitive on purpose. */
+export const BROKER_REFUSAL_TEXT = "Protected preservation request path is unavailable";
+
+/**
+ * The agent's own attempt at host preservation (the brief's step 2) was refused because no worker exists in an experiment workspace.
+ * Evidence must be command output, not wording the brief or the agent supplied: a Codex `--json` command_execution event for the
+ * broker whose output carries the exact refusal, or (OpenCode's plain log) the broker's name and the exact refusal on one line.
+ */
 export function brokerRefusalInLog(log: string): boolean {
-  return /arcadia-preserve-broker/.test(log) && /preservation (route|request path)|Protected preservation|heartbeat/i.test(log);
+  for (const line of log.split("\n")) {
+    if (!line.includes(BROKER_REFUSAL_TEXT)) continue;
+    let event: { type?: string; item?: { type?: string; command?: string; aggregated_output?: string; output?: string } } | null = null;
+    try { event = JSON.parse(line); } catch { /* a plain-text log line */ }
+    if (event) {
+      const item = event.item;
+      const output = item?.aggregated_output ?? item?.output ?? "";
+      if (item?.type === "command_execution" && (item.command ?? "").includes("arcadia-preserve-broker") && output.includes(BROKER_REFUSAL_TEXT)) return true;
+    } else if (line.includes("arcadia-preserve-broker")) {
+      return true;
+    }
+  }
+  return false;
 }
 
-/** The host's turn: the same preservation the worker runs for a Session that exited with an uncommitted candidate. */
-export type HostPreserve = (input: { workspace: string; worktree: string }) => { ok: boolean; detail: string; commit: string | null };
+/**
+ * The host's turn: the same preservation the worker runs for a Session that exited with an uncommitted candidate.
+ * `ran` is false when the step could not run in this environment at all (no Seatbelt host, validation skipped, no production
+ * authority), true when it ran and refused or errored.
+ */
+export type HostPreserve = (input: { workspace: string; worktree: string }) => { ok: boolean; ran: boolean; detail: string; commit: string | null };
+
+/** Errors that mean "this environment cannot run the step", as opposed to "the step ran and said no". */
+function hostStepCouldNotRun(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/requires current scoped production validation authority|requires the macOS Seatbelt host/.test(message)) return true;
+  const checks = (error as { details?: { checks?: Array<{ status?: string }> } })?.details?.checks;
+  return Array.isArray(checks) && checks.length > 0 && checks.every((check) => check.status === "skipped");
+}
 
 export const defaultHostPreserve: HostPreserve = ({ workspace, worktree }) => {
   try {
     const response = runPreserveCommand({ source: worktree, workspace });
     const receipt = response.data.receipt;
-    return { ok: true, commit: receipt.commitSha, detail: `runPreserveCommand preserved commit ${receipt.commitSha.slice(0, 12)} (${receipt.preservationState}${receipt.retryAction ? `; ${receipt.retryAction}` : ""})` };
+    return { ok: true, ran: true, commit: receipt.commitSha, detail: `runPreserveCommand preserved commit ${receipt.commitSha.slice(0, 12)} (${receipt.preservationState}${receipt.retryAction ? `; ${receipt.retryAction}` : ""})` };
   } catch (error) {
-    return { ok: false, commit: null, detail: (error instanceof Error ? error.message : String(error)).slice(0, 400) };
+    return { ok: false, ran: !hostStepCouldNotRun(error), commit: null, detail: (error instanceof Error ? error.message : String(error)).slice(0, 400) };
   }
 };
 
@@ -715,12 +762,19 @@ function finishEvaluation(context: Context, result: ProviderResult, agent: Agent
     host.needed = true;
     if (agent.markerExact && agent.draftedAsk && before.uncommittedOnly) {
       host.attempted = true;
-      const done = (context.options.hostPreserve ?? defaultHostPreserve)({ workspace: input.workspace, worktree: input.worktree });
+      let done: ReturnType<HostPreserve>;
+      try {
+        done = (context.options.hostPreserve ?? defaultHostPreserve)({ workspace: input.workspace, worktree: input.worktree });
+      } catch (error) {
+        done = { ok: false, ran: true, commit: null, detail: `the host step threw: ${(error instanceof Error ? error.message : String(error)).slice(0, 300)}` };
+      }
       host.detail = done.detail;
-      host.commit = done.commit;
-      commit = commitState(input.worktree, input.baseRevision, input.branch);
-      host.outcome = done.ok && commit.pass ? "preserved" : "failed";
-      context.log(`host preservation (${result.provider}): ${done.ok ? "ran" : "refused"}: ${done.detail}`);
+      commit = commitState(input.worktree, input.baseRevision, input.branch, agent.acceptedDraftPath);
+      // What counts is what is on the branch afterwards: a step that committed and then threw still preserved the candidate.
+      host.commit = commit.pass ? (done.commit ?? rawGit(input.worktree, ["rev-parse", "HEAD"])?.trim() ?? null) : null;
+      host.outcome = commit.pass ? "preserved" : done.ran ? "host_failed" : "not_exercised";
+      if (commit.pass && !done.ok) host.detail = `the candidate was committed but the step then reported: ${done.detail}`;
+      context.log(`host preservation (${result.provider}): ${host.outcome}: ${host.detail}`);
     } else {
       host.outcome = "not_exercised";
       host.detail = "the candidate was not in the shape host preservation needs (exact MARKER.md untracked, drafted Ask left)";
@@ -733,12 +787,12 @@ function finishEvaluation(context: Context, result: ProviderResult, agent: Agent
     detail = `committed by host preservation, not by the agent: ${commit.detail}; ${host.detail}`;
   } else if (!commit.pass && host.needed && agent.askPass && agent.draftedAsk && agent.markerExact && commit.uncommittedOnly
     && brokerRefusalInLog(readFileSync(result.logPath!, "utf8"))) {
-    // Host preservation could not run in an experiment workspace, but the agent did its whole part: an uncommitted exact candidate,
-    // a criterion-complete drafted Ask and the broker refusal the missing worker explains.
+    // Host preservation could not complete in an experiment workspace, but the agent did its whole part: an uncommitted exact candidate,
+    // a criterion-complete drafted Ask and the broker refusal the missing worker explains. Say which way the host step went.
     pass = true;
-    label = "a commit exists on the candidate branch (agent part; host preservation not exercised)";
-    detail = `PASS (agent); host preservation not exercised: ${host.attempted ? `the host step failed (${host.detail})` : host.detail}; the agent's own broker call was refused because an experiment workspace has no worker; ${commit.detail}`;
-    host.outcome = "not_exercised";
+    const refused = host.outcome === "host_failed";
+    label = `a commit exists on the candidate branch (agent part; host preservation ${refused ? "attempted and refused" : "not exercised"})`;
+    detail = `PASS (agent); host preservation ${refused ? "attempted and refused" : "not exercised"}: ${host.detail}; the agent's own broker call was refused because an experiment workspace has no worker; ${commit.detail}`;
   }
   const criteria = [...agent.criteria];
   criteria.splice(3, 0, { id: "commit", label, pass, detail });
@@ -749,6 +803,7 @@ function finishEvaluation(context: Context, result: ProviderResult, agent: Agent
   result.passKind = !criteria.every((entry) => entry.pass) ? null
     : host.outcome === "not_needed" ? "agent"
     : host.outcome === "preserved" ? "agent_and_host"
+    : host.outcome === "host_failed" ? "agent_host_failed"
     : "agent_only";
 }
 
@@ -810,12 +865,18 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     // (codex exec ... --sandbox workspace-write, opencode run ...), exactly what a standing-policy launch runs.
     const launched = recording.launches.at(-1);
     if (!launched) throw new Refusal("prepare", "go --launch recorded no launch for the Session");
-    result.command = [launched.command, ...launched.args.map((arg) => (arg.length > 120 ? `${arg.slice(0, 40).replaceAll("\n", " ")}...[${arg.length} chars]` : arg))].join(" ");
+    result.command = [launched.command, ...(provider === "codex" ? withCodexTrustOverrides(launched.args, [fixture, worktree]) : launched.args).map((arg) => (arg.length > 120 && (arg.includes("\n") || arg.length > 400) ? `${arg.slice(0, 40).replaceAll("\n", " ")}...[${arg.length} chars]` : arg))].join(" ");
     context.log(`launch (${provider}): ${result.command}`);
     // Run the argv directly rather than through tmux's recording wrapper: this test waits on the provider process itself, and a
     // descendant that keeps the wrapper's pipe open must not look like a hang. The wrapper's one durable effect, the provider's
     // exit code in agent_sessions.exit_status, is recorded below with the shipped script, so reconcile sees what it sees in production.
-    const runnable = { command: launched.command, args: launched.args };
+    // Codex persists `[projects."<repo>"] trust_level = "trusted"` to ~/.codex/config.toml for a new project directory (seen on
+    // operator run 20261009T135444Z-90379 as a changed hashes.codexConfig). Declaring the trust per invocation for exactly this
+    // fixture's paths is the way to try to stop the experiment touching host config; it is unverified whether Codex then skips the write.
+    const runnable = provider === "codex"
+      ? { command: launched.command, args: withCodexTrustOverrides(launched.args, [fixture, worktree]) }
+      : { command: launched.command, args: launched.args };
+    if (provider === "codex") context.log(`codex (${provider}): per-invocation --config trust override for ${[fixture, worktree].join(" and ")}`);
 
     result.gitdir = computeGitdirReport(context, worktree);
     context.log(`gitdir (${provider}): worktree gitdir ${result.gitdir.worktreeGitDir} inside writable roots: ${result.gitdir.worktreeGitDirInsideWritableRoots}; common gitdir ${result.gitdir.commonGitDir} inside: ${result.gitdir.commonGitDirInsideWritableRoots}`);
@@ -845,7 +906,7 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
 
     // The agent's part is judged where the agent left it: before the host reconciles or preserves anything.
     const agent = evaluateAgentPart(context, result, { workspace, worktree, run, timeoutMs });
-    const candidateAtExit = commitState(worktree, session.base_revision, session.branch);
+    const candidateAtExit = commitState(worktree, session.base_revision, session.branch, agent.acceptedDraftPath);
 
     // The host's reconcile of the finished Session (its outcome is information only; it also releases the repository lease).
     const reconcile = arcadia(context, workspace, ["session", "reconcile", session.id, "--repo", fixture, "--request-id", `${context.options.runId}-${provider}`, "--json"]);
@@ -872,7 +933,10 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
 export function formatTable(results: ProviderResult[]): string {
   const lines: string[] = [];
   for (const result of results) {
-    const kind = result.outcome !== "PASS" ? "" : result.passKind === "agent_only" ? " (agent); host preservation not exercised" : result.passKind === "agent_and_host" ? " (agent + host preservation)" : "";
+    const kind = result.outcome !== "PASS" ? ""
+      : result.passKind === "agent_only" ? " (agent); host preservation not exercised"
+      : result.passKind === "agent_host_failed" ? " (agent); host preservation attempted and refused"
+      : result.passKind === "agent_and_host" ? " (agent + host preservation)" : "";
     lines.push(`${result.provider}${result.model ? ` (${result.model})` : ""}: ${result.outcome}${kind}${result.reason ? ` - ${result.reason}` : ""}`);
     if (result.agentPart && result.hostPart) {
       lines.push(`  agent part: ${result.agentPart.pass ? "PASS" : "FAIL"}   host part: ${result.hostPart.outcome === "not_needed" ? "not needed (the agent committed)" : result.hostPart.outcome === "preserved" ? `preserved ${result.hostPart.commit?.slice(0, 12) ?? ""} (${result.hostPart.detail})` : `${result.hostPart.outcome.replace("_", " ")}: ${result.hostPart.detail}`}`);
@@ -925,7 +989,7 @@ function liveSnapshot(context: Context, args: string[]): { ok: boolean; changed:
   if (context.options.liveLeakCheck === false) return { ok: false, changed: null, detail: "skipped" };
   const run = arcadia(context, null, ["workspace", "leak-check", ...args, "--json"]);
   if (run.status === null) return { ok: false, changed: null, detail: "leak-check did not run" };
-  return { ok: run.status === 0, changed: args.includes("--baseline") ? run.status !== 0 : null, detail: (run.stdout.trim() || run.stderr.trim()).slice(0, 600) };
+  return { ok: run.status === 0, changed: args.includes("--baseline") ? run.status !== 0 : null, detail: (run.stdout.trim() || run.stderr.trim()).slice(0, 6000) };
 }
 
 export async function runHeadlessProviderTest(options: HeadlessTestOptions): Promise<HeadlessTestOutcome> {
@@ -995,13 +1059,18 @@ export async function runHeadlessProviderTest(options: HeadlessTestOptions): Pro
         ? "LIVE WORKSPACE CHANGED during this run: attribute every change (other sessions or services, versus this experiment) before any further experiment; an experiment-caused write is a Decision 0082 stop condition. See live-workspace-before.json and the receipt."
         : "live workspace comparison: unchanged"
       : "live workspace comparison: skipped");
+    // Codex persists project-trust entries in ~/.codex/config.toml; Decision 0082 names that file in its stop condition.
+    const codexConfigChanged = Boolean(liveChanged) && /hashes\.codexConfig/.test(after.detail);
+    if (codexConfigChanged) {
+      context.log("POSSIBLE Decision 0082 STOP CONDITION: the leak check reports hashes.codexConfig changed. Codex persists a project-trust entry for a new directory in ~/.codex/config.toml. This is not attributed here; the operator attributes it before any further experiment.");
+    }
     context.log("== Summary ==");
     context.log(formatTable(providers));
     const passed = providers.find((result) => result.outcome === "PASS");
     const outcome = context.interrupted ? "failed" : passed ? "succeeded" : "failed";
     const reason = context.interrupted ? `interrupted by ${context.interrupted}` : passed ? `${passed.provider} completed the fixture Action headlessly` : "no provider passed every criterion";
     return finish(outcome, context.interrupted ? "interrupted" : "complete", reason, {
-      liveWorkspaceSnapshot: { recorded: snapshot.ok, changedDuringRun: liveChanged, actionRequired: liveChanged ? "attribute before any further experiment (Decision 0082 stop condition)" : null, detail: after.detail },
+      liveWorkspaceSnapshot: { recorded: snapshot.ok, changedDuringRun: liveChanged, actionRequired: liveChanged ? "attribute before any further experiment (Decision 0082 stop condition)" : null, codexConfigChanged, detail: after.detail.slice(0, 1500) },
       tempRoot: options.keep ? tempRoot : null
     });
   } catch (error) {
