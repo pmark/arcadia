@@ -215,11 +215,11 @@ describe("Agent Ask v1", () => {
     expect(result.data.proposal.normalized.actions).toEqual([
       {
         id: null, desiredResult: "Build the release", acceptance: ["Build passes."], dependencies: [],
-        references: ["src/release.ts"], targetRef: null
+        references: ["src/release.ts"], targetRef: null, omittedLists: []
       },
       {
         id: null, desiredResult: "Publish the release", acceptance: ["Release is published."],
-        dependencies: ["build-the-release"], references: [], targetRef: "action/publish"
+        dependencies: ["build-the-release"], references: [], targetRef: "action/publish", omittedLists: []
       }
     ]);
     expect(result.data.proposal.effects.map((effect) => effect.operation)).toEqual(["update", "update"]);
