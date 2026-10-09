@@ -2180,3 +2180,10 @@ Type, lint and build pass. A pushed PR with exact-head independent review and al
 - **Result:** Recorded the accepted Agent Ask as Project history.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-09 — Agent Ask pr-opened-arcadia-pr1170
+
+- **Did:** The governed-roles plan is up: PR #1170 opens 13 Decisions (role name, delegation broker, supervisors, burn budget, operator reserve, /agents) and an 18-Action draft Plan that passed 3 critic rounds. https://github.com/pmark/arcadia/pull/1170
+- **Result:** Recorded the accepted Agent Ask as Project history.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
