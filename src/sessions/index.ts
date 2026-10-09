@@ -1399,6 +1399,7 @@ function buildProviderLaunch(
     identity,
     model: session.model,
     registry,
+    headless,
     partners: readProjectPartners(db, {
       projectSlug: session.project_slug,
       excludeSessionId: session.id,

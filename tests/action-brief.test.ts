@@ -1,9 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
+import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
+import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
@@ -175,6 +177,75 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("After you settle, `git status` must be clean: settlement archives the drafted Ask file into");
     expect(brief).toContain(".arcadia/asks/archive/ in its own commit, so never commit the draft or keep a copy of it.");
     expect(brief).toContain("If a draft of the Ask you just settled still remains in .arcadia/asks/, delete it.");
+  });
+
+  describe("draft-only completion recipe for Sessions that cannot commit", () => {
+    const headless = (repo: string, agent: "claude" | "codex" | "opencode", isHeadless = true) => renderActionBrief({
+      repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+      worktreePath: repo, branch: `${agent}/define-contract`, agent, baseRevision: head(repo), headless: isHeadless
+    });
+    const draftCommand = (text: string): { dir: string; json: string } => {
+      const match = /^ {5}arcadia agent-ask draft --dir '([^']*)' '(.*)'$/m.exec(text);
+      if (!match) throw new Error(`no draft command in brief:\n${text}`);
+      return { dir: match[1], json: match[2].replaceAll("'\\''", "'") };
+    };
+
+    it("replaces the generic steps 2-3 for headless Claude with the host-owned statement and one exact draft command", () => {
+      const repo = briefRepo();
+      const brief = headless(repo, "claude");
+      const protocol = brief.slice(brief.indexOf("Completion protocol"));
+      expect(protocol).toContain("git add, git commit, git push and the preservation broker are host-owned in this Session and will be");
+      expect(protocol).toContain("refused. Do not attempt them or try to change permissions");
+      expect(protocol).toContain("do not write Ask files by hand");
+      expect(protocol).not.toContain("arcadia-preserve-broker");
+      expect(protocol).not.toContain("If your sandbox cannot commit");
+      expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
+      const { dir, json } = draftCommand(protocol);
+      expect(dir).toBe(repo);
+      const ask = JSON.parse(json);
+      expect(ask).toMatchObject({
+        agent_ask: "v1", request_id: `complete-define-contract-${head(repo).slice(0, 12)}`, project: "test-project",
+        intent: "complete", target_ref: "action/define-contract", candidate_revision: head(repo)
+      });
+      expect(ask.evidence.map((entry: { criterion: string; status: string }) => [entry.criterion, entry.status])).toEqual([
+        ["The contract exists.", "met"], ["The contract is published.", "met"]
+      ]);
+      expect(ask.evidence[0].note).toContain("<REPLACE");
+    });
+
+    it("applies to headless Codex (workspace-write cannot commit) but not to interactive or opencode Sessions", () => {
+      const repo = briefRepo();
+      expect(headless(repo, "codex")).toContain("host-owned in this Session");
+      expect(headless(repo, "claude", false)).toContain("arcadia-preserve-broker-claude");
+      expect(headless(repo, "opencode")).toContain("arcadia-preserve-broker-opencode");
+      expect(headless(repo, "opencode")).not.toContain("host-owned in this Session");
+    });
+
+    it("uses the completion request id the Action text names", () => {
+      const repo = briefRepo();
+      const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace(
+        "next_action: Define the bounded contract.",
+        "next_action: Define the bounded contract; record completion under the unused Agent Ask request id complete-define-contract-run7 and stop."
+      ));
+      expect(JSON.parse(draftCommand(headless(repo, "claude")).json).request_id).toBe("complete-define-contract-run7");
+    });
+
+    it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
+      const repo = briefRepo();
+      const { dir, json } = draftCommand(headless(repo, "claude"));
+      const filled = json.replaceAll("<REPLACE: the command you ran and what you observed for this criterion>", "ran the validation; it passed");
+      const drafted = runAgentAskDraftCommand({ request: filled, dir, workspace: path.join(repo, "no-workspace") });
+      const canonical = path.join(repo, ".arcadia", "asks", `agent-ask-complete-define-contract-${head(repo).slice(0, 12)}.yaml`);
+      expect(drafted.data.path).toBe(canonical);
+      expect(drafted.data.written).toBe("created");
+      expect(existsSync(canonical)).toBe(true);
+      const normalized = normalizeAgentAsk({ request: readFileSync(canonical, "utf8") });
+      expect(normalized.intent).toBe("complete");
+      expect(normalized.evidence.map((entry) => [entry.criterion, entry.status])).toEqual([
+        ["The contract exists.", "met"], ["The contract is published.", "met"]
+      ]);
+    });
   });
 
   it("names the provider's own fixed preservation launcher for every configured provider", () => {
