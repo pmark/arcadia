@@ -185,7 +185,7 @@ actions:
     references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/backBurner/surfacing.ts", "src/orientation/operatorTodoLines.ts"]
   - id: ask-receipt-and-one-reply-correction
     title: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
-    status: open
+    status: done
     responsibility: agent
     effort: session
     next_action: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
