@@ -7,8 +7,14 @@ import { loadIntelligenceConfig } from "../intelligence/config/defaults.js";
 import { createSqliteIntelligenceJobRepository } from "../intelligence/db/sqliteRepository.js";
 import { IntelligenceWorker } from "../intelligence/jobs/worker.js";
 import { createLiteLlmHttpClient } from "../intelligence/litellm/httpClient.js";
-import { submitIntelligenceRequest } from "../intelligence/service/jobService.js";
+import type { LiteLlmClient } from "../intelligence/litellm/client.js";
+import {
+  RetryNotAllowedError,
+  retryIntelligenceJob,
+  submitIntelligenceRequest
+} from "../intelligence/service/jobService.js";
 import type { IntelligenceJob, IntelligenceRequest } from "../intelligence/types.js";
+import { nowIso } from "../utils/time.js";
 import { buildClarifyRequest, CLARIFY_ACTORS, type ClarifyActor } from "./contract.js";
 import { missingDoneConditionQuestion } from "./lint.js";
 import type { ClarifyEvaluator, ClarifyVerdict } from "./types.js";
@@ -38,19 +44,62 @@ export class ClarifyVerdictUnusableError extends Error {
  */
 export type ClarifyJobRunner = (request: IntelligenceRequest, subject: string) => Promise<IntelligenceJob>;
 
-export function createClarifyJobRunner(db: Database.Database, workspacePath: string): ClarifyJobRunner {
+/** A failed or blocked job is retried once; after that it needs the operator, not another sweep. */
+const CLARIFY_MAX_JOB_RETRIES = 1;
+
+export function createClarifyJobRunner(
+  db: Database.Database,
+  workspacePath: string,
+  /** Injectable for tests. The default is the configured local LiteLLM endpoint. */
+  liteLlmClientOverride?: LiteLlmClient
+): ClarifyJobRunner {
   const repository = createSqliteIntelligenceJobRepository(db);
   const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
   const config = loadIntelligenceConfig(process.env);
-  const liteLlmClient = createLiteLlmHttpClient({
-    baseUrl: config.liteLlmBaseUrl,
-    apiKey: config.liteLlmApiKey,
-    timeoutMs: CLARIFY_TIMEOUT_MS
-  });
+  const liteLlmClient =
+    liteLlmClientOverride ??
+    createLiteLlmHttpClient({
+      baseUrl: config.liteLlmBaseUrl,
+      apiKey: config.liteLlmApiKey,
+      timeoutMs: CLARIFY_TIMEOUT_MS
+    });
   const worker = new IntelligenceWorker(repository, liteLlmClient, config, artifactStore);
 
   return async (request: IntelligenceRequest, subject: string): Promise<IntelligenceJob> => {
-    const { job: submitted } = await submitIntelligenceRequest(repository, request);
+    const { job: submitted, created } = await submitIntelligenceRequest(repository, request);
+
+    // The idempotency key returns the same job on every sweep, so a job that
+    // ended blocked or failed would otherwise be reported again forever without
+    // running.
+    if (!created && submitted.status === "blocked") {
+      // Blocked means the request never reached a model (the local model or its
+      // route was unavailable). Run it again, once per sweep, without spending
+      // the bounded retry: an outage must not leave the item stuck for good once
+      // the model is back. Still down, it ends blocked again and the caller
+      // reports the same unavailable error.
+      await repository.retryJob(submitted.id, nowIso(), { countRetry: false });
+    } else if (!created && submitted.status === "failed") {
+      // The model ran and errored. Retry once, on the same request and so the
+      // same unpaid route; once that retry is spent, say so instead of looping.
+      try {
+        await retryIntelligenceJob(repository, submitted.id, CLARIFY_MAX_JOB_RETRIES);
+      } catch (error) {
+        if (!(error instanceof RetryNotAllowedError)) {
+          throw error;
+        }
+        // Another runner may have re-queued or finished the job since it was
+        // read; then there is nothing to retry and the job is used as it is.
+        const current = await repository.findById(submitted.id);
+        if (!current || current.status === "failed" || current.status === "blocked") {
+          throw new ClarifyVerdictUnusableError(
+            `Clarify job for ${subject} ended failed (${submitted.error?.code ?? "UNKNOWN"}) and its retry is spent; ` +
+              `needs operator attention (it will not be retried until the Action or the grader criteria change): ` +
+              `${submitted.error?.message ?? "no detail"}`
+          );
+        }
+      }
+    }
+
     const finished = await worker.runOnce();
     const job: IntelligenceJob | undefined =
       finished?.id === submitted.id ? finished : await repository.findById(submitted.id);

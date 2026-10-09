@@ -283,14 +283,19 @@ export function createSqliteIntelligenceJobRepository(
     }
   }
 
-  function retryJob(jobId: string, _nowIso: string): Promise<IntelligenceJob> {
+  function retryJob(
+    jobId: string,
+    _nowIso: string,
+    options: { countRetry?: boolean } = {},
+  ): Promise<IntelligenceJob> {
+    const increment = options.countRetry === false ? 0 : 1;
     db.prepare(
       `UPDATE intelligence_jobs
-       SET status = 'queued', retry_count = retry_count + 1, error_code = NULL,
+       SET status = 'queued', retry_count = retry_count + ${increment}, error_code = NULL,
            error_message = NULL, result_json = NULL, validation_json = NULL,
            usage_json = NULL, selected_route = NULL, lease_owner = NULL, lease_token = NULL,
            lease_expires_at = NULL, started_at = NULL, completed_at = NULL
-       WHERE id = ?`,
+       WHERE id = ? AND status IN ('failed', 'blocked')`,
     ).run(jobId);
     return requireJob(jobId);
   }

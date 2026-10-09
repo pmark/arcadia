@@ -44,3 +44,17 @@ Tests: `tests/clarifyLint.test.ts` runs the lint cases;
 `tests/clarifyGrader.test.ts` checks the grader-only cases are lint-clean, drives
 a stubbed grader through `clarify`, and keeps SKILL.md and the grader prompt in
 step.
+
+## Proving a replacement grader
+
+`tests/clarifyGraderContract.ts` applies this contract to any `ClarifyGrader`:
+`runGraderContract(grader)` grades every case above and reports each departure.
+To prove a candidate, export it as `grader` (or the default export) from a
+module and run:
+
+```
+ARCADIA_GRADER_CANDIDATE=./path/to/grader.ts pnpm test:grader-contract
+```
+
+Without the variable the same command checks the harness itself against a
+reference stub and two deliberately wrong graders.

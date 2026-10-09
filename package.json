@@ -33,6 +33,7 @@
     "postinstall": "mise exec -- pnpm rebuild better-sqlite3",
     "build": "pnpm lint && tsc -p tsconfig.json && mkdir -p dist/scripts/browser-audit-image && cp scripts/browser-audit-image/identity.json dist/scripts/browser-audit-image/ && cp scripts/fixture-coding-agent.mjs scripts/host-browser-audit-worker.mjs dist/scripts/ && pnpm --filter arcadia-discord-bot build",
     "test": "vitest run",
+    "test:grader-contract": "vitest run tests/clarifyGraderContract.test.ts",
     "lint": "eslint src test tests scripts apps/dashboard apps/discord-bot",
     "lint:fix": "eslint --fix src test tests scripts apps/dashboard apps/discord-bot",
     "arcadia": "mise exec -- node --import tsx src/cli.ts",
