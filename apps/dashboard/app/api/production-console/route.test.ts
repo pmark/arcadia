@@ -37,7 +37,8 @@ describe("GET /api/production-console", () => {
     });
     cli.loadRunsSnapshot.mockResolvedValue({ data: { runs: { activeAgentSessions: [{ id: "s1" }], activeExecutionRuns: [], recentRuns: [], recentAgentSessions: [{ id: "s0" }] } } });
 
-    const { status, body } = await get();
+    // `fresh` bypasses the core cache an earlier test may have filled.
+    const { status, body } = await get("core&fresh=1");
 
     expect(status).toBe(200);
     expect(cli.loadRunsSnapshot).toHaveBeenCalledWith(0, 8);
@@ -52,11 +53,25 @@ describe("GET /api/production-console", () => {
     cli.loadProductionStatus.mockRejectedValue(new Error("policy store unreadable"));
     cli.loadRunsSnapshot.mockResolvedValue({ data: { runs: { activeAgentSessions: [], activeExecutionRuns: [], recentRuns: [] } } });
 
-    const { body } = await get("core");
+    const { body } = await get("core&fresh=1");
 
     expect(body.production).toBeNull();
     expect(body.productionError).toBe("policy store unreadable");
     expect(body.sessions).toEqual({ active: [], recent: [] });
+  });
+
+  it("answers an ordinary core poll from the last read, and fresh reads again", async () => {
+    cli.loadProductionStatus.mockRejectedValue(new Error("first"));
+    cli.loadRunsSnapshot.mockResolvedValue({ data: { runs: { activeAgentSessions: [], activeExecutionRuns: [], recentRuns: [] } } });
+    const first = await get("core&fresh=1");
+    cli.loadProductionStatus.mockRejectedValue(new Error("second"));
+
+    const cached = await get("core");
+    expect(cached.body.productionError).toBe("first");
+    expect(cached.body.generatedAt).toBe(first.body.generatedAt);
+
+    const fresh = await get("core&fresh=1");
+    expect(fresh.body.productionError).toBe("second");
   });
 
   it("serves the queue part trimmed, with the schedule's lanes", async () => {
