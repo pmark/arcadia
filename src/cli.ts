@@ -2036,13 +2036,18 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         "--operator-launch",
         "Also authorize this one Session's exit: validate, commit, push and (on accepted completion only) open a DRAFT pull request, once, within 24 hours (Decision 0096). Needs --preview-fingerprint, an interactive terminal and a typed confirmation; refused inside an Arcadia Session. Never merges."
       )
+      .option(
+        "--fixture-standing",
+        "Like --operator-launch but with no confirmation, ONLY for a disposable fixture Project while Decision 0100 is answered for it (expires 2026-10-18; refused for Arcadia's own repository, any other Project and inside an Arcadia Session). Needs --preview-fingerprint and --agent-identity. Same exit authority; never merges."
+      )
+      .option("--agent-identity <name>", "With --fixture-standing: the invoking agent, recorded in the mint receipt")
       .addOption(new Option("--operator-launch-dashboard", "Set only by the dashboard's confirmed Launch").hideHelp())
       .option("--time-limit-minutes <n>", "Wall-clock limit for this Session in minutes (overrides policy and the 120-minute default); Arcadia ends the tmux session past it", (value: string) => {
         const minutes = Number(value);
         if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("--time-limit-minutes must be a positive number.");
         return minutes;
       })
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; timeLimitMinutes?: number; json?: boolean }) =>
+  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; fixtureStanding?: boolean; agentIdentity?: string; timeLimitMinutes?: number; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
@@ -2050,11 +2055,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         if (options.operatorLaunch && options.operatorLaunchDashboard) {
           throw validationError("--operator-launch and the dashboard's confirmation flag are mutually exclusive.", {});
         }
-        if ((options.operatorLaunch || options.operatorLaunchDashboard) && !options.previewFingerprint) {
+        if (options.fixtureStanding && (options.operatorLaunch || options.operatorLaunchDashboard)) {
+          throw validationError("--fixture-standing cannot be combined with --operator-launch or the dashboard's confirmation flag.", {});
+        }
+        if (options.agentIdentity && !options.fixtureStanding) {
+          throw validationError("--agent-identity applies only with --fixture-standing.", {});
+        }
+        if ((options.operatorLaunch || options.operatorLaunchDashboard || options.fixtureStanding) && !options.previewFingerprint) {
           throw validationError("An operator launch authorization needs the previewed --preview-fingerprint.", {});
         }
-        let operatorLaunch: { source: OperatorLaunchSource } | undefined;
-        if (options.operatorLaunchDashboard) {
+        let operatorLaunch: { source: OperatorLaunchSource; standing?: { agentIdentity: string } } | undefined;
+        if (options.fixtureStanding) {
+          // Verified in launchGuardedHostSession (Decision 0100); no terminal confirmation by design.
+          operatorLaunch = { source: "fixture_standing", standing: { agentIdentity: options.agentIdentity ?? "" } };
+        } else if (options.operatorLaunchDashboard) {
           refuseInsideArcadiaSession();
           operatorLaunch = { source: "dashboard" };
         } else if (options.operatorLaunch) {

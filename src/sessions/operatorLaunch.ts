@@ -2,6 +2,7 @@ import { readSync, writeSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { createId } from "../utils/id.js";
+import type { FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import type { AgentSession } from "./index.js";
 
 /**
@@ -17,6 +18,9 @@ import type { AgentSession } from "./index.js";
  *   after its confirmation step), and
  * - `arcadia session launch --operator-launch`, confirmed at an interactive
  *   terminal (`source: "cli_tty"`).
+ * - `arcadia session launch --fixture-standing` for disposable fixtures only,
+ *   with no confirmation, while Decision 0100 stands (`source: "fixture_standing"`;
+ *   see fixtureStandingLaunch.ts). The authorization and its exit are identical.
  * Never from inside an Arcadia Session (the launcher sets
  * {@link SESSION_ENV_MARKER} in every Session's environment) and never from a
  * non-interactive shell. This guards against accidental or routine agent
@@ -32,7 +36,7 @@ export const OPERATOR_LAUNCH_TTL_MS = 24 * 3_600_000;
 /** How many times a failed draft-PR publication is retried after the exit. */
 export const OPERATOR_LAUNCH_MAX_PUBLISH_ATTEMPTS = 3;
 
-export type OperatorLaunchSource = "dashboard" | "cli_tty";
+export type OperatorLaunchSource = "dashboard" | "cli_tty" | "fixture_standing";
 export type OperatorLaunchPublishState = "none" | "pending" | "done" | "failed";
 
 export interface OperatorLaunchAuthorization {
@@ -51,22 +55,28 @@ export interface OperatorLaunchAuthorization {
   publish_state: OperatorLaunchPublishState;
   publish_attempts: number;
   receipt_json: string | null;
+  /** JSON {@link FixtureStandingBasis} for a standing fixture mint (Decision 0100); null otherwise. */
+  standing_json: string | null;
 }
 
 export type OperatorLaunchAuthority =
   | { ok: true; authorization: OperatorLaunchAuthorization }
   | { ok: false; code: "none" | "wrong_session" | "wrong_action" | "expired" | "used"; reason: string };
 
-export function ensureOperatorLaunchSchema(db: Database.Database): void {
+const OPERATOR_LAUNCH_COLUMNS = `
+      id, session_id, project_slug, plan_slug, action_id, repository_path, source, request_id, minted_at, expires_at,
+      used_at, outcome, publish_state, publish_attempts, receipt_json`;
+
+function createOperatorLaunchTable(db: Database.Database, name: string): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS operator_launch_authorizations (
+    CREATE TABLE IF NOT EXISTS ${name} (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL UNIQUE,
       project_slug TEXT NOT NULL,
       plan_slug TEXT NOT NULL,
       action_id TEXT NOT NULL,
       repository_path TEXT NOT NULL,
-      source TEXT NOT NULL CHECK (source IN ('dashboard', 'cli_tty')),
+      source TEXT NOT NULL CHECK (source IN ('dashboard', 'cli_tty', 'fixture_standing')),
       request_id TEXT NOT NULL,
       minted_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
@@ -74,9 +84,28 @@ export function ensureOperatorLaunchSchema(db: Database.Database): void {
       outcome TEXT,
       publish_state TEXT NOT NULL DEFAULT 'none' CHECK (publish_state IN ('none', 'pending', 'done', 'failed')),
       publish_attempts INTEGER NOT NULL DEFAULT 0,
-      receipt_json TEXT
+      receipt_json TEXT,
+      standing_json TEXT
     );
   `);
+}
+
+export function ensureOperatorLaunchSchema(db: Database.Database): void {
+  const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'operator_launch_authorizations'").get() as { sql: string } | undefined;
+  if (!existing) {
+    createOperatorLaunchTable(db, "operator_launch_authorizations");
+    return;
+  }
+  // Tables minted before Decision 0100 forbid the 'fixture_standing' source in a
+  // CHECK constraint SQLite cannot alter: rebuild once, keeping every row.
+  if (existing.sql.includes("fixture_standing")) return;
+  db.transaction(() => {
+    db.exec("ALTER TABLE operator_launch_authorizations RENAME TO operator_launch_authorizations_old");
+    createOperatorLaunchTable(db, "operator_launch_authorizations");
+    db.exec(`INSERT INTO operator_launch_authorizations (${OPERATOR_LAUNCH_COLUMNS})
+             SELECT ${OPERATOR_LAUNCH_COLUMNS} FROM operator_launch_authorizations_old`);
+    db.exec("DROP TABLE operator_launch_authorizations_old");
+  })();
 }
 
 function hasTable(db: Database.Database): boolean {
@@ -161,9 +190,12 @@ export function confirmOperatorLaunchAtTerminal(input: { actionLabel: string | (
 /** Mint the one-shot authorization for a Session this confirmed Launch just created. */
 export function mintOperatorLaunchAuthorization(
   db: Database.Database,
-  input: { session: AgentSession; source: OperatorLaunchSource; requestId: string; env?: NodeJS.ProcessEnv; now?: Date }
+  input: { session: AgentSession; source: OperatorLaunchSource; requestId: string; standing?: FixtureStandingBasis; env?: NodeJS.ProcessEnv; now?: Date }
 ): OperatorLaunchAuthorization {
   refuseInsideArcadiaSession(input.env);
+  if ((input.source === "fixture_standing") !== Boolean(input.standing)) {
+    throw validationError("A standing fixture mint (and only it) carries the verified Decision 0100 basis.", { code: "operator_launch_standing_mismatch" });
+  }
   const now = input.now ?? new Date();
   ensureOperatorLaunchSchema(db);
   const existing = db.prepare("SELECT * FROM operator_launch_authorizations WHERE session_id = ?").get(input.session.id) as OperatorLaunchAuthorization | undefined;
@@ -183,16 +215,18 @@ export function mintOperatorLaunchAuthorization(
     outcome: null,
     publish_state: "none",
     publish_attempts: 0,
-    receipt_json: null
+    receipt_json: null,
+    standing_json: input.standing ? JSON.stringify(input.standing) : null
   };
   db.prepare(
     `INSERT INTO operator_launch_authorizations
-       (id, session_id, project_slug, plan_slug, action_id, repository_path, source, request_id, minted_at, expires_at, publish_state, publish_attempts)
-     VALUES (@id, @session_id, @project_slug, @plan_slug, @action_id, @repository_path, @source, @request_id, @minted_at, @expires_at, 'none', 0)`
+       (id, session_id, project_slug, plan_slug, action_id, repository_path, source, request_id, minted_at, expires_at, publish_state, publish_attempts, standing_json)
+     VALUES (@id, @session_id, @project_slug, @plan_slug, @action_id, @repository_path, @source, @request_id, @minted_at, @expires_at, 'none', 0, @standing_json)`
   ).run(row);
   recordEvent(db, "operator_launch.authorization_minted", {
     authorizationId: row.id, sessionId: row.session_id, actionKey: `${row.project_slug}/${row.action_id}`,
-    source: row.source, requestId: row.request_id, expiresAt: row.expires_at
+    source: row.source, requestId: row.request_id, expiresAt: row.expires_at,
+    ...(input.standing ? { mintKind: "fixture_standing", standing: input.standing } : {})
   }, now);
   return row;
 }
@@ -279,6 +313,7 @@ export function recordOperatorLaunchUse(db: Database.Database, authorizationId: 
   const usedAt = row.used_at ?? now.toISOString();
   const receipt = {
     authorizationId, sessionId: row.session_id, actionKey: `${row.project_slug}/${row.action_id}`, usedAt,
+    ...(row.standing_json ? { mintKind: "fixture_standing", standing: JSON.parse(row.standing_json) as FixtureStandingBasis } : {}),
     ...use.detail, outcome: use.outcome, publishState, publishAttempts: attempts
   };
   db.prepare(

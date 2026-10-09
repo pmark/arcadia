@@ -326,6 +326,34 @@ through ordinary Agent Asks there, and no experiment result changes governed sta
   no launch agent, user config or trust entry names the workspace, then remove
   its directory.
 
+## Fixture standing launch (Decision 0100)
+
+Only once Decision 0100 is answered. `arcadia session launch --fixture-standing
+--agent-identity <name> --preview-fingerprint <hash> ...` mints Decision 0096's
+one-shot authorization without the terminal confirmation. It refuses with a named
+code (nothing launched, nothing minted) unless all hold:
+
+- Decision 0100 in the `arcadia` Project is answered "Standing fixture launch,
+  with merge on green" or "Standing fixture launch, you merge"
+  (`fixture_standing_decision_unanswered`);
+- today (UTC) is on or before 2026-10-18 (`fixture_standing_expired`);
+- the target repository's configured Git remotes are all in
+  `FIXTURE_REMOTE_ALLOWLIST` (`src/sessions/fixtureStandingLaunch.ts`, today
+  `pmark/arcadia-three-action-rehearsal-20261004`), or the workspace is an
+  experiment workspace and the repository is inside its allowed root; Arcadia's
+  own repository and any other Project are refused
+  (`fixture_standing_not_a_fixture`);
+- `--agent-identity` is given (`fixture_standing_agent_identity_required`) and the
+  shell is not inside an Arcadia Session (`operator_launch_inside_session`).
+
+The mint records `source: fixture_standing`, the Decision id and answer, the
+agent and the fixture basis in the `authorization_minted` event and, at exit, in
+the receipt. Exit authority is unchanged: validate, commit, push, one draft PR on
+accepted completion, never a merge. Merging a fixture PR on green is a separate
+authority: it needs the answer "with merge on green" plus an independent review
+of the head finding nothing blocking and every check passing. Raising the
+flag does not extend the expiry; a later date needs a new Decision.
+
 ## Claude Code specifics
 
 - `@AGENTS.md` above is a Claude Code import. Codex ignores it and reads
