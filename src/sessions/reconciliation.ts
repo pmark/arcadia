@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
@@ -7,7 +7,6 @@ import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
 import { CLAUDE_CODE_SIGN_IN_REMEDY } from "../codingAgents/signIn.js";
-import { scanPane } from "../production/sessionSignals.js";
 import { sessionLogPath } from "./sessionRecording.js";
 import { readProductionPolicySafely, releaseAdmission } from "../production/policy.js";
 import { attemptAutoSettlePendingCompletion } from "../ask/autoSettleBeforeDispatch.js";
@@ -253,20 +252,43 @@ export const PROVIDER_SIGN_IN_FAILURE_PREFIX = "Provider sign-in failure";
  * that event counts, so a transcript that merely discusses authentication
  * never does. Null when the log is absent, unreadable or shows no such event.
  */
-export function detectProviderSignInFailure(session: AgentSession, workspace: string | undefined): string | null {
-  if (!workspace || session.provider !== "claude-code-cli") return null;
-  let text: string;
+/**
+ * Sign-in wording only. Scope and permission failures (403 permission_error,
+ * insufficient_scope) are authorization problems that `claude auth login` does
+ * not fix, so they are deliberately absent. Local to this structured parse: the
+ * live pane catalog stays unchanged.
+ */
+const CLAUDE_SIGN_IN_FAILURE = /failed to authenticate|oauth session expired|oauth token has expired|please run \/login|invalid api key|not logged in|\b401\b.*\b(?:unauthorized|authentication_error)\b|\bunexpected status 401\b|authentication_error/i;
+
+/** Only the log's tail is read; the terminal `result` event is the last thing the provider writes. */
+const SIGN_IN_LOG_TAIL_BYTES = 256 * 1024;
+
+function readLogTail(file: string): string | null {
+  let fd: number | null = null;
   try {
-    text = readFileSync(sessionLogPath(workspace, session.id), "utf8");
+    fd = openSync(file, "r");
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, SIGN_IN_LOG_TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    readSync(fd, buffer, 0, length, size - length);
+    return buffer.toString("utf8");
   } catch {
     return null;
+  } finally {
+    if (fd !== null) closeSync(fd);
   }
+}
+
+export function detectProviderSignInFailure(session: AgentSession, workspace: string | undefined): string | null {
+  if (!workspace || session.provider !== "claude-code-cli") return null;
+  const text = readLogTail(sessionLogPath(workspace, session.id));
+  if (text === null) return null;
   for (const line of text.split(/\r?\n/)) {
     if (!line.startsWith("{") || !line.includes('"result"')) continue;
     try {
       const event = JSON.parse(line) as { type?: unknown; is_error?: unknown; result?: unknown };
       if (event.type === "result" && event.is_error === true && typeof event.result === "string"
-        && scanPane(event.result).classes.includes("auth_failure")) return event.result.trim();
+        && CLAUDE_SIGN_IN_FAILURE.test(event.result)) return event.result.trim();
     } catch { /* not a JSON event line */ }
   }
   return null;

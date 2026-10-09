@@ -261,7 +261,8 @@ describe("reconcileSessionExit", () => {
   it("keeps the generic reason when the log has no error result event, or an error result that is not authentication", () => {
     for (const lines of [
       [JSON.stringify({ type: "assistant", message: "Failed to authenticate the user in the test" })],
-      [JSON.stringify({ type: "result", is_error: true, result: "Prompt is too long" })]
+      [JSON.stringify({ type: "result", is_error: true, result: "Prompt is too long" })],
+      [JSON.stringify({ type: "result", is_error: true, result: "API Error: 403 permission_error: insufficient_scope for this key" })]
     ]) {
       const fixture = preparedFixture();
       const tmux = new FakeTmux();

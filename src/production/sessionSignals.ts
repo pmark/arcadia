@@ -49,7 +49,6 @@ export const PANE_SIGNAL_CATALOG: readonly PaneSignalPattern[] = [
 
   // Auth or scope failures: credentials the Session cannot fix by waiting.
   { id: "claude-login-required", class: "auth_failure", provider: "claude", pattern: /please run \/login|invalid api key|oauth token has expired|not logged in/i },
-  { id: "claude-failed-to-authenticate", class: "auth_failure", provider: "claude", pattern: /failed to authenticate|oauth session expired/i },
   { id: "http-401", class: "auth_failure", provider: "any", pattern: /\b401\b.*\b(?:unauthorized|authentication_error)\b|\bunexpected status 401\b|authentication_error/i },
   { id: "scope-failure", class: "auth_failure", provider: "any", pattern: /insufficient[_ ]scope|resource not accessible by (?:personal access token|integration)|missing required scope|permission_error/i },
   { id: "codex-not-signed-in", class: "auth_failure", provider: "codex", pattern: /you are not signed in|please (?:sign in|log in) (?:again|to codex)|run `?codex login`?/i },
