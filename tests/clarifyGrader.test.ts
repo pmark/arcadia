@@ -4,7 +4,14 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildClarifyRequest } from "../src/clarify/contract.js";
 import type { ClarifyJobRunner } from "../src/clarify/engine.js";
-import { ClarifyEngineUnavailableError, ClarifyVerdictUnusableError, normalizeVerdict } from "../src/clarify/engine.js";
+import {
+  ClarifyEngineUnavailableError,
+  ClarifyVerdictUnusableError,
+  createClarifyJobRunner,
+  normalizeVerdict
+} from "../src/clarify/engine.js";
+import type { LiteLlmClient } from "../src/intelligence/litellm/client.js";
+import { LiteLlmUnavailableError } from "../src/intelligence/litellm/httpClient.js";
 import {
   buildGraderRequest,
   createIntelligenceGrader,
@@ -268,6 +275,108 @@ describe("createIntelligenceGrader with a completed job whose result is unusable
       const grader = createIntelligenceGrader(db, workspace, fakeRunner(() => ({ grade: "pass" }), keys));
       await grader(input);
       expect(keys).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe("createClarifyJobRunner with a grader job that ended failed or blocked", () => {
+  function setup(): { workspace: string; input: GraderInput } {
+    const workspace = initializedWorkspace();
+    const workItem = captureAction(workspace, "Sort out the nightly sync");
+    return {
+      workspace,
+      input: {
+        workItem,
+        candidate: { nextAction: "Add a retry", doneCondition: "A forced failure retries", actor: "coding-agent" },
+        source: { title: workItem.title }
+      }
+    };
+  }
+
+  /** A LiteLLM stand-in that answers from a script and records every request it is asked to run. */
+  function scriptedClient(script: Array<"blocked" | "failed" | "pass">) {
+    const calls: Array<{ allowPaidUsage: boolean; route: string }> = [];
+    const client: LiteLlmClient = {
+      async generateStructured(request, route) {
+        calls.push({ allowPaidUsage: request.executionPolicy.allowPaidUsage, route });
+        const step = script[Math.min(calls.length - 1, script.length - 1)];
+        if (step === "blocked") {
+          throw new LiteLlmUnavailableError("connection refused");
+        }
+        if (step === "failed") {
+          throw new Error("model fell over");
+        }
+        return { output: { grade: "pass", reason: "ok" } };
+      },
+      async generateImage() {
+        throw new Error("not used");
+      }
+    };
+    return { client, calls };
+  }
+
+  function jobRows(db: ReturnType<typeof openDatabase>): Array<{ status: string; retry_count: number; request_json: string }> {
+    return db.prepare("SELECT status, retry_count, request_json FROM intelligence_jobs").all() as never;
+  }
+
+  it("retries a failed job on the next sweep and then grades it", async () => {
+    const { workspace, input } = setup();
+    const { client, calls } = scriptedClient(["failed", "pass"]);
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(db, workspace, createClarifyJobRunner(db, workspace, client));
+      await expect(grader(input)).rejects.toThrow(ClarifyVerdictUnusableError);
+      expect(calls).toHaveLength(1);
+
+      const outcome = await grader(input);
+      expect(outcome.grade).toBe("pass");
+      expect(calls).toHaveLength(2);
+      const rows = jobRows(db);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ status: "completed", retry_count: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("retries a blocked job once, then reports needs operator attention without running it again", async () => {
+    const { workspace, input } = setup();
+    const { client, calls } = scriptedClient(["blocked"]);
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(db, workspace, createClarifyJobRunner(db, workspace, client));
+
+      await expect(grader(input)).rejects.toThrow(ClarifyEngineUnavailableError);
+      await expect(grader(input)).rejects.toThrow(ClarifyEngineUnavailableError);
+      expect(calls).toHaveLength(2);
+
+      for (let sweep = 0; sweep < 3; sweep += 1) {
+        const failure = await grader(input).catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(ClarifyVerdictUnusableError);
+        expect((failure as Error).message).toContain("needs operator attention");
+      }
+      expect(calls).toHaveLength(2);
+      expect(jobRows(db)[0]).toMatchObject({ status: "blocked", retry_count: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("never turns on paid usage, on the first try or the retry", async () => {
+    const { workspace, input } = setup();
+    const { client, calls } = scriptedClient(["failed", "pass"]);
+    const db = openDatabase(workspace);
+    try {
+      const grader = createIntelligenceGrader(db, workspace, createClarifyJobRunner(db, workspace, client));
+      await grader(input).catch(() => undefined);
+      await grader(input);
+
+      expect(calls.map((call) => call.allowPaidUsage)).toEqual([false, false]);
+      for (const row of jobRows(db)) {
+        expect(JSON.parse(row.request_json)).toMatchObject({ executionPolicy: { allowPaidUsage: false } });
+      }
     } finally {
       db.close();
     }
