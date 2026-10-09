@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { clarifyEngineUnavailable, workItemNotFound } from "../cli/errors.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -216,20 +217,26 @@ async function gradeClarified(
   }
 }
 
+/**
+ * Records the grader receipt. When a work-item update goes with it, `apply`
+ * runs inside the same transaction, so a crash can never leave a clarified
+ * item without its receipt.
+ */
 function recordGraderReceipt(
   workspacePath: string,
   workItem: WorkItemSummary,
   grader: NonNullable<ClarifyEvaluation["grader"]>,
-  reviewItemId: string | null
+  reviewItemId: string | null,
+  apply?: (db: Database.Database) => void
 ): string {
   const id = createId("event");
   withDatabase(workspacePath, (db) =>
-    db
-      .prepare(
+    db.transaction(() => {
+      apply?.(db);
+      db.prepare(
         `INSERT INTO events (id, event_type, source_module, project_id, work_item_id, artifact_id, review_item_id, payload_json, created_at)
          VALUES (@id, @event_type, 'clarify', @project_id, @work_item_id, NULL, @review_item_id, @payload_json, @created_at)`
-      )
-      .run({
+      ).run({
         id,
         event_type: GRADER_VERDICT_EVENT_TYPE,
         project_id: workItem.project_id ?? null,
@@ -239,7 +246,8 @@ function recordGraderReceipt(
         // a work_items column, so this is where it is kept.
         payload_json: JSON.stringify({ receipt: grader.receipt, candidate: grader.candidate }),
         created_at: nowIso()
-      })
+      });
+    })()
   );
   return id;
 }
@@ -250,7 +258,7 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
   for (const { workItem, verdict, grader } of evaluated) {
     if (verdict.verdict === "clarified") {
       const responsibility = RESPONSIBILITY_FOR_ACTOR[verdict.actor];
-      withDatabase(workspacePath, (db) =>
+      const applyClarification = (db: Database.Database): void => {
         updateWorkItem(db, workItem.id, {
           nextAction: verdict.nextAction,
           workClassification: responsibility,
@@ -262,8 +270,16 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
           // would keep advertising a question that no longer applies.
           gapType: null,
           openQuestion: null
-        })
-      );
+        });
+      };
+      // The update and its grader receipt share one transaction, so a crash
+      // can never leave a clarified item without its receipt.
+      const graderEventId = grader
+        ? recordGraderReceipt(workspacePath, workItem, grader, null, applyClarification)
+        : undefined;
+      if (!grader) {
+        withDatabase(workspacePath, applyClarification);
+      }
 
       // The file handoff. Only after the write above, so a refusal here can
       // never undo the clarification, and it writes no Action status, pointer
@@ -273,7 +289,7 @@ function applyEvaluations(workspacePath: string, evaluated: ClarifyEvaluation[])
       applications.push({
         workItemId: workItem.id,
         clarificationStatus: "clarified",
-        ...(grader ? { graderEventId: recordGraderReceipt(workspacePath, workItem, grader, null) } : {}),
+        ...(graderEventId ? { graderEventId } : {}),
         ...(handoff ? { handoff } : {})
       });
       continue;

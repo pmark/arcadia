@@ -4,7 +4,7 @@ import { GAP_TYPES } from "../domain/constants.js";
 import type { GapType } from "../domain/constants.js";
 import type { WorkItemSummary } from "../domain/types.js";
 import type { IntelligenceRequest, JsonValue } from "../intelligence/types.js";
-import { createClarifyJobRunner, ClarifyVerdictUnusableError } from "./engine.js";
+import { createClarifyJobRunner, ClarifyVerdictUnusableError, type ClarifyJobRunner } from "./engine.js";
 import type { ClarifySourceMaterial } from "./lint.js";
 import type { ClarifiedVerdict } from "./types.js";
 
@@ -157,10 +157,24 @@ export function graderInputSha256(input: GraderInput): string {
   return sha256Hex(JSON.stringify(graderInputPayload(input)));
 }
 
-export function buildGraderRequest(input: GraderInput): IntelligenceRequest {
-  const inputSha = graderInputSha256(input);
+export function graderPromptSha256(): string {
+  return sha256Hex(GRADER_INSTRUCTIONS);
+}
+
+/**
+ * The key names the item, the prompt and the case, so a reused job always
+ * belongs to the criteria now in force. `attempt` 0 is the first try; a later
+ * attempt adds a suffix so a completed-but-unusable result is not re-read
+ * forever.
+ */
+export function graderIdempotencyKey(input: GraderInput, attempt = 0): string {
+  const base = `grade-${input.workItem.id}-${graderPromptSha256().slice(0, 8)}-${graderInputSha256(input).slice(0, 16)}`;
+  return attempt > 0 ? `${base}-retry${attempt}` : base;
+}
+
+export function buildGraderRequest(input: GraderInput, attempt = 0): IntelligenceRequest {
   return {
-    idempotencyKey: `grade-${input.workItem.id}-${inputSha.slice(0, 16)}`,
+    idempotencyKey: graderIdempotencyKey(input, attempt),
     operationId: GRADER_OPERATION_ID,
     clientApp: "arcadia-clarify",
     projectId: input.workItem.project_id ?? undefined,
@@ -233,22 +247,51 @@ export function normalizeGrade(
   };
 }
 
-/** The real grader: one local Intelligence job per candidate, on the same in-process runner as the generator. */
-export function createIntelligenceGrader(db: Database.Database, workspacePath: string): ClarifyGrader {
-  const run = createClarifyJobRunner(db, workspacePath);
+/** One retry of a completed job whose result `normalizeGrade` refused. */
+const GRADER_MAX_UNUSABLE_RETRIES = 1;
 
+/**
+ * The real grader: one local Intelligence job per candidate, on the same
+ * in-process runner as the generator. A completed job is reused by its
+ * idempotency key, so an unusable result would otherwise be re-read on every
+ * later run. The first unusable result is therefore retried once under a
+ * retry-suffixed key; if that is unusable too, the failure says the item needs
+ * operator attention rather than skipping silently. `run` is injectable for
+ * tests.
+ */
+export function createIntelligenceGrader(
+  db: Database.Database,
+  workspacePath: string,
+  run: ClarifyJobRunner = createClarifyJobRunner(db, workspacePath)
+): ClarifyGrader {
   return async (input: GraderInput): Promise<GraderOutcome> => {
-    const request = buildGraderRequest(input);
-    const job = await run(request, `${input.workItem.id} (grader)`);
-    return normalizeGrade(job.result, {
-      grader: {
-        id: job.selectedRoute ?? `intelligence:${GRADER_PROFILE}`,
-        operationId: GRADER_OPERATION_ID,
-        profile: GRADER_PROFILE
-      },
-      promptSha256: sha256Hex(GRADER_INSTRUCTIONS),
-      inputSha256: graderInputSha256(input)
-    });
+    const promptSha256 = graderPromptSha256();
+    const inputSha256 = graderInputSha256(input);
+
+    for (let attempt = 0; ; attempt += 1) {
+      const job = await run(buildGraderRequest(input, attempt), `${input.workItem.id} (grader)`);
+      try {
+        return normalizeGrade(job.result, {
+          grader: {
+            id: job.selectedRoute ?? `intelligence:${GRADER_PROFILE}`,
+            operationId: GRADER_OPERATION_ID,
+            profile: GRADER_PROFILE
+          },
+          promptSha256,
+          inputSha256
+        });
+      } catch (error) {
+        if (!(error instanceof ClarifyVerdictUnusableError)) {
+          throw error;
+        }
+        if (attempt >= GRADER_MAX_UNUSABLE_RETRIES) {
+          throw new ClarifyVerdictUnusableError(
+            `Grader result unusable after ${attempt + 1} attempts for ${input.workItem.id}; needs operator attention ` +
+              `(it will not be retried until the Action or the grader criteria change): ${error.message}`
+          );
+        }
+      }
+    }
   };
 }
 

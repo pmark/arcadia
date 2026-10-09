@@ -27,7 +27,7 @@ route configuration points the `standard` profile at a different alias.
 ## Criteria
 
 The block between the markers is the single source of the grading criteria.
-`src/clarify/graderCriteria.ts` carries the same text and a test fails when the
+`src/clarify/grader.ts` carries the same text and a test fails when the
 two differ, so edit both together.
 
 <!-- grader-criteria:start -->
