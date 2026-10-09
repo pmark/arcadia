@@ -4,7 +4,7 @@ type: decision
 id: "0098"
 slug: decide-whether-a-confirmed-launch-authorizes-arcadia-after-the-session-exits-to
 project: arcadia
-status: open
+status: approved
 question: Decide whether a confirmed Launch authorizes Arcadia, after the session exits, to run adversarial review and repair sessions on its draft PR and merge on green unless an automated gate calls for operator approval, and whether a confirmed chain Launch authorizes launching the next ready Action after each merge. Nothing is authorized by raising this Decision.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-09
+answer: "Yes: after a confirmed Launch, review as PR comments, repair conflicts and CI, merge on green unless a gate calls for me; chains launch the next Action after each merge"
+decided: 2026-10-09
 ---
 
 # Decision 0098: Decide whether a confirmed Launch authorizes Arcadia, after the session exits, to run adversarial review and repair sessions on its draft PR and merge on green unless an automated gate calls for operator approval, and whether a confirmed chain Launch authorizes launching the next ready Action after each merge. Nothing is authorized by raising this Decision.
