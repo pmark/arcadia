@@ -3,6 +3,7 @@ import { validationError } from "../cli/errors.js";
 import { discoverDocs } from "../docs/discover.js";
 import { loadConstitution, readConstitution, type ConstitutionReference } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
+import { EVIDENCE_PLACEHOLDER_MARKER } from "../ask/agentAsk.js";
 import { renderGuidanceRetrieval } from "../projects/agentGuidance.js";
 import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity, type AgentPartner } from "../codingAgents/agentIdentity.js";
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
@@ -69,7 +70,7 @@ function sessionCannotCommit(input: ActionBriefInput): boolean {
   return input.headless === true && (input.agent === "claude" || input.agent === "codex");
 }
 
-const COMPLETION_REQUEST_ID_PATTERN = /Agent Ask request id[:\s]+`?(complete-[A-Za-z0-9][A-Za-z0-9._-]*)/i;
+const COMPLETION_REQUEST_ID_PATTERN = /Agent Ask request id[:\s]+`?(complete-[a-z0-9][a-z0-9-]*)(?![A-Za-z0-9_-])/;
 
 /** The completion request id the Action text names, else a deterministic default tied to the candidate's HEAD. */
 function completionRequestId(actionId: string, nextAction: string | null, title: string, head: string): string {
@@ -99,7 +100,7 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     evidence: action.acceptanceCriteria.map((criterion) => ({
       criterion,
       status: "met",
-      note: "<REPLACE: the command you ran and what you observed for this criterion>"
+      note: `${EVIDENCE_PLACEHOLDER_MARKER} the command you ran and what you observed for this criterion>`
     })),
     desired_result: `Mark ${action.id} complete.`
   };

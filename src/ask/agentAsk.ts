@@ -149,6 +149,11 @@ export function normalizeAgentAsk(input: { request: string; requestId?: string; 
   if (evidence.length > 0 && !(["complete", "split"] as string[]).includes(intent)) {
     throw validationError("Agent Ask evidence is only supported for complete or split intent.");
   }
+  if (intent === "complete" && evidenceHasPlaceholder(evidence)) {
+    throw validationError(
+      `A complete Agent Ask's evidence still contains the placeholder ${EVIDENCE_PLACEHOLDER_MARKER} ... >. Replace each note with the command you ran and what you observed, then run the command again.`
+    );
+  }
   if ((intent === "complete" || intent === "split") && evidence.length === 0) {
     throw validationError(`A ${intent} Agent Ask requires at least one evidence entry.`);
   }
@@ -356,6 +361,15 @@ function optionList(value: unknown): NormalizedAgentAskOption[] {
   });
   if (recommendedCount > 1) throw validationError("At most one Agent Ask option may be marked recommended.");
   return options;
+}
+/**
+ * The marker a prefilled evidence note starts with until the agent replaces it
+ * (the Action brief's draft-only completion recipe). A `complete` Ask whose
+ * evidence still carries it was never filled in and must not draft or settle.
+ */
+export const EVIDENCE_PLACEHOLDER_MARKER = "<REPLACE:";
+export function evidenceHasPlaceholder(evidence: ReadonlyArray<{ note: string | null }>): boolean {
+  return evidence.some((entry) => entry.note?.includes(EVIDENCE_PLACEHOLDER_MARKER) === true);
 }
 function evidenceList(value: unknown): NormalizedAgentAskEvidence[] {
   if (value === undefined || value === null) return [];

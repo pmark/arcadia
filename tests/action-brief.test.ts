@@ -231,6 +231,46 @@ describe("renderActionBrief", () => {
       expect(JSON.parse(draftCommand(headless(repo, "claude")).json).request_id).toBe("complete-define-contract-run7");
     });
 
+    it("refuses the rendered command run verbatim, with its placeholders unfilled, and writes nothing", () => {
+      const repo = briefRepo();
+      const { dir, json } = draftCommand(headless(repo, "claude"));
+      expect(() => runAgentAskDraftCommand({ request: json, dir, workspace: path.join(repo, "no-workspace") }))
+        .toThrowError(/still contains the placeholder <REPLACE:.*Replace each note/);
+      expect(existsSync(path.join(repo, ".arcadia", "asks"))).toBe(false);
+    });
+
+    it("takes only a canonical-charset id from the Action text: no trailing period, no uppercase or underscore", () => {
+      const planPath = (repo: string) => path.join(repo, "docs", "plans", "copy-proof.md");
+      const withText = (text: string) => {
+        const repo = briefRepo();
+        writeFileSync(planPath(repo), readFileSync(planPath(repo), "utf8").replace("next_action: Define the bounded contract.", `next_action: ${text}`));
+        return JSON.parse(draftCommand(headless(repo, "claude")).json).request_id as string;
+      };
+      expect(withText("Record under the Agent Ask request id complete-x-run7.")).toBe("complete-x-run7");
+      for (const bad of ["complete-X-run7", "complete-x_run7"]) {
+        expect(withText(`Record under the Agent Ask request id ${bad} now.`)).toMatch(/^complete-define-contract-[0-9a-f]{12}$/);
+      }
+    });
+
+    it("quotes a single quote in a criterion and in the worktree path so a POSIX shell parses the exact arguments back", () => {
+      const repo = briefRepo();
+      const planPath = path.join(repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("The contract exists.", "The contract doesn't exist yet."));
+      const tricky = "/tmp/it's a 'worktree'";
+      const brief = renderActionBrief({
+        repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract",
+        worktreePath: tricky, branch: "claude/define-contract", agent: "claude", baseRevision: head(repo), headless: true
+      });
+      const line = /^ {5}arcadia agent-ask draft .*$/m.exec(brief)?.[0].trim();
+      if (!line) throw new Error("no draft command");
+      const out = execFileSync("sh", ["-c", `arcadia() { for a in "$@"; do printf '%s\\0' "$a"; done; }; ${line}`], { encoding: "utf8" });
+      const args = out.split("\0").slice(0, -1);
+      expect(args.slice(0, 3)).toEqual(["agent-ask", "draft", "--dir"]);
+      expect(args[3]).toBe(tricky);
+      expect(JSON.parse(args[4]).evidence[0].criterion).toBe("The contract doesn't exist yet.");
+      expect(args).toHaveLength(5);
+    });
+
     it("round-trips: the rendered Ask, with placeholders filled, validates and lands at the canonical draft path", () => {
       const repo = briefRepo();
       const { dir, json } = draftCommand(headless(repo, "claude"));
