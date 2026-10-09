@@ -210,6 +210,19 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     expect(withReadOnlyDatabase(rehearsal.workspace, (db) => db.prepare("SELECT status FROM agent_sessions WHERE id = ?").get(run1.id))).toEqual({ status: run1.status });
   });
 
+  it("reports run 1's superseded terminal candidate once, not on every tick (Issue #1158)", () => {
+    const { rehearsal, run1 } = afterRun1();
+    // A dirty worktree keeps dispatch refused, so the same candidate is met again on every tick.
+    mkdirSync(path.join(run1.worktree_path, "notes"), { recursive: true });
+    writeFileSync(path.join(run1.worktree_path, "notes", "unsaved.md"), "uncommitted\n");
+    amend(rehearsal);
+    rehearsal.activate("run-2-grant");
+    const results = [rehearsal.tick(), rehearsal.tick(), rehearsal.tick()];
+    expect(results.some((r) => r.launch?.outcome === "launched")).toBe(false);
+    const reported = rehearsal.log.filter((line) => line.includes(`Terminal candidate of Session ${run1.id}`) && line.includes("superseded input"));
+    expect(reported).toHaveLength(1);
+  });
+
   it("releases run 1's claim and skips its handoff only for a finished, clean, preserved candidate of a superseded input", () => {
     const { rehearsal, run1 } = afterRun1();
     const held = () => withDatabase(rehearsal.workspace, (db) => getActiveActionClaim(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a", rehearsal.now));
