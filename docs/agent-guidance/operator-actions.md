@@ -1,5 +1,12 @@
 # Operator actions
 
+> **Deprecated 2026-10-09:** the dashboard `/runs` page is deprecated, replaced by
+> `/production`, `/actions`, `/review` and an upcoming `/todo` page (operator
+> instruction, 2026-10-09). Do not build new operator UI on `/runs` or send the
+> operator there for new steps. The generated operator-script library and the
+> governed execution path it backs are unchanged until a replacement is governed;
+> this note claims no new authority.
+
 Read before preparing a bounded operator choice or publishing its /runs action.
 The compact bootstrap and CONSTITUTION.md still bind; a button grants no authority.
 

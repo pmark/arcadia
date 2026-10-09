@@ -7,12 +7,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   FIXTURE_ACTION,
   brokerRefusalInLog,
+  classifyLeakChanges,
   codexTrustOverrideArgs,
   commitState,
   withCodexTrustOverrides,
   buildPath,
   formatTable,
   opencodeSessionConfig,
+  parseProviderList,
+  preservationBlockedEvidence,
   type HostPreserve,
   renderFixtureFiles,
   runHeadlessProviderTest,
@@ -20,6 +23,7 @@ import {
   type HeadlessTestOptions,
   type ProviderResult
 } from "../src/operatorActions/headlessProviderTest.js";
+import { claudePreservationDenied, describeClaudeResult, extractDiagnosis, parseClaudeStream } from "../src/operatorActions/headlessProviderDiagnosis.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 
 /**
@@ -32,7 +36,7 @@ import { validateOperatorScriptContract } from "../src/operatorActions/libraryCo
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const library = path.join(repoRoot, "artifacts", "generated", "operator-scripts");
 const ID = "test-headless-provider-single-action";
-const TITLE = "Test headless Codex single-Action run, OpenCode on failure (experiment fixture)";
+const TITLE = "Test headless Codex, OpenCode and Claude single-Action runs (experiment fixture)";
 const stubSource = path.join(repoRoot, "tests", "helpers", "fakeHeadlessProvider.mjs");
 
 const directories: string[] = [];
@@ -45,15 +49,21 @@ const temp = (prefix: string) => {
 
 function stubBin(): string {
   const bin = temp("headless-stubs-");
-  for (const name of ["codex", "opencode"]) {
+  for (const name of ["codex", "opencode", "claude"]) {
     copyFileSync(stubSource, path.join(bin, name));
     chmodSync(path.join(bin, name), 0o755);
   }
   return bin;
 }
 
-const calls = (file: string): Array<{ name: string; args: string[]; cwd: string; arcadiaWorkspace: string | null; operatorId: string | null; author: string | null; pwd: string | null; opencodeConfig: string | null }> =>
+const calls = (file: string): Array<{ name: string; args: string[]; cwd: string; arcadiaWorkspace: string | null; operatorId: string | null; author: string | null; pwd: string | null; opencodeConfig: string | null; allow?: string[]; settingSources?: string | null }> =>
   existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
+
+type Call = ReturnType<typeof calls>[number];
+/** A real headless provider run (not a --help or login probe, and not the posture record the claude stub writes). */
+const headlessRun = (call: Call, name?: string): boolean =>
+  Array.isArray(call.args) && !call.args.includes("--help") && (name === undefined || call.name === name) &&
+  ((call.name === "codex" && call.args[0] === "exec") || (call.name === "opencode" && call.args[0] === "run") || (call.name === "claude" && call.args.includes("--print")));
 
 function harness(extra: Record<string, string> = {}) {
   const bin = stubBin();
@@ -66,7 +76,7 @@ function harness(extra: Record<string, string> = {}) {
     ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(library, `${ID}.json`),
     ...extra
   };
-  const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "providerTimeoutMs" | "now" | "signalSource" | "hostPreserve">> = {}) =>
+  const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "models" | "providerTimeoutMs" | "now" | "signalSource" | "hostPreserve">> = {}) =>
     runHeadlessProviderTest({
       repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: options.keep ?? false, env, tempBase: base, liveLeakCheck: false,
       killGraceMs: 200, out: () => {}, ...options
@@ -102,11 +112,13 @@ describe("test-headless-provider-single-action library entry", () => {
     for (const required of ["experiment workspace", "never_does", "15 minutes", "existing Codex", "live martianrover workspace", "provider global configuration",
       "account/rateLimits/read", "~/.arcadia/telemetry", "OpenCode runs unsandboxed", "own normal session and state directories",
       "$TMPDIR, not workspaces/exp-*", "attribute before any further experiment",
-      "POSSIBLE Decision 0082 stop condition", "never pre-attributed", "per-invocation --config trust override"]) {
+      "Codex trust entry (operator ruled 2026-10-09: not a stop condition)", "possible Decision 0082 stop condition", "per-invocation --config trust override",
+      "--setting-sources", "failureDetails", "SKIPPED", "--providers", "--model-claude", "haiku", "node scripts/check-fixture.mjs", "arcadia agent-ask draft"]) {
       expect(text).toContain(required);
     }
     expect(text).not.toContain("provider's own write");
-    expect(descriptor.preconditions.join(" ")).toContain("codex login status");
+    expect(text).not.toContain("never pre-attributed");
+    for (const required of ["codex login status", "claude auth status", "opencode auth list"]) expect(descriptor.preconditions.join(" ")).toContain(required);
     expect(descriptor.expected_duration).toMatch(/minutes/);
     expect(descriptor.cost_note).toMatch(/existing/);
   });
@@ -119,6 +131,10 @@ describe("test-headless-provider-single-action library entry", () => {
     expect(refused.status).toBe(2);
     expect(refused.stderr).toContain("usage");
     expect(spawnSync(path.join(library, `${ID}.sh`), ["run", "--nonsense"], { encoding: "utf8" }).status).toBe(2);
+    // An option that needs a value but has none is a usage error from the launcher itself (nothing is started).
+    const missing = spawnSync(path.join(library, `${ID}.sh`), ["run", "--providers"], { encoding: "utf8" });
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toContain("--providers needs a value");
   });
 
   it("never names the live workspace as a target or exports ARCADIA_WORKSPACE", () => {
@@ -147,10 +163,10 @@ describe("fixture and environment helpers", () => {
 });
 
 describe("headless provider run (real Arcadia experiment workspace, stub providers)", () => {
-  it("passes on Codex through the entry script, keeps the fixture on --keep, and never starts OpenCode", () => {
+  it("runs a chosen provider through the entry script with an explicit model, keeps the fixture on --keep, and starts no other provider", () => {
     const { env, callLog, base, runDirectory } = harness();
     // The same entry point the launcher runs under mise, run here with node directly so the case needs no mise trust write.
-    const launched = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts", "headless-provider-test.ts"), runDirectory, "run-1", ID, "--keep"], {
+    const launched = spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts", "headless-provider-test.ts"), runDirectory, "run-1", ID, "--keep", "--providers", "codex", "--model-codex=gpt-5.6-terra"], {
       encoding: "utf8", cwd: repoRoot, timeout: 240_000,
       env: { ...env, ARCADIA_HEADLESS_TEST_LEAK_CHECK: "0", TMPDIR: base }
     });
@@ -160,7 +176,8 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(receipt).toMatchObject({ schema: "arcadia-operator-run-receipt-v1", id: ID, outcome: "succeeded", liveWorkspaceAddressed: false, keep: true });
     expect(receipt.providers).toHaveLength(1);
     const [codex] = receipt.providers as ProviderResult[];
-    expect(codex).toMatchObject({ provider: "codex", outcome: "PASS", model: "gpt-5.6-terra", exitCode: 0, timedOut: false });
+    expect(codex).toMatchObject({ provider: "codex", outcome: "PASS", model: "gpt-5.6-terra", modelSource: "override", exitCode: 0, timedOut: false, failureDetails: [] });
+    expect(receipt.models).toEqual({ codex: "gpt-5.6-terra" });
     expect(codex.criteria.map((entry) => [entry.id, entry.pass])).toEqual([["exit", true], ["file", true], ["validation", true], ["commit", true], ["ask", true]]);
     expect(codex.gitdir).toMatchObject({ worktreeGitDirInsideWritableRoots: true });
     expect(codex.command).toContain("codex exec --json --model gpt-5.6-terra");
@@ -175,8 +192,8 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(codex.candidateWorktree && existsSync(path.join(codex.candidateWorktree, "MARKER.md"))).toBe(true);
 
     const made = calls(callLog);
-    expect(made.some((call) => call.name === "opencode" && call.args[0] === "run")).toBe(false);
-    const exec = made.find((call) => call.name === "codex" && call.args[0] === "exec")!;
+    expect(made.some((call) => headlessRun(call) && call.name !== "codex")).toBe(false);
+    const exec = made.find((call) => headlessRun(call, "codex"))!;
     // The provider resolves the experiment workspace, never the live default, carries no operator-script context, and signs as the resolved agent.
     expect(exec.arcadiaWorkspace).toBe(path.join(leftoverRoots(base).map((entry) => path.join(base, entry))[0], "codex", "exp-headless-codex"));
     expect(exec.operatorId).toBeNull();
@@ -192,7 +209,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(exec.args.at(-1)).toMatch(/^Arcadia managed-production Action brief/);
     expect(codex.command).toContain("trust_level");
     // A stub never acts outside the temporary directory (Arcadia's own `codex app-server` probe once ran one in the checkout).
-    expect(made.filter((call) => ["exec", "run"].includes(call.args[0])).every((call) => call.cwd.startsWith(base))).toBe(true);
+    expect(made.filter((call) => headlessRun(call)).every((call) => call.cwd.startsWith(base))).toBe(true);
 
     // The candidate worktree lives inside the experiment workspace, and the provider's `arcadia` shim pins that workspace itself,
     // so a provider shell that drops its environment still cannot resolve the live default.
@@ -204,6 +221,174 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(shim).toContain("ARCADIA_REQUIRE_INLINE_WORKSPACE=1");
     // Reconcile ran against the finished Session (information only).
     expect(receipt.providers[0].sessionReconcile).toBeTruthy();
+  }, 300_000);
+
+  it("rejects a bad option from the entry script before starting anything", () => {
+    const { env, base, runDirectory } = harness();
+    const entry = (...flags: string[]) => spawnSync(process.execPath, ["--import", "tsx", path.join(repoRoot, "scripts", "headless-provider-test.ts"), runDirectory, "run-1", ID, ...flags], {
+      encoding: "utf8", cwd: repoRoot, timeout: 120_000, env: { ...env, ARCADIA_HEADLESS_TEST_LEAK_CHECK: "0", TMPDIR: base }
+    });
+    for (const flags of [["--providers", "codex,gemini"], ["--providers", "codex,codex"], ["--providers"], ["--model-claude"], ["--wat"]]) {
+      const refused = entry(...flags);
+      expect(refused.status, flags.join(" ")).toBe(2);
+      expect(refused.stderr).toContain("usage");
+    }
+    expect(leftoverRoots(base)).toEqual([]);
+  }, 300_000);
+
+  it("tries all three providers in order on fresh fixtures, each on its start-tier model with its exact headless argv, and passes only when each does", async () => {
+    const { run, runDirectory, base, callLog } = harness({ FAKE_PROVIDER_MODE_codex: "success", FAKE_PROVIDER_MODE_opencode: "success", FAKE_PROVIDER_MODE_claude: "commit" });
+    const outcome = await run({ keep: true });
+    expect(outcome.outcome).toBe("succeeded");
+    expect(outcome.reason).toBe("codex, opencode, claude completed the fixture Action headlessly");
+    const [codex, opencode, claude] = outcome.providers as [ProviderResult, ProviderResult, ProviderResult];
+    expect(outcome.providers.map((entry) => [entry.provider, entry.outcome])).toEqual([["codex", "PASS"], ["opencode", "PASS"], ["claude", "PASS"]]);
+    // Each provider's light-tier (start-tier) model, not the packet's standard-tier one.
+    expect([codex.model, opencode.model, claude.model]).toEqual(["gpt-6-luna", "opencode-go/glm-5.3-flash", "haiku"]);
+    expect([codex.modelSource, opencode.modelSource, claude.modelSource]).toEqual(["start-tier", "start-tier", "start-tier"]);
+    expect(new Set(outcome.providers.map((entry) => entry.candidateWorktree)).size).toBe(3);
+    expect(claude.command).toContain("claude --print --output-format stream-json --verbose --permission-mode acceptEdits --settings");
+    expect(claude.command).toContain("--setting-sources  --model haiku");
+    expect(claude.command).not.toContain("--cd");
+    expect(claude.effort).toBe("e1_brief");
+    // The per-session allow list covers the fixture check (through the Project's registered validation command) and the Ask draft.
+    expect(claude.permissionAllowList).toEqual(expect.arrayContaining(["Bash(node scripts/check-fixture.mjs)", "Bash(arcadia agent-ask draft:*)", "Bash(pnpm arcadia agent-ask draft:*)"]));
+    const made = calls(callLog);
+    const posture = made.find((call) => call.name === "claude-posture")!;
+    expect(posture.settingSources).toBe("");
+    expect(posture.allow).toEqual(claude.permissionAllowList);
+    // Sequential, in order, one headless run each.
+    expect(made.filter((call) => headlessRun(call)).map((call) => call.name))
+      .toEqual(["codex", "opencode", "claude"]);
+    const claudeRun = made.find((call) => headlessRun(call, "claude"))!;
+    expect(claudeRun.args).toEqual(expect.arrayContaining(["--output-format", "stream-json", "--permission-mode", "acceptEdits", "--model", "haiku"]));
+    expect(claudeRun.arcadiaWorkspace).toBe(path.join(base, leftoverRoots(base)[0], "claude", "exp-headless-claude"));
+    expect(claudeRun.cwd).toBe(claude.candidateWorktree);
+    const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
+    expect(receipt.models).toEqual({ codex: "gpt-6-luna", opencode: "opencode-go/glm-5.3-flash", claude: "haiku" });
+    expect(readFileSync(path.join(runDirectory, "run.log"), "utf8")).toContain("models: codex: PASS, model gpt-6-luna; opencode: PASS, model opencode-go/glm-5.3-flash; claude: PASS, model haiku");
+    expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(false);
+    expect(outcome.providers.every((entry) => entry.failureDetails.length === 0)).toBe(true);
+  }, 600_000);
+
+  it("reports each provider independently: one fails with diagnosis lines while the others pass, and the run still succeeds", async () => {
+    // Codex exits non-zero; OpenCode passes; Claude (which cannot commit under its allow list) passes through the host's preservation.
+    const { run, runDirectory, callLog } = harness({ FAKE_PROVIDER_MODE_codex: "fail", FAKE_PROVIDER_MODE_opencode: "auth-broken", FAKE_PROVIDER_MODE_claude: "success" });
+    const outcome = await run({ hostPreserve: hostCommits });
+    expect(readFileSync(path.join(runDirectory, "run.log"), "utf8")).toContain("could not confirm a sign-in");
+    expect(outcome.outcome).toBe("succeeded");
+    expect(outcome.reason).toBe("opencode, claude completed the fixture Action headlessly; codex failed");
+    const [codex, opencode, claude] = outcome.providers as [ProviderResult, ProviderResult, ProviderResult];
+    expect([codex.outcome, opencode.outcome, claude.outcome]).toEqual(["FAIL", "PASS", "PASS"]);
+    expect(criterion(codex, "exit")).toMatchObject({ pass: false });
+    expect(criterion(codex, "file").pass).toBe(false);
+    // The receipt alone says why: each failed criterion carries the first relevant lines of the provider's log.
+    expect(codex.failureDetails.map((entry) => entry.criterion)).toEqual(["exit", "file", "validation", "commit", "ask"]);
+    expect(codex.failureDetails[0].logLines.join("\n")).toContain("simulated provider failure");
+    expect(codex.failureDetails.every((entry) => entry.logLines.length > 0 && entry.detail.length > 0)).toBe(true);
+    expect(opencode.failureDetails).toEqual([]);
+    // Claude could not commit under its headless allow list: the host's step did, and the agent part is reported apart from it.
+    expect(claude).toMatchObject({ passKind: "agent_and_host", agentPart: { pass: true }, hostPart: { outcome: "preserved" } });
+    expect(criterion(claude, "commit").detail).toContain("committed by host preservation, not by the agent");
+    // OpenCode's non-interactive run auto-rejects an external_directory prompt (operator run 20261009T135444Z-90379): it gets a
+    // per-process grant for the tree this test created, through OPENCODE_CONFIG_CONTENT, and the others get none.
+    expect(opencode.model).toBe("opencode-go/glm-5.3-flash");
+    expect(opencode.command).toContain("opencode run --model opencode-go/glm-5.3-flash");
+    expect(opencode.candidateWorktree).not.toBe(codex.candidateWorktree);
+    const ocCall = calls(callLog).find((call) => headlessRun(call, "opencode"))!;
+    const grant = JSON.parse(ocCall.opencodeConfig!) as { permission: { external_directory: Record<string, string> } };
+    expect(Object.values(grant.permission.external_directory).every((value) => value === "allow")).toBe(true);
+    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${opencode.candidateWorktree}/**`]));
+    const attemptRoot = [1, 2, 3, 4, 5].reduce((dir) => path.dirname(dir), opencode.candidateWorktree!);
+    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${attemptRoot}/**`]));
+    expect(Object.keys(grant.permission.external_directory).every((key) => key.endsWith("/**") && !key.endsWith("//**"))).toBe(true);
+    expect(ocCall.pwd).toBe(ocCall.cwd);
+    expect(calls(callLog).find((call) => headlessRun(call, "codex"))!.opencodeConfig).toBeNull();
+    expect(calls(callLog).find((call) => headlessRun(call, "claude"))!.opencodeConfig).toBeNull();
+    const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
+    expect(receipt.providers.map((entry: ProviderResult) => entry.provider)).toEqual(["codex", "opencode", "claude"]);
+    expect(receipt.providers.every((entry: ProviderResult) => existsSync(entry.logPath!))).toBe(true);
+    expect(receipt.providers[0].failureDetails[0].logLines.join("\n")).toContain("simulated provider failure");
+    // The failed provider's lines also appear in the printed table, and a passing run writes no failure handoff.
+    expect(formatTable([codex])).toMatch(/FAIL {2}provider exited 0[^\n]*\n\s+log> .*simulated provider failure/);
+    expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(false);
+  }, 600_000);
+
+  it("skips only the provider whose precondition is missing, with the reason, and runs the others", async () => {
+    const { run, base, callLog, runDirectory } = harness({ FAKE_PROVIDER_MODE_codex: "not-logged-in", FAKE_PROVIDER_MODE_claude: "commit" });
+    const outcome = await run({ providers: ["codex", "claude"] });
+    expect(outcome.outcome).toBe("succeeded");
+    expect(outcome.reason).toBe("claude completed the fixture Action headlessly; codex skipped");
+    const [codex, claude] = outcome.providers as [ProviderResult, ProviderResult];
+    expect(codex).toMatchObject({ provider: "codex", outcome: "SKIPPED", model: null, candidateWorktree: null });
+    expect(codex.reason).toMatch(/codex login status failed/);
+    expect(claude.outcome).toBe("PASS");
+    expect(calls(callLog).some((call) => headlessRun(call, "codex"))).toBe(false);
+    expect(formatTable([codex, claude])).toMatch(/^codex: SKIPPED - codex login status failed/);
+    expect(readFileSync(path.join(runDirectory, "run.log"), "utf8")).toContain("precondition (codex): SKIPPED");
+    expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8")).providers.map((entry: ProviderResult) => [entry.provider, entry.outcome])).toEqual([["codex", "SKIPPED"], ["claude", "PASS"]]);
+    expect(leftoverRoots(base)).toEqual([]);
+  }, 300_000);
+
+  it("skips Claude when it is not logged in or lacks the headless flags, naming which", async () => {
+    const loggedOut = harness({ FAKE_PROVIDER_MODE_claude: "not-logged-in" });
+    const out = await loggedOut.run({ providers: ["claude"] });
+    expect(out.outcome).toBe("refused");
+    expect(out.providers[0]).toMatchObject({ provider: "claude", outcome: "SKIPPED" });
+    expect(out.providers[0].reason).toMatch(/reports not logged in/);
+    expect(out.reason).toMatch(/no selected provider can run: claude: .*not logged in/);
+
+    // A claude whose --help omits the flags the headless posture needs is skipped by Arcadia's own launch preflight.
+    const bin = temp("headless-oldclaude-");
+    writeFileSync(path.join(bin, "claude"), `#!/bin/sh
+case "$1" in
+  auth) echo '{"loggedIn":true}' ;;
+  --help) echo 'Usage: claude --print --model' ;;
+esac
+`);
+    chmodSync(path.join(bin, "claude"), 0o755);
+    const base = temp("headless-base-");
+    const runDirectory = path.join(temp("headless-run-"), "runs", "run-1");
+    const old = await runHeadlessProviderTest({
+      repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: false, tempBase: base, liveLeakCheck: false, out: () => {},
+      env: { PATH: bin, HOME: temp("headless-home-") }, toolDirectories: [], providers: ["claude"]
+    });
+    expect(old.outcome).toBe("refused");
+    expect(old.providers[0].reason).toMatch(/permission posture is missing.*does not support --output-format, --permission-mode, --settings, --setting-sources, --verbose/);
+  }, 300_000);
+
+  it("fails Claude on an is_error result event with the error in the receipt", async () => {
+    const { run } = harness({ FAKE_PROVIDER_MODE_claude: "claude-error" });
+    const outcome = await run({ providers: ["claude"] });
+    expect(outcome.outcome).toBe("failed");
+    const [claude] = outcome.providers as [ProviderResult];
+    expect(claude.outcome).toBe("FAIL");
+    expect(criterion(claude, "exit").pass).toBe(false);
+    expect(criterion(claude, "exit").detail).toMatch(/exit 1 after \d+s; result event is_error=true \(error_during_execution\)/);
+    expect(claude.failureDetails[0]).toMatchObject({ criterion: "exit" });
+    expect(claude.failureDetails[0].logLines[0]).toBe("claude result is_error=true (error_during_execution): API Error: 401 Invalid authentication credentials");
+    expect(formatTable([claude])).toContain("log> claude result is_error=true (error_during_execution): API Error: 401");
+  }, 300_000);
+
+  it("passes Claude on its own part when it could not commit and the host step cannot run, citing the permission denials", async () => {
+    const { run } = harness({ FAKE_PROVIDER_MODE_claude: "success" });
+    const cannot = await run({ providers: ["claude"], hostPreserve: hostCannotRun });
+    const [claude] = cannot.providers as [ProviderResult];
+    expect(claude).toMatchObject({ outcome: "PASS", passKind: "agent_only" });
+    expect(criterion(claude, "commit").detail).toMatch(/^PASS \(agent\); host preservation not exercised.*refused by the headless permission posture \(`arcadia-preserve-broker-claude`\)/);
+    expect(formatTable([claude])).toContain("claude (haiku): PASS (agent); host preservation not exercised");
+    const refused = await run({ providers: ["claude"], hostPreserve: hostRefuses });
+    expect(refused.providers[0].passKind).toBe("agent_host_failed");
+  }, 300_000);
+
+  it("starts a provider on an operator-chosen model through the experiment workspace's own start-tier config", async () => {
+    const { run, callLog } = harness({ FAKE_PROVIDER_MODE_claude: "commit", FAKE_PROVIDER_MODE_opencode: "success" });
+    const outcome = await run({ providers: ["claude", "opencode"], models: { claude: "sonnet" } });
+    const [claude, opencode] = outcome.providers as [ProviderResult, ProviderResult];
+    expect(claude).toMatchObject({ outcome: "PASS", model: "sonnet", modelSource: "override" });
+    expect(claude.command).toContain("--model sonnet");
+    expect(opencode).toMatchObject({ model: "opencode-go/glm-5.3-flash", modelSource: "start-tier" });
+    expect(calls(callLog).find((call) => headlessRun(call, "claude"))!.args).toEqual(expect.arrayContaining(["--model", "sonnet"]));
   }, 300_000);
 
   it("accepts a completion the agent settled itself (the brief's first choice), though settlement moved HEAD, and is not fooled by a descendant holding the output pipes", async () => {
@@ -224,7 +409,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     const source = new EventEmitter();
     const finished = run({ providerTimeoutMs: 600_000, signalSource: source });
     const started = Date.now();
-    while (!calls(callLog).some((call) => call.name === "codex" && call.args[0] === "exec")) {
+    while (!calls(callLog).some((call) => headlessRun(call, "codex"))) {
       if (Date.now() - started > 120_000) throw new Error("the stub provider never started");
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
@@ -233,46 +418,12 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(outcome.outcome).toBe("failed");
     expect(outcome.stage).toBe("interrupted");
     expect(outcome.reason).toBe("interrupted by SIGTERM");
-    expect(outcome.providers.map((entry) => entry.provider)).toEqual(["codex"]);
+    expect(outcome.providers.map((entry) => [entry.provider, entry.outcome])).toEqual([["codex", "FAIL"], ["opencode", "SKIPPED"], ["claude", "SKIPPED"]]);
+    expect(outcome.providers[1].reason).toBe("interrupted by SIGTERM before this provider started");
     expect(outcome.providers[0].timedOut).toBe(false);
-    expect(calls(callLog).some((call) => call.name === "opencode" && call.args[0] === "run")).toBe(false);
+    expect(calls(callLog).some((call) => headlessRun(call) && call.name !== "codex")).toBe(false);
     expect(readFileSync(path.join(runDirectory, "codex.log"), "utf8")).toContain("SIGTERM received by the test");
     expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8")).stage).toBe("interrupted");
-  }, 300_000);
-
-  it("falls back to OpenCode on a fresh fixture only after Codex fails, and cleans up", async () => {
-    // OpenCode's credential listing is not a contract: an uncertain answer warns and proceeds instead of refusing.
-    const { run, runDirectory, base, callLog } = harness({ FAKE_PROVIDER_MODE_codex: "fail", FAKE_PROVIDER_MODE_opencode: "auth-broken" });
-    const outcome = await run();
-    expect(readFileSync(path.join(runDirectory, "run.log"), "utf8")).toContain("could not confirm a sign-in");
-    expect(outcome.outcome).toBe("succeeded");
-    expect(outcome.providers.map((entry) => [entry.provider, entry.outcome])).toEqual([["codex", "FAIL"], ["opencode", "PASS"]]);
-    const [codex, opencode] = outcome.providers as [ProviderResult, ProviderResult];
-    expect(criterion(codex, "exit")).toMatchObject({ pass: false });
-    expect(criterion(codex, "file").pass).toBe(false);
-    expect(opencode.model).toBe("opencode-go/deepseek-v4.1-flash");
-    expect(opencode.command).toContain("opencode run --model opencode-go/deepseek-v4.1-flash");
-    expect(opencode.candidateWorktree).not.toBe(codex.candidateWorktree);
-    // OpenCode's non-interactive run auto-rejects an external_directory prompt (operator run 20261009T135444Z-90379): it gets a
-    // per-process grant for the tree this test created, through OPENCODE_CONFIG_CONTENT, and Codex gets none.
-    const ocCall = calls(callLog).find((call) => call.name === "opencode" && call.args[0] === "run")!;
-    const grant = JSON.parse(ocCall.opencodeConfig!) as { permission: { external_directory: Record<string, string> } };
-    expect(Object.values(grant.permission.external_directory).every((value) => value === "allow")).toBe(true);
-    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${opencode.candidateWorktree}/**`]));
-    const attemptRoot = [1, 2, 3, 4, 5].reduce((dir) => path.dirname(dir), opencode.candidateWorktree!);
-    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${attemptRoot}/**`]));
-    expect(Object.keys(grant.permission.external_directory).every((key) => key.endsWith("/**") && !key.endsWith("//**"))).toBe(true);
-    expect(ocCall.pwd).toBe(ocCall.cwd);
-    expect(calls(callLog).find((call) => call.name === "codex" && call.args[0] === "exec")!.opencodeConfig).toBeNull();
-    const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
-    expect(receipt.providers.map((entry: ProviderResult) => entry.provider)).toEqual(["codex", "opencode"]);
-    expect(receipt.providers.every((entry: ProviderResult) => existsSync(entry.logPath!))).toBe(true);
-    expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(false);
-    expect(calls(callLog).filter((call) => call.args[0] === "run" || call.args[0] === "exec").map((call) => call.name)).toEqual(["codex", "opencode"]);
-    // Without --keep the temporary workspaces and fixtures go; the run directory stays.
-    expect(leftoverRoots(base)).toEqual([]);
-    expect(existsSync(opencode.candidateWorktree!)).toBe(false);
-    expect(existsSync(path.join(runDirectory, "run.log"))).toBe(true);
   }, 300_000);
 
   it("kills a provider that outlives the cap, fails the table, and writes a failure handoff", async () => {
@@ -284,6 +435,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(criterion(codex, "exit")).toMatchObject({ pass: false });
     expect(criterion(codex, "exit").detail).toContain("timed out");
     expect(readFileSync(codex.logPath!, "utf8")).toContain("timeout after 4000 ms");
+    expect(codex.failureDetails.find((entry) => entry.criterion === "exit")!.logLines.join(" ")).toContain("timeout after 4000 ms");
     const handoff = readFileSync(path.join(runDirectory, "failure-handoff.md"), "utf8");
     expect(handoff).toContain("codex");
     expect(handoff).toContain("FAIL  provider exited 0");
@@ -292,7 +444,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
 
   it("fails a provider whose Ask is not criterion-complete, and one that drafts no Ask, though everything else passed", async () => {
     const { run } = harness({ FAKE_PROVIDER_MODE_codex: "partial-ask", FAKE_PROVIDER_MODE_opencode: "no-ask" });
-    const outcome = await run();
+    const outcome = await run({ providers: ["codex", "opencode"] });
     expect(outcome.outcome).toBe("failed");
     const [codex, opencode] = outcome.providers as [ProviderResult, ProviderResult];
     expect(codex.outcome).toBe("FAIL");
@@ -309,7 +461,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
 
   it("fails a provider that writes the wrong marker, and one that never commits it when the host cannot preserve", async () => {
     const { run } = harness({ FAKE_PROVIDER_MODE_codex: "bad-marker", FAKE_PROVIDER_MODE_opencode: "uncommitted" });
-    const outcome = await run({ hostPreserve: hostRefuses });
+    const outcome = await run({ providers: ["codex", "opencode"], hostPreserve: hostRefuses });
     expect(outcome.outcome).toBe("failed");
     const [wrong, uncommitted] = outcome.providers as [ProviderResult, ProviderResult];
     expect(wrong.outcome).toBe("FAIL");
@@ -342,7 +494,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(codex.hostPart!.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(criterion(codex, "ask").detail).toContain("candidate_revision equals HEAD");
     expect(criterion(codex, "commit").detail).toContain("committed by host preservation, not by the agent");
-    expect(formatTable([codex])).toContain("codex (gpt-5.6-terra): PASS (agent + host preservation)");
+    expect(formatTable([codex])).toContain("codex (gpt-6-luna): PASS (agent + host preservation)");
     const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
     expect(receipt.providers[0]).toMatchObject({ passKind: "agent_and_host", hostPart: { outcome: "preserved" }, agentPart: { pass: true } });
   }, 300_000);
@@ -358,7 +510,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(criterion(codex, "commit").label).toContain("host preservation not exercised");
     expect(criterion(codex, "commit").detail).toMatch(/^PASS \(agent\); host preservation not exercised/);
     const table = formatTable([codex]);
-    expect(table).toContain("codex (gpt-5.6-terra): PASS (agent); host preservation not exercised");
+    expect(table).toContain("codex (gpt-6-luna): PASS (agent); host preservation not exercised");
     expect(table).toContain("agent part: PASS   host part: not exercised");
   }, 300_000);
 
@@ -370,7 +522,7 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_host_failed" });
     expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "host_failed" });
     expect(criterion(codex, "commit").label).toContain("host preservation attempted and refused");
-    expect(formatTable([codex])).toContain("codex (gpt-5.6-terra): PASS (agent); host preservation attempted and refused");
+    expect(formatTable([codex])).toContain("codex (gpt-6-luna): PASS (agent); host preservation attempted and refused");
     expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8")).providers[0]).toMatchObject({ passKind: "agent_host_failed", hostPart: { outcome: "host_failed" } });
   }, 300_000);
 });
@@ -436,6 +588,100 @@ describe("pure helpers for the host step and the OpenCode grant", () => {
   });
 });
 
+/** One stream-json log the way `claude --print --output-format stream-json --verbose` writes it. */
+const streamLog = (...events: Array<Record<string, unknown>>) => events.map((event) => JSON.stringify(event)).join("\n") + "\n";
+const initEvent = { type: "system", subtype: "init", model: "haiku" };
+const toolUse = (id: string, command: string) => ({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "I will run it. There was an error before, ignore it." }, { type: "tool_use", id, name: "Bash", input: { command } }] } });
+const toolError = (id: string, content: string) => ({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, is_error: true, content }] } });
+
+describe("Claude stream-json parsing and provider-log diagnosis", () => {
+  it("reads a successful stream: model, result event and the permission denials Claude lists", () => {
+    const log = streamLog(initEvent, toolUse("t1", "git commit -m x"),
+      { type: "result", subtype: "success", is_error: false, num_turns: 5, duration_ms: 4100, total_cost_usd: 0.01, result: "done",
+        permission_denials: [{ tool_name: "Bash", tool_use_id: "t1", tool_input: { command: "git commit -m x" } }, { tool_name: "Bash", tool_use_id: "t2", tool_input: { command: "arcadia-preserve-broker-claude" } }] });
+    const summary = parseClaudeStream(`plain preamble line\n${log}`);
+    expect(summary).toMatchObject({ events: 3, model: "haiku", result: { subtype: "success", isError: false, numTurns: 5, durationMs: 4100, result: "done" } });
+    expect(summary.permissionDenials).toEqual([{ tool: "Bash", command: "git commit -m x" }, { tool: "Bash", command: "arcadia-preserve-broker-claude" }]);
+    expect(describeClaudeResult(summary)).toBe("result event ok (success), 5 turns, 2 permission denial(s)");
+    // A success stream is not an error: no diagnosis lines (the model's chatter about "an error" is never picked up).
+    expect(extractDiagnosis(log.replace(/"permission_denials":\[[^\]]*\]/, '"permission_denials":[]'))).toEqual([]);
+    expect(claudePreservationDenied(log)).toBe("git commit -m x");
+    expect(preservationBlockedEvidence("claude", log)).toMatch(/refused by the headless permission posture \(`git commit -m x`\)/);
+    expect(preservationBlockedEvidence("codex", log)).toBeNull();
+  });
+
+  it("reads an error stream: the is_error result, denied tools and tool errors become the first diagnosis lines", () => {
+    const log = streamLog(initEvent, toolUse("t1", "node scripts/check-fixture.mjs"),
+      toolError("t1", "Claude requested permissions to use Bash, but you haven't granted it yet."),
+      { type: "system", subtype: "api_retry", error: "overloaded", error_status: 529 },
+      { type: "result", subtype: "error_during_execution", is_error: true, result: "API Error: 401 Invalid authentication credentials", num_turns: 2,
+        permission_denials: [{ tool_name: "Bash", tool_use_id: "t1", tool_input: { command: "node scripts/check-fixture.mjs" } }] });
+    const summary = parseClaudeStream(log);
+    expect(summary.result).toMatchObject({ isError: true, subtype: "error_during_execution" });
+    expect(summary.toolErrors).toEqual([{ tool: "Bash", command: "node scripts/check-fixture.mjs", message: "Claude requested permissions to use Bash, but you haven't granted it yet." }]);
+    expect(describeClaudeResult(summary)).toBe("result event is_error=true (error_during_execution), 2 turns, 1 permission denial(s)");
+    const lines = extractDiagnosis(log);
+    expect(lines).toEqual([
+      "claude result is_error=true (error_during_execution): API Error: 401 Invalid authentication credentials",
+      "permission denied: Bash `node scripts/check-fixture.mjs`",
+      "tool error: Bash `node scripts/check-fixture.mjs` -> Claude requested permissions to use Bash, but you haven't granted it yet.",
+      "api retry: overloaded (status 529)"
+    ]);
+    expect(describeClaudeResult(parseClaudeStream("no events\n"))).toBe("no stream-json events in the log");
+    expect(describeClaudeResult(parseClaudeStream(streamLog(initEvent)))).toBe("1 stream-json events but no result event");
+  });
+
+  it("extracts the first relevant lines from Codex JSON events and OpenCode plain text, strongest signals first, capped", () => {
+    const codex = streamLog(
+      { type: "thread.started", thread_id: "x" },
+      { type: "item.completed", item: { type: "agent_message", text: "There was an error in my plan but I fixed it" } },
+      { type: "item.completed", item: { type: "command_execution", command: "/bin/zsh -lc 'git commit -m x'", aggregated_output: "fatal: Unable to create '/tmp/r/.git/worktrees/w/index.lock': Operation not permitted", exit_code: 128 } },
+      { type: "item.completed", item: { type: "command_execution", command: "ls", aggregated_output: "MARKER.md", exit_code: 0 } },
+      { type: "error", message: "sandbox denied write" },
+      { type: "turn.failed", error: { message: "stream disconnected" } });
+    expect(extractDiagnosis(codex)).toEqual([
+      "command failed (exit 128): /bin/zsh -lc 'git commit -m x' -> fatal: Unable to create '/tmp/r/.git/worktrees/w/index.lock': Operation not permitted",
+      "error event: sandbox denied write",
+      "turn failed: stream disconnected"
+    ]);
+    expect(extractDiagnosis(codex, 2)).toHaveLength(2);
+
+    const opencode = [
+      "\u001b[0m> build · glm-5.3-flash",
+      "I will now write MARKER.md",
+      "\u001b[33mpermission requested: external_directory (/private/var/folders/x/*); auto-rejecting\u001b[0m",
+      "Error: The user rejected permission to use this specific tool call.",
+      "something merely failed to be pretty",
+      "permission requested: external_directory (/private/var/folders/x/*); auto-rejecting"
+    ].join("\n");
+    expect(extractDiagnosis(opencode)).toEqual([
+      "permission requested: external_directory (/private/var/folders/x/*); auto-rejecting",
+      "Error: The user rejected permission to use this specific tool call.",
+      "something merely failed to be pretty"
+    ]);
+    expect(extractDiagnosis("")).toEqual([]);
+  });
+});
+
+describe("provider selection, leak classification and the printed table", () => {
+  it("parses a provider list strictly", () => {
+    expect(parseProviderList("claude, codex")).toEqual(["claude", "codex"]);
+    expect(() => parseProviderList("")).toThrow(/at least one/);
+    expect(() => parseProviderList("codex,gemini")).toThrow(/unknown provider gemini/);
+    expect(() => parseProviderList("codex,codex")).toThrow(/twice/);
+  });
+
+  it("treats only the Codex trust entry as ruled on; any other leak-check change is still a possible stop condition", () => {
+    expect(classifyLeakChanges(false, null)).toEqual({ codexTrustEntry: false, otherChanges: [] });
+    expect(classifyLeakChanges(true, ["hashes.codexConfig"])).toEqual({ codexTrustEntry: true, otherChanges: [] });
+    expect(classifyLeakChanges(true, ["hashes.codexConfig", "hashes.claudeTrust", "liveWorkspace.queueRevision"])).toEqual({ codexTrustEntry: true, otherChanges: ["hashes.claudeTrust", "liveWorkspace.queueRevision"] });
+    expect(classifyLeakChanges(true, ["hashes.claudeSettings"])).toEqual({ codexTrustEntry: false, otherChanges: ["hashes.claudeSettings"] });
+    // A change whose fields cannot be read is never waved through.
+    expect(classifyLeakChanges(true, null).otherChanges).toHaveLength(1);
+    expect(classifyLeakChanges(true, []).otherChanges).toHaveLength(1);
+  });
+});
+
 describe("the stub provider is safe by construction", () => {
   it("does nothing for Arcadia's own capacity probe and fails loudly without a workspace", () => {
     const bin = stubBin();
@@ -453,14 +699,15 @@ describe("the stub provider is safe by construction", () => {
 });
 
 describe("refusals create nothing", () => {
-  it("refuses when Codex is not signed in, before any workspace exists", async () => {
-    const { run, base, runDirectory, callLog } = harness({ FAKE_PROVIDER_MODE_codex: "not-logged-in" });
+  it("refuses when no selected provider is signed in, listing each one as skipped, before any workspace exists", async () => {
+    const { run, base, runDirectory, callLog } = harness({ FAKE_PROVIDER_MODE_codex: "not-logged-in", FAKE_PROVIDER_MODE_opencode: "no-credentials", FAKE_PROVIDER_MODE_claude: "not-logged-in" });
     const outcome = await run();
     expect(outcome.outcome).toBe("refused");
-    expect(outcome.reason).toMatch(/codex login status failed/);
-    expect(outcome.providers).toEqual([]);
+    expect(outcome.reason).toMatch(/codex: codex login status failed/);
+    expect(outcome.reason).toMatch(/claude: claude auth status --json reports not logged in/);
+    expect(outcome.providers.map((entry) => [entry.provider, entry.outcome])).toEqual([["codex", "SKIPPED"], ["opencode", "SKIPPED"], ["claude", "SKIPPED"]]);
     expect(leftoverRoots(base)).toEqual([]);
-    expect(calls(callLog).every((call) => call.args[0] === "login")).toBe(true);
+    expect(calls(callLog).every((call) => ["login", "auth"].includes(call.args[0]))).toBe(true);
     expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8"))).toMatchObject({ outcome: "refused", stage: "preconditions", liveWorkspaceAddressed: false });
     expect(existsSync(path.join(runDirectory, "failure-handoff.md"))).toBe(true);
   }, 60_000);

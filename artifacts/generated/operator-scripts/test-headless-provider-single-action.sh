@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Test whether a headless Codex session (then OpenCode, only if Codex fails)
-# can complete one trivial governed Action with no human input.
+# Test whether each headless coding agent (Codex, OpenCode and Claude Code, each
+# independently on its own fresh fixture) can complete one trivial governed
+# Action with no human input, and report every one of them.
 #
 # Everything runs in a fresh Decision 0082 experiment workspace and a one-Action
 # fixture repository with no remote, both under a temporary directory. The live
 # workspace, production, services, GitHub and provider configuration are never
 # touched. The logic lives in scripts/headless-provider-test.ts (unit-tested with
 # stub providers); this launcher owns the run directory, the log and the failure
-# handoff. Its entrypoints are `run [--keep]` and `--describe`.
+# handoff. Its entrypoints are `run [--keep] [--providers codex,opencode,claude]
+# [--model-codex M] [--model-opencode M] [--model-claude M]` and `--describe`.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPOSITORY="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 SCRIPT_ID="test-headless-provider-single-action"
+USAGE="usage: $0 [run [--keep] [--providers codex,opencode,claude] [--model-codex M] [--model-opencode M] [--model-claude M]|--describe]"
 
 case "${1:-run}" in
   run) ;;
@@ -21,20 +24,35 @@ case "${1:-run}" in
     exit 0
     ;;
   *)
-    echo "usage: $0 [run [--keep]|--describe]" >&2
+    echo "$USAGE" >&2
     exit 2
     ;;
 esac
 
+# Options are forwarded to the helper in the order given; it validates their values.
 KEEP=()
-for argument in "${@:2}"; do
+ARGUMENTS=("${@:2}")
+INDEX=0
+while [[ "$INDEX" -lt "${#ARGUMENTS[@]}" ]]; do
+  argument="${ARGUMENTS[$INDEX]}"
   case "$argument" in
-    --keep) KEEP=(--keep) ;;
+    --keep) KEEP+=(--keep) ;;
+    --providers=* | --model-codex=* | --model-opencode=* | --model-claude=*) KEEP+=("$argument") ;;
+    --providers | --model-codex | --model-opencode | --model-claude)
+      INDEX=$((INDEX + 1))
+      if [[ "$INDEX" -ge "${#ARGUMENTS[@]}" ]]; then
+        echo "$argument needs a value" >&2
+        echo "$USAGE" >&2
+        exit 2
+      fi
+      KEEP+=("$argument" "${ARGUMENTS[$INDEX]}")
+      ;;
     *)
-      echo "usage: $0 [run [--keep]|--describe]" >&2
+      echo "$USAGE" >&2
       exit 2
       ;;
   esac
+  INDEX=$((INDEX + 1))
 done
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
