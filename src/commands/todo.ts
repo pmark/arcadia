@@ -520,7 +520,7 @@ function withDecisionReviewPaths(found: TodoItem[], rows: ReviewItemSummary[], p
 function askOriginsOf(db: Parameters<typeof listActionableReviewItems>[0], rows: ReviewItemSummary[]): Map<string, AskOrigin> {
   const origins = new Map<string, AskOrigin>();
   for (const row of rows) {
-    const origin = askQuestionOrigin(db, row.ask_request_id);
+    const origin = askQuestionOrigin(db, row);
     if (origin) origins.set(row.id, origin);
   }
   return origins;

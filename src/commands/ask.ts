@@ -17,7 +17,7 @@ import {
   SUPPRESSED_DUPLICATE_PREFIX,
   isTrivialAcknowledgement
 } from "../ask/suppression.js";
-import { findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
+import { ASK_QUESTION_CONTEXT_KEY, findOpenAskQuestionDuplicate } from "../ask/askQuestion.js";
 import { askRoutingV2Setting } from "../workspace/config.js";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
 import { resolveWorkItemPolicyIdentity, selectPolicyPermittedProfileNames } from "../production/policy.js";
@@ -910,7 +910,9 @@ function runAskCommandWithRouting(options: AskOptions, workspacePath: string, fl
           action: intake.action,
           project: intake.project,
           template: intake.template,
-          stewardship
+          stewardship,
+          // Marks the one review_item this branch creates as the Ask's question (see askQuestionOrigin).
+          ...(stewardship.recommendedExecutionPath === "Clarify First" ? { [ASK_QUESTION_CONTEXT_KEY]: true } : {})
         }
       });
       linkAskOutcomesToCapture(db, { askRequestId: ask.id, captureId: captureEnvelope.id, reviewItemId: reviewItem.id });

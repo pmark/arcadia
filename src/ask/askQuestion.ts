@@ -1,5 +1,12 @@
 import type Database from "better-sqlite3";
 
+/**
+ * The marker the Clarify First branch of `arcadia ask` sets in the context of the one review_item it creates. Only that
+ * item is an Ask question. A follow-up that copies its `ask_request_id` (the `ReviewExecutionPending` item approving it
+ * leaves, a retry, a planning Decision) never carries the marker, so it is an ordinary Decision and can be executed.
+ */
+export const ASK_QUESTION_CONTEXT_KEY = "askQuestion";
+
 /** Where an Ask-originated question came from: its Ask and the ingress its capture envelope names, when stored. */
 export interface AskOrigin {
   askId: string;
@@ -20,7 +27,7 @@ export function findOpenAskQuestionDuplicate(
 ): { id: string; slug: string | null; created_at: string } | null {
   const candidates = db
     .prepare(
-      `SELECT id, slug, created_at, ask_request_id FROM review_items
+      `SELECT id, slug, created_at, ask_request_id, context_json, resolved_intent FROM review_items
         WHERE ask_request_id IS NOT NULL
           AND status IN ('open', 'deferred')
           AND TRIM(source_input) = ?
@@ -28,18 +35,35 @@ export function findOpenAskQuestionDuplicate(
           AND created_at >= ?
         ORDER BY created_at DESC, id DESC`
     )
-    .all(text.trim(), projectId, sinceIso) as Array<{ id: string; slug: string | null; created_at: string; ask_request_id: string }>;
-  const found = candidates.find((candidate) => askQuestionOrigin(db, candidate.ask_request_id) !== null);
+    .all(text.trim(), projectId, sinceIso) as Array<{
+      id: string;
+      slug: string | null;
+      created_at: string;
+      ask_request_id: string;
+      context_json: string;
+      resolved_intent: string;
+    }>;
+  const found = candidates.find((candidate) => askQuestionOrigin(db, candidate) !== null);
   return found ? { id: found.id, slug: found.slug, created_at: found.created_at } : null;
 }
 
 /**
- * Whether a review_item is an Ask question: raised by an Ask (`ask_request_id`) that routed to Clarify First and made
- * no Action. A review_item an Ask raised for another reason (a gated Action, a repository path) is a Decision, not an
- * Ask question. Null when it is not one.
+ * Whether a review_item is an Ask question: the review_item the Clarify First branch created for an Ask, identified by
+ * its explicit `askQuestion` context marker, never by `ask_request_id` alone (derived items copy that id). The Ask must
+ * also have routed to Clarify First and made no Action. Null when it is not one.
  */
-export function askQuestionOrigin(db: Database.Database, askRequestId: string | null | undefined): AskOrigin | null {
-  if (!askRequestId) return null;
+export function askQuestionOrigin(
+  db: Database.Database,
+  item: { ask_request_id: string | null; context_json: string; resolved_intent: string }
+): AskOrigin | null {
+  const askRequestId = item.ask_request_id;
+  if (!askRequestId || item.resolved_intent === "ReviewExecutionPending") return null;
+  try {
+    const context = JSON.parse(item.context_json) as Record<string, unknown> | null;
+    if (!context || context[ASK_QUESTION_CONTEXT_KEY] !== true) return null;
+  } catch {
+    return null;
+  }
   const ask = db
     .prepare(
       `SELECT ar.id, ar.work_item_id, ar.stewardship_json, ce.ingress_source

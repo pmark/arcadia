@@ -625,6 +625,87 @@ describe("answering an Ask question never starts an executor", () => {
   });
 });
 
+describe("approved Ask work can still run: the question is answered, its execution Decision is executed", () => {
+  const botConfig = (workspace: string) => ({
+    arcadiaWorkspace: workspace,
+    discordBotToken: "t",
+    discordClientId: "c",
+    discordGuildId: "g",
+    discordChannelId: "ch",
+    arcadiaCliPath: null,
+    pollIntervalSeconds: 60
+  });
+  function runCount(workspace: string): number {
+    return (withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM execution_runs").get()) as { n: number }).n;
+  }
+  function pendingExecutionId(workspace: string): string {
+    const row = withDatabase(workspace, (db) =>
+      db.prepare("SELECT id FROM review_items WHERE resolved_intent = 'ReviewExecutionPending' AND status = 'open'").get()
+    ) as { id: string } | undefined;
+    expect(row?.id).toMatch(/^review_/);
+    return row?.id as string;
+  }
+
+  it("CLI: Ask, approve the question (0 Runs), approve the pending execution item (exactly 1 Run)", () => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Sourdough starter notes for Sunday" });
+    const questionId = asked.data.reviewItemId as string;
+
+    const answered = runReviewApproveCommand({ workspace, id: questionId, execute: true });
+    expect(answered.data.run).toBeNull();
+    expect(runCount(workspace)).toBe(0);
+
+    const pendingId = pendingExecutionId(workspace);
+    expect(pendingId).not.toBe(questionId);
+    const executed = runReviewApproveCommand({ workspace, id: pendingId, execute: true });
+    expect(executed.data.run?.id).toMatch(/^run_/);
+    expect(runCount(workspace)).toBe(1);
+  });
+
+  it("CLI: the pending execution item is not an Ask question, even though it copies the Ask's id", () => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Sourdough starter notes for Sunday" });
+    runReviewApproveCommand({ workspace, id: asked.data.reviewItemId as string });
+    const pendingId = pendingExecutionId(workspace);
+    expect(
+      withDatabase(workspace, (db) => db.prepare("SELECT ask_request_id FROM review_items WHERE id = ?").get(pendingId))
+    ).toEqual({ ask_request_id: asked.data.ask?.id });
+
+    const response = todo(workspace);
+    const pending = response.data.items.find((item) => item.key.endsWith(`/${pendingId}`));
+    expect(pending).toBeDefined();
+    expect(pending?.askQuestion).toBeUndefined();
+    expect(response.data.counts.askQuestions).toBe(0);
+  });
+
+  it("Discord approve command: question first (0 Runs), then the pending item (exactly 1 Run)", async () => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Sourdough starter notes for Sunday", sourceIngress: "discord.message" });
+    const cli = {
+      reviewApproveWithExecute: async (reviewId: string) => ({
+        ok: true,
+        command: "review.approve",
+        data: runReviewApproveCommand({ workspace, id: reviewId, execute: true }).data
+      })
+    } as unknown as ArcadiaCli;
+
+    await requiresReviewApproveCommand(cli, asked.data.reviewItemId as string, botConfig(workspace));
+    expect(runCount(workspace)).toBe(0);
+    await requiresReviewApproveCommand(cli, pendingExecutionId(workspace), botConfig(workspace));
+    expect(runCount(workspace)).toBe(1);
+  });
+
+  it("Discord reply path: approving the question by reply starts no Run, replying approve to the pending item starts one", () => {
+    const workspace = workspaceWithArcadia();
+    const asked = runAskCommand({ workspace, request: "Sourdough starter notes for Sunday", sourceIngress: "discord.message" });
+    runReviewResolveReplyCommand({ workspace, id: asked.data.reviewItemId, reply: "approve" });
+    expect(runCount(workspace)).toBe(0);
+    const replied = runReviewResolveReplyCommand({ workspace, id: pendingExecutionId(workspace), reply: "approve", execute: true });
+    expect(replied.data.run?.id ?? replied.data.execution).toBeTruthy();
+    expect(runCount(workspace)).toBe(1);
+  });
+});
+
 describe("ask.routing.v2: duplicates are per Project, and a broken config never loses an Ask", () => {
   it("does not treat a re-send that adds --project as a duplicate", () => {
     const workspace = workspaceWithArcadia();

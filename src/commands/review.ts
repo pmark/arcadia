@@ -1080,7 +1080,7 @@ export function runReviewApproveCommand(
   // An Ask question (raised by an Ask that routed to Clarify First) is answered, never executed: approving it creates
   // the Action and leaves a separate execution Decision. No flag, slash command or reply path starts an executor for it.
   const answeringAskQuestion = Boolean(
-    specialized && withDatabase(workspacePath, (db) => askQuestionOrigin(db, specialized.ask_request_id))
+    specialized && withDatabase(workspacePath, (db) => askQuestionOrigin(db, specialized))
   );
   if (options.execute !== false && !answeringAskQuestion) {
     return runReviewApproveExecuteCommand({ ...options, workspace: workspacePath });
