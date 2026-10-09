@@ -41,7 +41,7 @@
       "trigger": "commit, push, pull request, CodeRabbit, CI, merge, notification",
       "path": "docs/agent-guidance/pull-requests.md",
       "read_before": "Before any PR operation; retain exact-head review and approval gates.",
-      "sha256": "07c8e788de5a5dad88f10010c9de688bc06c9346a54eec100c9702e14504e7da"
+      "sha256": "828d27ca6a06804175e1d27dfae4461de5aaf77d4e4372546404f5d993f16161"
     },
     {
       "id": "learning",

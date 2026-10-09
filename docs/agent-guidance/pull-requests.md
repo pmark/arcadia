@@ -13,7 +13,11 @@ review service.
 - **Reviewer.** A read-only reviewer agent that is not the author: a subagent,
   a second session or a sandboxed reviewer, whichever the runtime offers. It
   may read the diff of the exact head and run focused tests in temporary
-  directories. It may not edit, commit, push, settle governance, run host
+  directories: it reads through `git show`/`gh pr diff` or extracts the head
+  with `git archive <sha>` into a fresh `$TMPDIR` directory, and never edits,
+  checks out, stashes, resets or adds a worktree in the primary checkout or any
+  other live worktree. Put that prohibition in every reviewer and engineer
+  brief, and confirm `git -C <primary> reflog -3` is unchanged afterwards. It may not edit, commit, push, settle governance, run host
   brokers, message anyone or change policy. Give it the issue, the acceptance
   criteria and the failure classes to attack: data loss, authority broadening,
   handing the same work to two agents, races, regressions, and differences
@@ -122,7 +126,14 @@ merge it anyway, so asking spends attention and protects nothing.
   head.
 - **Squash-merge, then leave the record whole.** Confirm the PR shows merged
   and that any `Closes #<ISSUE>` Issue is closed. Restart managed services when
-  the merged change is runtime code, and confirm they came back.
+  the merged change is runtime code, and confirm they came back. Under heavy
+  machine load (parallel test suites) `scripts/services.sh restart` can fail on
+  Intelligence's readiness window and then stop every service (#1129): retry
+  once, and if it fails again bootstrap each
+  `~/Library/LaunchAgents/com.arcadia.local.<key>.<service>.plist` directly with
+  `launchctl bootstrap gui/$(id -u) <plist>`, wait, and check
+  `scripts/services.sh status`. Avoid running many test suites around a
+  restart, and report any outage to the operator.
 - **Anything less is not authorized.** A red or pending check, an unreviewed
   head, an unresolved blocking finding, a conflict, or a bypass of branch
   protection means repair per "CI failures are fixed immediately" or report
@@ -131,7 +142,11 @@ merge it anyway, so asking spends attention and protects nothing.
   important Decision, or that changes what agents are authorized to do: the
   Constitution, approval boundaries, spend, or credentials. Settle, commit,
   push, open the PR, and run the independent review as usual, then stop at the
-  handoff and leave the merge and the Decision's answer to the operator.
+  handoff and leave the merge and the Decision's answer to the operator. This
+  includes records PRs that only *raise* a Decision or only *record* an answer
+  the operator gave in chat (2026-10-09, three such PRs were merged in error).
+  Merge one only when the operator explicitly instructs it in chat, and quote
+  that instruction in the PR comment.
 - **This is a merge authorization only.** It does not authorize deployment,
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
@@ -144,6 +159,10 @@ where the operator's own call is the only thing left, send exactly one short
 Discord ping, so the operator never has to poll a dashboard to learn that a
 pull request needs them. Decisions themselves are answered through Discord or
 the dashboard, not by merging a pull request (Decision 0076).
+
+Operator pings (`arcadia ping send`) are capped at 500 characters: a nudge,
+not a report. Put detail in the PR or Issue and link it; a longer message is
+refused, not truncated.
 
 - **On open.** The moment a PR is created, draft and settle an Agent Ask,
   `intent: log`, `request_id` `pr-opened-<project>-pr<number>`, whose
