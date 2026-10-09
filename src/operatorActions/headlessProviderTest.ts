@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { runGoCommand } from "../commands/go.js";
+import { runPreserveCommand } from "../commands/preserve.js";
 import { withDatabase } from "../db/connection.js";
 import { getWorkItemByDocRef, listCodexInvocationsForWorkItem } from "../db/repositories.js";
 import { seedFixtureActionBuildPacket } from "../fixtures/zeroPromptRehearsal.js";
@@ -78,6 +79,20 @@ export interface ProviderResult {
   sessionReconcile: { exitCode: number | null; summary: string } | null;
   askFile: string | null;
   workspaceKept: string | null;
+  /** What the agent itself delivered, separate from what the host's preservation step added. */
+  agentPart: { pass: boolean } | null;
+  hostPart: HostPart | null;
+  /** "agent": the agent committed everything itself; "agent_and_host": the host step committed; "agent_only": host preservation not exercised. */
+  passKind: "agent" | "agent_and_host" | "agent_only" | null;
+}
+
+export interface HostPart {
+  /** The candidate was left uncommitted, so the host's turn matters. */
+  needed: boolean;
+  attempted: boolean;
+  outcome: "not_needed" | "preserved" | "failed" | "not_exercised";
+  detail: string;
+  commit: string | null;
 }
 
 export interface GitdirReport {
@@ -110,6 +125,8 @@ export interface HeadlessTestOptions {
   env?: NodeJS.ProcessEnv;
   /** Test seam: the extra directories appended to PATH (default: the usual operator tool directories). */
   toolDirectories?: string[];
+  /** Test seam: the host's preservation step (default: the worker's own runPreserveCommand). */
+  hostPreserve?: HostPreserve;
   /** Test seam: where SIGINT/SIGTERM arrive from (default: this process). */
   signalSource?: Pick<NodeJS.EventEmitter, "on" | "off">;
   /** Test seam: kill grace after the timeout. */
@@ -366,7 +383,7 @@ function newResult(provider: ProviderName): ProviderResult {
   return {
     provider, outcome: "FAIL", reason: null, model: null, effort: null, command: null, exitCode: null, signal: null, timedOut: false,
     durationMs: null, logPath: null, candidateBranch: null, candidateWorktree: null, criteria: [], gitdir: null, sessionReconcile: null,
-    askFile: null, workspaceKept: null
+    askFile: null, workspaceKept: null, agentPart: null, hostPart: null, passKind: null
   };
 }
 
@@ -436,6 +453,21 @@ class RecordingTmux implements TmuxAdapter {
   launch(input: { name: string; cwd: string; command: string; args: string[]; record?: SessionRecording }): void { this.launches.push(input); }
 }
 
+/**
+ * OpenCode's non-interactive `run` auto-rejects every permission that would need a prompt, and the first tool call in this test's
+ * candidate worktree was refused as `external_directory` (run 20261009T135444Z-90379): the worktree lives under the macOS temporary
+ * directory (/private/var/folders/...), which the operator's own allowlist (which covers /tmp, ~/tmp and ~/.opencode, where real
+ * Sessions' worktrees live) does not name. This grants the one directory tree the test created, for this one process, through
+ * OpenCode's documented OPENCODE_CONFIG_CONTENT (a final local-scope merge); ~/.config/opencode is never read or written.
+ * Both spellings of the path are granted because /var is a symlink to /private/var.
+ */
+export function opencodeSessionConfig(root: string, worktree: string): string {
+  const spellings = (p: string): string[] => [p, p.replace(/^\/private(\/var\/)/, "$1"), p.startsWith("/var/") ? `/private${p}` : p];
+  const external: Record<string, "allow"> = {};
+  for (const directory of [root, worktree]) for (const spelling of spellings(directory)) external[`${spelling}/**`] = "allow";
+  return JSON.stringify({ permission: { external_directory: external } });
+}
+
 function computeGitdirReport(context: Context, worktree: string): GitdirReport {
   const worktreeGitDir = realOrSelf(git(worktree, ["rev-parse", "--absolute-git-dir"]));
   const commonRaw = git(worktree, ["rev-parse", "--git-common-dir"]);
@@ -448,7 +480,8 @@ function computeGitdirReport(context: Context, worktree: string): GitdirReport {
     worktreeGitDirInsideWritableRoots: worktreeIn,
     commonGitDirInsideWritableRoots: commonIn,
     note: "Roots are the documented Codex workspace-write defaults (the --cd directory, $TMPDIR and /tmp); the operator's own Codex config (extra writable_roots) is not read. " +
-      "This fixture lives under the temporary directory, so a commit can succeed here even where a real repository's gitdir (outside ~/.codex/worktrees) would be denied."
+      "Placement alone does not make a commit possible: on a real run (20261009T135444Z-90379) Codex's workspace-write sandbox denied creating Git's worktree index.lock although this gitdir sits inside $TMPDIR, because it keeps .git directories read-only even inside writable roots. " +
+      "So an agent in that sandbox cannot commit, and the commit is the host's preservation step."
   };
 }
 
@@ -554,10 +587,21 @@ function rawGit(cwd: string, args: string[]): string | null {
 /** Completion states a work item reaches once its `complete` Ask settled. */
 const DONE_STATES = new Set(["done", "completed", "complete"]);
 
-function evaluate(context: Context, result: ProviderResult, input: {
-  workspace: string; worktree: string; baseRevision: string; branch: string;
+const EXPECTED_MARKER = FIXTURE_MARKER_LINE + "\n";
+
+/** What the agent itself delivered, judged before the host takes its turn. */
+interface AgentPart {
+  criteria: CriterionResult[];
+  /** The agent left a complete-intent Ask under .arcadia/asks/ and left it unsettled (the host settles it). */
+  draftedAsk: boolean;
+  askPass: boolean;
+  markerExact: boolean;
+}
+
+function evaluateAgentPart(context: Context, result: ProviderResult, input: {
+  workspace: string; worktree: string;
   run: { exitCode: number | null; signal: string | null; timedOut: boolean; durationMs: number }; timeoutMs: number;
-}): void {
+}): AgentPart {
   const { worktree } = input;
   const criteria: CriterionResult[] = [];
   const add = (id: string, label: string, pass: boolean, detail: string) => criteria.push({ id, label, pass, detail });
@@ -567,26 +611,11 @@ function evaluate(context: Context, result: ProviderResult, input: {
 
   let marker: string | null = null;
   try { marker = readFileSync(path.join(worktree, "MARKER.md"), "utf8"); } catch { /* absent */ }
-  const expected = FIXTURE_MARKER_LINE + "\n";
-  add("file", "MARKER.md exists with exactly the expected line", marker === expected, marker === null ? "MARKER.md is absent" : marker === expected ? "content matches" : `unexpected content ${JSON.stringify(marker.slice(0, 80))}`);
+  add("file", "MARKER.md exists with exactly the expected line", marker === EXPECTED_MARKER, marker === null ? "MARKER.md is absent" : marker === EXPECTED_MARKER ? "content matches" : `unexpected content ${JSON.stringify(marker.slice(0, 80))}`);
 
   const validation = spawnSync(process.execPath, ["scripts/check-fixture.mjs"], { cwd: worktree, encoding: "utf8", timeout: 30_000 });
-  add("validation", `${FIXTURE_VALIDATION} passes`, validation.status === 0 && marker === expected,
-    validation.status === 0 ? (marker === expected ? "fixture check ok" : "check passes only because MARKER.md is absent or wrong") : (validation.stderr || validation.stdout || "check failed").trim().slice(0, 200));
-
-  // A drafted completion Ask legitimately sits untracked under .arcadia/asks/ until the host settles it; nothing else may be dirty.
-  const dirty = rawGit(worktree, ["status", "--porcelain", "--", ".", ":(exclude).arcadia/asks"]);
-  const dirtyAll = rawGit(worktree, ["status", "--porcelain"]);
-  const commits = rawGit(worktree, ["rev-list", "--count", `${input.baseRevision}..HEAD`]);
-  const committedMarker = rawGit(worktree, ["show", "HEAD:MARKER.md"]);
-  const branch = rawGit(worktree, ["branch", "--show-current"])?.trim() ?? null;
-  const commitCount = commits === null ? 0 : Number(commits.trim());
-  const onBranch = branch === input.branch;
-  add("commit", "a clean commit with MARKER.md exists on the candidate branch",
-    commitCount >= 1 && committedMarker === expected && onBranch && dirty !== null && dirty.trim() === "",
-    commits === null ? "git could not read the candidate branch"
-      : `${commitCount} commit(s) beyond the base on ${branch ?? "no branch"}${onBranch ? "" : ` (expected ${input.branch})`}; HEAD ${committedMarker === null ? "has no MARKER.md" : committedMarker === expected ? "carries the exact MARKER.md" : "carries a different MARKER.md"}; ` +
-        `${dirty === null ? "status unreadable" : dirty.trim() === "" ? "tree clean" : `uncommitted changes: ${dirty.trim().split("\n").slice(0, 3).join("; ")}`}`);
+  add("validation", `${FIXTURE_VALIDATION} passes`, validation.status === 0 && marker === EXPECTED_MARKER,
+    validation.status === 0 ? (marker === EXPECTED_MARKER ? "fixture check ok" : "check passes only because MARKER.md is absent or wrong") : (validation.stderr || validation.stdout || "check failed").trim().slice(0, 200));
 
   const wanted = planCriteria(worktree);
   const criterionComplete = (ask: Record<string, unknown>): boolean => {
@@ -594,9 +623,11 @@ function evaluate(context: Context, result: ProviderResult, input: {
     return evidence.length === wanted.length && wanted.every((criterion, index) => evidence[index]?.criterion === criterion && evidence[index]?.status === "met");
   };
   const head = rawGit(worktree, ["rev-parse", "HEAD"])?.trim() ?? null;
+  const dirtyAll = rawGit(worktree, ["status", "--porcelain"]);
   const actionStatus = withDatabase(input.workspace, (db) => getWorkItemByDocRef(db, `plan/${FIXTURE_PLAN}#${FIXTURE_ACTION}`)?.status ?? null);
   let askDetail = "no Agent Ask file under .arcadia/asks/";
   let askPass = false;
+  let draftedAsk = false;
   for (const file of findDraftedAsks(worktree)) {
     const relative = path.relative(worktree, file);
     const ask = readAsk(file);
@@ -606,6 +637,7 @@ function evaluate(context: Context, result: ProviderResult, input: {
     const revision = typeof ask.candidate_revision === "string" ? ask.candidate_revision : null;
     const settled = relative.split(path.sep).includes("archive");
     if (!settled) {
+      draftedAsk = true;
       // Drafted and left for the host: the Ask names the candidate's HEAD and preview accepts it.
       const preview = arcadia(context, input.workspace, ["agent-ask", "preview", "--file", file, "--dir", worktree, "--json"]);
       const accepted = preview.status === 0 && preview.json?.ok === true;
@@ -621,15 +653,103 @@ function evaluate(context: Context, result: ProviderResult, input: {
       const atRevision = revision !== null ? rawGit(worktree, ["show", `${revision}:MARKER.md`]) : null;
       const done = actionStatus !== null && DONE_STATES.has(actionStatus);
       const clean = dirtyAll !== null && dirtyAll.trim() === "";
-      askPass = complete && ancestor && atRevision === expected && done && clean;
+      askPass = complete && ancestor && atRevision === EXPECTED_MARKER && done && clean;
       askDetail = `settled ${relative}: ${complete ? "every criterion met, verbatim and in order" : `evidence does not match the ${wanted.length} declared criteria`}; ` +
-        `candidate_revision ${ancestor ? "is an ancestor of HEAD" : "is not an ancestor of HEAD"} and ${atRevision === expected ? "holds the exact MARKER.md" : "does not hold the exact MARKER.md"}; ` +
+        `candidate_revision ${ancestor ? "is an ancestor of HEAD" : "is not an ancestor of HEAD"} and ${atRevision === EXPECTED_MARKER ? "holds the exact MARKER.md" : "does not hold the exact MARKER.md"}; ` +
         `Action status in the experiment database: ${actionStatus ?? "unknown"}; tree ${clean ? "clean" : "not clean"}`;
     }
     if (askPass) break;
   }
   add("ask", "a criterion-complete completion Agent Ask was drafted (preview accepts it) or settled (Action complete)", askPass, askDetail);
+  return { criteria, draftedAsk, askPass, markerExact: marker === EXPECTED_MARKER };
+}
+
+function commitState(worktree: string, baseRevision: string, expectedBranch: string) {
+  // A drafted completion Ask legitimately sits untracked under .arcadia/asks/ until the host settles it; nothing else may be dirty.
+  const dirty = rawGit(worktree, ["status", "--porcelain", "--", ".", ":(exclude).arcadia/asks"]);
+  const commits = rawGit(worktree, ["rev-list", "--count", `${baseRevision}..HEAD`]);
+  const committedMarker = rawGit(worktree, ["show", "HEAD:MARKER.md"]);
+  const branch = rawGit(worktree, ["branch", "--show-current"])?.trim() ?? null;
+  const commitCount = commits === null ? 0 : Number(commits.trim());
+  const onBranch = branch === expectedBranch;
+  const clean = dirty !== null && dirty.trim() === "";
+  const pass = commitCount >= 1 && committedMarker === EXPECTED_MARKER && onBranch && clean;
+  const detail = commits === null ? "git could not read the candidate branch"
+    : `${commitCount} commit(s) beyond the base on ${branch ?? "no branch"}${onBranch ? "" : ` (expected ${expectedBranch})`}; HEAD ${committedMarker === null ? "has no MARKER.md" : committedMarker === EXPECTED_MARKER ? "carries the exact MARKER.md" : "carries a different MARKER.md"}; ` +
+      `${dirty === null ? "status unreadable" : clean ? "tree clean" : `uncommitted changes: ${dirty.trim().split("\n").slice(0, 3).join("; ")}`}`;
+  return { pass, detail, commitCount, uncommittedOnly: commitCount === 0 && dirty !== null && dirty.trim() === "?? MARKER.md" };
+}
+
+/** The agent's own attempt at host preservation (the brief's step 2) was refused because no worker exists in an experiment workspace. */
+export function brokerRefusalInLog(log: string): boolean {
+  return /arcadia-preserve-broker/.test(log) && /preservation (route|request path)|Protected preservation|heartbeat/i.test(log);
+}
+
+/** The host's turn: the same preservation the worker runs for a Session that exited with an uncommitted candidate. */
+export type HostPreserve = (input: { workspace: string; worktree: string }) => { ok: boolean; detail: string; commit: string | null };
+
+export const defaultHostPreserve: HostPreserve = ({ workspace, worktree }) => {
+  try {
+    const response = runPreserveCommand({ source: worktree, workspace });
+    const receipt = response.data.receipt;
+    return { ok: true, commit: receipt.commitSha, detail: `runPreserveCommand preserved commit ${receipt.commitSha.slice(0, 12)} (${receipt.preservationState}${receipt.retryAction ? `; ${receipt.retryAction}` : ""})` };
+  } catch (error) {
+    return { ok: false, commit: null, detail: (error instanceof Error ? error.message : String(error)).slice(0, 400) };
+  }
+};
+
+/**
+ * The commit criterion and the host's turn. Runs after the Session was reconciled (which releases its repository lease), so the
+ * host step takes the preservation path for a finished, unleased candidate: `arcadia preserve`'s manual-handoff binding, which
+ * authorizes local preservation only. The worker's leased path needs an Active production policy scoped to the Action, which an
+ * experiment workspace can never hold (activation is guarded), so that path refuses here and the fallback below applies.
+ */
+function finishEvaluation(context: Context, result: ProviderResult, agent: AgentPart, before: ReturnType<typeof commitState>, input: {
+  workspace: string; worktree: string; baseRevision: string; branch: string;
+}): void {
+  const host: HostPart = { needed: false, attempted: false, outcome: "not_needed", detail: "the agent committed its own work", commit: null };
+  let commit = before;
+  if (!before.pass && before.commitCount === 0) {
+    // The agent could not commit (Codex's workspace-write sandbox denies Git's index.lock, and the brief routes preservation through
+    // the host). If it did everything else, play the host's role with the same code the worker runs, then judge the commit.
+    host.needed = true;
+    if (agent.markerExact && agent.draftedAsk && before.uncommittedOnly) {
+      host.attempted = true;
+      const done = (context.options.hostPreserve ?? defaultHostPreserve)({ workspace: input.workspace, worktree: input.worktree });
+      host.detail = done.detail;
+      host.commit = done.commit;
+      commit = commitState(input.worktree, input.baseRevision, input.branch);
+      host.outcome = done.ok && commit.pass ? "preserved" : "failed";
+      context.log(`host preservation (${result.provider}): ${done.ok ? "ran" : "refused"}: ${done.detail}`);
+    } else {
+      host.outcome = "not_exercised";
+      host.detail = "the candidate was not in the shape host preservation needs (exact MARKER.md untracked, drafted Ask left)";
+    }
+  }
+  let label = "a clean commit with MARKER.md exists on the candidate branch";
+  let pass = commit.pass;
+  let detail = commit.detail;
+  if (host.outcome === "preserved") {
+    detail = `committed by host preservation, not by the agent: ${commit.detail}; ${host.detail}`;
+  } else if (!commit.pass && host.needed && agent.askPass && agent.draftedAsk && agent.markerExact && commit.uncommittedOnly
+    && brokerRefusalInLog(readFileSync(result.logPath!, "utf8"))) {
+    // Host preservation could not run in an experiment workspace, but the agent did its whole part: an uncommitted exact candidate,
+    // a criterion-complete drafted Ask and the broker refusal the missing worker explains.
+    pass = true;
+    label = "a commit exists on the candidate branch (agent part; host preservation not exercised)";
+    detail = `PASS (agent); host preservation not exercised: ${host.attempted ? `the host step failed (${host.detail})` : host.detail}; the agent's own broker call was refused because an experiment workspace has no worker; ${commit.detail}`;
+    host.outcome = "not_exercised";
+  }
+  const criteria = [...agent.criteria];
+  criteria.splice(3, 0, { id: "commit", label, pass, detail });
   result.criteria = criteria;
+  const agentIds = new Set(["exit", "file", "validation", "ask"]);
+  result.agentPart = { pass: criteria.filter((entry) => agentIds.has(entry.id)).every((entry) => entry.pass) && (host.outcome === "not_needed" ? commit.pass : true) };
+  result.hostPart = host;
+  result.passKind = !criteria.every((entry) => entry.pass) ? null
+    : host.outcome === "not_needed" ? "agent"
+    : host.outcome === "preserved" ? "agent_and_host"
+    : "agent_only";
 }
 
 async function runProviderAttempt(context: Context, provider: ProviderName, tempRoot: string, date: string): Promise<ProviderResult> {
@@ -705,8 +825,12 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
     const env: NodeJS.ProcessEnv = {
       ...sanitizedEnv(context.env), PATH: buildPath(context.env.PATH, [shimDirectory], context.options.toolDirectories),
       // Both the provider and anything it runs resolve this experiment workspace, never the live default.
-      ARCADIA_WORKSPACE: workspace
+      ARCADIA_WORKSPACE: workspace,
+      // spawn's cwd option does not update PWD, and tools read PWD to learn where they are; under tmux the shell sets it.
+      PWD: worktree,
+      ...(provider === "opencode" ? { OPENCODE_CONFIG_CONTENT: opencodeSessionConfig(attemptRoot, worktree) } : {})
     };
+    if (provider === "opencode") context.log(`opencode (${provider}): per-session permission grant for ${attemptRoot} via OPENCODE_CONFIG_CONTENT (the operator's own config is untouched)`);
     if (context.interrupted) throw new Refusal("interrupted", `${context.interrupted} received before the provider started`);
     context.log(`run (${provider}): headless, cap ${formatCap(timeoutMs)}, log ${logPath}`);
     const run = await runProviderProcess(context, { provider, command: runnable.command, args: runnable.args, cwd: worktree, env, logPath, timeoutMs });
@@ -719,15 +843,18 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
       if (recorded.status !== 0) context.log(`could not record the exit status for the Session: ${recorded.stderr.trim()}`);
     }
 
-    evaluate(context, result, { workspace, worktree, baseRevision: session.base_revision, branch: session.branch, run, timeoutMs });
+    // The agent's part is judged where the agent left it: before the host reconciles or preserves anything.
+    const agent = evaluateAgentPart(context, result, { workspace, worktree, run, timeoutMs });
+    const candidateAtExit = commitState(worktree, session.base_revision, session.branch);
 
-    // Information only: what the host would make of the finished Session.
+    // The host's reconcile of the finished Session (its outcome is information only; it also releases the repository lease).
     const reconcile = arcadia(context, workspace, ["session", "reconcile", session.id, "--repo", fixture, "--request-id", `${context.options.runId}-${provider}`, "--json"]);
     const reconcileFile = path.join(context.options.runDirectory, `session-reconcile-${provider}.json`);
     writeFileSync(reconcileFile, reconcile.stdout || reconcile.stderr);
     result.sessionReconcile = { exitCode: reconcile.status, summary: summarizeReconcile(reconcile, reconcileFile) };
     const stillThere = withDatabase(workspace, (db) => getSession(db, session.id));
     context.log(`session reconcile (${provider}, information only): exit ${reconcile.status}; session row ${stillThere?.status ?? "missing"}`);
+    finishEvaluation(context, result, agent, candidateAtExit, { workspace, worktree, baseRevision: session.base_revision, branch: session.branch });
     result.outcome = result.criteria.every((criterion) => criterion.pass) ? "PASS" : "FAIL";
   } catch (error) {
     result.outcome = "FAIL";
@@ -745,7 +872,11 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
 export function formatTable(results: ProviderResult[]): string {
   const lines: string[] = [];
   for (const result of results) {
-    lines.push(`${result.provider}${result.model ? ` (${result.model})` : ""}: ${result.outcome}${result.reason ? ` - ${result.reason}` : ""}`);
+    const kind = result.outcome !== "PASS" ? "" : result.passKind === "agent_only" ? " (agent); host preservation not exercised" : result.passKind === "agent_and_host" ? " (agent + host preservation)" : "";
+    lines.push(`${result.provider}${result.model ? ` (${result.model})` : ""}: ${result.outcome}${kind}${result.reason ? ` - ${result.reason}` : ""}`);
+    if (result.agentPart && result.hostPart) {
+      lines.push(`  agent part: ${result.agentPart.pass ? "PASS" : "FAIL"}   host part: ${result.hostPart.outcome === "not_needed" ? "not needed (the agent committed)" : result.hostPart.outcome === "preserved" ? `preserved ${result.hostPart.commit?.slice(0, 12) ?? ""} (${result.hostPart.detail})` : `${result.hostPart.outcome.replace("_", " ")}: ${result.hostPart.detail}`}`);
+    }
     for (const criterion of result.criteria) lines.push(`  ${criterion.pass ? "PASS" : "FAIL"}  ${criterion.label}  [${criterion.detail}]`);
     if (result.gitdir) {
       lines.push(`  info  worktree gitdir inside sandbox-writable roots: ${result.gitdir.worktreeGitDirInsideWritableRoots} (${result.gitdir.worktreeGitDir}); common gitdir inside: ${result.gitdir.commonGitDirInsideWritableRoots}`);

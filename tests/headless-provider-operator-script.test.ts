@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +6,11 @@ import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   FIXTURE_ACTION,
+  brokerRefusalInLog,
   buildPath,
+  formatTable,
+  opencodeSessionConfig,
+  type HostPreserve,
   renderFixtureFiles,
   runHeadlessProviderTest,
   sanitizedEnv,
@@ -45,7 +49,7 @@ function stubBin(): string {
   return bin;
 }
 
-const calls = (file: string): Array<{ name: string; args: string[]; cwd: string; arcadiaWorkspace: string | null; operatorId: string | null; author: string | null }> =>
+const calls = (file: string): Array<{ name: string; args: string[]; cwd: string; arcadiaWorkspace: string | null; operatorId: string | null; author: string | null; pwd: string | null; opencodeConfig: string | null }> =>
   existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [];
 
 function harness(extra: Record<string, string> = {}) {
@@ -59,13 +63,23 @@ function harness(extra: Record<string, string> = {}) {
     ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(library, `${ID}.json`),
     ...extra
   };
-  const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "providerTimeoutMs" | "now" | "signalSource">> = {}) =>
+  const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "providerTimeoutMs" | "now" | "signalSource" | "hostPreserve">> = {}) =>
     runHeadlessProviderTest({
       repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: options.keep ?? false, env, tempBase: base, liveLeakCheck: false,
       killGraceMs: 200, out: () => {}, ...options
     });
   return { run, runDirectory, base, callLog, env };
 }
+
+/** A host that cannot preserve (an experiment workspace holds no production validation authority; CI is not macOS). */
+const hostRefuses: HostPreserve = () => ({ ok: false, commit: null, detail: "Preservation validation requires current scoped production validation authority." });
+/** A host that commits the candidate the way a successful preservation would. */
+const hostCommits: HostPreserve = ({ worktree }) => {
+  const identity = { ...process.env, GIT_AUTHOR_NAME: "Host", GIT_AUTHOR_EMAIL: "host@example.invalid", GIT_COMMITTER_NAME: "Host", GIT_COMMITTER_EMAIL: "host@example.invalid" };
+  execFileSync("git", ["-C", worktree, "add", "MARKER.md"], { env: identity });
+  execFileSync("git", ["-C", worktree, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "Preserve candidate"], { env: identity });
+  return { ok: true, commit: execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), detail: "fake host preserved the candidate" };
+};
 
 const leftoverRoots = (base: string) => readdirSync(base).filter((entry) => entry.startsWith("arcadia-headless-provider-test-"));
 const criterion = (result: ProviderResult, id: string) => result.criteria.find((entry) => entry.id === id)!;
@@ -222,6 +236,17 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(opencode.model).toBe("opencode-go/deepseek-v4.1-flash");
     expect(opencode.command).toContain("opencode run --model opencode-go/deepseek-v4.1-flash");
     expect(opencode.candidateWorktree).not.toBe(codex.candidateWorktree);
+    // OpenCode's non-interactive run auto-rejects an external_directory prompt (operator run 20261009T135444Z-90379): it gets a
+    // per-process grant for the tree this test created, through OPENCODE_CONFIG_CONTENT, and Codex gets none.
+    const ocCall = calls(callLog).find((call) => call.name === "opencode" && call.args[0] === "run")!;
+    const grant = JSON.parse(ocCall.opencodeConfig!) as { permission: { external_directory: Record<string, string> } };
+    expect(Object.values(grant.permission.external_directory).every((value) => value === "allow")).toBe(true);
+    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${opencode.candidateWorktree}/**`]));
+    const attemptRoot = [1, 2, 3, 4, 5].reduce((dir) => path.dirname(dir), opencode.candidateWorktree!);
+    expect(Object.keys(grant.permission.external_directory)).toEqual(expect.arrayContaining([`${attemptRoot}/**`]));
+    expect(Object.keys(grant.permission.external_directory).every((key) => key.endsWith("/**") && !key.endsWith("//**"))).toBe(true);
+    expect(ocCall.pwd).toBe(ocCall.cwd);
+    expect(calls(callLog).find((call) => call.name === "codex" && call.args[0] === "exec")!.opencodeConfig).toBeNull();
     const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
     expect(receipt.providers.map((entry: ProviderResult) => entry.provider)).toEqual(["codex", "opencode"]);
     expect(receipt.providers.every((entry: ProviderResult) => existsSync(entry.logPath!))).toBe(true);
@@ -262,9 +287,9 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(criterion(opencode, "ask")).toMatchObject({ pass: false, detail: "no Agent Ask file under .arcadia/asks/" });
   }, 300_000);
 
-  it("fails a provider that writes the wrong marker, and one that never commits it", async () => {
+  it("fails a provider that writes the wrong marker, and one that never commits it when the host cannot preserve", async () => {
     const { run } = harness({ FAKE_PROVIDER_MODE_codex: "bad-marker", FAKE_PROVIDER_MODE_opencode: "uncommitted" });
-    const outcome = await run();
+    const outcome = await run({ hostPreserve: hostRefuses });
     expect(outcome.outcome).toBe("failed");
     const [wrong, uncommitted] = outcome.providers as [ProviderResult, ProviderResult];
     expect(wrong.outcome).toBe("FAIL");
@@ -272,12 +297,67 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(criterion(wrong, "validation").pass).toBe(false);
     expect(criterion(wrong, "commit").pass).toBe(false);
     expect(criterion(wrong, "commit").detail).toContain("carries a different MARKER.md");
+    expect(wrong.hostPart).toMatchObject({ needed: false, outcome: "not_needed" });
     expect(uncommitted.outcome).toBe("FAIL");
     expect(criterion(uncommitted, "file").pass).toBe(true);
     expect(criterion(uncommitted, "validation").pass).toBe(true);
+    // No broker refusal in its log: an uncommitted candidate alone is not the sandboxed-agent case.
     expect(criterion(uncommitted, "commit").pass).toBe(false);
     expect(criterion(uncommitted, "commit").detail).toMatch(/0 commit\(s\) beyond the base.*uncommitted changes/);
+    expect(uncommitted.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "failed" });
+    expect(uncommitted.passKind).toBeNull();
   }, 300_000);
+
+  it("plays the host's role when the sandboxed agent cannot commit: agent part and host part are reported separately", async () => {
+    // Codex's workspace-write sandbox denied Git's index.lock on the operator's run; the agent drafted the Ask and its broker call was refused.
+    const { run } = harness({ FAKE_PROVIDER_MODE_codex: "sandboxed" });
+    const outcome = await run({ providers: ["codex"], hostPreserve: hostCommits });
+    expect(outcome.outcome).toBe("succeeded");
+    const [codex] = outcome.providers as [ProviderResult];
+    expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_and_host" });
+    expect(codex.agentPart).toEqual({ pass: true });
+    expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "preserved" });
+    expect(codex.hostPart!.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(criterion(codex, "ask").detail).toContain("candidate_revision equals HEAD");
+    expect(criterion(codex, "commit").detail).toContain("committed by host preservation, not by the agent");
+    expect(formatTable([codex])).toContain("codex (gpt-5.6-terra): PASS (agent + host preservation)");
+    const receipt = JSON.parse(readFileSync(outcome.receiptPath, "utf8"));
+    expect(receipt.providers[0]).toMatchObject({ passKind: "agent_and_host", hostPart: { outcome: "preserved" }, agentPart: { pass: true } });
+  }, 300_000);
+
+  it("scores an agent-only pass visibly when host preservation cannot run in an experiment workspace", async () => {
+    const { run } = harness({ FAKE_PROVIDER_MODE_codex: "sandboxed" });
+    const outcome = await run({ providers: ["codex"], hostPreserve: hostRefuses });
+    expect(outcome.outcome).toBe("succeeded");
+    const [codex] = outcome.providers as [ProviderResult];
+    expect(codex).toMatchObject({ outcome: "PASS", passKind: "agent_only" });
+    expect(codex.hostPart).toMatchObject({ needed: true, attempted: true, outcome: "not_exercised" });
+    expect(criterion(codex, "commit")).toMatchObject({ pass: true });
+    expect(criterion(codex, "commit").label).toContain("host preservation not exercised");
+    expect(criterion(codex, "commit").detail).toMatch(/^PASS \(agent\); host preservation not exercised/);
+    const table = formatTable([codex]);
+    expect(table).toContain("codex (gpt-5.6-terra): PASS (agent); host preservation not exercised");
+    expect(table).toContain("agent part: PASS   host part: not exercised");
+  }, 300_000);
+});
+
+describe("pure helpers for the host step and the OpenCode grant", () => {
+  it("recognises the broker refusal an experiment workspace produces, and nothing else", () => {
+    expect(brokerRefusalInLog('{"command":"arcadia-preserve-broker-codex","output":"Protected preservation request path is unavailable. heartbeat stale"}')).toBe(true);
+    expect(brokerRefusalInLog("the agent never called the broker; heartbeat is a word here")).toBe(false);
+    expect(brokerRefusalInLog("arcadia-preserve-broker-codex was not found")).toBe(false);
+  });
+
+  it("grants OpenCode both spellings of the temporary tree, nothing broader", () => {
+    const grant = JSON.parse(opencodeSessionConfig("/private/var/folders/x/T/arcadia-headless-provider-test-1/opencode", "/private/var/folders/x/T/arcadia-headless-provider-test-1/opencode/exp/projects/worktrees/w/headless-fixture")) as { permission: { external_directory: Record<string, string> } };
+    expect(grant.permission.external_directory).toEqual({
+      "/private/var/folders/x/T/arcadia-headless-provider-test-1/opencode/**": "allow",
+      "/var/folders/x/T/arcadia-headless-provider-test-1/opencode/**": "allow",
+      "/private/var/folders/x/T/arcadia-headless-provider-test-1/opencode/exp/projects/worktrees/w/headless-fixture/**": "allow",
+      "/var/folders/x/T/arcadia-headless-provider-test-1/opencode/exp/projects/worktrees/w/headless-fixture/**": "allow"
+    });
+    expect(Object.keys(grant.permission)).toEqual(["external_directory"]);
+  });
 });
 
 describe("the stub provider is safe by construction", () => {
