@@ -7,7 +7,7 @@ status: draft
 milestone: Operator to-do list with Ask-only input
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-08
+updated: 2026-10-09
 actions:
   - id: build-operator-todo-list
     title: "Give the operator one derived to-do list of everything Arcadia needs from him: arcadia todo."
@@ -156,15 +156,117 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask prove-operator-request-to-started-work
     clarification: clarified
     confidence: high
-    source: Agent Ask operator-todo-ask-pivot-20261008-v6
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r2
     acceptance_criteria:
       - The operator sends one genuine request for real work, phrased as work to create, through an existing Ask or Ingress surface (Discord message, dashboard Ask or iCloud Ingress); an agent never writes or posts it. The receipt binds the capture envelope, ask request and resulting work_item. A request that lands only in Back Burner or a review_item without a work_item is reported as a failed attempt, not a pass.
       - "The work_item is graded by the delivered generator and grader, triggered by the arcadia clarify --work <id> --apply command that arcadia todo lists for the new work_item: either a passing next action with actor and done-condition, or exactly one question shown in arcadia todo that the operator answers through its listed CLI command or Discord reply, after which automatic re-grading passes. A passing coding-agent verdict yields the handoff Agent Ask, which appears in arcadia todo."
       - The operator settles that Agent Ask from arcadia todo, placing the new Action in the active Plan's queue, then starts a new session with only arcadia go; that session works the resulting Plan Action by id without relay and produces a commit or PR naming both the Action id and the work_item id. A gate receipt, launched process or approval request alone never satisfies this. The working session's commits carry the Session protocol trailers, and the evidence index cites the commit paragraph with Arcadia-Agent and Arcadia-Action.
       - An evidence index records one verdict and receipt per criterion pinned to the envelope, work_item, Agent Ask, Action id, candidate revisions and PR heads, the arcadia todo and arcadia plans --plan outputs before and after, and the coverage report for the window; missing or stale proof blocks a success claim, and no production acceptance threshold or unfinished Action status of other Plans changed. If any supervised session in the proof stops without completion, the evidence index includes its inactivity ping (id, link and message); the proof does not pass without it.
-    depends_on: [grade-next-actions-before-actionable, capture-operator-decision-replies-as-asks, point-operator-surfaces-at-todo, render-plan-progress-as-todo]
+    depends_on: [grade-next-actions-before-actionable, capture-operator-decision-replies-as-asks, point-operator-surfaces-at-todo, render-plan-progress-as-todo, stop-asks-vanishing]
     decisions: []
     references: ["CONSTITUTION.md", "docs/managed-documents.md", "docs/planning-process.md", "docs/agent-guidance/index.json", "docs/plans/bootstrap-managed-production-to-build-flight-deck.md", "https://www.anthropic.com/engineering/harness-design-long-running-apps", "src/commands/ask.ts", "src/commands/go.ts", "apps/discord-bot/src/events/messageCreate.ts"]
+  - id: stop-asks-vanishing
+    title: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make every operator Ask that is not explicitly an idea visible in arcadia todo, so no Ask vanishes into the Back Burner.
+    expected_artifact: Evidence satisfying Agent Ask stop-asks-vanishing
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r3
+    acceptance_criteria:
+      - Behind a config flag ask.routing.v2, which defaults on and can be turned off to restore today's routing, an operator Ask that matches no execution pattern goes to Clarify First instead of the Back Burner. Clarify First means a review_item that arcadia todo lists, carrying an ask-origin answer command. The Back Burner still receives an Ask only when the intake classification is Idea or the operator passes --back-burner. A Review Response with no resolvable reference also goes to Clarify First. Agent-sourced Asks (agent.ask envelopes) keep today's routing. Only a whole message that exactly matches a closed acknowledgement list ('thanks', 'thank you', 'ok', 'okay', 'got it', 'ack', 'done', or emoji only), after trimming whitespace and punctuation and ignoring case, creates no new question. So does an exact duplicate of an open Ask question within 24 hours. Their receipts say why, and the report counts them as suppressed, apart from the vanish rate. A message such as 'ok, ship X' is never suppressed.
+      - The intake patterns in src/intake/index.ts recognise 'I should be able to', 'I want (to be able) to', 'let me' and 'it would be good if'. With these, the operator's example 'I should be able to Ask Arcadia to schedule a recurring action' is captured as work. Intake also records two deterministic flags in extractedFields. recurrence is set when the text says every, daily, weekly, monthly, recurring or schedule. planning is set when the existing planningRecommended pattern matches. ask_requests stores both flags so the report can count them.
+      - "arcadia todo renders two section headers. 'Yours' holds the existing operator items and a 'Your Asks need one answer (N)' group: the newest 5 Ask-originated questions, with the full count always shown and never hidden by the other-items cap. 'Agents are doing' is one count line of in-flight agent work, naming arcadia todo --agents, which this Action adds to list that work. A counts line reads 'Back Burner: N incubating (M new in 7 days)'. The morning packet counts the Ask questions. Existing Back Burner items are not moved or changed. With no resolvable workspace, the degraded output states that Ask questions and Ask-origin tasks are unavailable."
+      - "Tests cover:\n- the routing change for each classification;\n- the review-reply fallback;\n- the new phrasings;\n- the recurrence and planning flags;\n- trivial-acknowledgement and duplicate suppression;\n- an agent-sourced Ask keeping its route;\n- the flag-off rollback;\n- both todo sections and the counts line.\nType, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact."
+    depends_on: []
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/backBurner/surfacing.ts", "src/orientation/operatorTodoLines.ts"]
+  - id: ask-receipt-and-one-reply-correction
+    title: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make every Ask reply state what Arcadia heard and where it put it, and let the operator correct it with one reply.
+    expected_artifact: Evidence satisfying Agent Ask ask-receipt-and-one-reply-correction
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r2
+    acceptance_criteria:
+      - "Every arcadia ask result, from the CLI and in the Discord bot's reply, opens with one line before any detail: 'Heard: <type> (<confidence>, <rule|memo|model>) -> <what was created and where> . wrong? reply type: work|idea|answer|status'. The stewardship detail stays available with --verbose or --json."
+      - "arcadia ask correct <ask_id> --type <work|idea|answer|status> [--project <slug>] re-routes the Ask only through the existing governed writers: create a work_item, create a review_item, or promote or archive a Back Burner item. It links the new record to the old as superseded and never deletes the original capture or record. In Discord, a reply to an Ask receipt that starts with 'type:' or 'project:' calls the same command. A correction to 'answer' requires an explicit reference to a pending item. That reference goes through the existing review resolve-reply writer and its validation, and from Discord is accepted only when DISCORD_ALLOWED_USER_IDS is configured and includes the author. Otherwise the correction is refused, so a correction never answers a Decision by inference or for an unverified author. The 'task' target is added by ask-do-for-me-operator-tasks."
+      - ask-trail (arcadia ask show) displays the supersession. Tests cover each correction target, the refusal of an answer correction with no reference or an unverified author, and the Discord reply path. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [stop-asks-vanishing]
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "apps/discord-bot/src/events/messageCreate.ts", "src/commands/askTrail.ts"]
+  - id: ask-corrections-stick
+    title: Make a corrected Ask route correctly the next time it is sent, instantly and with no model call.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make a corrected Ask route correctly the next time it is sent, instantly and with no model call.
+    expected_artifact: Evidence satisfying Agent Ask ask-corrections-stick
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r3
+    acceptance_criteria:
+      - An additive migration creates ask_corrections with columns ask_request_id, normalized_text, text_hash, predicted_type, corrected_type, corrected_project, source and created_at, with no cascade delete. It also adds nullable confidence and corrected_type columns to ask_requests. Each correction row is written in the same transaction as the re-route, so a correction cannot exist without its memo.
+      - A memo stage runs before the intake patterns. An operator Ask whose normalized text exactly matches a stored correction routes to the corrected type and Project, and its receipt says '(memo <date>)'. There is no fuzzy matching. An answer to an ask-origin clarification question also writes a correction row. Only operator corrections (source cli, discord or answer) are used as memos. Rows recorded from a model re-route are never used as memos. Raw Ask text stays in the workspace database and is never written to any repository.
+      - Tests cover the transactional write, a memo hit on the identical Ask, a miss on different text, and the no-cascade guarantee. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [ask-receipt-and-one-reply-correction]
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/db/schema.ts"]
+  - id: ask-local-model-tiebreaker
+    title: Give an unmatched operator Ask a typed interpretation from the local model within seconds, falling back to one question.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Give an unmatched operator Ask a typed interpretation from the local model asynchronously, falling back to one question.
+    expected_artifact: Evidence satisfying Agent Ask ask-local-model-tiebreaker
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r3
+    acceptance_criteria:
+      - The IntakeClassifier seam in src/intake/index.ts becomes injectable. A model-assisted classifier runs asynchronously through the same job and idempotency path the clarify engine uses, not inline in arcadia ask. It calls the local-preferred Intelligence route (operation arcadia.ask.classify, allowPaidUsage false) only for operator Asks that the deterministic rules and the memo left as Clarify First questions. Its output schema is an enum of work, task or unknown, plus actor, recurrence, planning and one question. It can never output idea, answer or status. Its extracted fields never set a Project, a Decision or authority.
+      - A passing classification re-routes the Ask through the same governed writers as arcadia ask correct, recorded with source model (never used as a memo; see ask-corrections-stick), and updates its todo entry. When the model is unavailable, slow or unsure, the Ask stays the one Clarify First question, never an error and never the Back Burner. The classifier is behind a config flag that is off by default until prove-operator-request-to-started-work passes. Ask text that reaches a coding agent through a handoff Ask is marked untrusted.
+      - Tests use a stubbed model to cover a pass, a timeout, an unavailable route, a forbidden output type and a malformed output. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [ask-corrections-stick]
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/clarify/engine.ts", "src/intelligence/types.ts"]
+  - id: ask-do-for-me-operator-tasks
+    title: Make an Ask for something only the operator can do land in the Yours part of arcadia todo as an operator task.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Make an Ask for something only the operator can do land in the Yours part of arcadia todo as an operator task.
+    expected_artifact: Evidence satisfying Agent Ask ask-do-for-me-operator-tasks
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r2
+    acceptance_criteria:
+      - "An operator Ask classified as task, or as work whose clarified actor is operator (RESPONSIBILITY_FOR_ACTOR), becomes an Ask-origin operator task stored in the workspace database. It is not written to the checked-in operator-task ledger, so Decision 0028's ledger rules and the no-raw-Ask-text-in-repositories rule are unchanged. arcadia todo lists it in 'Yours' as kind operator_task with origin ask:<ask_id> and an answer command that marks it done or declined, with operator attestation as for ledger tasks. An Ask with no resolvable Project still becomes a task, unscoped; no Project is guessed."
+      - "arcadia ask correct gains the 'task' target, and the Discord 'type: task' reply now works. Tests cover the database store, the todo projection, done and declined, the correction target, and the unscoped case. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact."
+    depends_on: [ask-receipt-and-one-reply-correction]
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/docs/operatorTasks.ts", "src/clarify/contract.ts"]
+  - id: ask-golden-set-and-vanish-report
+    title: "Prove Ask routing keeps improving: a checked-in golden set guards it and a weekly report shows the vanish rate."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Prove Ask routing keeps improving: a checked-in golden set guards it and a weekly report shows the vanish rate."
+    expected_artifact: Evidence satisfying Agent Ask ask-golden-set-and-vanish-report
+    clarification: clarified
+    confidence: high
+    source: Agent Ask plan-ask-intent-dispatch-20261008-r2
+    acceptance_criteria:
+      - tests/fixtures/ask-golden.jsonl holds paraphrased cases, never raw Ask text, each with an expected type. They are proposed by an agent in a PR, and a reviewed merge is their approval. A test replays every case through the pure intake, memo and stewardship functions and fails CI on any regression.
+      - "arcadia ask report [--since <window, default 7d>] [--json] prints these metrics per operator source:\n- vanish rate: operator Asks that, 1 hour after capture, have no open record listed by arcadia todo and no acted, answered or operator-filed Idea outcome; target zero;\n- corrected ÷ classified;\n- questions ÷ Asks;\n- Back Burner arrivals;\n- memo hits;\n- counts of Asks flagged recurrence (the Schedule revival trigger: 3 or more) and planning;\n- corrections not yet backed by a golden case."
+      - When 3 or more memos share a corrected type and a token pattern, the report says so. An agent may then propose a deterministic rule and a golden case in a reviewed PR; no rule is generated automatically. Type, lint and build pass. A pushed PR with exact-head independent review and all required checks is the delivered Artifact.
+    depends_on: [ask-corrections-stick]
+    decisions: []
+    references: ["CONSTITUTION.md", "docs/arcadia-ask-product-vision.md", "docs/planning-process.md", "src/commands/ask.ts", "src/intake/index.ts", "src/stewardship/index.ts", "src/commands/todo.ts", "src/commands/askCoverage.ts"]
 questions: []
 decisions: []
 current_action: prove-operator-request-to-started-work
