@@ -92,7 +92,28 @@ describe("Launch flow against a stubbed CLI", () => {
 
     const launched = await confirmLaunch(target, step as Extract<LaunchStep, { kind: "preview" }>, routeFetch);
     expect(launched).toEqual({ kind: "launched", message: "Session sess-9 launched.", sessionId: "sess-9" });
-    expect(cli.launchGuardedSession).toHaveBeenCalledWith("/repos/arcadia", "console-launch-1", "fp-123");
+    expect(cli.launchGuardedSession).toHaveBeenCalledWith("/repos/arcadia", "console-launch-1", "fp-123", { operatorLaunch: true });
+  });
+
+  it("the console's confirmed Launch mints the post-exit authorization (Decision 0096); a launch POSTed without that confirmation, or never confirmed, does not", async () => {
+    cli.previewGuardedSessionLaunch.mockResolvedValue(readyPreview());
+    cli.launchGuardedSession.mockResolvedValue({ data: { reused: false, session: { id: "sess-9", observedStatus: "running", reattachCommand: "x", worktree_path: "/wt" } } });
+    const step = (await beginLaunch(target, routeFetch, ids)) as Extract<LaunchStep, { kind: "preview" }>;
+
+    // Previewing alone mints nothing, and the preview states what confirming authorizes.
+    expect(cli.launchGuardedSession).not.toHaveBeenCalled();
+    expect((step.preview as unknown as { operatorLaunchConsequence: string }).operatorLaunchConsequence).toMatch(/DRAFT pull request.*never merges/);
+
+    // A POST without the explicit confirmation field launches with no authorization.
+    await routeFetch("/api/projects/proj-arcadia/session-launch", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ requestId: step.requestId, previewFingerprint: step.preview.previewFingerprint })
+    });
+    expect(cli.launchGuardedSession).toHaveBeenLastCalledWith("/repos/arcadia", "console-launch-1", "fp-123", { operatorLaunch: false });
+
+    // The console's Launch Session confirmation sends it.
+    await confirmLaunch(target, step, routeFetch);
+    expect(cli.launchGuardedSession).toHaveBeenLastCalledWith("/repos/arcadia", "console-launch-1", "fp-123", { operatorLaunch: true });
   });
 
   it("withholds Launch when the preview names a different Action", async () => {
