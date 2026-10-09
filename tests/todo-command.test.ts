@@ -166,7 +166,7 @@ describe("arcadia todo", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1", view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
+      counts: { blocking: 1, other: 2, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 1, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
         {
           key: "decision:demo/0001", kind: "decision", title: "Should the second step proceed?", project: "demo", blocking: true,
@@ -220,7 +220,7 @@ describe("arcadia todo", () => {
     const workspace = fixtureWorkspace(repo);
 
     const capped = run({ workspace, now: NOW });
-    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 2, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
+    expect(capped.data.counts).toEqual({ blocking: 1, other: 7, stale: 0, staleHidden: 0, byKind: { decision: 8, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 2, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
     expect(capped.data.items.filter((item) => !item.blocking).map((item) => item.key)).toEqual([
       "decision:demo/0008", "decision:demo/0007", "decision:demo/0006", "decision:demo/0005", "decision:demo/0004"
     ]);
@@ -288,7 +288,7 @@ describe("arcadia todo", () => {
     const { data } = run({ workspace: missing, now: NOW, repoRoot: repo });
 
     expect(data.asOf).toMatchObject({ workspace: null, workspacePath: null });
-    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
+    expect(data.counts).toEqual({ blocking: 1, other: 1, stale: 0, staleHidden: 0, byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } });
     expect(data.items.map((item) => item.key)).toEqual(["decision:demo/0001", "decision:demo/0002"]);
     expect(data.unavailable).toEqual([expect.stringMatching(/^workspace sources unavailable: no workspace at .*arcadia init <path>/)]);
     const lines = render(data);
@@ -379,7 +379,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
     ]);
     expect(data.counts).toEqual({
       blocking: 2, other: 3, stale: 4, staleHidden: 4, byKind: { decision: 1, agent_ask: 4, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0,
-      fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+      agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
     });
     expect(data.items.every((item) => item.staleReason === undefined)).toBe(true);
     const lines = render(data);
@@ -489,6 +489,41 @@ describe("arcadia todo: positive-evidence staleness", () => {
     expect(byKey["agent_ask:demo/rejected-new"]).toBeUndefined();
   });
 
+  it("leaves every member of a longer Supersedes cycle visible, not only mutual pairs (#1084)", () => {
+    const workspace = fixtureWorkspace(staleRepo(), [
+      { id: "old", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Old.", rationale: "An early proposal." },
+      { id: "cyc-a", createdAt: "2026-09-06T00:00:00.000Z", desiredResult: "A.", rationale: "Supersedes: cyc-b" },
+      { id: "cyc-b", createdAt: "2026-09-06T01:00:00.000Z", desiredResult: "B.", rationale: "Supersedes: cyc-c" },
+      { id: "cyc-c", createdAt: "2026-09-06T02:00:00.000Z", desiredResult: "C.", rationale: "Supersedes: cyc-a, old" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    const byKey = Object.fromEntries(data.items.map((item) => [item.key, item]));
+    // The 3-cycle hides nobody inside it; a cycle member still supersedes an Ask outside the cycle.
+    for (const id of ["cyc-a", "cyc-b", "cyc-c"]) {
+      expect(byKey[`agent_ask:demo/${id}`], id).toBeDefined();
+      expect(byKey[`agent_ask:demo/${id}`].staleReason, id).toBeUndefined();
+    }
+    expect(byKey["agent_ask:demo/old"].staleReason).toBe("superseded by Agent Ask cyc-c (explicit Supersedes line in its rationale)");
+  });
+
+  it("only a superseder in the same Project hides an Ask (#1084)", () => {
+    const workspace = fixtureWorkspace(staleRepo(), [
+      { id: "old", createdAt: "2026-09-05T00:00:00.000Z", desiredResult: "Old.", rationale: "An early proposal." },
+      { id: "foreign", createdAt: "2026-09-06T00:00:00.000Z", project: "other-project", desiredResult: "Foreign.", rationale: "Supersedes: old" },
+      { id: "old-two", createdAt: "2026-09-05T01:00:00.000Z", desiredResult: "Old two.", rationale: "An early proposal." },
+      { id: "local", createdAt: "2026-09-06T01:00:00.000Z", desiredResult: "Local.", rationale: "Supersedes: old-two" }
+    ]);
+
+    const { data } = run({ workspace, now: NOW, all: true });
+
+    const byKey = Object.fromEntries(data.items.map((item) => [item.key, item]));
+    expect(byKey["agent_ask:demo/old"].staleReason).toBeUndefined();
+    expect(byKey["agent_ask:other-project/foreign"].staleReason).toBeUndefined();
+    expect(byKey["agent_ask:demo/old-two"].staleReason).toBe("superseded by Agent Ask local (explicit Supersedes line in its rationale)");
+  });
+
   it("does not call a mixed Ask stale while an Action it proposes is not in any Plan", () => {
     const workspace = fixtureWorkspace(staleRepo(), [
       {
@@ -516,7 +551,7 @@ describe("arcadia todo: positive-evidence staleness", () => {
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
       counts: {
         blocking: 1, other: 0, stale: 2, staleHidden: 0, byKind: { decision: 1, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0,
-        fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+        agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
       },
       items: [
         {
@@ -682,7 +717,7 @@ describe("arcadia todo: review_items", () => {
     expect(data).toEqual({
       schema: "arcadia-todo-v1", view: "default",
       asOf: { at: "2026-10-08T12:00:00.000Z", workspace: path.basename(workspace), workspacePath: workspace },
-      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
+      counts: { blocking: 0, other: 3, stale: 0, staleHidden: 0, byKind: { decision: 0, agent_ask: 1, review_item: 2, operator_task: 0, escalation: 0, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 1, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 } },
       items: [
         {
           key: "review_item:demo/review-clarify", kind: "review_item", title: "Which database should the demo use?", project: "demo", blocking: false,
@@ -845,6 +880,28 @@ describe("arcadia todo: review_items", () => {
     expect(keys(run({ workspace, now: NOW, project: "demo" }).data)).toEqual(["review_item:demo/review-live"]);
   });
 
+  it("counts the agent-flagged review_items it leaves out, in the counts line and in the JSON counts (#1074)", () => {
+    const workspace = fixtureWorkspace(selectableRepo());
+    addReviews(workspace, [
+      { id: "review-live", createdAt: "2026-09-01T00:00:00.000Z", decisionNeeded: "For the operator." },
+      { id: "review-flagged-1", createdAt: "2026-09-02T00:00:00.000Z", decisionNeeded: "Agent one.", status: "deferred", agentFlagged: true },
+      { id: "review-flagged-2", createdAt: "2026-09-03T00:00:00.000Z", decisionNeeded: "Agent two.", status: "deferred", agentFlagged: true }
+    ]);
+
+    const view = run({ workspace, now: NOW });
+    expect(keys(view.data)).toEqual(["review_item:demo/review-live"]);
+    expect(view.data.counts.agentFlaggedHidden).toBe(2);
+    expect(render(view.data)[0]).toContain("agent-flagged hidden: 2");
+    // Every view and a --project view count the same; none lists the flagged items.
+    expect(run({ workspace, now: NOW, all: true }).data.counts.agentFlaggedHidden).toBe(2);
+    expect(run({ workspace, now: NOW, project: "demo" }).data.counts.agentFlaggedHidden).toBe(2);
+
+    // With none flagged the counts line stays as it was.
+    const clean = run({ workspace: fixtureWorkspace(selectableRepo()), now: NOW });
+    expect(clean.data.counts.agentFlaggedHidden).toBe(0);
+    expect(render(clean.data)[0]).not.toContain("agent-flagged");
+  });
+
   it("matches the Plan as well as the Action id, so an Action id repeated in another Plan is not the selected one (#1074)", () => {
     const workspace = fixtureWorkspace(selectableRepo());
     const otherPlanWork = addWorkItem(workspace, { docRef: "plan/other-plan#second-step" });
@@ -952,7 +1009,7 @@ describe("arcadia todo: production escalations and the operator-task ledger", ()
 
     expect(data.counts).toEqual({
       blocking: 3, other: 1, stale: 0, staleHidden: 0,
-      byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 2, clarify: 0, plan_action: 0 }, hidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+      byKind: { decision: 2, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 2, clarify: 0, plan_action: 0 }, hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
     });
     // Escalations lead the blocking section (oldest first), then the blocking Decision; the alert Decision follows.
     expect(data.items.map((item) => [item.key, item.blocking])).toEqual([
@@ -1230,6 +1287,18 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
     expect(data.counts.byKind.plan_action).toBe(2);
   });
 
+  it("a review_item on a question_open Action is blocking only when that Action is the selected one; the gate names no other question_open (#1074)", () => {
+    // `reviewed-step` is question_open and represented by review item `review-reviewed`.
+    const elsewhere = run({ workspace: planWorkspace(), now: NOW, all: true }).data;
+    expect(elsewhere.items.filter((item) => item.kind === "review_item").map((item) => [item.key, item.blocking])).toEqual([
+      ["review_item:demo/review-reviewed", false]
+    ]);
+    const selected = run({ workspace: planWorkspace({ pointer: "reviewed-step" }), now: NOW, all: true }).data;
+    expect(selected.items.filter((item) => item.kind === "review_item").map((item) => [item.key, item.blocking])).toEqual([
+      ["review_item:demo/review-reviewed", true]
+    ]);
+  });
+
   it("dedupes an Action against the Decision, review_item or ledger task that already represents it; parked, dependent and ready Actions never appear", () => {
     const workspace = planWorkspace();
 
@@ -1341,7 +1410,7 @@ describe("arcadia todo: unclarified captures and Plan Actions", () => {
       counts: {
         blocking: 1, other: 2, stale: 0, staleHidden: 0,
         byKind: { decision: 0, agent_ask: 0, review_item: 0, operator_task: 0, escalation: 0, clarify: 1, plan_action: 2 },
-        hidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
+        hidden: 0, agentFlaggedHidden: 0, fixture: { projects: 0, items: 0 }, noRepoPath: { projects: 0, items: 0 }
       },
       items: [
         {
